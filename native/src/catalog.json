@@ -276,7 +276,7 @@
     },
     {
       "name": "read",
-      "description": "按行读取当前工作区文件，包括已保存的未提交内容。提供 revision 时读取指定提交的普通文件。返回行号和内容哈希，可用于来源引用；支持隐藏、忽略文件和链接；文本按行分页，二进制使用原生 fs/readFile。 可显式 view=review 限定工作区并筛选敏感路径；不改变主机权限。coverage 标明分页/筛选/跳过；source.statusHash 仅校验 Git 状态文本，不是内容快照。nextLine/nextOffset 非空需继续读取。",
+      "description": "按行读取当前工作区文件，包括已保存的未提交内容。提供 revision 时读取指定提交的普通文件。返回行号和内容哈希，可用于来源引用；支持隐藏、忽略文件和链接；文本按行分页，PNG/JPEG/WebP/GIF 按文件头优先识别，返回 MCP 图片块与原始/返回尺寸、字节数、SHA256；maxEdge 默认 1568（1–4096），quality 默认 80（1–100）；JPEG 和不透明 WebP 输出 JPEG，其他图片输出 PNG，动画返回首帧；自动压缩至每张不超过 1MiB；其他二进制返回类型和大小错误。 可显式 view=review 限定工作区并筛选敏感路径；不改变主机权限。coverage 标明分页/筛选/跳过；source.statusHash 仅校验 Git 状态文本，不是内容快照。nextLine/nextOffset 非空需继续读取。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -317,6 +317,18 @@
           "expectedHash": {
             "type": "string",
             "description": "上一页 sha256（read）或 listingHash（tree/search）；变化时重新分页"
+          },
+          "maxEdge": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096,
+            "default": 1568
+          },
+          "quality": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 80
           }
         },
         "required": [
@@ -1056,7 +1068,7 @@
     },
     {
       "name": "codex_read",
-      "description": "读取任务状态和最近记录；unknown 仅表示独立 App Server 不能确认桌面活动状态。",
+      "description": "读取任务状态和最近记录；unknown 仅表示独立 App Server 不能确认桌面活动状态。 includeImages 默认 false；开启后从当前返回 items 提取最新本地 Markdown 图片或工具结果内嵌截图，附加 MCP 图片块，maxImages 默认 4、上限 8。图片长边至多 1568、每张至多 1MiB；本地路径限线程项目和该线程可视化目录。文本分页截断保持不变。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1082,6 +1094,16 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "includeImages": {
+            "type": "boolean",
+            "default": false
+          },
+          "maxImages": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "default": 4
           }
         },
         "required": [
@@ -1523,7 +1545,7 @@
     },
     {
       "name": "codex_items",
-      "description": "分页读取全部任务条目，包括原始工具数据。正文按 offset 分块，textHash 用于检测活动内容变化。",
+      "description": "分页读取全部任务条目，包括原始工具数据。正文按 offset 分块，textHash 用于检测活动内容变化。 includeImages 默认 false；开启后从当前返回 items 提取最新本地 Markdown 图片或工具结果内嵌截图，附加 MCP 图片块，maxImages 默认 4、上限 8。图片长边至多 1568、每张至多 1MiB；本地路径限线程项目和该线程可视化目录。文本分页截断保持不变。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1557,6 +1579,16 @@
           },
           "expectedHash": {
             "type": "string"
+          },
+          "includeImages": {
+            "type": "boolean",
+            "default": false
+          },
+          "maxImages": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "default": 4
           }
         },
         "required": [

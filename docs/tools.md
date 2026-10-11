@@ -337,3 +337,24 @@ git_write {"project":"/absolute/project","operation":"add","paths":["src/main.rs
 git_write {"project":"/absolute/project","operation":"commit","message":"fix: correct behavior\n\nDetails","requestId":"<新 UUID>"}
 codex_request {"requestId":"<提交 UUID>"}
 ```
+
+### Image content
+
+`read` detects PNG, JPEG, WebP and GIF by file signature before using the extension.
+It returns a native MCP image content block plus the path, original and returned
+pixel dimensions, byte counts, original SHA-256 and returned SHA-256. `maxEdge`
+defaults to 1568 (1–4096); `quality` defaults to 80 (1–100). JPEG and opaque WebP
+are encoded as JPEG; PNG, GIF and transparent WebP are encoded as PNG. Animated
+images return their first frame. Quality or dimensions are reduced until the
+encoded image fits within 1 MiB. Input files retain the 16 MiB read limit.
+Other binary files return an error with the guessed type and byte count.
+
+`codex_read` and `codex_items` accept `includeImages` (default `false`) and
+`maxImages` (default 4, range 1–8). When enabled, the newest images in the returned
+items are appended after the existing text result, each preceded by its item and
+source. Text truncation and pagination are unchanged. These images use the same
+1568-pixel and 1 MiB defaults. Local Markdown references must resolve inside the
+thread's project root or its own `CODEX_HOME/visualizations/YYYY/MM/DD/threadId/`
+directory. Symlinks cannot escape these boundaries. Embedded tool screenshots
+with base64 data URLs are also supported. Unavailable, invalid or disallowed
+images produce a short per-image explanation without discarding the text result.

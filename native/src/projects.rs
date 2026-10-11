@@ -69,6 +69,9 @@ async fn git(root: &str, args: Vec<String>) -> Result<String> {
 }
 // Global configuration is read only by `git config` to extract commit identity.
 async fn git_command(root: &str, args: Vec<String>, identity: bool) -> Result<String> {
+    String::from_utf8(git_bytes(root, args, identity).await?).map_err(|e| e.to_string())
+}
+async fn git_bytes(root: &str, args: Vec<String>, identity: bool) -> Result<Vec<u8>> {
     let config_query = args.first().is_some_and(|s| s == "config");
     let mutation = args.first().is_some_and(|s| s == "-c");
     let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
@@ -148,7 +151,7 @@ async fn git_command(root: &str, args: Vec<String>, identity: bool) -> Result<St
         .await
         .map_err(|_| "GIT_TIMEOUT")??;
     if config_query && status.code() == Some(1) {
-        return Ok(String::new());
+        return Ok(Vec::new());
     }
     if !status.success() {
         return Err(
@@ -177,7 +180,7 @@ async fn git_command(root: &str, args: Vec<String>, identity: bool) -> Result<St
             },
         );
     }
-    String::from_utf8(stdout).map_err(|e| e.to_string())
+    Ok(stdout)
 }
 /// Local Git mutations share Control's durable request reservation and receipts.
 pub async fn write(c: &Control, args: &Value) -> Result<Value> {
@@ -495,7 +498,7 @@ async fn files(root: &str, prefix: &str, ignored: bool) -> Result<Vec<String>> {
         .filter(|s| prefix.is_empty() || s == prefix || s.starts_with(&format!("{prefix}/")))
         .collect())
 }
-fn read(root: &str, file: &str) -> Result<String> {
+pub(crate) fn read_bytes(root: &str, file: &str) -> Result<Vec<u8>> {
     let path = Path::new(root).join(file);
     let before = std::fs::metadata(&path).map_err(io_reason)?;
     if !before.is_file() {
@@ -504,7 +507,16 @@ fn read(root: &str, file: &str) -> Result<String> {
     if before.len() > 16 * 1024 * 1024 {
         return Err("FILE_TOO_LARGE".into());
     }
-    let bytes = std::fs::read(&path).map_err(io_reason)?;
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(&path)
+        .map_err(io_reason)?
+        .take(16 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(io_reason)?;
+    if bytes.len() > 16 * 1024 * 1024 {
+        return Err("FILE_TOO_LARGE".into());
+    }
     let after = std::fs::metadata(&path).map_err(io_reason)?;
     #[cfg(unix)]
     {
@@ -519,10 +531,10 @@ fn read(root: &str, file: &str) -> Result<String> {
     if before.modified().ok() != after.modified().ok() || before.len() != after.len() {
         return Err("FILE_CHANGED_DURING_READ".into());
     }
-    if bytes.contains(&0) {
-        return Err("BINARY_FILE".into());
-    }
-    String::from_utf8(bytes).map_err(|_| "NON_UTF8_FILE".into())
+    Ok(bytes)
+}
+fn read(root: &str, file: &str) -> Result<String> {
+    crate::images::text(read_bytes(root, file)?, file)
 }
 fn io_reason(e: std::io::Error) -> String {
     match e.kind() {
@@ -532,7 +544,7 @@ fn io_reason(e: std::io::Error) -> String {
     }
     .into()
 }
-fn review_path(root: &str, file: &str) -> Result<()> {
+pub(crate) fn review_path(root: &str, file: &str) -> Result<()> {
     let root = Path::new(root);
     let private_root = crate::root().canonicalize().ok();
     let path = root.join(file);
@@ -637,6 +649,7 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
     if review && !file.is_empty() {
         review_path(root, file)?;
     }
+    let mut image_blocks = Vec::new();
     let mut data = match action {
         "overview" => {
             let paths = filter_paths(root, files(root, "", false).await?, review, &mut skipped);
@@ -684,7 +697,7 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
             } else {
                 None
             };
-            let content = if let Some(ref rev) = rev {
+            let bytes = if let Some(ref rev) = rev {
                 let entry = git(
                     root,
                     vec!["ls-tree".into(), rev.clone(), "--".into(), file.into()],
@@ -706,17 +719,24 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
                 {
                     return Err("文件过大".into());
                 }
-                git(root, strings(&["cat-file", "blob", oid])).await?
+                git_bytes(root, strings(&["cat-file", "blob", oid]), false).await?
             } else {
-                read(root, file)?
+                read_bytes(root, file)?
             };
-            if content.contains('\0') {
-                return Err("需要文本文件".into());
+            if crate::images::format(&bytes, file).is_some() {
+                let image = crate::images::prepare(&bytes, file, args)?;
+                image_blocks = image.blocks(file);
+                image.metadata
+            } else {
+                let content = crate::images::text(bytes, file)?;
+                if content.contains('\0') {
+                    return Err("需要文本文件".into());
+                }
+                let lines: Vec<_> = content.split('\n').collect();
+                let start = num(args, "startLine", 1);
+                let count = num(args, "lineCount", 160);
+                json!({"path":file,"revision":rev.unwrap_or_else(||"working".into()),"sha256":hash(&content),"startLine":start,"totalLines":lines.len(),"nextLine":if start+count<=lines.len(){Some(start+count)}else{None},"text":lines.iter().skip(start-1).take(count).enumerate().map(|(i,s)|format!("{}: {s}",start+i)).collect::<Vec<_>>().join("\n"),"truncated":false})
             }
-            let lines: Vec<_> = content.split('\n').collect();
-            let start = num(args, "startLine", 1);
-            let count = num(args, "lineCount", 160);
-            json!({"path":file,"revision":rev.unwrap_or_else(||"working".into()),"sha256":hash(&content),"startLine":start,"totalLines":lines.len(),"nextLine":if start+count<=lines.len(){Some(start+count)}else{None},"text":lines.iter().skip(start-1).take(count).enumerate().map(|(i,s)|format!("{}: {s}",start+i)).collect::<Vec<_>>().join("\n"),"truncated":false})
         }
         "search" => {
             let paths = filter_paths(
@@ -904,7 +924,9 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
             return Err("CONTENT_CHANGED_RESTART_PAGINATION".into());
         }
     }
-    Ok(json!({"source":source,"changedDuringRead":changed,"consistency":"best-effort","data":data}))
+    let mut result = json!({"source":source,"changedDuringRead":changed,"consistency":"best-effort","data":data});
+    crate::images::attach(&mut result, image_blocks);
+    Ok(result)
 }
 
 pub async fn native_id(c: &Control, cwd: &str) -> Result<Option<String>> {

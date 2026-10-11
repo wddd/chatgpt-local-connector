@@ -863,6 +863,26 @@ impl Control {
                 if args["statusOnly"] != true {
                     let page=self.request("thread/turns/list",json!({"threadId":id,"cursor":args["cursor"],"limit":num(&args,"limit",2),"sortDirection":"desc","itemsView":"full"}),60000).await?;
                     result["nextCursor"] = page["nextCursor"].clone();
+                    if args["includeImages"] == true {
+                        let raw: Vec<Value> = page["data"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .flat_map(|turn| {
+                                turn["items"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .rev()
+                                    .take(15)
+                                    .cloned()
+                            })
+                            .collect();
+                        crate::images::attach(
+                            &mut result,
+                            crate::images::from_items(&raw, id, string(&t, "cwd"), &args),
+                        );
+                    }
                     let configurations = turn_configurations(&t);
                     result["turns"]=json!(page["data"].as_array().into_iter().flatten().map(|t|{let items=t["items"].as_array().cloned().unwrap_or_default();json!({"turnId":t["id"],"recordedStatus":t["status"],"error":t["error"],"effectiveConfiguration":configurations.get(string(t,"id")).cloned().unwrap_or(json!({"source":"unavailable","model":"unknown","effort":"unknown"})),"items":items.iter().skip(items.len().saturating_sub(15)).map(|i|item(i,0,600)).collect::<Vec<_>>(),"itemsTruncated":items.len()>15})}).collect::<Vec<_>>());
                 }
@@ -871,7 +891,13 @@ impl Control {
             "codex_items" => {
                 let mut params = args.clone();
                 params["sortDirection"] = json!("asc");
-                for key in ["offset", "length", "expectedHash"] {
+                for key in [
+                    "offset",
+                    "length",
+                    "expectedHash",
+                    "includeImages",
+                    "maxImages",
+                ] {
                     params.as_object_mut().unwrap().remove(key);
                 }
                 let page = self.request("thread/items/list", params, 60000).await?;
@@ -894,9 +920,33 @@ impl Control {
                         return Err("CONTENT_CHANGED".into());
                     }
                 }
-                Ok(
-                    json!({"threadId":args["threadId"],"items":items,"nextCursor":page["nextCursor"],"observedAt":now()}),
-                )
+                let mut result = json!({"threadId":args["threadId"],"items":items,"nextCursor":page["nextCursor"],"observedAt":now()});
+                if args["includeImages"] == true {
+                    let thread = self
+                        .request(
+                            "thread/read",
+                            json!({"threadId":args["threadId"],"includeTurns":false}),
+                            60000,
+                        )
+                        .await?;
+                    let raw: Vec<Value> = page["data"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .rev()
+                        .map(|r| r["item"].clone())
+                        .collect();
+                    crate::images::attach(
+                        &mut result,
+                        crate::images::from_items(
+                            &raw,
+                            string(&args, "threadId"),
+                            string(&thread["thread"], "cwd"),
+                            &args,
+                        ),
+                    );
+                }
+                Ok(result)
             }
             "codex_capabilities" => Ok(
                 json!({"version":env!("CARGO_PKG_VERSION"),"backendSession":self.session,"executionOwner":if self.auto_open_codex()? {"desktop"} else {"connector"},"models":self.request("model/list",json!({}),60000).await?,"configuration":self.request("config/read",json!({}),60000).await?}),

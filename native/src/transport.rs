@@ -332,11 +332,19 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, name: &str, args: Value) ->
     if name == "connector_verify" && result.is_err() {
         return result;
     }
+    let mut images = Vec::new();
     let (value, error) = match result {
-        Ok(value) => (crate::kernel::results::page_output(value)?, false),
+        Ok(mut value) => {
+            if matches!(name, "read" | "codex_read" | "codex_items") {
+                images = crate::images::take(&mut value);
+            }
+            (crate::kernel::results::page_output(value)?, false)
+        }
         Err(error) => (json!({"error":crate::egress::failure(&error)}), true),
     };
-    Ok(crate::egress::tool(value, error))
+    let mut result = crate::egress::tool(value, error);
+    result["content"].as_array_mut().unwrap().extend(images);
+    Ok(result)
 }
 pub async fn mcp(s: &Arc<Service>, request: Value) -> Result<Value> {
     mcp_ingress(&s.primary().await?, request).await

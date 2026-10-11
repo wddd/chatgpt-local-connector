@@ -15,6 +15,7 @@ pub mod egress;
 pub mod execution;
 pub mod https;
 pub mod https_tunnel;
+pub mod images;
 pub mod ingress;
 pub mod kernel;
 pub mod logs;
