@@ -341,20 +341,41 @@ codex_request {"requestId":"<提交 UUID>"}
 ### Image content
 
 `read` detects PNG, JPEG, WebP and GIF by file signature before using the extension.
-It returns a native MCP image content block plus the path, original and returned
-pixel dimensions, byte counts, original SHA-256 and returned SHA-256. `maxEdge`
-defaults to 1568 (1–4096); `quality` defaults to 80 (1–100). JPEG and opaque WebP
-are encoded as JPEG; PNG, GIF and transparent WebP are encoded as PNG. Animated
-images return their first frame. Quality or dimensions are reduced until the
-encoded image fits within 1 MiB. Input files retain the 16 MiB read limit.
-Other binary files return an error with the guessed type and byte count.
+It returns native MCP image content plus the path, original and returned pixel
+sizes, byte counts, both SHA-256 hashes, and `reencoded`.
+`maxEdge` defaults to 1568 (1–4096); `quality` defaults to 80 (1–100).
+Images already within both the pixel and 1 MiB encoded-byte limits are returned
+unchanged, including their original MIME type. `quality` only applies when
+re-encoding is necessary. If resizing increases the byte count, an original
+within the byte cap may be retained when its longest edge exceeds `maxEdge` by
+less than 10%. Larger images still obey `maxEdge`; the byte cap is always enforced.
+Re-encoded JPEG and opaque WebP use JPEG; other formats use PNG. Re-encoding an
+animated image returns its first frame; original passthrough preserves the file.
+Input files retain the 16 MiB read limit. Other binary files report the guessed
+type and byte count.
 
 `codex_read` and `codex_items` accept `includeImages` (default `false`) and
-`maxImages` (default 4, range 1–8). When enabled, the newest images in the returned
-items are appended after the existing text result, each preceded by its item and
-source. Text truncation and pagination are unchanged. These images use the same
-1568-pixel and 1 MiB defaults. Local Markdown references must resolve inside the
-thread's project root or its own `CODEX_HOME/visualizations/YYYY/MM/DD/threadId/`
-directory. Symlinks cannot escape these boundaries. Embedded tool screenshots
-with base64 data URLs are also supported. Unavailable, invalid or disallowed
-images produce a short per-image explanation without discarding the text result.
+`maxImages` (default 4, range 1–8). The newest images in the returned items are
+appended after the existing text result, each preceded by its item and source.
+Text truncation and pagination are unchanged. Images share the 1568-pixel target,
+less-than-10% fallback tolerance, original passthrough and 1 MiB limit described
+above. Local Markdown references must resolve inside the thread's project root
+or its own `CODEX_HOME/visualizations/YYYY/MM/DD/threadId/` directory. Symlinks
+cannot escape these boundaries. Embedded tool screenshots with base64 data URLs
+are supported. Unavailable, invalid or disallowed images produce a short
+per-image explanation without discarding the text result.
+
+`codex_items` defaults to the original oldest-first order across the thread.
+Set `latest: true` to select the most recent turn and read its items newest first;
+`includeImages: true` then includes images from that page. An explicit `turnId`
+selects that turn instead. The result includes the selected `turnId`. To continue,
+pass that same `turnId`, `nextCursor` as `cursor`, and `latest: true`; a new turn
+will not change the selected scope. A cursor with `latest: true` but no `turnId`
+is rejected rather than silently reselecting a turn. Without the new parameter,
+existing cursor, ordering, offset and length semantics are unchanged.
+
+The MCP `tools/list` response comes from the same embedded catalog used to
+validate calls; it is not a separate tool registration. HTTP responses use
+`Cache-Control: no-store`. If a client still displays an older description or
+schema, refresh or reconnect its MCP connection and check the server's actual
+`tools/list` result rather than relying on the client's cached tool descriptions.

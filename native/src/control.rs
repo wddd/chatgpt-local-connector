@@ -889,14 +889,33 @@ impl Control {
                 Ok(result)
             }
             "codex_items" => {
+                let latest = args["latest"] == true;
                 let mut params = args.clone();
-                params["sortDirection"] = json!("asc");
+                params["sortDirection"] = json!(if latest { "desc" } else { "asc" });
+                if latest && args["turnId"].is_null() {
+                    if args["cursor"].is_string() {
+                        return Err("LATEST_CURSOR_REQUIRES_TURN_ID: continue with the returned turnId, cursor and latest=true".into());
+                    }
+                    let turns = self.request("thread/turns/list", json!({"threadId":args["threadId"],"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}), 60000).await?;
+                    let data = turns["data"].as_array().ok_or("INVALID_TURN_LIST")?;
+                    if data.is_empty() {
+                        return Ok(
+                            json!({"threadId":args["threadId"],"turnId":null,"items":[],"nextCursor":null,"observedAt":now()}),
+                        );
+                    }
+                    params["turnId"] = json!(data[0]["id"]
+                        .as_str()
+                        .filter(|id| !id.is_empty())
+                        .ok_or("INVALID_TURN_ID")?);
+                }
+                let turn_id = params["turnId"].clone();
                 for key in [
                     "offset",
                     "length",
                     "expectedHash",
                     "includeImages",
                     "maxImages",
+                    "latest",
                 ] {
                     params.as_object_mut().unwrap().remove(key);
                 }
@@ -921,6 +940,9 @@ impl Control {
                     }
                 }
                 let mut result = json!({"threadId":args["threadId"],"items":items,"nextCursor":page["nextCursor"],"observedAt":now()});
+                if latest {
+                    result["turnId"] = turn_id;
+                }
                 if args["includeImages"] == true {
                     let thread = self
                         .request(
@@ -929,13 +951,15 @@ impl Control {
                             60000,
                         )
                         .await?;
-                    let raw: Vec<Value> = page["data"]
+                    let mut raw: Vec<Value> = page["data"]
                         .as_array()
                         .into_iter()
                         .flatten()
-                        .rev()
                         .map(|r| r["item"].clone())
                         .collect();
+                    if !latest {
+                        raw.reverse();
+                    }
                     crate::images::attach(
                         &mut result,
                         crate::images::from_items(

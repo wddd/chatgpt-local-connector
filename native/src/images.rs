@@ -64,6 +64,20 @@ pub fn prepare(bytes: &[u8], path: &str, args: &Value) -> Result<Prepared> {
     let mut decoded = reader.decode().map_err(|e| format!("INVALID_IMAGE: {e}"))?;
     let original = decoded.dimensions();
     let edge = num(args, "maxEdge", 1568).clamp(1, 4096) as u32;
+    let original_mime = match format {
+        ImageFormat::Png => "image/png",
+        ImageFormat::Jpeg => "image/jpeg",
+        ImageFormat::WebP => "image/webp",
+        ImageFormat::Gif => "image/gif",
+        _ => unreachable!(),
+    };
+    let package = |output: &[u8], dimensions: (u32, u32), mime: &str, reencoded: bool| Prepared {
+        metadata: json!({"path":path,"originalWidth":original.0,"originalHeight":original.1,"width":dimensions.0,"height":dimensions.1,"originalBytes":bytes.len(),"bytes":output.len(),"sha256":hash(bytes),"returnedSha256":hash(output),"mimeType":mime,"reencoded":reencoded}),
+        content: json!({"type":"image","mimeType":mime,"data":STANDARD.encode(output)}),
+    };
+    if original.0.max(original.1) <= edge && bytes.len() <= MAX_BYTES {
+        return Ok(package(bytes, original, original_mime, false));
+    }
     if original.0.max(original.1) > edge {
         decoded = decoded.resize(edge, edge, image::imageops::FilterType::Lanczos3);
     }
@@ -84,12 +98,17 @@ pub fn prepare(bytes: &[u8], path: &str, args: &Value) -> Result<Prepared> {
                 .map_err(|e| e.to_string())?;
         }
         let output = output.into_inner();
+        // A small dimension reduction must not inflate an already bounded source.
+        // Larger sources still obey maxEdge, even when that requires more bytes.
+        if bytes.len() <= MAX_BYTES
+            && original.0.max(original.1) * 10 < edge * 11
+            && output.len() >= bytes.len()
+        {
+            return Ok(package(bytes, original, original_mime, false));
+        }
         if output.len() <= MAX_BYTES {
             let mime = if jpeg { "image/jpeg" } else { "image/png" };
-            return Ok(Prepared {
-                metadata: json!({"path":path,"originalWidth":original.0,"originalHeight":original.1,"width":decoded.width(),"height":decoded.height(),"originalBytes":bytes.len(),"bytes":output.len(),"sha256":hash(bytes),"returnedSha256":hash(&output),"mimeType":mime}),
-                content: json!({"type":"image","mimeType":mime,"data":STANDARD.encode(output)}),
-            });
+            return Ok(package(&output, decoded.dimensions(), mime, true));
         }
         if jpeg && quality > 40 {
             quality = quality.saturating_sub(10).max(40);
@@ -318,6 +337,55 @@ mod tests {
         );
         assert!(decoded.width() < 1568);
         assert_eq!(prepared.content["mimeType"], "image/png");
+    }
+    #[test]
+    fn preserves_bounded_originals_and_avoids_small_resize_inflation() {
+        for format in [
+            ImageFormat::Png,
+            ImageFormat::Jpeg,
+            ImageFormat::WebP,
+            ImageFormat::Gif,
+        ] {
+            let mut source = Cursor::new(Vec::new());
+            image::DynamicImage::new_rgb8(40, 20)
+                .write_to(&mut source, format)
+                .unwrap();
+            let source = source.into_inner();
+            let prepared = prepare(&source, "disguised.bin", &json!({"quality":1})).unwrap();
+            assert_eq!(
+                STANDARD.decode(string(&prepared.content, "data")).unwrap(),
+                source
+            );
+            assert_eq!(prepared.metadata["reencoded"], false);
+            assert_eq!(
+                prepared.metadata["sha256"],
+                prepared.metadata["returnedSha256"]
+            );
+            assert_eq!(image::guess_format(&source).unwrap(), format);
+        }
+        let noisy = image::load_from_memory(&png(1620, 863, true)).unwrap();
+        let mut original = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut original, 10)
+            .encode_image(&noisy)
+            .unwrap();
+        assert!(original.len() <= MAX_BYTES);
+        let prepared = prepare(&original, "small-resize.jpg", &json!({})).unwrap();
+        assert_eq!(prepared.metadata["reencoded"], false);
+        assert_eq!(prepared.metadata["width"], 1620);
+        assert_eq!(
+            STANDARD.decode(string(&prepared.content, "data")).unwrap(),
+            original
+        );
+        // A reduction of more than 10% still obeys the requested dimensions.
+        let prepared = prepare(&original, "large-resize.jpg", &json!({"maxEdge":1400})).unwrap();
+        assert_eq!(prepared.metadata["reencoded"], true);
+        assert!(prepared.metadata["width"].as_u64().unwrap() <= 1400);
+        // A source below maxEdge but over the byte cap must still be compressed.
+        let original = png(800, 800, true);
+        assert!(original.len() > MAX_BYTES);
+        let prepared = prepare(&original, "oversized.png", &json!({})).unwrap();
+        assert_eq!(prepared.metadata["reencoded"], true);
+        assert!(prepared.metadata["bytes"].as_u64().unwrap() <= MAX_BYTES as u64);
     }
     #[test]
     fn thread_images_enforce_scope_and_default_is_unchanged() {

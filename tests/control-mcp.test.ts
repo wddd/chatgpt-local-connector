@@ -46,6 +46,23 @@ for await (const line of createInterface({ input: process.stdin })) {
     if (method === 'fixture/counts') return emit({ id, result: Object.fromEntries(counts) });
     if (method === 'fixture/null') return emit({ id, result: null });
     if (method === 'fixture/array') return emit({ id, result: [null, 1, { native: true }] });
+    if (params?.threadId === 'image-pagination' || params?.threadId === 'empty-images') {
+      if (method === 'thread/turns/list') return emit({id,result:{data:params.threadId === 'empty-images' ? [] : [{id:'turn-latest',items:[]}],nextCursor:null}});
+      if (method === 'thread/items/list') {
+        if ('latest' in params || 'includeImages' in params || 'maxImages' in params) return emit({id,error:{message:'connector parameters leaked'}});
+        const binding = (params.turnId || 'all') + ':' + params.sortDirection;
+        const rows = [{turnId:'turn-old',item:{id:'old-first',type:'agentMessage',text:'old first'}},{turnId:'turn-latest',item:{id:'latest-first',type:'agentMessage',text:'latest first'}},{turnId:'turn-latest',item:{id:'latest-last',type:'agentMessage',text:'latest last'}}].filter(r=>!params.turnId || r.turnId===params.turnId);
+        if(params.sortDirection === 'desc') rows.reverse();
+        let offset=0;
+        if(params.cursor) {
+          const cursor=JSON.parse(params.cursor);
+          if(cursor.binding!==binding) return emit({id,error:{message:'cursor binding changed'}});
+          offset=cursor.offset;
+        }
+        const end=offset+(params.limit||1);
+        return emit({id,result:{data:rows.slice(offset,end),nextCursor:end<rows.length?JSON.stringify({binding,offset:end}):null}});
+      }
+    }
     if (method === 'model/list' || method === 'thread/list') return emit({ id, result: { data: [], nextCursor: null } });
     if (method === 'process/spawn') {
       emit({ method: 'process/outputDelta', params: { processHandle: params.processHandle, stream: 'stdout', deltaBase64: 'b2s=' } });
@@ -118,6 +135,17 @@ test('MCP lists all existing native and generic agent tools and seven discoverab
     assert.equal(tool.inputSchema.type, 'object');
     new AjvJsonSchemaValidator().getValidator(tool.inputSchema);
   }
+  for (const name of ['read', 'codex_read', 'codex_items']) {
+    const exposed = inventory.tools.find(tool => tool.name === name)!;
+    const source = catalog.tools.find((tool: {name: string}) => tool.name === name);
+    assert.deepEqual(exposed.inputSchema, source.inputSchema);
+    assert.equal(exposed.description, source.description);
+    assert.match(exposed.description!, /MCP image/);
+    assert.doesNotMatch(exposed.description!, /二进制使用原生/);
+    const params = name === 'read' ? ['maxEdge', 'quality'] : ['includeImages', 'maxImages'];
+    for (const key of params) assert.ok(exposed.inputSchema.properties?.[key]);
+  }
+  assert.ok(inventory.tools.find(tool => tool.name === 'codex_items')!.inputSchema.properties?.latest);
   const agents = (await call('agents')).result.agents;
   assert.deepEqual(agents.map((agent: { agent: string }) => agent.agent).sort(), ['claude', 'cline', 'codex', 'copilot', 'cursor', 'devin', 'gemini', 'grok', 'hermes', 'junie', 'kimi', 'kiro', 'opencode', 'pi', 'qwen']);
   for (const agent of agents.filter((agent: { protocol: string }) => agent.protocol === 'acp-v1')) {
@@ -485,4 +513,28 @@ test('Git writes use durable receipts, isolated identity and safe local workflow
   assert.ok(git('stash', 'list'));
   assert.ok(git('ls-files', '--unmerged'));
   assert.equal((await write('stash_pop', { requestId: popId })).replayed, true);
+});
+
+
+test('latest items pin the newest turn and preserve explicit turn and native cursor semantics', async () => {
+  const threadId = 'image-pagination';
+  const old = (await call('codex_items', {threadId})).result;
+  assert.equal(old.items[0].itemId, 'old-first');
+  assert.equal(old.turnId, undefined);
+  const first = (await call('codex_items', {threadId, latest:true})).result;
+  assert.equal(first.turnId, 'turn-latest');
+  assert.equal(first.items[0].itemId, 'latest-last');
+  assert.ok(first.nextCursor);
+  const next = (await call('codex_items', {threadId, latest:true, turnId:first.turnId, cursor:first.nextCursor})).result;
+  assert.equal(next.items[0].itemId, 'latest-first');
+  assert.equal(next.nextCursor, null);
+  const explicit = (await call('codex_items', {threadId, latest:true, turnId:'turn-old'})).result;
+  assert.equal(explicit.items[0].itemId, 'old-first');
+  const legacyNext = (await call('codex_items', {threadId, cursor:old.nextCursor})).result;
+  assert.equal(legacyNext.items[0].itemId, 'latest-first');
+  assert.equal((await call('codex_items', {threadId,latest:true,cursor:first.nextCursor})).response.isError, true);
+  const empty = (await call('codex_items', {threadId:'empty-images',latest:true})).result;
+  assert.deepEqual(empty.items, []);
+  assert.equal(empty.nextCursor, null);
+  assert.equal(empty.turnId, null);
 });
