@@ -93,13 +93,34 @@ async fn start_app() -> Result<Value> {
             .ok_or("invalid installation")?
             .join("../local-connector-desktop.exe")
     };
-    command(desktop)
-        .kill_on_drop(false)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    {
+        let desktop = desktop.canonicalize().map_err(|e| e.to_string())?;
+        let bundle = desktop
+            .ancestors()
+            .nth(3)
+            .ok_or("invalid application bundle")?;
+        // LaunchServices owns the app, so it survives the launching shell or MCP client's exit.
+        crate::output(
+            "/usr/bin/open",
+            &["-a", bundle.to_str().ok_or("invalid application path")?],
+        )
+        .await?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut launcher = command(desktop);
+        launcher
+            .kill_on_drop(false)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        #[cfg(unix)]
+        launcher.process_group(0);
+        #[cfg(windows)]
+        launcher.creation_flags(0x00000008 | 0x00000200);
+        launcher.spawn().map_err(|e| e.to_string())?;
+    }
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
         if let Ok(status) = crate::transport::forward_request("app", "GET", json!({})).await {
