@@ -10,7 +10,7 @@ const contents = path.join(path.dirname(binary), 'bundle/macos/Local Connector D
 const resources = path.join(contents, 'Resources');
 mkdirSync(path.join(contents, 'MacOS'), { recursive: true });
 mkdirSync(resources, { recursive: true });
-cpSync(path.join(root, 'desktop/target/dev-icon/Resources'), resources, { recursive: true });
+cpSync(path.join(root, 'target/dev-icon/Resources'), resources, { recursive: true });
 cpSync(path.join(root, 'dist/native'), path.join(resources, 'bin'), { recursive: true });
 const executable = path.join(contents, 'MacOS', path.basename(binary));
 cpSync(binary, executable);

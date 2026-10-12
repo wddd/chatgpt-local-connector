@@ -3,11 +3,9 @@ node_modules/
 dist/
 *.tgz
 .env
-desktop/target/
+target/
 desktop/runtime/
 desktop/gen/
-
-native/target/
 
 # Release outputs and signing secrets
 release-artifacts/
@@ -16,7 +14,6 @@ release-artifacts/
 *.pem
 *.p12
 *.pfx
-tooling/verifier/target/
 
 # Local working material
 /tmp/

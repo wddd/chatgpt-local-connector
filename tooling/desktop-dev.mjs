@@ -6,11 +6,12 @@ import { compileIcon, requireXcode } from './macos-icons.mjs';
 
 import { devStateDir } from './dev-state.mjs';
 import { buildNative } from './build-native.mjs';
+import { buildEnv } from './build-env.mjs';
 
 // One development process owns the core and all desktop windows.
 const root = new URL('../', import.meta.url);
 if (process.argv.includes('--release')) throw new Error('dev 仅运行开发模式；发行构建请用 desktop:build。');
-const env = { ...process.env, CLC_STATE_DIR: devStateDir };
+const env = { ...buildEnv(), CLC_STATE_DIR: devStateDir };
 let owner;
 try {
   const info = JSON.parse(readFileSync(path.join(devStateDir, 'web/native.json'), 'utf8'));
@@ -35,11 +36,11 @@ const prune = spawnSync(process.execPath, [fileURLToPath(new URL('tooling/prune-
 if (prune.status !== 0) throw new Error('无法检查 Rust 构建缓存');
 await buildNative();
 if (process.platform === 'win32') {
-  cpSync(fileURLToPath(new URL('dist/native/', root)), fileURLToPath(new URL('desktop/target/debug/bin/', root)), { recursive: true });
+  cpSync(fileURLToPath(new URL('dist/native/', root)), fileURLToPath(new URL('target/debug/bin/', root)), { recursive: true });
 }
 if (process.platform === 'darwin') {
   requireXcode(env);
-  const output = fileURLToPath(new URL('desktop/target/dev-icon/', root));
+  const output = fileURLToPath(new URL('target/dev-icon/', root));
   const source = path.join(output, 'Icon.icon');
   cpSync(fileURLToPath(new URL('desktop/icons/LocalConnector.icon', root)), source, { recursive: true });
   const document = JSON.parse(readFileSync(path.join(source, 'icon.json'), 'utf8'));
@@ -57,7 +58,7 @@ const args = [fileURLToPath(new URL('node_modules/@tauri-apps/cli/tauri.js', roo
 if (process.platform === 'win32') args.push('--config', 'tauri.windows.conf.json');
 args.push('--config', 'tauri.dev.conf.json');
 if (process.platform === 'darwin') args.push('--config', JSON.stringify({ bundle: {
-  icon: ['icons/icon.png', 'target/dev-icon/Resources/Icon.icns'],
+  icon: ['icons/icon.png', '../target/dev-icon/Resources/Icon.icns'],
 } }));
 args.push('--config', JSON.stringify({ build: { beforeDevCommand: {
   script: 'npm run dev:ui', cwd: fileURLToPath(root),

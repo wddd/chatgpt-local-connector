@@ -63,7 +63,7 @@ Available downloads are the actual assets on [GitHub Releases](https://github.co
 
 ## Releases
 
-Maintainers publish macOS Apple Silicon from a clean `main` with `npm run release`: prepare and commit the version and changelog, run tests once, tag, and push. The tag workflow builds and publishes macOS assets directly. Use `-- --skip-tests` if tests have already passed.
+Maintainers publish macOS Apple Silicon from a clean `main` with `npm run release`: prepare and commit the version and changelog, run tests once, build and sign locally, generate and verify release metadata, then tag, push, and upload with `gh`. Configure an existing updater key through `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_FILE`, or `~/.tauri/local-connector.key`. Use `-- --dry-run` to build all release files locally without Git changes or uploads, `-- --ci` to dispatch the optional Actions build, and `-- --skip-tests` if tests have already passed. Tag pushes do not trigger a release.
 
 Windows x64 is added on demand through the manual `release-windows.yml` workflow (optional `tag`, default: latest public Release). Until supplemented, the latest update manifest has no Windows entries, so Windows clients cannot obtain an update from it. See [Release maintenance](docs/release.md).
 

@@ -58,8 +58,9 @@ cargo fmt --manifest-path native/Cargo.toml -- --check
 cargo fmt --manifest-path desktop/Cargo.toml -- --check
 ```
 
-Rust outputs are generated under the ignored `desktop/target`, `native/target`, and
-`tooling/verifier/target` directories. The npm test, Desktop check, dev, and
+Rust outputs share the ignored repository-root `target/` directory.
+Core packaging uses the desktop dependency graph so both executables reuse the
+same Core library; isolated contract fixtures use `target/contracts/`. The npm test, Desktop check, dev, and
 build commands prune inactive compiler output groups when the local total exceeds
 10 GiB, including temporary Cargo projects below `tmp/`. Cleanup holds Cargo's
 profile locks and skips busy or explicitly protected groups. It preserves binaries,
@@ -77,7 +78,7 @@ npm run desktop:build
 npm run check:package
 ```
 
-`desktop:build` rebuilds the frontend before native packaging; a prior `dist/ui` directory is not reused. macOS installers target Apple Silicon (arm64) and are written to `desktop/target/aarch64-apple-darwin/release/bundle/`. macOS builds need `uv` to run a pinned dmgbuild version for the drag-to-install layout without text; build dependencies are excluded from the app. `check:package` checks for Node, npm, node_modules, and old runtime directories and reports size; it accepts another artifact directory. Windows builds use NSIS `.exe`. The Chinese installer uses `desktop/installer/installer.nsi` and `pages.nsh`: one-click installation, expandable path selection, and a launch action on completion. Existing installations keep their location and connection configuration. The template retains passive/silent updater flags and WebView2 setup; update it alongside the Tauri CLI when its bundler contract changes.
+`desktop:build` rebuilds the frontend before native packaging; a prior `dist/ui` directory is not reused. macOS installers target Apple Silicon (arm64) and are written to `target/aarch64-apple-darwin/release/bundle/`. macOS builds need `uv` to run a pinned dmgbuild version for the drag-to-install layout without text; build dependencies are excluded from the app. `check:package` checks for Node, npm, node_modules, and old runtime directories and reports size; it accepts another artifact directory. Windows builds use NSIS `.exe`. The Chinese installer uses `desktop/installer/installer.nsi` and `pages.nsh`: one-click installation, expandable path selection, and a launch action on completion. Existing installations keep their location and connection configuration. The template retains passive/silent updater flags and WebView2 setup; update it alongside the Tauri CLI when its bundler contract changes.
 
 Packages contain the Desktop executable, standalone Core executable, frontend static resources, icons, and applicable third-party license notices. Build scripts remap local user/repository paths in Rust source to generic build paths, avoiding private paths in binaries. Official Tunnel Client is downloaded and verified separately on first use. Codex uses the binary bundled in the user's Desktop installation rather than packaging another copy. Building does not overwrite the installed app.
 

@@ -41,11 +41,9 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           shared-key: desktop-x86_64-pc-windows-msvc
-          key: path-remap-v1
+          key: shared-target-v2
           workspaces: |
-            native -> target
-            desktop -> target
-            tooling/verifier -> target
+            desktop -> ../target
           cache-bin: false
           save-if: 'true'
       - run: npm ci
@@ -59,7 +57,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          npm run release:stage -- windows-x86_64 desktop/target/x86_64-pc-windows-msvc/release/bundle release-artifacts
+          npm run release:stage -- windows-x86_64 target/x86_64-pc-windows-msvc/release/bundle release-artifacts
           gh release download "$RELEASE_TAG" --pattern latest.json --pattern SHA256SUMS.txt --dir release-artifacts
           node tooling/release.mjs merge-windows release-artifacts
       - name: Upload Windows supplement

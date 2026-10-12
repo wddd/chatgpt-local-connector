@@ -16,7 +16,7 @@ layout = config["bundle"]["macOS"]["dmg"]
 profile = sys.argv[1] if len(sys.argv) > 1 else "release"
 if profile not in {"debug", "release"}:
     raise SystemExit("Expected debug or release")
-bundle = desktop / "target" / "aarch64-apple-darwin" / profile / "bundle"
+bundle = root / "target" / "aarch64-apple-darwin" / profile / "bundle"
 name = config["productName"]
 application = bundle / "macos" / f"{name}.app"
 if not (application / "Contents" / "Info.plist").is_file():

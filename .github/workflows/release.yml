@@ -1,8 +1,12 @@
 name: Release
-run-name: Release ${{ github.ref_name }} (macOS)
+run-name: Release ${{ inputs.tag }} (macOS)
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag
+        type: string
+        required: true
 permissions:
   contents: write
 concurrency:
@@ -17,6 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: refs/tags/${{ inputs.tag }}
           fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
@@ -29,11 +34,9 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           shared-key: desktop-aarch64-apple-darwin
-          key: path-remap-v1
+          key: shared-target-v2
           workspaces: |
-            native -> target
-            desktop -> target
-            tooling/verifier -> target
+            desktop -> ../target
           cache-bin: false
           save-if: 'true'
       - run: npm ci
@@ -46,13 +49,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          npm run release:stage -- darwin-aarch64 desktop/target/aarch64-apple-darwin/release/bundle release-artifacts
+          npm run release:stage -- darwin-aarch64 target/aarch64-apple-darwin/release/bundle release-artifacts
           npm run release:finalize -- release-artifacts
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: >-
-          gh release create "$GITHUB_REF_NAME"
+          gh release create "$RELEASE_TAG"
           release-artifacts/*.dmg release-artifacts/*.gz release-artifacts/*.sig
           release-artifacts/latest.json release-artifacts/SHA256SUMS.txt
           release-artifacts/local-connector.rb release-artifacts/release-notes.md

@@ -31,9 +31,7 @@ jobs:
         with:
           shared-key: checks
           workspaces: |
-            native -> target
-            desktop -> target
-            native -> target/contracts
+            desktop -> ../target
           cache-bin: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Cache | Rust hit=${{ steps.rust-cache.outputs.cache-hit }}

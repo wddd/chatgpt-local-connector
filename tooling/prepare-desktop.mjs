@@ -7,4 +7,6 @@ await rm(new URL('../desktop/runtime/', import.meta.url), { recursive: true, for
 await build({ configFile: fileURLToPath(new URL('../vite.config.ts', import.meta.url)) });
 
 const args = process.argv.slice(2);
-await buildNative({ release: !args.includes('--debug'), target: args.includes('--target') ? args[args.indexOf('--target') + 1] : undefined });
+const targetArg = args.find(a => a === '--target' || a.startsWith('--target='));
+const target = targetArg === '--target' ? args[args.indexOf(targetArg) + 1] : targetArg?.slice('--target='.length);
+await buildNative({ release: !args.some(a => a === '--debug' || a === '-d'), target, bundled: true });

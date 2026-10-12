@@ -1,51 +1,50 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { homedir } from 'node:os';
+import { buildEnv } from './build-env.mjs';
+import { releaseSigningEnv } from './release-signing.mjs';
 import { compileIcon, requireXcode } from './macos-icons.mjs';
 const root = new URL('../', import.meta.url);
 const args = [fileURLToPath(new URL('node_modules/@tauri-apps/cli/tauri.js', root)), 'build'];
 if (process.platform === 'win32') args.push('--config', 'tauri.windows.conf.json');
-if (process.env.TAURI_SIGNING_PRIVATE_KEY) args.push('--config', JSON.stringify({ bundle: { createUpdaterArtifacts: true } }));
-if (process.argv.includes('--release') && !process.env.TAURI_SIGNING_PRIVATE_KEY) throw new Error('发布构建需要项目专用 TAURI_SIGNING_PRIVATE_KEY');
+const signing = releaseSigningEnv(process.argv.includes('--release'));
+if (signing.TAURI_SIGNING_PRIVATE_KEY) args.push('--config', JSON.stringify({ bundle: { createUpdaterArtifacts: true } }));
 const buildArgs = process.argv.slice(2).filter(a => a !== '--release');
-if (process.platform === 'darwin') {
-  const targetArg = buildArgs.find(a => a === '--target' || a.startsWith('--target='));
-  const target = targetArg === '--target' ? buildArgs[buildArgs.indexOf(targetArg) + 1] : targetArg?.slice('--target='.length);
-  if (targetArg && target !== 'aarch64-apple-darwin') throw new Error('macOS 安装包仅支持 aarch64-apple-darwin');
-  if (!targetArg) buildArgs.push('--target', 'aarch64-apple-darwin');
+const targetAt = buildArgs.findIndex(a => a === '--target' || a.startsWith('--target='));
+let target = targetAt < 0 ? undefined : buildArgs[targetAt] === '--target' ? buildArgs[targetAt + 1] : buildArgs[targetAt].slice('--target='.length);
+if (targetAt >= 0 && !target) throw new Error('--target 需要目标三元组');
+if (process.platform === 'darwin' && target && target !== 'aarch64-apple-darwin') throw new Error('macOS 安装包仅支持 aarch64-apple-darwin');
+if (!target) {
+  target = process.platform === 'darwin' ? 'aarch64-apple-darwin' : process.platform === 'win32' ? 'x86_64-pc-windows-msvc' : undefined;
+  if (target) buildArgs.push('--target', target);
 }
 args.push(...buildArgs);
 // Keep platform-signing credentials out of ad-hoc builds.
-const env = { ...process.env };
+const debug = buildArgs.some(a => a === '--debug' || a === '-d');
+const profile = debug ? 'debug' : 'release';
+const env = buildEnv(!debug);
+for (const key of ['TAURI_SIGNING_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD']) {
+  if (signing[key] !== undefined) env[key] = signing[key];
+}
 for (const key of Object.keys(env)) if (/^(APPLE_|CSC_|WIN_CSC_)/.test(key)) delete env[key];
 if (process.platform === 'darwin' && !buildArgs.includes('--no-bundle')) {
   requireXcode(env);
   compileIcon(fileURLToPath(new URL('desktop/icons/LocalConnector.icon', root)),
-    fileURLToPath(new URL('desktop/target/release-icon/', root)), env);
+    fileURLToPath(new URL('target/release-icon/', root)), env);
   args.push('--config', JSON.stringify({ bundle: { icon: [
-    'icons/icon.png', 'icons/macos/Icon.icns', 'target/release-icon/Assets.car',
+    'icons/icon.png', 'icons/macos/Icon.icns', '../target/release-icon/Assets.car',
   ] } }));
 }
-// Avoid embedding private source and Cargo registry paths in release binaries.
-const flags = env.CARGO_ENCODED_RUSTFLAGS?.split('\x1f') ?? env.RUSTFLAGS?.trim().split(/\s+/).filter(Boolean) ?? [];
-flags.push(`--remap-path-prefix=${homedir()}=/build-user`, `--remap-path-prefix=${fileURLToPath(root)}=/workspace/`);
-env.CARGO_ENCODED_RUSTFLAGS = flags.join('\x1f');
-delete env.RUSTFLAGS;
 const prune = fileURLToPath(new URL('tooling/prune-build-cache.mjs', root));
-execFileSync(process.execPath, [prune], { cwd: fileURLToPath(root), env, stdio: 'inherit' });
+execFileSync(process.execPath, [prune, `--keep=target/${target || profile}`], { cwd: fileURLToPath(root), env, stdio: 'inherit' });
 execFileSync(process.execPath, [fileURLToPath(new URL('tooling/prepare-desktop.mjs', root)), ...buildArgs],
   { cwd: fileURLToPath(root), env, stdio: 'inherit' });
 execFileSync(process.execPath, args, { cwd: fileURLToPath(new URL('desktop/', root)), env, stdio: 'inherit' });
 if (process.platform === 'darwin' && !buildArgs.includes('--no-bundle')) {
-  const profile = buildArgs.some(a => a === '--debug' || a === '-d') ? 'debug' : 'release';
   execFileSync(process.execPath, [fileURLToPath(new URL('tooling/check-package.mjs', root)),
-    `desktop/target/aarch64-apple-darwin/${profile}/bundle/macos/Local Connector.app`],
+    `target/aarch64-apple-darwin/${profile}/bundle/macos/Local Connector.app`],
   { cwd: fileURLToPath(root), env, stdio: 'inherit' });
   execFileSync('uv', ['run', '--script', fileURLToPath(new URL('tooling/build-dmg.py', root)),
-    buildArgs.some(a => a === '--debug' || a === '-d') ? 'debug' : 'release'], { cwd: fileURLToPath(root), env, stdio: 'inherit' });
+    profile], { cwd: fileURLToPath(root), env, stdio: 'inherit' });
 }
-const targetAt = buildArgs.findIndex(a => a === '--target' || a.startsWith('--target='));
-const target = targetAt < 0 ? null : buildArgs[targetAt] === '--target' ? buildArgs[targetAt + 1] : buildArgs[targetAt].slice('--target='.length);
-const profile = buildArgs.some(a => a === '--debug' || a === '-d') ? 'debug' : 'release';
-execFileSync(process.execPath, [prune, `--keep=desktop/target/${target || profile}`],
+execFileSync(process.execPath, [prune, `--keep=target/${target || profile}`],
   { cwd: fileURLToPath(root), env, stdio: 'inherit' });

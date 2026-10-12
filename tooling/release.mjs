@@ -1,7 +1,10 @@
-import { readFile, writeFile, readdir, mkdir, copyFile } from 'node:fs/promises';
+import { readFile, writeFile, readdir, mkdir, copyFile, mkdtemp } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { releaseSigningEnv } from './release-signing.mjs';
+process.chdir(fileURLToPath(new URL('../', import.meta.url)));
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
 let version = pkg.version;
 const repo = 'whzxc/chatgpt-local-connector';
@@ -131,13 +134,43 @@ async function prepare(options = args) {
   git('commit','-m',`chore(release): 更新版本至 ${version}`,'--',...releaseFiles);
 }
 if (mode === 'release') {
-  if (args.some(arg => arg !== '--skip-tests')) throw new Error('release [--skip-tests]');
-  if (git('branch', '--show-current') !== 'main') throw new Error('Run release from main');
-  git('fetch', 'origin', 'main', '--tags');
-  await prepare([]);
-  if (!args.includes('--skip-tests')) execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['test'], { stdio: 'inherit', shell: process.platform === 'win32' });
-  git('tag', `v${version}`);
-  git('push', '--atomic', 'origin', 'main', `refs/tags/v${version}`);
+  if (args.some(arg => !['--skip-tests', '--dry-run', '--ci'].includes(arg))) throw new Error('release [--dry-run | --ci] [--skip-tests]');
+  const dryRun = args.includes('--dry-run');
+  const ci = args.includes('--ci');
+  if (ci && dryRun) throw new Error('--ci 与 --dry-run 不能同时使用');
+  if (!ci && (process.platform !== 'darwin' || process.arch !== 'arm64')) throw new Error('本地发布需要 Apple Silicon Mac；其他主机请使用 --ci');
+  // Fail before prepare or compilation, and pass credentials only in the environment.
+  const env = ci ? process.env : releaseSigningEnv(true);
+  const run = (script, ...options) => execFileSync(process.execPath, [script, ...options], { env, stdio: 'inherit' });
+  if (!dryRun) {
+    if (git('branch', '--show-current') !== 'main') throw new Error('Run release from main');
+    if (git('status', '--porcelain')) throw new Error('Commit or set aside existing changes before release');
+    execFileSync('gh', ['auth', 'status'], { stdio: 'ignore' });
+    git('fetch', 'origin', 'main', '--tags');
+    git('merge-base', '--is-ancestor', 'origin/main', 'HEAD');
+    await prepare([]);
+    if (git('tag', '--list', `v${version}`)) throw new Error(`Tag v${version} already exists; inspect the previous release attempt before retrying`);
+    if (!args.includes('--skip-tests')) execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['test'], { stdio: 'inherit', shell: process.platform === 'win32' });
+  } else await check();
+  let output;
+  if (!ci) {
+    run('tooling/desktop-build.mjs', '--release', '--target', 'aarch64-apple-darwin');
+    await mkdir('release-artifacts', { recursive: true });
+    output = await mkdtemp(path.join('release-artifacts', `v${version}-`));
+    // Child processes reread the prepared version before generating URLs and notes.
+    run('tooling/release.mjs', 'stage', 'darwin-aarch64', 'target/aarch64-apple-darwin/release/bundle', output);
+    run('tooling/release.mjs', 'finalize', output);
+    console.log(`Release artifacts: ${path.resolve(output)}`);
+  }
+  if (!dryRun) {
+    git('tag', `v${version}`);
+    git('push', '--atomic', 'origin', 'main', `refs/tags/v${version}`);
+    if (ci) execFileSync('gh', ['workflow', 'run', 'release.yml', '--ref', 'main', '-f', `tag=v${version}`], { stdio: 'inherit' });
+    else {
+      const assets = (await files(output)).filter(file => path.basename(file) !== 'darwin-aarch64.json');
+      execFileSync('gh', ['release', 'create', `v${version}`, ...assets, '--verify-tag', '--notes-file', path.join(output, 'release-notes.md'), '--latest'], { stdio: 'inherit' });
+    }
+  }
 } else if (mode === 'prepare') await prepare();
 else if (mode === 'sync') await sync();
 else if (mode === 'stage') {
@@ -145,7 +178,9 @@ else if (mode === 'stage') {
   if (!['darwin-aarch64','windows-x86_64'].includes(target) || !input || !output) throw new Error('stage <darwin-aarch64|windows-x86_64> <bundle-dir> <output-dir>');
   await mkdir(output,{recursive:true});
   if ((await readdir(output)).length) throw new Error('Stage directory must be empty; use a fresh directory');
-  const candidates = (await files(input)).filter(f => target === 'darwin-aarch64' ? /(?:_aarch64\.dmg|\.app\.tar\.gz(?:\.sig)?)$/.test(f) : /\.exe(?:\.sig)?$/.test(f));
+  const candidates = (await files(input)).filter(f => target === 'darwin-aarch64'
+    ? f.endsWith(`_${version}_aarch64.dmg`) || /\.app\.tar\.gz(?:\.sig)?$/.test(f)
+    : path.basename(f).includes(`_${version}_`) && /\.exe(?:\.sig)?$/.test(f));
   for (const file of candidates) {
     let name = path.basename(file).replaceAll(' ','.');
     if (target === 'darwin-aarch64' && name.includes('.app.tar.gz')) name = name.replace('.app.tar.gz', `_${version}_aarch64.app.tar.gz`);

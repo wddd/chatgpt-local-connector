@@ -76,7 +76,7 @@ for await (const line of createInterface({ input: process.stdin })) {
 `);
   // Keep the Cargo project path stable so each test run reuses its compiled dependencies.
   // Runtime state and the fake upstream still live in a fresh temporary directory.
-  const target = fileURLToPath(new URL('../native/target/contracts', import.meta.url));
+  const target = fileURLToPath(new URL('../target/contracts', import.meta.url));
   const fixtureDirectory = path.join(target, 'fixture');
   await mkdir(path.join(fixtureDirectory, 'src'), { recursive: true });
   const corePath = fileURLToPath(new URL('../native', import.meta.url)).replaceAll('\\', '/');

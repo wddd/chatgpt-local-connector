@@ -3,6 +3,17 @@ name = "local-connector-desktop"
 version = "0.8.25"
 edition = "2021"
 license = "MIT"
+default-run = "local-connector-desktop"
+
+# Build the Core executable with the desktop dependency graph so both binaries
+# reuse the same connector-core library and transitive dependency features.
+[[bin]]
+name = "local-connector"
+path = "../native/src/main.rs"
+required-features = ["core-bin"]
+
+[features]
+core-bin = []
 
 [build-dependencies]
 serde_json = "1"
@@ -27,13 +38,23 @@ dirs = "6"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [profile.release]
-lto = "thin"
-codegen-units = 4
+lto = false
+codegen-units = 16
 strip = true
 
 [profile.dev]
 debug = 1
 incremental = false
+opt-level = 1
+
+[profile.dev.package.serde_json]
+opt-level = 3
+
+[profile.dev.package.flate2]
+opt-level = 3
+
+[profile.dev.package.connector-core]
+opt-level = 2
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSApplication", "NSImage", "NSView", "NSWindow", "NSButton", "NSResponder", "NSControl", "NSPanel", "NSMenu", "NSMenuItem", "NSEvent", "NSScreen", "NSColor", "NSGraphics", "NSWorkspace", "NSAccessibility", "block2"] }
