@@ -884,6 +884,7 @@ impl Control {
             return self.mutate("native",json!({"method":method,"params":params,"requestId":args["requestId"],"timeoutMs":args["timeoutMs"].as_u64().unwrap_or(86400000),"waitMs":num(&args,"waitMs",25000)})).await;
         }
         match name {
+            "screen" => crate::screen::call(args).await,
             "projects" => Ok(
                 json!({"observedAt":now(),"source":"codex-app-server:project/list","projects":crate::projects::list(self).await?}),
             ),

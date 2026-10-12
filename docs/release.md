@@ -37,7 +37,7 @@ export TAURI_SIGNING_PRIVATE_KEY_FILE='/absolute/path/to/existing/updater.key'
 npm run release -- --dry-run
 ```
 
-独立 Core 和桌面 App 使用同一明确指定的证书，包括 debug 构建和 `npm run dev` 的开发包。Core 的签名 identifier 固定为 `com.whzxc.local-connector.core`，正式 App 保持 `com.whzxc.local-connector.desktop`，开发 App 保持独立的 `com.whzxc.local-connector.dev`。证书签名的 Core 与 Tauri 构建 App 保持 hardened runtime；开发 runner 的 App 保持原有 runtime 设置。Developer ID Core 签名启用安全时间戳。未配置身份或显式设置为 `-` 时使用 ad-hoc，并移除 Apple 公证凭据，避免意外选择钥匙串中的其他证书。已有个人证书缺失或不可用时签名报错，不回退使用其他证书。
+独立 Core 和桌面 App 使用同一明确指定的证书，包括 debug 构建和 `npm run dev` 的开发包。Core 的签名 identifier 固定为 `com.whzxc.local-connector.core`，macOS Swift helper 固定为 `com.whzxc.local-connector.screen`，正式 App 保持 `com.whzxc.local-connector.desktop`，开发 App 保持独立的 `com.whzxc.local-connector.dev`。证书签名的 Core 与 Tauri 构建 App 保持 hardened runtime；开发 runner 的 App 保持原有 runtime 设置。Developer ID Core 签名启用安全时间戳。未配置身份或显式设置为 `-` 时使用 ad-hoc，并移除 Apple 公证凭据，避免意外选择钥匙串中的其他证书。已有个人证书缺失或不可用时签名报错，不回退使用其他证书。
 
 Developer ID 签名与 Apple 公证是不同环节。需要公证时，在本机安全配置同一个人团队的 `APPLE_ID`、`APPLE_TEAM_ID` 和 **App 专用密码** `APPLE_PASSWORD`；不要使用 Apple ID 登录密码或将密码写入命令历史。也可按 Tauri 官方文档使用 App Store Connect API 凭据。只有显式选择 Developer ID 后，构建脚本才将这些变量传递给 Tauri。未提供公证凭据时，只签名，不公证。
 
@@ -128,7 +128,7 @@ gh workflow run release-windows.yml --ref main -f tag=v<版本>
 - Cargo 缓存和二进制：`target/<三元组>/<profile>/`；无显式 target 的开发构建为 `target/debug/`。
 - macOS 安装包：`target/aarch64-apple-darwin/release/bundle/`。
 - Windows 安装包：`target/x86_64-pc-windows-msvc/release/bundle/`。
-- 独立 Core 的打包暂存：`dist/native/`，Tauri 仍通过 resources 映射到 `bin/`。
+- 独立 Core 与 macOS `clc-screen` helper 的打包暂存：`dist/native/`，Tauri 仍通过 resources 映射到 `bin/`。
 - 编译图标：`target/release-icon/`、`target/dev-icon/`；隔离合同测试：`target/contracts/`。
 
 npm 使用 setup-node 缓存；rust-cache 缓存共享 `target/`，发布工作流允许保存缓存。推荐从 main dispatch，使缓存留在默认分支作用域，checkout 标签不改变工作流的 ref 作用域。`check.yml` 仅手动触发；日常 push/PR 不触发检查。

@@ -26,6 +26,11 @@ export async function buildNative({ release = false, target, bundled = release }
   const destination = path.join(root, 'dist/native', name);
   await mkdir(path.dirname(destination), { recursive: true });
   await copyFile(binary, destination);
+  if (process.platform === 'darwin') {
+    const helper = path.join(root, 'dist/native/clc-screen');
+    execFileSync('xcrun', ['swiftc', '-O', '-target', `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-macos11.0`, path.join(root, 'native/screen/main.swift'), '-o', helper], { env, stdio: 'inherit' });
+    execFileSync('codesign', [...macosSigningArgs(identity, 'com.whzxc.local-connector.screen'), helper], { env, stdio: 'inherit' });
+  }
   execFileSync(process.execPath, [path.join(root, 'tooling/prune-build-cache.mjs'), `--keep=target/${target || (release ? 'release' : 'debug')}`], { cwd: root, stdio: 'inherit' });
   return binary;
 }

@@ -364,3 +364,32 @@ schema, refresh or reconnect its MCP connection and check the server's actual
 `tools/list` result rather than relying on the client's cached tool descriptions.
 
 大于 64 KiB 的结果内联约 48 KiB JSON 文本，并返回 outputId、nextOffset。control_output 每页最多 65536 个 UTF-16 code units；JSON 缓存最多保留 1 小时，共享 64 MiB 容量。
+
+
+## macOS 界面观察与操作：screen
+
+`screen` 直接由 Core 启动随 App 打包的 Swift helper `clc-screen`，不经 Codex app-server。仅 macOS 可用；其他平台返回 `SCREEN_UNSUPPORTED`。安装版需要在系统设置中向 **Local Connector** 授予屏幕录制和辅助功能权限，缺少权限会返回对应的明确错误。直接从终端运行 helper 时，macOS 的权限归属取决于启动它的宿主，不代表安装版已授权。
+
+除 `windows` 外，指定 `app`（名称包含匹配）、`bundleId`（精确匹配）、`title`（标题包含匹配）或 `windowId`；组合指定时同时匹配。同 App 多窗口优先选择主窗口。跨 App 存在歧义时，优先当前活动 App，否则要求更精确的目标。
+
+| action | 行为 |
+| --- | --- |
+| `windows` | 列出窗口 ID、App、bundle ID、PID、标题、frame、onScreen、frontmost 和 appActive；可按目标字段过滤。 |
+| `capture` | 返回窗口截图的 MCP image 及元数据；`maxEdge` / `quality` 与 `read` 相同。 |
+| `tree` | 启用网页辅助功能后返回元素 `ref`、role、label、frame；`text: true` 包含静态文字。默认最多 300 项，`limit` 上限 1000；节点、深度或时间预算耗尽时 `truncated: true`。 |
+| `press` | 按 `ref` 或 `label` 包含匹配（`nth` 从 0 开始）执行 AXPress，失败时在允许前台操作且元素可见时点击中心。 |
+| `show` | 对定位元素执行 AXScrollToVisible，不模拟滚轮。 |
+| `raise` | 显式提起目标窗口并激活 App。 |
+| `key` | 发送 `Escape`、`Return`、`Tab`、方向键、字母数字或 `cmd+k`；组合键支持 cmd、shift、option/alt、control/ctrl，字母数字使用 macOS ANSI 键位。 |
+
+`ref` 是带窗口 ID 的结构路径，同一结构下稳定；界面结构变化后应重新读取 `tree`。它不是跨界面版本的元素句柄。
+
+`capture` 和需要激活目标的输入操作支持 `front`：
+
+- `auto`（默认）：目标不在前台且最近 60 秒无输入时，暂存前台 App/窗口，激活目标，操作后恢复。用户正在操作时不抢前台；截图标记 `possiblyStale: true`，需要前台的按键或点击回退返回 `FOREGROUND_REQUIRED`。
+- `never`：不抢前台。后台窗口截图可能是未重绘的旧 WebView 画面。
+- `always`：激活目标并保留前台。`raise` 本身就是显式前台操作，不受此参数限制。
+
+`press`、`show`、`raise`、`key` 可带 `after: {waitMs: 200, capture: true}`，或 `capture: {front: "never", maxEdge: 1568, quality: 80}`。等待最长 10000 毫秒；操作、等待、截图在同一把 Core 锁内串行执行，调用端断线不会提前释放锁。动作已执行而后置截图失败时返回 `performed: true` 和 `captureError`，不要因此重复执行动作。`performed` 只确认 AX/输入事件提交，业务效果仍需用树或截图核对。
+
+helper 的输入为 stdin 单个 JSON 对象，stdout 为 `{ok, result}` 或 `{ok: false, error}`。直接调用时截图以 `imageBase64` 返回，Core 用共享 `images::prepare` 转为有尺寸/体积限制的 MCP image。截图临时文件在调用结束时删除。

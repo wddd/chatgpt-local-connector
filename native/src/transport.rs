@@ -378,7 +378,7 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, name: &str, args: Value) ->
     let mut images = Vec::new();
     let (value, error) = match result {
         Ok(mut value) => {
-            if matches!(name, "read" | "codex_read" | "codex_items") {
+            if matches!(name, "read" | "codex_read" | "codex_items" | "screen") {
                 images = crate::images::take(&mut value);
             }
             (

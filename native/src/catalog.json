@@ -379,6 +379,160 @@
       }
     },
     {
+      "name": "screen",
+      "description": "仅 macOS：列窗口、截图、读取辅助功能树、按元素、滚动到元素、提窗或发送按键。直接使用 Local Connector 的屏幕录制/辅助功能权限。除 windows 外须指定 app、bundleId、title 或 windowId；同 App 多窗口优先主窗口。press/show 用 ref 或 label+nth；raise 显式提窗，其他需要前台的操作遵循 front。动作返回 performed 仅表示事件已发送，使用 after 截图核对结果；失败或断线后先观察，不盲目重试。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "windows",
+              "capture",
+              "tree",
+              "press",
+              "show",
+              "raise",
+              "key"
+            ]
+          },
+          "app": {
+            "type": "string",
+            "minLength": 1,
+            "description": "App 名称，包含匹配。"
+          },
+          "bundleId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "窗口标题，包含匹配。"
+          },
+          "windowId": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295
+          },
+          "front": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "never",
+              "always"
+            ],
+            "default": "auto",
+            "description": "auto 在用户空闲至少 60 秒时临时提窗并恢复；never 不抢前台；always 提窗并保留前台。"
+          },
+          "maxEdge": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096,
+            "default": 1568,
+            "description": "目标长边像素数；为避免轻微缩图反增体积，允许不到 10% 的原图尺寸容差。"
+          },
+          "quality": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 80,
+            "description": "JPEG/WebP 重编码质量；原图可透传时不重新编码。"
+          },
+          "text": {
+            "type": "boolean",
+            "default": false,
+            "description": "tree 同时返回静态文字。"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 300
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1,
+            "description": "tree 返回的窗口内结构路径；结构变化后重新读取。"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "description": "press/show 按元素文字包含匹配。"
+          },
+          "nth": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Escape、Return、Tab、方向键、字母数字，或 cmd+k 等组合。"
+          },
+          "after": {
+            "type": "object",
+            "properties": {
+              "waitMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000,
+                "default": 200
+              },
+              "capture": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "front": {
+                        "type": "string",
+                        "enum": [
+                          "auto",
+                          "never",
+                          "always"
+                        ],
+                        "default": "auto",
+                        "description": "auto 在用户空闲至少 60 秒时临时提窗并恢复；never 不抢前台；always 提窗并保留前台。"
+                      },
+                      "maxEdge": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 4096,
+                        "default": 1568,
+                        "description": "目标长边像素数；为避免轻微缩图反增体积，允许不到 10% 的原图尺寸容差。"
+                      },
+                      "quality": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 80,
+                        "description": "JPEG/WebP 重编码质量；原图可透传时不重新编码。"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "git",
       "description": "只读 Git 查询：status 当前改动；log 提交；show 提交说明与文件；diff 默认未暂存，staged=true 查看暂存，revision 比较工作区，baseRevision+revision 比较提交。",
       "inputSchema": {
@@ -3889,6 +4043,17 @@
         "requires": [
           "control_output"
         ]
+      },
+      "screen": {
+        "group": "host",
+        "presets": [
+          "common"
+        ],
+        "requires": [
+          "control_output"
+        ],
+        "tier": "default",
+        "conditional": false
       }
     }
   }
