@@ -24,6 +24,8 @@ struct Client {
 #[derive(Clone, Serialize, Deserialize)]
 struct Grant {
     id: String,
+    #[serde(default)]
+    connected_at: Option<i64>,
     client: String,
     resource: String,
     authorization_code: String,
@@ -266,7 +268,21 @@ impl OAuth {
             .keys()
             .map(|key| self.status(key, resource))
             .collect::<Result<_>>()?;
-        let grants:Vec<_>=self.stored.grants.iter().map(|g|json!({"id":g.id,"clientName":self.stored.clients.get(&g.client).map(|c|c.name.as_str()),"clientId":g.client})).collect();
+        let mut grants: Vec<_> = self.stored.grants.iter().collect();
+        grants.sort_by_key(|g| {
+            std::cmp::Reverse(
+                g.connected_at
+                    .or_else(|| self.stored.clients.get(&g.client).map(|c| c.created)),
+            )
+        });
+        let grants: Vec<_> = grants
+            .into_iter()
+            .map(|g| {
+                let client = self.stored.clients.get(&g.client);
+                json!({"id":g.id,"clientName":client.map(|c|c.name.as_str()),"clientId":g.client,
+                "connectedAt":g.connected_at,"registeredAt":client.map(|c|c.created)})
+            })
+            .collect();
         let clients: Vec<_> = self.stored.clients.iter().map(|(id,c)|json!({"id":id,"name":c.name,"redirectUris":c.redirects,"tokenEndpointAuthMethod":c.method,"createdAt":c.created})).collect();
         Ok(json!({"pending":pending,"grants":grants,"clients":clients}))
     }
@@ -433,6 +449,7 @@ impl OAuth {
                 self.pending.remove(&key);
                 self.stored.grants.push(Grant {
                     id: key,
+                    connected_at: Some(clock()),
                     client,
                     resource: resource.to_owned(),
                     authorization_code: code_hash,

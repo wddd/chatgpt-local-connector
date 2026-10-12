@@ -43,7 +43,7 @@ The implementation bounds stored clients, pending requests and grants. Dynamic r
 
 Use the installed executable's CLI. Sensitive input goes through stdin, and the registration response contains the client secret when applicable; keep that response out of shared logs.
 
-- `cli ingress oauth list <id>` lists pending requests and grants.
+- `cli ingress oauth list <id>` lists pending requests and grants. Grants are ordered newest first and expose `connectedAt` (Unix seconds of the successful initial code exchange) and `registeredAt` (client registration time). Refreshing a token preserves `connectedAt`. Historical grants without a saved connection time return `null`; the UI labels their registration time separately.
 - `cli ingress oauth register <id> --stdin` accepts JSON containing `client_name`, `redirect_uris` and `token_endpoint_auth_method`. For public clients, specify `"none"`; otherwise the default is `"client_secret_basic"`.
 - `cli ingress oauth revoke <id> --stdin` accepts `{"id":"grant-id"}`.
 
@@ -51,3 +51,5 @@ Use the installed executable's CLI. Sensitive input goes through stdin, and the 
 - `cli ingress oauth request <id> <request-id>` reads the specific request state. `completed` means the client exchanged its authorization code, not that a tool or task has been verified.
 
 Read the pending request and its client/callback/resource before deciding. CLI decisions use the existing authenticated local management channel; do not expose it publicly. After an unknown write outcome, read the same request instead of creating another one. App/CLI authorization does not substitute for real client tool and task acceptance.
+
+Reconnecting an ingress at the same MCP URL preserves its OAuth grants. Clients can reuse their access token or obtain a new one with their refresh token, without a new registration or consent. A client-side reconnect that performs dynamic registration again creates a distinct client identity and requires consent; matching display names or callback URLs do not prove it is the previously authorized client. Connector cannot recover credentials discarded by the client. Changing the resource URL or revoking access requires a new authorization.

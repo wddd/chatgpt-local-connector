@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { t } from "../i18n";
+import { locale, t } from "../i18n";
 import { useInterval } from "../state/hooks";
 import { Button, Empty, Notice } from "./ui";
-type Grant = { id: string; clientName: string; clientId: string };
+type Grant = {
+  id: string;
+  clientName: string;
+  clientId: string;
+  connectedAt: number | null;
+  registeredAt: number | null;
+};
 export default function OAuthGrants({
   ingressId,
   running,
@@ -70,20 +76,34 @@ export default function OAuthGrants({
   return (
     <section className="oauth-grants">
       <h3>OAuth</h3>
-      <h4>{t("oauthAuthorizedClients")}</h4>
-      {grants.map((grant) => (
-        <div className="oauth-grant-card" key={grant.id}>
-          <div className="oauth-grant-identity"><strong>{grant.clientName}</strong>
-            <span className="muted small">{t("oauthClientId")}: {grant.clientId}</span>
+      {grants.map((grant) => {
+        const timestamp = grant.connectedAt ?? grant.registeredAt;
+        const date = timestamp == null ? null : new Date(timestamp * 1000);
+        return (
+          <div className="oauth-grant-card" key={grant.id}>
+            <div className="oauth-grant-identity">
+              <strong>{grant.clientName}</strong>
+              <span className="muted small">
+                {t("oauthClientId")}: {grant.clientId}
+              </span>
+              <span className="muted small">
+                {t(grant.connectedAt == null ? "oauthRegisteredAt" : "oauthConnectedAt")}: {date ? (
+                  <time dateTime={date.toISOString()}>
+                    {date.toLocaleString(locale.get(), { hour12: false })}
+                  </time>
+                ) : t("oauthTimeUnknown")}
+                {grant.connectedAt == null && ` · ${t("oauthConnectionTimeNotRecorded")}`}
+              </span>
+            </div>
+            <Button
+              disabled={busy || disabled || !running}
+              onClick={() => void action("revoke", { id: grant.id })}
+            >
+              {t("oauthRevoke")}
+            </Button>
           </div>
-          <Button
-            disabled={busy || disabled || !running}
-            onClick={() => void action("revoke", { id: grant.id })}
-          >
-            {t("oauthRevoke")}
-          </Button>
-        </div>
-      ))}
+        );
+      })}
       {!grants.length && !error && (
         <Empty>{t("oauthNoGrants")}</Empty>
       )}
