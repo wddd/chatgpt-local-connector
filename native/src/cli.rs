@@ -49,6 +49,17 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         .filter(|a| *a != "--json")
         .collect();
     match args.as_slice() {
+        ["capabilities"] => Ok(crate::management::catalog()),
+        ["schema", name] => crate::management::catalog()["operations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["name"] == *name)
+            .cloned()
+            .ok_or("UNKNOWN_OPERATION".into()),
+        ["call", name] => crate::management::call(name, json!({})).await,
+        ["call", name, "--stdin"] => crate::management::call(name, stdin_json()?).await,
+
         ["storage", "compact"] => {
             // Refuse mixed old/new writers before changing the archive layout.
             let owner = crate::runtime::Client::connect(crate::runtime::binary()?, "cli").await?;
@@ -61,7 +72,8 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         }
         [] | ["help"] | ["--help"] => Ok(json!({"version":env!("CARGO_PKG_VERSION"),
             "usage":"<应用可执行文件> cli <command> [--json]",
-            "commands":["storage compact","subscriptions get","subscriptions set --stdin","subscriptions refresh [providerId]","subscriptions open [providerId]","panel get","panel set --stdin","help","guide","context --stdin","status","onboarding","doctor","logs","configure --stdin","network --stdin","connect","disconnect","verify","verify --fresh","ingress list","ingress presets","ingress add --stdin","ingress update <id> --stdin","ingress remove <id>","ingress start <id>","ingress stop <id>","ingress start-all","ingress stop-all","ingress token rotate <id>","ingress oauth list <id>","ingress oauth decision <id> --stdin","ingress oauth request <id> <request-id>","ingress oauth register <id> --stdin","ingress oauth revoke <id> --stdin","ingress doctor <id>","ingress verify <id> [--fresh]"],
+            "capabilities":crate::management::catalog(),
+            "commands":["capabilities","schema <operation>","call <operation> [--stdin]","mcp","watch","logs --stdin","logs --follow","logs --offline","app start","app status","app quit","app restart","storage compact","subscriptions get","subscriptions set --stdin","subscriptions refresh [providerId]","subscriptions open [providerId]","panel get","panel set --stdin","help","guide","context --stdin","status","onboarding","doctor","logs","configure --stdin","network --stdin","connect","disconnect","verify","verify --fresh","ingress list","ingress presets","ingress add --stdin","ingress update <id> --stdin","ingress remove <id>","ingress start <id>","ingress stop <id>","ingress start-all","ingress stop-all","ingress token rotate <id>","ingress oauth list <id>","ingress oauth decision <id> --stdin","ingress oauth request <id> <request-id>","ingress oauth register <id> --stdin","ingress oauth revoke <id> --stdin","ingress doctor <id>","ingress verify <id> [--fresh]"],
             "subscriptionsInput":{"enabled":"boolean; required","providers":"complete array of IDs from subscriptions get; required","pinnedWindows":"complete provider-to-window map; required"},
             "subscriptionsNote":"get reads memory only. set replaces the complete settings: read get.settings first and preserve all intended selections/pins. refresh requests an online read for a selected eligible provider, or all such providers when omitted; accepted is not fresh-data success. Read observedAt/state/error afterwards. open activates the target instance's Agent detail panel, or the Agents panel when omitted.",
             "panelInput":{"autoCollapse":"boolean","size":"small | standard | large","spacing":"compact | standard | roomy","ends":"softened | round","horizontalPercentages":"boolean","alertColor":"boolean","notchFusion":"boolean","dock":"left | right | top | bottom | floating","resetPosition":"true; resets placement, takes precedence over dock"},
@@ -69,7 +81,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
             "controlSourcePresets":crate::control_sources::presets(),
             "ingressInput":{"id":"optional on add; immutable","name":"optional display name; defaults to preset name with an available numeric suffix","controlSource":"see ingress presets; any other client label remains valid","transport":"openai-tunnel | https","auth":"openai for OpenAI Tunnel; none | bearer | oauth for HTTPS","bearerToken":"32+ printable ASCII characters, stdin only; never returned by list/status","enabled":true,"toolPolicy":"all or {allowlist:[connector_verify,agents,agent_create,agent_read,agent_wait,...]}","config":{"httpsProvider":"cloudflare | ngrok | pinggy | localxpose | custom","cloudflareMode":"quick | named","httpsUrl":"https://hostname/mcp; required for named/custom, optional fixed ngrok address","httpsHost":"127.0.0.1 default; custom only","httpsPort":"8787 default; choose distinct ports for named/custom and match the external route","cloudflareToken":"named Tunnel token; stdin only","ngrokAuthtoken":"ngrok credential; stdin only","pinggyMode":"quick | named","pinggyToken":"Pinggy named domain token; stdin only","localxposeMode":"named; quick is unavailable because the first request is redirected","localxposeAccessToken":"LocalXpose credential; stdin only","localxposeRegion":"us | eu | ap","tunnelId":"official Tunnel ID","apiKey":"official Tunnel runtime key; stdin only","tunnelBinary":"optional executable path"}},
             "waitContract":"create/send → wait(30s default; 20–30s recommended) → timeout → same taskId/threadId and turnId, previous snapshotHash as expectedHash → wait again until terminal/interaction. Event-driven slices, not read/sleep polling. Timeout/cancelling wait never stops or recreates the task; unconfirmed is not failure. Ordinary Chat/general MCP clients should not block for minutes by default. Explicit maximum 300000ms requires upstream support; stdio forwarding budget remains 330s.",
-            "update":"Partial merge; stop the target before updating or rotating. Other ingresses remain online. Changes reset only this ingress verification.",
+            "update":"Partial merge; running ingresses are stopped, updated and restarted by the shared backend. Other ingresses remain online. Changes reset only this ingress verification.",
             "oauthDecisionInput":{"id":"pending request id from oauth list","allow":"boolean; true approves, false denies"},
             "oauthReadback":"oauth request returns pending/approved/denied/completed/expired; approved is not token exchange or task acceptance. Keep the client authorization page open for callback.",
             "authNote":"none exposes allowed tools to anyone with network access. Prefer a fixed URL with OAuth (local app consent via clc:// or authenticated CLI consent, PKCE, DCR or preregistration) or bearer for clients that support it.",
@@ -147,7 +159,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         ["ingress", "remove", id] => {
             forward_request(&format!("ingress/{id}"), "DELETE", json!({})).await
         }
-        ["ingress", action @ ("start" | "stop"), id] => {
+        ["ingress", action @ ("start" | "stop" | "restart" | "probe"), id] => {
             forward_request(&format!("ingress/{id}/{action}"), "POST", json!({})).await
         }
         ["ingress", action @ ("start-all" | "stop-all")] => {
@@ -189,7 +201,14 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
             ))
         }
         ["status"] => forward_request("status", "GET", json!({})).await,
-        ["logs"] => Ok(forward_request("status", "GET", json!({})).await?["logs"].clone()),
+        ["logs"] => crate::management::call("logs.query", json!({})).await,
+        ["logs", "--offline"] => crate::logs::query(&json!({})),
+        ["logs", "--stdin"] => {
+            crate::management::call("logs.query", json!({"body":stdin_json()?})).await
+        }
+        ["app", action @ ("start" | "quit" | "restart" | "status")] => {
+            crate::management::call(&format!("app.{action}"), json!({})).await
+        }
         ["configure", "--stdin"] => forward_request("config/tunnel", "PATCH", stdin_json()?).await,
         ["network", "--stdin"] => forward_request("network", "PUT", stdin_json()?).await,
         ["connect"] => forward_request("start", "POST", json!({})).await,
@@ -214,16 +233,47 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
 
 pub async fn run(args: Vec<String>) -> i32 {
     crate::init_crypto();
+    if args.first().is_some_and(|a| a == "mcp") {
+        return match crate::management::stdio().await {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
+        };
+    }
+    if args.first().is_some_and(|a| {
+        a == "watch" || (a == "logs" && args.get(1).is_some_and(|s| s == "--follow"))
+    }) {
+        let logs = args[0] == "logs";
+        let mut cursor = String::new();
+        loop {
+            let result = crate::management::call(
+                if logs { "logs.query" } else { "state.wait" },
+                json!({"body":{"cursor":cursor}}),
+            )
+            .await;
+            match result {
+                Ok(value) => {
+                    cursor = string(&value, "cursor").to_owned();
+                    if !logs || value["rows"].as_array().is_some_and(|a| !a.is_empty()) {
+                        println!("{}", json!({"ok":true,"result":value}));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    return 1;
+                }
+            }
+            if logs {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        }
+    }
     let (output, code) = match execute(&args).await {
         Ok(result) => (json!({"schemaVersion":1,"ok":true,"result":result}), 0),
         Err(message) => {
-            let code = if message.contains("请先打开 Local Connector") {
-                "APP_UNAVAILABLE"
-            } else if message == "UNKNOWN_ROUTE" {
-                "APP_VERSION_MISMATCH"
-            } else {
-                "COMMAND_FAILED"
-            };
+            let code = crate::management::error_code(&message);
             (
                 json!({"schemaVersion":1,"ok":false,"error":{"code":code,"message":message}}),
                 1,

@@ -27,9 +27,12 @@ async fn request(
     if method != "GET" {
         desktop_access::check_write(app)?;
     }
-    #[cfg(target_os = "macos")]
-    if route == "appearance" {
-        return appearance::request(app, method, body).await;
+    if connector_core::management::desktop_route(route) {
+        return desktop_access::request(
+            app,
+            connector_core::transport::DesktopRequest::Route(route.into(), method.into(), body),
+        )
+        .await;
     }
     if route == "usage-panel/geometry" && method == "POST" {
         usage_panel::geometry(app, body).await?;
@@ -161,14 +164,11 @@ fn main() {
             windows::release_main_window,
             service_request,
             i18n::set_ui_locale,
-            updates::check_update,
-            updates::install_update,
-            updates::download_update,
-            updates::cancel_update,
             #[cfg(target_os = "windows")]
             windows_frame::set_windows_appearance
         ])
         .setup(|app| {
+            updates::start(app.handle().clone());
             #[cfg(all(debug_assertions, unix))]
             if std::env::var_os("CLC_DEV_SUPERVISED").is_some() {
                 let handle = app.handle().clone();

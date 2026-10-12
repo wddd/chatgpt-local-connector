@@ -28,6 +28,63 @@ impl DesktopAccess for Owner {
 }
 
 pub async fn request(app: &tauri::AppHandle, operation: DesktopRequest) -> Result<Value, String> {
+    if let DesktopRequest::Route(route, method, body) = &operation {
+        if method != "GET" {
+            check_write(app)?;
+        }
+        match (method.as_str(), route.as_str()) {
+            ("GET", "app") => {
+                return Ok(
+                    json!({"pid":std::process::id(),"version":env!("CARGO_PKG_VERSION"),"executable":std::env::current_exe().map_err(|e|e.to_string())?,"build":connector_core::runtime::build_id(&std::env::current_exe().map_err(|e|e.to_string())?)?}),
+                )
+            }
+            ("GET", "updates") => return Ok(crate::updates::snapshot(app)),
+            ("POST", "updates/check") => return crate::updates::check_update(app.clone()).await,
+            ("POST", "updates/download") => {
+                return crate::updates::download_update(
+                    app.clone(),
+                    body["version"].as_str().ok_or("version required")?.into(),
+                )
+                .await
+            }
+            ("POST", "updates/install") => {
+                return crate::updates::install_update(
+                    app.clone(),
+                    body["version"].as_str().ok_or("version required")?.into(),
+                )
+                .await
+            }
+            ("POST", "updates/cancel") => {
+                crate::updates::cancel_update(app.clone());
+                return Ok(crate::updates::snapshot(app));
+            }
+            ("POST", "app/quit" | "app/restart") => {
+                let restart = route == "app/restart";
+                let service = app
+                    .state::<std::sync::Arc<connector_core::runtime::Client>>()
+                    .inner()
+                    .clone();
+                crate::session::remember(&service).await?;
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                    if restart {
+                        app.request_restart();
+                    } else {
+                        app.exit(0);
+                    }
+                });
+                return Ok(
+                    json!({"accepted":true,"state":if restart {"restarting"} else {"quitting"},"pid":std::process::id()}),
+                );
+            }
+            #[cfg(target_os = "macos")]
+            (_, "appearance") => {
+                return crate::appearance::request(app, method, body.clone()).await
+            }
+            _ => return Err("UNSUPPORTED_OPERATION".into()),
+        }
+    }
     match &operation {
         DesktopRequest::ServiceGet => {
             return Ok(
@@ -80,7 +137,9 @@ pub async fn request(app: &tauri::AppHandle, operation: DesktopRequest) -> Resul
                 check_write(&handle)?;
             }
             match operation {
-                DesktopRequest::ServiceGet | DesktopRequest::ServiceSet(_) => unreachable!(),
+                DesktopRequest::Route(..)
+                | DesktopRequest::ServiceGet
+                | DesktopRequest::ServiceSet(_) => unreachable!(),
                 DesktopRequest::PanelGet => Ok(crate::usage_panel::snapshot()),
                 DesktopRequest::PanelSet(body) => {
                     crate::usage_panel::configure(&handle, body)?;

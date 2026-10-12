@@ -1,0 +1,1638 @@
+{
+  "schemaVersion": 1,
+  "transport": "local-only; cli mcp",
+  "operations": [
+    {
+      "name": "status",
+      "method": "GET",
+      "route": "status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "status",
+      "localOnly": true
+    },
+    {
+      "name": "health",
+      "method": "GET",
+      "route": "health",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "health",
+      "localOnly": true
+    },
+    {
+      "name": "agents.list",
+      "method": "GET",
+      "route": "agents",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "agents.list",
+      "localOnly": true
+    },
+    {
+      "name": "tasks.list",
+      "method": "GET",
+      "route": "tasks",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "tasks.list",
+      "localOnly": true
+    },
+    {
+      "name": "tasks.settings.get",
+      "method": "GET",
+      "route": "task-settings",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "tasks.settings.get",
+      "localOnly": true
+    },
+    {
+      "name": "network.get",
+      "method": "GET",
+      "route": "network",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "network.get",
+      "localOnly": true
+    },
+    {
+      "name": "subscriptions.get",
+      "method": "GET",
+      "route": "subscriptions",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "subscriptions.get",
+      "localOnly": true
+    },
+    {
+      "name": "panel.get",
+      "method": "GET",
+      "route": "usage-panel",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "panel.get",
+      "localOnly": true
+    },
+    {
+      "name": "service.get",
+      "method": "GET",
+      "route": "service",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "service.get",
+      "localOnly": true
+    },
+    {
+      "name": "appearance.get",
+      "method": "GET",
+      "route": "appearance",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "appearance.get",
+      "localOnly": true
+    },
+    {
+      "name": "preferences.get",
+      "method": "GET",
+      "route": "preferences",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "preferences.get",
+      "localOnly": true
+    },
+    {
+      "name": "updates.status",
+      "method": "GET",
+      "route": "updates",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "updates.status",
+      "localOnly": true
+    },
+    {
+      "name": "app.status",
+      "method": "GET",
+      "route": "app",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "app.status",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.list",
+      "method": "GET",
+      "route": "ingress",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "ingress.list",
+      "localOnly": true
+    },
+    {
+      "name": "tools.list",
+      "method": "GET",
+      "route": "tool-catalog",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "tools.list",
+      "localOnly": true
+    },
+    {
+      "name": "codex.login.status",
+      "method": "GET",
+      "route": "codex/login",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "codex.login.status",
+      "localOnly": true
+    },
+    {
+      "name": "app.start",
+      "method": "POST",
+      "route": "app/start",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "app.start",
+      "localOnly": true
+    },
+    {
+      "name": "app.quit",
+      "method": "POST",
+      "route": "app/quit",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "app.quit",
+      "localOnly": true
+    },
+    {
+      "name": "app.restart",
+      "method": "POST",
+      "route": "app/restart",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "app.restart",
+      "localOnly": true
+    },
+    {
+      "name": "updates.check",
+      "method": "POST",
+      "route": "updates/check",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "updates.check",
+      "localOnly": true
+    },
+    {
+      "name": "updates.cancel",
+      "method": "POST",
+      "route": "updates/cancel",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "updates.cancel",
+      "localOnly": true
+    },
+    {
+      "name": "agents.refresh",
+      "method": "POST",
+      "route": "agents",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "agents.refresh",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.start-all",
+      "method": "POST",
+      "route": "ingress/start-all",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "ingress.start-all",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.stop-all",
+      "method": "POST",
+      "route": "ingress/stop-all",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "ingress.stop-all",
+      "localOnly": true
+    },
+    {
+      "name": "codex.login.open",
+      "method": "POST",
+      "route": "codex/login",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "codex.login.open",
+      "localOnly": true
+    },
+    {
+      "name": "updates.download",
+      "method": "POST",
+      "route": "updates/download",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "version"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "updates.download",
+      "localOnly": true
+    },
+    {
+      "name": "updates.install",
+      "method": "POST",
+      "route": "updates/install",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "version"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "updates.install",
+      "localOnly": true
+    },
+    {
+      "name": "agents.set",
+      "method": "PUT",
+      "route": "agents",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "agent": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "agent",
+              "enabled"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "agents.set",
+      "localOnly": true
+    },
+    {
+      "name": "agents.open",
+      "method": "POST",
+      "route": "agents/open",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "agent": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "agent"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "agents.open",
+      "localOnly": true
+    },
+    {
+      "name": "tasks.settings.set",
+      "method": "PUT",
+      "route": "task-settings",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "autoOpenCodex": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "tasks.settings.set",
+      "localOnly": true
+    },
+    {
+      "name": "tasks.decision",
+      "method": "POST",
+      "route": "tasks/decision",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string"
+              },
+              "action": {
+                "enum": [
+                  "approve",
+                  "reject"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "requestId",
+              "action"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "tasks.decision",
+      "localOnly": true
+    },
+    {
+      "name": "tasks.runtime",
+      "method": "GET",
+      "route": "tasks/runtime/{id}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "tasks.runtime",
+      "localOnly": true
+    },
+    {
+      "name": "tasks.open",
+      "method": "POST",
+      "route": "tasks/open",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "threadId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "threadId"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "tasks.open",
+      "localOnly": true
+    },
+    {
+      "name": "network.set",
+      "method": "PUT",
+      "route": "network",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "proxyMode": {
+                "enum": [
+                  "system",
+                  "direct",
+                  "custom"
+                ]
+              },
+              "proxyUrl": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "proxyMode",
+              "proxyUrl"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "network.set",
+      "localOnly": true
+    },
+    {
+      "name": "service.set",
+      "method": "POST",
+      "route": "service",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "enabled"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "service.set",
+      "localOnly": true
+    },
+    {
+      "name": "appearance.set",
+      "method": "PUT",
+      "route": "appearance",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "showMenuBar": {
+                "type": "boolean"
+              },
+              "showDock": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "showMenuBar",
+              "showDock"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "appearance.set",
+      "localOnly": true
+    },
+    {
+      "name": "preferences.set",
+      "method": "PUT",
+      "route": "preferences",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "values"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "preferences.set",
+      "localOnly": true
+    },
+    {
+      "name": "subscriptions.set",
+      "method": "PUT",
+      "route": "subscriptions/settings",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "providers": {
+                "type": "array"
+              },
+              "pinnedWindows": {
+                "type": "object"
+              },
+              "refreshMinutes": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "enabled",
+              "providers",
+              "pinnedWindows"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "subscriptions.set",
+      "localOnly": true
+    },
+    {
+      "name": "subscriptions.refresh",
+      "method": "POST",
+      "route": "subscriptions/refresh",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "providerId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "subscriptions.refresh",
+      "localOnly": true
+    },
+    {
+      "name": "subscriptions.open",
+      "method": "POST",
+      "route": "subscriptions/open",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "providerId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "subscriptions.open",
+      "localOnly": true
+    },
+    {
+      "name": "panel.set",
+      "method": "PUT",
+      "route": "usage-panel",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "autoCollapse": {
+                "type": "boolean"
+              },
+              "size": {
+                "type": "string"
+              },
+              "spacing": {
+                "type": "string"
+              },
+              "ends": {
+                "type": "string"
+              },
+              "horizontalPercentages": {
+                "type": "boolean"
+              },
+              "alertColor": {
+                "type": "boolean"
+              },
+              "notchFusion": {
+                "type": "boolean"
+              },
+              "dock": {
+                "type": "string"
+              },
+              "resetPosition": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "panel.set",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.add",
+      "method": "POST",
+      "route": "ingress",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "controlSource": {
+                "type": "string"
+              },
+              "transport": {
+                "enum": [
+                  "https",
+                  "openai-tunnel"
+                ]
+              },
+              "auth": {
+                "enum": [
+                  "oauth",
+                  "bearer",
+                  "none",
+                  "openai"
+                ]
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "bearerToken": {
+                "type": "string"
+              },
+              "toolPolicy": {
+                "oneOf": [
+                  {
+                    "const": "all"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              },
+              "config": {
+                "type": "object"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "controlSource",
+              "transport",
+              "auth"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "ingress.add",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.get",
+      "method": "GET",
+      "route": "ingress/{id}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.get",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.update",
+      "method": "PUT",
+      "route": "ingress/{id}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "controlSource": {
+                "type": "string"
+              },
+              "transport": {
+                "enum": [
+                  "https",
+                  "openai-tunnel"
+                ]
+              },
+              "auth": {
+                "enum": [
+                  "oauth",
+                  "bearer",
+                  "none",
+                  "openai"
+                ]
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "bearerToken": {
+                "type": "string"
+              },
+              "toolPolicy": {
+                "oneOf": [
+                  {
+                    "const": "all"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              },
+              "config": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.update",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.remove",
+      "method": "DELETE",
+      "route": "ingress/{id}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.remove",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.start",
+      "method": "POST",
+      "route": "ingress/{id}/start",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.start",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.stop",
+      "method": "POST",
+      "route": "ingress/{id}/stop",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.stop",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.restart",
+      "method": "POST",
+      "route": "ingress/{id}/restart",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.restart",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.token",
+      "method": "POST",
+      "route": "ingress/{id}/token",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.token",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.verification.reset",
+      "method": "POST",
+      "route": "ingress/{id}/verification/reset",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.verification.reset",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.probe",
+      "method": "POST",
+      "route": "ingress/{id}/probe",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.probe",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.oauth",
+      "method": "GET",
+      "route": "ingress/{id}/oauth",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.oauth",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.oauth.request",
+      "method": "GET",
+      "route": "ingress/{id}/oauth/request/{requestId}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requestId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "requestId"
+        ]
+      },
+      "description": "ingress.oauth.request",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.oauth.decision",
+      "method": "POST",
+      "route": "ingress/{id}/oauth/decision",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "allow": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "allow"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "body"
+        ]
+      },
+      "description": "ingress.oauth.decision",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.oauth.revoke",
+      "method": "POST",
+      "route": "ingress/{id}/oauth/revoke",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "body"
+        ]
+      },
+      "description": "ingress.oauth.revoke",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.oauth.register",
+      "method": "POST",
+      "route": "ingress/{id}/oauth/register",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "client_name": {
+                "type": "string"
+              },
+              "redirect_uris": {
+                "type": "array"
+              },
+              "token_endpoint_auth_method": {
+                "type": "string"
+              },
+              "grant_types": {
+                "type": "array"
+              },
+              "response_types": {
+                "type": "array"
+              },
+              "scope": {
+                "const": "mcp"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.oauth.register",
+      "localOnly": true
+    },
+    {
+      "name": "ingress.credentials",
+      "method": "POST",
+      "route": "ingress/{id}/credentials",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "ingress.credentials",
+      "localOnly": true
+    },
+    {
+      "name": "draft.create",
+      "method": "POST",
+      "route": "ingress-drafts",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "controlSource": {
+                "type": "string"
+              },
+              "transport": {
+                "enum": [
+                  "https",
+                  "openai-tunnel"
+                ]
+              },
+              "auth": {
+                "enum": [
+                  "oauth",
+                  "bearer",
+                  "none",
+                  "openai"
+                ]
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "bearerToken": {
+                "type": "string"
+              },
+              "toolPolicy": {
+                "oneOf": [
+                  {
+                    "const": "all"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              },
+              "config": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "config"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "draft.create",
+      "localOnly": true
+    },
+    {
+      "name": "draft.get",
+      "method": "GET",
+      "route": "ingress-drafts/{id}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "draft.get",
+      "localOnly": true
+    },
+    {
+      "name": "draft.remove",
+      "method": "DELETE",
+      "route": "ingress-drafts/{id}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "draft.remove",
+      "localOnly": true
+    },
+    {
+      "name": "draft.commit",
+      "method": "POST",
+      "route": "ingress-drafts/{id}/commit",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "controlSource": {
+                "type": "string"
+              },
+              "transport": {
+                "enum": [
+                  "https",
+                  "openai-tunnel"
+                ]
+              },
+              "auth": {
+                "enum": [
+                  "oauth",
+                  "bearer",
+                  "none",
+                  "openai"
+                ]
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "bearerToken": {
+                "type": "string"
+              },
+              "toolPolicy": {
+                "oneOf": [
+                  {
+                    "const": "all"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              },
+              "config": {
+                "type": "object"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "url"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "draft.commit",
+      "localOnly": true
+    },
+    {
+      "name": "logs.query",
+      "method": "POST",
+      "route": "logs/query",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "since": {
+                "type": "string"
+              },
+              "until": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "ingressId": {
+                "type": "string"
+              },
+              "cursor": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2000
+              },
+              "offline": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "logs.query",
+      "localOnly": true
+    },
+    {
+      "name": "state.wait",
+      "method": "POST",
+      "route": "state/wait",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "cursor": {
+                "type": "string"
+              },
+              "ingressId": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "timeoutMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 30000
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "state.wait",
+      "localOnly": true
+    },
+    {
+      "name": "operations.submit",
+      "method": "POST",
+      "route": "operations",
+      "localOnly": true,
+      "description": "Submit an asynchronous operation with a stable requestId; same ID never replays. Read affected resources after completion. Outputs are not retained; call secret-returning operations synchronously.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "operation",
+              "requestId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "operations.get",
+      "method": "GET",
+      "route": "operations/{id}",
+      "localOnly": true,
+      "description": "Read durable receipt; interrupted writes report unconfirmed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "agents.activity",
+      "route": "agents/activity",
+      "method": "GET",
+      "description": "Current active Agent IDs.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "dependencies.get",
+      "route": "dependencies",
+      "method": "GET",
+      "description": "Installed execution and tunnel dependencies.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "dependencies.install",
+      "route": "install",
+      "method": "POST",
+      "description": "Install official Tunnel Client for the primary ingress.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "component": {
+                "const": "tunnel"
+              }
+            },
+            "required": [
+              "component"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "preferences.import",
+      "method": "POST",
+      "route": "preferences/import",
+      "description": "One-time import of renderer preferences; existing Core values take precedence.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "values"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

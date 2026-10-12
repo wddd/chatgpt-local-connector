@@ -1,4 +1,3 @@
-use crate::request;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager};
@@ -7,6 +6,7 @@ use tokio::sync::{watch, Mutex};
 
 pub struct UpdateState {
     install: Mutex<()>,
+    status: std::sync::Mutex<Value>,
     downloaded: Mutex<Option<(tauri_plugin_updater::Update, Vec<u8>)>>,
     cancel: watch::Sender<bool>,
     downloading: AtomicBool,
@@ -17,6 +17,10 @@ impl Default for UpdateState {
     fn default() -> Self {
         Self {
             install: Mutex::new(()),
+            status: std::sync::Mutex::new(
+                connector_core::load(&connector_core::root().join("update-status.json"))
+                    .unwrap_or(json!({"phase":"idle"})),
+            ),
             downloaded: Mutex::new(None),
             cancel: watch::channel(false).0,
             downloading: AtomicBool::new(false),
@@ -63,26 +67,50 @@ async fn updater(app: &tauri::AppHandle) -> Result<tauri_plugin_updater::Updater
         .build()
         .map_err(|e| e.to_string())
 }
-#[tauri::command]
 pub async fn check_update(app: tauri::AppHandle) -> Result<Value, String> {
     let state = app.state::<UpdateState>();
-    let update = updater(&app)
-        .await?
-        .check()
-        .await
-        .map_err(|e| e.to_string())?;
+    let _guard = state.install.try_lock().map_err(|_| "已有更新正在进行")?;
+    progress(&app, json!({"phase":"checking","error":null}));
+    if let Some(service) = app.try_state::<std::sync::Arc<connector_core::runtime::Client>>() {
+        let _ = service
+            .request(
+                "preferences",
+                "PUT",
+                json!({"values":{"update-last-check":chrono_now_millis()}}),
+            )
+            .await;
+    }
+    let result = async {
+        updater(&app)
+            .await?
+            .check()
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    let update = match result {
+        Ok(value) => value,
+        Err(error) => {
+            progress(&app, json!({"phase":"idle","error":error}));
+            return Err(error);
+        }
+    };
     let mut cached = state.downloaded.lock().await;
     if cached.as_ref().map(|(u, _)| &u.version) != update.as_ref().map(|u| &u.version) {
         *cached = None;
     }
-    Ok(match update {
+    let result = match update {
         Some(u) => {
             json!({"available":true,"version":u.version,"notes":u.body,"date":u.date.map(|d|d.to_string()),"ready":cached.is_some()})
         }
         None => json!({"available":false}),
-    })
+    };
+    progress(
+        &app,
+        json!({"phase":"idle","update":result,"checkedAt":connector_core::now()}),
+    );
+    Ok(result)
 }
-#[tauri::command]
 pub fn cancel_update(app: tauri::AppHandle) {
     let state = app.state::<UpdateState>();
     if state.downloading.load(Ordering::SeqCst) {
@@ -115,16 +143,16 @@ async fn download(
             let mut downloaded = 0usize;
             let bytes = update.download(|chunk, total| {
                 downloaded += chunk;
-                let _ = app.emit("update-progress", json!({"downloaded":downloaded,"total":total,"phase":"downloading"}));
+                progress(app, json!({"downloaded":downloaded,"total":total,"phase":"downloading"}));
             }, || {}).await.map_err(|e|e.to_string())?;
             Ok(Some((update, bytes)))
         } => result,
         _ = cancel.changed() => Err("UPDATE_CANCELLED".into()),
     };
     state.downloading.store(false, Ordering::SeqCst);
+    progress(app, json!({"phase":"idle","error":result.as_ref().err()}));
     result
 }
-#[tauri::command]
 pub async fn download_update(app: tauri::AppHandle, version: String) -> Result<Value, String> {
     let state = app.state::<UpdateState>();
     let _guard = state.install.try_lock().map_err(|_| "已有更新正在进行")?;
@@ -134,9 +162,9 @@ pub async fn download_update(app: tauri::AppHandle, version: String) -> Result<V
         None => json!({"available":false}),
     };
     *state.downloaded.lock().await = result;
+    progress(&app, json!({"phase":"idle","update":response}));
     Ok(response)
 }
-#[tauri::command]
 pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Value, String> {
     let state = app.state::<UpdateState>();
     let _guard = state.install.try_lock().map_err(|_| "已有更新正在进行")?;
@@ -153,13 +181,13 @@ pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Va
         }
     }
     let _reset = Reset(&state);
-    let _ = app.emit("update-progress", json!({"phase":"installing"}));
+    progress(&app, json!({"phase":"installing"}));
     let service = app
         .state::<std::sync::Arc<connector_core::runtime::Client>>()
         .inner()
         .clone();
     // Download and signature verification finish before any connection is stopped.
-    let current = request(&app, "status", "GET", json!({})).await?;
+    let current = service.request("status", "GET", json!({})).await?;
     let running: Vec<_> = current["ingresses"]
         .as_array()
         .into_iter()
@@ -199,4 +227,65 @@ pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Va
     state.restarting.store(true, Ordering::SeqCst);
     app.request_restart();
     Ok(json!({"available":true,"version":version,"restarting":true}))
+}
+
+pub fn snapshot(app: &tauri::AppHandle) -> Value {
+    app.state::<UpdateState>().status.lock().unwrap().clone()
+}
+fn progress(app: &tauri::AppHandle, patch: Value) {
+    let state = app.state::<UpdateState>();
+    let mut status = state.status.lock().unwrap();
+    for (k, v) in patch.as_object().unwrap() {
+        status[k] = v.clone();
+    }
+    status["observedAt"] = json!(connector_core::now());
+    let _ = connector_core::save(&connector_core::root().join("update-status.json"), &status);
+    let _ = app.emit("update-progress", patch);
+}
+
+fn chrono_now_millis() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .to_string()
+}
+pub fn start(app: tauri::AppHandle) {
+    // Persisted progress is historical; downloads and installation cannot survive this process.
+    {
+        let state = app.state::<UpdateState>();
+        let mut status = state.status.lock().unwrap();
+        if status["phase"] != "idle" {
+            status["interrupted"] = json!(true);
+        }
+        status["phase"] = json!("idle");
+        if status["update"].is_object() {
+            status["update"]["ready"] = json!(false);
+        }
+    }
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        loop {
+            let prefs = connector_core::preferences::read();
+            let previous = prefs["update-last-check"]
+                .as_str()
+                .unwrap_or("0")
+                .parse::<u128>()
+                .unwrap_or(0);
+            let current = chrono_now_millis().parse::<u128>().unwrap_or(0);
+            if prefs["update-auto-check"] != "off" && current.saturating_sub(previous) >= 3600000 {
+                if let Ok(update) = check_update(app.clone()).await {
+                    if update["available"] == true
+                        && prefs["update-auto-download"] != "off"
+                        && update["ready"] != true
+                    {
+                        if let Some(version) = update["version"].as_str() {
+                            let _ = download_update(app.clone(), version.into()).await;
+                        }
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        }
+    });
 }

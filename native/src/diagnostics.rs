@@ -129,3 +129,74 @@ pub fn receipts(diagnostics: &mut Value, records: Result<Vec<Value>>) {
         }
     }
 }
+
+/// Active, bounded checks. Authentication and execution are never inferred from HTTP reachability.
+pub async fn probe(
+    ingress: &std::sync::Arc<crate::ingress::Ingress>,
+) -> crate::Result<serde_json::Value> {
+    use crate::*;
+    let summary = ingress.summary().await?;
+    let address = string(&summary, "url");
+    let mut checks = json!({"transport":summary["state"],"authentication":{"state":"not_checked"},"execution":{"state":"not_checked"}});
+    if summary["provider"] == "cloudflare" {
+        let mut edges = Vec::new();
+        for host in ["region1.v2.argotunnel.com", "region2.v2.argotunnel.com"] {
+            let addresses = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                tokio::net::lookup_host((host, 7844)),
+            )
+            .await;
+            edges.push(match addresses {
+                Ok(Ok(ips)) => {let ips: Vec<_> = ips.map(|s|s.ip()).collect(); json!({"host":host,"addresses":ips.iter().map(ToString::to_string).collect::<Vec<_>>(),"fakeIp":ips.iter().any(|ip|matches!(ip,std::net::IpAddr::V4(ip) if ip.octets()[0]==198 && [18,19].contains(&ip.octets()[1])))})},
+                _ => json!({"host":host,"state":"dns_failed"}),
+            });
+        }
+        checks["edgeDiscovery"] = json!(edges);
+        checks["provider"] = summary["health"].clone();
+    }
+    if let Ok(url) = reqwest::Url::parse(address) {
+        if let Some(host) = url.host_str() {
+            let dns = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                tokio::net::lookup_host((host, url.port_or_known_default().unwrap_or(443))),
+            )
+            .await;
+            checks["dns"] = match dns {
+                Ok(Ok(ips)) => {
+                    json!({"state":"resolved","addresses":ips.map(|s|s.ip().to_string()).collect::<Vec<_>>()})
+                }
+                _ => json!({"state":"failed"}),
+            };
+        }
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(std::time::Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| e.to_string())?;
+        let response = client.post(url.clone()).header("Accept","application/json, text/event-stream").json(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"connector-doctor","version":env!("CARGO_PKG_VERSION")}}})).send().await;
+        checks["publicMcp"] = match response {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                json!({"state":if status == 401 {"authentication_required"} else if status == 200 {"reachable"} else {"failed"},"httpStatus":status,"tls":"verified","authenticated":false})
+            }
+            Err(error) => json!({"state":"failed","error":error.to_string()}),
+        };
+        if summary["auth"] == "oauth" {
+            let metadata = url
+                .join("/.well-known/oauth-protected-resource")
+                .map_err(|e| e.to_string())?;
+            checks["oauthMetadata"] = match client.get(metadata).send().await {
+                Ok(r) => {
+                    json!({"state":if r.status().is_success() {"reachable"} else {"failed"},"httpStatus":r.status().as_u16()})
+                }
+                Err(e) => json!({"state":"failed","error":e.to_string()}),
+            };
+        }
+    } else {
+        checks["publicMcp"] = json!({"state":"not_available","reason":"no public HTTPS endpoint"});
+    }
+    Ok(
+        json!({"ingressId":ingress.id,"observedAt":now(),"checks":checks,"diagnostics":self::ingress(&summary)}),
+    )
+}

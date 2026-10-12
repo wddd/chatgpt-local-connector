@@ -340,6 +340,7 @@ impl Service {
         status["core"]["transport"] =
             json!({"state":if ready>0{"ready"}else if running>0{"starting"}else{"stopped"}});
         status["connector"] = status["core"]["transport"].clone();
+        status["preferences"] = crate::preferences::read();
         status["logs"] = json!(crate::logs::recent(None));
         status["core"]["logs"] = status["logs"].clone();
         status["core"]["registered"] = json!(running > 0);
@@ -417,7 +418,8 @@ impl Service {
         body: Value,
     ) -> Result<Value> {
         let operation = id();
-        let audit = method != "GET" && route != "runtime/lease";
+        let audit =
+            method != "GET" && !["runtime/lease", "logs/query", "state/wait"].contains(&route);
         if audit {
             crate::logs::append(
                 json!({"time":now(),"level":"INFO","msg":format!("{method} {route}: started"),"operationId":operation,"phase":"started"}),
@@ -446,6 +448,62 @@ impl Service {
     ) -> Result<Value> {
         if self.closing.load(Ordering::SeqCst) {
             return Err("core shutting down".into());
+        }
+        if route == "operations" && method == "POST" {
+            return crate::operations::submit(body, self.control.session.clone());
+        }
+        if let Some(id) = route.strip_prefix("operations/") {
+            if method == "GET" {
+                return crate::operations::read(id, &self.control.session);
+            }
+        }
+        match (method, route) {
+            ("GET", "capabilities") => return Ok(crate::management::catalog()),
+            ("GET", "health") => {
+                return Ok(
+                    json!({"state":"ready","version":env!("CARGO_PKG_VERSION"),"pid":std::process::id(),"instance":self.control.session,"build":load(&root().join("web/native.json"))?["build"]}),
+                )
+            }
+            ("GET", "preferences") => return Ok(crate::preferences::read()),
+            ("PUT", "preferences") => return crate::preferences::write(body),
+            ("POST", "preferences/import") => return crate::preferences::import(body),
+            ("GET", "network") => {
+                return Ok(load(&root().join("web/preferences.json"))
+                    .unwrap_or(json!({"proxyMode":"system","proxyUrl":""})))
+            }
+            ("POST", "logs/query") => return crate::logs::query(&body),
+            ("POST", "state/wait") => {
+                let deadline = tokio::time::Instant::now()
+                    + std::time::Duration::from_millis(
+                        num(&body, "timeoutMs", 30000).min(30000) as u64
+                    );
+                loop {
+                    let entries = self.entries().await;
+                    let mut states = Vec::new();
+                    for entry in entries {
+                        if body["ingressId"].as_str().is_some_and(|id| entry.id != id) {
+                            continue;
+                        }
+                        let summary = entry.summary().await?;
+                        states.push(json!({"id":summary["id"],"state":summary["state"],"running":summary["running"],"error":summary["error"],"url":summary["url"]}));
+                    }
+                    states.sort_by(|a, b| string(a, "id").cmp(string(b, "id")));
+                    let state = json!({"instance":self.control.session,"ingresses":states,"preferences":crate::preferences::read()});
+                    let cursor = hash(state.to_string());
+                    let matched = if let Some(expected) = body["state"].as_str() {
+                        !states.is_empty() && states.iter().all(|s| s["state"] == expected)
+                    } else {
+                        cursor != string(&body, "cursor")
+                    };
+                    if matched || tokio::time::Instant::now() >= deadline {
+                        return Ok(
+                            json!({"cursor":cursor,"changed":cursor != string(&body,"cursor"),"conditionMet":matched,"timedOut":!matched,"snapshot":state,"observedAt":now()}),
+                        );
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+            }
+            _ => {}
         }
         if route == "runtime/clients" && method == "GET" {
             return Ok(self.runtime.clients());
@@ -768,11 +826,23 @@ impl Service {
                     .map_err(|e| e.to_string())?;
                 return Ok(json!({"removed":id}));
             }
+            if method == "POST" && action == "probe" {
+                return crate::diagnostics::probe(&i).await;
+            }
+            if method == "POST" && action == "restart" {
+                let _runtime = i.operation.lock().await;
+                if i.meta.lock().await["enabled"] != true {
+                    return Err("ingress disabled".into());
+                }
+                i.stop().await?;
+                i.port
+                    .store(self.port.load(Ordering::SeqCst), Ordering::SeqCst);
+                i.start().await?;
+                return i.summary().await;
+            }
             if method == "PUT" && action.is_empty() || action == "token" && method == "POST" {
                 let _runtime = i.operation.lock().await;
-                if i.summary().await?["running"] == true {
-                    return Err("stop this ingress before updating or rotating its token".into());
-                }
+                let restart = i.summary().await?["running"] == true;
                 let mut entry = read_entry(id)?;
                 let previous = normalize(entry.clone())?;
                 if action == "token" && entry["auth"] != "bearer" {
@@ -795,7 +865,13 @@ impl Service {
                     return Err("cannot change ingress id".into());
                 }
                 let entry = normalize(entry)?;
-                store_entry(&entry)?;
+                i.stop().await?;
+                if let Err(error) = store_entry(&entry) {
+                    if restart {
+                        let _ = i.start().await;
+                    }
+                    return Err(error);
+                }
                 let next = Ingress::new(entry.clone(), self.execution.clone(), self.token.clone())?;
                 let identity_changed = crate::ingress::config::binding(&previous["config"])
                     != crate::ingress::config::binding(&entry["config"])
@@ -814,6 +890,11 @@ impl Service {
                     .lock()
                     .await
                     .insert(id.to_owned(), next.clone());
+                if restart {
+                    next.port
+                        .store(self.port.load(Ordering::SeqCst), Ordering::SeqCst);
+                    next.start().await?;
+                }
                 return if action == "token" {
                     Ok(
                         json!({"id":id,"token":entry["bearerToken"],"delivery":"secret; store locally, do not paste into chat"}),

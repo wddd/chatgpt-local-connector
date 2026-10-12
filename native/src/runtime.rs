@@ -106,7 +106,11 @@ impl State {
             .values()
             .find_map(|lease| lease.desktop.clone())
             .ok_or("Desktop 未运行；该操作需要 Desktop 入口。")?;
+        if let crate::transport::DesktopRequest::Route(route, method, body) = operation {
+            return crate::transport::forward_to(&endpoint, &route, &method, body).await;
+        }
         let (route, method, body) = match operation {
+            crate::transport::DesktopRequest::Route(..) => unreachable!(),
             crate::transport::DesktopRequest::ServiceGet => ("service", "GET", json!({})),
             crate::transport::DesktopRequest::ServiceSet(body) => ("service", "POST", body),
             crate::transport::DesktopRequest::PanelGet => ("usage-panel", "GET", json!({})),
@@ -392,6 +396,16 @@ pub async fn serve() -> Result<()> {
     }
     let service = crate::service::Service::new()?;
     let listener = crate::transport::listen(service.clone(), None).await?;
+    let monitor_service = Arc::downgrade(&service);
+    let monitor = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            let Some(service) = monitor_service.upgrade() else {
+                break;
+            };
+            let _ = service.request("ingress", "GET", json!({})).await;
+        }
+    });
     let started = Instant::now();
     let mut empty_since = None;
     loop {
@@ -406,6 +420,7 @@ pub async fn serve() -> Result<()> {
             }
         }
     }
+    monitor.abort();
     let result = service.stop().await;
     listener.abort();
     let metadata = root().join("web/native.json");

@@ -154,3 +154,66 @@ pub fn recent(ingress: Option<&str>) -> Vec<String> {
     rows.reverse();
     rows
 }
+
+/// Structured retained history. Cursor identifies a record, independent of daily rotation.
+pub fn query(options: &Value) -> Result<Value> {
+    let _guard = lock().lock().map_err(|e| e.to_string())?;
+    let limit = num(options, "limit", 200).clamp(1, 2000);
+    let mut rows = Vec::new();
+    let dir = root().join("logs");
+    if dir.exists() {
+        for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            if !path.extension().is_some_and(|s| s == "jsonl") {
+                continue;
+            }
+            for line in std::fs::read_to_string(path)
+                .map_err(|e| e.to_string())?
+                .lines()
+            {
+                if let Ok(row) = serde_json::from_str::<Value>(line) {
+                    if row["level"] == "INFO"
+                        && matches!(
+                            string(&row, "msg"),
+                            "POST runtime/lease: started" | "POST runtime/lease: succeeded"
+                        )
+                    {
+                        continue;
+                    }
+                    rows.push(row);
+                }
+            }
+        }
+    }
+    rows.sort_by(|a, b| string(a, "time").cmp(string(b, "time")));
+    let cursor = string(options, "cursor");
+    let position = rows.iter().position(|r| hash(r.to_string()) == cursor);
+    let gap = !cursor.is_empty() && position.is_none();
+    let mut selected = Vec::new();
+    let mut next = cursor.to_owned();
+    let mut has_more = false;
+    for row in rows.iter().skip(position.map_or(0, |i| i + 1)) {
+        if selected.len() == limit {
+            has_more = true;
+            break;
+        }
+        next = hash(row.to_string());
+        if ["ingressId", "level"].iter().any(|k| {
+            options[*k]
+                .as_str()
+                .is_some_and(|v| !v.is_empty() && row[*k] != v)
+        }) {
+            continue;
+        }
+        let at = string(row, "time");
+        if options["since"].as_str().is_some_and(|v| at < v)
+            || options["until"].as_str().is_some_and(|v| at > v)
+        {
+            continue;
+        }
+        selected.push(row.clone());
+    }
+    Ok(
+        json!({"rows":selected,"cursor":next,"hasMore":has_more,"gap":gap,"retention":{"days":7,"maxBytes":16777216},"oldestAt":rows.first().map(|v|&v["time"]),"newestAt":rows.last().map(|v|&v["time"])}),
+    )
+}

@@ -1,4 +1,4 @@
-import { createStore } from "./store";
+import { createStore, acceptPreferences, preparePreferences } from "./store";
 import { api } from "../api";
 import { t } from "../i18n";
 import { isDesktop, notifyNative } from "../platform";
@@ -30,7 +30,7 @@ export function notify(text: string, error = false) {
 let reading: Promise<void> | undefined;
 export function refreshConnector(): Promise<void> {
   if (reading) return reading;
-  reading = api<Status>("status")
+  reading = preparePreferences().then(() => api<Status>("status"))
     .then(accept)
     .catch((e) => {
       patch({ error: String(e), loading: false });
@@ -42,6 +42,7 @@ export function refreshConnector(): Promise<void> {
   return reading;
 }
 function accept(status: Status) {
+  acceptPreferences((status as Status & {preferences?:Record<string,string>}).preferences || {});
   const previous = connector.get().status?.core.appServer.state;
   if (
     previous &&

@@ -8,12 +8,18 @@ use tokio::process::Child;
 
 pub struct Tunnel {
     child: Child,
+    command: tokio::process::Command,
+    unhealthy_since: Option<Instant>,
+    stable_since: Option<Instant>,
+    restart_attempts: u32,
+    ever_ready: bool,
+    pub health: Value,
     owner: std::sync::Weak<crate::ingress::Ingress>,
     pub health_error: String,
     reported_health: Option<String>,
     error_readers: Vec<tokio::task::JoinHandle<Option<String>>>,
     dir: PathBuf,
-    health: String,
+    health_url: String,
     provider: String,
     discovered: tokio::sync::watch::Receiver<Option<Result<Vec<String>>>>,
     pinggy: Option<PinggySession>,
@@ -51,7 +57,79 @@ impl Tunnel {
     }
     pub async fn ready(&mut self) -> Result<bool> {
         self.health_error.clear();
-        let result = self.probe_ready().await;
+        let mut result = self.probe_ready().await;
+        if matches!(result, Ok(true)) {
+            self.ever_ready = true;
+            self.unhealthy_since = None;
+            self.health["retryAfterSeconds"] = Value::Null;
+            self.health["lastReadyAt"] = json!(now());
+            if self.stable_since.get_or_insert_with(Instant::now).elapsed()
+                >= Duration::from_secs(120)
+            {
+                self.restart_attempts = 0;
+            }
+        } else {
+            self.stable_since = None;
+            let elapsed = self
+                .unhealthy_since
+                .get_or_insert_with(Instant::now)
+                .elapsed();
+            let backoff = (60u64.saturating_mul(1u64 << self.restart_attempts.min(3))).min(300);
+            if self.provider == "cloudflare" && self.ever_ready {
+                if elapsed >= Duration::from_secs(backoff) {
+                    let _ = self.child.kill().await;
+                    for reader in self.error_readers.drain(..) {
+                        reader.abort();
+                    }
+                    match self.command.spawn() {
+                        Ok(mut child) => {
+                            if let Some(stdout) = child.stdout.take() {
+                                self.error_readers.push(tokio::spawn(cloudflare_output(
+                                    stdout,
+                                    self.owner.clone(),
+                                )));
+                            }
+                            if let Some(stderr) = child.stderr.take() {
+                                self.error_readers.push(tokio::spawn(cloudflare_output(
+                                    stderr,
+                                    self.owner.clone(),
+                                )));
+                            }
+                            self.child = child;
+                            self.restart_attempts += 1;
+                            self.unhealthy_since = Some(Instant::now());
+                            if let Some(owner) = self.owner.upgrade() {
+                                owner.log("WARN","Cloudflare remained unavailable; restarting provider to refresh edge discovery").await;
+                            }
+                            self.health_error = "Cloudflare 正在恢复连接并重新解析边缘地址".into();
+                        }
+                        Err(error) => {
+                            self.health_error = format!("Cloudflare 恢复失败：{error}");
+                            self.unhealthy_since = Some(Instant::now());
+                            self.restart_attempts += 1;
+                        }
+                    }
+                }
+                if let Err(error) = &result {
+                    if self.health_error.is_empty() {
+                        self.health_error = error.clone();
+                    }
+                }
+                result = Ok(false);
+            }
+            self.health["retryAfterSeconds"] =
+                json!(backoff.saturating_sub(self.unhealthy_since.unwrap().elapsed().as_secs()));
+        }
+        self.health["pid"] = json!(self.child.id());
+        self.health["restartAttempts"] = json!(self.restart_attempts);
+        self.health["state"] = json!(if matches!(result, Ok(true)) {
+            "ready"
+        } else if self.ever_ready {
+            "degraded"
+        } else {
+            "starting"
+        });
+        self.health["observedAt"] = json!(now());
         let message = match &result {
             Ok(true) => String::new(),
             Ok(false) if !self.health_error.is_empty() => self.health_error.clone(),
@@ -59,6 +137,14 @@ impl Tunnel {
             Err(error) => error.clone(),
         };
         self.health_error = message.clone();
+        self.health["error"] = json!(message);
+        self.health["code"] = json!(if matches!(result, Ok(true)) {
+            "READY"
+        } else if self.health["readyConnections"] == 0 {
+            "EDGE_UNAVAILABLE"
+        } else {
+            "PROVIDER_UNAVAILABLE"
+        });
         // An initial not-ready probe is expected while the provider starts.
         // After readiness, retain each degradation and recovery transition.
         if self.reported_health.as_ref() != Some(&message)
@@ -120,18 +206,21 @@ impl Tunnel {
             self.url = url;
             return Ok(true);
         }
+        self.health["readyConnections"] = Value::Null;
+        self.health["httpStatus"] = Value::Null;
         let client = reqwest::Client::builder()
             .no_proxy()
             .timeout(Duration::from_secs(2))
             .build()
             .map_err(|e| e.to_string())?;
-        let response = match client.get(&self.health).send().await {
+        let response = match client.get(&self.health_url).send().await {
             Ok(response) => response,
             Err(error) => {
                 self.health_error = format!("{} 隧道健康检查失败：{error}", self.provider);
                 return Ok(false);
             }
         };
+        self.health["httpStatus"] = json!(response.status().as_u16());
         if !response.status().is_success() {
             self.health_error = format!(
                 "{} 隧道未就绪（HTTP {}）",
@@ -141,6 +230,7 @@ impl Tunnel {
             if self.provider == "cloudflare" {
                 if let Ok(value) = response.json::<Value>().await {
                     if let Some(count) = value["readyConnections"].as_u64() {
+                        self.health["readyConnections"] = json!(count);
                         self.health_error
                             .push_str(&format!("，可用边缘连接数：{count}"));
                     }
@@ -149,12 +239,15 @@ impl Tunnel {
             return Ok(false);
         }
         if self.provider == "cloudflare" {
+            if let Ok(value) = response.json::<Value>().await {
+                self.health["readyConnections"] = value["readyConnections"].clone();
+            }
             if self.cloudflare_named {
                 self.url = self.selected_url.clone();
                 return Ok(true);
             }
             let Ok(response) = client
-                .get(self.health.replace("/ready", "/quicktunnel"))
+                .get(self.health_url.replace("/ready", "/quicktunnel"))
                 .send()
                 .await
             else {
@@ -373,12 +466,18 @@ async fn spawn(
     }
     let mut tunnel = Tunnel {
         child,
+        command: cmd,
+        unhealthy_since: None,
+        stable_since: None,
+        restart_attempts: 0,
+        ever_ready: false,
+        health: json!({}),
         owner: Arc::downgrade(owner),
         health_error: String::new(),
         reported_health: None,
         error_readers,
         dir: dir.into(),
-        health,
+        health_url: health,
         provider: provider.into(),
         discovered,
         pinggy,

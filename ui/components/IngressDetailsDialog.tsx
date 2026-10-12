@@ -104,29 +104,17 @@ export default function IngressDetailsDialog({
     setWorking(true);
     setRefreshingUrl(restart);
     setError("");
-    let stopped = false;
     try {
-      if (restart) {
-        await api(`ingress/${entry.id}/stop`, "POST");
-        stopped = true;
-      }
       if (kind === "token") {
-        const result = await api<{ token: string }>(
-          `ingress/${entry.id}/token`,
-          "POST",
-        );
+        const result = await api<{ token: string }>(`ingress/${entry.id}/token`, "POST");
         setCredentials((old) => ({ ...old, bearerToken: result.token }));
         setCredentialError("");
+      } else if (restart) {
+        await api(`ingress/${entry.id}/restart`, "POST");
       }
     } catch (e) {
       setError(String(e));
     } finally {
-      if (stopped)
-        try {
-          await api(`ingress/${entry.id}/start`, "POST");
-        } catch (e) {
-          setError((old) => [old, String(e)].filter(Boolean).join("\n"));
-        }
       await refreshConnector().catch((e) => setError(String(e)));
       setWorking(false);
       setRefreshingUrl(false);

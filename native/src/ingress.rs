@@ -153,7 +153,7 @@ impl Ingress {
         let status = self.status().await?;
         let meta = self.meta.lock().await;
         let config = status["config"].clone();
-        let mut result = json!({"discoveredUrls":status["discoveredUrls"],"id":self.id,"name":meta["name"],"controlSource":meta["controlSource"],"transport":meta["transport"],"provider":config["httpsProvider"],"enabled":meta["enabled"],"auth":meta["auth"],"toolPolicy":meta["toolPolicy"],"config":config,"running":status["connection"]["running"],"state":status["tunnel"]["state"],"error":status["tunnel"]["error"],"url":status["connection"]["mcpUrl"],"verification":status["core"]["chatgpt"],"logs":status["logs"]});
+        let mut result = json!({"health":status["tunnel"]["health"],"discoveredUrls":status["discoveredUrls"],"id":self.id,"name":meta["name"],"controlSource":meta["controlSource"],"transport":meta["transport"],"provider":config["httpsProvider"],"enabled":meta["enabled"],"auth":meta["auth"],"toolPolicy":meta["toolPolicy"],"config":config,"running":status["connection"]["running"],"state":status["tunnel"]["state"],"error":status["tunnel"]["error"],"url":status["connection"]["mcpUrl"],"verification":status["core"]["chatgpt"],"logs":status["logs"]});
         result["diagnostics"] = crate::diagnostics::ingress(&result);
         Ok(result)
     }
@@ -258,6 +258,10 @@ impl Ingress {
         };
         let urls = managed.as_ref().map(|t| t.urls.clone()).unwrap_or_default();
 
+        let tunnel_health = managed
+            .as_ref()
+            .map(|t| t.health.clone())
+            .unwrap_or(Value::Null);
         drop(managed);
         let running = starting
             || tunnel_running
@@ -335,7 +339,7 @@ impl Ingress {
         }
         let core = json!({"chatgpt":chat,"transport":{"state":state,"error":error}});
         Ok(
-            json!({"discoveredUrls":urls,"core":core,"connection":{"running":running,"updateAvailable":false,"mcpUrl":mcp_url},"config":config,"tunnel":{"state":state,"error":error},"connector":{"state":state},"logs":logs,"version":env!("CARGO_PKG_VERSION"),"platform":if cfg!(target_os="macos"){"darwin"}else{"win32"},"deviceName":std::env::var("HOSTNAME").unwrap_or_else(|_|"本机".into()),"taskApprovalEnabled":self.execution.approval_mode()?,"autoOpenCodex":self.execution.auto_open_codex()?,"chatgptUrl":"https://chatgpt.com/plugins"}),
+            json!({"discoveredUrls":urls,"core":core,"connection":{"running":running,"updateAvailable":false,"mcpUrl":mcp_url},"config":config,"tunnel":{"state":state,"error":error,"health":tunnel_health},"connector":{"state":state},"logs":logs,"version":env!("CARGO_PKG_VERSION"),"platform":if cfg!(target_os="macos"){"darwin"}else{"win32"},"deviceName":std::env::var("HOSTNAME").unwrap_or_else(|_|"本机".into()),"taskApprovalEnabled":self.execution.approval_mode()?,"autoOpenCodex":self.execution.auto_open_codex()?,"chatgptUrl":"https://chatgpt.com/plugins"}),
         )
     }
     pub async fn stop(&self) -> Result<()> {
@@ -391,7 +395,20 @@ impl Ingress {
         }
         Ok(())
     }
-    async fn start(self: &Arc<Self>) -> Result<()> {
+    pub(crate) async fn start(self: &Arc<Self>) -> Result<()> {
+        self.starting
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let result = self.start_inner().await;
+        if let Err(error) = &result {
+            let _ = self.stop().await;
+            *self.failure.lock().await = error.clone();
+            self.log("ERROR", error).await;
+        }
+        self.starting
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        result
+    }
+    async fn start_inner(self: &Arc<Self>) -> Result<()> {
         if self.meta.lock().await["enabled"] != true {
             return Err("ingress disabled".into());
         }
@@ -694,19 +711,7 @@ impl Ingress {
                 }
                 Ok(json!({"ok":true}))
             }
-            ("POST", "start") => {
-                self.starting
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
-                let result = self.start().await;
-                if let Err(e) = &result {
-                    let _ = self.stop().await;
-                    *self.failure.lock().await = e.clone();
-                    self.log("ERROR", e).await;
-                }
-                self.starting
-                    .store(false, std::sync::atomic::Ordering::SeqCst);
-                result.map(|_| json!({"ok":true}))
-            }
+            ("POST", "start") => self.start().await.map(|_| json!({"ok":true})),
             ("POST", "stop") => {
                 self.stop().await?;
                 Ok(json!({"ok":true}))

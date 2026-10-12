@@ -4,7 +4,7 @@
 
 This guide configures **remote ingresses**. For local ChatGPT Desktop plugin installation, use the [plugin guide](plugin.md) instead; do not request Tunnel credentials or run ingress verification for that route.
 
-Use the CLI on the target computer. Start by reading `<app executable> cli help`, `cli status` and `cli ingress list`. Help, guide and ingress presets work offline. `plugin check`, `plugin update <version>` and `plugin sync` manage the local host plugin without a running Core; sync uses this executable's bundled version. Other commands require the matching running app. Do not overwrite another ingress or install over a running version without authorization. OpenAI Secure Tunnel remains the default ChatGPT onboarding path.
+Use the CLI on the target computer. Start by reading `<app executable> cli help`, `cli status` and `cli ingress list`. Help, guide and ingress presets work offline. Other commands require the matching running app. Do not overwrite another ingress or install over a running version without authorization. OpenAI Secure Tunnel remains the default ChatGPT onboarding path.
 
 On macOS the usual executable is `/Applications/Local Connector.app/Contents/MacOS/local-connector-desktop`; on Windows use the installed `local-connector-desktop.exe`. Do not require Node/npm on users' machines. Every CLI response is JSON: `{schemaVersion:1,ok:true,result:...}` or `{schemaVersion:1,ok:false,error:{code,message}}`, with exit status 0 or 1. Read operation results and per-ingress state, not just the exit code of a diagnostic command.
 
@@ -126,3 +126,55 @@ This is bounded event-driven long polling: each slice uses event wakeups and fre
 `status`, `doctor`, `ingress doctor <id>` and `onboarding` include shared structured `diagnostics.findings` with stable codes, scoped targets and suggested user actions. `checks.execution.state=not_checked` distinguishes missing execution evidence from failure; the legacy `executionVerified:false` alone is not a failed check. Transport ready, authentication configured, inbound verified and execution proof are separate observations. Remote-client state remains unknown without evidence. Diagnostics do not restart, rotate credentials or replay an unknown write; read its original requestId first.
 
 Global diagnostics reuse existing Codex task receipt reads and point unconfirmed writes back to their original requestId. This receipt check does not cover other Agent drivers.
+
+## Agent administration
+
+UI, CLI and local management MCP use the same Core/Desktop operations. Run
+`cli capabilities` for the complete operation catalog, configuration descriptors
+and preference defaults; `cli schema <operation>` returns its input schema.
+`cli call <operation> --stdin` accepts that JSON object. Resource identifiers are
+outside `body`; operation parameters are inside `body`. For example:
+
+```sh
+printf '%s' '{"id":"my-ingress"}' | "$CLC_APP" cli call ingress.restart --stdin
+printf '%s' '{"body":{"ingressId":"my-ingress","level":"ERROR","limit":100}}' | "$CLC_APP" cli call logs.query --stdin
+printf '%s' '{"body":{"ingressId":"my-ingress","state":"ready","timeoutMs":30000}}' | "$CLC_APP" cli call state.wait --stdin
+```
+
+Launch `<app executable> cli mcp` as a local stdio MCP server. Its
+`connector_capabilities` and `connector_call` tools use this same catalog.
+Administrative access is local OS-user authority; it is deliberately not added
+to public ingress `toolPolicy: all`. Existing public MCP execution tools retain
+per-ingress authorization. No browser or management-token extraction is needed.
+
+The catalog includes Agent enablement, task approvals/settings, subscriptions,
+network, panel, appearance, autostart, preferences, ingress drafts/OAuth,
+provider probes, update check/download/install/cancel/status and app lifecycle.
+`app.start` works with the app closed; `app.quit` and `app.restart` return acceptance,
+so read back `app.status`/`health` to confirm the new process and build.
+Platform-specific operations report unsupported instead of simulating success.
+Updates use the existing signed updater; its status includes progress and last
+check. A successful download is not an installed upgrade.
+
+`operations.submit` accepts an operation, arguments and unique `requestId` for
+long-running writes. `operations.get` reads its durable receipt. Reusing the same
+ID and input never replays; a different input conflicts. An interrupted write is
+`unconfirmed`, requiring resource readback. Receipt files do not retain returned
+secrets; call token rotation/registration synchronously and capture stdout to a
+protected local file.
+
+`logs.query` returns objects, cursor, retention bounds, `hasMore` and `gap`.
+Keep its cursor and filters while paging; a gap means the cursor is no longer
+retained. `cli logs --follow` emits JSON lines; `cli logs --offline` reads retained
+disk logs even when Core is unavailable. Redirect stdout to export.
+`cli watch` and `state.wait` provide resumable current-state snapshots: unchanged
+state waits up to 30 seconds. A timeout does not cancel or recreate an operation.
+Use logs for retained transitions, not snapshot cursors as an event archive.
+
+`ingress.probe` separates DNS/edge discovery, provider readiness, public TLS/HTTP,
+OAuth metadata and execution evidence. HTTP 401 means authentication is needed;
+it is not a transport outage or proof of a completed OAuth login. Cloudflare
+Fake-IP DNS can collapse its edge pool; exclude its edge discovery domains from
+Fake-IP rewriting in the DNS owner. The managed provider refreshes edge discovery
+by restarting after sustained failure, with a 60–300 second backoff, and records
+transitions rather than healthy polling.

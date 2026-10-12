@@ -1,3 +1,4 @@
+import { notificationsPreference } from "../state/store";
 import { useEffect, useState } from "react";
 import { Monitor, Sun, Moon } from "lucide-react";
 import { t, language, languageOptions, setLanguage } from "../i18n";
@@ -24,10 +25,8 @@ export default function SettingsPage() {
       showDock: true,
     }),
     [appearanceReady, setAppearanceReady] = useState(false),
-    [service, setService] = useState<Service>(),
-    [notifications, setNotifications] = useState(
-      localStorage.getItem("notifications") !== "off",
-    );
+    [service, setService] = useState<Service>();
+  const notifications = notificationsPreference.use();
   const mac = isDesktop && navigator.platform.toLowerCase().includes("mac");
   useEffect(() => {
     if (mac)
@@ -137,8 +136,7 @@ export default function SettingsPage() {
               label={t("connectionNotifications")}
               checked={notifications}
               onChange={(value) => {
-                setNotifications(value);
-                localStorage.setItem("notifications", value ? "on" : "off");
+                notificationsPreference.set(value);
               }}
             />
           </Row>

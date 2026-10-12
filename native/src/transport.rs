@@ -6,6 +6,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 pub enum DesktopRequest {
+    Route(String, String, Value),
     PanelGet,
     ServiceGet,
     ServiceSet(Value),
@@ -73,6 +74,16 @@ pub async fn listen_desktop(
                                 ("/api/usage-panel", "PUT") => DesktopRequest::PanelSet(body),
                                 ("/api/subscriptions/open", "POST") => {
                                     DesktopRequest::SubscriptionsOpen(body)
+                                }
+                                _ if crate::management::desktop_route(
+                                    path.trim_start_matches("/api/"),
+                                ) =>
+                                {
+                                    DesktopRequest::Route(
+                                        path.trim_start_matches("/api/").into(),
+                                        method.to_string(),
+                                        body,
+                                    )
                                 }
                                 _ => return Err("UNKNOWN_ROUTE".into()),
                             };
@@ -277,6 +288,11 @@ async fn handle(
                 ("subscriptions/open", "POST") => {
                     Some(DesktopRequest::SubscriptionsOpen(body.clone()))
                 }
+                _ if crate::management::desktop_route(route) => Some(DesktopRequest::Route(
+                    route.into(),
+                    method.clone(),
+                    body.clone(),
+                )),
                 _ => None,
             };
             if let Some(operation) = operation {
@@ -540,7 +556,12 @@ pub async fn forward_to(info: &Value, route: &str, method: &str, body: Value) ->
         )
         .bearer_auth(string(&info, "token"))
         .timeout(Duration::from_secs(
-            if route == "start" || route.ends_with("/start") || route.ends_with("/start-all") {
+            if route == "start"
+                || route.ends_with("/start")
+                || route.ends_with("/restart")
+                || route.ends_with("/start-all")
+                || route.starts_with("updates/")
+            {
                 360
             } else {
                 120

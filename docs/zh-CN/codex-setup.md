@@ -93,3 +93,13 @@ Codex 在 create/send 后从回执取得原 taskId/threadId、turnId，默认以
 `cli context --stdin` 接收与 `agent_context` 相同的 JSON，例如 `{"agent":"codex","taskId":"<existing-task-id>","view":"handoff"}`。它使用经过认证的本机管理通道，保留 CLI JSON envelope，不写文件、不创建或恢复任务。运行中的应用需要包含此实现。
 
 `status`、`doctor`、`ingress doctor <id>` 与 `onboarding` 共享结构化 `diagnostics.findings`，包含稳定代码、目标范围和建议的人工操作。`checks.execution.state=not_checked` 表示缺少执行验收证据；不能只根据旧字段 `executionVerified:false` 判定失败。入口 ready、认证已配置、真实入站已验证、任务执行已验证是不同观察。远端客户端无证据时仍为 unknown。诊断不重启、不旋转凭据、不重放未知写操作；应先回读原 requestId。全局诊断复用现有 Codex 任务回执读取，遇到 unconfirmed 时给出该原请求的读取入口；其他驱动回执未纳入此检查。
+
+## Agent 管理入口
+
+运行 `cli capabilities` 获取共享操作目录，`cli schema <operation>` 查看输入，`cli call <operation> --stdin` 调用；标识符放在对象顶层，参数放在 `body`。UI、CLI 与 `<应用可执行文件> cli mcp` 本机管理 MCP 共用 Core/Desktop 操作。MCP 提供 `connector_capabilities` 与 `connector_call`，管理权限不自动开放给公网入口。
+
+目录覆盖应用启停与重启、更新检查/下载/安装/取消与状态、Agent 配置、审批、订阅、网络、面板、显示偏好、连接草稿和 OAuth。运行中的连接编辑、Token 轮换、重连由后端完整执行。`operations.submit` 使用唯一 requestId 提交长操作，`operations.get` 回读；重复 ID 不重放，中断结果为 unconfirmed，需读取原资源确认。
+
+`logs.query` 支持入口、时间、级别、分页游标和保留范围；`cli logs --follow` 持续输出 JSON，`cli logs --offline` 在 Core 停止时读取磁盘日志，可重定向导出。`state.wait` 与 `cli watch` 等待状态变化或目标状态，超时不终止任务；游标代表当前快照，历史变化读取日志。`ingress.probe` 分别检查 DNS、边缘地址、Provider、公网 TLS/HTTP 和 OAuth 元数据，认证及执行证据独立报告。
+
+完整参数、示例与结果语义见[英文管理说明](../codex-setup.md#agent-administration)。

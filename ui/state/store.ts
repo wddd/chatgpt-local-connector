@@ -25,6 +25,40 @@ export function createStore<T>(initial: T) {
     use: () => useSyncExternalStore(subscribe, get),
   };
 }
+const preferenceListeners = new Map<string, (raw: string | null) => void>();
+let applyingPreferences = false;
+let preferencesReady: Promise<void> | undefined;
+export function preparePreferences(): Promise<void> {
+  return preferencesReady ??= import("../api").then(async ({api}) => {
+    const values: Record<string,string> = {};
+    for (const key of [...preferenceListeners.keys(),"notifications","update-last-check","update-announcement"]) {
+      const value = localStorage.getItem(key);
+      if (value !== null) values[key] = value;
+    }
+    acceptPreferences(await api<Record<string,string>>("preferences/import","POST",{values}));
+  }).catch((error) => {preferencesReady = undefined; throw error;});
+}
+export const preferenceStorage = {
+  getItem: (key: string) => localStorage.getItem(key),
+  setItem(key: string, value: string) {
+    localStorage.setItem(key,value);
+    if (!applyingPreferences) void import("../api").then(({api}) => api("preferences","PUT",{values:{[key]:value}})).catch(console.error);
+  },
+  removeItem(key: string) {
+    localStorage.removeItem(key);
+    if (!applyingPreferences) void import("../api").then(({api}) => api("preferences","PUT",{values:{[key]:null}})).catch(console.error);
+  },
+};
+export function acceptPreferences(values: Record<string,string>) {
+  applyingPreferences = true;
+  try {
+    for (const [key,value] of Object.entries(values)) {
+      if (localStorage.getItem(key) === value) continue;
+      localStorage.setItem(key,value);
+      preferenceListeners.get(key)?.(value);
+    }
+  } finally { applyingPreferences = false; }
+}
 export function preference<T>(
   key: string,
   fallback: T,
@@ -41,10 +75,13 @@ export function preference<T>(
   const store = createStore(initial);
   store.subscribe(() => {
     try {
-      localStorage.setItem(key, serialize(store.get()));
+      preferenceStorage.setItem(key, serialize(store.get()));
     } catch {
       /* The session remains usable without storage. */
     }
+  });
+  preferenceListeners.set(key, (raw) => {
+    try { store.set(raw === null ? fallback : parse(raw)); } catch {store.set(fallback);}
   });
   window.addEventListener("storage", (event) => {
     if (event.key === key) {
@@ -57,3 +94,5 @@ export function preference<T>(
   });
   return store;
 }
+
+export const notificationsPreference = preference("notifications",true, value => value !== "off", value => value ? "on" : "off");

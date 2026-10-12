@@ -1,4 +1,5 @@
-import { createStore, preference } from "./store";
+import { api } from "../api";
+import { createStore, preference, preferenceStorage } from "./store";
 import { t } from "../i18n";
 import { isDesktop, openUrl } from "../platform";
 export type Update = {
@@ -72,10 +73,9 @@ export async function checkUpdate(manual = true) {
     skipped.set("");
   }
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const update = await invoke<Update>("check_update");
+    const update = await api<Update>("updates/check","POST");
     patch({ update, error: "", message: "" });
-    localStorage.setItem("update-last-check", String(Date.now()));
+    preferenceStorage.setItem("update-last-check", String(Date.now()));
     if (available() && autoDownload.get() && !update.ready)
       await transfer(false);
     if (updateVisible() && (manual || update.version !== dismissedVersion))
@@ -103,10 +103,7 @@ async function transfer(installing: boolean, direct = false) {
   let off: (() => void) | undefined,
     restarting = false;
   try {
-    const [{ invoke }, { listen }] = await Promise.all([
-      import("@tauri-apps/api/core"),
-      import("@tauri-apps/api/event"),
-    ]);
+    const { listen } = await import("@tauri-apps/api/event");
     off = await listen<{
       downloaded?: number;
       total?: number;
@@ -114,24 +111,21 @@ async function transfer(installing: boolean, direct = false) {
     }>("update-progress", (e) => patch(e.payload));
     if (installing) {
       if (direct)
-        localStorage.setItem("update-announcement", JSON.stringify(update));
-      else localStorage.removeItem("update-announcement");
+        preferenceStorage.setItem("update-announcement", JSON.stringify(update));
+      else preferenceStorage.removeItem("update-announcement");
     }
-    const result = await invoke<Update>(
-      installing ? "install_update" : "download_update",
-      { version: update.version },
-    );
+    const result = await api<Update>(installing ? "updates/install" : "updates/download", "POST", { version: update.version });
     if (result.restarting) {
       restarting = true;
       patch({ phase: "installing" });
       return;
     }
     patch({ update: result });
-    if (installing) localStorage.removeItem("update-announcement");
+    if (installing) preferenceStorage.removeItem("update-announcement");
     if (!result.available) patch({ message: t("youAreUpToDate") });
   } catch (e) {
     if (installing) {
-      localStorage.removeItem("update-announcement");
+      preferenceStorage.removeItem("update-announcement");
       patch({ update: { ...update, ready: false } });
     }
     if (direct) showUpdate();
@@ -150,8 +144,7 @@ export const installDirect = () => {
 };
 export async function cancelUpdate() {
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("cancel_update");
+    await api("updates/cancel","POST");
   } catch (e) {
     patch({ error: String(e) });
   }
@@ -181,32 +174,23 @@ export function startUpdateChecks() {
   if (!isDesktop) return () => {};
   void (async () => {
     try {
-      const saved = localStorage.getItem("update-announcement");
+      const saved = preferenceStorage.getItem("update-announcement");
       if (!saved) return;
       const pending = JSON.parse(saved) as Update;
       const { getVersion } = await import("@tauri-apps/api/app");
       if (pending.version === (await getVersion()))
         patch({ announcement: pending });
-      localStorage.removeItem("update-announcement");
+      preferenceStorage.removeItem("update-announcement");
     } catch {
-      localStorage.removeItem("update-announcement");
+      preferenceStorage.removeItem("update-announcement");
     }
   })();
-  let lastAttempt = 0;
-  const tick = () => {
-    if (!autoCheck.get()) return;
-    const previous = Math.max(
-      lastAttempt,
-      Number(localStorage.getItem("update-last-check") || 0),
-    );
-    if (Date.now() - previous < 3600000) return;
-    lastAttempt = Date.now();
-    void checkUpdate(false);
-  };
-  const first = setTimeout(tick, 5000),
-    timer = setInterval(tick, 60000);
-  return () => {
-    clearTimeout(first);
-    clearInterval(timer);
-  };
+  const read = () => void api<{phase?:string; update?:Update; downloaded?:number; total?:number; error?:string}>("updates").then((state) => {
+    const phase = state.phase === "downloading" || state.phase === "installing" ? state.phase : "idle";
+    patch({phase,checking:state.phase === "checking",...(state.update ? {update:state.update} : {}),...(state.downloaded === undefined ? {} : {downloaded:state.downloaded,total:state.total})});
+    if (updateVisible() && updates.get().update?.version !== dismissedVersion) showUpdate();
+  }).catch(() => {});
+  read();
+  const timer = setInterval(read,2000);
+  return () => clearInterval(timer);
 }

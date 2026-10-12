@@ -181,7 +181,6 @@ export default function IngressDialog({
             }
           : {}),
       };
-      if (ingress) await api(`ingress/${ingress.id}/stop`, "POST");
       const saved = await api<Ingress>(
         ingress ? `ingress/${ingress.id}` : "ingress",
         ingress ? "PUT" : "POST",
