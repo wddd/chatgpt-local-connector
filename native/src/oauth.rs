@@ -267,7 +267,8 @@ impl OAuth {
             .map(|key| self.status(key, resource))
             .collect::<Result<_>>()?;
         let grants:Vec<_>=self.stored.grants.iter().map(|g|json!({"id":g.id,"clientName":self.stored.clients.get(&g.client).map(|c|c.name.as_str()),"clientId":g.client})).collect();
-        Ok(json!({"pending":pending,"grants":grants}))
+        let clients: Vec<_> = self.stored.clients.iter().map(|(id,c)|json!({"id":id,"name":c.name,"redirectUris":c.redirects,"tokenEndpointAuthMethod":c.method,"createdAt":c.created})).collect();
+        Ok(json!({"pending":pending,"grants":grants,"clients":clients}))
     }
     pub fn status(&self, key: &str, resource: &str) -> Result<Value> {
         if let Some(p) = self.pending.get(key).filter(|p| p.resource == resource) {
@@ -477,6 +478,12 @@ impl OAuth {
         Ok(
             json!({"access_token":access,"token_type":"Bearer","expires_in":expires,"refresh_token":refresh,"scope":"mcp"}),
         )
+    }
+    pub fn remove_client(&mut self, client: &str) -> Result<()> {
+        self.stored.clients.remove(client);
+        self.stored.grants.retain(|g| g.client != client);
+        self.pending.retain(|_, p| p.client != client);
+        self.persist()
     }
     pub fn revoke(&mut self, grant: &str) -> Result<()> {
         self.stored.grants.retain(|g| g.id != grant);

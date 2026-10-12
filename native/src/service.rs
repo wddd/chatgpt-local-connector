@@ -418,11 +418,14 @@ impl Service {
         body: Value,
     ) -> Result<Value> {
         let operation = id();
+        let ingress_id = route
+            .strip_prefix("ingress/")
+            .and_then(|p| p.split('/').next());
         let audit =
             method != "GET" && !["runtime/lease", "logs/query", "state/wait"].contains(&route);
         if audit {
             crate::logs::append(
-                json!({"time":now(),"level":"INFO","msg":format!("{method} {route}: started"),"operationId":operation,"phase":"started"}),
+                json!({"time":now(),"level":"INFO","msg":format!("{method} {route}: started"),"operationId":operation,"ingressId":ingress_id,"phase":"started"}),
             )?;
         }
         let result = self.request_inner(route, method, body).await;
@@ -433,7 +436,7 @@ impl Service {
                 "failed"
             };
             if let Err(error) = crate::logs::append(
-                json!({"time":now(),"level":if result.is_ok(){"INFO"}else{"ERROR"},"msg":format!("{method} {route}: {outcome}"),"operationId":operation,"phase":outcome}),
+                json!({"time":now(),"level":if result.is_ok(){"INFO"}else{"ERROR"},"msg":format!("{method} {route}: {outcome}"),"operationId":operation,"ingressId":ingress_id,"phase":outcome}),
             ) {
                 eprintln!("Cannot persist operation outcome: {error}");
             }
@@ -794,6 +797,10 @@ impl Service {
                         body["allow"].as_bool().ok_or("allow must be boolean")?,
                     )?;
                     return oauth.status(string(&body, "id"), &resource);
+                }
+                if method == "POST" && action == "oauth/client/remove" {
+                    oauth.remove_client(string(&body, "id"))?;
+                    return Ok(json!({"removed":true}));
                 }
                 if method == "POST" && action == "oauth/revoke" {
                     oauth.revoke(string(&body, "id"))?;

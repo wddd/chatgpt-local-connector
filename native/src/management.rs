@@ -94,6 +94,7 @@ async fn start_app() -> Result<Value> {
             .join("../local-connector-desktop.exe")
     };
     command(desktop)
+        .kill_on_drop(false)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

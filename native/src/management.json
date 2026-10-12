@@ -1633,6 +1633,39 @@
         ],
         "additionalProperties": false
       }
+    },
+    {
+      "name": "ingress.oauth.client.remove",
+      "route": "ingress/{id}/oauth/client/remove",
+      "method": "POST",
+      "description": "Remove a registered OAuth client and revoke its grants and pending requests.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "body"
+        ],
+        "additionalProperties": false
+      }
     }
   ]
 }
