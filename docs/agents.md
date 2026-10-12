@@ -98,7 +98,7 @@ Claude 的 `installed`、`path`、`version` 描述本机 Claude Code；`availabl
 
 Pi/ACP 状态包含 starting、idle、running、waiting-permission、cancelling、completed、cancelled、failed、unknown。权限响应不是自动批准：必须选择上游给出的选项。Pi 扩展的 confirm/select/input/editor 被转发，但不提供 ACP 式统一工具权限控制；工具与文件权限仍由 Pi、扩展和运行环境决定。CLC 不宣称额外的文件系统沙箱。
 
-超时、进程异常退出或写入结果不明会留下 `unconfirmed` 回执或 `unknown` 任务，不自动重放。存在未确认操作时不能通过新 prompt 自动恢复。停止后的已完成会话可由 agent_send 恢复：Pi 使用原 session 文件，ACP 使用协商后的 session/load。未发送 prompt 的 Pi 空会话可能尚未持久化，不能保证跨进程恢复。
+写操作默认同步等待 25 秒，可用 waitMs 调整为 0–120000ms；超时返回 pending。已提交后连接中断或超时且结果未知才返回 `unconfirmed` 回执，不自动重放；参数、本地校验或上游明确拒绝返回 failed/rejected。存在未确认操作时不能通过新 prompt 自动恢复。停止后的已完成会话可由 agent_send 恢复：Pi 使用原 session 文件，ACP 使用协商后的 session/load。未发送 prompt 的 Pi 空会话可能尚未持久化，不能保证跨进程恢复。
 
 Codex 事件只保留最近 2000 条或 8 MiB 的内存窗口，缺口与重启通过 gap/reset 表示；会话历史按需从原生 Codex 读取，不持久化镜像。Pi/ACP 事件有同样的有界内存窗口，完整 JSONL 以活跃尾文件和经过校验的 gzip 分段保存在 CLC 私有 outputs 目录，`control_output` 按原始内容和 UTF-16 偏移读取。活跃尾文件达到 8 MiB 后轮转，唯一事件历史不按时间删除；`cli storage compact` 可无损压缩现有归档。ACP 最近文本输出超过 256 KiB 时仅保留末尾并标记 outputTruncated；完整输出在事件归档中。进程停止后的任务快照仍可读，实时 events/pending 需要存活进程。停止入口不关闭 Agent 进程；退出 CLC 才关闭其拥有的 Pi/ACP 子进程；Desktop 拥有的 Codex 任务继续沿用原生命周期。
 

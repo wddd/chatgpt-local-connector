@@ -39,8 +39,7 @@ pub fn resolve(name: &str, args: &Value) -> Result<(String, String, Value)> {
         .iter()
         .find(|o| o["name"] == name)
         .ok_or("UNKNOWN_OPERATION")?;
-    let validator =
-        jsonschema::validator_for(&operation["inputSchema"]).map_err(|e| e.to_string())?;
+    let validator = crate::validator("management", name, &operation["inputSchema"])?;
     if !validator.is_valid(args) {
         return Err(format!("INVALID_ARGUMENT: read schema for {name}"));
     }

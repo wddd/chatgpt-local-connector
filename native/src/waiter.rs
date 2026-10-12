@@ -204,7 +204,7 @@ fn classify(observation: &Value, selected: &mut Option<String>) -> Value {
 
 enum CodexOwner {
     Background(Arc<Rpc>),
-    Desktop(Ipc),
+    Desktop(Arc<Ipc>),
 }
 struct CodexSource {
     owner: CodexOwner,
@@ -262,7 +262,7 @@ pub async fn codex_wait(control: &Arc<Control>, args: &Value) -> Result<Value> {
         let owner = if background {
             CodexOwner::Background(control.utility().await?)
         } else {
-            CodexOwner::Desktop(Ipc::open(control.events.clone(), &control.session).await?)
+            CodexOwner::Desktop(control.ipc().await?)
         };
         Ok::<_, String>(CodexSource {
             owner,

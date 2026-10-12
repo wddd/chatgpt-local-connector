@@ -1,7 +1,7 @@
 use crate::*;
 use std::{collections::HashMap, process::Stdio, time::Duration};
 use tokio::{
-    io::{AsyncWriteExt, BufReader},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader},
     sync::oneshot,
 };
 type Pending = Arc<std::sync::Mutex<HashMap<String, oneshot::Sender<Result<Value>>>>>;
@@ -35,11 +35,34 @@ impl Rpc {
             .kill_on_drop(true)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| e.to_string())?;
         let input = child.stdin.take().ok_or("missing stdin")?;
         let stdout = child.stdout.take().ok_or("missing stdout")?;
+        let mut stderr = child.stderr.take().ok_or("missing stderr")?;
+        tokio::spawn(async move {
+            let mut bytes = [0; 4096];
+            let mut window = std::time::Instant::now();
+            let mut count = 0;
+            while let Ok(n) = stderr.read(&mut bytes).await {
+                if n == 0 {
+                    break;
+                }
+                if window.elapsed().as_secs() >= 1 {
+                    window = std::time::Instant::now();
+                    count = 0;
+                }
+                if count < 8 {
+                    crate::logs::record(
+                        "WARN",
+                        &format!("app-server: {}", String::from_utf8_lossy(&bytes[..n])),
+                        None,
+                    );
+                    count += 1;
+                }
+            }
+        });
         let pending: Pending = Default::default();
         let alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
         let rpc = Arc::new(Self {
@@ -131,12 +154,15 @@ impl Rpc {
             .await
         {
             self.pending.lock().unwrap().remove(&json!(key).to_string());
-            return Err(e);
+            return Err(submission_error(method, e));
         }
         let out = tokio::time::timeout(Duration::from_millis(timeout), rx).await;
         self.pending.lock().unwrap().remove(&json!(key).to_string());
-        out.map_err(|_| format!("RPC_TIMEOUT_UNCONFIRMED: {method}"))?
-            .map_err(|_| "TRANSPORT_CLOSED".to_string())?
+        let result = out
+            .map_err(|_| format!("RPC_TIMEOUT: {method}"))
+            .and_then(|v| v.map_err(|_| "TRANSPORT_CLOSED".to_string()))
+            .and_then(|v| v);
+        result.map_err(|e| submission_error(method, e))
     }
     pub async fn close(&self) {
         let _ = self.input.lock().await.shutdown().await;
@@ -160,5 +186,30 @@ impl Rpc {
             let _ = output("taskkill.exe", &["/PID", &pid.to_string(), "/T", "/F"]).await;
         }
         self.alive.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+// Only transport failures after a mutating request was submitted leave its result unknown.
+pub(crate) fn submission_error(method: &str, error: String) -> String {
+    let read = matches!(
+        method,
+        "initialize" | "get_state" | "get_commands" | "get_available_models"
+    ) || method.ends_with("/read")
+        || method.ends_with("/list")
+        || crate::catalog()["domains"]
+            .as_object()
+            .into_iter()
+            .flat_map(|d| d.values())
+            .flat_map(|d| {
+                d["actions"]
+                    .as_object()
+                    .into_iter()
+                    .flat_map(|a| a.values())
+            })
+            .any(|a| a[0] == method && a[1] == true);
+    if read || error.starts_with("RPC_REJECTED") {
+        error
+    } else {
+        format!("SUBMISSION_UNCONFIRMED: {error}")
     }
 }

@@ -9,8 +9,7 @@ use windows_sys::Win32::{
     System::{
         Pipes::GetNamedPipeServerProcessId,
         Threading::{
-            GetCurrentProcess, OpenProcess, OpenProcessToken, QueryFullProcessImageNameW,
-            PROCESS_QUERY_LIMITED_INFORMATION,
+            GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
         },
     },
     UI::Shell::ShellExecuteW,
@@ -115,7 +114,6 @@ fn user_token(process: HANDLE) -> Result<Vec<usize>> {
     }
 }
 pub(super) async fn connect() -> Result<DesktopStream> {
-    let installation = require_installation()?;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
     let pipe = loop {
         match tokio::net::windows::named_pipe::ClientOptions::new().open(r"\\.\pipe\codex-ipc") {
@@ -141,14 +139,6 @@ pub(super) async fn connect() -> Result<DesktopStream> {
         let current = &*(current.as_ptr().cast::<TOKEN_USER>());
         if EqualSid(owner.User.Sid, current.User.Sid) == 0 {
             return Err("DESKTOP_PIPE_OWNER_MISMATCH".into());
-        }
-        let mut path = vec![0u16; 32768];
-        let mut len = path.len() as u32;
-        if QueryFullProcessImageNameW(process.0, 0, path.as_mut_ptr(), &mut len) == 0
-            || !String::from_utf16_lossy(&path[..len as usize])
-                .eq_ignore_ascii_case(&installation.app.to_string_lossy().replace('/', "\\"))
-        {
-            return Err("DESKTOP_PIPE_PROCESS_MISMATCH".into());
         }
     }
     Ok(pipe)

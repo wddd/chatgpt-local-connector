@@ -221,7 +221,7 @@ impl Process {
     }
     pub async fn call(&self, method: &str, params: Value, timeout: u64) -> Result<Value> {
         if !self.alive.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err("PROCESS_EXIT_UNCONFIRMED".into());
+            return Err("PROCESS_NOT_RUNNING".into());
         }
         let key = json!(id());
         let (tx, rx) = oneshot::channel();
@@ -237,13 +237,15 @@ impl Process {
         };
         if let Err(e) = self.write(request).await {
             self.replies.lock().await.remove(&key.to_string());
-            return Err(e);
+            return Err(crate::rpc::submission_error(method, e));
         }
         let result = tokio::time::timeout(Duration::from_millis(timeout), rx).await;
         self.replies.lock().await.remove(&key.to_string());
         result
-            .map_err(|_| format!("RPC_TIMEOUT_UNCONFIRMED:{method}"))?
-            .map_err(|_| "PROCESS_EXIT_UNCONFIRMED".to_owned())?
+            .map_err(|_| format!("RPC_TIMEOUT:{method}"))
+            .and_then(|v| v.map_err(|_| "PROCESS_EXIT".to_owned()))
+            .and_then(|v| v)
+            .map_err(|e| crate::rpc::submission_error(method, e))
     }
     pub async fn close(&self) {
         let _ = self.input.lock().await.shutdown().await;

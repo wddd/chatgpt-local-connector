@@ -24,8 +24,13 @@ pub fn page_output(result: Value) -> Result<Value> {
     private_dir(&dir)?;
     make_room(&dir, text.len() as u64)?;
     save(&dir.join(format!("{output}.json")), &result)?;
+    let mut end = text.len().min(48 * 1024);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let preview = &text[..end];
     Ok(
-        json!({"outputId":output,"bytes":text.len(),"characters":text.encode_utf16().count(),"sha256":hash(&text),"nextAction":"control_output","format":"JSON; offsets count UTF-16 code units","retention":"temporary-cache","expiresInSeconds":TTL.as_secs()}),
+        json!({"text":preview,"offset":0,"nextOffset":preview.encode_utf16().count(),"outputId":output,"bytes":text.len(),"characters":text.encode_utf16().count(),"sha256":hash(&text),"nextAction":"control_output","format":"JSON; offsets count UTF-16 code units","retention":"temporary-cache","expiresInSeconds":TTL.as_secs()}),
     )
 }
 fn make_room(dir: &Path, incoming: u64) -> Result<()> {
@@ -80,7 +85,7 @@ pub fn read_output(args: &Value) -> Result<Value> {
     let dir = root().join("outputs");
     let path = dir.join(format!("{output}.json"));
     let offset = num(args, "offset", 0);
-    let length = num(args, "length", 10000).min(12000);
+    let length = num(args, "length", 65536).min(65536);
     let (text, characters) = if path.exists() {
         let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
         if file

@@ -198,11 +198,13 @@ impl AgentDriver {
                 t["stopReason"] = v["stopReason"].clone();
             }
             Err(e) => {
-                t["status"] = json!(if e.starts_with("RPC_REJECTED") {
-                    "failed"
-                } else {
-                    "unknown"
-                });
+                t["status"] = json!(
+                    if crate::kernel::receipts::failure_state(e) == "unconfirmed" {
+                        "unknown"
+                    } else {
+                        "failed"
+                    }
+                );
                 t["error"] = json!(e);
             }
             _ => {}
@@ -230,7 +232,8 @@ impl AgentDriver {
         } else {
             let sid = p.state.lock().await["sessionId"].clone();
             p.write(json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":sid}}))
-                .await?;
+                .await
+                .map_err(|e| format!("SUBMISSION_UNCONFIRMED: {e}"))?;
         }
         let mut t = p.state.lock().await;
         if !matches!(
@@ -289,7 +292,9 @@ impl AgentDriver {
             };
             json!({"jsonrpc":"2.0","id":req["id"],"result":{"outcome":outcome}})
         };
-        p.write(response).await?;
+        p.write(response)
+            .await
+            .map_err(|e| format!("SUBMISSION_UNCONFIRMED: {e}"))?;
         pending.pending.remove(&key);
         let empty = pending.pending.is_empty();
         drop(pending);

@@ -14,10 +14,18 @@ impl ReceiptStore {
     }
     pub fn read(&self, request: &str, session: &str) -> Result<Value> {
         let mut receipt = load(&self.path(request)?)?;
+        if !receipt.is_object() {
+            return Err("INVALID_RECEIPT".into());
+        }
         if receipt["backendSession"] != session
             && !matches!(
                 string(&receipt, "state"),
-                "completed" | "rejected" | "not-executed" | "unconfirmed" | "awaiting-approval"
+                "completed"
+                    | "failed"
+                    | "rejected"
+                    | "not-executed"
+                    | "unconfirmed"
+                    | "awaiting-approval"
             )
         {
             receipt["previousState"] = receipt["state"].clone();
@@ -25,7 +33,7 @@ impl ReceiptStore {
         }
         Ok(receipt)
     }
-    // Callers hold their operation lock across replay/reserve/launch. create_new also
+    // Callers serialize replay/reserve/launch per request ID. create_new also
     // prevents a second owner from reserving an existing ID; unknown writes are never replayed.
     pub fn replay(&self, request: &str, digest: &str, session: &str) -> Result<Option<Value>> {
         if !self.path(request)?.exists() {
@@ -59,5 +67,34 @@ impl ReceiptStore {
     pub fn checkpoint(&self, receipt: &mut Value) -> Result<()> {
         receipt["updatedAt"] = json!(now());
         save(&self.path(string(receipt, "requestId"))?, receipt)
+    }
+}
+
+/// Only the lookup holds the map lock; independent requests can perform disk IO concurrently.
+#[derive(Default)]
+pub struct RequestLocks(Mutex<std::collections::HashMap<String, std::sync::Weak<Mutex<()>>>>);
+impl RequestLocks {
+    pub async fn lock(&self, request: &str) -> tokio::sync::OwnedMutexGuard<()> {
+        let lock = {
+            let mut locks = self.0.lock().await;
+            locks.retain(|_, v| v.strong_count() > 0);
+            if let Some(lock) = locks.get(request).and_then(std::sync::Weak::upgrade) {
+                lock
+            } else {
+                let lock = Arc::new(Mutex::new(()));
+                locks.insert(request.into(), Arc::downgrade(&lock));
+                lock
+            }
+        };
+        lock.lock_owned().await
+    }
+}
+pub fn failure_state(error: &str) -> &'static str {
+    if error.starts_with("SUBMISSION_UNCONFIRMED:") {
+        "unconfirmed"
+    } else if error.starts_with("RPC_REJECTED") || error.starts_with("DESKTOP_REJECTED") {
+        "rejected"
+    } else {
+        "failed"
     }
 }

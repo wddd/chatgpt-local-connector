@@ -83,7 +83,7 @@ remove 的 recursive/force、createDirectory 的 recursive 等默认值完全由
 watchId、processId、processHandle、MCP subscriptionId 属于当前 App Server 连接；重启后不重建。
 
 command/exec 不创建 Codex thread/turn，使用 Codex sandboxPolicy 或 permissionProfile；省略时继承原生设置。
-exec 的最终结果在退出后返回，超过短等待窗口的调用通过 codex_request 读取回执。
+exec 的最终结果在退出后返回，超过同步等待窗口（默认 25 秒）的调用通过 codex_request 读取回执。
 PTY 使用 tty:true 和 size:{rows,cols}；PTY、streamStdin、streamStdoutStderr 和后续控制都需要 processId。
 command 的 disableTimeout 与 timeoutMs 互斥，disableOutputCap 与 outputBytesCap 互斥。
 
@@ -166,7 +166,7 @@ control_output 每页最多 12000 个 UTF-16 code units，拼接所有 text 后�
 原生 JSON-RPC 错误的 code/message/data 保留在 error.rpcError，写入失败时位于回执 result.error.rpcError；
 未生成 RPC 错误的连接/超时失败仍使用现有控制错误。null、数组等原生结果不强制转换为对象。
 回执包含阶段、线程/轮次 ID 和可能包含原始输出的结果，存于权限受限的本机状态目录。
-codex_call 与领域 mutation 在短等待后可返回 pending；随后 codex_request 查询 completed/rejected/unconfirmed 等状态。
+写操作默认同步等待 25000ms，waitMs 可设为 0–120000；超时返回 pending，随后用 codex_request/agent_request 回读。completed 表示操作完成；上游明确拒绝为 rejected，本地或其他已知失败为 failed，只有提交后连接中断/超时且结果未知为 unconfirmed。waitMs 不参与 requestId 的参数摘要。
 写入原生 RPC 默认超时 24 小时，可通过 timeoutMs 指定；超时不等于操作取消，不自动重放。
 completed 是控制操作完成，任务完成需要检查对应轮次终态。
 
@@ -287,9 +287,9 @@ MCP notifications/cancelled 可取消对应 wait，返回 unconfirmed / wait-can
 
 `overview/tree/search/read/git` 默认按宿主权限读取。显式传入 `view: "review"` 时，以真实工作区路径为边界，排除越界路径及 Connector 自身运行状态目录；不按文件名或内容猜测敏感性，不隐藏提交消息。正常 root 内符号链接仍可读取，Git diff 核对重命名两侧是否位于读取边界内。
 
-`data.coverage` 说明分页、筛选和跳过原因；`read.nextLine` 非空代表尚未读完，即使 `truncated` 为 false。搜索的 `matchesComplete` 表示单文件片段完整性，超出 5 处命中或 500 字符片段时用 `read` 继续读取。tree/search 续页可携带上一页 `listingHash` 作为 `expectedHash`；read 使用 `sha256`。哈希变化时重新分页。列表哈希只验证列表，不能验证搜索期间各文件内容。
+includeSource=true 时，`data.coverage` 说明分页、筛选和跳过原因；`read.nextLine` 非空代表尚未读完，即使 `truncated` 为 false。搜索的 `matchesComplete` 表示单文件片段完整性，超出 5 处命中或 500 字符片段时用 `read` 继续读取。tree/search 续页可携带上一页 `listingHash` 作为 `expectedHash`；read 使用 `sha256`。哈希变化时重新分页。列表哈希只验证列表，不能验证搜索期间各文件内容。
 
-`source` 包括观察窗口、HEAD 和 Git 状态文本哈希。`statusHash` 不是全仓库内容哈希；同为 M 的文件可以改变而不改变该值。`changedDuringRead` 仅表示已观察到的 Git 状态变化，不能证明全仓库不变。一致性为 best-effort，文件读取另有正文哈希及前后元数据核对。非 Git 目录与 Git 查询失败分别处理，不在失败后扩大遍历范围。
+默认不采集 source/statusHash/coverage。includeSource=true 时仅采集一次 Git 观测，返回 source；采集失败只记录 source.error，不阻断文件读取。不做读前/读后 Git 状态比较；expectedHash 只比较正文或列表哈希。project/list 在项目 ID/名称解析时缓存 30 秒，projects 工具仍读取上游当前列表。
 
 ```json
 {"project":"<workspace>","path":"src/main.rs","view":"review","startLine":1,"lineCount":80}
@@ -328,7 +328,7 @@ Review 不改变原生 fs/command/process 权限，不是用户隔离或完整 D
 
 分支、提交和 stash 作用于整个仓库。无 fetch/pull/push、删除分支、历史改写、reset --hard 或 clean。写入沿用主机权限，不经过任务执行沙箱或任务创建审批；工具列表负责入口授权。`git_write` 仅在“全部”或明确选择的“自定义”中启用；常用省略通用主机写入，只读始终排除此工具。选择它会保留 codex_request 和 control_output。
 
-回执复用 codex_request：同一 requestId 和参数重试不重复执行，不同参数拒绝。超时、Git 失败或冲突可能返回 unconfirmed，应先读取回执与 git 状态核对现场，不自动换 ID 重试。该工具没有单独的审批队列；现有 approve/bypass/reject 仅对处于 awaiting-approval 的请求生效。
+回执复用 codex_request：同一 requestId 和参数重试不重复执行，不同参数拒绝。Git 失败或冲突返回 failed，保留原因；读取回执和 git 状态后再决定后续操作。该工具没有单独的审批队列；现有 approve/bypass/reject 仅对处于 awaiting-approval 的请求生效。
 
 提交及 stash push 的身份从 Git 仓库与用户全局配置读取 user.name/user.email（包含用户配置的 include/includeIf，仓库值优先），缺失时报错，不硬编码身份、不使用进程中的 GIT_AUTHOR/GIT_COMMITTER 覆盖。仅身份值传入写命令，其他全局配置与系统配置不加载。写命令保留环境清理、--no-optional-locks、字面路径、12 秒超时与每路 16 MiB 输出上限；必需的索引锁仍由 Git 管理。禁用 hooks、fsmonitor、外部 diff、配置的 clean/smudge/process 过滤器、签名、自动维护及递归子模块操作；依赖过滤器（例如 LFS）的文件不会自动转换。stash pop 禁用 rerere，并在仓库配置了外部 merge driver 时拒绝执行，以免触发自定义命令。
 
@@ -379,3 +379,5 @@ validate calls; it is not a separate tool registration. HTTP responses use
 `Cache-Control: no-store`. If a client still displays an older description or
 schema, refresh or reconnect its MCP connection and check the server's actual
 `tools/list` result rather than relying on the client's cached tool descriptions.
+
+大于 64 KiB 的结果内联约 48 KiB JSON 文本，并返回 outputId、nextOffset。control_output 每页最多 65536 个 UTF-16 code units；JSON 缓存最多保留 1 小时，共享 64 MiB 容量。

@@ -211,7 +211,7 @@ test('typical fs, PTY, downstream MCP and file search calls preserve native fiel
 test('mutation receipts remain idempotent across domain and escape hatch, including pending and conflicting retries', async () => {
   const requestId = randomUUID();
   const params = { path: '/tmp/retry', dataBase64: '', delay: 200 };
-  const first = await call('fs', { action: 'writeFile', params, requestId });
+  const first = await call('fs', { action: 'writeFile', params, requestId, waitMs: 0 });
   assert.equal(first.result.state, 'pending');
   const original = await completed('fs', { action: 'writeFile', params, requestId });
   const replay = await completed('codex_call', { method: 'fs/writeFile', params, requestId });
@@ -484,7 +484,7 @@ test('Git writes use durable receipts, isolated identity and safe local workflow
   assert.ok(!(await call('git', { project, operation: 'status' })).response.isError);
   git('config', 'user.email', '');
   const missingIdentity = await write('commit', { message: 'missing identity' });
-  assert.equal(missingIdentity.state, 'unconfirmed');
+  assert.equal(missingIdentity.state, 'failed');
   assert.match(JSON.stringify(missingIdentity.result), /configure user.email/);
   git('config', 'user.email', 'local@example.invalid');
   // Literal pathspecs must not treat wildcard-looking names as patterns.
@@ -503,13 +503,13 @@ test('Git writes use durable receipts, isolated identity and safe local workflow
   await success('commit', { message: 'conflicting version' });
   git('config', 'merge.block.driver', 'exit 94');
   const blockedMerge = await write('stash_pop');
-  assert.equal(blockedMerge.state, 'unconfirmed');
+  assert.equal(blockedMerge.state, 'failed');
   assert.match(JSON.stringify(blockedMerge.result), /external merge drivers/);
   assert.equal(git('ls-files', '--unmerged'), '');
   git('config', '--remove-section', 'merge.block');
   const popId = randomUUID();
   const conflict = await write('stash_pop', { requestId: popId });
-  assert.equal(conflict.state, 'unconfirmed');
+  assert.equal(conflict.state, 'failed');
   assert.ok(git('stash', 'list'));
   assert.ok(git('ls-files', '--unmerged'));
   assert.equal((await write('stash_pop', { requestId: popId })).replayed, true);

@@ -25,6 +25,7 @@ pub struct AgentHost {
     disabled: Mutex<HashSet<String>>,
     processes: Mutex<HashMap<String, Arc<Process>>>,
     operations: Mutex<HashMap<String, Operation>>,
+    requests: crate::kernel::receipts::RequestLocks,
     session: String,
     lifecycle: Mutex<()>,
     wake: Arc<tokio::sync::Notify>,
@@ -84,6 +85,7 @@ impl AgentHost {
             inventory_cache: Default::default(),
             processes: Default::default(),
             operations: Default::default(),
+            requests: Default::default(),
             session: id(),
             lifecycle: Mutex::new(()),
             wake: Default::default(),
@@ -360,7 +362,8 @@ impl AgentHost {
             let _ = job.await;
         }
         let _lock = self.lifecycle.lock().await;
-        for (request, job) in self.operations.lock().await.drain() {
+        let operations: Vec<_> = self.operations.lock().await.drain().collect();
+        for (request, job) in operations {
             job.job.abort();
             let _ = job.job.await;
             if let Ok(path) = RECEIPTS.path(&request) {
@@ -397,8 +400,7 @@ impl AgentHost {
             .iter()
             .find(|t| t["name"] == name)
             .ok_or("UNKNOWN_TOOL")?;
-        jsonschema::validator_for(&spec["inputSchema"])
-            .map_err(|e| e.to_string())?
+        crate::validator("tool", name, &spec["inputSchema"])?
             .validate(&args)
             .map_err(|e| e.to_string())?;
         if name == "agents" {
@@ -415,7 +417,7 @@ impl AgentHost {
         }
         if name == "agent_request" {
             let request = string(&args, "requestId");
-            let mut ops = self.operations.lock().await;
+            let _request_lock = self.requests.lock(request).await;
             let mut r = RECEIPTS.read(request, &self.session)?;
             if r["agent"] != agent {
                 return Err("AGENT_REQUEST_MISMATCH".into());
@@ -438,8 +440,21 @@ impl AgentHost {
                 }
                 RECEIPTS.checkpoint(&mut r)?;
                 if action != "reject" {
-                    let job = self.launch(driver.clone(), r.clone());
+                    let mut ops = self.operations.lock().await;
+                    let (job, rx) = self.launch(driver.clone(), r.clone());
                     ops.insert(request.into(), job);
+                    drop(ops);
+                    drop(_request_lock);
+                    if let Ok(Ok(result)) = tokio::time::timeout(
+                        std::time::Duration::from_millis(
+                            num(&args, "waitMs", 25000).min(120000) as u64
+                        ),
+                        rx,
+                    )
+                    .await
+                    {
+                        return result;
+                    }
                 }
             }
             return Ok(r);
@@ -449,11 +464,31 @@ impl AgentHost {
             private_dir(&dir)?;
             let mut tasks = Vec::new();
             for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-                let path = entry.map_err(|e| e.to_string())?.path();
+                let path = match entry {
+                    Ok(entry) => entry.path(),
+                    Err(e) => {
+                        crate::logs::record("WARN", &format!("Skipping task record: {e}"), None);
+                        continue;
+                    }
+                };
                 if path.extension().is_some_and(|e| e == "json") {
-                    let t = load(&path)?;
-                    if t["agent"] == agent {
-                        tasks.push(self.task(agent, string(&t, "taskId")).await?);
+                    let result: Result<Option<Value>> = async {
+                        let t = load(&path)?;
+                        if t["agent"] == agent {
+                            Ok(Some(self.task(agent, string(&t, "taskId")).await?))
+                        } else {
+                            Ok(None)
+                        }
+                    }
+                    .await;
+                    match result {
+                        Ok(Some(t)) => tasks.push(t),
+                        Ok(None) => (),
+                        Err(e) => crate::logs::record(
+                            "WARN",
+                            &format!("Skipping agent task {}: {e}", path.display()),
+                            None,
+                        ),
                     }
                 }
             }
@@ -501,8 +536,10 @@ impl AgentHost {
         }
         let request = string(&args, "requestId");
         RECEIPTS.path(request)?;
-        let digest = hash(json!({"name":name,"args":args}).to_string());
-        let mut ops = self.operations.lock().await;
+        let mut payload = args.clone();
+        payload.as_object_mut().map(|p| p.remove("waitMs"));
+        let digest = hash(json!({"name":name,"args":payload}).to_string());
+        let request_lock = self.requests.lock(request).await;
         if let Some(receipt) = RECEIPTS.replay(request, &digest, &self.session)? {
             return Ok(receipt);
         }
@@ -511,9 +548,6 @@ impl AgentHost {
         } else {
             string(&args, "taskId").into()
         };
-        if name != "agent_create" {
-            self.task(agent, &task).await?;
-        }
         if name == "agent_create" {
             let cwd = Path::new(string(&args, "cwd"));
             if !cwd.is_absolute() || !cwd.is_dir() {
@@ -533,13 +567,30 @@ impl AgentHost {
         };
         let receipt = json!({"origin":crate::kernel::origin::current_origin(),"requestId":request,"agent":agent,"taskId":task,"previousTurnId":previous_turn,"operation":name,"arguments":args,"digest":digest,"state":if needs_approval{"awaiting-approval"}else{"pending"},"backendSession":self.session,"createdAt":now(),"nextAction":"agent_request"});
         RECEIPTS.reserve(&receipt)?;
-        if !needs_approval {
-            let job = self.launch(driver.clone(), receipt.clone());
-            ops.insert(request.into(), job);
+        if needs_approval {
+            return Ok(receipt);
         }
-        Ok(receipt)
+        let mut ops = self.operations.lock().await;
+        let (job, rx) = self.launch(driver.clone(), receipt.clone());
+        ops.insert(request.into(), job);
+        drop(ops);
+        drop(request_lock);
+        match tokio::time::timeout(
+            std::time::Duration::from_millis(num(&args, "waitMs", 25000).min(120000) as u64),
+            rx,
+        )
+        .await
+        {
+            Ok(Ok(result)) => result,
+            _ => Ok(receipt),
+        }
     }
-    fn launch(self: &Arc<Self>, driver: AgentDriver, mut r: Value) -> Operation {
+    fn launch(
+        self: &Arc<Self>,
+        driver: AgentDriver,
+        mut r: Value,
+    ) -> (Operation, tokio::sync::oneshot::Receiver<Result<Value>>) {
+        let (tx, rx) = tokio::sync::oneshot::channel();
         let host = self.clone();
         let task = string(&r, "taskId").to_owned();
         let previous_turn = r["previousTurnId"].clone();
@@ -559,27 +610,24 @@ impl AgentHost {
                     r["result"] = v;
                 }
                 Err(e) => {
-                    r["state"] = json!(if e.starts_with("RPC_REJECTED")
-                        || e == "TASK_BUSY_OR_UNCONFIRMED"
-                        || e == "AGENT_DISABLED"
-                    {
-                        "rejected"
-                    } else {
-                        "unconfirmed"
-                    });
+                    r["state"] = json!(crate::kernel::receipts::failure_state(&e));
                     r["error"] = json!(e);
                 }
             }
             // Failure leaves the original pending receipt; replay is always prohibited.
-            let _ = RECEIPTS.checkpoint(&mut r);
+            let result = RECEIPTS.checkpoint(&mut r).map(|_| r.clone());
+            let _ = tx.send(result);
             host.operations.lock().await.remove(string(&r, "requestId"));
             host.wake.notify_waiters();
         }));
-        Operation {
-            task,
-            previous_turn,
-            job,
-        }
+        (
+            Operation {
+                task,
+                previous_turn,
+                job,
+            },
+            rx,
+        )
     }
     async fn perform(
         &self,

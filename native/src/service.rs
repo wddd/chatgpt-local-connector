@@ -303,9 +303,7 @@ impl Service {
             }
             json!({"config":config,"core":{"desktop":{"state":"unknown"},"appServer":{"state":"unknown"},"chatgpt":{},"logs":[]},"connection":{"running":false,"mcpUrl":""},"connector":{"state":"stopped"},"tunnel":{"state":"stopped","error":""},"logs":[],"version":env!("CARGO_PKG_VERSION"),"platform":if cfg!(target_os="macos"){"darwin"}else{"win32"},"taskApprovalEnabled":self.control.approval_mode()?,"autoOpenCodex":self.control.auto_open_codex()?})
         };
-        let desktop = match crate::desktop::Ipc::open(Default::default(), &self.control.session)
-            .await
-        {
+        let desktop = match self.control.ipc().await {
             Ok(_) => {
                 json!({"supported":true,"state":"ready","executionOwner":"desktop","message":"Codex Desktop 已就绪"})
             }
@@ -958,7 +956,12 @@ impl Service {
                 }
                 ("POST", "tasks/decision") => {
                     self.control
-                        .decide(string(&body, "requestId"), string(&body, "action"), "local")
+                        .decide(
+                            string(&body, "requestId"),
+                            string(&body, "action"),
+                            "local",
+                            25000,
+                        )
                         .await
                 }
                 ("GET", "tasks") => Ok(json!({"records":self.control.task_records().await?})),

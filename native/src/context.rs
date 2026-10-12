@@ -45,8 +45,7 @@ pub async fn read(
         .iter()
         .find(|t| t["name"] == "agent_context")
         .unwrap();
-    jsonschema::validator_for(&spec["inputSchema"])
-        .map_err(|e| e.to_string())?
+    crate::validator("tool", "agent_context", &spec["inputSchema"])?
         .validate(&args)
         .map_err(|e| e.to_string())?;
     let agent = args["agent"].as_str().unwrap_or("codex");
@@ -198,7 +197,7 @@ pub async fn read(
             let q = projects::query(
                 c,
                 "git",
-                &json!({"project":p["root"],"operation":"status","view":"review"}),
+                &json!({"project":p["root"],"operation":"status","view":"review","includeSource":true}),
             )
             .await?;
             Ok::<_, String>((q, native.is_some()))

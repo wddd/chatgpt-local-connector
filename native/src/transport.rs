@@ -2,7 +2,7 @@ use crate::service::Service;
 use crate::*;
 use std::time::Duration;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
 };
 pub enum DesktopRequest {
@@ -44,13 +44,14 @@ pub async fn listen_desktop(
                     let (owner, token) = (owner.clone(), token.clone());
                     async move {
                         let result: Result<Value> = async {
-                            if request.headers().get("host").and_then(|h| h.to_str().ok())
-                                != Some(format!("127.0.0.1:{port}").as_str())
-                                || request
-                                    .headers()
-                                    .get("authorization")
-                                    .and_then(|h| h.to_str().ok())
-                                    != Some(format!("Bearer {token}").as_str())
+                            if !local_host(
+                                request.headers().get("host").and_then(|h| h.to_str().ok()),
+                                port,
+                            ) || request
+                                .headers()
+                                .get("authorization")
+                                .and_then(|h| h.to_str().ok())
+                                != Some(format!("Bearer {token}").as_str())
                                 || request.headers().contains_key("origin")
                             {
                                 return Err("unauthorized".into());
@@ -146,192 +147,158 @@ pub async fn listen(
         }
     }))
 }
+fn local_host(host: Option<&str>, port: u16) -> bool {
+    host.is_some_and(|host| {
+        host.eq_ignore_ascii_case(&format!("localhost:{port}"))
+            || host == format!("127.0.0.1:{port}")
+    })
+}
+type LocalBody = http_body_util::combinators::BoxBody<hyper::body::Bytes, std::convert::Infallible>;
+
+struct EventBody(tokio::sync::mpsc::Receiver<hyper::body::Bytes>);
+impl hyper::body::Body for EventBody {
+    type Data = hyper::body::Bytes;
+    type Error = std::convert::Infallible;
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<std::result::Result<hyper::body::Frame<Self::Data>, Self::Error>>>
+    {
+        self.0
+            .poll_recv(cx)
+            .map(|v| v.map(|bytes| Ok(hyper::body::Frame::data(bytes))))
+    }
+}
+fn local_reply(code: u16, value: Value) -> hyper::Response<LocalBody> {
+    use http_body_util::BodyExt;
+    hyper::Response::builder()
+        .status(code)
+        .header("Content-Type", "application/json")
+        .header("Cache-Control", "no-store")
+        .body(http_body_util::Full::new(hyper::body::Bytes::from(value.to_string())).boxed())
+        .unwrap()
+}
 async fn handle(
     stream: TcpStream,
     s: Arc<Service>,
     desktop: Option<Arc<dyn DesktopAccess>>,
 ) -> Result<()> {
-    let mut reader = BufReader::new(stream);
-    let request = tokio::time::timeout(Duration::from_secs(5), async {
-        let mut head = String::new();
-        loop {
-            let bytes = crate::line(&mut reader, 16384).await?;
-            if bytes.is_empty() {
-                return Err("empty request".into());
-            }
-            let line = String::from_utf8(bytes).map_err(|_| "invalid header")?;
-            head.push_str(&line);
-            if head.len() > 16384 {
-                return Err("headers too large".into());
-            }
-            if line == "\r\n" {
-                break;
-            }
-        }
-        let mut lines = head.split("\r\n");
-        let first = lines.next().unwrap_or("");
-        let fields: Vec<_> = first.split_whitespace().collect();
-        if fields.len() != 3 {
-            return Err("bad request".into());
-        }
-        let method = fields[0].to_owned();
-        let path = fields[1].to_owned();
-        let headers: std::collections::HashMap<_, _> = lines
-            .filter_map(|l| l.split_once(':'))
-            .map(|(k, v)| (k.to_lowercase(), v.trim().to_owned()))
-            .collect();
-        let port = s.port.load(std::sync::atomic::Ordering::SeqCst);
-        if headers.get("host").map(String::as_str) != Some(format!("127.0.0.1:{port}").as_str()) {
-            return Err("invalid host".into());
-        }
-        if headers.get("authorization") != Some(&format!("Bearer {}", s.token)) {
-            return Err("unauthorized".into());
-        }
-        if let Some(origin) = headers.get("origin") {
-            if origin != &format!("http://127.0.0.1:{port}") {
-                return Err("invalid origin".into());
-            }
-        }
-        if headers.contains_key("transfer-encoding") {
-            return Err("unsupported encoding".into());
-        }
-        let len = headers
-            .get("content-length")
-            .map(|v| v.parse::<usize>())
-            .transpose()
-            .map_err(|_| "bad length")?
-            .unwrap_or(0);
-        if len > 16 * 1024 * 1024 {
-            return Err("body too large".into());
-        }
-        let mut bytes = vec![0; len];
-        reader
-            .read_exact(&mut bytes)
+    use hyper::{server::conn::http1, service::service_fn};
+    let service = service_fn(move |request| {
+        let (s, desktop) = (s.clone(), desktop.clone());
+        async move { Ok::<_, std::convert::Infallible>(local_request(request, s, desktop).await) }
+    });
+    http1::Builder::new()
+        .timer(hyper_util::rt::TokioTimer::new())
+        .header_read_timeout(Duration::from_secs(5))
+        .keep_alive(false)
+        .max_buf_size(16384)
+        .serve_connection(hyper_util::rt::TokioIo::new(stream), service)
+        .await
+        .map_err(|e| e.to_string())
+}
+async fn local_request(
+    request: hyper::Request<hyper::body::Incoming>,
+    s: Arc<Service>,
+    desktop: Option<Arc<dyn DesktopAccess>>,
+) -> hyper::Response<LocalBody> {
+    use http_body_util::{BodyExt, Limited};
+    let port = s.port.load(std::sync::atomic::Ordering::SeqCst);
+    let headers = request.headers();
+    if !local_host(headers.get("host").and_then(|v| v.to_str().ok()), port)
+        || headers.get("authorization").and_then(|v| v.to_str().ok())
+            != Some(format!("Bearer {}", s.token).as_str())
+        || headers
+            .get("origin")
+            .is_some_and(|v| v.to_str().ok() != Some(format!("http://127.0.0.1:{port}").as_str()))
+    {
+        return local_reply(403, json!({"error":"unauthorized"}));
+    }
+    let method = request.method().to_string();
+    let path = request.uri().path().to_owned();
+    let parsed = tokio::time::timeout(Duration::from_secs(5), async {
+        let bytes = Limited::new(request.into_body(), 16 * 1024 * 1024)
+            .collect()
             .await
-            .map_err(|e| e.to_string())?;
-        let body = if len == 0 {
-            json!({})
+            .map_err(|e| e.to_string())?
+            .to_bytes();
+        if bytes.is_empty() {
+            Ok(json!({}))
         } else {
-            serde_json::from_slice(&bytes).map_err(|e| e.to_string())?
-        };
-        Ok::<_, String>((method, path, body))
+            serde_json::from_slice(&bytes).map_err(|e| e.to_string())
+        }
     })
-    .await
-    .map_err(|_| "request timeout")?;
-    let mut stream = reader.into_inner();
-    let (method, path, body) = match request {
-        Ok(v) => v,
-        Err(e) => {
-            reply(&mut stream, 403, json!({"error":e})).await?;
-            return Ok(());
-        }
+    .await;
+    let body = match parsed {
+        Ok(Ok(body)) => body,
+        Ok(Err(e)) => return local_reply(400, json!({"error":e})),
+        Err(_) => return local_reply(408, json!({"error":"request timeout"})),
     };
-    if method == "GET" && path == "/api/subscriptions/events" {
-        let mut changes = s.subscriptions.subscribe();
-        stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").await.map_err(|e|e.to_string())?;
-        loop {
-            let packet = format!(
-                "event: snapshot\ndata: {}\n\n",
-                serde_json::to_string(&*changes.borrow_and_update()).map_err(|e| e.to_string())?
-            );
-            if stream.write_all(packet.as_bytes()).await.is_err() {
-                return Ok(());
-            }
-            tokio::select! {
-                result = changes.changed() => if result.is_err() { return Ok(()); },
-                _ = tokio::time::sleep(Duration::from_secs(15)) => {},
-            }
-        }
-    }
-    if method == "GET" && path == "/api/events" {
-        stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").await.map_err(|e|e.to_string())?;
-        loop {
-            let state = s.status().await?;
-            let packet = format!("event: snapshot\ndata: {}\n\n", state);
-            if stream.write_all(packet.as_bytes()).await.is_err() {
-                return Ok(());
-            }
-            tokio::time::sleep(Duration::from_secs(2)).await;
-        }
-    }
-    let result = if (path == "/mcp" || path.starts_with("/mcp/")) && method == "POST" {
-        let ingress = if let Some(id) = path.strip_prefix("/mcp/") {
-            s.ingress(id).await?
-        } else {
-            s.primary().await?
-        };
-        if body["method"] == "tools/call" && is_wait(&body) {
-            let mut disconnected = [0u8; 1];
-            tokio::select! {
-                result = mcp_ingress(&ingress, body) => result,
-                _ = stream.read(&mut disconnected) => return Ok(()),
-            }
-        } else {
-            mcp_ingress(&ingress, body).await
-        }
-    } else if method == "GET" && path == "/healthz" {
-        Ok(
-            json!({"runtime":"rust","instance":s.control.session,"pid":std::process::id(),"owner":"core","version":env!("CARGO_PKG_VERSION"),"build":load(&root().join("web/native.json"))?["build"]}),
-        )
-    } else if let Some(route) = path.strip_prefix("/api/") {
-        async {
-            if method != "GET" {
-                if let Some(owner) = &desktop {
-                    owner.check_write()?;
+    if method == "GET" && matches!(path.as_str(), "/api/events" | "/api/subscriptions/events") {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        tokio::spawn(async move {
+            let subscriptions = path == "/api/subscriptions/events";
+            let mut changes = s.subscriptions.subscribe();
+            loop {
+                let snapshot = if subscriptions {
+                    json!(&*changes.borrow_and_update())
+                } else {
+                    match tokio::select! { _ = tx.closed() => return, v = s.status() => v } {
+                        Ok(v) => v,
+                        Err(_) => return,
+                    }
+                };
+                if tx
+                    .send(hyper::body::Bytes::from(format!(
+                        "event: snapshot\ndata: {snapshot}\n\n"
+                    )))
+                    .await
+                    .is_err()
+                {
+                    return;
                 }
+                tokio::select! {
+                    _ = tx.closed() => return,
+                    result = changes.changed(), if subscriptions => if result.is_err() { return; },
+                    _ = tokio::time::sleep(Duration::from_secs(if subscriptions { 15 } else { 2 })) => {},
+                }
+            }
+        });
+        return hyper::Response::builder()
+            .header("Content-Type", "text/event-stream")
+            .header("Cache-Control", "no-store")
+            .body(EventBody(rx).boxed())
+            .unwrap();
+    }
+    let result = async {
+        if (path == "/mcp" || path.starts_with("/mcp/")) && method == "POST" {
+            let ingress = if let Some(id) = path.strip_prefix("/mcp/") { s.ingress(id).await? } else { s.primary().await? };
+            mcp_ingress(&ingress, body).await
+        } else if method == "GET" && path == "/healthz" {
+            Ok(json!({"runtime":"rust","instance":s.control.session,"pid":std::process::id(),"owner":"core","version":env!("CARGO_PKG_VERSION"),"build":load(&root().join("web/native.json"))?["build"]}))
+        } else if let Some(route) = path.strip_prefix("/api/") {
+            if method != "GET" {
+                if let Some(owner) = &desktop { owner.check_write()?; }
             }
             let operation = match (route, method.as_str()) {
                 ("service", "GET") => Some(DesktopRequest::ServiceGet),
                 ("service", "POST") => Some(DesktopRequest::ServiceSet(body.clone())),
                 ("usage-panel", "GET") => Some(DesktopRequest::PanelGet),
                 ("usage-panel", "PUT") => Some(DesktopRequest::PanelSet(body.clone())),
-                ("subscriptions/open", "POST") => {
-                    Some(DesktopRequest::SubscriptionsOpen(body.clone()))
-                }
-                _ if crate::management::desktop_route(route) => Some(DesktopRequest::Route(
-                    route.into(),
-                    method.clone(),
-                    body.clone(),
-                )),
+                ("subscriptions/open", "POST") => Some(DesktopRequest::SubscriptionsOpen(body.clone())),
+                _ if crate::management::desktop_route(route) => Some(DesktopRequest::Route(route.into(), method.clone(), body.clone())),
                 _ => None,
             };
             if let Some(operation) = operation {
-                return if let Some(desktop) = &desktop {
-                    desktop.request(operation).await
-                } else {
-                    s.runtime.desktop_request(operation).await
-                };
-            }
-            if route == "plugin/call"
-                && matches!(string(&body, "name"), "agent_wait" | "codex_wait")
-            {
-                let mut disconnected = [0u8; 1];
-                tokio::select! {
-                    result = s.request(route, &method, body) => result,
-                    _ = stream.read(&mut disconnected) => Err("wait disconnected".into()),
-                }
-            } else {
-                s.request(route, &method, body).await
-            }
-        }
-        .await
-    } else {
-        Err("not found".into())
-    };
+                if let Some(desktop) = &desktop { desktop.request(operation).await }
+                else { s.runtime.desktop_request(operation).await }
+            } else { s.request(route, &method, body).await }
+        } else { Err("not found".into()) }
+    }.await;
     match result {
-        Ok(v) => reply(&mut stream, 200, v).await,
-        Err(e) => reply(&mut stream, 400, json!({"error":e})).await,
+        Ok(v) => local_reply(200, v),
+        Err(e) => local_reply(400, json!({"error":e})),
     }
-}
-async fn reply(s: &mut TcpStream, code: u16, v: Value) -> Result<()> {
-    let body = v.to_string();
-    let head=format!("HTTP/1.1 {code} {}\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",if code==200{"OK"}else{"Error"},body.len());
-    s.write_all(head.as_bytes())
-        .await
-        .map_err(|e| e.to_string())?;
-    s.write_all(body.as_bytes())
-        .await
-        .map_err(|e| e.to_string())
 }
 fn is_wait(request: &Value) -> bool {
     matches!(

@@ -65,7 +65,6 @@ impl Drop for Ipc {
 }
 impl Ipc {
     pub async fn open(events: SharedEvents, session: &str) -> Result<Self> {
-        require_installation()?;
         #[cfg(unix)]
         let socket = {
             use std::os::unix::fs::{FileTypeExt, MetadataExt};
@@ -117,7 +116,7 @@ impl Ipc {
                     break;
                 }
                 let Ok(msg) = serde_json::from_slice::<Value>(&bytes) else {
-                    break;
+                    continue;
                 };
                 match string(&msg, "type") {
                     "client-discovery-request" => {
@@ -150,7 +149,7 @@ impl Ipc {
                             continue;
                         }
                         if msg["version"] != 11 {
-                            break;
+                            continue;
                         }
                         let params = &msg["params"];
                         if params["hostId"] != "local" {
@@ -166,6 +165,9 @@ impl Ipc {
                             s.lock()
                                 .await
                                 .insert(thread.into(), params["change"].clone());
+                        } else {
+                            // Delta frames are not full snapshots. Request a fresh snapshot on the next read.
+                            s.lock().await.remove(thread);
                         }
                         n.notify_waiters();
                         // Follow/read can repeat an unchanged snapshot. Wake task waiters
@@ -223,7 +225,11 @@ impl Ipc {
         w.write_all(&bytes).await.map_err(|e| e.to_string())
     }
     async fn write(&self, v: Value) -> Result<()> {
-        Self::frame(&self.writer, v).await
+        let result = Self::frame(&self.writer, v).await;
+        if result.is_err() {
+            self.alive.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+        result
     }
     pub fn alive(&self) -> bool {
         self.alive.load(std::sync::atomic::Ordering::SeqCst)
@@ -234,6 +240,23 @@ impl Ipc {
         params: Value,
         target: Option<&str>,
     ) -> Result<Value> {
+        if !self.alive() {
+            return Err("DESKTOP_DISCONNECTED".into());
+        }
+        let submitted_error = |e: String| {
+            if matches!(
+                method,
+                "thread-follower-start-turn"
+                    | "thread-follower-steer-turn"
+                    | "thread-follower-interrupt-turn"
+            ) && !e.starts_with("DESKTOP_REJECTED")
+                && e != "DESKTOP_RESPONSE_OWNER_MISMATCH"
+            {
+                format!("SUBMISSION_UNCONFIRMED: {e}")
+            } else {
+                e
+            }
+        };
         let request_id = id();
         let (tx, rx) = oneshot::channel();
         let base = match method {
@@ -260,12 +283,15 @@ impl Ipc {
         );
         if let Err(e) = self.write(msg).await {
             self.pending.lock().await.remove(&request_id);
-            return Err(e);
+            self.alive.store(false, std::sync::atomic::Ordering::SeqCst);
+            return Err(submitted_error(e));
         }
         let out = tokio::time::timeout(Duration::from_secs(30), rx).await;
         self.pending.lock().await.remove(&request_id);
-        out.map_err(|_| format!("DESKTOP_REQUEST_UNCONFIRMED: {method}"))?
-            .map_err(|_| "DESKTOP_DISCONNECTED".to_string())?
+        out.map_err(|_| format!("DESKTOP_REQUEST_TIMEOUT: {method}"))
+            .and_then(|v| v.map_err(|_| "DESKTOP_DISCONNECTED".to_string()))
+            .and_then(|v| v)
+            .map_err(submitted_error)
     }
     pub async fn owner(&self, thread: &str) -> Result<String> {
         let r = self
@@ -279,14 +305,22 @@ impl Ipc {
             .as_str()
             .ok_or("DESKTOP_OWNER_NOT_FOUND")?
             .to_owned();
-        self.owners
+        let previous = self
+            .owners
             .lock()
             .await
             .insert(thread.into(), owner.clone());
+        if previous.as_ref().is_some_and(|v| v != &owner) {
+            self.snapshots.lock().await.remove(thread);
+        }
         Ok(owner)
     }
     pub async fn follow(&self, thread: &str) -> Result<()> {
-        let owner = self.owner(thread).await?;
+        let known = self.owners.lock().await.get(thread).cloned();
+        let owner = match known {
+            Some(owner) => owner,
+            None => self.owner(thread).await?,
+        };
         self.follow_owner(thread, &owner).await
     }
     async fn follow_owner(&self, thread: &str, owner: &str) -> Result<()> {
@@ -313,6 +347,11 @@ impl Ipc {
         .map_err(|_| "DESKTOP_SNAPSHOT_TIMEOUT")?
     }
     pub async fn read(&self, thread: &str, complete: bool) -> Result<Value> {
+        if let Some(state) = self.snapshot(thread).await {
+            if !complete || state["turnHistory"]["history"]["isComplete"] == true {
+                return Ok(state);
+            }
+        }
         let owner = self.owner(thread).await?;
         self.read_owned(thread, complete, &owner).await
     }
@@ -322,9 +361,13 @@ impl Ipc {
         complete: bool,
         owner: &str,
     ) -> Result<Value> {
-        self.snapshots.lock().await.remove(thread);
-        self.follow_owner(thread, &owner).await?;
-        let mut state = self.wait(thread, 0).await?;
+        let mut state = match self.snapshot(thread).await {
+            Some(state) => state,
+            None => {
+                self.follow_owner(thread, owner).await?;
+                self.wait(thread, 0).await?
+            }
+        };
         if complete && state["turnHistory"]["history"]["isComplete"] != true {
             let r = self
                 .request(
@@ -342,10 +385,14 @@ impl Ipc {
                 )
                 .await?;
         }
-        if state["id"] != thread || state["hostId"] != "local" {
-            return Err("DESKTOP_SNAPSHOT_ID_MISMATCH".into());
-        }
         Ok(state)
+    }
+    pub async fn snapshot(&self, thread: &str) -> Option<Value> {
+        self.snapshots
+            .lock()
+            .await
+            .get(thread)
+            .map(|s| s["conversationState"].clone())
     }
     pub async fn mutate(&self, method: &str, args: &Value) -> Result<Value> {
         let thread = string(args, "threadId");
@@ -354,7 +401,7 @@ impl Ipc {
             Some(owner) => owner,
             None => self.owner(thread).await?,
         };
-        self.follow_owner(thread, &owner).await?;
+        let _ = self.follow_owner(thread, &owner).await;
         match method {
             "turn/start" => {
                 let mut args = args.clone();
@@ -362,17 +409,16 @@ impl Ipc {
                 // Desktop inherits collaborationMode separately from model/effort;
                 // its settings take precedence when App Server starts the turn.
                 if args["collaborationMode"].is_null() {
-                    let state = self.read(thread, false).await?;
+                    let state = self.snapshot(thread).await.unwrap_or(Value::Null);
                     let settings = &state["latestThreadSettings"];
                     if args["model"].is_null() {
                         let model = settings["model"]
                             .as_str()
                             .filter(|model| !model.is_empty())
                             .unwrap_or_else(|| string(&state, "latestModel"));
-                        if model.is_empty() {
-                            return Err("DESKTOP_MODEL_UNAVAILABLE".into());
+                        if !model.is_empty() {
+                            args["model"] = json!(model);
                         }
-                        args["model"] = json!(model);
                     }
                     let mut mode = settings
                         .get("collaborationMode")
@@ -380,7 +426,9 @@ impl Ipc {
                         .unwrap_or(&state["latestCollaborationMode"])
                         .clone();
                     if mode.is_object() {
-                        mode["settings"]["model"] = args["model"].clone();
+                        if !args["model"].is_null() {
+                            mode["settings"]["model"] = args["model"].clone();
+                        }
                         if let Some(effort) = args.get("effort") {
                             mode["settings"]["reasoning_effort"] = effort.clone();
                         }
@@ -397,17 +445,18 @@ impl Ipc {
                 Ok(r["result"]["result"].clone())
             }
             "turn/steer" => {
-                let state = self.read(thread, true).await?;
-                let turns = turns(&state)?;
-                let active = turns
-                    .iter()
-                    .rev()
-                    .find(|t| t["status"] == "inProgress")
-                    .ok_or("DESKTOP_TURN_MISMATCH")?;
-                if args["expectedTurnId"].is_null() || active["id"] != args["expectedTurnId"] {
-                    return Err("DESKTOP_TURN_MISMATCH".into());
+                let state = self.snapshot(thread).await.unwrap_or(Value::Null);
+                let mut params = args.clone();
+                params.as_object_mut().unwrap().remove("threadId");
+                params["conversationId"] = json!(thread);
+                params["input"] = input(&args["input"])?;
+                params["attachments"] = json!([]);
+                if state["cwd"].is_string() {
+                    params["restoreMessage"] = json!({"cwd":state["cwd"],"context":{"workspaceRoots":[state["cwd"]],"commentAttachments":[]}});
                 }
-                let r=self.request("thread-follower-steer-turn",json!({"conversationId":thread,"input":input(&args["input"] )?,"attachments":[],"restoreMessage":{"cwd":state["cwd"],"context":{"workspaceRoots":[state["cwd"]],"commentAttachments":[]}}}),Some(&owner)).await?;
+                let r = self
+                    .request("thread-follower-steer-turn", params, Some(&owner))
+                    .await?;
                 Ok(r["result"]["result"].clone())
             }
             "turn/interrupt" => {
@@ -415,8 +464,8 @@ impl Ipc {
                     return Err("DESKTOP_TURN_ID_REQUIRED".into());
                 }
                 let r=self.request("thread-follower-interrupt-turn",json!({"conversationId":thread,"mode":"user-stop","expectedTurnId":args["turnId"]}),Some(&owner)).await?;
-                if r["result"]["ok"] != true || r["result"]["interruptedTurnId"] != args["turnId"] {
-                    return Err("DESKTOP_INTERRUPT_NOT_CONFIRMED".into());
+                if r["result"]["ok"] != true {
+                    return Err("DESKTOP_REJECTED: interrupt not accepted".into());
                 }
                 Ok(json!({}))
             }
@@ -464,8 +513,12 @@ pub fn input(v: &Value) -> Result<Value> {
     Ok(json!(out))
 }
 pub async fn open_thread(thread: &str) -> Result<Value> {
-    uuid::Uuid::parse_str(thread).map_err(|_| "INVALID_THREAD_ID")?;
-    let url = format!("codex://threads/{thread}");
+    let mut url = reqwest::Url::parse("codex://threads/").map_err(|e| e.to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "invalid thread URL")?
+        .pop_if_empty()
+        .push(thread);
+    let url = url.to_string();
     open_url(Some(&url)).await?;
     Ok(json!({"state":"opened","url":url}))
 }

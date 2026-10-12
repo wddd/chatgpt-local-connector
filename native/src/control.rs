@@ -11,9 +11,11 @@ pub struct Control {
     pub(crate) shutdown: tokio::sync::watch::Sender<u64>,
     binary: PathBuf,
     rpc: Mutex<Option<Arc<Rpc>>>,
-    monitor: Mutex<Option<Ipc>>,
+    monitor: Mutex<Option<Arc<Ipc>>>,
     jobs: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
     schemas: Mutex<Option<Value>>,
+    requests: crate::kernel::receipts::RequestLocks,
+    pub(crate) projects: Mutex<Option<(std::time::Instant, Vec<Value>)>>,
 }
 const RECEIPTS: crate::kernel::receipts::ReceiptStore =
     crate::kernel::receipts::ReceiptStore::new("");
@@ -28,6 +30,8 @@ impl Control {
             monitor: Mutex::new(None),
             jobs: Default::default(),
             schemas: Mutex::new(None),
+            requests: Default::default(),
+            projects: Default::default(),
         })
     }
     pub async fn utility(&self) -> Result<Arc<Rpc>> {
@@ -44,15 +48,17 @@ impl Control {
         rpc.close().await;
         result
     }
-    async fn ipc(&self) -> Result<Ipc> {
-        Ipc::open(self.events.clone(), &self.session).await
-    }
-    async fn follow(&self, thread: &str) -> Result<()> {
+    pub(crate) async fn ipc(&self) -> Result<Arc<Ipc>> {
         let mut ipc = self.monitor.lock().await;
         if ipc.as_ref().is_none_or(|i| !i.alive()) {
-            *ipc = Some(self.ipc().await?)
+            *ipc = Some(Arc::new(
+                Ipc::open(self.events.clone(), &self.session).await?,
+            ));
         }
-        ipc.as_ref().unwrap().follow(thread).await
+        Ok(ipc.as_ref().unwrap().clone())
+    }
+    async fn follow(&self, thread: &str) -> Result<()> {
+        self.ipc().await?.follow(thread).await
     }
     pub async fn health(&self) -> Value {
         json!({"appServer":if self.rpc.lock().await.as_ref().is_some_and(|r|r.alive()){"ready"}else{"stopped"},"activeWrites":self.jobs.lock().await.len()})
@@ -62,13 +68,14 @@ impl Control {
     }
     pub async fn close(&self) {
         self.stop_waits();
-        for (request, job) in self.jobs.lock().await.drain() {
+        let jobs: Vec<_> = self.jobs.lock().await.drain().collect();
+        for (request, job) in jobs {
             job.abort();
             let _ = job.await;
             if let Ok(mut receipt) = load(&root().join(format!("{request}.json"))) {
                 if !matches!(
                     string(&receipt, "state"),
-                    "completed" | "rejected" | "not-executed" | "unconfirmed"
+                    "completed" | "failed" | "rejected" | "not-executed" | "unconfirmed"
                 ) {
                     receipt["previousState"] = receipt["state"].clone();
                     receipt["state"] = json!("unconfirmed");
@@ -86,10 +93,9 @@ impl Control {
         Ok(!path.exists() || load(&path)?["autoOpenCodex"] != false)
     }
     pub(crate) fn background(&self, thread: &str) -> Result<bool> {
-        if thread.is_empty() {
+        if uuid::Uuid::parse_str(thread).is_err() {
             return Ok(false);
         }
-        uuid::Uuid::parse_str(thread).map_err(|_| "INVALID_THREAD_ID")?;
         let path = root().join("execution").join(format!("{thread}.json"));
         Ok(path.exists() && load(&path)?["owner"] == "connector")
     }
@@ -107,11 +113,12 @@ impl Control {
         args["ephemeral"] = json!(false);
         let result = rpc.call("thread/start", args, 60000).await?;
         let thread = string(&result["thread"], "id");
-        uuid::Uuid::parse_str(thread).map_err(|_| "INVALID_THREAD_ID")?;
-        save(
-            &root().join("execution").join(format!("{thread}.json")),
-            &json!({"owner":"connector"}),
-        )?;
+        if uuid::Uuid::parse_str(thread).is_ok() {
+            save(
+                &root().join("execution").join(format!("{thread}.json")),
+                &json!({"owner":"connector"}),
+            )?;
+        }
         if let Some(r) = receipt {
             r["threadId"] = json!(thread);
             r["task"]["directory"] = result["thread"]["cwd"].clone();
@@ -132,17 +139,8 @@ impl Control {
         let rpc = self.utility().await?;
         // Resume only an explicit new-turn write; reads and interrupts never restart a task.
         if method == "turn/start" {
-            let state = rpc
-                .call(
-                    "thread/read",
-                    json!({"threadId":args["threadId"],"includeTurns":false}),
-                    60000,
-                )
+            rpc.call("thread/resume", json!({"threadId":args["threadId"]}), 60000)
                 .await?;
-            if state["thread"]["status"]["type"] == "notLoaded" {
-                rpc.call("thread/resume", json!({"threadId":args["threadId"]}), 60000)
-                    .await?;
-            }
         }
         let mut result = rpc.call(method, args, timeout).await?;
         if method == "thread/read" {
@@ -213,7 +211,6 @@ impl Control {
         }
         if matches!(method, "turn/start" | "turn/steer" | "turn/interrupt") {
             let ipc = self.ipc().await?;
-            self.follow(string(&args, "threadId")).await?;
             return ipc.mutate(method, &args).await;
         }
         if method == "thread/start" {
@@ -221,20 +218,11 @@ impl Control {
                 return self.create_background(args, "", None).await;
             }
             let result = self.seed(args, "", None).await?;
-            desktop::reveal(&self.ipc().await?, string(&result["thread"], "id")).await?;
+            desktop::reveal(self.ipc().await?.as_ref(), string(&result["thread"], "id")).await?;
             return Ok(result);
         }
         if method == "thread/resume" {
-            if args
-                .as_object()
-                .is_none_or(|o| o.keys().any(|k| k != "threadId"))
-            {
-                return Err("Desktop resume only accepts threadId".into());
-            }
-            let ipc = self.ipc().await?;
-            desktop::reveal(&ipc, string(&args, "threadId")).await?;
-            let state = ipc.read(string(&args, "threadId"), true).await?;
-            return Ok(json!({"thread":thread(&state,true)?}));
+            return self.utility().await?.call(method, args, timeout).await;
         }
         if matches!(
             method,
@@ -245,7 +233,7 @@ impl Control {
             let result = async { self.ipc().await?.read(id, complete).await }.await;
             match result {
                 Ok(state) => {
-                    self.follow(id).await?;
+                    let _ = self.follow(id).await;
                     if method == "thread/read" {
                         return Ok(json!({"thread":thread(&state,complete)?}));
                     }
@@ -343,8 +331,10 @@ impl Control {
     pub async fn mutate(self: &Arc<Self>, operation: &str, args: Value) -> Result<Value> {
         let request = string(&args, "requestId").to_owned();
         RECEIPTS.path(&request)?;
-        let digest = hash(json!({"operation":operation,"args":args}).to_string());
-        let mut jobs = self.jobs.lock().await;
+        let mut payload = args.clone();
+        payload.as_object_mut().map(|p| p.remove("waitMs"));
+        let digest = hash(json!({"operation":operation,"args":payload}).to_string());
+        let request_lock = self.requests.lock(&request).await;
         if let Some(receipt) = RECEIPTS.replay(&request, &digest, &self.session)? {
             return Ok(receipt);
         }
@@ -376,9 +366,12 @@ impl Control {
         if receipt["state"] == "awaiting-approval" {
             return Ok(receipt);
         }
+        let wait = num(&args, "waitMs", 25000).min(120000) as u64;
+        let mut jobs = self.jobs.lock().await;
         let rx = self.launch(operation, args, receipt, &mut jobs);
         drop(jobs);
-        match tokio::time::timeout(Duration::from_millis(100), rx).await {
+        drop(request_lock);
+        match tokio::time::timeout(Duration::from_millis(wait), rx).await {
             Ok(Ok(r)) => r,
             _ => Ok(json!({"requestId":request,"state":"pending","nextAction":"codex_request"})),
         }
@@ -405,13 +398,7 @@ impl Control {
                 }
                 Err(err) => {
                     receipt["failureStage"] = receipt["state"].clone();
-                    receipt["state"] = json!(if err.starts_with("RPC_REJECTED")
-                        || err.starts_with("DESKTOP_REJECTED")
-                    {
-                        "rejected"
-                    } else {
-                        "unconfirmed"
-                    });
+                    receipt["state"] = json!(crate::kernel::receipts::failure_state(&err));
                     receipt["result"] = json!({"error":crate::egress::failure(&err)});
                 }
             }
@@ -431,11 +418,12 @@ impl Control {
         request: &str,
         action: &str,
         source: &str,
+        wait_ms: u64,
     ) -> Result<Value> {
         if !matches!(action, "approve" | "bypass" | "reject") {
             return Err("invalid approval action".into());
         }
-        let mut jobs = self.jobs.lock().await;
+        let _request_lock = self.requests.lock(request).await;
         let mut r = self.receipt(request).await?;
         if r["state"] != "awaiting-approval" {
             return Ok(r);
@@ -451,14 +439,29 @@ impl Control {
         self.checkpoint(&mut r)?;
         if action != "reject" {
             let op = string(&r, "operation").to_owned();
-            let _rx = self.launch(&op, r["arguments"].clone(), r.clone(), &mut jobs);
+            let mut jobs = self.jobs.lock().await;
+            let rx = self.launch(&op, r["arguments"].clone(), r.clone(), &mut jobs);
+            drop(jobs);
+            drop(_request_lock);
+            if let Ok(Ok(result)) =
+                tokio::time::timeout(Duration::from_millis(wait_ms.min(120000)), rx).await
+            {
+                return result;
+            }
+            r["state"] = json!("pending");
         }
         Ok(r)
     }
     pub async fn task_records(&self) -> Result<Vec<Value>> {
         let mut records = Vec::new();
         for entry in std::fs::read_dir(root()).map_err(|e| e.to_string())? {
-            let path = entry.map_err(|e| e.to_string())?.path();
+            let path = match entry {
+                Ok(entry) => entry.path(),
+                Err(e) => {
+                    crate::logs::record("WARN", &format!("Skipping task record: {e}"), None);
+                    continue;
+                }
+            };
             if path.extension().is_none_or(|e| e != "json") {
                 continue;
             }
@@ -468,7 +471,17 @@ impl Control {
             if uuid::Uuid::parse_str(request).is_err() {
                 continue;
             }
-            let mut r = self.receipt(request).await?;
+            let mut r = match self.receipt(request).await {
+                Ok(r) => r,
+                Err(e) => {
+                    crate::logs::record(
+                        "WARN",
+                        &format!("Skipping task receipt {request}: {e}"),
+                        None,
+                    );
+                    continue;
+                }
+            };
             if !r["task"].is_object() {
                 let kind = string(&r, "operation");
                 let thread_id = r["threadId"]
@@ -509,11 +522,20 @@ impl Control {
                 }
             }
             if let Some(thread_id) = r["threadId"].as_str() {
-                r["executionOwner"] = json!(if self.background(thread_id)? {
-                    "connector"
-                } else {
-                    "desktop"
-                });
+                match self.background(thread_id) {
+                    Ok(background) => {
+                        r["executionOwner"] =
+                            json!(if background { "connector" } else { "desktop" })
+                    }
+                    Err(e) => {
+                        crate::logs::record(
+                            "WARN",
+                            &format!("Skipping task {thread_id}: {e}"),
+                            None,
+                        );
+                        continue;
+                    }
+                }
             }
             r["error"] = r["result"]["error"].clone();
             r.as_object_mut().unwrap().remove("arguments");
@@ -524,8 +546,9 @@ impl Control {
         Ok(records)
     }
     pub async fn task_runtime(&self, id: &str) -> Result<Value> {
-        uuid::Uuid::parse_str(id).map_err(|_| "INVALID_THREAD_ID")?;
-        let path = root().join("tasks").join(format!("{id}.json"));
+        let path = uuid::Uuid::parse_str(id)
+            .ok()
+            .map(|_| root().join("tasks").join(format!("{id}.json")));
         let live = tokio::time::timeout(
             Duration::from_secs(5),
             self.request(
@@ -551,7 +574,7 @@ impl Control {
                 let mut thread = result["thread"].clone();
                 thread["status"] = json!({"type":"notLoaded"});
                 let mut snapshot = summary(&thread);
-                if let Ok(previous) = load(&path) {
+                if let Some(previous) = path.as_ref().and_then(|p| load(p).ok()) {
                     snapshot["runtimeStatus"] = previous["runtimeStatus"].clone();
                     snapshot["observedAt"] = previous["observedAt"].clone();
                 }
@@ -560,11 +583,13 @@ impl Control {
             }
         };
         if snapshot["archived"].is_null() {
-            if let Ok(previous) = load(&path) {
+            if let Some(previous) = path.as_ref().and_then(|p| load(p).ok()) {
                 snapshot["archived"] = previous["archived"].clone();
             }
         }
-        save(&path, &snapshot)?;
+        if let Some(path) = path {
+            save(&path, &snapshot)?;
+        }
         Ok(snapshot)
     }
     async fn perform(&self, operation: &str, args: &Value, r: &mut Value) -> Result<Value> {
@@ -589,19 +614,6 @@ impl Control {
             if args.get("result").is_some() == args.get("error").is_some() {
                 return Err("provide exactly one of result/error".into());
             }
-            if let Some(value) = args.get("result") {
-                let schema = self
-                    .schema(&json!({"method":pending["method"],"direction":"server"}))
-                    .await?;
-                if !schema["responseSchema"].is_null() {
-                    jsonschema::validator_for(&schema["responseSchema"])
-                        .map_err(|e| e.to_string())?
-                        .validate(value)
-                        .map_err(|e| e.to_string())?;
-                }
-            } else if !args["error"]["code"].is_number() || !args["error"]["message"].is_string() {
-                return Err("INVALID_RPC_ERROR".into());
-            }
             let rpc = self.utility().await?;
             r["state"] = json!("responding");
             self.checkpoint(r)?;
@@ -612,7 +624,9 @@ impl Control {
                 "error"
             };
             response[field] = args[field].clone();
-            rpc.write(response).await?;
+            rpc.write(response)
+                .await
+                .map_err(|e| format!("SUBMISSION_UNCONFIRMED: {e}"))?;
             self.events.lock().await.pending.remove(key);
             return Ok(json!({"responseSent":true,"backendSession":self.session,"id":key}));
         }
@@ -667,8 +681,6 @@ impl Control {
                 let ipc = self.ipc().await?;
                 desktop::reveal(&ipc, thread).await?;
                 let out = ipc.mutate("turn/start", &turn).await?;
-                r["turnId"] = out["turn"]["id"].clone();
-                self.checkpoint(r)?;
                 // Monitoring is best effort after acceptance, never a submission failure.
                 let _ = self.follow(thread).await;
                 out
@@ -679,45 +691,43 @@ impl Control {
             );
         }
         if operation == "send" {
-            if args["resume"]
-                .as_object()
-                .is_some_and(|m| m.keys().any(|k| k != "threadId"))
-            {
-                return Err("resume 仅支持 threadId；配置请通过 turn 提交".into());
-            }
             let input = task_input(args)?;
             let thread = string(args, "threadId");
             r["threadId"] = json!(thread);
+            if let Some(resume) = args.get("resume") {
+                let mut resume = resume.clone();
+                resume["threadId"] = json!(thread);
+                self.request("thread/resume", resume, timeout).await?;
+            }
             let state = if self.background(thread)? {
                 self.request(
                     "thread/read",
-                    json!({"threadId":thread,"includeTurns":true}),
+                    json!({"threadId":thread,"includeTurns":false}),
                     60000,
                 )
                 .await?["thread"]
                     .clone()
             } else {
-                let ipc = self.ipc().await?;
-                desktop::reveal(&ipc, thread).await?;
-                crate::control::thread(&ipc.read(thread, true).await?, true)?
+                self.ipc()
+                    .await?
+                    .snapshot(thread)
+                    .await
+                    .unwrap_or(Value::Null)
             };
-            let turns = state["turns"].as_array().cloned().unwrap_or_default();
-            let config = configured(args, string(&state, "cwd"))?;
-            if let Some(active) = turns
-                .iter()
-                .rev()
-                .find(|t| state["status"]["type"] == "active" && t["status"] == "inProgress")
-            {
-                if config.as_object().is_some_and(|m| !m.is_empty()) {
-                    return Err("steer cannot change turn configuration".into());
-                }
+            let active = state["turnHistory"]["history"]["entitiesByKey"]
+                .as_object()
+                .into_iter()
+                .flat_map(|m| m.values())
+                .chain(state["turns"].as_array().into_iter().flatten())
+                .find(|t| t["status"] == "inProgress");
+            params = configured(args, string(&state, "cwd"))?;
+            params["threadId"] = json!(thread);
+            params["input"] = input;
+            if let Some(active) = active {
                 method = "turn/steer".into();
-                params = json!({"threadId":thread,"expectedTurnId":active["id"],"input":input});
+                params["expectedTurnId"] = active.get("turnId").unwrap_or(&active["id"]).clone();
             } else {
                 method = "turn/start".into();
-                params = config;
-                params["threadId"] = json!(thread);
-                params["input"] = input;
             }
         }
         if operation == "interrupt" {
@@ -731,7 +741,7 @@ impl Control {
             self.create_background(params, "", Some(r)).await?
         } else if method == "thread/start" {
             let out = self.seed(params, "", Some(r)).await?;
-            desktop::reveal(&self.ipc().await?, string(&out["thread"], "id")).await?;
+            desktop::reveal(self.ipc().await?.as_ref(), string(&out["thread"], "id")).await?;
             out
         } else {
             self.request(&method, params, timeout).await?
@@ -749,8 +759,7 @@ impl Control {
             .iter()
             .find(|t| t["name"] == name)
             .ok_or("UNKNOWN_TOOL")?;
-        jsonschema::validator_for(&spec["inputSchema"])
-            .map_err(|e| e.to_string())?
+        crate::validator("tool", name, &spec["inputSchema"])?
             .validate(&args)
             .map_err(|e| e.to_string())?;
         for (k, v) in spec["inputSchema"]["properties"]
@@ -781,7 +790,7 @@ impl Control {
                     .request(method, params, args["timeoutMs"].as_u64().unwrap_or(60000))
                     .await;
             }
-            return self.mutate("native",json!({"method":method,"params":params,"requestId":args["requestId"],"timeoutMs":args["timeoutMs"].as_u64().unwrap_or(86400000)})).await;
+            return self.mutate("native",json!({"method":method,"params":params,"requestId":args["requestId"],"timeoutMs":args["timeoutMs"].as_u64().unwrap_or(86400000),"waitMs":num(&args,"waitMs",25000)})).await;
         }
         match name {
             "projects" => Ok(
@@ -806,8 +815,13 @@ impl Control {
                 if action == "read" {
                     self.receipt(string(&args, "requestId")).await
                 } else {
-                    self.decide(string(&args, "requestId"), action, "cloud")
-                        .await
+                    self.decide(
+                        string(&args, "requestId"),
+                        action,
+                        "cloud",
+                        num(&args, "waitMs", 25000) as u64,
+                    )
+                    .await
                 }
             }
             "codex_pending" => Ok(

@@ -207,8 +207,30 @@ pub async fn event(events: &SharedEvents, session: &str, method: &str, params: V
         e.storage_error = Some(err);
     }
 }
-pub fn catalog() -> Value {
-    serde_json::from_str(include_str!("catalog.json")).expect("tool catalog")
+pub fn catalog() -> &'static Value {
+    static CATALOG: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    CATALOG
+        .get_or_init(|| serde_json::from_str(include_str!("catalog.json")).expect("tool catalog"))
+}
+pub(crate) fn validator(
+    scope: &str,
+    name: &str,
+    schema: &Value,
+) -> Result<Arc<jsonschema::Validator>> {
+    static VALIDATORS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, Arc<jsonschema::Validator>>>,
+    > = std::sync::OnceLock::new();
+    let mut validators = VALIDATORS
+        .get_or_init(Default::default)
+        .lock()
+        .map_err(|e| e.to_string())?;
+    let key = format!("{scope}:{name}");
+    if let Some(v) = validators.get(&key) {
+        return Ok(v.clone());
+    }
+    let v = Arc::new(jsonschema::validator_for(schema).map_err(|e| e.to_string())?);
+    validators.insert(key, v.clone());
+    Ok(v)
 }
 
 // Bound allocation before accepting a complete line from a child or socket.

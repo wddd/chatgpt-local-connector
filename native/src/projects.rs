@@ -37,7 +37,16 @@ pub async fn resolve(c: &Control, id: &str) -> Result<Value> {
                 .into_owned(),
         )
     } else {
-        let catalog = list(c).await?;
+        let catalog = {
+            let mut cache = c.projects.lock().await;
+            if cache
+                .as_ref()
+                .is_none_or(|(at, _)| at.elapsed().as_secs() >= 30)
+            {
+                *cache = Some((std::time::Instant::now(), list(c).await?));
+            }
+            cache.as_ref().unwrap().1.clone()
+        };
         let exact = catalog.iter().find(|p| p["id"] == id);
         let candidates = if let Some(p) = exact {
             vec![p]
@@ -639,7 +648,16 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
     if review {
         review_path(root, "")?;
     }
-    let mut source = state(&p).await?;
+    let include_source = args["includeSource"] == true;
+    let mut source = if include_source || (action == "git" && args["operation"] == "status") {
+        match state(&p).await {
+            Ok(source) => source,
+            Err(e) if action == "git" && args["operation"] == "status" => return Err(e),
+            Err(e) => json!({"error":e}),
+        }
+    } else {
+        Value::Null
+    };
     let mut source_skipped = std::collections::BTreeMap::new();
     filter_state(root, &mut source, review, &mut source_skipped);
     let file = string(args, "path");
@@ -901,19 +919,19 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
         }
         _ => return Err("未知项目查询".into()),
     };
-    let after = state(&p).await?;
-    let changed = source["sha"] != after["sha"] || source["statusHash"] != after["statusHash"];
-    let paged = !data["nextLine"].is_null() || !data["nextOffset"].is_null();
-    let snippets_partial = data["results"]
-        .as_array()
-        .is_some_and(|r| r.iter().any(|r| r["matchesComplete"] == false));
-    data["coverage"] = json!({"state":if paged || snippets_partial || !skipped.is_empty() || data["changesTruncated"]==true || data["truncatedPaths"]==true || data["truncated"]==true || data["state"]=="restricted" {"partial"}else{"complete"},"paged":paged,"snippetsComplete":!snippets_partial,"skippedByReason":skipped});
-    source["consistency"] = json!("best-effort");
-    source["statusHashScope"] = json!("git-status-text-not-workspace-content");
-    source["observationStartedAt"] = json!(started);
-    source["observationEndedAt"] = json!(now());
-    source["view"] = json!(if review { "review" } else { "raw" });
-    source["coverage"] = json!({"state":if source["changesTruncated"]==true || !source_skipped.is_empty(){"partial"}else{"complete"},"skippedByReason":source_skipped});
+    if include_source {
+        let paged = !data["nextLine"].is_null() || !data["nextOffset"].is_null();
+        let snippets_partial = data["results"]
+            .as_array()
+            .is_some_and(|r| r.iter().any(|r| r["matchesComplete"] == false));
+        data["coverage"] = json!({"state":if paged || snippets_partial || !skipped.is_empty() || data["changesTruncated"]==true || data["truncatedPaths"]==true || data["truncated"]==true || data["state"]=="restricted" {"partial"}else{"complete"},"paged":paged,"snippetsComplete":!snippets_partial,"skippedByReason":skipped});
+        source["consistency"] = json!("best-effort");
+        source["statusHashScope"] = json!("git-status-text-not-workspace-content");
+        source["observationStartedAt"] = json!(started);
+        source["observationEndedAt"] = json!(now());
+        source["view"] = json!(if review { "review" } else { "raw" });
+        source["coverage"] = json!({"state":if source["changesTruncated"]==true || !source_skipped.is_empty(){"partial"}else{"complete"},"skippedByReason":source_skipped});
+    }
     if args["expectedHash"].is_string() {
         let actual = if action == "read" {
             &data["sha256"]
@@ -924,7 +942,10 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
             return Err("CONTENT_CHANGED_RESTART_PAGINATION".into());
         }
     }
-    let mut result = json!({"source":source,"changedDuringRead":changed,"consistency":"best-effort","data":data});
+    let mut result = json!({"data":data});
+    if include_source {
+        result["source"] = source;
+    }
     crate::images::attach(&mut result, image_blocks);
     Ok(result)
 }
