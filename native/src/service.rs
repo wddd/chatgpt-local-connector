@@ -417,6 +417,16 @@ impl Service {
         method: &str,
         body: Value,
     ) -> Result<Value> {
+        if route == "preferences" && method == "PUT" {
+            let current = crate::preferences::read();
+            if body["values"].as_object().is_some_and(|fields| {
+                fields
+                    .iter()
+                    .all(|(key, value)| !value.is_null() && current.get(key) == Some(value))
+            }) {
+                return Ok(current);
+            }
+        }
         let operation = id();
         let ingress_id = route
             .strip_prefix("ingress/")

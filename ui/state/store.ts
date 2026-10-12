@@ -42,10 +42,12 @@ export function preparePreferences(): Promise<void> {
 export const preferenceStorage = {
   getItem: (key: string) => localStorage.getItem(key),
   setItem(key: string, value: string) {
+    if (localStorage.getItem(key) === value) return;
     localStorage.setItem(key,value);
     if (!applyingPreferences) void import("../api").then(({api}) => api("preferences","PUT",{values:{[key]:value}})).catch(console.error);
   },
   removeItem(key: string) {
+    if (localStorage.getItem(key) === null) return;
     localStorage.removeItem(key);
     if (!applyingPreferences) void import("../api").then(({api}) => api("preferences","PUT",{values:{[key]:null}})).catch(console.error);
   },
