@@ -727,9 +727,10 @@ impl Control {
                 }
                 state
             } else {
+                // Refresh missing/expired snapshots once; mutate reuses the IPC cache.
                 self.ipc()
                     .await?
-                    .snapshot(thread)
+                    .read(thread, false)
                     .await
                     .unwrap_or(Value::Null)
             };

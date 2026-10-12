@@ -113,7 +113,7 @@ thread/turn 中的原生参数优先于便利字段；任务 ID 与 input 由顶
 限定写入根、恢复必须声明 mode，也不注入额外 developerInstructions。
 model、effort、serviceTier、provider、permissions、sandboxPolicy、approvalPolicy、
 collaborationMode、outputSchema、runtimeWorkspaceRoots、附件和其他原生参数由上游解释与校验。
-模型目录仅用于发现，不由 MCP 额外阻止未列出的模型或档位。Desktop 新任务继承原生创建结果的模型；续接时仅继承 4 秒内 owner 快照的模型与协作模式。未显式提供 collaborationMode 时，显式 model/effort 同步到继承的协作模式设置，避免旧设置覆盖本次请求。没有有效缓存时省略继承配置，交给 Desktop 默认值。
+模型目录仅用于发现，不由 MCP 额外阻止未列出的模型或档位。Desktop 新任务继承原生创建结果的模型；续接时先做一次轻量读取，命中 4 秒内 owner 快照或 follow/wait 获取新快照，再由 mutate 从共享缓存继承模型与协作模式，不额外读取。未显式提供 collaborationMode 时，显式 model/effort 同步到继承的协作模式设置，避免旧设置覆盖本次请求。轻量读取失败时回退为空状态，省略无法继承的配置并交给 Desktop 默认值。
 
 便利字段 mode 支持 read-only、workspace-write、danger-full-access。
 显式使用前两种 mode 而省略 networkAccess 时，此便利预设关闭网络；完全省略 mode 时不覆盖
@@ -172,7 +172,7 @@ completed 是控制操作完成，任务完成需要检查对应轮次终态。
 
 桌面任务执行归 Desktop 所有，Connector 通过本机版本化协调 IPC 管理，不接管其 app-server。
 关闭「自动打开 Codex 任务」后，新任务归 Connector 的 App Server 后台执行，读取、续接和中断按持久化的任务归属路由。后台任务不保证可在 Desktop 中操作。没有执行方实时状态时 runtimeStatus 为 unknown，不表示空闲。
-桌面快照自接收起保留 4 秒，过期后重新发现 owner 并 follow/wait；owner 变化、断连及重连不会沿用旧缓存。send 同样只使用未过期快照。Connector 后台任务 active 时额外查询最新一轮（降序 limit=1），inProgress 则 steer；turn/start 仅在 notLoaded 时自动 resume。
+桌面快照自接收起保留 4 秒，过期后重新发现 owner 并 follow/wait；owner 变化、断连及重连不会沿用旧缓存。Desktop send 至多调用一次 read(thread, false)，从返回快照中查找 inProgress 轮次并选择 steer/start；读取失败才回退为空状态。mutate 的 start/steer 继续只用 snapshot()，不加载完整历史或追加读取。Connector 后台任务 active 时额外查询最新一轮（降序 limit=1），inProgress 则 steer；turn/start 仅在 notLoaded 时自动 resume。
 
 桌面 Thread/Turn 查询是 owner 快照的明确投影；显示层 steeringUserMessage 等 item 可能不同于公开 App Server union。
 兼容性边界和支持的任务写操作见 [桌面说明](desktop.md)，未支持的方法明确拒绝；不使用受签名保护的 app-tools 管道、不绕过账号和系统权限。

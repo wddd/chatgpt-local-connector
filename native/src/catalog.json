@@ -1380,7 +1380,7 @@
     },
     {
       "name": "codex_send",
-      "description": "发送文本。Desktop 只用 4 秒内快照选择 steer/start，无有效快照时交给上游 start；不打开窗口，忽略 resume，turn 参数透传，缺省配置使用有效缓存或 Desktop 默认。Connector 后台任务透传显式 resume，active 时查询最新一轮并 steer，自动恢复仅用于 notLoaded 任务。",
+      "description": "发送文本。Desktop 发送前至多轻量读取一次：命中 4 秒内快照或 follow+wait 刷新，读取失败才回退为空状态。用该快照选择 steer/start，mutate 复用缓存继承 model/collaborationMode，不再额外读取；不打开窗口，忽略 resume，turn 参数透传。Connector 后台任务透传显式 resume，active 时查询最新一轮并 steer，自动恢复仅用于 notLoaded 任务。",
       "inputSchema": {
         "type": "object",
         "properties": {
