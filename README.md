@@ -49,7 +49,7 @@ CLC therefore moved from “one Chat controls many Agents” to “many control 
 
 CLC itself requires no Node, npm, Rust, or Cargo installation. The [ChatGPT Desktop plugins](docs/plugin.md) are maintained in separate repositories and run independently. External Agents still need their own runtimes. Desktop task integration supports **Apple Silicon Mac** and **Windows x64**.
 
-Codex remains the default, with its native capabilities preserved. External Agents use their own configuration and sign-in. The home view’s More button opens Agents management, which lists brands, installation status and versions, and lets you enable installed Agents. Its settings button opens appearance, quota, and usage preferences. See [Subscription usage](docs/subscriptions.md) for quota monitoring and usage estimates. Native/adapter distinctions and capabilities are documented in [Local Agents](docs/agents.md). Shared task operations use the `agent_*` tools.
+Codex remains the default, with its native capabilities preserved. External Agents use their own configuration and sign-in. The home view’s More button opens Agents management, which lists brands, installation status and versions, and lets you enable installed Agents. Its settings button opens appearance, quota, and usage preferences. See [Subscription usage](docs/subscriptions.md) for quota monitoring and usage estimates. Native/adapter distinctions and capabilities are documented in [Local Agents](docs/agents.md). Codex tasks use `codex_*`; `agent_*` only accepts non-Codex agents and is hidden when none is available. New connections expose the default tool tier; advanced tools are enabled through All or Custom. See [MCP tools](docs/tools.md) for text editing, per-turn changes, logs, shell commands and compact receipts.
 
 ## Installation: choose an entry point
 
@@ -84,7 +84,7 @@ Choose Auto / English / 简体中文 in **Settings → General → Language**. A
 
 After setup, keep the computer online, Desktop available, and Connector connected. Connecting at sign-in is optional. Closing the window leaves the connection running; the shared backend stops after its last local Connector client exits. On macOS, **Settings → General → Show app in** offers All, Menu bar only, or Dock only. Changes apply immediately and are saved automatically.
 
-`agent_wait` supports Codex, Pi, all built-in ACP Agents, and Custom ACP while the local connection is running; `codex_wait` preserves native semantics. Use the corresponding read/events tools for history and events. An ordinary Chat response does not keep waiting after it ends; these tools provide neither scheduled wakeups nor proactive push notifications. See [task waiting](docs/tools.md#任务等待).
+`agent_wait` supports Pi, all built-in ACP Agents, and Custom ACP while the local connection is running; `codex_wait` preserves native semantics. Use the corresponding read/events tools for history and events. An ordinary Chat response does not keep waiting after it ends; these tools provide neither scheduled wakeups nor proactive push notifications. See [task waiting](docs/tools.md#任务等待).
 
 ### Responsibilities and boundaries
 

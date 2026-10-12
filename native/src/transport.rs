@@ -381,7 +381,10 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, name: &str, args: Value) ->
             if matches!(name, "read" | "codex_read" | "codex_items") {
                 images = crate::images::take(&mut value);
             }
-            (crate::kernel::results::page_output(value)?, false)
+            (
+                crate::kernel::results::page_output(crate::egress::receipt(value))?,
+                false,
+            )
         }
         Err(error) => (json!({"error":crate::egress::failure(&error)}), true),
     };

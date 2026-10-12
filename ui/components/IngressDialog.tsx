@@ -66,8 +66,8 @@ export default function IngressDialog({
           ? "bearer"
           : "none",
     ),
-    [toolPolicy, setToolPolicy] = useState<ToolPolicy>(
-      ingress?.toolPolicy ?? "all",
+    [toolPolicy, setToolPolicy] = useState<ToolPolicy | undefined>(
+      ingress?.toolPolicy,
     );
   const [working, setWorking] = useState(false),
     [error, setError] = useState(""),

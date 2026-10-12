@@ -124,7 +124,9 @@ impl Ingress {
     }
     pub async fn allows(&self, name: &str) -> bool {
         let meta = self.meta.lock().await;
-        crate::kernel::policy::allows(&meta["toolPolicy"], name)
+        let allowed = crate::kernel::policy::allows(&meta["toolPolicy"], name);
+        drop(meta);
+        allowed && self.execution.available(name).await
     }
     pub async fn authenticate(&self, header: &str) -> bool {
         let meta = self.meta.lock().await;

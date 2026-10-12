@@ -36,6 +36,14 @@ impl ReceiptStore {
     // Callers serialize replay/reserve/launch per request ID. create_new also
     // prevents a second owner from reserving an existing ID; unknown writes are never replayed.
     pub fn replay(&self, request: &str, digest: &str, session: &str) -> Result<Option<Value>> {
+        let other = if self.directory.is_empty() {
+            "agents/requests"
+        } else {
+            ""
+        };
+        if ReceiptStore::new(other).path(request)?.exists() {
+            return Err("REQUEST_ID_CONFLICT".into());
+        }
         if !self.path(request)?.exists() {
             return Ok(None);
         }
@@ -72,11 +80,15 @@ impl ReceiptStore {
 
 /// Only the lookup holds the map lock; independent requests can perform disk IO concurrently.
 #[derive(Default)]
-pub struct RequestLocks(Mutex<std::collections::HashMap<String, std::sync::Weak<Mutex<()>>>>);
+pub struct RequestLocks;
 impl RequestLocks {
     pub async fn lock(&self, request: &str) -> tokio::sync::OwnedMutexGuard<()> {
         let lock = {
-            let mut locks = self.0.lock().await;
+            // All execution owners share UUID reservations, while retaining their own records.
+            static LOCKS: std::sync::OnceLock<
+                Mutex<std::collections::HashMap<String, std::sync::Weak<Mutex<()>>>>,
+            > = std::sync::OnceLock::new();
+            let mut locks = LOCKS.get_or_init(Default::default).lock().await;
             locks.retain(|_, v| v.strong_count() > 0);
             if let Some(lock) = locks.get(request).and_then(std::sync::Weak::upgrade) {
                 lock

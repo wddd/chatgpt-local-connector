@@ -111,7 +111,7 @@ fn normalize(mut entry: Value) -> Result<Value> {
         return Err("HTTPS auth must be none, bearer or oauth".into());
     }
     if entry.get("toolPolicy").is_none() {
-        entry["toolPolicy"] = json!("all");
+        entry["toolPolicy"] = crate::kernel::policy::default_policy();
     }
     if entry["toolPolicy"] != "all" {
         let allowed = entry["toolPolicy"]["allowlist"]
@@ -179,7 +179,7 @@ impl Service {
             }
             let https = config["connectionMode"] == "https";
             let entry = normalize(
-                json!({"id":"default","name":"ChatGPT","controlSource":"chatgpt","transport":if https {"https"}else{"openai-tunnel"},"enabled":true,"auth":if https {"none"}else{"openai"},"toolPolicy":"all","config":config}),
+                json!({"id":"default","name":"ChatGPT","controlSource":"chatgpt","transport":if https {"https"}else{"openai-tunnel"},"enabled":true,"auth":if https {"none"}else{"openai"},"toolPolicy":crate::kernel::policy::default_policy(),"config":config}),
             )?;
             store_entry(&entry)?;
             save(
@@ -224,7 +224,29 @@ impl Service {
         let token = id() + &id();
         let mut ingresses = BTreeMap::new();
         for id in load(&index)?.as_array().ok_or("invalid ingress index")? {
-            let entry = normalize(read_entry(id.as_str().ok_or("invalid ingress id")?)?)?;
+            let mut entry = read_entry(id.as_str().ok_or("invalid ingress id")?)?;
+            // Removed registry entries cannot prevent the remaining tools or management UI starting.
+            let mut changed = false;
+            if let Some(allowed) = entry
+                .get_mut("toolPolicy")
+                .and_then(Value::as_object_mut)
+                .and_then(|p| p.get_mut("allowlist"))
+                .and_then(Value::as_array_mut)
+            {
+                let before = allowed.len();
+                allowed.retain(|name| {
+                    catalog()["tools"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|t| t["name"] == *name)
+                });
+                changed = before != allowed.len();
+            }
+            let entry = normalize(entry)?;
+            if changed {
+                store_entry(&entry)?;
+            }
             let ingress = Ingress::new(entry, execution.clone(), token.clone())?;
             ingresses.insert(ingress.id.clone(), ingress);
         }
@@ -540,6 +562,7 @@ impl Service {
         if route == "tool-catalog" && method == "GET" {
             let catalog = catalog();
             let exposure = &catalog["toolExposure"];
+            let agents_available = self.execution.available("agents").await;
             let tools: Vec<_> = catalog["tools"]
                 .as_array()
                 .unwrap()
@@ -552,6 +575,8 @@ impl Service {
                     }
                     item["name"] = json!(name);
                     item["description"] = tool["description"].clone();
+                    item["available"] =
+                        json!(!name.starts_with("agent_") && name != "agents" || agents_available);
                     item
                 })
                 .collect();
@@ -661,7 +686,10 @@ impl Service {
                 if !["none", "bearer", "oauth"].contains(&string(&entry, "auth")) {
                     return Err("invalid authentication".into());
                 }
-                entry["toolPolicy"] = body.get("toolPolicy").cloned().unwrap_or(json!("all"));
+                entry["toolPolicy"] = body
+                    .get("toolPolicy")
+                    .cloned()
+                    .unwrap_or_else(crate::kernel::policy::default_policy);
                 entry["config"]["httpsUrl"] = body["url"].clone();
                 let entry = normalize(entry)?;
                 // Validate the live URL before publishing or enabling any tools.
@@ -728,7 +756,7 @@ impl Service {
                     &names,
                 ));
             }
-            for (k, v) in json!({"enabled":true,"toolPolicy":"all","config":{}})
+            for (k, v) in json!({"enabled":true,"toolPolicy":crate::kernel::policy::default_policy(),"config":{}})
                 .as_object()
                 .unwrap()
             {
@@ -1031,7 +1059,7 @@ impl Service {
             }
             let https = body["connectionMode"] == "https";
             let entry = normalize(
-                json!({"id":"default","name":"ChatGPT","controlSource":"chatgpt","transport":if https{"https"}else{"openai-tunnel"},"auth":if https{"none"}else{"openai"},"enabled":true,"toolPolicy":"all","config":body}),
+                json!({"id":"default","name":"ChatGPT","controlSource":"chatgpt","transport":if https{"https"}else{"openai-tunnel"},"auth":if https{"none"}else{"openai"},"enabled":true,"toolPolicy":crate::kernel::policy::default_policy(),"config":body}),
             )?;
             store_entry(&entry)?;
             let ingress = Ingress::new(entry, self.execution.clone(), self.token.clone())?;

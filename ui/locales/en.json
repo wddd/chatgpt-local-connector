@@ -469,7 +469,7 @@
   "restorePanelWidth": "Restore panel width",
   "toolList": "Tool list",
   "toolsAll": "All",
-  "toolsCommon": "Common",
+  "toolsCommon": "Default",
   "toolsReadOnly": "Read-only",
   "toolsCustom": "Custom",
   "toolCatalogFailed": "Could not load tools. The saved policy is preserved.",
@@ -666,5 +666,7 @@
   "oauthDenied": "Connection denied. The authorization page will return to the client automatically.",
   "oauthFinished": "This request has completed or expired. Check your browser and reconnect if needed.",
   "oauthWrongDevice": "This request is not on this device. Open Local Connector on the target device, or ask an Agent to confirm through its authenticated CLI. If the request expired, reconnect from the client.",
-  "oauthReading": "Reading local authorization request…"
+  "oauthReading": "Reading local authorization request…",
+  "toolsAdvanced": "Advanced",
+  "toolsUnavailable": "Unavailable locally"
 }

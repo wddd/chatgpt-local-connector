@@ -3,7 +3,7 @@ export type ToolMode = 'all' | 'common' | 'readOnly' | 'custom';
 export interface ToolCatalog {
   groups: { id: string; label: { en: string; 'zh-CN': string } }[];
   required: string[];
-  tools: { name: string; description: string; group: string; presets: string[]; requires: string[] }[];
+  tools: { name: string; description: string; group: string; presets: string[]; requires: string[]; tier?: "default" | "advanced"; conditional?: boolean; available?: boolean }[];
 }
 
 // Only an explicit selection/save of a changed policy invokes normalization.
@@ -28,7 +28,8 @@ export function presetPolicy(mode: 'common' | 'readOnly', catalog: ToolCatalog):
   return { allowlist: normalizeSelection(catalog.tools.filter(tool => tool.presets.includes(mode)).map(tool => tool.name), catalog) };
 }
 export function identifyPolicy(policy: ToolPolicy | undefined, catalog: ToolCatalog): ToolMode {
-  if (!policy || policy === 'all') return 'all';
+  if (!policy) return 'common';
+  if (policy === 'all') return 'all';
   const selected = new Set(policy.allowlist);
   for (const mode of ['common', 'readOnly'] as const) {
     const preset = presetPolicy(mode, catalog) as { allowlist: string[] };

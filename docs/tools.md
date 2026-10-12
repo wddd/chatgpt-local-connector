@@ -2,47 +2,40 @@
 
 返回[项目首页](../README.md)。
 
-## 能力清单
+## 工具档位
 
-当前入口按连接的[工具列表策略](zh-CN/control-sources.md#工具列表)暴露 MCP 工具。原生方法及参数 Schema 从本机 Codex 二进制动态发现；
-工具数量不保证不同 Codex 版本拥有相同的原生能力，各项功能取决于当前原生服务提供的能力。
+新增连接使用默认档，保存为现有 allowlist；选择“全部”或“自定义”可开启高级工具。显式保存的全部列表随注册表更新，自定义列表保持精确选择。tools/list 和 tools/call 同时执行策略；管理界面显示完整注册表、高级标记及本机可用性。加载时剔除持久列表中已不在注册表的名称，不自动扩展授权；重新选择预设或保存自定义选择会补齐当前依赖。
 
-| 工具 | 用途 |
+| 档位 | 工具 |
 | --- | --- |
-| agents / agent_capabilities / agent_tasks / agent_create / agent_read / agent_wait / agent_send / agent_interrupt / agent_events / agent_pending / agent_respond / agent_request | 多 Agent 公共任务与幂等入口，详见[本地 Agents](agents.md) |
-| agent_context | 已有任务的只读 Review/Handoff；声明、原生证据和当前工作区变化分开返回 |
-| connector_verify | 回传引导中的验证码，确认连接调用到达本机，不执行任务 |
-| projects / overview / tree / search / read / git | 实时 Codex 本机项目、目录文件事实和只读 Git 查询 |
-| git_write | 本地暂存、提交、分支切换和 stash，使用现有 UUID 幂等回执 |
-| fs | 主机绝对路径的文件读写、目录、元数据、复制、删除和监听 |
-| command | Codex sandbox/permission 下的独立命令及 PTY/stdin/终止控制 |
-| process | App Server 主机上的非 Codex sandbox 进程及 PTY/stdin/终止控制 |
-| mcp | 已配置 downstream MCP 的目录、资源、工具调用、OAuth 和事件订阅 |
-| file_search | fuzzyFileSearch 模糊文件名/路径查找 |
-| codex_thread | 原生线程领域参数入口；Desktop 任务的扩展操作受接入范围限制；后台任务转发到 Connector app-server |
-| codex_account | 当前账号、用量、额度和工作区消息 |
-| codex_capabilities | 服务版本、安装版本、原生模型目录和连接边界 |
-| codex_wait | 可续接的事件驱动长轮询，等待原生轮次终态或交互，默认 30 秒、最长 5 分钟 |
-| codex_tasks / codex_read / codex_items | 所有原生可访问任务、状态、历史与完整条目分页 |
-| codex_create / codex_send / codex_interrupt | 创建、续接、追加输入和中断 |
-| codex_schema | 搜索当前原生方法、获取完整参数 JSON Schema；server 方向含回调响应 Schema |
-| codex_query | 常用原生只读方法快捷入口，包含文件、项目、配置、模型、权限、插件等查询 |
-| codex_call | 任意原生方法，完整透传参数；长操作异步回执 |
-| codex_request | 回读操作状态与原始结果；批准、绕过或拒绝待审批任务，不重放已提交请求 |
-| codex_pending / codex_respond | 原生审批、用户输入、动态工具等回调收件箱与响应 |
-| codex_events | 带游标的原生通知，包括轮次进度、请求解决、命令输出 |
-| control_output | 完整分页读取大结果 JSON |
+| 默认，23 个 | connector_verify、projects、overview、tree、search、read、git、edit、write、command、logs、control_output、receipt、codex_create、codex_send、codex_read、codex_items、codex_wait、codex_interrupt、codex_tasks、codex_pending、codex_respond、codex_changes |
+| 高级，12 个 | git_write、file_search、fs、process、mcp、codex_call、codex_query、codex_schema、codex_events、codex_thread、codex_account、codex_capabilities |
+| 条件默认，12 个 | agents、agent_capabilities、agent_tasks、agent_create、agent_read、agent_context、agent_wait、agent_send、agent_interrupt、agent_events、agent_pending、agent_respond |
 
-领域工具使用一个顶层工具和浅层 action，params 保持原生字段名、嵌套结构和 null 语义，
-普通调用的必要字段直接列在工具参数描述中。file_search 直接接受 query、roots、cancellationToken。
-不复制 App Server 参数校验、默认值或状态机；复杂类型、低频接口与未来新增参数可查询 codex_schema。
-混合读写领域的 MCP annotation 按可能写入声明，读 action 本身不要求 requestId；
-command/process 的所有 action，以及其他领域的 mutation 必须带 requestId。
+Codex 统一使用 codex_*。只有发现已安装、可用且启用的非 Codex Agent 时，条件组才出现在 tools/list 并接受调用；agent_* 必须显式提供非 Codex agent ID。发现结果有短期缓存；本机 Agents 刷新会刷新发现信息。完整注册表共 47 个工具；默认实际暴露 23 或 35 个，高级工具需显式开启。
 
-codex_call 提供原生 RPC 入口，任务写操作受 Desktop 所有权和支持范围限制。其他能力包括项目/分组管理、线程删除/设置/目标/队列、
-实时语音、review、配置写入、模型/权限目录、技能/插件/应用管理、账号登录/退出/充值相关操作，
-以及 fuzzyFileSearch 的增量 sessionStart/sessionUpdate/sessionStop。已有 codex_query 的只读分类保持可用。
-这些能力是否可用由当前原生服务决定。initialize/initialized 由连接负责。
+read/tree/search 支持绝对路径；绝对文件或目录可省 project，相对路径必须提供项目 ID、唯一名称或绝对项目目录。read 返回文件元数据，tree 返回目录及条目元数据（类型、大小、只读状态和可用的创建/修改时间）。read 文本按行分页，图片返回 MCP image；tree/search 用 nextOffset。Git revision 读取需指定 project。默认遵循原有访问边界，view=review 仍执行其资源边界。
+
+fs 仅用于原生写入和监听。process 与 mcp 是低频进程控制及 downstream MCP 管理；file_search 是模糊文件查找，日常固定字符串搜索使用 search。codex_query 不包含 fs/* 快捷枚举，需要原生文件读取协议时可用 codex_call。
+
+## 文本写入
+
+```text
+edit {"path":"/absolute/project/file.txt","edits":[{"oldText":"before","newText":"after"}],"expectedHash":"<sha256>"}
+write {"path":"/absolute/project/new.txt","content":"hello\n"}
+```
+
+edit 依次在内存中应用 edits。oldText 不可为空，未找到或匹配多处且未设 replaceAll 时整次失败，不写入任何修改。全部成功后以同目录临时文件原子替换，保留已有文件权限；write 创建父目录并创建或覆盖 UTF-8 文件。expectedHash 校验已有内容，文件缺失或哈希不符时失败。返回新 sha256 与去除共同前后缀后的改动行段摘要。检测到同项目活动 Codex 任务时返回提示，不阻止写入；活动状态无法核实时明确报告。
+
+## 轮次改动
+
+codex_changes 接收 threadId、可选 turnId（默认最近一轮）、limit，以及可选 path/offset/length。Connector 提交新轮次前记录目录 HEAD 和 dirty，Desktop 与后台提交共用此记录；steer 保留同一轮次起点。返回起点以来可达的新提交（sha、标题）、相对起点 HEAD 的当前 diff 文件及增删行统计，包含未跟踪文件。指定 path 时按 UTF-16 offset/length 分页返回 diff；未指定 path 时 offset/limit 分页提交。文件统计中的 null 增删行表示二进制或不可读取。
+
+没有起点的历史或外部轮次、起点不可读或目录变化时，返回 fallback=true，退化为最近 limit 个提交和当前工作区相对 HEAD 的改动。已有 dirty 修改会包含在比较中，结果不宣称改动只属于该任务。查询反映当前工作区，不冻结终态文件快照。
+
+## Connector 日志
+
+logs 读取保留的 Core 日志及已接入的 app-server stderr，按时间倒序。since 使用 RFC3339 时间，level 精确过滤，grep 是固定字符串；limit 控制页长，cursor 续页。日志沿用 7 天、16 MiB 保留策略；cursor 已过期时 gap=true。stderr 沿用现有采样限制。
 
 ## 领域 action 与最小示例
 
@@ -50,7 +43,7 @@ codex_call 提供原生 RPC 入口，任务写操作受 Desktop 所有权和支�
 
 | 工具 | action → 原生方法 |
 | --- | --- |
-| fs | readFile、writeFile、createDirectory、getMetadata、readDirectory、remove、copy、watch、unwatch → fs/同名方法 |
+| fs | writeFile、createDirectory、remove、copy、watch、unwatch → fs/同名方法 |
 | command | exec → command/exec；write、terminate、resize → command/exec/同名方法 |
 | process | spawn、writeStdin、kill、resizePty → process/同名方法 |
 | mcp | list → mcpServerStatus/list；resource/read、tool/call、oauth/login、event/stream/start、event/stream/stop → mcpServer/同名方法 |
@@ -61,7 +54,7 @@ codex_call 提供原生 RPC 入口，任务写操作受 Desktop 所有权和支�
 以下为 MCP 工具名和 JSON 参数示例；mutation 中的 requestId 每个新操作使用新 UUID：
 
 ```text
-fs {"action":"readFile","params":{"path":"/tmp/example.txt"}}
+read {"path":"/absolute/example.txt"}
 fs {"action":"writeFile","params":{"path":"/tmp/example.txt","dataBase64":"aGVsbG8K"},"requestId":"<UUID>"}
 fs {"action":"watch","params":{"path":"/tmp/example.txt","watchId":"example-watch"},"requestId":"<UUID>"}
 fs {"action":"unwatch","params":{"watchId":"example-watch"},"requestId":"<UUID>"}
@@ -83,7 +76,7 @@ remove 的 recursive/force、createDirectory 的 recursive 等默认值完全由
 watchId、processId、processHandle、MCP subscriptionId 属于当前 App Server 连接；重启后不重建。
 
 command/exec 不创建 Codex thread/turn，使用 Codex sandboxPolicy 或 permissionProfile；省略时继承原生设置。
-exec 的最终结果在退出后返回，超过同步等待窗口（默认 25 秒）的调用通过 codex_request 读取回执。
+简单形态 `command {"cmd":"npm test","cwd":"/absolute/project","timeoutMs":60000}` 使用用户默认 shell（Unix 登录 shell；Windows COMSPEC），同步等待进程结果，返回 stdout、stderr、exitCode 和 durationMs。输出过长时 truncated=true，output.outputId 可通过 control_output 从 offset=0 续读完整 JSON。简单形态与 action/params 互斥。原生 action 形态保持默认 25 秒回执等待窗口，超时用 receipt 查询；简单命令默认执行超时 60 秒。
 PTY 使用 tty:true 和 size:{rows,cols}；PTY、streamStdin、streamStdoutStderr 和后续控制都需要 processId。
 command 的 disableTimeout 与 timeoutMs 互斥，disableOutputCap 与 outputBytesCap 互斥。
 
@@ -157,22 +150,22 @@ control_output 每页最多 12000 个 UTF-16 code units，拼接所有 text 后�
 
 原生服务器请求通过显式回调交互处理。codex_pending 返回 id、method、params 和 backendSession；
 先查看对应 server Schema，再通过 codex_respond 提交 result 或 JSON-RPC error（二选一）。
-已生成的原生响应 Schema 用于校验回传结构，格式错误时保留请求等待纠正。
+原生 result/error 透传上游校验。
 服务不自动批准命令、不替用户填写决定，也不伪造认证令牌或 attestation。
 如果某类回调需要调用方不具备的能力，应显式返回 error；不能把“有回传入口”理解为自动完成所有回调。
 响应回执只证明已发出，是否接受须跟进原生事件和轮次。重启或已解决请求不能继续作答。
 
-写工具使用 UUID requestId，参数按递归稳定排序摘要。同一 ID 重试只回读原回执；不同参数拒绝。领域 action 与等价 codex_call 共享同一原生回执。
+写工具的 requestId 可选；省略时服务端生成 UUID 并带回，需要安全重试时显式传入。参数按递归稳定排序摘要。同一 ID 重试只回读原回执；不同参数拒绝。领域 action 与等价 codex_call 共享同一原生回执。
 原生 JSON-RPC 错误的 code/message/data 保留在 error.rpcError，写入失败时位于回执 result.error.rpcError；
 未生成 RPC 错误的连接/超时失败仍使用现有控制错误。null、数组等原生结果不强制转换为对象。
-回执包含阶段、线程/轮次 ID 和可能包含原始输出的结果，存于权限受限的本机状态目录。
-写操作默认同步等待 25000ms，waitMs 可设为 0–120000；超时返回 pending，随后用 codex_request/agent_request 回读。completed 表示操作完成；上游明确拒绝为 rejected，本地或其他已知失败为 failed，只有提交后连接中断/超时且结果未知为 unconfirmed。waitMs 不参与 requestId 的参数摘要。
+磁盘回执保留执行记录。MCP 写调用和 receipt 查询只返回 requestId、state、operation、任务/轮次 ID、必要结果和错误；不回显 arguments、prompt、input、digest、origin、backendSession 或 resolved。交互响应需要的 backendSession 由 pending/wait 返回。pending 表示执行中或等待结果，只有 awaiting-approval 等待审批。
+写操作默认同步等待 25000ms，waitMs 可设为 0–120000；超时返回 pending，随后用 receipt 回读。completed 表示操作完成；上游明确拒绝为 rejected，本地或其他已知失败为 failed，只有提交后连接中断/超时且结果未知为 unconfirmed。waitMs 不参与 requestId 的参数摘要。
 写入原生 RPC 默认超时 24 小时，可通过 timeoutMs 指定；超时不等于操作取消，不自动重放。
 completed 是控制操作完成，任务完成需要检查对应轮次终态。
 
 桌面任务执行归 Desktop 所有，Connector 通过本机版本化协调 IPC 管理，不接管其 app-server。
 关闭「自动打开 Codex 任务」后，新任务归 Connector 的 App Server 后台执行，读取、续接和中断按持久化的任务归属路由。后台任务不保证可在 Desktop 中操作。没有执行方实时状态时 runtimeStatus 为 unknown，不表示空闲。
-桌面快照自接收起保留 4 秒，过期后重新发现 owner 并 follow/wait；owner 变化、断连及重连不会沿用旧缓存。Desktop send 至多调用一次 read(thread, false)，从返回快照中查找 inProgress 轮次并选择 steer/start；读取失败才回退为空状态。mutate 的 start/steer 继续只用 snapshot()，不加载完整历史或追加读取。Connector 后台任务 active 时额外查询最新一轮（降序 limit=1），inProgress 则 steer；turn/start 仅在 notLoaded 时自动 resume。
+桌面快照自接收起保留 4 秒，过期后重新发现 owner 并 follow/wait；owner 变化、断连及重连不会沿用旧缓存。Desktop send 先调用轻量 read(thread, false)，从返回快照中查找 inProgress 轮次并选择 steer/start；读取失败才回退为空状态。新 turn/start 在提交前用已知目录记录 Git 起点，steer 沿用已有轮次；不为基线加载完整历史。Connector 后台任务 active 时额外查询最新一轮（降序 limit=1），inProgress 则 steer；turn/start 仅在 notLoaded 时自动 resume。
 
 桌面 Thread/Turn 查询是 owner 快照的明确投影；显示层 steeringUserMessage 等 item 可能不同于公开 App Server union。
 兼容性边界和支持的任务写操作见 [桌面说明](desktop.md)，未支持的方法明确拒绝；不使用受签名保护的 app-tools 管道、不绕过账号和系统权限。
@@ -199,12 +192,12 @@ Connector 设置页的任务审批模式只决定新任务管理请求是否默�
 等待时立即返回 `state: "awaiting-approval"` 和原 requestId，尚不提交任务。云端可按用户意图调用：
 
 ```text
-codex_request {"requestId":"<原请求 UUID>","action":"approve"}
-codex_request {"requestId":"<原请求 UUID>","action":"bypass"}
-codex_request {"requestId":"<原请求 UUID>","action":"reject"}
+receipt {"requestId":"<原请求 UUID>","action":"approve"}
+receipt {"requestId":"<原请求 UUID>","action":"bypass"}
+receipt {"requestId":"<原请求 UUID>","action":"reject"}
 ```
 
-本机任务页也可批准或拒绝。批准、绕过后 Connector 自动提交已保存的原请求，不需要重新创建。重复决定仅回读当前回执；已提交、已拒绝或结果未确认的请求不会重放。`codex_request` 省略 action 或传 `read` 只查询结果。初次请求的 approval 属于参数摘要；推进已等待的请求使用上述 action，不修改原参数后重发。
+本机任务页也可批准或拒绝。批准、绕过后 Connector 自动提交已保存的原请求，不需要重新创建。重复决定仅回读当前回执；已提交、已拒绝或结果未确认的请求不会重放。`receipt` 省略 action 或传 `read` 只查询结果。初次请求的 approval 属于参数摘要；推进已等待的请求使用上述 action，不修改原参数后重发。
 
 模式可在连接期间切换，仅影响之后的新请求，已等待的请求保留。待审批请求跨应用重启保留；提交中断且结果不明的请求标记 unconfirmed，需检查原生状态。
 
@@ -214,9 +207,9 @@ codex_request {"requestId":"<原请求 UUID>","action":"reject"}
 
 ## 任务等待
 
-多 Agent 使用 `agent_wait(agent, taskId, turnId?, timeoutMs?, until?, expectedHash?)`，Codex 参数 taskId 对应 threadId，直接复用下面的原生等待链路。Pi/ACP 状态和权限差异见[本地 Agents 等待语义](agents.md#等待语义)。
+非 Codex Agent 使用 `agent_wait(agent, taskId, turnId?, timeoutMs?, until?, expectedHash?)`；Codex 使用 codex_wait(threadId)。Pi/ACP 状态和权限差异见[本地 Agents 等待语义](agents.md#等待语义)。
 
-创建或发送任务后，先从原请求回执取得 threadId / turnId，再优先调用 `codex_wait`。不要重复创建任务，也无需用 `codex_read` 配合 sleep 高频轮询。`codex_read`、`codex_events`、`codex_request` 的用途和参数保持不变。
+创建或发送任务后，先从原请求回执取得 threadId / turnId，再优先调用 `codex_wait`。不要重复创建任务，也无需用 `codex_read` 配合 sleep 高频轮询。`codex_read`、`codex_events`、`receipt` 的用途和参数保持不变。
 
 ```json
 {"threadId":"<thread-id>","turnId":"<turn-id>","timeoutMs":30000,"until":"terminal-or-interaction"}
@@ -302,42 +295,30 @@ Review 不改变原生 fs/command/process 权限，不是用户隔离或完整 D
 ## 任务上下文
 
 ```json
-{"agent":"codex","taskId":"<existing-task-id>","view":"handoff"}
+{"agent":"pi","taskId":"<existing-task-id>","view":"handoff"}
 ```
 
-`agent_context` 默认 view=review；可传 `turnId` 和 `project`。省略轮次时选择最新可确认轮次；显式轮次只在有界窗口内查找，查不到明确失败，不切换轮次。任务 cwd 优先，显式项目不一致返回 `TASK_WORKSPACE_MISMATCH`。无 cwd 的显式项目关联标为 caller-unconfirmed。
-
-结果按 runtime、workspace、evidence、claims、coverage、readNext 分组；Handoff 另给可再生 Markdown。命令退出码仅证明该命令退出结果，Agent 文本不证明测试通过，回执完成不证明任务完成。工作区变化不归因给该任务，也不能用历史命令给当前代码背书。
-
-读取不启动或恢复任务、不执行命令、不推理、不写 checkpoint。聚合采用 12 秒截止时间、最多 20 个条目及 100 个变化路径；摘录保留原文并限制至 1 KiB，输出预算 32 KiB。原生读取本身仍受已有协议分页/快照能力限制。缺失、超时、未采集回执/交互会明确标为 partial；非 Codex 驱动只投影已有任务记录，不补建进程或猜测结构化命令结果。原始存储保持不变。
-
-入口策略按模块生效：agent_read 控制任务事实、codex_items 控制 Codex 条目、git 控制工作区；readNext 仅推荐允许的工具。四档预设及默认全部不变，已有显式 allowlist 不自动扩容。
-
-### 本机诊断日志
-
-连接运行日志和管理操作日志独立保存在状态目录的 `logs/YYYY-MM-DD.jsonl`，按 UTC 日期追加，删除连接不会删除日志。已有连接目录中的 `logs.json` 在加载时迁入独立日志目录。日志页面显示最近 200 条，磁盘历史不受这个显示上限影响，目前不自动删除历史日志。
-
-管理写操作记录操作编号、方法、路由及开始和成功/失败状态；OAuth 接入记录端点和 HTTP 结果。请求正文、认证头、令牌与密钥不进入操作日志，连接运行日志对已知凭据脱敏。开始记录写入失败时，不执行管理写操作；完成记录写入失败会输出进程错误。日志用于诊断，不是防篡改审计；进程或磁盘故障可能只留下开始记录。
+`agent_context` 仅为非 Codex 任务提供 review/handoff 视图，必须提供 agent 和 taskId，可选 turnId/project。仅读取已有任务记录和当前工作区，声明不是验证结果，缺失信息标为 partial。任务 cwd 与显式项目不一致返回 TASK_WORKSPACE_MISMATCH。入口策略通过 agent_read 和 git 控制读取，readNext 仅推荐允许的工具。Codex 的轮次改动使用 codex_changes，状态与原始条目使用 codex_read/codex_items。
 
 ## Git 写操作
 
-`git` 保持原有只读名称、参数及 status/log/show/diff 语义。独立的 `git_write` 接受 project、operation 和必填 UUID requestId：
+`git` 保持原有只读名称、参数及 status/log/show/diff 语义。独立的 `git_write` 接受 project、operation 和可选 UUID requestId：
 
 - `add` / `unstage`：提供非空 `paths`（项目内相对字面路径），或 `all: true`，二选一。all 作用于项目目录；unstage 只修改索引，初始提交前也可使用。
 - `commit`：必填 `message`，支持多行，提交当前索引。不支持 amend。
 - `branch`：必填 `branch`，从 HEAD 创建本地分支；`switch` 切换已有本地 branch，`create: true` 创建并切换。不会猜测远程分支或强制丢弃修改。
 - `stash_push`：保存仓库已跟踪文件修改，可选 message，不包含未跟踪文件；`stash_pop` 应用最新 stash，冲突时 Git 保留 stash 和冲突现场。
 
-分支、提交和 stash 作用于整个仓库。无 fetch/pull/push、删除分支、历史改写、reset --hard 或 clean。写入沿用主机权限，不经过任务执行沙箱或任务创建审批；工具列表负责入口授权。`git_write` 仅在“全部”或明确选择的“自定义”中启用；常用省略通用主机写入，只读始终排除此工具。选择它会保留 codex_request 和 control_output。
+分支、提交和 stash 作用于整个仓库。无 fetch/pull/push、删除分支、历史改写、reset --hard 或 clean。写入沿用主机权限，不经过任务执行沙箱或任务创建审批；工具列表负责入口授权。`git_write` 仅在“全部”或明确选择的“自定义”中启用；默认档省略此低频工具，只读始终排除此工具。选择它会保留 receipt 和 control_output。
 
-回执复用 codex_request：同一 requestId 和参数重试不重复执行，不同参数拒绝。Git 失败或冲突返回 failed，保留原因；读取回执和 git 状态后再决定后续操作。该工具没有单独的审批队列；现有 approve/bypass/reject 仅对处于 awaiting-approval 的请求生效。
+回执复用 receipt：同一 requestId 和参数重试不重复执行，不同参数拒绝。Git 失败或冲突返回 failed，保留原因；读取回执和 git 状态后再决定后续操作。该工具没有单独的审批队列；现有 approve/bypass/reject 仅对处于 awaiting-approval 的请求生效。
 
 提交及 stash push 的身份从 Git 仓库与用户全局配置读取 user.name/user.email（包含用户配置的 include/includeIf，仓库值优先），缺失时报错，不硬编码身份、不使用进程中的 GIT_AUTHOR/GIT_COMMITTER 覆盖。仅身份值传入写命令，其他全局配置与系统配置不加载。写命令保留环境清理、--no-optional-locks、字面路径、12 秒超时与每路 16 MiB 输出上限；必需的索引锁仍由 Git 管理。禁用 hooks、fsmonitor、外部 diff、配置的 clean/smudge/process 过滤器、签名、自动维护及递归子模块操作；依赖过滤器（例如 LFS）的文件不会自动转换。stash pop 禁用 rerere，并在仓库配置了外部 merge driver 时拒绝执行，以免触发自定义命令。
 
 ```text
 git_write {"project":"/absolute/project","operation":"add","paths":["src/main.rs"],"requestId":"<UUID>"}
 git_write {"project":"/absolute/project","operation":"commit","message":"fix: correct behavior\n\nDetails","requestId":"<新 UUID>"}
-codex_request {"requestId":"<提交 UUID>"}
+receipt {"requestId":"<提交 UUID>"}
 ```
 
 ### Image content

@@ -469,7 +469,7 @@
   "restorePanelWidth": "恢复面板宽度",
   "toolList": "工具列表",
   "toolsAll": "全部",
-  "toolsCommon": "常用",
+  "toolsCommon": "默认",
   "toolsReadOnly": "只读",
   "toolsCustom": "自定义",
   "toolCatalogFailed": "无法加载工具目录，已保存的策略保持不变。",
@@ -666,5 +666,7 @@
   "oauthDenied": "已拒绝连接。浏览器中的授权页面会自动返回客户端。",
   "oauthFinished": "此请求已完成或过期，请回到浏览器查看结果，必要时重新连接。",
   "oauthWrongDevice": "本机没有此授权请求。若连接在另一台设备，请在目标设备打开 Local Connector 确认，或让 Agent 通过目标设备的 CLI 确认。请求过期时，请从控制源重新连接。",
-  "oauthReading": "正在读取本机授权请求…"
+  "oauthReading": "正在读取本机授权请求…",
+  "toolsAdvanced": "高级",
+  "toolsUnavailable": "本机不可用"
 }

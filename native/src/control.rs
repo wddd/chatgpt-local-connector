@@ -210,6 +210,32 @@ impl Control {
         result
     }
     pub async fn request(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
+        if method == "turn/start" {
+            let thread = string(&args, "threadId");
+            let baseline = if let Some(cwd) = args["cwd"].as_str() {
+                crate::changes::capture(cwd).await
+            } else {
+                match self
+                    .request_inner(
+                        "thread/read",
+                        json!({"threadId":thread,"includeTurns":false}),
+                        10000,
+                    )
+                    .await
+                {
+                    Ok(t) => crate::changes::capture(string(&t["thread"], "cwd")).await,
+                    Err(e) => json!({"unavailable":e}),
+                }
+            };
+            let out = self.request_inner(method, args.clone(), timeout).await?;
+            if let Err(e) = crate::changes::record(thread, string(&out["turn"], "id"), &baseline) {
+                crate::logs::record("WARN", &e, None);
+            }
+            return Ok(out);
+        }
+        self.request_inner(method, args, timeout).await
+    }
+    async fn request_inner(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
         #[cfg(feature = "test-fixture")]
         {
             return self.utility().await?.call(method, args, timeout).await;
@@ -340,7 +366,10 @@ impl Control {
         RECEIPTS.read(request, &self.session)
     }
 
-    pub async fn mutate(self: &Arc<Self>, operation: &str, args: Value) -> Result<Value> {
+    pub async fn mutate(self: &Arc<Self>, operation: &str, mut args: Value) -> Result<Value> {
+        if args.get("requestId").is_none_or(Value::is_null) {
+            args["requestId"] = json!(id());
+        }
         let request = string(&args, "requestId").to_owned();
         RECEIPTS.path(&request)?;
         let mut payload = args.clone();
@@ -350,7 +379,7 @@ impl Control {
         if let Some(receipt) = RECEIPTS.replay(&request, &digest, &self.session)? {
             return Ok(receipt);
         }
-        let mut receipt = json!({"origin":crate::kernel::origin::current_origin(),"requestId":request,"backendSession":self.session,"digest":digest,"operation":operation,"state":"reserved","createdAt":now(),"updatedAt":now()});
+        let mut receipt = json!({"origin":crate::kernel::origin::current_origin(),"requestId":request,"backendSession":self.session,"digest":digest,"operation":operation,"arguments":args,"state":"reserved","createdAt":now(),"updatedAt":now()});
         if operation == "create" || (operation == "native" && args["method"] == "thread/start") {
             receipt["executionOwner"] = json!(if self.auto_open_codex()? {
                 "desktop"
@@ -371,21 +400,27 @@ impl Control {
             receipt["approval"] = json!({"decision":decision,"source":"cloud","at":now()});
             if decision == "pending" {
                 receipt["state"] = json!("awaiting-approval");
-                receipt["nextAction"] = json!("codex_request: approve, bypass or reject; user intent overrides the default approval mode");
+                receipt["nextAction"] = json!("receipt: approve, bypass or reject; user intent overrides the default approval mode");
             }
         }
         RECEIPTS.reserve(&receipt)?;
         if receipt["state"] == "awaiting-approval" {
             return Ok(receipt);
         }
-        let wait = num(&args, "waitMs", 25000).min(120000) as u64;
+        let wait = if operation == "command" {
+            num(&args, "timeoutMs", 60000) as u64 + 10000
+        } else {
+            num(&args, "waitMs", 25000).min(120000) as u64
+        };
         let mut jobs = self.jobs.lock().await;
         let rx = self.launch(operation, args, receipt, &mut jobs);
         drop(jobs);
         drop(request_lock);
         match tokio::time::timeout(Duration::from_millis(wait), rx).await {
             Ok(Ok(r)) => r,
-            _ => Ok(json!({"requestId":request,"state":"pending","nextAction":"codex_request"})),
+            _ => Ok(
+                json!({"requestId":request,"state":"pending","operation":operation,"nextAction":"receipt"}),
+            ),
         }
     }
     fn launch(
@@ -605,6 +640,12 @@ impl Control {
         Ok(snapshot)
     }
     async fn perform(&self, operation: &str, args: &Value, r: &mut Value) -> Result<Value> {
+        if matches!(operation, "edit" | "write") {
+            return crate::text_files::write(self, operation, args).await;
+        }
+        if operation == "command" {
+            return crate::shell_command::run(self, args).await;
+        }
         if operation == "git_write" {
             r["state"] = json!("submitting");
             self.checkpoint(r)?;
@@ -683,10 +724,17 @@ impl Control {
             }
             turn["threadId"] = json!(thread);
             turn["input"] = input;
+            let baseline = crate::changes::capture(
+                turn["cwd"]
+                    .as_str()
+                    .unwrap_or_else(|| string(&result["thread"], "cwd")),
+            )
+            .await;
+            r["turnBaseline"] = baseline.clone();
             r["state"] = json!("turn-submitting");
             self.checkpoint(r)?;
             let out = if background {
-                self.request("turn/start", turn, timeout).await?
+                self.request_inner("turn/start", turn, timeout).await?
             } else {
                 // Prepare the input before navigation and keep the same IPC connection
                 // through owner discovery and submission to shorten the empty-page interval.
@@ -698,6 +746,9 @@ impl Control {
                 out
             };
             r["turnId"] = out["turn"]["id"].clone();
+            if let Err(e) = crate::changes::record(thread, string(&r, "turnId"), &baseline) {
+                crate::logs::record("WARN", &e, None);
+            }
             return Ok(
                 json!({"threadId":thread,"turnId":r["turnId"],"resolved":result,"submitted":true,"desktopUrl":format!("codex://threads/{thread}"),"executionOwner":if background {"connector"} else {"desktop"},"desktop":{"state":if background {"not-opened"} else {"owner-confirmed"},"sharedBackend":false}}),
             );
@@ -748,6 +799,12 @@ impl Control {
                 params["expectedTurnId"] = active.get("turnId").unwrap_or(&active["id"]).clone();
             } else {
                 method = "turn/start".into();
+                r["turnBaseline"] = crate::changes::capture(
+                    params["cwd"]
+                        .as_str()
+                        .unwrap_or_else(|| string(&state, "cwd")),
+                )
+                .await;
             }
         }
         if operation == "interrupt" {
@@ -763,11 +820,22 @@ impl Control {
             let out = self.seed(params, "", Some(r)).await?;
             desktop::reveal(self.ipc().await?.as_ref(), string(&out["thread"], "id")).await?;
             out
+        } else if method == "turn/start" && r["turnBaseline"].is_object() {
+            self.request_inner(&method, params, timeout).await?
         } else {
             self.request(&method, params, timeout).await?
         };
         if result["turn"]["id"].is_string() {
             r["turnId"] = result["turn"]["id"].clone();
+            if r["turnBaseline"].is_object() {
+                if let Err(e) = crate::changes::record(
+                    string(r, "threadId"),
+                    string(r, "turnId"),
+                    &r["turnBaseline"],
+                ) {
+                    crate::logs::record("WARN", &e, None);
+                }
+            }
         }
         Ok(result)
     }
@@ -792,6 +860,9 @@ impl Control {
                     args[k] = default.clone();
                 }
             }
+        }
+        if name == "command" && args["cmd"].is_string() {
+            return self.mutate("command", args).await;
         }
         let domain = &catalog["domains"][name];
         if domain.is_object() {
@@ -819,7 +890,12 @@ impl Control {
             "overview" | "tree" | "search" | "read" | "git" => {
                 crate::projects::query(self, name, &args).await
             }
-            "git_write" => self.mutate("git_write", args).await,
+            "edit" | "write" | "git_write" => self.mutate(name, args).await,
+            "logs" => {
+                args["descending"] = json!(true);
+                crate::logs::query(&args)
+            }
+            "codex_changes" => crate::changes::query(self, &args).await,
             "codex_create" => self.mutate("create", args).await,
             "codex_send" => self.mutate("send", args).await,
             "codex_interrupt" => self.mutate("interrupt", args).await,
@@ -830,7 +906,7 @@ impl Control {
             }
             "file_search" => self.request("fuzzyFileSearch", args, 60000).await,
             "codex_schema" => self.schema(&args).await,
-            "codex_request" => {
+            "receipt" => {
                 let action = args["action"].as_str().unwrap_or("read");
                 if action == "read" {
                     self.receipt(string(&args, "requestId")).await

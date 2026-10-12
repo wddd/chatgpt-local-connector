@@ -24,12 +24,14 @@ export default function ToolPolicyField({
   onChange,
   disabled,
 }: {
-  value: ToolPolicy;
+  value?: ToolPolicy;
   onChange: (value: ToolPolicy) => void;
   disabled?: boolean;
 }) {
   const [catalog, setCatalog] = useState<ToolCatalog>(),
-    [mode, setMode] = useState<ToolMode>(value === "all" ? "all" : "custom"),
+    [mode, setMode] = useState<ToolMode>(
+      value === undefined ? "common" : value === "all" ? "all" : "custom",
+    ),
     [failure, setFailure] = useState(false),
     [open, setOpen] = useState(false),
     [draft, setDraft] = useState<string[]>([]);
@@ -49,7 +51,10 @@ export default function ToolPolicyField({
   const selected =
     value === "all"
       ? (catalog?.tools.map((tool) => tool.name) ?? [])
-      : value.allowlist;
+      : value?.allowlist ??
+        (catalog
+          ? (presetPolicy("common", catalog) as { allowlist: string[] }).allowlist
+          : []);
   const options = [
     { value: "all", label: t("toolsAll") },
     { value: "common", label: t("toolsCommon") },
@@ -68,7 +73,9 @@ export default function ToolPolicyField({
     );
   }
   const exposed =
-    catalog?.tools.filter((tool) => selected.includes(tool.name)) ?? [];
+    catalog?.tools.filter(
+      (tool) => selected.includes(tool.name) && tool.available !== false,
+    ) ?? [];
   const locked = new Set(catalog?.required ?? []);
   for (const tool of catalog?.tools ?? [])
     if (draft.includes(tool.name))
@@ -197,6 +204,8 @@ export default function ToolPolicyField({
                           <Tooltip text={tool.description}>
                             <span tabIndex={0} className="tool-name">
                               {tool.name}
+                              {tool.tier === "advanced" ? ` · ${t("toolsAdvanced")}` : ""}
+                              {tool.available === false ? ` · ${t("toolsUnavailable")}` : ""}
                             </span>
                           </Tooltip>
                         </Checkbox>
@@ -204,6 +213,8 @@ export default function ToolPolicyField({
                         <Tooltip text={tool.description}>
                           <span tabIndex={0} className="tool-name">
                             {tool.name}
+                              {tool.tier === "advanced" ? ` · ${t("toolsAdvanced")}` : ""}
+                              {tool.available === false ? ` · ${t("toolsUnavailable")}` : ""}
                           </span>
                         </Tooltip>
                       )}

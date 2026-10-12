@@ -1,3 +1,6 @@
+mod changes;
+mod shell_command;
+mod text_files;
 use serde_json::{json, Value};
 use std::{
     path::{Path, PathBuf},

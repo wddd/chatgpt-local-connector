@@ -167,11 +167,12 @@ pub fn query(options: &Value) -> Result<Value> {
             if !path.extension().is_some_and(|s| s == "jsonl") {
                 continue;
             }
-            for line in std::fs::read_to_string(path)
+            for (index, line) in std::fs::read_to_string(&path)
                 .map_err(|e| e.to_string())?
                 .lines()
+                .enumerate()
             {
-                if let Ok(row) = serde_json::from_str::<Value>(line) {
+                if let Ok(mut row) = serde_json::from_str::<Value>(line) {
                     if row["level"] == "INFO"
                         && matches!(
                             string(&row, "msg"),
@@ -180,33 +181,58 @@ pub fn query(options: &Value) -> Result<Value> {
                     {
                         continue;
                     }
+                    row["recordId"] = json!(hash(format!("{}:{index}", path.display())));
                     rows.push(row);
                 }
             }
         }
     }
-    rows.sort_by(|a, b| string(a, "time").cmp(string(b, "time")));
+    rows.sort_by(|a, b| {
+        string(a, "time")
+            .cmp(string(b, "time"))
+            .then_with(|| string(a, "recordId").cmp(string(b, "recordId")))
+    });
+    let descending = options["descending"] == true;
+    if descending {
+        rows.reverse();
+    }
+    let since = options["since"]
+        .as_str()
+        .map(|v| {
+            chrono::DateTime::parse_from_rfc3339(v)
+                .map(|t| t.with_timezone(&chrono::Utc))
+                .map_err(|e| e.to_string())
+        })
+        .transpose()?;
     let cursor = string(options, "cursor");
     let position = rows.iter().position(|r| hash(r.to_string()) == cursor);
     let gap = !cursor.is_empty() && position.is_none();
-    let mut selected: Vec<&Value> = rows
-        .iter()
-        .skip(position.map_or(0, |i| i + 1))
-        .filter(|row| {
-            if ["ingressId", "level"].iter().any(|key| {
-                options[*key]
+    let mut selected: Vec<&Value> =
+        rows.iter()
+            .skip(position.map_or(0, |i| i + 1))
+            .filter(|row| {
+                if ["ingressId", "level"].iter().any(|key| {
+                    options[*key]
+                        .as_str()
+                        .is_some_and(|v| !v.is_empty() && row[*key] != v)
+                }) {
+                    return false;
+                }
+                if options["grep"]
                     .as_str()
-                    .is_some_and(|v| !v.is_empty() && row[*key] != v)
-            }) {
-                return false;
-            }
-            let at = string(row, "time");
-            !options["since"].as_str().is_some_and(|v| at < v)
-                && !options["until"].as_str().is_some_and(|v| at > v)
-        })
-        .collect();
+                    .is_some_and(|v| !string(row, "msg").contains(v))
+                {
+                    return false;
+                }
+                let at = string(row, "time");
+                !since.as_ref().is_some_and(|v| {
+                    chrono::DateTime::parse_from_rfc3339(at).is_ok_and(|at| at < *v)
+                }) && !options["until"].as_str().is_some_and(|v| at > v)
+            })
+            .collect();
     // The ordinary log view starts at the recent tail; explicit time ranges page history forward.
-    if cursor.is_empty()
+    if !descending
+        && cursor.is_empty()
         && options.get("since").is_none()
         && options.get("until").is_none()
         && selected.len() > limit
@@ -222,6 +248,6 @@ pub fn query(options: &Value) -> Result<Value> {
     }
     .unwrap_or_else(|| cursor.to_owned());
     Ok(
-        json!({"rows":selected,"cursor":next,"hasMore":has_more,"gap":gap,"retention":{"days":7,"maxBytes":16777216},"oldestAt":rows.first().map(|v|&v["time"]),"newestAt":rows.last().map(|v|&v["time"])}),
+        json!({"rows":selected,"cursor":next,"hasMore":has_more,"gap":gap,"retention":{"days":7,"maxBytes":16777216},"oldestAt":if descending{rows.last()}else{rows.first()}.map(|v|&v["time"]),"newestAt":if descending{rows.first()}else{rows.last()}.map(|v|&v["time"])}),
     )
 }

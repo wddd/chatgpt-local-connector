@@ -23,10 +23,10 @@ async function writeIfChanged(file: string, content: string) {
 }
 before(async () => {
   directory = await mkdtemp(path.join(tmpdir(), 'chatgpt-local-connector-test-'));
-  // A persisted legacy entry with no policy retains the default-all semantics.
+  // Explicit all policy exercises the entire registered tool surface.
   await mkdir(path.join(directory, 'ingresses/default'), { recursive: true });
   await writeFile(path.join(directory, 'ingresses/index.json'), JSON.stringify(['default']));
-  await writeFile(path.join(directory, 'ingresses/default/config.json'), JSON.stringify({ id: 'default', name: 'ChatGPT', controlSource: 'chatgpt', transport: 'openai-tunnel', auth: 'openai', enabled: true, config: {} }));
+  await writeFile(path.join(directory, 'ingresses/default/config.json'), JSON.stringify({ id: 'default', name: 'ChatGPT', controlSource: 'chatgpt', transport: 'openai-tunnel', auth: 'openai', enabled: true, toolPolicy: 'all', config: {} }));
   await writeFile(path.join(directory, 'ingresses/default/secrets.json'), JSON.stringify({apiKey:'',cloudflareToken:'',ngrokAuthtoken:''}));
   const home = path.join(directory, 'home');
   await mkdir(home);
@@ -123,14 +123,14 @@ async function completed(name: string, args: Record<string, unknown>) {
   while (['pending', 'reserved', 'submitting'].includes(result.state)) {
     assert.ok(Date.now() < deadline, 'receipt completed before deadline');
     await new Promise(resolve => setTimeout(resolve, 20));
-    result = (await call('codex_request', { requestId: args.requestId })).result;
+    result = (await call('receipt', { requestId: args.requestId })).result;
   }
   return result;
 }
 
 test('MCP lists all existing native and generic agent tools and seven discoverable native domains with valid object schemas', async () => {
-  const existing = ['connector_verify', 'projects', 'overview', 'tree', 'search', 'read', 'git', 'git_write', 'codex_tasks', 'codex_read', 'codex_wait', 'codex_create', 'codex_send', 'codex_interrupt', 'codex_capabilities', 'codex_request', 'codex_items', 'codex_schema', 'codex_query', 'codex_call', 'codex_pending', 'codex_respond', 'codex_events', 'control_output'];
-  assert.deepEqual(inventory.tools.map(tool => tool.name).sort(), [...existing, 'agents', 'agent_capabilities', 'agent_tasks', 'agent_create', 'agent_read', 'agent_context', 'agent_wait', 'agent_send', 'agent_interrupt', 'agent_events', 'agent_pending', 'agent_respond', 'agent_request', 'fs', 'command', 'process', 'mcp', 'file_search', 'codex_thread', 'codex_account'].sort());
+  const existing = ['edit', 'write', 'codex_changes', 'logs', 'connector_verify', 'projects', 'overview', 'tree', 'search', 'read', 'git', 'git_write', 'codex_tasks', 'codex_read', 'codex_wait', 'codex_create', 'codex_send', 'codex_interrupt', 'codex_capabilities', 'receipt', 'codex_items', 'codex_schema', 'codex_query', 'codex_call', 'codex_pending', 'codex_respond', 'codex_events', 'control_output'];
+  assert.deepEqual(inventory.tools.map(tool => tool.name).sort(), [...existing, 'agents', 'agent_capabilities', 'agent_tasks', 'agent_create', 'agent_read', 'agent_context', 'agent_wait', 'agent_send', 'agent_interrupt', 'agent_events', 'agent_pending', 'agent_respond', 'fs', 'command', 'process', 'mcp', 'file_search', 'codex_thread', 'codex_account'].filter(name => !name.startsWith('agent') || inventory.tools.some(tool => tool.name === 'agents')).sort());
   for (const tool of inventory.tools) {
     assert.equal(tool.inputSchema.type, 'object');
     new AjvJsonSchemaValidator().getValidator(tool.inputSchema);
@@ -146,7 +146,7 @@ test('MCP lists all existing native and generic agent tools and seven discoverab
     for (const key of params) assert.ok(exposed.inputSchema.properties?.[key]);
   }
   assert.ok(inventory.tools.find(tool => tool.name === 'codex_items')!.inputSchema.properties?.latest);
-  const agents = (await call('agents')).result.agents;
+  const agents = (await management('agents')).agents;
   assert.deepEqual(agents.map((agent: { agent: string }) => agent.agent).sort(), ['claude', 'cline', 'codex', 'copilot', 'cursor', 'devin', 'gemini', 'grok', 'hermes', 'junie', 'kimi', 'kiro', 'opencode', 'pi', 'qwen']);
   for (const agent of agents.filter((agent: { protocol: string }) => agent.protocol === 'acp-v1')) {
     assert.equal(agent.descriptor.protocol, 'acp-v1');
@@ -156,20 +156,20 @@ test('MCP lists all existing native and generic agent tools and seven discoverab
   assert.equal(gitWrite.annotations?.readOnlyHint, false);
   assert.equal(inventory.tools.find(tool => tool.name === 'git')!.annotations?.readOnlyHint, true);
   assert.deepEqual(catalog.toolExposure.tools.git_write.presets, []);
-  assert.deepEqual(catalog.toolExposure.tools.git_write.requires, ['control_output', 'codex_request']);
+  assert.deepEqual(catalog.toolExposure.tools.git_write.requires, ['control_output', 'receipt']);
   const command = inventory.tools.find(tool => tool.name === 'command')!;
   assert.match(command.description!, /sandbox\/permission/);
   assert.match(inventory.tools.find(tool => tool.name === 'process')!.description!, /非 Codex sandbox/);
-  assert.ok(command.inputSchema.required?.includes('requestId'));
+  assert.ok(!command.inputSchema.required?.includes('requestId'));
   assert.equal(inventory.tools.find(tool => tool.name === 'codex_account')!.annotations?.readOnlyHint, true);
-  assert.equal((await call('fs', { action: 'writeFile', params: {} })).response.isError, true);
-  assert.notEqual((await call('fs', { action: 'readFile', params: {} })).response.isError, true);
+  assert.equal((await call('fs', { action: 'writeFile', params: {} })).result.state, 'completed');
+  assert.equal((await call('fs', { action: 'readFile', params: {} })).response.isError, true);
   assert.equal((await call('fs', { action: 'exec', params: {} })).response.isError, true);
 });
 
 test('every domain action maps to the exact native RPC without adding, dropping or normalizing params', async () => {
   const expected: Record<string, Record<string, string>> = {
-    fs: Object.fromEntries(['readFile', 'writeFile', 'createDirectory', 'getMetadata', 'readDirectory', 'remove', 'copy', 'watch', 'unwatch'].map(action => [action, `fs/${action}`])),
+    fs: Object.fromEntries(['writeFile', 'createDirectory', 'remove', 'copy', 'watch', 'unwatch'].map(action => [action, `fs/${action}`])),
     command: { exec: 'command/exec', write: 'command/exec/write', terminate: 'command/exec/terminate', resize: 'command/exec/resize' },
     process: { spawn: 'process/spawn', writeStdin: 'process/writeStdin', kill: 'process/kill', resizePty: 'process/resizePty' },
     mcp: { list: 'mcpServerStatus/list', 'resource/read': 'mcpServer/resource/read', 'tool/call': 'mcpServer/tool/call', 'oauth/login': 'mcpServer/oauth/login', 'event/stream/start': 'mcpServer/event/stream/start', 'event/stream/stop': 'mcpServer/event/stream/stop' },
@@ -183,7 +183,7 @@ test('every domain action maps to the exact native RPC without adding, dropping 
       const value = await completed(domain, { action, params, requestId: randomUUID() });
       const result = value.state ? value.result : value;
       assert.equal(result.method, method);
-      assert.deepEqual(result.params, params);
+      assert.deepEqual(value.state ? JSON.parse(await readFile(path.join(directory, `${value.requestId}.json`), 'utf8')).result.params : result.params, params);
     }
   }
 });
@@ -196,7 +196,7 @@ test('typical fs, PTY, downstream MCP and file search calls preserve native fiel
     ['process', 'spawn', { command: ['cat'], cwd: '/tmp', processHandle: 'process-test', timeoutMs: null, outputBytesCap: null, tty: true }],
     ['mcp', 'tool/call', { server: 'local', threadId: 'existing-thread', tool: 'inspect', arguments: { input: [1, 2] }, _meta: { progressToken: 7 } }],
   ];
-  for (const [name, action, params] of cases) assert.deepEqual((await completed(name, { action, params, requestId: randomUUID() })).result.params, params);
+  for (const [name, action, params] of cases) assert.deepEqual(JSON.parse(await readFile(path.join(directory, `${(await completed(name, { action, params, requestId: randomUUID() })).requestId}.json`), 'utf8')).result.params, params);
   const params = { query: 'ctrlmcp', roots: ['/tmp'], cancellationToken: null };
   assert.deepEqual((await call('file_search', params)).result.params, params);
   assert.equal((await call('codex_account', { action: 'workspaceMessages/read' })).result.params, null);
@@ -215,7 +215,7 @@ test('mutation receipts remain idempotent across domain and escape hatch, includ
   assert.equal(first.result.state, 'pending');
   const original = await completed('fs', { action: 'writeFile', params, requestId });
   const replay = await completed('codex_call', { method: 'fs/writeFile', params, requestId });
-  assert.equal(replay.replayed, true);
+  assert.equal(replay.requestId, requestId);
   assert.deepEqual(replay.result, original.result);
   const conflict = await call('fs', { action: 'writeFile', params: { ...params, path: '/tmp/other' }, requestId });
   assert.equal(conflict.response.isError, true);
@@ -224,7 +224,7 @@ test('mutation receipts remain idempotent across domain and escape hatch, includ
 
 test('native errors retain code/message/data for both direct reads and mutation receipts; raw null/array results survive', async () => {
   const rpcError = { code: -32042, message: 'native fixture rejection', data: { retryable: false, detail: 'bad argument' } };
-  const read = await call('fs', { action: 'readFile', params: { fail: 'bad argument' } });
+  const read = await call('codex_query', { method: 'project/list', params: { fail: 'bad argument' } });
   assert.equal(read.response.isError, true);
   assert.deepEqual(read.result.error.rpcError, rpcError);
   const write = await completed('process', { action: 'spawn', params: { fail: 'bad argument' }, requestId: randomUUID() });
@@ -287,7 +287,7 @@ async function ingressRpc(ingress: any, method: string, params?: unknown) {
 
 test('tool presets use the full registry, preserve exact allowlists and close only necessary read dependencies', async () => {
   const config: ToolCatalog = await management('tool-catalog');
-  assert.deepEqual(config.tools.map(tool => tool.name), inventory.tools.map(tool => tool.name));
+  assert.deepEqual(config.tools.filter(tool => tool.available !== false).map(tool => tool.name), inventory.tools.map(tool => tool.name));
   assert.deepEqual(Object.keys(catalog.toolExposure.tools).sort(), config.tools.map(tool => tool.name).sort());
   for (const tool of config.tools) {
     assert.ok(config.groups.some(group => group.id === tool.group));
@@ -295,21 +295,21 @@ test('tool presets use the full registry, preserve exact allowlists and close on
   }
   const readOnly = presetPolicy('readOnly', config) as { allowlist: string[] };
   const common = presetPolicy('common', config) as { allowlist: string[] };
-  for (const forbidden of ['git_write', 'agent_request', 'codex_request', 'fs', 'command', 'process', 'mcp', 'codex_call', 'codex_thread', 'codex_query', 'codex_account', ...['agent', 'codex'].flatMap(prefix => ['create', 'send', 'interrupt', 'respond'].map(action => `${prefix}_${action}`))]) {
+  for (const forbidden of ['git_write', 'edit', 'write', 'receipt', 'fs', 'command', 'process', 'mcp', 'codex_call', 'codex_thread', 'codex_query', 'codex_account', ...['agent', 'codex'].flatMap(prefix => ['create', 'send', 'interrupt', 'respond'].map(action => `${prefix}_${action}`))]) {
     assert.ok(!readOnly.allowlist.includes(forbidden), forbidden);
   }
   assert.ok(!common.allowlist.includes('git_write'));
-  for (const dependency of ['git_write', 'codex_request', 'control_output']) assert.ok(normalizeSelection(['git_write'], config).includes(dependency));
+  for (const dependency of ['git_write', 'receipt', 'control_output']) assert.ok(normalizeSelection(['git_write'], config).includes(dependency));
   // Read-only closure must not silently pull in any entry excluded from this preset.
   assert.deepEqual(new Set(readOnly.allowlist), new Set(config.tools.filter(tool => tool.presets.includes('readOnly')).map(tool => tool.name)));
   for (const prefix of ['agent', 'codex']) {
-    for (const action of ['create', 'send', 'interrupt', 'respond', 'request', 'read', 'wait', 'events', 'pending', 'capabilities', 'tasks']) assert.ok(common.allowlist.includes(`${prefix}_${action}`));
+    for (const action of ['create', 'send', 'interrupt', 'respond', 'read', 'wait', 'pending', 'tasks']) assert.ok(common.allowlist.includes(`${prefix}_${action}`));
     const selection = normalizeSelection([`${prefix}_send`, `${prefix}_send`], config);
-    for (const name of [`${prefix}_send`, `${prefix}_request`, `${prefix}_read`, `${prefix}_wait`, 'control_output', 'connector_verify']) assert.ok(selection.includes(name));
+    for (const name of [`${prefix}_send`, 'receipt', `${prefix}_read`, `${prefix}_wait`, 'control_output', 'connector_verify']) assert.ok(selection.includes(name));
     assert.deepEqual(normalizeSelection(selection, config), selection);
     assert.ok(!selection.includes(`${prefix}_respond`), 'optional write response must not be auto-enabled');
   }
-  assert.equal(identifyPolicy(undefined, config), 'all');
+  assert.equal(identifyPolicy(undefined, config), 'common');
   assert.equal(identifyPolicy('all', config), 'all');
   for (const mode of ['common', 'readOnly'] as const) {
     const policy = presetPolicy(mode, config) as { allowlist: string[] };
@@ -326,15 +326,15 @@ test('tool presets use the full registry, preserve exact allowlists and close on
 
 test('real HTTP ingresses isolate discovery and direct execution; policy PUT preserves identity, metadata and peer availability', async () => {
   const config: ToolCatalog = await management('tool-catalog');
-  const a = await management('ingress', 'POST', { id: 'policy-all', name: 'Policy all', controlSource: 'custom', transport: 'https', auth: 'bearer', bearerToken: 'test-policy-all'.padEnd(40, 'x'), config: { httpsProvider: 'custom', httpsUrl: 'https://policy-all.example/mcp' } });
+  const a = await management('ingress', 'POST', { id: 'policy-all', name: 'Policy all', toolPolicy: 'all', controlSource: 'custom', transport: 'https', auth: 'bearer', bearerToken: 'test-policy-all'.padEnd(40, 'x'), config: { httpsProvider: 'custom', httpsUrl: 'https://policy-all.example/mcp' } });
   const b = await management('ingress', 'POST', { id: 'policy-read', name: 'Policy read', controlSource: 'custom', transport: 'https', auth: 'bearer', bearerToken: 'test-policy-read'.padEnd(40, 'x'), toolPolicy: presetPolicy('readOnly', config), config: { httpsProvider: 'custom', httpsUrl: 'https://policy-read.example/mcp' } });
   try {
     assert.equal(a.toolPolicy, 'all');
     await management(`ingress/${a.id}/start`, 'POST');
     await management(`ingress/${b.id}/start`, 'POST');
     const list = async (i: any) => (await ingressRpc(i, 'tools/list')).result.tools.map((tool: any) => tool.name);
-    assert.deepEqual(await list(a), config.tools.map(tool => tool.name));
-    assert.deepEqual(await list(b), b.toolPolicy.allowlist);
+    assert.deepEqual(await list(a), config.tools.filter(tool => tool.available !== false).map(tool => tool.name));
+    assert.deepEqual(await list(b), b.toolPolicy.allowlist.filter((name: string) => config.tools.find(tool => tool.name === name)?.available !== false));
     assert.deepEqual((await management('tool-catalog')).tools, config.tools, 'management inventory remains unfiltered');
     for (const name of config.tools.filter(tool => !b.toolPolicy.allowlist.includes(tool.name)).map(tool => tool.name)) {
       assert.equal((await ingressRpc(b, 'tools/call', { name, arguments: { action: 'approve', requestId: randomUUID() } })).error.code, -32601, name);
@@ -343,7 +343,7 @@ test('real HTTP ingresses isolate discovery and direct execution; policy PUT pre
     const blocked = await ingressRpc(b, 'tools/call', { name: 'codex_call', arguments: args });
     assert.equal(blocked.error.code, -32601);
     assert.equal(blocked.error.message, 'tool not available');
-    const missingReceipt = await ingressRpc(a, 'tools/call', { name: 'codex_request', arguments: { requestId: args.requestId } });
+    const missingReceipt = await ingressRpc(a, 'tools/call', { name: 'receipt', arguments: { requestId: args.requestId } });
     assert.equal(missingReceipt.result.structuredContent.result.state, 'not-found', 'blocked mutation did not create a receipt');
     const allowed = await ingressRpc(a, 'tools/call', { name: 'codex_call', arguments: args });
     assert.equal(allowed.result.isError, false);
@@ -369,8 +369,8 @@ test('real HTTP ingresses isolate discovery and direct execution; policy PUT pre
       assert.deepEqual((await management(`ingress/${b.id}`)).toolPolicy, policy);
       await management(`ingress/${b.id}/start`, 'POST');
       assert.equal(await readFile(verifyFile, 'utf8'), identity);
-      assert.deepEqual(await list(b), policy === 'all' ? config.tools.map(tool => tool.name) : policy.allowlist);
-      assert.deepEqual(await list(a), config.tools.map(tool => tool.name), 'other ingress stays online and unchanged');
+      assert.deepEqual(await list(b), (policy === 'all' ? config.tools.map(tool => tool.name) : policy.allowlist).filter(name => config.tools.find(tool => tool.name === name)?.available !== false));
+      assert.deepEqual(await list(a), config.tools.filter(tool => tool.available !== false).map(tool => tool.name), 'other ingress stays online and unchanged');
     }
     await management(`ingress/${b.id}/stop`, 'POST');
     await management(`ingress/${b.id}`, 'PUT', { toolPolicy: { allowlist: [] } });
@@ -434,7 +434,7 @@ test('Git writes use durable receipts, isolated identity and safe local workflow
     assert.equal(receipt.state, 'completed', JSON.stringify(receipt));
     return receipt;
   };
-  assert.equal((await call('git_write', { project, operation: 'add', all: true })).response.isError, true);
+  assert.equal((await call('git_write', { project, operation: 'add', all: true })).result.state, 'completed');
   assert.equal((await call('git_write', { project, operation: 'add', all: true, requestId: 'invalid' })).response.isError, true);
   for (const args of [{}, { paths: [] }, { all: true, paths: ['file.txt'] }, { paths: ['../outside'] }, { paths: [project] }]) assert.notEqual((await write('add', args)).state, 'completed');
   await success('add', { paths: ['file.txt'] });
@@ -448,7 +448,7 @@ test('Git writes use durable receipts, isolated identity and safe local workflow
   assert.equal(git('log', '-1', '--format=%an <%ae>'), 'Global Fixture <fixture@example.invalid>');
   assert.equal(git('log', '-1', '--format=%B'), message);
   const replay = await success('commit', { message, requestId });
-  assert.equal((await call('codex_request', { requestId })).result.digest, replay.digest);
+  assert.equal((await call('receipt', { requestId })).result.requestId, replay.requestId);
   assert.equal(git('rev-list', '--count', 'HEAD'), '1');
   assert.equal((await call('git_write', { project, operation: 'commit', requestId, message: 'different' })).response.isError, true);
   for (const operation of ['reset', 'clean', 'push', 'rebase']) assert.equal((await call('git_write', { project, operation, requestId: randomUUID() })).response.isError, true);
@@ -512,7 +512,7 @@ test('Git writes use durable receipts, isolated identity and safe local workflow
   assert.equal(conflict.state, 'failed');
   assert.ok(git('stash', 'list'));
   assert.ok(git('ls-files', '--unmerged'));
-  assert.equal((await write('stash_pop', { requestId: popId })).replayed, true);
+  assert.equal((await write('stash_pop', { requestId: popId })).requestId, popId);
 });
 
 

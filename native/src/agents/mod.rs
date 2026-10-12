@@ -387,11 +387,72 @@ impl AgentHost {
             p.close().await;
         }
     }
+    pub async fn receipt(self: &Arc<Self>, args: Value) -> Result<Option<Value>> {
+        if !RECEIPTS.path(string(&args, "requestId"))?.exists() {
+            return Ok(None);
+        }
+        if crate::kernel::receipts::ReceiptStore::new("")
+            .path(string(&args, "requestId"))?
+            .exists()
+        {
+            return Err("REQUEST_ID_CONFLICT: ambiguous receipt owner".into());
+        }
+        self.decide_receipt(args).await.map(Some)
+    }
+    async fn decide_receipt(self: &Arc<Self>, args: Value) -> Result<Value> {
+        let request = string(&args, "requestId");
+        let _request_lock = self.requests.lock(request).await;
+        let mut r = RECEIPTS.read(request, &self.session)?;
+        let agent_id = string(&r, "agent").to_owned();
+        let agent = agent_id.as_str();
+        let action = args["action"].as_str().unwrap_or("read");
+        if !matches!(action, "read" | "approve" | "bypass" | "reject") {
+            return Err("INVALID_APPROVAL_ACTION".into());
+        }
+        if action != "read" && r["state"] == "awaiting-approval" {
+            let driver = if action == "reject" {
+                None
+            } else {
+                Some(self.drivers.get(agent).ok_or("UNKNOWN_AGENT")?.clone())
+            };
+            r["state"] = json!(if action == "reject" {
+                "not-executed"
+            } else {
+                "pending"
+            });
+            r["approval"] = json!(action);
+            r["backendSession"] = json!(self.session);
+            if action != "reject" && r["operation"] != "agent_create" {
+                r["previousTurnId"] =
+                    self.task(agent, string(&r, "taskId")).await?["turnId"].clone();
+            }
+            RECEIPTS.checkpoint(&mut r)?;
+            if action != "reject" {
+                let mut ops = self.operations.lock().await;
+                let (job, rx) = self.launch(driver.unwrap(), r.clone());
+                ops.insert(request.into(), job);
+                drop(ops);
+                drop(_request_lock);
+                if let Ok(Ok(result)) =
+                    tokio::time::timeout(
+                        std::time::Duration::from_millis(
+                            num(&args, "waitMs", 25000).min(120000) as u64
+                        ),
+                        rx,
+                    )
+                    .await
+                {
+                    return result;
+                }
+            }
+        }
+        Ok(r)
+    }
     pub async fn tool(
         self: &Arc<Self>,
         native: &Arc<control::Control>,
         name: &str,
-        args: Value,
+        mut args: Value,
     ) -> Result<Value> {
         let catalog = crate::catalog();
         let spec = catalog["tools"]
@@ -404,60 +465,26 @@ impl AgentHost {
             .validate(&args)
             .map_err(|e| e.to_string())?;
         if name == "agents" {
-            return Ok(self.inventory().await);
+            let mut inventory = self.inventory().await;
+            inventory["agents"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|a| a["agent"] != "codex");
+            inventory.as_object_mut().unwrap().remove("defaultAgent");
+            return Ok(inventory);
         }
-        let agent = args["agent"].as_str().unwrap_or("codex");
+        let agent = string(&args, "agent").to_owned();
+        if agent == "codex" {
+            return Err("USE_CODEX_TOOLS".into());
+        }
+        if args.get("requestId").is_none() {
+            args["requestId"] = json!(id());
+        }
+        let agent = agent.as_str();
         let driver = self.drivers.get(agent).ok_or("UNKNOWN_AGENT")?;
         self.ensure_enabled(agent).await?;
-        if matches!(driver, AgentDriver::CodexNative) {
-            return native_tool(native, name, args).await;
-        }
         if name == "agent_wait" {
             return wait::agent_wait(self, native, &args).await;
-        }
-        if name == "agent_request" {
-            let request = string(&args, "requestId");
-            let _request_lock = self.requests.lock(request).await;
-            let mut r = RECEIPTS.read(request, &self.session)?;
-            if r["agent"] != agent {
-                return Err("AGENT_REQUEST_MISMATCH".into());
-            }
-            let action = args["action"].as_str().unwrap_or("read");
-            if !matches!(action, "read" | "approve" | "bypass" | "reject") {
-                return Err("INVALID_APPROVAL_ACTION".into());
-            }
-            if action != "read" && r["state"] == "awaiting-approval" {
-                r["state"] = json!(if action == "reject" {
-                    "not-executed"
-                } else {
-                    "pending"
-                });
-                r["approval"] = json!(action);
-                r["backendSession"] = json!(self.session);
-                if action != "reject" && r["operation"] != "agent_create" {
-                    r["previousTurnId"] =
-                        self.task(agent, string(&r, "taskId")).await?["turnId"].clone();
-                }
-                RECEIPTS.checkpoint(&mut r)?;
-                if action != "reject" {
-                    let mut ops = self.operations.lock().await;
-                    let (job, rx) = self.launch(driver.clone(), r.clone());
-                    ops.insert(request.into(), job);
-                    drop(ops);
-                    drop(_request_lock);
-                    if let Ok(Ok(result)) = tokio::time::timeout(
-                        std::time::Duration::from_millis(
-                            num(&args, "waitMs", 25000).min(120000) as u64
-                        ),
-                        rx,
-                    )
-                    .await
-                    {
-                        return result;
-                    }
-                }
-            }
-            return Ok(r);
         }
         if name == "agent_tasks" {
             let dir = root().join("agents/tasks");
@@ -565,7 +592,7 @@ impl AgentHost {
         } else {
             self.task(agent, &task).await?["turnId"].clone()
         };
-        let receipt = json!({"origin":crate::kernel::origin::current_origin(),"requestId":request,"agent":agent,"taskId":task,"previousTurnId":previous_turn,"operation":name,"arguments":args,"digest":digest,"state":if needs_approval{"awaiting-approval"}else{"pending"},"backendSession":self.session,"createdAt":now(),"nextAction":"agent_request"});
+        let receipt = json!({"origin":crate::kernel::origin::current_origin(),"requestId":request,"agent":agent,"taskId":task,"previousTurnId":previous_turn,"operation":name,"arguments":args,"digest":digest,"state":if needs_approval{"awaiting-approval"}else{"pending"},"backendSession":self.session,"createdAt":now(),"nextAction":"receipt"});
         RECEIPTS.reserve(&receipt)?;
         if needs_approval {
             return Ok(receipt);
@@ -665,81 +692,4 @@ impl AgentHost {
             _ => Err("UNKNOWN_TOOL".into()),
         }
     }
-}
-async fn native_tool(native: &Arc<control::Control>, name: &str, mut a: Value) -> Result<Value> {
-    let suffix = name.strip_prefix("agent_").ok_or("UNKNOWN_TOOL")?;
-    a.as_object_mut()
-        .ok_or("INVALID_ARGUMENTS")?
-        .remove("agent");
-    if let Some(task) = a.as_object_mut().unwrap().remove("taskId") {
-        a["threadId"] = task;
-    }
-    if let Some(cwd) = a.as_object_mut().unwrap().remove("cwd") {
-        a["project"] = cwd;
-    }
-    if suffix == "capabilities" {
-        a.as_object_mut().unwrap().remove("threadId");
-    }
-    if suffix == "tasks" {
-        a.as_object_mut().unwrap().remove("offset");
-    }
-    if suffix == "events" || suffix == "pending" {
-        a.as_object_mut().unwrap().remove("threadId");
-    }
-    if suffix == "respond" {
-        a.as_object_mut().unwrap().remove("threadId");
-        if let Some(v) = a.as_object_mut().unwrap().remove("interactionId") {
-            a["id"] = json!(v
-                .as_str()
-                .map(str::to_owned)
-                .unwrap_or_else(|| v.to_string()));
-        }
-    }
-    if suffix == "interrupt" && string(&a, "turnId").is_empty() {
-        return Err("CODEX_TURN_ID_REQUIRED".into());
-    }
-    let result = native.tool(&format!("codex_{suffix}"), a).await?;
-    let mut value = result.clone();
-    value["agent"] = json!("codex");
-    if value.get("runtimeSource").is_none_or(Value::is_null) {
-        value["runtimeSource"] = json!("codex-native");
-    }
-    let thread = if result["threadId"].is_string() {
-        result["threadId"].clone()
-    } else {
-        result["result"]["threadId"].clone()
-    };
-    value["taskId"] = thread.clone();
-    value["sessionId"] = thread;
-    if suffix == "wait" {
-        if let Some(interactions) = value["interaction"].as_array_mut() {
-            for interaction in interactions {
-                interaction["interactionId"] = interaction["responseId"].clone();
-            }
-        }
-        if value["interaction"]
-            .as_array()
-            .is_some_and(|v| !v.is_empty())
-        {
-            value["interactionAction"] = json!("Use agent_respond with agent=codex, taskId, interactionId, backendSession, requestId and native result/error");
-        }
-    }
-    if suffix == "read" {
-        value["status"] = json!(match string(&result, "runtimeStatus") {
-            "active" => "running",
-            "idle" => "idle",
-            _ => "unknown",
-        });
-    }
-    if suffix == "tasks" {
-        if let Some(tasks) = value["tasks"].as_array_mut() {
-            for task in tasks {
-                task["agent"] = json!("codex");
-                task["taskId"] = task["threadId"].clone();
-                task["sessionId"] = task["threadId"].clone();
-            }
-        }
-    }
-    value["native"] = result;
-    Ok(value)
 }

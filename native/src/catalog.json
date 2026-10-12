@@ -1,5 +1,5 @@
 {
-  "instructions": "本机项目事实、Codex 原生协议与通用 Agent 工具。写操作使用 UUID requestId 防重，默认同步等待 25000ms；waitMs 可调（0–120000），超时返回 pending，沿用 requestId 通过 codex_request/agent_request 回读，不重复提交。审批可传 approval=approved/bypass；awaiting-approval 用对应 request 工具推进。completed 表示操作完成，不代表任务结束；只有提交后连接中断或超时且结果未知才标为 unconfirmed，其余失败为 rejected/failed。取得任务和轮次 ID 后用 codex_wait/agent_wait 等待：默认 30 秒，上限 300 秒；timeout 后沿用 ID 与 snapshotHash（expectedHash）续等，取消等待不终止任务。大结果内联约 48 KiB，余下用 control_output 的 outputId/nextOffset 续读。项目查询默认不采集观测元数据；includeSource=true 才采集一次 source/coverage，Git 状态失败不阻断文件读取。view=review 保留工作区资源边界；expectedHash 仅校验内容或列表哈希。Pi/ACP 进程由 Core 管理，停止入口不终止任务。",
+  "instructions": "Codex 使用 codex_*；非 Codex Agent 使用 agent_*（仅本机可用时出现）。写操作 requestId 可选，省略生成 UUID；安全重试沿用 ID 和参数。回执只返回状态、标识、必要结果和错误，不回显参数。pending 仍在执行或等待结果，awaiting-approval 才等待审批；receipt 可回读或 approve/bypass/reject。completed 是操作完成，任务结束用 codex_wait/agent_wait 确认。大结果通过 control_output 续读。默认档满足日常操作；高级工具可在全部/自定义列表开启。",
   "tools": [
     {
       "name": "connector_verify",
@@ -47,7 +47,8 @@
         "type": "object",
         "properties": {},
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "additionalProperties": false
+        "additionalProperties": false,
+        "required": []
       },
       "outputSchema": {
         "type": "object",
@@ -123,7 +124,7 @@
     },
     {
       "name": "tree",
-      "description": "分页查看项目文件；includeIgnored=true 包含忽略文件，nextOffset 非空时继续。",
+      "description": "分页列出目录，支持绝对目录且可省 project；附目录与条目元数据，nextOffset 续页。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -176,9 +177,7 @@
             "description": "采集一次 source/coverage 观测元数据；默认省略。"
           }
         },
-        "required": [
-          "project"
-        ],
+        "required": [],
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false
       },
@@ -262,7 +261,6 @@
           }
         },
         "required": [
-          "project",
           "query"
         ],
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -291,7 +289,7 @@
     },
     {
       "name": "read",
-      "description": "读取工作区或 Git revision 的文本和 PNG/JPEG/WebP/GIF。文本按行分页，返回 SHA256 与 nextLine；expectedHash 校验内容。图片返回 MCP image 块，默认长边 1568、每张至多 1 MiB，优先原图，否则重编码；maxEdge/quality 可调。",
+      "description": "按行读取 UTF-8 文本或返回 MCP image，附 sha256 和文件元数据；支持绝对路径，文本用 nextLine 续读。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -354,7 +352,6 @@
           }
         },
         "required": [
-          "project",
           "path"
         ],
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -467,7 +464,7 @@
     },
     {
       "name": "git_write",
-      "description": "本地 Git 写操作：add 暂存 paths 或 all=true；unstage 仅取消暂存；commit 提交必填多行 message；branch 创建 branch；switch 切换本地 branch（create=true 创建）；stash_push 保存已跟踪文件修改（可选 message）；stash_pop 应用最新 stash，冲突时保留 stash。必填 UUID requestId，重试只回读原回执，codex_request 查询结果。无 amend、远程操作、强制切换或历史改写。读取用户 Git 提交身份；禁用 hooks、签名和外部过滤器。只在全部或自定义工具列表中启用。",
+      "description": "本地 add/unstage/commit/branch/switch/stash_push/stash_pop；无远程或历史改写，禁用 hooks、签名和过滤器。仅全部/自定义启用。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -490,7 +487,8 @@
           },
           "requestId": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "paths": {
             "type": "array",
@@ -525,8 +523,7 @@
         },
         "required": [
           "project",
-          "operation",
-          "requestId"
+          "operation"
         ],
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false
@@ -545,7 +542,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": false
       },
       "execution": {
@@ -554,27 +551,24 @@
     },
     {
       "name": "fs",
-      "description": "操作 App Server 主机文件系统的绝对路径：读取/写入 base64 文件、目录、元数据、复制、删除及监听。与项目事实 read/tree/search 的按行读取、Git 文件列表和内容搜索分开。watch 的 fs/changed 通知通过 codex_events 读取。",
+      "description": "原生文件写入、创建目录、删除、复制和监听；绝对路径，watch 通知用 codex_events。",
       "inputSchema": {
         "type": "object",
         "properties": {
           "action": {
             "type": "string",
             "enum": [
-              "readFile",
               "writeFile",
               "createDirectory",
-              "getMetadata",
-              "readDirectory",
               "remove",
               "copy",
               "watch",
               "unwatch"
             ],
-            "description": "mutation（需要 requestId）：writeFile、createDirectory、remove、copy、watch、unwatch。"
+            "description": "mutation（requestId 可选）：writeFile、createDirectory、remove、copy、watch、unwatch。"
           },
           "params": {
-            "description": "原生参数：readFile/getMetadata/readDirectory {path}；writeFile {path,dataBase64}；createDirectory {path,recursive?}；remove {path,recursive?,force?}；copy {sourcePath,destinationPath,recursive?}；watch {path,watchId}；unwatch {watchId}。路径为主机绝对路径，watchId 属于当前连接。",
+            "description": "原生参数：writeFile {path,dataBase64}；createDirectory {path,recursive?}；remove {path,recursive?,force?}；copy {sourcePath,destinationPath,recursive?}；watch {path,watchId}；unwatch {watchId}。路径为主机绝对路径，watchId 属于当前连接。",
             "anyOf": [
               {
                 "type": "object",
@@ -592,7 +586,7 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "mutation 必填 UUID；同一操作重试保持 ID 和全部参数不变。"
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "timeoutMs": {
             "type": "integer",
@@ -627,7 +621,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -636,7 +630,7 @@
     },
     {
       "name": "command",
-      "description": "在 Codex sandbox/permission 语义下执行独立命令，不创建 thread/turn。exec 等进程退出才返回原生结果，长调用返回回执；write/terminate/resize 控制当前连接的 processId。PTY 和流式输出通过 codex_events 的 command/exec/outputDelta 读取。",
+      "description": "简单命令传 cmd/cwd/timeoutMs，使用用户默认 shell，同步返回输出、退出码和耗时。原生 action/params 保留 sandbox/permission、PTY 和流式语义。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -648,7 +642,7 @@
               "terminate",
               "resize"
             ],
-            "description": "mutation（需要 requestId）：exec、write、terminate、resize。"
+            "description": "mutation（requestId 可选）：exec、write、terminate、resize。"
           },
           "params": {
             "description": "完整原生参数：exec {command: string[],cwd?,env?,timeoutMs?,disableTimeout?,tty?,size?:{rows,cols},processId?,streamStdin?,streamStdoutStderr?,sandboxPolicy?,permissionProfile?,outputBytesCap?,disableOutputCap?}；write {processId,deltaBase64?,closeStdin?}；terminate {processId}；resize {processId,size:{rows,cols}}。env 值为 null 表示取消继承变量；PTY/stream/后续控制需要 processId。省略权限使用宿主配置。",
@@ -669,27 +663,80 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "mutation 必填 UUID；同一操作重试保持 ID 和全部参数不变。"
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "timeoutMs": {
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 2147483647,
-            "description": "MCP 等待原生 RPC 的超时，写操作默认 24 小时、读操作默认 60 秒；与 params.timeoutMs 的进程超时独立，RPC 超时不取消操作。"
+            "description": "简单命令的执行超时（默认 60000ms）；原生形态为 RPC 超时。"
           },
           "waitMs": {
             "type": "integer",
             "minimum": 0,
             "maximum": 120000,
             "description": "同步等待操作结果的毫秒数，默认 25000；超时返回 pending。"
+          },
+          "cmd": {
+            "type": "string",
+            "minLength": 1,
+            "description": "用户默认 shell 执行的命令字符串。"
+          },
+          "cwd": {
+            "type": "string",
+            "minLength": 1,
+            "description": "绝对工作目录。"
           }
         },
-        "required": [
-          "action",
-          "requestId"
-        ],
+        "required": [],
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "additionalProperties": false
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "cmd",
+              "cwd"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "action"
+                  ]
+                },
+                {
+                  "required": [
+                    "params"
+                  ]
+                },
+                {
+                  "required": [
+                    "waitMs"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "required": [
+              "action"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "cmd"
+                  ]
+                },
+                {
+                  "required": [
+                    "cwd"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
       },
       "outputSchema": {
         "type": "object",
@@ -705,7 +752,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -714,7 +761,7 @@
     },
     {
       "name": "process",
-      "description": "App Server 主机上的非 Codex sandbox 进程能力。spawn 启动后即返回；writeStdin/kill/resizePty 使用当前连接的 processHandle。输出和退出通过 codex_events 的 process/outputDelta、process/exited 读取。不创建 Codex thread。",
+      "description": "非 Codex sandbox 的原生进程控制；spawn/writeStdin/kill/resizePty，事件用 codex_events。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -726,7 +773,7 @@
               "kill",
               "resizePty"
             ],
-            "description": "mutation（需要 requestId）：spawn、writeStdin、kill、resizePty。"
+            "description": "mutation（requestId 可选）：spawn、writeStdin、kill、resizePty。"
           },
           "params": {
             "description": "完整原生参数：spawn {command:string[],cwd:绝对路径,processHandle,env?,timeoutMs?,tty?,size?:{rows,cols},streamStdin?,streamStdoutStderr?,outputBytesCap?}；writeStdin {processHandle,deltaBase64?,closeStdin?}；kill {processHandle}；resizePty {processHandle,size:{rows,cols}}。env 值 null 取消继承；timeoutMs/outputBytesCap 显式 null 禁用对应限制，省略使用原生默认值。",
@@ -747,7 +794,7 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "mutation 必填 UUID；同一操作重试保持 ID 和全部参数不变。"
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "timeoutMs": {
             "type": "integer",
@@ -763,8 +810,7 @@
           }
         },
         "required": [
-          "action",
-          "requestId"
+          "action"
         ],
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false
@@ -783,7 +829,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -792,7 +838,7 @@
     },
     {
       "name": "mcp",
-      "description": "直接访问 Codex 已配置的 downstream MCP：list 返回服务状态、工具及资源目录；resource/read 读取资源；tool/call 调用工具；oauth/login 登录；event/stream/start、stop 控制原生事件订阅。tool/call 和订阅 start 需要已有 threadId 作为原生上下文，本工具不创建线程。通知共用 codex_events。",
+      "description": "访问已配置的 downstream MCP：目录、资源、工具、OAuth 与事件订阅。tool/call 和订阅 start 需已有 threadId；通知用 codex_events。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -806,7 +852,7 @@
               "event/stream/start",
               "event/stream/stop"
             ],
-            "description": "mutation（需要 requestId）：tool/call、oauth/login、event/stream/start、event/stream/stop。"
+            "description": "mutation（requestId 可选）：tool/call、oauth/login、event/stream/start、event/stream/stop。"
           },
           "params": {
             "description": "原生参数：list {threadId?,cursor?,limit?,detail?}；resource/read {server,uri,threadId?,connectorId?,originCallId?}；tool/call {server,threadId,tool,arguments?,_meta?}；oauth/login {name,threadId?,scopes?,timeoutSecs?,clientRegistration?}；event/stream/start {server,threadId,name,arguments,subscriptionId,_meta?}；event/stream/stop {subscriptionId}。arguments 和 _meta 不改写；原生 detail 等复杂类型可查 codex_schema。",
@@ -827,7 +873,7 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "mutation 必填 UUID；同一操作重试保持 ID 和全部参数不变。"
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "timeoutMs": {
             "type": "integer",
@@ -862,7 +908,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -871,7 +917,7 @@
     },
     {
       "name": "codex_thread",
-      "description": "原生线程全文查找、分叉、改名、归档/恢复、压缩、回退、后台终端和时间线。search 使用 thread/search。rollback/revert 只改会话历史，不撤销文件；rollback 是上游已标记弃用但当前仍提供的接口。compact 启动压缩，进度在 codex_events。",
+      "description": "原生线程查找、分叉、改名、归档、压缩、历史回退与后台终端；回退不撤销文件。Desktop 扩展操作受支持范围限制。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -891,7 +937,7 @@
               "backgroundTerminals/terminate",
               "timeline"
             ],
-            "description": "mutation（需要 requestId）：fork、name/set、archive、unarchive、compact、rollback、revert、backgroundTerminals/clean、backgroundTerminals/terminate。"
+            "description": "mutation（requestId 可选）：fork、name/set、archive、unarchive、compact、rollback、revert、backgroundTerminals/clean、backgroundTerminals/terminate。"
           },
           "params": {
             "description": "原生参数：search {searchTerm,archived?,cursor?,limit?,sortKey?,sortDirection?,sourceKinds?}；fork {threadId,beforeTurnId?,lastTurnId?,cwd?,model?,...ThreadForkParams}；name/set {threadId,name}；archive/unarchive/compact/backgroundTerminals/clean {threadId}；rollback {threadId,numTurns}；revert {threadId,beforeTurnId}；backgroundTerminals/list、timeline {threadId,cursor?,limit?}；backgroundTerminals/terminate {threadId,processId}。fork 的配置完整透传。",
@@ -912,7 +958,7 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "mutation 必填 UUID；同一操作重试保持 ID 和全部参数不变。"
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "timeoutMs": {
             "type": "integer",
@@ -947,7 +993,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -956,7 +1002,7 @@
     },
     {
       "name": "codex_account",
-      "description": "读取 App Server 当前真实账号、用量、限额和工作区消息，不推测套餐或剩余额度。read 对应 account/read；usage/read 支持线程用量；rateLimits/read 返回原生额度；workspaceMessages/read 返回工作区消息。",
+      "description": "读取当前原生账号、用量、限额与工作区消息。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -989,7 +1035,7 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "mutation 必填 UUID；同一操作重试保持 ID 和全部参数不变。"
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "timeoutMs": {
             "type": "integer",
@@ -1112,7 +1158,8 @@
           }
         },
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "additionalProperties": false
+        "additionalProperties": false,
+        "required": []
       },
       "outputSchema": {
         "type": "object",
@@ -1137,7 +1184,7 @@
     },
     {
       "name": "codex_read",
-      "description": "读取任务状态和最近记录。includeImages 默认 false；设为 true 时附加原生 MCP image 图片块，maxImages 默认 4、上限 8。图片目标长边 1568、每张至多 1MiB；优先透传原图，轻微超尺寸且重编码变大时允许不到 10% 容差，元信息含 reencoded。本地路径限线程项目和该线程可视化目录。文本分页截断保持不变；unknown 仅表示独立 App Server 不能确认桌面活动状态。",
+      "description": "读取任务状态与最近记录；includeImages=true 附加 MCP image，默认最多 4 张。unknown 表示当前无法确认活动状态。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1268,7 +1315,7 @@
     },
     {
       "name": "codex_create",
-      "description": "创建并执行持久文本任务，thread 透传 ThreadStartParams。默认打开 Codex Desktop；关闭自动打开后由 Connector App Server 执行。任务归属固定，submitted 只表示已提交。创建后打开失败时沿用返回的 threadId。",
+      "description": "创建并执行文本任务；默认由 Desktop 执行，关闭自动打开后由 Connector 执行。返回任务标识和精简回执。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1298,7 +1345,7 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "每个新操作生成 UUID；同一操作重试保持 UUID 和全部参数不变。"
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "thread": {
             "type": "object",
@@ -1351,9 +1398,7 @@
             "description": "同步等待操作结果的毫秒数，默认 25000；超时返回 pending。"
           }
         },
-        "required": [
-          "requestId"
-        ],
+        "required": [],
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false
       },
@@ -1371,7 +1416,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -1380,7 +1425,7 @@
     },
     {
       "name": "codex_send",
-      "description": "发送文本。Desktop 发送前至多轻量读取一次：命中 4 秒内快照或 follow+wait 刷新，读取失败才回退为空状态。用该快照选择 steer/start，mutate 复用缓存继承 model/collaborationMode，不再额外读取；不打开窗口，忽略 resume，turn 参数透传。Connector 后台任务透传显式 resume，active 时查询最新一轮并 steer，自动恢复仅用于 notLoaded 任务。",
+      "description": "向任务发送文本，活动轮次 steer，否则开始新轮次；turn 参数透传。Desktop 不恢复到后台，不打开窗口。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1406,7 +1451,7 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "每个新操作生成 UUID；同一操作重试保持 UUID 和全部参数不变。"
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "resume": {
             "type": "object",
@@ -1460,8 +1505,7 @@
           }
         },
         "required": [
-          "threadId",
-          "requestId"
+          "threadId"
         ],
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false
@@ -1480,7 +1524,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -1505,7 +1549,7 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "每个新操作生成 UUID；同一操作重试保持 UUID 和全部参数不变。"
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "approval": {
             "type": "string",
@@ -1525,8 +1569,7 @@
         },
         "required": [
           "threadId",
-          "turnId",
-          "requestId"
+          "turnId"
         ],
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false
@@ -1545,7 +1588,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -1559,7 +1602,8 @@
         "type": "object",
         "properties": {},
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "additionalProperties": false
+        "additionalProperties": false,
+        "required": []
       },
       "outputSchema": {
         "type": "object",
@@ -1583,8 +1627,8 @@
       }
     },
     {
-      "name": "codex_request",
-      "description": "回读原操作回执，或按用户意图批准、绕过、拒绝待审批任务。审批模式只是默认确认流程，不是权限门槛。action 默认为 read；批准或绕过后由 Connector 自动提交原请求，不要重新创建。unconfirmed 先检查原生状态。",
+      "name": "receipt",
+      "description": "读取或 approve/bypass/reject 写操作回执。pending 表示仍在执行或等待结果；只有 awaiting-approval 等待审批。返回精简结果，不回显参数；unconfirmed 时先核对资源。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1592,7 +1636,7 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "每个新操作生成 UUID；同一操作重试保持 UUID 和全部参数不变。"
+            "description": "原写操作返回的 requestId。"
           },
           "action": {
             "type": "string",
@@ -1640,7 +1684,7 @@
     },
     {
       "name": "codex_items",
-      "description": "分页读取任务条目，包括原始工具数据。latest=true 从最近一轮的最新条目开始；翻页沿用返回的 turnId、cursor 和 latest=true；不传 latest 保持原有最早优先顺序。includeImages 默认 false；开启后附加本地 Markdown 图片和工具截图的原生 MCP image 块，maxImages 默认 4、上限 8，优先最新。图片目标长边 1568、每张至多 1MiB；优先原图透传，轻微超尺寸且重编码变大时允许不到 10% 容差，元信息含 reencoded。本地路径限线程项目和该线程可视化目录。正文仍按 offset/length 分块，textHash 检测活动内容变化。",
+      "description": "分页读取任务条目。latest=true 从最近轮次的最新条目开始，续页沿用 turnId/cursor/latest；正文用 offset/length。includeImages=true 附加 MCP image。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1754,7 +1798,8 @@
           }
         },
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "additionalProperties": false
+        "additionalProperties": false,
+        "required": []
       },
       "outputSchema": {
         "type": "object",
@@ -1801,9 +1846,6 @@
               "collaborationMode/list",
               "config/read",
               "configRequirements/read",
-              "fs/readFile",
-              "fs/getMetadata",
-              "fs/readDirectory",
               "account/rateLimits/read",
               "plugin/list",
               "plugin/read",
@@ -1857,7 +1899,7 @@
     },
     {
       "name": "codex_call",
-      "description": "透传原生方法和 params；codex_schema 可查协议。Desktop 任务支持创建、读取、start、steer、interrupt；thread/resume 忽略并返回 resumed=false，绝不在 Connector app-server 加载 Desktop 任务。其他 Desktop 线程操作返回不支持。Connector 后台任务的 resume 透传。initialize/initialized 由连接管理。",
+      "description": "透传原生方法和 params，返回精简回执；协议见 codex_schema。Desktop 任务保持 Desktop 所有权，不在后台恢复。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1884,7 +1926,7 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "每个新操作生成 UUID；同一操作重试保持 UUID 和全部参数不变。"
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "timeoutMs": {
             "default": 86400000,
@@ -1909,8 +1951,7 @@
           }
         },
         "required": [
-          "method",
-          "requestId"
+          "method"
         ],
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false
@@ -1929,7 +1970,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -1943,7 +1984,8 @@
         "type": "object",
         "properties": {},
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "additionalProperties": false
+        "additionalProperties": false,
+        "required": []
       },
       "outputSchema": {
         "type": "object",
@@ -1968,7 +2010,7 @@
     },
     {
       "name": "codex_respond",
-      "description": "转发 pending 的原生 result 或 JSON-RPC error，由上游校验。backendSession 与交互 ID 绑定当前请求，requestId 防重；协议可查 codex_schema。",
+      "description": "响应后台 pending 的 result 或 error；backendSession 与 id 绑定当前交互。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1984,7 +2026,7 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "每个新操作生成 UUID；同一操作重试保持 UUID 和全部参数不变。"
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "result": {},
           "error": {
@@ -2003,8 +2045,7 @@
         },
         "required": [
           "backendSession",
-          "id",
-          "requestId"
+          "id"
         ],
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false
@@ -2023,7 +2064,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -2032,7 +2073,7 @@
     },
     {
       "name": "codex_events",
-      "description": "按 cursor 查询原生通知，包括任务进度、交互、command/exec/outputDelta、process/outputDelta/exited、fs/changed 和 downstream MCP 订阅通知。最近 2000 条或 8 MiB 内存缓冲，不写磁盘归档；gap 或 reset 表示须回读原生状态。",
+      "description": "按 cursor 读取原生通知；最近 2000 条或 8 MiB 内存窗口，gap/reset 时回读当前状态。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2053,7 +2094,8 @@
           }
         },
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "additionalProperties": false
+        "additionalProperties": false,
+        "required": []
       },
       "outputSchema": {
         "type": "object",
@@ -2129,7 +2171,7 @@
     },
     {
       "name": "agents",
-      "description": "发现本机 Agent、版本与协议；installed 不代表 provider 已认证。",
+      "description": "发现本机非 Codex Agent、版本与协议；available 不代表已认证。",
       "inputSchema": {
         "type": "object",
         "properties": {},
@@ -2160,18 +2202,21 @@
     },
     {
       "name": "agent_capabilities",
-      "description": "读取公共能力；提供 taskId 返回实际协商能力。Codex 高级能力使用 codex_*。",
+      "description": "读取非 Codex Agent 能力；提供 taskId 时返回协商能力。",
       "inputSchema": {
         "type": "object",
         "properties": {
           "agent": {
             "type": "string",
-            "default": "codex",
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "minLength": 1,
+            "not": {
+              "const": "codex"
+            },
+            "description": "非 Codex Agent ID：pi、opencode 或 ACP manifest ID。"
           },
           "taskId": {
             "type": "string",
-            "description": "CLC taskId；Codex 使用原生 threadId"
+            "description": "CLC 返回的 taskId"
           }
         },
         "required": [
@@ -2209,8 +2254,11 @@
         "properties": {
           "agent": {
             "type": "string",
-            "default": "codex",
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "minLength": 1,
+            "not": {
+              "const": "codex"
+            },
+            "description": "非 Codex Agent ID：pi、opencode 或 ACP manifest ID。"
           },
           "offset": {
             "type": "integer",
@@ -2220,10 +2268,6 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 2000
-          },
-          "cursor": {
-            "type": "string",
-            "description": "Codex 原生分页游标；Pi/ACP 使用 offset"
           }
         },
         "required": [
@@ -2261,8 +2305,11 @@
         "properties": {
           "agent": {
             "type": "string",
-            "default": "codex",
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "minLength": 1,
+            "not": {
+              "const": "codex"
+            },
+            "description": "非 Codex Agent ID：pi、opencode 或 ACP manifest ID。"
           },
           "cwd": {
             "type": "string",
@@ -2276,7 +2323,8 @@
           },
           "requestId": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "approval": {
             "type": "string",
@@ -2295,8 +2343,7 @@
         },
         "required": [
           "agent",
-          "cwd",
-          "requestId"
+          "cwd"
         ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
@@ -2315,7 +2362,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -2330,12 +2377,15 @@
         "properties": {
           "agent": {
             "type": "string",
-            "default": "codex",
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "minLength": 1,
+            "not": {
+              "const": "codex"
+            },
+            "description": "非 Codex Agent ID：pi、opencode 或 ACP manifest ID。"
           },
           "taskId": {
             "type": "string",
-            "description": "CLC taskId；Codex 使用原生 threadId"
+            "description": "CLC 返回的 taskId"
           }
         },
         "required": [
@@ -2374,8 +2424,11 @@
         "properties": {
           "agent": {
             "type": "string",
-            "default": "codex",
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "minLength": 1,
+            "not": {
+              "const": "codex"
+            },
+            "description": "非 Codex Agent ID：pi、opencode 或 ACP manifest ID。"
           },
           "taskId": {
             "type": "string",
@@ -2401,7 +2454,8 @@
           }
         },
         "required": [
-          "taskId"
+          "taskId",
+          "agent"
         ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
@@ -2429,7 +2483,7 @@
     },
     {
       "name": "agent_wait",
-      "description": "只读等待 Agent 当前或指定轮次；终态或交互立即返回。Codex 使用原生等待，Pi 用 get_state，ACP 用进程协议事件；不自动恢复任务。",
+      "description": "等待 Pi/ACP 当前或指定轮次，终态或交互立即返回，不自动恢复任务。",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2460,12 +2514,15 @@
           "agent": {
             "type": "string",
             "minLength": 1,
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "not": {
+              "const": "codex"
+            },
+            "description": "非 Codex Agent ID：pi、opencode 或 ACP manifest ID。"
           },
           "taskId": {
             "type": "string",
             "minLength": 1,
-            "description": "CLC taskId；Codex 使用原生 threadId"
+            "description": "CLC 返回的 taskId"
           }
         },
         "required": [
@@ -2504,19 +2561,23 @@
         "properties": {
           "agent": {
             "type": "string",
-            "default": "codex",
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "minLength": 1,
+            "not": {
+              "const": "codex"
+            },
+            "description": "非 Codex Agent ID：pi、opencode 或 ACP manifest ID。"
           },
           "taskId": {
             "type": "string",
-            "description": "CLC taskId；Codex 使用原生 threadId"
+            "description": "CLC 返回的 taskId"
           },
           "prompt": {
             "type": "string"
           },
           "requestId": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "approval": {
             "type": "string",
@@ -2536,8 +2597,7 @@
         "required": [
           "agent",
           "taskId",
-          "prompt",
-          "requestId"
+          "prompt"
         ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
@@ -2556,7 +2616,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": true
       },
       "execution": {
@@ -2565,25 +2625,26 @@
     },
     {
       "name": "agent_interrupt",
-      "description": "请求取消；Codex 还需 turnId；回读任务确认终态。",
+      "description": "请求取消非 Codex 任务；使用 agent_wait 确认终态。",
       "inputSchema": {
         "type": "object",
         "properties": {
           "agent": {
             "type": "string",
-            "default": "codex",
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "minLength": 1,
+            "not": {
+              "const": "codex"
+            },
+            "description": "非 Codex Agent ID：pi、opencode 或 ACP manifest ID。"
           },
           "taskId": {
             "type": "string",
-            "description": "CLC taskId；Codex 使用原生 threadId"
-          },
-          "turnId": {
-            "type": "string"
+            "description": "CLC 返回的 taskId"
           },
           "requestId": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "approval": {
             "type": "string",
@@ -2602,8 +2663,7 @@
         },
         "required": [
           "agent",
-          "taskId",
-          "requestId"
+          "taskId"
         ],
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
@@ -2622,7 +2682,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": false,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": false
       },
       "execution": {
@@ -2631,18 +2691,21 @@
     },
     {
       "name": "agent_events",
-      "description": "读取流式原生事件。Codex 使用有界内存窗口，历史从原生任务读取；Pi/ACP 的完整归档通过 control_output。",
+      "description": "读取 Pi/ACP 原生事件；完整归档通过 control_output 续读。",
       "inputSchema": {
         "type": "object",
         "properties": {
           "agent": {
             "type": "string",
-            "default": "codex",
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "minLength": 1,
+            "not": {
+              "const": "codex"
+            },
+            "description": "非 Codex Agent ID：pi、opencode 或 ACP manifest ID。"
           },
           "taskId": {
             "type": "string",
-            "description": "CLC taskId；Codex 使用原生 threadId"
+            "description": "CLC 返回的 taskId"
           },
           "after": {
             "type": "integer",
@@ -2693,12 +2756,15 @@
         "properties": {
           "agent": {
             "type": "string",
-            "default": "codex",
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "minLength": 1,
+            "not": {
+              "const": "codex"
+            },
+            "description": "非 Codex Agent ID：pi、opencode 或 ACP manifest ID。"
           },
           "taskId": {
             "type": "string",
-            "description": "CLC taskId；Codex 使用原生 threadId"
+            "description": "CLC 返回的 taskId"
           }
         },
         "required": [
@@ -2731,22 +2797,26 @@
     },
     {
       "name": "agent_respond",
-      "description": "响应 pending；ACP 选择 optionId，Pi 按交互类型提供 value/confirmed，Codex 传原生 result/error 和 backendSession。",
+      "description": "响应 Pi/ACP pending：ACP 提供 optionId，Pi 提供 value/confirmed，可 cancelled。",
       "inputSchema": {
         "type": "object",
         "properties": {
           "agent": {
             "type": "string",
-            "default": "codex",
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "minLength": 1,
+            "not": {
+              "const": "codex"
+            },
+            "description": "非 Codex Agent ID：pi、opencode 或 ACP manifest ID。"
           },
           "taskId": {
             "type": "string",
-            "description": "CLC taskId；Codex 使用原生 threadId"
+            "description": "CLC 返回的 taskId"
           },
           "requestId": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "可选；需要安全重试时传入 UUID，同 ID 同参数只回读原回执。"
           },
           "interactionId": {
             "type": [
@@ -2769,10 +2839,6 @@
           "backendSession": {
             "type": "string"
           },
-          "result": {},
-          "error": {
-            "type": "object"
-          },
           "waitMs": {
             "type": "integer",
             "minimum": 0,
@@ -2783,7 +2849,6 @@
         "required": [
           "agent",
           "taskId",
-          "requestId",
           "interactionId"
         ],
         "additionalProperties": false,
@@ -2803,7 +2868,7 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": false,
-        "idempotentHint": true,
+        "idempotentHint": false,
         "openWorldHint": false
       },
       "execution": {
@@ -2811,42 +2876,65 @@
       }
     },
     {
-      "name": "agent_request",
-      "description": "读取或决定幂等回执；completed 表示写操作完成，任务终态需 agent_read。",
+      "name": "edit",
+      "description": "精确替换文本；多处 edits 全部成功才原子写入。返回 sha256、简短 diff 和活动任务提示。绝对 path 可省 project。",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "agent": {
+          "project": {
             "type": "string",
-            "default": "codex",
-            "description": "codex / pi / opencode 或本机 ACP manifest ID"
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectedHash": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{64}$"
           },
           "requestId": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "可选；需要安全重试时传入 UUID。"
           },
-          "action": {
-            "type": "string",
-            "enum": [
-              "read",
-              "approve",
-              "bypass",
-              "reject"
-            ]
-          },
-          "waitMs": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 120000,
-            "description": "批准后同步等待结果的毫秒数，默认 25000。"
+          "edits": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "oldText": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "newText": {
+                  "type": "string"
+                },
+                "replaceAll": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "required": [
+                "oldText",
+                "newText"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
-          "agent",
-          "requestId"
+          "path",
+          "edits"
         ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
       },
       "outputSchema": {
         "type": "object",
@@ -2858,27 +2946,177 @@
         ],
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false
+      }
+    },
+    {
+      "name": "write",
+      "description": "创建或覆盖 UTF-8 文本，自动创建父目录；expectedHash 校验已有内容。返回 sha256 和活动任务提示。绝对 path 可省 project。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectedHash": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{64}$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "可选；需要安全重试时传入 UUID。"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "additionalProperties": false
       },
       "annotations": {
         "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "codex_changes",
+      "description": "查询轮次起点以来的提交、diff 统计与指定文件 diff。缺失起点时明确退化为最近提交和工作区改动；不表示改动专属于任务。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "threadId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "turnId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 10
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65536,
+            "default": 16000
+          }
+        },
+        "required": [
+          "threadId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "logs",
+      "description": "倒序读取 Connector Core 与已接入 app-server stderr 日志；grep 为固定字符串，cursor 续页。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "since": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "DEBUG",
+              "INFO",
+              "WARN",
+              "ERROR"
+            ]
+          },
+          "grep": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000,
+            "default": 100
+          },
+          "cursor": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
       }
     }
   ],
   "domains": {
     "fs": {
-      "description": "操作 App Server 主机文件系统的绝对路径：读取/写入 base64 文件、目录、元数据、复制、删除及监听。与项目事实 read/tree/search 的按行读取、Git 文件列表和内容搜索分开。watch 的 fs/changed 通知通过 codex_events 读取。",
-      "params": "原生参数：readFile/getMetadata/readDirectory {path}；writeFile {path,dataBase64}；createDirectory {path,recursive?}；remove {path,recursive?,force?}；copy {sourcePath,destinationPath,recursive?}；watch {path,watchId}；unwatch {watchId}。路径为主机绝对路径，watchId 属于当前连接。",
+      "description": "原生文件写入、创建目录、删除、复制和监听；绝对路径，watch 通知用 codex_events。",
+      "params": "原生参数：writeFile {path,dataBase64}；createDirectory {path,recursive?}；remove {path,recursive?,force?}；copy {sourcePath,destinationPath,recursive?}；watch {path,watchId}；unwatch {watchId}。路径为主机绝对路径，watchId 属于当前连接。",
       "actions": {
-        "readFile": [
-          "fs/readFile",
-          true
-        ],
         "writeFile": [
           "fs/writeFile",
           false
@@ -2886,14 +3124,6 @@
         "createDirectory": [
           "fs/createDirectory",
           false
-        ],
-        "getMetadata": [
-          "fs/getMetadata",
-          true
-        ],
-        "readDirectory": [
-          "fs/readDirectory",
-          true
         ],
         "remove": [
           "fs/remove",
@@ -2914,7 +3144,7 @@
       }
     },
     "command": {
-      "description": "在 Codex sandbox/permission 语义下执行独立命令，不创建 thread/turn。exec 等进程退出才返回原生结果，长调用返回回执；write/terminate/resize 控制当前连接的 processId。PTY 和流式输出通过 codex_events 的 command/exec/outputDelta 读取。",
+      "description": "简单命令传 cmd/cwd/timeoutMs，使用用户默认 shell，同步返回输出、退出码和耗时。原生 action/params 保留 sandbox/permission、PTY 和流式语义。",
       "params": "完整原生参数：exec {command: string[],cwd?,env?,timeoutMs?,disableTimeout?,tty?,size?:{rows,cols},processId?,streamStdin?,streamStdoutStderr?,sandboxPolicy?,permissionProfile?,outputBytesCap?,disableOutputCap?}；write {processId,deltaBase64?,closeStdin?}；terminate {processId}；resize {processId,size:{rows,cols}}。env 值为 null 表示取消继承变量；PTY/stream/后续控制需要 processId。省略权限使用宿主配置。",
       "actions": {
         "exec": [
@@ -2936,7 +3166,7 @@
       }
     },
     "process": {
-      "description": "App Server 主机上的非 Codex sandbox 进程能力。spawn 启动后即返回；writeStdin/kill/resizePty 使用当前连接的 processHandle。输出和退出通过 codex_events 的 process/outputDelta、process/exited 读取。不创建 Codex thread。",
+      "description": "非 Codex sandbox 的原生进程控制；spawn/writeStdin/kill/resizePty，事件用 codex_events。",
       "params": "完整原生参数：spawn {command:string[],cwd:绝对路径,processHandle,env?,timeoutMs?,tty?,size?:{rows,cols},streamStdin?,streamStdoutStderr?,outputBytesCap?}；writeStdin {processHandle,deltaBase64?,closeStdin?}；kill {processHandle}；resizePty {processHandle,size:{rows,cols}}。env 值 null 取消继承；timeoutMs/outputBytesCap 显式 null 禁用对应限制，省略使用原生默认值。",
       "actions": {
         "spawn": [
@@ -2958,7 +3188,7 @@
       }
     },
     "mcp": {
-      "description": "直接访问 Codex 已配置的 downstream MCP：list 返回服务状态、工具及资源目录；resource/read 读取资源；tool/call 调用工具；oauth/login 登录；event/stream/start、stop 控制原生事件订阅。tool/call 和订阅 start 需要已有 threadId 作为原生上下文，本工具不创建线程。通知共用 codex_events。",
+      "description": "访问已配置的 downstream MCP：目录、资源、工具、OAuth 与事件订阅。tool/call 和订阅 start 需已有 threadId；通知用 codex_events。",
       "params": "原生参数：list {threadId?,cursor?,limit?,detail?}；resource/read {server,uri,threadId?,connectorId?,originCallId?}；tool/call {server,threadId,tool,arguments?,_meta?}；oauth/login {name,threadId?,scopes?,timeoutSecs?,clientRegistration?}；event/stream/start {server,threadId,name,arguments,subscriptionId,_meta?}；event/stream/stop {subscriptionId}。arguments 和 _meta 不改写；原生 detail 等复杂类型可查 codex_schema。",
       "actions": {
         "list": [
@@ -2988,7 +3218,7 @@
       }
     },
     "codex_thread": {
-      "description": "原生线程全文查找、分叉、改名、归档/恢复、压缩、回退、后台终端和时间线。search 使用 thread/search。rollback/revert 只改会话历史，不撤销文件；rollback 是上游已标记弃用但当前仍提供的接口。compact 启动压缩，进度在 codex_events。",
+      "description": "原生线程查找、分叉、改名、归档、压缩、历史回退与后台终端；回退不撤销文件。Desktop 扩展操作受支持范围限制。",
       "params": "原生参数：search {searchTerm,archived?,cursor?,limit?,sortKey?,sortDirection?,sourceKinds?}；fork {threadId,beforeTurnId?,lastTurnId?,cwd?,model?,...ThreadForkParams}；name/set {threadId,name}；archive/unarchive/compact/backgroundTerminals/clean {threadId}；rollback {threadId,numTurns}；revert {threadId,beforeTurnId}；backgroundTerminals/list、timeline {threadId,cursor?,limit?}；backgroundTerminals/terminate {threadId,processId}。fork 的配置完整透传。",
       "actions": {
         "search": [
@@ -3042,7 +3272,7 @@
       }
     },
     "codex_account": {
-      "description": "读取 App Server 当前真实账号、用量、限额和工作区消息，不推测套餐或剩余额度。read 对应 account/read；usage/read 支持线程用量；rateLimits/read 返回原生额度；workspaceMessages/read 返回工作区消息。",
+      "description": "读取当前原生账号、用量、限额与工作区消息。",
       "params": "原生参数：read {refreshToken?}；usage/read {threadId?} 或 null；rateLimits/read {excludeResetCreditDetails?,supportsLunaReserve?} 或 null；workspaceMessages/read 无参数（省略或 null）。",
       "actions": {
         "read": [
@@ -3112,7 +3342,9 @@
           "common",
           "readOnly"
         ],
-        "requires": []
+        "requires": [],
+        "tier": "default",
+        "conditional": false
       },
       "projects": {
         "group": "project",
@@ -3122,7 +3354,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "overview": {
         "group": "project",
@@ -3132,7 +3366,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "tree": {
         "group": "project",
@@ -3142,7 +3378,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "search": {
         "group": "project",
@@ -3152,7 +3390,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "read": {
         "group": "project",
@@ -3162,7 +3402,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "git": {
         "group": "project",
@@ -3172,68 +3414,83 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "fs": {
         "group": "host",
         "presets": [],
         "requires": [
           "control_output",
-          "codex_request",
+          "receipt",
           "codex_events"
-        ]
+        ],
+        "tier": "advanced",
+        "conditional": false
       },
       "command": {
         "group": "host",
-        "presets": [],
+        "presets": [
+          "common"
+        ],
         "requires": [
           "control_output",
-          "codex_request",
-          "codex_events"
-        ]
+          "receipt"
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "process": {
         "group": "host",
         "presets": [],
         "requires": [
           "control_output",
-          "codex_request",
+          "receipt",
           "codex_events"
-        ]
+        ],
+        "tier": "advanced",
+        "conditional": false
       },
       "mcp": {
         "group": "native",
         "presets": [],
         "requires": [
           "control_output",
-          "codex_request",
+          "receipt",
           "codex_events"
-        ]
+        ],
+        "tier": "advanced",
+        "conditional": false
       },
       "codex_thread": {
         "group": "native",
         "presets": [],
         "requires": [
           "control_output",
-          "codex_request",
+          "receipt",
           "codex_events"
-        ]
+        ],
+        "tier": "advanced",
+        "conditional": false
       },
       "codex_account": {
         "group": "native",
         "presets": [],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "advanced",
+        "conditional": false
       },
       "file_search": {
         "group": "project",
-        "presets": [
-          "readOnly"
-        ],
+        "presets": [],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "advanced",
+        "conditional": false
       },
       "codex_tasks": {
         "group": "codex",
@@ -3243,7 +3500,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "codex_read": {
         "group": "codex",
@@ -3253,7 +3512,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "codex_wait": {
         "group": "codex",
@@ -3263,7 +3524,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "codex_create": {
         "group": "codex",
@@ -3274,8 +3537,10 @@
           "control_output",
           "codex_read",
           "codex_wait",
-          "codex_request"
-        ]
+          "receipt"
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "codex_send": {
         "group": "codex",
@@ -3286,8 +3551,10 @@
           "control_output",
           "codex_read",
           "codex_wait",
-          "codex_request"
-        ]
+          "receipt"
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "codex_interrupt": {
         "group": "codex",
@@ -3298,29 +3565,30 @@
           "control_output",
           "codex_read",
           "codex_wait",
-          "codex_request"
-        ]
+          "receipt"
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "codex_capabilities": {
         "group": "codex",
-        "presets": [
-          "common",
-          "readOnly"
-        ],
+        "presets": [],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "advanced",
+        "conditional": false
       },
-      "codex_request": {
-        "group": "codex",
+      "receipt": {
+        "group": "host",
         "presets": [
           "common"
         ],
         "requires": [
-          "control_output",
-          "codex_read",
-          "codex_wait"
-        ]
+          "control_output"
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "codex_items": {
         "group": "codex",
@@ -3330,32 +3598,38 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "codex_schema": {
         "group": "native",
-        "presets": [
-          "readOnly"
-        ],
+        "presets": [],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "advanced",
+        "conditional": false
       },
       "codex_query": {
         "group": "native",
         "presets": [],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "advanced",
+        "conditional": false
       },
       "codex_call": {
         "group": "native",
         "presets": [],
         "requires": [
           "control_output",
-          "codex_request",
+          "receipt",
           "codex_events"
-        ]
+        ],
+        "tier": "advanced",
+        "conditional": false
       },
       "codex_pending": {
         "group": "codex",
@@ -3365,7 +3639,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "codex_respond": {
         "group": "codex",
@@ -3376,19 +3652,20 @@
           "control_output",
           "codex_read",
           "codex_wait",
-          "codex_request",
+          "receipt",
           "codex_pending"
-        ]
+        ],
+        "tier": "default",
+        "conditional": false
       },
       "codex_events": {
         "group": "codex",
-        "presets": [
-          "common",
-          "readOnly"
-        ],
+        "presets": [],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "advanced",
+        "conditional": false
       },
       "control_output": {
         "group": "project",
@@ -3396,7 +3673,9 @@
           "common",
           "readOnly"
         ],
-        "requires": []
+        "requires": [],
+        "tier": "default",
+        "conditional": false
       },
       "agents": {
         "group": "agent",
@@ -3406,7 +3685,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": true
       },
       "agent_capabilities": {
         "group": "agent",
@@ -3416,7 +3697,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": true
       },
       "agent_tasks": {
         "group": "agent",
@@ -3426,7 +3709,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": true
       },
       "agent_create": {
         "group": "agent",
@@ -3437,8 +3722,10 @@
           "control_output",
           "agent_read",
           "agent_wait",
-          "agent_request"
-        ]
+          "receipt"
+        ],
+        "tier": "default",
+        "conditional": true
       },
       "agent_read": {
         "group": "agent",
@@ -3448,7 +3735,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": true
       },
       "agent_wait": {
         "group": "agent",
@@ -3458,7 +3747,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": true
       },
       "agent_send": {
         "group": "agent",
@@ -3469,8 +3760,10 @@
           "control_output",
           "agent_read",
           "agent_wait",
-          "agent_request"
-        ]
+          "receipt"
+        ],
+        "tier": "default",
+        "conditional": true
       },
       "agent_interrupt": {
         "group": "agent",
@@ -3481,8 +3774,10 @@
           "control_output",
           "agent_read",
           "agent_wait",
-          "agent_request"
-        ]
+          "receipt"
+        ],
+        "tier": "default",
+        "conditional": true
       },
       "agent_events": {
         "group": "agent",
@@ -3492,7 +3787,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": true
       },
       "agent_pending": {
         "group": "agent",
@@ -3502,7 +3799,9 @@
         ],
         "requires": [
           "control_output"
-        ]
+        ],
+        "tier": "default",
+        "conditional": true
       },
       "agent_respond": {
         "group": "agent",
@@ -3513,20 +3812,11 @@
           "control_output",
           "agent_read",
           "agent_wait",
-          "agent_request",
+          "receipt",
           "agent_pending"
-        ]
-      },
-      "agent_request": {
-        "group": "agent",
-        "presets": [
-          "common"
         ],
-        "requires": [
-          "control_output",
-          "agent_read",
-          "agent_wait"
-        ]
+        "tier": "default",
+        "conditional": true
       },
       "agent_context": {
         "group": "agent",
@@ -3536,16 +3826,68 @@
         ],
         "requires": [
           "agent_read",
-          "codex_items",
-          "git"
-        ]
+          "git",
+          "control_output"
+        ],
+        "tier": "default",
+        "conditional": true
       },
       "git_write": {
         "group": "project",
         "presets": [],
         "requires": [
           "control_output",
-          "codex_request"
+          "receipt"
+        ],
+        "tier": "advanced",
+        "conditional": false
+      },
+      "edit": {
+        "group": "project",
+        "tier": "default",
+        "conditional": false,
+        "presets": [
+          "common"
+        ],
+        "requires": [
+          "control_output",
+          "receipt"
+        ]
+      },
+      "write": {
+        "group": "project",
+        "tier": "default",
+        "conditional": false,
+        "presets": [
+          "common"
+        ],
+        "requires": [
+          "control_output",
+          "receipt"
+        ]
+      },
+      "codex_changes": {
+        "group": "codex",
+        "tier": "default",
+        "conditional": false,
+        "presets": [
+          "common",
+          "readOnly"
+        ],
+        "requires": [
+          "control_output"
+        ]
+      },
+      "logs": {
+        "group": "host",
+        "tier": "default",
+        "conditional": false,
+        "presets": [
+          "common",
+          "readOnly"
+        ],
+        "requires": [
+          "control_output"
         ]
       }
     }

@@ -28,9 +28,9 @@ macOS 通常使用 `/Applications/Local Connector.app/Contents/MacOS/local-conne
 - `configure --stdin`、`connect`、`disconnect`：默认入口的简化操作，不影响其他入口。
 - `verify` 读取全部入口；`verify --fresh` 明确重置全部入口。
 
-新增必填 controlSource、transport、auth、config。name 默认预设名称或未知标签，重名自动追加数字，enabled 默认 true，toolPolicy 默认 all；id 可省略自动生成，不能修改。id 只允许 ASCII 字母、数字、连字符、下划线。controlSource 是标签，不是已认证用户。
+新增必填 controlSource、transport、auth、config。name 默认预设名称或未知标签，重名自动追加数字，enabled 默认 true，toolPolicy 默认使用默认档 allowlist；id 可省略自动生成，不能修改。id 只允许 ASCII 字母、数字、连字符、下划线。controlSource 是标签，不是已认证用户。
 
-transport 为 `openai-tunnel` 时 auth 为 `openai`；HTTPS 支持 `none`、`bearer` 或 `oauth`。bearerToken 至少 32 个可打印 ASCII 字符，每入口独立，通过 stdin 输入。OAuth 使用本机授权服务、PKCE，并支持动态注册或本机预注册，详见[OAuth 认证](../oauth.md)。toolPolicy 为 `"all"` 或 `{"allowlist":["connector_verify","agents","agent_create","agent_request","agent_read","agent_send","agent_wait","control_output"]}`；tools/list 和 tools/call 同时执行限制。允许任务工具即允许访问共享任务，不按来源隔离；也不细分单个工具中的原生方法权限。
+transport 为 `openai-tunnel` 时 auth 为 `openai`；HTTPS 支持 `none`、`bearer` 或 `oauth`。bearerToken 至少 32 个可打印 ASCII 字符，每入口独立，通过 stdin 输入。OAuth 使用本机授权服务、PKCE，并支持动态注册或本机预注册，详见[OAuth 认证](../oauth.md)。toolPolicy 为 `"all"` 或 `{"allowlist":["connector_verify","agents","agent_create","receipt","agent_read","agent_send","agent_wait","control_output"]}`；tools/list 和 tools/call 同时执行限制。允许任务工具即允许访问共享任务，不按来源隔离；也不细分单个工具中的原生方法权限。
 
 完整字段与 provider 选项见 `cli help` 和[英文配置示例](../codex-setup.md#configuration-examples)。凭据只能来自授权的安全本机来源并经 stdin 传递，不放在命令参数、shell 字面量、聊天、日志或截图中。轮换前先准备受保护的本机输出文件，例如设置 `umask 077` 并重定向 stdout，不让模型读取密钥输出。使用客户端支持的安全凭据输入完成交付。不要拿管理 API token、OpenAI key 或 provider token 代替 ingress bearer。
 
@@ -90,7 +90,7 @@ Codex 在 create/send 后从回执取得原 taskId/threadId、turnId，默认以
 
 ## 只读上下文与诊断
 
-`cli context --stdin` 接收与 `agent_context` 相同的 JSON，例如 `{"agent":"codex","taskId":"<existing-task-id>","view":"handoff"}`。它使用经过认证的本机管理通道，保留 CLI JSON envelope，不写文件、不创建或恢复任务。运行中的应用需要包含此实现。
+`cli context --stdin` 接收与 `agent_context` 相同的 JSON，例如 `{"agent":"pi","taskId":"<existing-task-id>","view":"handoff"}`。它使用经过认证的本机管理通道，保留 CLI JSON envelope，不写文件、不创建或恢复任务。运行中的应用需要包含此实现。
 
 `status`、`doctor`、`ingress doctor <id>` 与 `onboarding` 共享结构化 `diagnostics.findings`，包含稳定代码、目标范围和建议的人工操作。`checks.execution.state=not_checked` 表示缺少执行验收证据；不能只根据旧字段 `executionVerified:false` 判定失败。入口 ready、认证已配置、真实入站已验证、任务执行已验证是不同观察。远端客户端无证据时仍为 unknown。诊断不重启、不旋转凭据、不重放未知写操作；应先回读原 requestId。全局诊断复用现有 Codex 任务回执读取，遇到 unconfirmed 时给出该原请求的读取入口；其他驱动回执未纳入此检查。
 

@@ -26,6 +26,9 @@ pub async fn list(c: &Control) -> Result<Vec<Value>> {
     }
 }
 pub async fn resolve(c: &Control, id: &str) -> Result<Value> {
+    if id.is_empty() {
+        return Err("PROJECT_REQUIRED_FOR_RELATIVE_PATH".into());
+    }
     let (root, pid, name) = if Path::new(id).is_absolute() {
         (
             PathBuf::from(id),
@@ -73,7 +76,7 @@ pub async fn resolve(c: &Control, id: &str) -> Result<Value> {
     }
     Ok(json!({"id":pid,"name":name,"root":root}))
 }
-async fn git(root: &str, args: Vec<String>) -> Result<String> {
+pub(crate) async fn git(root: &str, args: Vec<String>) -> Result<String> {
     git_command(root, args, false).await
 }
 // Global configuration is read only by `git config` to extract commit identity.
@@ -640,6 +643,27 @@ async fn revision(root: &str, rev: &str) -> Result<String> {
     .into())
 }
 pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
+    let requested_path = string(args, "path").to_owned();
+    let mut normalized = args.clone();
+    if matches!(action, "read" | "tree" | "search")
+        && Path::new(string(args, "path")).is_absolute()
+        && args.get("revision").is_none()
+        && (action != "read" || args.get("project").is_none())
+    {
+        let path = PathBuf::from(string(args, "path"));
+        if args["view"] == "review" && args["project"].is_string() {
+            let original = resolve(c, string(args, "project")).await?;
+            review_path(string(&original, "root"), string(args, "path"))?;
+        }
+        if action == "read" {
+            normalized["project"] = json!(path.parent().ok_or("INVALID_PATH")?);
+            normalized["path"] = json!(path.file_name().ok_or("INVALID_PATH")?.to_string_lossy());
+        } else {
+            normalized["project"] = json!(path);
+            normalized["path"] = json!("");
+        }
+    }
+    let args = &normalized;
     let p = resolve(c, string(args, "project")).await?;
     let root = string(&p, "root");
     let started = now();
@@ -707,7 +731,7 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
                 .collect::<Vec<_>>();
             let offset = num(args, "offset", 0);
             let limit = num(args, "limit", 100);
-            json!({"path":file,"entries":items.iter().skip(offset).take(limit).collect::<Vec<_>>(),"total":items.len(),"listingHash":hash(items.join("\0")),"nextOffset":if offset+limit<items.len(){Some(offset+limit)}else{None}})
+            json!({"path":file,"entries":items.iter().skip(offset).take(limit).collect::<Vec<_>>(),"metadata":metadata(&Path::new(root).join(file)),"entryMetadata":items.iter().skip(offset).take(limit).map(|p| json!({"path":p,"metadata":metadata(&Path::new(root).join(p.trim_end_matches('/')))})).collect::<Vec<_>>(),"total":items.len(),"listingHash":hash(items.join("\0")),"nextOffset":if offset+limit<items.len(){Some(offset+limit)}else{None}})
         }
         "read" => {
             let rev = if args["revision"].is_string() {
@@ -919,6 +943,12 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
         }
         _ => return Err("未知项目查询".into()),
     };
+    if action == "read" && args["revision"].is_null() {
+        data["metadata"] = metadata(&Path::new(root).join(file));
+    }
+    if matches!(action, "read" | "tree") && Path::new(&requested_path).is_absolute() {
+        data["path"] = json!(requested_path);
+    }
     if include_source {
         let paged = !data["nextLine"].is_null() || !data["nextOffset"].is_null();
         let snippets_partial = data["results"]
@@ -965,4 +995,13 @@ pub async fn native_id(c: &Control, cwd: &str) -> Result<Option<String>> {
     } else {
         None
     })
+}
+
+pub(crate) fn metadata(path: &Path) -> Value {
+    match std::fs::symlink_metadata(path) {
+        Ok(m) => {
+            json!({"type":if m.is_symlink(){"symlink"}else if m.is_dir(){"directory"}else if m.is_file(){"file"}else{"other"},"size":m.len(),"readonly":m.permissions().readonly(),"modifiedAt":m.modified().ok().map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339()),"createdAt":m.created().ok().map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339())})
+        }
+        Err(e) => json!({"error":e.to_string()}),
+    }
 }
