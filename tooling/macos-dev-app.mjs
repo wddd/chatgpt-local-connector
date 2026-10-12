@@ -2,6 +2,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { macosSigningIdentity, macosSigningArgs } from './macos-signing.mjs';
 
 // Cargo's target runner receives the freshly built executable and app arguments.
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -37,12 +38,14 @@ if (schemes.length) {
   add('Add :CFBundleURLTypes:0:CFBundleURLSchemes array');
   schemes.forEach((scheme, index) => add(`Add :CFBundleURLTypes:0:CFBundleURLSchemes:${index} string ${scheme}`));
 }
-execFileSync('codesign', ['--force', '--sign', '-', path.dirname(contents)], { stdio: 'inherit' });
-execFileSync(process.execPath, [path.join(root, 'tooling/check-package.mjs'), path.dirname(contents)], { stdio: 'inherit' });
+const env = { ...process.env };
+const identity = macosSigningIdentity(env);
+execFileSync('codesign', [...macosSigningArgs(identity, config.identifier, false), path.dirname(contents)], { env, stdio: 'inherit' });
+execFileSync(process.execPath, [path.join(root, 'tooling/check-package.mjs'), path.dirname(contents)], { env, stdio: 'inherit' });
 // Tauri can kill its runner during rebuilds. A private stdin pipe lets the app
 // observe that even after SIGKILL and shut down its managed tunnels normally.
 const app = spawn(executable, process.argv.slice(3), {
-  env: { ...process.env, CLC_DEV_SUPERVISED: '1' },
+  env: { ...env, CLC_DEV_SUPERVISED: '1' },
   stdio: ['pipe', 'inherit', 'inherit'],
 });
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => app.stdin.end());

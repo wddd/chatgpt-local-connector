@@ -25,7 +25,7 @@ const env = buildEnv(!debug);
 for (const key of ['TAURI_SIGNING_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD']) {
   if (signing[key] !== undefined) env[key] = signing[key];
 }
-const identity = macosSigningIdentity(env, !debug);
+const identity = macosSigningIdentity(env);
 for (const key of Object.keys(env)) if (/^(CSC_|WIN_CSC_)/.test(key)) delete env[key];
 if (process.platform === 'darwin') args.push('--config', JSON.stringify({ bundle: { macOS: {
   signingIdentity: identity, hardenedRuntime: true,

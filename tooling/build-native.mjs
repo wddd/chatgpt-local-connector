@@ -3,7 +3,7 @@ import { mkdir, copyFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { buildEnv } from './build-env.mjs';
-import { macosSigningIdentity } from './macos-signing.mjs';
+import { macosSigningIdentity, macosSigningArgs } from './macos-signing.mjs';
 
 export async function buildNative({ release = false, target, bundled = release } = {}) {
   const root = fileURLToPath(new URL('../', import.meta.url));
@@ -12,7 +12,7 @@ export async function buildNative({ release = false, target, bundled = release }
   if (release) args.push('--release');
   if (target) args.push('--target', target);
   const env = buildEnv(release);
-  const identity = macosSigningIdentity(env, release);
+  const identity = macosSigningIdentity(env);
   // The Core is itself a desktop resource, so its build must not copy resources
   // that have not been produced yet (notably on a clean Actions checkout).
   env.TAURI_CONFIG = JSON.stringify({ bundle: { resources: [] } });
@@ -21,8 +21,7 @@ export async function buildNative({ release = false, target, bundled = release }
   const name = process.platform === 'win32' ? 'local-connector.exe' : 'local-connector';
   const binary = path.join(root, 'target', ...(target ? [target] : []), release ? 'release' : 'debug', name);
   if (process.platform === 'darwin') execFileSync('codesign', [
-    '--force', '--sign', identity,
-    ...(identity === '-' ? [] : ['--options', 'runtime', '--timestamp']), binary,
+    ...macosSigningArgs(identity, 'com.whzxc.local-connector.core'), binary,
   ], { env, stdio: 'inherit' });
   const destination = path.join(root, 'dist/native', name);
   await mkdir(path.dirname(destination), { recursive: true });
