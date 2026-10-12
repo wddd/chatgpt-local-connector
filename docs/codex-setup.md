@@ -164,7 +164,9 @@ secrets; call token rotation/registration synchronously and capture stdout to a
 protected local file.
 
 `logs.query` returns objects, cursor, retention bounds, `hasMore` and `gap`.
-Keep its cursor and filters while paging; a gap means the cursor is no longer
+Without a time range or cursor it starts at the recent tail; specify `since` or
+`until` to page retained history forward. Keep its cursor and filters while paging;
+a gap means the cursor is no longer
 retained. `cli logs --follow` emits JSON lines; `cli logs --offline` reads retained
 disk logs even when Core is unavailable. Redirect stdout to export.
 `cli watch` and `state.wait` provide resumable current-state snapshots: unchanged

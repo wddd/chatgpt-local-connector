@@ -189,30 +189,38 @@ pub fn query(options: &Value) -> Result<Value> {
     let cursor = string(options, "cursor");
     let position = rows.iter().position(|r| hash(r.to_string()) == cursor);
     let gap = !cursor.is_empty() && position.is_none();
-    let mut selected = Vec::new();
-    let mut next = cursor.to_owned();
-    let mut has_more = false;
-    for row in rows.iter().skip(position.map_or(0, |i| i + 1)) {
-        if selected.len() == limit {
-            has_more = true;
-            break;
-        }
-        next = hash(row.to_string());
-        if ["ingressId", "level"].iter().any(|k| {
-            options[*k]
-                .as_str()
-                .is_some_and(|v| !v.is_empty() && row[*k] != v)
-        }) {
-            continue;
-        }
-        let at = string(row, "time");
-        if options["since"].as_str().is_some_and(|v| at < v)
-            || options["until"].as_str().is_some_and(|v| at > v)
-        {
-            continue;
-        }
-        selected.push(row.clone());
+    let mut selected: Vec<&Value> = rows
+        .iter()
+        .skip(position.map_or(0, |i| i + 1))
+        .filter(|row| {
+            if ["ingressId", "level"].iter().any(|key| {
+                options[*key]
+                    .as_str()
+                    .is_some_and(|v| !v.is_empty() && row[*key] != v)
+            }) {
+                return false;
+            }
+            let at = string(row, "time");
+            !options["since"].as_str().is_some_and(|v| at < v)
+                && !options["until"].as_str().is_some_and(|v| at > v)
+        })
+        .collect();
+    // The ordinary log view starts at the recent tail; explicit time ranges page history forward.
+    if cursor.is_empty()
+        && options.get("since").is_none()
+        && options.get("until").is_none()
+        && selected.len() > limit
+    {
+        selected.drain(..selected.len() - limit);
     }
+    let has_more = selected.len() > limit;
+    selected.truncate(limit);
+    let next = if has_more {
+        selected.last().map(|v| hash(v.to_string()))
+    } else {
+        rows.last().map(|v| hash(v.to_string()))
+    }
+    .unwrap_or_else(|| cursor.to_owned());
     Ok(
         json!({"rows":selected,"cursor":next,"hasMore":has_more,"gap":gap,"retention":{"days":7,"maxBytes":16777216},"oldestAt":rows.first().map(|v|&v["time"]),"newestAt":rows.last().map(|v|&v["time"])}),
     )
