@@ -1,5 +1,15 @@
 # 版本说明
 
+## 0.8.26
+
+- feat(ui): 精简桌面界面并完善菜单与额度交互
+- fix(runtime): 启动时等待旧核心完成退出
+- fix(screen): 缺少权限时主动请求系统授权提示
+- feat(screen): 新增 macOS 界面观察与操作工具
+- fix(signing): 支持自签名证书并固定核心签名标识
+- feat(release): 支持显式指定个人开发者签名
+- perf(release): 共享构建缓存并默认本地发布
+
 ## 0.8.25
 
 - ci(release): 精简默认 mac 发布并支持 Windows 按需补发
