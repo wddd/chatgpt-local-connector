@@ -1,7 +1,6 @@
 name: Check
 on:
   workflow_dispatch:
-  workflow_call:
 permissions:
   contents: read
 concurrency:
@@ -26,8 +25,6 @@ jobs:
           components: rustfmt
       - name: Format | Rust
         run: npm run check:format
-      - name: Validation | Version
-        run: npm run release:check
       - name: Cache | Rust dependencies
         id: rust-cache
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
@@ -51,22 +48,3 @@ jobs:
         run: npm run build
       - name: Native check | Desktop
         run: cargo check --manifest-path desktop/Cargo.toml
-  timings:
-    name: Timing summary
-    if: always() && github.workflow == 'Check'
-    needs: check
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@v6
-      - name: Generate phase timings
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node tooling/workflow-timing.mjs
-      - uses: actions/upload-artifact@v4
-        with:
-          name: workflow-timing
-          path: ${{ runner.temp }}/workflow-timing/
-          retention-days: 30

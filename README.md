@@ -61,6 +61,12 @@ Codex remains the default, with its native capabilities preserved. External Agen
 
 Available downloads are the actual assets on [GitHub Releases](https://github.com/whzxc/chatgpt-local-connector/releases). Plugin and desktop updates are separate; use the same native build when sharing state.
 
+## Releases
+
+Maintainers publish macOS Apple Silicon from a clean `main` with `npm run release`: prepare and commit the version and changelog, run tests once, tag, and push. The tag workflow builds and publishes macOS assets directly. Use `-- --skip-tests` if tests have already passed.
+
+Windows x64 is added on demand through the manual `release-windows.yml` workflow (optional `tag`, default: latest public Release). Until supplemented, the latest update manifest has no Windows entries, so Windows clients cannot obtain an update from it. See [Release maintenance](docs/release.md).
+
 ## Let Codex configure remote access
 
 For local plugin use, follow the plugin guide above. The following workflow is for remote access from Web, mobile or another device.

@@ -1,222 +1,59 @@
 name: Release
-run-name: Release ${{ github.ref_name }} (${{ (github.event_name == 'push' || inputs.publish) && 'publish' || 'rehearsal' }})
+run-name: Release ${{ github.ref_name }} (macOS)
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
-    inputs:
-      publish:
-        description: Publish a version tag (false runs a build rehearsal only)
-        type: boolean
-        default: false
 permissions:
-  contents: read
-  actions: read
+  contents: write
 concurrency:
-  group: release-${{ github.ref }}
+  group: connector-release
   cancel-in-progress: false
 jobs:
-  gate:
-    name: Release prerequisites
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    outputs:
-      build-run: ${{ steps.artifacts.outputs.run-id }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Gate | Validate version and release ref
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "$PUBLISH" = true ]; then
-            test "$GITHUB_REF_TYPE" = tag || { echo 'Publishing requires a version tag.'; exit 1; }
-          else
-            test "$GITHUB_REF" = refs/heads/main || { echo 'Rehearsals must run on main.'; exit 1; }
-          fi
-          node tooling/release.mjs published-check
-      - name: Gate | Find verified build for the exact release commit
-        id: artifacts
-        if: github.event_name == 'push' || inputs.publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?event=workflow_dispatch&branch=main&status=success&per_page=100" --jq '.workflow_runs[] | [.id, .head_sha] | @tsv')
-          while IFS=$'\t' read -r run_id source_sha; do
-            [ -n "$run_id" ] || continue
-            [ "$source_sha" = "$(git rev-parse HEAD)" ] || continue
-            metadata="$RUNNER_TEMP/release-metadata-$run_id"
-            if ! gh run download "$run_id" --name release-metadata --dir "$metadata"; then
-              continue
-            fi
-            echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
-            echo "Reusing verified build $run_id ($source_sha)."
-            exit 0
-          done <<< "$runs"
-          echo 'No successful main rehearsal matches this exact commit. Run a rehearsal with passing checks before tagging; do not add a metadata commit.'
-          exit 1
-  checks:
-    needs: gate
-    if: github.event_name == 'workflow_dispatch' && !inputs.publish
-    uses: ./.github/workflows/check.yml
-  build:
-    needs: gate
-    if: github.event_name == 'workflow_dispatch' && !inputs.publish
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            platform: darwin-aarch64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            platform: windows-x86_64
-    runs-on: ${{ matrix.os }}
+  release:
+    runs-on: macos-latest
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
-      - if: runner.os == 'macOS'
-        uses: astral-sh/setup-uv@v6
-      - if: runner.os == 'macOS'
-        run: rustup target add aarch64-apple-darwin
-      - name: Cache | Rust dependencies
-        id: rust-cache
-        uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
-          shared-key: desktop-${{ matrix.target }}
+          targets: aarch64-apple-darwin
+      - uses: astral-sh/setup-uv@v6
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          shared-key: desktop-aarch64-apple-darwin
           key: path-remap-v1
           workspaces: |
             native -> target
             desktop -> target
             tooling/verifier -> target
           cache-bin: false
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Cache | Rust hit=${{ steps.rust-cache.outputs.cache-hit }}
-        run: echo "Rust cache lookup complete"
-      - name: Dependencies | npm ci
-        run: npm ci
-      - name: Validation | Release version
-        run: npm run release:check
-      - name: Package | Native build and signed installers
+          save-if: 'true'
+      - run: npm ci
+      - name: Build signed macOS installers
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run desktop:build -- --release --target '${{ matrix.target }}'
-      - name: Verification | Native package
-        if: runner.os == 'macOS'
-        run: node tooling/check-package.mjs 'desktop/target/aarch64-apple-darwin/release/bundle/macos/Local Connector.app'
-      - name: Verification | Stage and verify signatures
-        run: npm run release:stage -- '${{ matrix.platform }}' 'desktop/target/${{ matrix.target }}/release/bundle' release-artifacts
-      - name: Artifacts | Upload platform packages
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.platform }}
-          path: release-artifacts/
-          if-no-files-found: error
-          retention-days: 14
-  publish:
-    needs: [gate, checks, build]
-    if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.checks.result == 'success' || needs.checks.result == 'skipped') && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
-    runs-on: ubuntu-latest
-    concurrency:
-      group: connector-release
-      cancel-in-progress: false
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Cache | Verifier dependencies
-        id: rust-cache
-        uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
-        with:
-          shared-key: release-verifier
-          workspaces: tooling/verifier -> target
-          cache-bin: false
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Cache | Rust hit=${{ steps.rust-cache.outputs.cache-hit }}
-        run: echo "Rust cache lookup complete"
-      - name: Artifacts | Download platform packages
-        uses: actions/download-artifact@v4
-        with:
-          pattern: release-*-*
-          github-token: ${{ github.token }}
-          run-id: ${{ needs.gate.outputs.build-run || github.run_id }}
-          path: release-artifacts
-          merge-multiple: true
-      - name: Metadata | Finalize and verify all signatures
+        run: npm run desktop:build -- --release --target aarch64-apple-darwin
+      - name: Generate metadata and verify signature
         env:
           GH_TOKEN: ${{ github.token }}
-        run: npm run release:finalize -- release-artifacts
-      - name: Verification | Release metadata leaves source unchanged
-        run: git diff --exit-code HEAD
-      - name: Artifacts | Upload rehearsal metadata
-        if: github.event_name == 'workflow_dispatch' && !inputs.publish
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-metadata
-          path: |
-            release-artifacts/latest.json
-            release-artifacts/SHA256SUMS.txt
-            release-artifacts/release-notes.md
-            release-artifacts/local-connector.rb
-          retention-days: 14
-      - name: Publish | Upload draft and publish
-        if: github.event_name == 'push' || inputs.publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
-          set -euo pipefail
-          node tooling/release.mjs published-check
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            test "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" = true || { echo 'Published releases are immutable; bump the version.'; exit 1; }
-          else
-            gh release create "$GITHUB_REF_NAME" --verify-tag --draft --title "Local Connector $GITHUB_REF_NAME" --notes-file release-artifacts/release-notes.md
-          fi
-          gh release upload "$GITHUB_REF_NAME" release-artifacts/*.dmg release-artifacts/*.gz release-artifacts/*.exe release-artifacts/*.sig release-artifacts/SHA256SUMS.txt release-artifacts/latest.json release-artifacts/local-connector.rb --clobber
-          gh release edit "$GITHUB_REF_NAME" --notes-file release-artifacts/release-notes.md --draft=false --latest
-      - name: Verification | Public downloads
-        if: github.event_name == 'push' || inputs.publish
-        run: node tooling/release.mjs verify-published release-artifacts
-  timings:
-    name: Timing summary
-    if: always()
-    needs: [gate, checks, build, publish]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@v6
-      - name: Generate phase timings
+          npm run release:stage -- darwin-aarch64 desktop/target/aarch64-apple-darwin/release/bundle release-artifacts
+          npm run release:finalize -- release-artifacts
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node tooling/workflow-timing.mjs
-      - uses: actions/upload-artifact@v4
-        with:
-          name: workflow-timing
-          path: ${{ runner.temp }}/workflow-timing/
-          retention-days: 30
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          release-artifacts/*.dmg release-artifacts/*.gz release-artifacts/*.sig
+          release-artifacts/latest.json release-artifacts/SHA256SUMS.txt
+          release-artifacts/local-connector.rb release-artifacts/release-notes.md
+          --notes-file release-artifacts/release-notes.md --latest

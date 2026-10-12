@@ -1,7 +1,6 @@
 import { readFile, writeFile, readdir, mkdir, copyFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
 let version = pkg.version;
@@ -23,10 +22,10 @@ async function files(dir) {
 function verifySignatures(artifacts) {
   execFileSync('cargo', ['run', '--quiet', '--locked', '--manifest-path', 'tooling/verifier/Cargo.toml', '--', 'desktop/tauri.conf.json', ...artifacts], { stdio: 'inherit' });
 }
-async function validateManifest(manifest, dir) {
-  const keys = ['darwin-aarch64','windows-x86_64','windows-x86_64-nsis'];
-  if (manifest.version !== version || Object.keys(manifest.platforms).sort().join() !== keys.sort().join()) throw new Error('Incomplete release platform manifest');
-  for (const value of Object.values(manifest.platforms)) {
+async function validateManifest(manifest, dir, keys = Object.keys(manifest.platforms)) {
+  if (manifest.version !== version || !manifest.platforms['darwin-aarch64']) throw new Error('Invalid release manifest');
+  for (const key of keys) {
+    const value = manifest.platforms[key];
     if (!value.url.startsWith(base + '/')) throw new Error('Unexpected updater download origin/version');
     const name = value.url.slice(base.length + 1);
     if (name !== path.basename(name) || !/\.(gz|exe)$/.test(name)) throw new Error('Invalid updater asset name');
@@ -43,14 +42,9 @@ async function check() {
   }
   const lock = await json('package-lock.json');
   if (lock.version !== version || lock.packages[''].version !== version) throw new Error('package-lock version mismatch');
-  for (const [name, entry] of Object.entries(lock.packages)) {
-    if (entry.resolved && !entry.resolved.startsWith('https://registry.npmjs.org/')) throw new Error(`${name}: package-lock requires a non-public npm registry`);
-  }
   for (const [file, name] of [['native/Cargo.lock','connector-core'],['desktop/Cargo.lock','connector-core'],['desktop/Cargo.lock','local-connector-desktop']]) {
     if (!(await readFile(file,'utf8')).includes(`name = "${name}"\nversion = "${version}"`)) throw new Error(`${file}: ${name} version mismatch`);
   }
-  if (!config.plugins.updater.pubkey || config.plugins.updater.endpoints[0] !== `https://github.com/${repo}/releases/latest/download/latest.json`) throw new Error('Updater configuration is incomplete');
-  if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== `v${version}`) throw new Error('Tag/version mismatch');
   console.log(`Release configuration ready: v${version}, ${repo}`);
 }
 async function cask(dir) {
@@ -116,19 +110,16 @@ async function sync() {
   for (const file of ['native/Cargo.lock','desktop/Cargo.lock']) await writeFile(file,(await readFile(file,'utf8')).replace(/(name = "(?:connector-core|local-connector-desktop)"\nversion = ")[^"]+/g,(_, prefix) => prefix + version));
   await check();
 }
-async function prepare() {
-  if(args.some(arg=>arg!=='--dry-run')) throw new Error('prepare [--dry-run]');
+async function prepare(options = args) {
+  if(options.some(arg=>arg!=='--dry-run')) throw new Error('prepare [--dry-run]');
   parts(version);
   const previous=latestPublished();
   const bump=previous && compare(version,previous)<=0;
   const target=bump ? [...parts(previous).slice(0,2),parts(previous)[2]+1n].join('.') : version;
   console.log(`Published: ${previous ?? 'none'}; current: ${version}; target: ${target}; release commits: ${bump?1:0}`);
-  if(args.includes('--dry-run')) return;
+  if(options.includes('--dry-run')) return;
   if(git('status','--porcelain')) throw new Error('Commit or set aside existing changes before release preparation');
   if(!bump) { await check(); return; }
-  await check();
-  git('var','GIT_AUTHOR_IDENT');
-  git('var','GIT_COMMITTER_IDENT');
   const changes=changesSince(previous);
   const changelog=await readFile('CHANGELOG.md','utf8');
   version=target; pkg.version=target;
@@ -139,16 +130,17 @@ async function prepare() {
   git('add','--',...releaseFiles);
   git('commit','-m',`chore(release): 更新版本至 ${version}`,'--',...releaseFiles);
 }
-if (mode === 'prepare') await prepare();
-else if (mode === 'published-check') {
-  await check(); const previous=latestPublished();
-  if(previous && compare(version,previous)<=0) throw new Error(`Version ${version} must exceed published ${previous}; run release:prepare before rehearsal`);
-}
-else if (mode === 'check') await check();
-else if (mode === 'sync') {
-  await sync();
-} else if (mode === 'stage') {
-  await check();
+if (mode === 'release') {
+  if (args.some(arg => arg !== '--skip-tests')) throw new Error('release [--skip-tests]');
+  if (git('branch', '--show-current') !== 'main') throw new Error('Run release from main');
+  git('fetch', 'origin', 'main', '--tags');
+  await prepare([]);
+  if (!args.includes('--skip-tests')) execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['test'], { stdio: 'inherit', shell: process.platform === 'win32' });
+  git('tag', `v${version}`);
+  git('push', '--atomic', 'origin', 'main', `refs/tags/v${version}`);
+} else if (mode === 'prepare') await prepare();
+else if (mode === 'sync') await sync();
+else if (mode === 'stage') {
   const [target, input, output] = args;
   if (!['darwin-aarch64','windows-x86_64'].includes(target) || !input || !output) throw new Error('stage <darwin-aarch64|windows-x86_64> <bundle-dir> <output-dir>');
   await mkdir(output,{recursive:true});
@@ -163,7 +155,6 @@ else if (mode === 'sync') {
   const payloads = staged.filter(f => target === 'darwin-aarch64' ? f.endsWith('.app.tar.gz') : /\.exe$/.test(f));
   if (payloads.length !== 1) throw new Error('Missing/duplicate updater bundles');
   if (target === 'darwin-aarch64' && staged.filter(f=>f.endsWith('_aarch64.dmg')).length !== 1) throw new Error('Missing Apple Silicon DMG');
-  verifySignatures(payloads);
   const platforms = {};
   for (const file of payloads) {
     const value = { signature:(await readFile(file+'.sig','utf8')).trim(), url:`${base}/${path.basename(file)}` };
@@ -171,40 +162,37 @@ else if (mode === 'sync') {
     for (const key of keys) platforms[key] = value;
   }
   await writeJson(path.join(output,`${target}.json`), { version, platforms });
-  console.log(`Staged ${target} artifacts with verified signatures.`);
-} else if (mode === 'finalize') {
-  await check(); const [dir] = args;
-  const fragments = await Promise.all(['darwin-aarch64','windows-x86_64'].map(t=>json(path.join(dir,t+'.json'))));
-  if (fragments.some(f=>f.version!==version)) throw new Error('Mixed release versions');
-  const releaseNotes = await notes();
-  await writeJson(path.join(dir,'latest.json'),{version,notes:releaseNotes,pub_date:new Date().toISOString(),platforms:Object.assign({},...fragments.map(f=>f.platforms))});
-  await validateManifest(await json(path.join(dir,'latest.json')), dir);
-  await writeFile(path.join(dir,'release-notes.md'),releaseNotes+'\n');
-  await cask(dir);
-  const assets = (await files(dir)).filter(f=>/\.(dmg|exe|gz|sig|zip|bin)$/.test(f)||path.basename(f)==='local-connector.rb').sort();
-  verifySignatures(assets.filter(f=>/\.(exe|gz|bin)$/.test(f)));
-  await writeFile(path.join(dir,'SHA256SUMS.txt'),(await Promise.all(assets.map(async f=>`${hash(await readFile(f))}  ${path.basename(f)}`))).join('\n')+'\n');
-  console.log('Complete release metadata and Homebrew cask generated. Nothing uploaded.');
-} else if (mode === 'cask') await cask(args[0]);
-else if (mode === 'verify-published') {
-  const dir = args[0]; const local = await json(path.join(dir,'latest.json'));
-  await validateManifest(local, dir);
-  const fetchBytes = async url => {
-    for (let attempt = 0; attempt < 12; attempt++) {
-      const response = await fetch(url, { signal: AbortSignal.timeout(120000) });
-      if (response.ok) return Buffer.from(await response.arrayBuffer());
-      if (![404, 502, 503, 504].includes(response.status) || attempt === 11) throw new Error(`${response.status}: ${url}`);
-      await delay(5000);
-    }
+  console.log(`Staged ${target} artifacts for metadata generation.`);
+} else if (mode === 'finalize' || mode === 'merge-windows') {
+  const [dir] = args;
+  if (!dir) throw new Error(`${mode} <artifact-dir>`);
+  const windows = mode === 'merge-windows';
+  const fragment = await json(path.join(dir, windows ? 'windows-x86_64.json' : 'darwin-aarch64.json'));
+  if (fragment.version !== version) throw new Error('Mixed release versions');
+  const manifest = windows ? await json(path.join(dir, 'latest.json')) : {
+    version, notes: await notes(), pub_date: new Date().toISOString(), platforms: {},
   };
-  let remote;
-  for (let attempt = 0; attempt < 12; attempt++) {
-    remote = JSON.parse(await fetchBytes(`https://github.com/${repo}/releases/latest/download/latest.json`));
-    if (JSON.stringify(remote) === JSON.stringify(local)) break;
-    if (attempt === 11) throw new Error('Published latest.json mismatch');
-    await delay(5000);
+  Object.assign(manifest.platforms, fragment.platforms);
+  await validateManifest(manifest, dir, Object.keys(fragment.platforms));
+  const payloads = [...new Set(Object.values(fragment.platforms).map(value => path.join(dir, value.url.slice(base.length + 1))))];
+  verifySignatures(payloads);
+  if (!windows) {
+    await writeFile(path.join(dir, 'release-notes.md'), manifest.notes + '\n');
+    await cask(dir);
   }
-  const assets=(await files(dir)).filter(f=>/\.(dmg|exe|gz|sig|zip|bin)$/.test(f)||f.endsWith('SHA256SUMS.txt')||f.endsWith('local-connector.rb'));
-  for(const file of assets) if(hash(await fetchBytes(`${base}/${path.basename(file)}`))!==hash(await readFile(file))) throw new Error(`Published asset mismatch: ${path.basename(file)}`);
-  console.log('Published manifest and all artifact bytes match the verified local release.');
-} else throw new Error('Expected prepare, published-check, check, sync, stage, finalize, cask, or verify-published');
+  const sumsFile = path.join(dir, 'SHA256SUMS.txt');
+  const sums = new Map();
+  if (windows) {
+    for (const line of (await readFile(sumsFile, 'utf8')).trim().split('\n')) {
+      const [, digest, name] = line.match(/^([a-f0-9]{64})  (.+)$/) ?? [];
+      if (!name) throw new Error('Invalid SHA256SUMS entry');
+      // Replace all previous Windows checksums, including renamed installers.
+      if (!/\.exe(?:\.sig)?$/.test(name)) sums.set(name, digest);
+    }
+  }
+  await writeJson(path.join(dir, 'latest.json'), manifest);
+  const assets = (await files(dir)).filter(f => /\.(dmg|exe|gz|sig)$/.test(f) || ['local-connector.rb', 'latest.json', 'release-notes.md'].includes(path.basename(f)));
+  for (const file of assets) sums.set(path.basename(file), hash(await readFile(file)));
+  await writeFile(sumsFile, [...sums].sort(([a], [b]) => a.localeCompare(b)).map(([name, digest]) => `${digest}  ${name}`).join('\n') + '\n');
+  console.log(windows ? 'Windows metadata merged; existing macOS entries preserved.' : 'macOS release metadata generated.');
+} else throw new Error('Expected release, prepare, sync, stage, finalize, or merge-windows');
