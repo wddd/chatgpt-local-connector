@@ -22,6 +22,43 @@ pub fn install(app: &tauri::App) -> tauri::Result<()> {
         menu.append(&item)?;
         items.push((item, key));
     }
+    #[cfg(target_os = "macos")]
+    {
+        let application_menu = Menu::default(app.handle())?;
+        if let Some(tauri::menu::MenuItemKind::Submenu(submenu)) = application_menu.items()?.first()
+        {
+            let settings = MenuItem::with_id(
+                app,
+                "app-settings",
+                t("traySettings"),
+                true,
+                Some("CmdOrCtrl+,"),
+            )?;
+            let updates = MenuItem::with_id(
+                app,
+                "app-check-updates",
+                t("checkForUpdates"),
+                true,
+                None::<&str>,
+            )?;
+            submenu.insert_items(&[&settings, &updates], 1)?;
+            items.push((settings, "traySettings"));
+            items.push((updates, "checkForUpdates"));
+        }
+        app.set_menu(application_menu)?;
+        app.on_menu_event(|app, event| {
+            let action = match event.id.as_ref() {
+                "app-settings" => Some(("navigate".into(), serde_json::json!("settings"))),
+                "app-check-updates" => Some(("updates:check".into(), serde_json::Value::Null)),
+                _ => None,
+            };
+            if let Some(action) = action {
+                if let Err(error) = crate::windows::show(app, Some(action)) {
+                    eprintln!("Application menu: {error}");
+                }
+            }
+        });
+    }
     TrayIconBuilder::with_id("main-tray")
         .icon(tauri::include_image!("icons/tray-logo.png"))
         .icon_as_template(false)

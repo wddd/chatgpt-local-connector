@@ -33,8 +33,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { t } from "../../i18n";
-import { AnimatedSize } from "./AnimatedSize";
-export { AnimatedSize, AnimatedCollapse } from "./AnimatedSize";
 import { isDesktop, copyText } from "../../platform";
 import { HoverScope } from "./HoverScope";
 export { HoverScope };
@@ -434,7 +432,7 @@ export function DetailDialog({ trigger, title, children }: { trigger: ReactNode;
     <D.Overlay className="detail-dialog-overlay" />
     <D.Content className="detail-dialog" aria-describedby={undefined}>
       <header><D.Title>{title}</D.Title><D.Close asChild><IconButton icon={X} label={t("close")} /></D.Close></header>
-      <AnimatedSize className="detail-dialog-body" contentClassName="detail-dialog-content">{children}</AnimatedSize>
+      <div className="detail-dialog-body"><div className="detail-dialog-content">{children}</div></div>
     </D.Content>
   </D.Portal></D.Root>;
 }

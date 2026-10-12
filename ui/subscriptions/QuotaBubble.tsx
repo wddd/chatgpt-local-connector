@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { RefreshCw, TriangleAlert, CircleAlert, Flame } from "lucide-react";
-import { t } from "../i18n";
+import { t, locale } from "../i18n";
 import { openUrl } from "../platform";
 import { useNow } from "../state/hooks";
 import { refreshSubscription } from "../state/subscriptions";
@@ -14,11 +14,12 @@ import {
   usagePeriods,
   usagePeriodLabels,
 } from "./displayPreferences";
-import { windowLabel, subscriptionLabel, isFiveHour } from "./labels";
+import { windowLabel, subscriptionLabel } from "./labels";
 import {
   brandIcon,
   quotaColor,
   resetText,
+  compactReset,
   preciseTime,
   errorLabels,
 } from "./presentation";
@@ -46,9 +47,9 @@ export default function QuotaBubble({
   link?: boolean;
 }) {
   const now = useNow(),
-    reset = resetDisplay.use(),
     periods = usagePeriods.use();
   quotaDisplay.use();
+  resetDisplay.use();
   const [requesting, setRequesting] = useState(false),
     [error, setError] = useState("");
   const usageUrl = link ? usageLink(provider) : undefined,
@@ -74,16 +75,8 @@ export default function QuotaBubble({
     age = Number.isFinite(timestamp)
       ? Math.max(0, Math.floor((now - timestamp) / 60000))
       : undefined;
-  const ageText =
-    age === undefined
-      ? ""
-      : age < 1
-        ? "< 1m"
-        : age < 60
-          ? `${age}m`
-          : age < 1440
-            ? `${Math.floor(age / 60)}h`
-            : `${Math.floor(age / 1440)}d`;
+  const ageText = age === undefined ? "" : age < 1 ? t("justNow") :
+    new Intl.RelativeTimeFormat(locale.get()).format(-Math.floor(age < 60 ? age : age < 1440 ? age / 60 : age / 1440), age < 60 ? "minute" : age < 1440 ? "hour" : "day");
   async function refresh() {
     setRequesting(true);
     setError("");
@@ -254,7 +247,6 @@ export default function QuotaBubble({
                 title={preciseTime(provider.observedAt)}
               >
                 {ageText}
-                {ageText && ageText !== "< 1m" ? " ago" : ""}
               </time>
               <IconButton
                 icon={RefreshCw}
@@ -277,28 +269,16 @@ export default function QuotaBubble({
                       {windowLabel(w.label)}
                     </span>
                     {estimate && (
-                      <span className="quota-estimate">
-                        ≈ {estimate.amount}
+                      <span className="quota-estimate" title={estimate.lines.join("\n")}>
+                        {t("quotaCycleValue", { amount: estimate.amount })}
                       </span>
                     )}
-                    {pace?.label && (
-                      <Button
-                        variant="ghost"
-                        className="pace-warning"
-                        ref={(node) => register(key, node)}
-                        onPointerEnter={(event) => event.pointerType !== "touch" && hover(key)}
-                        onPointerLeave={(event) => event.pointerType !== "touch" && hover("")}
-                        onClick={() => focus(key)}
-                        onFocus={() => focus(key)}
-                        onBlur={() => focus("")}
-                        aria-expanded={expanded && displayed === key}
-                        aria-label={`${windowLabel(w.label)} · ${pace.label}`}
-                      >
-                        {pace.flame && <Icon icon={Flame} />} {pace.label}
-                      </Button>
-                    )}
+                    <span className="reading-reset" title={w.resetsAt && Number.isFinite(Date.parse(w.resetsAt)) ? t("quotaResetAt", { time: preciseTime(w.resetsAt) }) : t("quotaResetUnknown")} aria-label={t("quotaResetIn", { time: compactReset(w.resetsAt, now) })}>
+                      {compactReset(w.resetsAt, now)}
+                    </span>
                   </div>
                   <div
+                    title={pace?.tick != null ? t("quotaTimeTick") : undefined}
                     className="reading-track"
                     role="meter"
                     aria-label={`${windowLabel(w.label)} · ${quotaLabel()}`}
@@ -326,16 +306,36 @@ export default function QuotaBubble({
                     <span>
                       {quotaLabel()} {quotaPercent(w)}
                     </span>
-                    <span>
-                      {reset === "time"
-                        ? preciseTime(w.resetsAt) || "—"
-                        : resetText(w.resetsAt, now, isFiveHour(w.label))}
-                    </span>
+                    <div className="reading-timing">
+                      {pace?.label && (
+                        <Button
+                          variant="ghost"
+                          className="pace-warning"
+                          ref={(node) => register(key, node)}
+                          onPointerEnter={(event) => event.pointerType !== "touch" && hover(key)}
+                          onPointerLeave={(event) => event.pointerType !== "touch" && hover("")}
+                          onClick={() => focus(key)}
+                          onFocus={() => focus(key)}
+                          onBlur={() => focus("")}
+                          aria-expanded={expanded && displayed === key}
+                          aria-label={`${windowLabel(w.label)} · ${pace.label}`}
+                        >
+                          {pace.flame && <Icon icon={Flame} />} {pace.label}
+                        </Button>
+                      )}
+
+                    </div>
                   </div>
                 </div>
               );
             })}
             <HoverScope className="usage-history" activeKey={highlighted}>
+              {(provider.creditBalance ?? 0) > 0 && (
+                <div className="history-period">
+                  <span>{t("usageCreditBalance")}</span>
+                  <span>{new Intl.NumberFormat().format(provider.creditBalance!)} credits</span>
+                </div>
+              )}
               {provider.availableResetCount != null && (
                 <div className="history-period">
                   <span>{t("usageResetCount")}</span>
@@ -359,12 +359,6 @@ export default function QuotaBubble({
                       })}
                     </span>
                   </Button>
-                </div>
-              )}
-              {(provider.creditBalance ?? 0) > 0 && (
-                <div className="history-period">
-                  <span>{t("usageCreditBalance")}</span>
-                  <span>{new Intl.NumberFormat().format(provider.creditBalance!)} credits</span>
                 </div>
               )}
               {showHistory && provider.history?.periods

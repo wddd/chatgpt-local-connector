@@ -20,8 +20,10 @@ import { Dialog, IconButton, Switch, Notice, Loading } from "./ui";
 export function AgentDetails({
   agent,
   onClose,
+  showOfficialLink = false,
 }: {
   agent: Agent;
+  showOfficialLink?: boolean;
   onClose: () => void;
 }) {
   const { snapshot } = subscriptions.use();
@@ -39,6 +41,7 @@ export function AgentDetails({
           <p>{agent.installed ? agent.version : t("agentNotInstalled")}</p>
         </div>
       </div>
+      {showOfficialLink && agentLinks[agent.agent] && <a href={agentLinks[agent.agent]} onClick={e => { e.preventDefault(); void openUrl(agentLinks[agent.agent]!); }}>{t("officialSetup")}</a>}
       {provider && <QuotaBubble provider={provider} />}
     </Dialog>
   );
@@ -61,7 +64,7 @@ export default function AgentsSettings({ onClose }: { onClose: () => void }) {
   return (
     <>
       <Dialog
-        title="Agents"
+        title={t("agents")}
         onClose={onClose}
         wide
         actions={
@@ -82,8 +85,9 @@ export default function AgentsSettings({ onClose }: { onClose: () => void }) {
         }
       >
         {!state.loaded && state.loading && <Loading />}
+        <h3>{t("installedAgents")}</h3>
         <div className="agent-grid">
-          {items.map((agent) => (
+          {items.filter(agent => agent.installed).map((agent) => (
             <article
               key={agent.agent}
               className={`agent-card ${dragging === agent.agent ? "dragging" : ""} ${dropTarget === agent.agent ? "drop-target" : ""}`}
@@ -157,7 +161,7 @@ export default function AgentsSettings({ onClose }: { onClose: () => void }) {
                 ) : (
                   <strong>{name(agent)}</strong>
                 )}
-                <span>
+                <span title={agent.version || undefined}>
                   {agent.installed ? agent.version : t("agentNotInstalled")}
                 </span>
               </div>
@@ -195,10 +199,12 @@ export default function AgentsSettings({ onClose }: { onClose: () => void }) {
             </article>
           ))}
         </div>
+        <h3>{t("notInstalledAgents")}</h3>
+        <div className="uninstalled-agents">{items.filter(agent => !agent.installed).map(agent => <button key={agent.agent} className="agent-uninstalled" onClick={() => setDetail(agent)} aria-haspopup="dialog"><AgentQuotaIcon agent={agent.agent} /><span>{name(agent)}</span></button>)}</div>
         {(error || state.error) && <Notice>{error || state.error}</Notice>}
       </Dialog>
       {detail && (
-        <AgentDetails agent={detail} onClose={() => setDetail(undefined)} />
+        <AgentDetails showOfficialLink agent={detail} onClose={() => setDetail(undefined)} />
       )}{" "}
       {display && <AgentDisplaySettings onClose={() => setDisplay(false)} />}
     </>

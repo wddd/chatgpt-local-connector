@@ -1,6 +1,3 @@
-import { useEffect } from "react";
-import { useGeometrySpring } from "../motion/geometry";
-import railMetrics from "../../shared/usage-panel.json";
 import { Bot } from "lucide-react";
 import { t } from "../i18n";
 import { icons } from "../state/agents";
@@ -142,15 +139,6 @@ export default function QuotaRing({
     ),
     value = quotaValue(current),
     running = active.includes(provider.agentId);
-  const progress = useGeometrySpring(
-    [value ?? 0],
-    railMetrics.readingResponse,
-    railMetrics.readingDamping,
-  );
-  useEffect(() => {
-    if (value === undefined) progress.jump([0]);
-    else progress.to([value]);
-  }, [value]);
   return (
     <span
       className={`quota-ring ${provider.state === "stale" ? "stale" : ""}`}
@@ -168,7 +156,7 @@ export default function QuotaRing({
               pathLength="100"
               transform="rotate(-90 18 18)"
               stroke={quotaColor(current, provider, now)}
-              strokeDasharray={`${Math.max(0, Math.min(100, progress.value[0]!))} 100`}
+              strokeDasharray={`${Math.max(0, Math.min(100, (value ?? 0)!))} 100`}
             />
           )}
           <TimeTick

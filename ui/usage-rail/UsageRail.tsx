@@ -26,7 +26,7 @@ import {
   type Point,
 } from "./geometry";
 import type { PanelState, PanelGeometry } from "./layout";
-import { useGeometrySpring } from "../motion/geometry";
+import { useGeometry, useGeometrySpring } from "../motion/geometry";
 export default function UsageRail({
   state,
   onGeometry,
@@ -71,16 +71,11 @@ export default function UsageRail({
     [measured, setMeasured] = useState(117),
     content = useRef<HTMLDivElement>(null),
     [popover, setPopover] = useState<Point[]>([]);
-  const rail = useGeometrySpring(
+  const rail = useGeometry(
       [0, 238, 64, 46, 88, 0, 0],
-      m.railResponse,
-      m.railDamping,
     ),
-    axis = useGeometrySpring([0], m.railResponse, m.railDamping),
-    turnOffset = useGeometrySpring([0, 0], m.railResponse, m.railDamping),
+    axis = useGeometry([0]),
     card = useGeometrySpring([0, 0, 0, 117, 0], m.cardResponse, m.cardDamping);
-  const contentFade = useGeometrySpring([1], 0.18, 0.9);
-  const previousLayout = useRef(l);
   const scale = l?.metrics.scale || 1,
     openness = clamp(rail.value[0]!, 0, 1),
     reveal = clamp(card.value[0]!, 0, 1),
@@ -89,36 +84,7 @@ export default function UsageRail({
     cardHeight = Math.max(80 * scale, card.value[3]!);
   useLayoutEffect(() => {
     if (!l) return;
-    const previous = previousLayout.current;
-    previousLayout.current = l;
-    if (!previous || !pointer?.pressed) {
-      axis.jump([l.metrics.horizontal ? 1 : 0]);
-      turnOffset.jump([0, 0]);
-      return;
-    }
-    if (
-      l.metrics.horizontal !== previous.metrics.horizontal ||
-      !!l.notch !== !!previous.notch
-    ) {
-      turnOffset.jump([
-        turnOffset.value[0]! +
-          (previous.screenX ?? 0) +
-          previous.rail.x +
-          previous.rail.width / 2 -
-          (l.screenX ?? 0) -
-          l.rail.x -
-          l.rail.width / 2,
-        turnOffset.value[1]! +
-          (previous.screenY ?? 0) +
-          previous.rail.y +
-          previous.rail.height / 2 -
-          (l.screenY ?? 0) -
-          l.rail.y -
-          l.rail.height / 2,
-      ]);
-      turnOffset.to([0, 0]);
-    }
-    axis.to([l.metrics.horizontal ? 1 : 0]);
+    axis.set([l.metrics.horizontal ? 1 : 0]);
   }, [l, pointer?.pressed]);
   useLayoutEffect(() => {
     if (!l) return;
@@ -132,8 +98,7 @@ export default function UsageRail({
         q.round ? 1 : 0,
         pointer?.dock === "floating" ? 1 : 0,
       ];
-    if (!pointer?.generation) rail.jump(values);
-    else rail.to(values);
+    rail.set(values);
   }, [pointer?.expanded, l, pointer?.dock]);
   const now = useNow();
   const status = surfaceStatus(rows, now),
@@ -141,11 +106,11 @@ export default function UsageRail({
       prefs?.alertColor && status.alert
         ? status.color
         : themeColors[color].dark;
-  const tint = useGeometrySpring([0, 0, 0], m.railResponse, m.railDamping);
+  const tint = useGeometry([0, 0, 0]);
   useEffect(() => {
     const color =
       pointer?.expanded || pointer?.dock === "floating" ? "#000000" : alert;
-    tint.to([1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16)));
+    tint.set([1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16)));
   }, [alert, pointer?.expanded, pointer?.dock]);
   const railFill = `rgb(${tint.value.map((v) => Math.round(clamp(v, 0, 255))).join(",")})`;
   const railPoints: Point[] = l
@@ -173,8 +138,8 @@ export default function UsageRail({
           ).map(
             ([x, y]) =>
               [
-                r.x + x + turnOffset.value[0]!,
-                r.y + y + turnOffset.value[1]!,
+                r.x + x,
+                r.y + y,
               ] as Point,
           );
         const h =
@@ -195,8 +160,8 @@ export default function UsageRail({
           const dx = (x - w / 2 + (thickness - w) / 2) * mirror,
             dy = y - h / 2;
           return [
-            r.x + r.width / 2 + c * dx + sn * dy + turnOffset.value[0]!,
-            r.y + r.height / 2 - sn * dx + c * dy + turnOffset.value[1]!,
+            r.x + r.width / 2 + c * dx + sn * dy,
+            r.y + r.height / 2 - sn * dx + c * dy,
           ] as Point;
         });
       })()
@@ -226,13 +191,12 @@ export default function UsageRail({
           nh = l.notch?.height || 0,
           dx = l.metrics.percentages ? 11 * s * progress : 0;
         return [
-          r.x + r.width / 2 + c * dx + sn * dy + turnOffset.value[0]!,
+          r.x + r.width / 2 + c * dx + sn * dy,
           r.y +
             nh +
             (r.height - nh) / 2 -
             sn * dx +
-            c * dy +
-            turnOffset.value[1]!,
+            c * dy,
         ];
       })
     : [];
@@ -270,10 +234,6 @@ export default function UsageRail({
       y = clamp(y, pad, l.height - h - pad);
       const anchor = l.metrics.horizontal ? targetRing[0] : targetRing[1];
       if (retained === null) card.jump([0, x, y, h, anchor]);
-      if (retained !== rows[slot]!.providerId) {
-        contentFade.jump([0.35]);
-        contentFade.to([1]);
-      }
       setRetained(rows[slot]!.providerId);
       card.to([1, x, y, h, anchor]);
     } else card.to([0, cardX, cardY, cardHeight, card.value[4]!]);
@@ -571,7 +531,7 @@ export default function UsageRail({
             pointerEvents: reveal > 0.015 ? "auto" : "none",
           }}
         >
-          <div ref={content} style={{ opacity: contentFade.value[0] }}>
+          <div ref={content} className="rail-card-content">
             <QuotaBubble
               key={active.providerId}
               rail

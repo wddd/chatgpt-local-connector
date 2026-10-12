@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Copy } from "lucide-react";
 import { t, locale } from "../i18n";
 import { api } from "../api";
@@ -13,6 +13,7 @@ import {
 } from "../state/tasks";
 import { useInterval } from "../state/hooks";
 import { Button, Empty, IconButton, Loading, Notice, Dialog } from "./ui";
+import { Markdown, plainMarkdown } from "./ui/Markdown";
 const idOf = (r: TaskRecord) => r.threadId || r.task.threadId;
 export default function TasksPage() {
   const { records, error, loading } = tasks.use(),
@@ -49,6 +50,7 @@ export default function TasksPage() {
       .split(/[\\/]/)
       .pop() || "";
   const stateOf = (group: (typeof groups)[number]) =>
+    group.records.some((r) => r.error) ? "runtimeError" :
     group.records.some((r) => r.state === "awaiting-approval")
       ? "awaitingConfirmation"
       : runtime(group.first)?.archived
@@ -115,36 +117,13 @@ export default function TasksPage() {
         ?.focus(),
     );
   }
-  const grid = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    let frame = 0;
-    const cards = [
-      ...(grid.current?.querySelectorAll<HTMLElement>(".task-document") ?? []),
-    ];
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const heights = cards.map((card) => Math.ceil(card.offsetHeight + 22));
-        cards.forEach((card, index) => {
-          card.parentElement!.style.gridRowEnd = `span ${heights[index]}`;
-        });
-      });
-    });
-    cards.forEach((node) => observer.observe(node));
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, [ids]);
-  const time = (value: string) =>
-    new Date(value).toLocaleString(locale.get(), {
-      year: "2-digit",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
+  const time = (value: string) => {
+    const date = new Date(value), today = new Date(), yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const clock = date.toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit", hour12: false });
+    const day = date.toDateString() === today.toDateString() ? t("taskToday") : date.toDateString() === yesterday.toDateString() ? t("taskYesterday") : `${date.getFullYear() === today.getFullYear() ? "" : `${date.getFullYear()}/`}${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`;
+    return `${day} ${clock}`;
+  };
   const detail = selected && (
     <Dialog
       title={titleOf(selected.first)}
@@ -159,7 +138,7 @@ export default function TasksPage() {
           >
             {projectName(selected.first)}
           </span>
-          <span className="task-document-state">{t(stateOf(selected))}</span>
+          {["running", "runtimeError"].includes(stateOf(selected)) && <span className="task-document-state">{t(stateOf(selected))}</span>}
           {idOf(selected.first) && !runtime(selected.first)?.archived && (
             <IconButton
               icon={ExternalLink}
@@ -179,15 +158,14 @@ export default function TasksPage() {
         </div>
       }
     >
-      <div className="task-document-heading">
+      {(selected.first.task.model || selected.first.task.effort) && <div className="task-document-heading">
         {selected.first.task.model && (
           <span className="task-tag">{selected.first.task.model}</span>
         )}
         {selected.first.task.effort && (
           <span className="task-tag">{selected.first.task.effort}</span>
         )}
-        <time>{time(selected.first.createdAt)}</time>
-      </div>
+      </div>}
       <div className="task-focus-content">
         {selected.first.executionOwner === "connector" && (
           <p className="muted small">
@@ -224,7 +202,7 @@ export default function TasksPage() {
                 />
               )}
             </header>
-            <pre className="task-prompt">{r.task.prompt}</pre>
+            <Markdown>{r.task.prompt}</Markdown>
             <p className="muted small">
               {t(
                 {
@@ -284,13 +262,14 @@ export default function TasksPage() {
       {loading ? (
         <Loading />
       ) : (
-        <div ref={grid} className="task-grid">
+        <div className="task-grid">
           {visible.map((g) => (
             <div className="task-cell" key={g.id}>
               <button
                 type="button"
                 className="task-document"
                 data-task-id={g.id}
+                aria-label={titleOf(g.first)}
                 aria-haspopup="dialog"
                 onClick={() => {
                   setSelectedId(g.id);
@@ -301,32 +280,17 @@ export default function TasksPage() {
                   <strong className="task-document-title">
                     {titleOf(g.first)}
                   </strong>
-                  {g.first.task.model && (
-                    <span className="task-tag">{g.first.task.model}</span>
-                  )}
-                  {g.first.task.effort && (
-                    <span className="task-tag">{g.first.task.effort}</span>
-                  )}
+                  {projectOf(g.first) && <span className="task-document-project" title={projectOf(g.first)}>{projectName(g.first)}</span>}
                 </span>
                 <time dateTime={g.first.createdAt}>
                   {time(g.first.createdAt)}
                 </time>
                 {g.first.task.prompt && (
                   <span className="task-document-preview">
-                    {g.first.task.prompt}
+                    {plainMarkdown(g.first.task.prompt).slice(0, 220)}
                   </span>
                 )}
-                <span className="task-document-bottom">
-                  {projectOf(g.first) && (
-                    <span
-                      className="task-document-project"
-                      title={projectOf(g.first)}
-                    >
-                      {projectName(g.first)}
-                    </span>
-                  )}
-                  <span className="task-document-state">{t(stateOf(g))}</span>
-                </span>
+                {["running", "runtimeError"].includes(stateOf(g)) && <span className="task-document-state">{t(stateOf(g))}</span>}
               </button>
             </div>
           ))}

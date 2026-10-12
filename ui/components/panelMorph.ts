@@ -36,22 +36,11 @@ function visualCopy(node: HTMLElement): HTMLElement {
   const copy = node.cloneNode(true) as HTMLElement;
   const originals = [node, ...node.querySelectorAll("*")];
   const copies = [copy, ...copy.querySelectorAll("*")];
-  // The capsule owns its descendant selectors, so its clone can reuse them.
-  // Only inherited values need freezing; copying every computed declaration
-  // on every icon delays the very first opening frame.
-  const capsule = node.classList.contains("navigation-capsule");
-  if (capsule) {
-    const computed = getComputedStyle(node);
-    copy.style.font = computed.font;
-    copy.style.color = computed.color;
-    for (const key of computed)
-      if (key.startsWith("--")) copy.style.setProperty(key, computed.getPropertyValue(key));
-  }
   const ids = new Map<string, string>();
   const prefix = `morph-${crypto.randomUUID()}-`;
   originals.forEach((original, i) => {
     const clone = copies[i] as HTMLElement | SVGElement;
-    if (!capsule) {
+    {
       const computed = getComputedStyle(original);
       // Freeze the visual in one style write rather than reparsing hundreds of
       // declarations individually on the click path.
@@ -113,10 +102,8 @@ export function capturePanelOrigin(target: EventTarget | null) {
   if (!(target instanceof Element)) return;
   const trigger = target.closest<HTMLElement>("button, [data-panel-anchor]");
   if (!trigger) return;
-  const capsule = trigger.closest<HTMLElement>(".navigation-capsule:not(.expanded)");
-  const visual = capsule ?? trigger.querySelector<HTMLElement>("[data-panel-visual]") ?? trigger;
-  const surface = capsule ? document.querySelector<HTMLElement>(".navigation-surface") ?? visual : visual;
-  const origin = readOrigin(trigger, visual, surface);
+  const visual = trigger.querySelector<HTMLElement>("[data-panel-visual]") ?? trigger;
+  const origin = readOrigin(trigger, visual);
   if (origin) pending = { origin, at: performance.now() };
 }
 

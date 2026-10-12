@@ -57,7 +57,7 @@ export function AppUpdate() {
         </Button>
       </Row>
       {isDesktop && (
-        <Row title={t("automaticallyCheckForUpdates")}>
+        <Row title={t("automaticallyCheckForUpdates")} description={t("autoCheckDescription")}>
           <Switch
             label={t("automaticallyCheckForUpdates")}
             checked={automatic}
@@ -65,7 +65,7 @@ export function AppUpdate() {
           />
         </Row>
       )}
-      <Row title={t("automaticallyDownloadUpdates")}>
+      <Row title={t("automaticallyDownloadUpdates")} description={t("autoDownloadDescription")}>
         <Switch
           label={t("automaticallyDownloadUpdates")}
           checked={download}

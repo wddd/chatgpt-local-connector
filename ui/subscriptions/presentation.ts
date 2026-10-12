@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { quotaTiming } from './quotaTiming';
 import openaiIcon from '../assets/agents/openai.svg';
 import { locale } from '../i18n';
@@ -17,7 +18,14 @@ export function readingStatus(w:QuotaWindow|undefined,p:ProviderSnapshot,now=Dat
 }
 export function quotaColor(w:QuotaWindow|undefined,p:ProviderSnapshot,now=Date.now()){return readingStatus(w,p,now).color;}
 export function surfaceStatus(rows:ProviderSnapshot[],now=Date.now()){return rows.map(p=>readingStatus(p.windows.find(w=>w.id===p.displayWindowId),p,now)).reduce((a,b)=>b.rank>a.rank?b:a,{alert:false,rank:0,color:usageColors.unknown});}
-export function duration(minutes:number,showMinutes=true){const total=Math.max(0,Math.floor(minutes)),d=Math.floor(total/1440),h=Math.floor(total%1440/60),min=total%60;return [d?`${d}d`:'',h?`${h}h`:'',showMinutes&&min?`${min}m`:''].filter(Boolean).join(' ')||(showMinutes?'0m':'0h');}
+export function duration(minutes:number,showMinutes=true){const total=Math.max(0,Math.floor(minutes)),d=Math.floor(total/1440),h=Math.floor(total%1440/60),min=total%60;return [d?`${d}${t('durationDays')}`:'',h?`${h}${t('durationHours')}`:'',showMinutes&&min?`${min}${t('durationMinutes')}`:''].filter(Boolean).join(' ')||`0${t(showMinutes?'durationMinutes':'durationHours')}`;}
 export function resetText(value:string|undefined,now:number,showMinutes=false){if(!value)return '—';const minutes=Math.ceil((Date.parse(value)-now)/60000);return Number.isFinite(minutes)?duration(Math.max(0,minutes),showMinutes):'—';}
 export const preciseTime=(value?:string)=>value?new Date(value).toLocaleString(locale.get()):'';
 export const errorLabels:Record<string,string>={'credentials-missing':'usageCredentialsMissing','authentication-failed':'usageAuthenticationFailed','request-forbidden':'usageRequestForbidden','request-failed':'usageRequestFailed','credential-access-denied':'usageCredentialDenied','no-subscription':'usageNoSubscription','no-limits-reported':'usageNoLimits','rate-limited':'usageRateLimited','network-error':'usageNetworkError','invalid-response':'usageInvalidResponse','unsupported-platform':'usageUnsupported'};
+
+export function compactReset(value: string | undefined, now: number) {
+  const minutes = Math.max(0, Math.ceil((Date.parse(value || "") - now) / 60000));
+  if (!Number.isFinite(minutes)) return "—";
+  const days = Math.floor(minutes / 1440), hours = Math.floor(minutes % 1440 / 60);
+  return days ? `${days}d ${hours}h` : hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+}

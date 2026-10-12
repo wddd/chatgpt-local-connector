@@ -16,7 +16,7 @@ import {
   Minimize2,
 } from "lucide-react";
 import { animate } from "motion";
-import { surfaceMotion, reducedMotion } from "./motion/surface";
+import { reducedMotion } from "./motion/surface";
 import { t, locale } from "./i18n";
 import { isDesktop } from "./platform";
 import { connector, notify, startConnector } from "./state/connector";
@@ -34,10 +34,9 @@ import {
 import { navigation, type Page } from "./state/navigation";
 import { panelPreferences } from "./usage-rail/preferences";
 import type { PanelPreferences } from "./usage-rail/layout";
-import { panelLayers, panelHandoff, panelAnchorAt } from "./state/panels";
+import { panelLayers, panelAnchorAt } from "./state/panels";
 import {
-  capturePanelOrigin, takePanelOrigin, animateOriginContent, surfaceOf,
-  type PanelOrigin,
+  capturePanelOrigin,
 } from "./components/panelMorph";
 import { displayMessage } from "./messages";
 import OAuthApproval from "./components/OAuthApproval";
@@ -46,8 +45,7 @@ import TasksPage from "./components/TasksPage";
 import RecordsPage from "./components/RecordsPage";
 import { AppUpdateDialogs } from "./components/AppUpdate";
 import AgentDisplaySettings from "./components/AgentDisplaySettings";
-import UsageOverview from "./subscriptions/UsageOverview";
-import { Dialog, Icon, IconButton, Loading, Notice, HoverScope } from "./components/ui";
+import { Icon, IconButton, Loading, Notice, HoverScope } from "./components/ui";
 const SettingsPage = lazy(() => import("./components/SettingsPage"));
 const BrowserRailPreview = import.meta.env.DEV
   ? lazy(() => import("./usage-rail/BrowserRailPreview"))
@@ -62,14 +60,10 @@ export default function App() {
   const [page, setPage] = useState<Page>(() => {
     const saved = localStorage.getItem("clc-page");
     return ["overview", "settings", "logs", "tasks"].includes(saved ?? "") ? saved as Page : "overview";
-  }),
-    [usage, setUsage] = useState(false);
+  });
   const [sheetWide, setSheetWide] = useState(false);
   const sheet = useRef<HTMLElement>(null),
     lastPage = useRef<Page>("tasks"),
-    sheetOrigin = useRef<PanelOrigin | undefined>(undefined),
-    sheetVisualCleanup = useRef<(() => void) | undefined>(undefined),
-    sheetMotion = useRef<ReturnType<typeof surfaceMotion> | null>(null),
     sheetClosing = useRef(false),
     backdropDown = useRef(false);
   const layers = panelLayers.use();
@@ -85,115 +79,18 @@ export default function App() {
   }, []);
   useLayoutEffect(() => {
     if (page === "overview" || !sheet.current) return;
-    const node = sheet.current,
-      rect = node.getBoundingClientRect(),
-      source =
-        ((panelHandoff.until ?? 0) > performance.now()
-          ? panelHandoff.from
-          : undefined) ??
-        sheetOrigin.current?.rect ??
-        document.querySelector(".navigation-surface")?.getBoundingClientRect();
-    const handedOff = (panelHandoff.until ?? 0) > performance.now() && !!panelHandoff.from;
-    panelHandoff.from = undefined;
-    const surface = surfaceMotion(node);
-    sheetMotion.current = surface;
-    if (source && !reducedMotion()) {
-      const visual = handedOff ? undefined : sheetOrigin.current;
-      const animation = surface.to(
-        { transform: "translate(0px,0px)", width: `${rect.width}px`, height: `${rect.height}px`, opacity: 1, ...surfaceOf(node) },
-        { from: {
-          transform: `translate(${source.x - rect.x}px,${source.y - rect.y}px)`,
-          width: `${source.width}px`, height: `${source.height}px`, opacity: 1,
-          ...(visual?.surface ?? {}),
-        } },
-      );
-      const contentAnimations = Array.from(node.children).map((child) =>
-        animate(child, { opacity: [0, 1] }, { duration: 0.15 }));
-      const cleanup = sheetVisuals(false, !handedOff);
-      sheetVisualCleanup.current = () => { cleanup(); contentAnimations.forEach((a) => a.stop()); };
-      void animation.then(cleanup);
-    }
+    const animation = reducedMotion() ? undefined : animate(sheet.current,
+      { opacity: [0, 1], transform: ["translateY(6px)", "translateY(0)"] }, { duration: 0.16 });
     document.querySelector<HTMLElement>(".capsule-title")?.focus({ preventScroll: true });
-    const observer = new ResizeObserver(() => {
-      if (sheetClosing.current) return;
-      const surface = sheetMotion.current;
-      if (!surface) return;
-      const layout = node.firstElementChild!.getBoundingClientRect();
-      const next = { width: layout.width + 2, height: layout.height + 2 };
-      if (Math.abs(next.width - rect.width) <= 1 && Math.abs(next.height - rect.height) <= 1) return;
-      surface.to({ width: `${next.width}px`, height: `${next.height}px`, transform: "translate(0px,0px)" }, {
-        from: surface.running ? undefined : { width: `${rect.width}px`, height: `${rect.height}px` },
-      });
-      rect.width = next.width;
-      rect.height = next.height;
-    });
-    if (node.firstElementChild) observer.observe(node.firstElementChild);
-    return () => {
-      observer.disconnect();
-      sheetMotion.current?.dispose();
-      sheetMotion.current = null;
-      sheetVisualCleanup.current?.();
-    };
+    return () => animation?.stop();
   }, [page]);
-
-  function sheetVisuals(closing: boolean, showOrigin = true) {
-    const visual = showOrigin ? sheetOrigin.current : undefined;
-    const nodes = Array.from(document.querySelectorAll<HTMLElement>(".navigation-capsule, .navigation-surface"));
-    const opacities = nodes.map((el) => el.style.opacity);
-    const transitions = nodes.map((el) => el.style.transition);
-    nodes.forEach((el) => { el.style.opacity = "0"; el.style.transition = "none"; });
-    const clear = visual ? animateOriginContent(visual, 51, closing) : () => {};
-    let done = false;
-    return () => {
-      if (done) return;
-      done = true;
-      clear();
-      nodes.forEach((el, i) => {
-        // Settle the capsule's new layout before enabling its CSS transitions.
-        void el.offsetHeight;
-        el.style.opacity = opacities[i];
-        el.style.transition = transitions[i];
-      });
-    };
-  }
 
   async function closeSheet(replacement?: HTMLElement) {
     const node = sheet.current;
     if (!node || sheetClosing.current) return;
     sheetClosing.current = true;
-    if (
-      node &&
-      !matchMedia("(prefers-reduced-motion: reduce)").matches &&
-      !replacement
-    ) {
-      const dock = document.querySelector(".navigation-surface")!.getBoundingClientRect();
-      const visual = sheetOrigin.current;
-      if (visual) {
-        visual.rect = new DOMRect(dock.x, dock.bottom - visual.rect.height, visual.rect.width, visual.rect.height);
-      }
-      const to = visual?.rect ?? dock;
-      sheetVisualCleanup.current?.();
-      const surface = sheetMotion.current ?? surfaceMotion(node);
-      sheetMotion.current = surface;
-      const placement = getComputedStyle(node);
-      const natural = { x: parseFloat(placement.left), y: parseFloat(placement.top) };
-      const animation = surface.to({
-        transform: `translate(${to.x - natural.x}px,${to.y - natural.y}px)`,
-        width: `${to.width}px`, height: `${to.height}px`,
-        ...(visual?.surface ?? {}),
-      }, { retain: true });
-      const cleanup = sheetVisuals(true);
-      const contentAnimations = Array.from(node.children).map((child) =>
-        animate(child, { opacity: 0 }, { duration: 0.18 }));
-      sheetVisualCleanup.current = () => { cleanup(); contentAnimations.forEach((a) => a.stop()); };
-      await animation;
-    }
-
-    if (replacement && node) {
-      panelHandoff.from = node.getBoundingClientRect();
-      panelHandoff.until = performance.now() + 100;
-      panelHandoff.trigger = replacement;
-    }
+    if (!reducedMotion() && !replacement)
+      await animate(node, { opacity: 0, transform: "translateY(6px)" }, { duration: 0.14 });
     sheetClosing.current = false;
     setPage("overview");
     requestAnimationFrame(() => {
@@ -209,7 +106,6 @@ export default function App() {
 
   function navigate(next: Page) {
     if (next !== "overview") {
-      sheetOrigin.current = takePanelOrigin();
       lastPage.current = next;
       setSheetWide(false);
     }
@@ -311,7 +207,7 @@ export default function App() {
         className="home-workspace"
         inert={page !== "overview" || layers.length > 0}
       >
-        <ConnectionOverview onUsage={() => setUsage(true)} />
+        <ConnectionOverview />
       </main>
       {page !== "overview" && (
         <div
@@ -346,6 +242,24 @@ export default function App() {
           aria-label={pages.find((item) => item.id === page)?.label}
         >
           <div className="page-sheet-content">
+            <header className="sheet-header">
+              <h1 className="capsule-title" tabIndex={-1}>
+                {pages.find((item) => item.id === page)?.label}
+              </h1>
+              <IconButton
+                className="panel-width-toggle"
+                icon={sheetWide ? Minimize2 : Maximize2}
+                label={t(sheetWide ? "restorePanelWidth" : "expandPanelWidth")}
+                aria-pressed={sheetWide}
+                onClick={() => setSheetWide(!sheetWide)}
+              />
+              <IconButton
+                className="capsule-close"
+                icon={X}
+                label={t("backToHome")}
+                onClick={() => void closeSheet()}
+              />
+            </header>
             <main
               className={`workspace ${page === "logs" ? "records-workspace" : ""}`}
             >
@@ -359,24 +273,7 @@ export default function App() {
                 </Suspense>
               )}
             </main>
-            <footer className="sheet-footer">
-              <IconButton
-                className="capsule-close"
-                icon={X}
-                label={t("backToHome")}
-                onClick={() => void closeSheet()}
-              />
-              <h1 className="capsule-title" tabIndex={-1}>
-                {pages.find((item) => item.id === page)?.label}
-              </h1>
-              <IconButton
-                className="panel-width-toggle"
-                icon={sheetWide ? Minimize2 : Maximize2}
-                label={t(sheetWide ? "restorePanelWidth" : "expandPanelWidth")}
-                aria-pressed={sheetWide}
-                onClick={() => setSheetWide(!sheetWide)}
-              />
-            </footer>
+
           </div>
         </section>
       )}
@@ -441,21 +338,6 @@ export default function App() {
             navigation.set((old) => ({ ...old, agentSettings: false }))
           }
         />
-      )}
-      {usage && (
-        <Dialog
-          onClose={() => setUsage(false)}
-          title={t("trayUsage")}
-          headerless
-          width={386}
-        >
-          <UsageOverview
-            onNavigate={(next) => {
-              setUsage(false);
-              navigate(next);
-            }}
-          />
-        </Dialog>
       )}
       {BrowserRailPreview && !isDesktop && page === "overview" && (
         <Suspense fallback={null}>

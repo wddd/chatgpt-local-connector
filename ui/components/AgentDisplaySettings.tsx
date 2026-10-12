@@ -69,7 +69,7 @@ export default function AgentDisplaySettings({
           !snapshot.providers.some((p) => p.eligible) && (
             <Notice tone="warning">{t("usageNoAvailableProviders")}</Notice>
           )}
-        <Row title={t("usageShow")}>
+        <Row title={t("usageShow")} description={t("usageShowDescription")}>
           <Switch
             label={t("usageShow")}
             checked={

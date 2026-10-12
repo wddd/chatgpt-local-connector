@@ -14,9 +14,7 @@ import { X } from "lucide-react";
 import { t } from "../i18n";
 import {
   panelLayers,
-  panelHandoff,
   panelAnchorAt,
-  rememberPanel,
 } from "../state/panels";
 import {
   takePanelOrigin, readOrigin, hideOrigin, animateOriginContent, surfaceOf,
@@ -32,10 +30,12 @@ const frameAt = (rect: DOMRect, opacity: number, borderRadius: string): Surface 
 export default function ElasticPanel({
   open = true,
   onClose,
+  onDismiss,
   title,
   children,
   footer,
   actions,
+  leading,
   wide = false,
   busy = false,
   unframed = false,
@@ -45,10 +45,12 @@ export default function ElasticPanel({
 }: {
   open?: boolean;
   onClose: () => void;
+  onDismiss?: () => void;
   title: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
   actions?: ReactNode;
+  leading?: ReactNode;
   wide?: boolean;
   busy?: boolean;
   unframed?: boolean;
@@ -81,8 +83,8 @@ export default function ElasticPanel({
   const layers = panelLayers.use(),
     recessed = !!node && layers.includes(node) && layers.at(-1) !== node;
   const previousView = useRef({ recessed, depthOffset });
-  const latest = useRef({ onClose, busy, depthOffset });
-  latest.current = { onClose, busy, depthOffset };
+  const latest = useRef({ onClose, onDismiss, busy, depthOffset });
+  latest.current = { onClose, onDismiss, busy, depthOffset };
   const moveTo = (x: number, y: number) => {
     if (!node) return;
     const maxX = Math.max(0, (innerWidth - node.offsetWidth) / 2 - 20),
@@ -112,15 +114,7 @@ export default function ElasticPanel({
     const parent = parentPanel.current ?? previous;
     parentPanel.current = parent;
     setBaseDepth(parent ? Number(parent.dataset.panelDepth || 1) + 1 : 1);
-    const handoff =
-      (panelHandoff.until ?? 0) > performance.now()
-        ? panelHandoff.from
-        : undefined;
-    const source =
-      parent?.getBoundingClientRect() ?? handoff ?? visualOrigin.current?.rect ?? origin.current;
-    if (handoff && panelHandoff.trigger) trigger.current = panelHandoff.trigger;
-    panelHandoff.from = undefined;
-    panelHandoff.trigger = undefined;
+    const source = parent?.getBoundingClientRect() ?? visualOrigin.current?.rect ?? origin.current;
     panelLayers.set((old) => [...old, node]);
     const focusFrame = requestAnimationFrame(() =>
       node.focus({ preventScroll: true }),
@@ -137,10 +131,10 @@ export default function ElasticPanel({
     }));
     motion.current = surface;
     const fades: AnimationPlaybackControlsWithThen[] = [];
-    if (!reduced() && source && rect.width) {
-      const visual = !parent && !handoff ? visualOrigin.current : undefined;
+    if (!reduced() && source && rect.width && !parent && visualOrigin.current?.trigger.closest(".graph-node")) {
+      const visual = visualOrigin.current;
       surface.to({ ...frameAt(rect, 1, "28px"), ...surfaceOf(node) }, {
-        from: { ...frameAt(source, visual || parent || handoff ? 1 : 0, "28px"), ...(parent ? surfaceOf(parent) : visual?.surface ?? {}) },
+        from: { ...frameAt(source, visual ? 1 : 0, "28px"), ...(visual?.surface ?? {}) },
       });
       if (visual) {
         restoreOrigin.current = hideOrigin(visual);
@@ -149,36 +143,13 @@ export default function ElasticPanel({
       for (const child of Array.from(node.children))
         fades.push(animate(child, { opacity: [0, 1] }, { duration: 0.15 }));
     }
-    let height = rect.height, layoutWidth = rect.width;
-    const resize = () => {
-      if (closing.current) return;
-      const content = node.firstElementChild;
-      if (!content) return;
-      const border = parseFloat(getComputedStyle(node).getPropertyValue("--panel-border")) || 0;
-      const layout = content.getBoundingClientRect();
-      const w = layout.width + border * 2, h = layout.height + border * 2;
-      // The shell can still be between its anchor and destination. Only the
-      // independently laid-out content defines the target size and center.
-      const next = new DOMRect(
-        (innerWidth - w) / 2 + positionRef.current.x,
-        (innerHeight - h) / 2 + positionRef.current.y, w, h,
-      );
-      if (Math.abs(next.height - height) <= 1 && Math.abs(next.width - layoutWidth) <= 1) return;
-      const from = !surface.running ? frameAt(new DOMRect(next.x, next.y, layoutWidth, height), 1, "28px") : undefined;
-      height = next.height;
-      layoutWidth = next.width;
-      surface.to(frameAt(next, 1, "28px"), { from });
-    };
-    const observer = new ResizeObserver(resize);
-    // Observe the destination layout, not the animated shell.
-    if (node.firstElementChild) observer.observe(node.firstElementChild);
+    if (!reduced() && (parent || !visualOrigin.current?.trigger.closest(".graph-node")))
+      fades.push(animate(node.firstElementChild!, { opacity: [0, 1] }, { duration: 0.16 }));
     return () => {
       cancelAnimationFrame(focusFrame);
       restoreOrigin.current?.();
       clearGhost.current?.();
-      if (!closing.current) rememberPanel(node, trigger.current ?? undefined);
       panelLayers.set((old) => old.filter((el) => el !== node));
-      observer.disconnect();
       fades.forEach((fade) => fade.stop());
       surface.dispose();
       motion.current = null;
@@ -194,22 +165,14 @@ export default function ElasticPanel({
     const stepped = previousView.current.depthOffset !== depthOffset;
     previousView.current = { recessed, depthOffset };
     if (node && !recessed && (returned || stepped) && !reduced()) {
-      // A save can remove the child directly. Continue its surface transition
-      // when returning, just as an animated Close does before removing it.
-      const from = returned && (panelHandoff.until ?? 0) > performance.now()
-        ? panelHandoff.from : undefined;
-      if (from) {
-        motion.current?.to(frameAt(node.getBoundingClientRect(), 1, "28px"), { from: frameAt(from, 1, "28px") });
-        panelHandoff.from = undefined;
-      }
       const content = node.firstElementChild;
       const animation = content ? animate(content, { opacity: [0, 1] }, { duration: 0.18 }) : undefined;
       return () => { animation?.stop(); };
     }
   }, [node, recessed, depthOffset]);
-  async function close(replacement?: HTMLElement) {
+  async function close(replacement?: HTMLElement, dismiss = false) {
     if (latest.current.busy || closing.current || !node) return;
-    if (latest.current.depthOffset > 0) {
+    if (latest.current.depthOffset > 0 && !dismiss) {
       latest.current.onClose();
       return;
     }
@@ -224,13 +187,11 @@ export default function ElasticPanel({
     clearGhost.current?.();
     const from = node.getBoundingClientRect(),
       to = parent?.getBoundingClientRect() ?? visual?.rect ?? origin.current;
-    if (replacement) {
-      rememberPanel(node, replacement);
-    } else if (to && !reduced()) {
+    if (!replacement && to && !parent && visual?.trigger.closest(".graph-node") && !reduced()) {
       const style = getComputedStyle(node);
       const current = { ...frameAt(from, Number(style.opacity), style.borderRadius), ...surfaceOf(node) };
       const animation = motion.current?.to(
-        { ...frameAt(to, visual || parent ? 1 : 0, parent ? "28px" : "50%"), ...(parent ? surfaceOf(parent) : visual?.surface ?? {}) },
+        { ...frameAt(to, visual || parent ? 1 : 0, parent ? "28px" : "50%"), ...(visual?.surface ?? {}) },
         { retain: true, ...(motion.current.running ? {} : { from: current }) },
       );
       if (visual) {
@@ -243,12 +204,10 @@ export default function ElasticPanel({
       await animation;
 
     }
-    latest.current.onClose();
+    if (parent && !reduced()) await animate(node.firstElementChild!, { opacity: 0 }, { duration: 0.14 });
+    (dismiss ? latest.current.onDismiss ?? latest.current.onClose : latest.current.onClose)();
     if (replacement)
       requestAnimationFrame(() => {
-        panelHandoff.trigger = replacement;
-        panelHandoff.from = from;
-        panelHandoff.until = performance.now() + 100;
         replacement.focus({ preventScroll: true });
         replacement.click();
       });
@@ -346,6 +305,7 @@ export default function ElasticPanel({
                 }}
                 onPointerCancel={() => (drag.current = undefined)}
               >
+                {leading}
                 <D.Title>{title}</D.Title>
                 <div className="actions">
                   {actions}
@@ -354,7 +314,7 @@ export default function ElasticPanel({
                     className="button ghost icon-button"
                     aria-label={t("close")}
                     disabled={busy}
-                    onClick={() => void close()}
+                    onClick={() => void close(undefined, true)}
                   >
                     <X size={20} strokeWidth={1.75} />
                   </button>

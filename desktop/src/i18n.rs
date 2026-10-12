@@ -5,7 +5,7 @@ use std::sync::{
 };
 
 // The WebView resolves Auto and persists the preference with other UI settings.
-// Only tray presentation uses this locale; the service and MCP never read it.
+// Native menus use this locale; the service and MCP never read it.
 static CHINESE: AtomicBool = AtomicBool::new(false);
 static EN: OnceLock<Value> = OnceLock::new();
 static ZH: OnceLock<Value> = OnceLock::new();

@@ -100,11 +100,7 @@ export default function SettingsPage() {
         </Row>
         <Row
           title={t("taskApprovalMode")}
-          description={t(
-            status?.taskApprovalEnabled
-              ? "askForConfirmationByDefaultTheCloudCan"
-              : "submitTaskRequestsImmediately",
-          )}
+          description={t("askForConfirmationByDefaultTheCloudCan")}
         >
           <Switch
             label={t("taskApprovalMode")}
@@ -117,7 +113,7 @@ export default function SettingsPage() {
       <Group title={t("general")}>
         <Row
           title={t("connectAtSystemSignIn")}
-          description={t("theConnectionKeepsRunningAfterTheWindowCloses")}
+          description={t("connectAtSignInDescription")}
         >
           <Switch
             label={t("connectAtSystemSignIn")}
@@ -131,7 +127,7 @@ export default function SettingsPage() {
           />
         </Row>
         {isDesktop && (
-          <Row title={t("connectionNotifications")}>
+          <Row title={t("connectionNotifications")} description={t("connectionNotificationsDescription")}>
             <Switch
               label={t("connectionNotifications")}
               checked={notifications}
@@ -146,7 +142,7 @@ export default function SettingsPage() {
             value={currentLanguage}
             onChange={setLanguage}
             label={t("language")}
-            options={languageOptions}
+            options={languageOptions.map(option => option.value === "auto" ? { ...option, label: t("system") } : option)}
           />
         </Row>
         <Row title={t("appearance")}>

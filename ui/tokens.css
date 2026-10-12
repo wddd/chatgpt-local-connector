@@ -89,17 +89,6 @@
   }
 }
 :root {
-  --shadow-halo: light-dark(#000, var(--accent-dark));
-  --shadow-cast: light-dark(
-    #000,
-    color-mix(in srgb, var(--accent-dark) 25%, #000)
-  );
-  --shadow-edge: light-dark(transparent, var(--rail-border));
-  --shadow-panel:
-    0 0 0 1px var(--shadow-edge),
-    0 2px 6px color-mix(in srgb, var(--shadow-halo) 8%, transparent),
-    0 12px 28px color-mix(in srgb, var(--shadow-halo) 10%, transparent),
-    0 32px 72px -12px color-mix(in srgb, var(--shadow-cast) 40%, transparent);
   --rail-border: color-mix(in srgb, var(--accent-dark) 35%, transparent);
 }
 

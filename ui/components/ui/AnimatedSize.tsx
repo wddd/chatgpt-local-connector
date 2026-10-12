@@ -1,6 +1,5 @@
 import { forwardRef, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion, useIsPresent, useReducedMotion, type HTMLMotionProps } from "motion/react";
-import { Collapsible } from "radix-ui";
+import { motion, useIsPresent, useReducedMotion, type HTMLMotionProps } from "motion/react";
 import "./AnimatedSize.css";
 
 // Animate real layout dimensions, so text and timeline nodes are never scaled.
@@ -45,11 +44,3 @@ export const AnimatedSize = forwardRef<HTMLDivElement, Omit<HTMLMotionProps<"div
     <div ref={content} className={contentClassName}>{children}</div>
   </motion.div>;
 });
-
-export function AnimatedCollapse({ open, children, className, onSettled }: {
-  open: boolean; children: ReactNode; className?: string; onSettled?: () => void;
-}) {
-  return <AnimatePresence initial={false}>{open && <Collapsible.Content forceMount asChild>
-    <AnimatedSize expand contentClassName={className} onSettled={onSettled}>{children}</AnimatedSize>
-  </Collapsible.Content>}</AnimatePresence>;
-}

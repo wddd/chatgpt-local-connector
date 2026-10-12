@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { t, type MessageKey } from "../i18n";
+import { t, locale, type MessageKey } from "../i18n";
+import { displayMessage } from "../messages";
 import { connector } from "../state/connector";
 import { Empty, Input, SingleChoice, Status } from "./ui";
 export default function RecordsPage() {
@@ -33,7 +34,29 @@ export default function RecordsPage() {
           /^(?:🩺 HEALTH URL:|🌐 WEB UI:)/.test(rawMessage))
       )
         return [];
-      const message = rawMessage;
+      const request = rawMessage.match(/^Request (processed|failed): (.+)$/);
+      const management = rawMessage.match(/^((?:GET|POST|PUT|DELETE|PATCH) .+): (started|succeeded|failed)$/);
+      const sourceId = typeof entry.ingressId === "string" ? entry.ingressId : "";
+      const ingressName = status?.ingresses.find(item => item.id === sourceId)?.name;
+      let operation = request?.[2] || displayMessage(rawMessage);
+      if (management) {
+        const [method, route = ""] = management[1]!.split(" ");
+        const ingressRoute = route.match(/^ingress\/[^/]+(?:\/(.*))?$/);
+        const action = ingressRoute?.[1] || (method === "DELETE" ? "remove" : "update");
+        const routeKey = `recordRoute_${route}`;
+        const actionKey = `recordIngress_${action}`;
+        if (/^ingress-drafts\/[^/]+\/commit$/.test(route))
+          operation = t("recordDraftCommit");
+        else if (/^ingress-drafts\/[^/]+$/.test(route) && method === "DELETE")
+          operation = t("recordDraftDiscard");
+        else if (t(routeKey) !== routeKey) operation = t(routeKey);
+        else if (ingressRoute && t(actionKey) !== actionKey)
+          operation = t(actionKey, { name: ingressName || t("controlSources") });
+        else operation = management[1]!;
+      }
+      const source = management ? t("recordLocalUI") : ingressName || "";
+      const result = request ? request[1] === "processed" ? "recordSuccess" : "recordFailure" : management ? management[2] === "succeeded" ? "recordSuccess" : management[2] === "failed" ? "recordFailure" : "recordStarted" : "";
+      const message = result ? `${t(result)}: ${operation}` : displayMessage(rawMessage);
       const kind: MessageKey = error
         ? "error"
         : warning
@@ -67,20 +90,36 @@ export default function RecordsPage() {
           index,
           time,
           timestamp: validDate
-            ? date.toLocaleString("en-GB")
-            : "No timestamp in the original record",
+            ? date.toLocaleString(locale.get())
+            : t("recordNoTimestamp"),
           kind,
           message,
-          detail,
+          detail, sourceId: management ? `local:${sourceId}` : sourceId, source, operation, result, request: !!request || !!management, operationId: typeof entry.operationId === "string" ? entry.operationId : "", count: 1,
         },
       ];
     })
     .reverse();
 
-  const visibleRows = rows.filter(
+  // Newest event wins for the same operation; an unfinished start remains visible.
+  const seen = new Set<string>();
+  const completed = rows.filter(row => {
+    if (!row.operationId) return true;
+    if (seen.has(row.operationId)) return false;
+    seen.add(row.operationId);
+    return true;
+  });
+  const grouped: typeof rows = [];
+  for (const row of completed) {
+    const previous = grouped.at(-1);
+    if (row.request && row.result === "recordSuccess" && row.sourceId && previous?.result === row.result && previous.sourceId === row.sourceId && previous.operation === row.operation) previous.count++;
+    else grouped.push({ ...row });
+  }
+  const hasSource = rows.some(row => row.source);
+  const hasResult = rows.some(row => row.result);
+  const visibleRows = grouped.filter(
     (row) =>
       (filter === "all" || row.kind === filter) &&
-      `${row.message} ${row.detail}`
+      `${row.source} ${row.message} ${row.detail}`
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
@@ -107,7 +146,7 @@ export default function RecordsPage() {
           ].map((value) => ({ value, label: t(value) }))}
         />
         <span className="muted small">
-          {t("recordsCount", { count: visibleRows.length })}
+          {t("recentRecords", { count: status?.logs.length ?? 0 })}
         </span>
       </div>
       <div className="log-table-scroll">
@@ -116,8 +155,9 @@ export default function RecordsPage() {
           <thead>
             <tr>
               <th>{t("time")}</th>
-              <th>{t("type")}</th>
-              <th>{t("content")}</th>
+              {hasSource && <th>{t("recordSource")}</th>}
+              <th>{t("recordOperation")}</th>
+              {hasResult && <th>{t("recordResult")}</th>}
             </tr>
           </thead>
           <tbody>
@@ -126,21 +166,9 @@ export default function RecordsPage() {
                 <td>
                   <time title={row.timestamp}>{row.time}</time>
                 </td>
+                {hasSource && <td className="record-source">{row.source || "—"}</td>}
                 <td>
-                  <Status
-                    tone={
-                      row.kind === "error"
-                        ? "danger"
-                        : row.kind === "warning"
-                          ? "warning"
-                          : "neutral"
-                    }
-                  >
-                    {t(row.kind)}
-                  </Status>
-                </td>
-                <td>
-                  <span>{row.message}</span>
+                  <span>{row.operation}{row.count > 1 ? ` ×${row.count}` : ""}</span>
                   {row.detail && (
                     <details>
                       <summary>{t("details")}</summary>
@@ -148,6 +176,7 @@ export default function RecordsPage() {
                     </details>
                   )}
                 </td>
+                {hasResult && <td>{row.result ? <Status tone={row.result === "recordFailure" ? "danger" : "neutral"}>{t(row.result)}</Status> : "—"}</td>}
               </tr>
             ))}
           </tbody>

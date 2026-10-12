@@ -8,7 +8,7 @@ const messagePatterns = Object.entries({ en, 'zh-CN': zhCN }).flatMap(([, messag
   Object.entries(messages).map(([key, message]) => {
     const names: string[] = [];
     const pattern = message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/\\\{(\w+)\\\}/g, (_match, name: string) => { names.push(name); return '(.*?)'; });
+      .replace(/\\\{(\w+)\\\}/g, (_match, name: string) => { names.push(name); return name === 'count' || name === 'minutes' ? '(\\d+(?:\\.\\d+)?)' : '(.*?)'; });
     return { key: key as MessageKey, message, names, pattern: new RegExp(`^${pattern}$`, 's') };
   }),
 );

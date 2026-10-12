@@ -225,6 +225,10 @@ export default function UsageHistory({
                 "--tail-span": `${Math.max(12, Math.min(80, motion.value[2]! - 4))}px`,
               } as CSSProperties
             }
+            onInteractOutside={(e) => {
+              const target = e.target;
+              if (target instanceof Node && [...triggers.current.values()].some(node => node.contains(target))) e.preventDefault();
+            }}
             onOpenAutoFocus={(e) => e.preventDefault()}
             onCloseAutoFocus={(e) => e.preventDefault()}
             onEscapeKeyDown={(e) => {

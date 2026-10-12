@@ -9,7 +9,6 @@ import {
   Plus,
   Power,
   Ellipsis,
-  ChartNoAxesCombined,
   LoaderCircle,
   CircleCheck,
   CircleDashed,
@@ -36,13 +35,7 @@ import AgentsSettings, { AgentDetails } from "./AgentsSettings";
 import { AgentQuotaIcon } from "../subscriptions/QuotaRing";
 import { Button, Icon, Notice, Tooltip } from "./ui";
 import PlayfulMascot, { type MascotState } from "./PlayfulMascot";
-import { openUrl } from "../platform";
-import githubIcon from "../assets/agents/copilot.svg?raw";
-export default function ConnectionOverview({
-  onUsage,
-}: {
-  onUsage: () => void;
-}) {
+export default function ConnectionOverview() {
   const { status, busy, loading, error } = connector.use();
   const inventory = agentStore.use();
   const { snapshot } = subscriptions.use(),
@@ -213,63 +206,7 @@ export default function ConnectionOverview({
                   ? "working"
                   : "connected";
   const [switchOn, setSwitchOn] = useState<boolean>();
-  const [sparks, setSparks] = useState<CSSProperties[]>([]),
-    previousOn = useRef<boolean | undefined>(undefined),
-    sparkPending = useRef(false),
-    impactFrame = useRef(0);
-  useEffect(() => {
-    if (progressing) {
-      sparkPending.current = false;
-      setSparks([]);
-      return;
-    }
-    if (!status) return;
-    sparkPending.current = running && previousOn.current === false;
-    previousOn.current = running;
-    setSwitchOn(running);
-    if (!running) setSparks([]);
-  }, [running, progressing, status]);
-  useEffect(() => () => cancelAnimationFrame(impactFrame.current), []);
-  function switchImpact(node: HTMLElement) {
-    if (
-      !sparkPending.current ||
-      matchMedia("(prefers-reduced-motion: reduce)").matches
-    )
-      return;
-    const track = node.parentElement!;
-    const edge = track.clientWidth - node.offsetWidth - node.offsetLeft * 2;
-    const check = () => {
-      if (!sparkPending.current || !node.isConnected) return;
-      if (
-        new DOMMatrixReadOnly(getComputedStyle(node).transform).m41 <
-        edge - 0.5
-      ) {
-        impactFrame.current = requestAnimationFrame(check);
-        return;
-      }
-      sparkPending.current = false;
-      const count = 5 + Math.floor(Math.random() * 3);
-      setSparks(
-        Array.from({ length: count }, (_, index) => {
-          const angle =
-              -Math.PI / 2 +
-              ((index + 0.15 + Math.random() * 0.7) / count) * Math.PI,
-            distance = 30 + Math.random() * 55;
-          return {
-            "--spark-origin-x": `${50 + Math.cos(angle) * 50}%`,
-            "--spark-origin-y": `${50 + Math.sin(angle) * 50}%`,
-            "--spark-size": `${9 + Math.random() * 8}px`,
-            "--spark-x": `${Math.cos(angle) * distance}px`,
-            "--spark-y": `${Math.sin(angle) * distance}px`,
-            "--spark-turn": `${60 + Math.random() * 180}deg`,
-            "--spark-duration": `${150 + Math.random() * 50}ms`,
-          } as CSSProperties;
-        }),
-      );
-    };
-    cancelAnimationFrame(impactFrame.current);
-    impactFrame.current = requestAnimationFrame(check);
-  }
+  useEffect(() => { if (!progressing && status) setSwitchOn(running); }, [running, progressing, status]);
   function stateIcon(label: string) {
     return label === "connectionError"
       ? CircleAlert
@@ -415,13 +352,7 @@ export default function ConnectionOverview({
             preserveAspectRatio="none"
             aria-hidden="true"
           >
-            {[0, 1, 2].map((n) => (
-              <path
-                key={n}
-                style={{ "--drift-delay": `${n * -0.8}s` } as CSSProperties}
-                d="M 0 60 C 90 60, 110 36, 200 36"
-              />
-            ))}
+            <path d="M 0 60 C 90 60, 110 36, 200 36" />
           </svg>
         )}
         <svg
@@ -508,32 +439,11 @@ export default function ConnectionOverview({
             onClick={() => void toggle()}
           >
             <span className="connection-switch-track" aria-hidden="true">
-              <span className="connection-switch-state">
-                {switchOn ? "ON" : "OFF"}
-              </span>
-              <span
-                className="connection-knob"
-                onTransitionRun={(e) => {
-                  if (e.propertyName === "transform")
-                    switchImpact(e.currentTarget);
-                }}
-              >
+              <span className="connection-knob">
                 <Icon icon={progressing ? LoaderCircle : Power} />
               </span>
             </span>
           </button>
-          <span className="connection-sparks" aria-hidden="true">
-            {sparks.map((style, i) => (
-              <span
-                key={i}
-                className="connection-spark"
-                style={style}
-                onAnimationEnd={(e) =>
-                  (e.currentTarget.style.visibility = "hidden")
-                }
-              />
-            ))}
-          </span>
         </div>
         <div className="connection-graph" style={{ height }}>
           <div className="graph-nodes sources">
@@ -545,10 +455,11 @@ export default function ConnectionOverview({
                 onClick={() => edit()}
               >
                 <SourceIcon platform="chatgpt" panelVisual />
+                <span className="graph-node-name">ChatGPT</span>
               </button>
             )}
             {sources.map((source) => (
-              <Tooltip key={source.id} text={source.name} side="right" hoverOnly>
+              <div key={source.id} className="graph-node-wrap">
                 <button
                   data-panel-anchor
                   className="graph-node"
@@ -559,8 +470,9 @@ export default function ConnectionOverview({
                   }}
                 >
                   <SourceIcon platform={source.controlSource} panelVisual />
+                  <span className="graph-node-name">{source.name}</span>
                 </button>
-              </Tooltip>
+              </div>
             ))}
             <button
               data-panel-anchor
@@ -587,27 +499,6 @@ export default function ConnectionOverview({
               state={mascotState}
               onDisplacement={(p) => setRingOffset({ x: p.x / 3, y: p.y / 3 })}
             />
-            <button
-              className="graph-ring-action graph-github"
-              aria-label="GitHub"
-              onClick={() =>
-                void openUrl("https://github.com/whzxc/chatgpt-local-connector")
-              }
-            >
-              <span
-                className="github-icon"
-                dangerouslySetInnerHTML={{ __html: githubIcon }}
-              />
-            </button>
-            <button
-              data-panel-anchor
-              className="graph-ring-action graph-usage"
-              aria-label={t("trayUsage")}
-              aria-haspopup="dialog"
-              onClick={onUsage}
-            >
-              <Icon icon={ChartNoAxesCombined} size={20} />
-            </button>
           </div>
           <div className="agent-side">
             {wires(true)}
@@ -619,7 +510,6 @@ export default function ConnectionOverview({
                   side="left"
                   text={
                     <>
-                      {name(agent)}
                       {agent.version && (
                         <div className="status-hint">{agent.version}</div>
                       )}
@@ -634,6 +524,7 @@ export default function ConnectionOverview({
                     onClick={() => setDetailAgent(agent)}
                   >
                     <AgentQuotaIcon agent={agent.agent} />
+                    <span className="graph-node-name">{name(agent)}</span>
                   </button>
                 </Tooltip>
               ))}
