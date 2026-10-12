@@ -4,7 +4,7 @@
 
 ## 本地配置
 
-默认在 Apple Silicon Mac 上构建并通过 `gh` 上传。需要 Node.js 24、Rust、npm 依赖、完整 Xcode 26+、`uv`，以及已登录且有仓库推送权限的 `gh`。不需要 Apple Developer ID、公证或 Authenticode 证书；macOS 使用 ad-hoc 签名，Tauri 更新包使用 Minisign 签名。
+默认在 Apple Silicon Mac 上构建并通过 `gh` 上传。需要 Node.js 24、Rust、npm 依赖、完整 Xcode 26+、`uv`，以及已登录且有仓库推送权限的 `gh`。macOS 未配置签名身份时使用 ad-hoc 签名，也支持显式指定个人 Developer ID 与公证凭据。Tauri 更新包始终使用独立的 Minisign 签名，Apple 证书不能替代 updater 私钥。
 
 私钥必须对应 `desktop/tauri.conf.json` 中的更新公钥，由维护者自行配置并保存在仓库外。脚本只读取密钥，不生成、复制、移动或输出私钥。按以下优先级读取：
 
@@ -20,6 +20,28 @@ export TAURI_SIGNING_PRIVATE_KEY_FILE="$HOME/.tauri/local-connector.key"
 ```
 
 签名配置缺失时，发布和演练均在版本修改、构建之前报错。普通 `npm run desktop:build` 允许不配置私钥，此时只生成 App、DMG，不生成 updater 签名；配置了密钥则生成 updater 产物。
+
+## 配置个人 Developer ID
+
+脚本不自动选取钥匙串里的证书。只有明确设置 `APPLE_SIGNING_IDENTITY` 才使用 Developer ID，必须填写个人团队的完整 `Developer ID Application: 姓名 (TEAMID)` 名称；不接受 `Apple Development`、通配符或哈希。不要填写公司团队的证书。证书主体与团队归属由维护者核对，脚本不根据姓名推断个人或公司身份，也不内置私人账号或团队信息。
+
+1. 使用自己的付费 Apple Developer Program 个人团队；免费 Personal Team 的开发证书不能用于 Developer ID 分发。
+2. 在“钥匙串访问 → 证书助理 → 从证书颁发机构请求证书”创建 CSR，在个人团队的 Apple Developer “Certificates, Identifiers & Profiles”中创建 **Developer ID Application** 证书并上传 CSR。下载 `.cer` 后双击安装到生成 CSR 的 Mac 钥匙串，保留配套私钥。也可使用 Xcode 的个人团队证书管理入口。
+3. 用以下命令找到个人团队的完整名称，再配置当前 shell；本地构建无需导出 `.p12`：
+
+```sh
+security find-identity -v -p codesigning
+export APPLE_SIGNING_IDENTITY='Developer ID Application: Your Name (YOURTEAMID)'
+# updater 仍需单独指向已经存在的项目私钥
+export TAURI_SIGNING_PRIVATE_KEY_FILE='/absolute/path/to/existing/updater.key'
+npm run release -- --dry-run
+```
+
+release profile 的独立 Core 和桌面 App 使用同一明确指定的证书，启用 hardened runtime 与安全时间戳。未配置身份、显式设置为 `-`、或 debug 构建时使用 ad-hoc，并移除 Apple 公证凭据，避免意外选择钥匙串中的其他证书。已有个人证书缺失或不可用时签名报错，不回退使用其他证书。
+
+Developer ID 签名与 Apple 公证是不同环节。需要公证时，在本机安全配置同一个人团队的 `APPLE_ID`、`APPLE_TEAM_ID` 和 **App 专用密码** `APPLE_PASSWORD`；不要使用 Apple ID 登录密码或将密码写入命令历史。也可按 Tauri 官方文档使用 App Store Connect API 凭据。只有显式选择 Developer ID 后，构建脚本才将这些变量传递给 Tauri。未提供公证凭据时，只签名，不公证。
+
+`--dry-run` 不创建 GitHub Release，但配置公证凭据后会向 Apple 提交公证。只做离线本地签名检查时，应先从当前 shell 移除 `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` 和 `APPLE_API_KEY` / `APPLE_API_ISSUER` / `APPLE_API_KEY_PATH`。正式分发前需完成公证。证书配置参考 [Tauri macOS signing](https://v2.tauri.app/distribute/sign/macos/)。
 
 ## 默认本地发布 macOS
 

@@ -19,7 +19,7 @@ You do not need Node, npm, Rust, or Cargo to run the app. Install Codex Desktop 
 
 Open the DMG, drag Local Connector into Applications, eject the image, and launch from Applications. Do not keep running it from the DMG. Before replacing an installation, quit Local Connector from the menu bar and drag in the new app. Configuration and Codex history are stored outside the app and survive replacement.
 
-The project does not currently use Apple Developer ID signing or notarization. macOS may block the first launch. After confirming the download source and SHA256, choose **Open Anyway** in System Settings → Privacy & Security. If macOS reports that the app is damaged, remove the quarantine flag only from this verified app:
+macOS may block the first launch of ad-hoc signed or unnotarized builds. Local builds can use an explicitly configured personal Developer ID; see [release maintenance](release.md). After confirming the download source and SHA256, choose **Open Anyway** in System Settings → Privacy & Security. If macOS reports that the app is damaged, remove the quarantine flag only from this verified app:
 
 ```sh
 xattr -rd com.apple.quarantine "/Applications/Local Connector.app"

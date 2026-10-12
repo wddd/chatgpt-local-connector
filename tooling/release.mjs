@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseSigningEnv } from './release-signing.mjs';
+import { macosSigningIdentity } from './macos-signing.mjs';
 process.chdir(fileURLToPath(new URL('../', import.meta.url)));
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
 let version = pkg.version;
@@ -66,7 +67,6 @@ async function cask(dir) {
   app "Local Connector.app"
 
   caveats <<~EOS
-    This application is not Developer ID signed or notarized.
     See the repository installation guide if macOS blocks the first launch.
     Codex Desktop and a ChatGPT connection are required.
     Choose OpenAI Secure MCP Tunnel or HTTPS MCP in the application.
@@ -141,6 +141,7 @@ if (mode === 'release') {
   if (!ci && (process.platform !== 'darwin' || process.arch !== 'arm64')) throw new Error('本地发布需要 Apple Silicon Mac；其他主机请使用 --ci');
   // Fail before prepare or compilation, and pass credentials only in the environment.
   const env = ci ? process.env : releaseSigningEnv(true);
+  if (!ci) macosSigningIdentity(env);
   const run = (script, ...options) => execFileSync(process.execPath, [script, ...options], { env, stdio: 'inherit' });
   if (!dryRun) {
     if (git('branch', '--show-current') !== 'main') throw new Error('Run release from main');

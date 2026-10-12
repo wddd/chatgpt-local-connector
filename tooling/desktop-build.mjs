@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildEnv } from './build-env.mjs';
 import { releaseSigningEnv } from './release-signing.mjs';
+import { macosSigningIdentity } from './macos-signing.mjs';
 import { compileIcon, requireXcode } from './macos-icons.mjs';
 const root = new URL('../', import.meta.url);
 const args = [fileURLToPath(new URL('node_modules/@tauri-apps/cli/tauri.js', root)), 'build'];
@@ -18,14 +19,17 @@ if (!target) {
   if (target) buildArgs.push('--target', target);
 }
 args.push(...buildArgs);
-// Keep platform-signing credentials out of ad-hoc builds.
 const debug = buildArgs.some(a => a === '--debug' || a === '-d');
 const profile = debug ? 'debug' : 'release';
 const env = buildEnv(!debug);
 for (const key of ['TAURI_SIGNING_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD']) {
   if (signing[key] !== undefined) env[key] = signing[key];
 }
-for (const key of Object.keys(env)) if (/^(APPLE_|CSC_|WIN_CSC_)/.test(key)) delete env[key];
+const identity = macosSigningIdentity(env, !debug);
+for (const key of Object.keys(env)) if (/^(CSC_|WIN_CSC_)/.test(key)) delete env[key];
+if (process.platform === 'darwin') args.push('--config', JSON.stringify({ bundle: { macOS: {
+  signingIdentity: identity, hardenedRuntime: true,
+} } }));
 if (process.platform === 'darwin' && !buildArgs.includes('--no-bundle')) {
   requireXcode(env);
   compileIcon(fileURLToPath(new URL('desktop/icons/LocalConnector.icon', root)),
