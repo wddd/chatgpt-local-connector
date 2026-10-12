@@ -184,9 +184,17 @@ async fn handle(
     desktop: Option<Arc<dyn DesktopAccess>>,
 ) -> Result<()> {
     use hyper::{server::conn::http1, service::service_fn};
+    let socket = stream.into_std().map_err(|e| e.to_string())?;
+    let disconnect = Arc::new(
+        TcpStream::from_std(socket.try_clone().map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?,
+    );
+    let stream = TcpStream::from_std(socket).map_err(|e| e.to_string())?;
     let service = service_fn(move |request| {
-        let (s, desktop) = (s.clone(), desktop.clone());
-        async move { Ok::<_, std::convert::Infallible>(local_request(request, s, desktop).await) }
+        let (s, desktop, disconnect) = (s.clone(), desktop.clone(), disconnect.clone());
+        async move {
+            Ok::<_, std::convert::Infallible>(local_request(request, s, desktop, disconnect).await)
+        }
     });
     http1::Builder::new()
         .timer(hyper_util::rt::TokioTimer::new())
@@ -197,10 +205,26 @@ async fn handle(
         .await
         .map_err(|e| e.to_string())
 }
+// Starts only after the complete request body is consumed. This endpoint serves
+// one request per connection, so any remaining incoming bytes are not another request.
+async fn wait_disconnect(stream: &TcpStream) {
+    let mut bytes = [0; 1024];
+    loop {
+        if stream.readable().await.is_err() {
+            return;
+        }
+        match stream.try_read(&mut bytes) {
+            Ok(0) => return,
+            Err(e) if e.kind() != std::io::ErrorKind::WouldBlock => return,
+            _ => (),
+        }
+    }
+}
 async fn local_request(
     request: hyper::Request<hyper::body::Incoming>,
     s: Arc<Service>,
     desktop: Option<Arc<dyn DesktopAccess>>,
+    disconnect: Arc<TcpStream>,
 ) -> hyper::Response<LocalBody> {
     use http_body_util::{BodyExt, Limited};
     let port = s.port.load(std::sync::atomic::Ordering::SeqCst);
@@ -270,31 +294,67 @@ async fn local_request(
             .body(EventBody(rx).boxed())
             .unwrap();
     }
-    let result = async {
+    let waiting = method == "POST"
+        && (((path == "/mcp" || path.starts_with("/mcp/"))
+            && body["method"] == "tools/call"
+            && is_wait(&body))
+            || (path == "/api/plugin/call"
+                && matches!(string(&body, "name"), "codex_wait" | "agent_wait")));
+    let operation = async {
         if (path == "/mcp" || path.starts_with("/mcp/")) && method == "POST" {
-            let ingress = if let Some(id) = path.strip_prefix("/mcp/") { s.ingress(id).await? } else { s.primary().await? };
+            let ingress = if let Some(id) = path.strip_prefix("/mcp/") {
+                s.ingress(id).await?
+            } else {
+                s.primary().await?
+            };
             mcp_ingress(&ingress, body).await
         } else if method == "GET" && path == "/healthz" {
-            Ok(json!({"runtime":"rust","instance":s.control.session,"pid":std::process::id(),"owner":"core","version":env!("CARGO_PKG_VERSION"),"build":load(&root().join("web/native.json"))?["build"]}))
+            Ok(
+                json!({"runtime":"rust","instance":s.control.session,"pid":std::process::id(),"owner":"core","version":env!("CARGO_PKG_VERSION"),"build":load(&root().join("web/native.json"))?["build"]}),
+            )
         } else if let Some(route) = path.strip_prefix("/api/") {
             if method != "GET" {
-                if let Some(owner) = &desktop { owner.check_write()?; }
+                if let Some(owner) = &desktop {
+                    owner.check_write()?;
+                }
             }
             let operation = match (route, method.as_str()) {
                 ("service", "GET") => Some(DesktopRequest::ServiceGet),
                 ("service", "POST") => Some(DesktopRequest::ServiceSet(body.clone())),
                 ("usage-panel", "GET") => Some(DesktopRequest::PanelGet),
                 ("usage-panel", "PUT") => Some(DesktopRequest::PanelSet(body.clone())),
-                ("subscriptions/open", "POST") => Some(DesktopRequest::SubscriptionsOpen(body.clone())),
-                _ if crate::management::desktop_route(route) => Some(DesktopRequest::Route(route.into(), method.clone(), body.clone())),
+                ("subscriptions/open", "POST") => {
+                    Some(DesktopRequest::SubscriptionsOpen(body.clone()))
+                }
+                _ if crate::management::desktop_route(route) => Some(DesktopRequest::Route(
+                    route.into(),
+                    method.clone(),
+                    body.clone(),
+                )),
                 _ => None,
             };
             if let Some(operation) = operation {
-                if let Some(desktop) = &desktop { desktop.request(operation).await }
-                else { s.runtime.desktop_request(operation).await }
-            } else { s.request(route, &method, body).await }
-        } else { Err("not found".into()) }
-    }.await;
+                if let Some(desktop) = &desktop {
+                    desktop.request(operation).await
+                } else {
+                    s.runtime.desktop_request(operation).await
+                }
+            } else {
+                s.request(route, &method, body).await
+            }
+        } else {
+            Err("not found".into())
+        }
+    };
+    let result = if waiting {
+        tokio::select! {
+            biased;
+            _ = wait_disconnect(&disconnect) => Err("wait disconnected".into()),
+            result = operation => result,
+        }
+    } else {
+        operation.await
+    };
     match result {
         Ok(v) => local_reply(200, v),
         Err(e) => local_reply(400, json!({"error":e})),

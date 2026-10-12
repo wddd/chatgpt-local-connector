@@ -1,5 +1,8 @@
 use crate::*;
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 #[cfg(unix)]
 use tokio::net::UnixStream;
 #[cfg(unix)]
@@ -43,6 +46,11 @@ pub fn installation() -> Option<Installation> {
 pub fn require_installation() -> Result<Installation> {
     installation().ok_or_else(|| "请先安装 Codex Desktop，并确认其捆绑的 Codex CLI 可用".into())
 }
+const SNAPSHOT_TTL: Duration = Duration::from_secs(4);
+struct Snapshot {
+    received: Instant,
+    value: Value,
+}
 struct Pending {
     tx: oneshot::Sender<Result<Value>>,
     target: Option<String>,
@@ -51,7 +59,7 @@ pub struct Ipc {
     writer: Arc<Mutex<tokio::io::WriteHalf<DesktopStream>>>,
     pending: Arc<Mutex<HashMap<String, Pending>>>,
     owners: Arc<Mutex<HashMap<String, String>>>,
-    snapshots: Arc<Mutex<HashMap<String, Value>>>,
+    snapshots: Arc<Mutex<HashMap<String, Snapshot>>>,
     wake: Arc<Notify>,
     pub(crate) changes: Arc<Notify>,
     client: String,
@@ -88,7 +96,7 @@ impl Ipc {
         let writer = Arc::new(Mutex::new(wr));
         let pending: Arc<Mutex<HashMap<String, Pending>>> = Default::default();
         let owners: Arc<Mutex<HashMap<String, String>>> = Default::default();
-        let snapshots: Arc<Mutex<HashMap<String, Value>>> = Default::default();
+        let snapshots: Arc<Mutex<HashMap<String, Snapshot>>> = Default::default();
         let wake = Arc::new(Notify::new());
         let changes = Arc::new(Notify::new());
         let changed = changes.clone();
@@ -162,9 +170,13 @@ impl Ipc {
                             continue;
                         }
                         if params["change"]["type"] == "snapshot" {
-                            s.lock()
-                                .await
-                                .insert(thread.into(), params["change"].clone());
+                            s.lock().await.insert(
+                                thread.into(),
+                                Snapshot {
+                                    received: Instant::now(),
+                                    value: params["change"].clone(),
+                                },
+                            );
                         } else {
                             // Delta frames are not full snapshots. Request a fresh snapshot on the next read.
                             s.lock().await.remove(thread);
@@ -192,6 +204,8 @@ impl Ipc {
                 }
             }
             a.store(false, std::sync::atomic::Ordering::SeqCst);
+            s.lock().await.clear();
+            o.lock().await.clear();
             for (_, r) in p.lock().await.drain() {
                 let _ = r.tx.send(Err("DESKTOP_DISCONNECTED".into()));
             }
@@ -336,8 +350,10 @@ impl Ipc {
                     return Err("DESKTOP_DISCONNECTED".into());
                 }
                 if let Some(s) = self.snapshots.lock().await.get(thread) {
-                    if s["revision"].as_u64().unwrap_or(0) >= revision {
-                        return Ok(s["conversationState"].clone());
+                    if s.received.elapsed() < SNAPSHOT_TTL
+                        && s.value["revision"].as_u64().unwrap_or(0) >= revision
+                    {
+                        return Ok(s.value["conversationState"].clone());
                     }
                 }
                 wake.await;
@@ -388,11 +404,19 @@ impl Ipc {
         Ok(state)
     }
     pub async fn snapshot(&self, thread: &str) -> Option<Value> {
-        self.snapshots
-            .lock()
-            .await
+        if !self.alive() {
+            return None;
+        }
+        let mut snapshots = self.snapshots.lock().await;
+        if snapshots
             .get(thread)
-            .map(|s| s["conversationState"].clone())
+            .is_some_and(|s| s.received.elapsed() >= SNAPSHOT_TTL)
+        {
+            snapshots.remove(thread);
+        }
+        snapshots
+            .get(thread)
+            .map(|s| s.value["conversationState"].clone())
     }
     pub async fn mutate(&self, method: &str, args: &Value) -> Result<Value> {
         let thread = string(args, "threadId");

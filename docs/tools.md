@@ -106,14 +106,14 @@ oauth/login 返回原生登录结果，认证仍由原生完成；订阅启动/�
 ## 参数与默认行为
 
 `codex_create` 的 project 接受 Codex 原生项目 ID、唯一名称或本机绝对目录；多目录项目需指定具体目录，也可以省略。
-`thread` 透传 ThreadStartParams，`turn` 透传 TurnStartParams；`codex_send` 的 `resume` 仅支持任务 ID，其他恢复参数会被拒绝。输入使用 `prompt` 或完整原生 `input` 数组；两者同时提供时 input 优先。
+`thread` 透传 ThreadStartParams，`turn` 透传 TurnStartParams；`codex_send` 的 `resume` 仅对 Connector 后台任务透传；Desktop 任务忽略该字段。`codex_call thread/resume` 对 Desktop 任务返回 resumed=false 与 desktop-resume-ignored，不在 Connector app-server 加载任务。输入使用 `prompt` 或完整原生 `input` 数组；两者同时提供时 input 优先。
 thread/turn 中的原生参数优先于便利字段；任务 ID 与 input 由顶层字段统一确定。
 
 省略参数时使用原生宿主或已有任务设置。MCP 不强制 approvalPolicy=never、网络关闭、
 限定写入根、恢复必须声明 mode，也不注入额外 developerInstructions。
 model、effort、serviceTier、provider、permissions、sandboxPolicy、approvalPolicy、
 collaborationMode、outputSchema、runtimeWorkspaceRoots、附件和其他原生参数由上游解释与校验。
-模型目录仅用于发现，不由 MCP 额外阻止未列出的模型或档位。Desktop 新任务继承原生创建结果的模型；续接时继承 owner 快照的模型与协作模式。未显式提供 collaborationMode 时，显式 model/effort 同步到继承的协作模式设置，避免旧设置覆盖本次请求。无法确定模型时返回明确错误。
+模型目录仅用于发现，不由 MCP 额外阻止未列出的模型或档位。Desktop 新任务继承原生创建结果的模型；续接时仅继承 4 秒内 owner 快照的模型与协作模式。未显式提供 collaborationMode 时，显式 model/effort 同步到继承的协作模式设置，避免旧设置覆盖本次请求。没有有效缓存时省略继承配置，交给 Desktop 默认值。
 
 便利字段 mode 支持 read-only、workspace-write、danger-full-access。
 显式使用前两种 mode 而省略 networkAccess 时，此便利预设关闭网络；完全省略 mode 时不覆盖
@@ -172,6 +172,8 @@ completed 是控制操作完成，任务完成需要检查对应轮次终态。
 
 桌面任务执行归 Desktop 所有，Connector 通过本机版本化协调 IPC 管理，不接管其 app-server。
 关闭「自动打开 Codex 任务」后，新任务归 Connector 的 App Server 后台执行，读取、续接和中断按持久化的任务归属路由。后台任务不保证可在 Desktop 中操作。没有执行方实时状态时 runtimeStatus 为 unknown，不表示空闲。
+桌面快照自接收起保留 4 秒，过期后重新发现 owner 并 follow/wait；owner 变化、断连及重连不会沿用旧缓存。send 同样只使用未过期快照。Connector 后台任务 active 时额外查询最新一轮（降序 limit=1），inProgress 则 steer；turn/start 仅在 notLoaded 时自动 resume。
+
 桌面 Thread/Turn 查询是 owner 快照的明确投影；显示层 steeringUserMessage 等 item 可能不同于公开 App Server union。
 兼容性边界和支持的任务写操作见 [桌面说明](desktop.md)，未支持的方法明确拒绝；不使用受签名保护的 app-tools 管道、不绕过账号和系统权限。
 跨设备不是自动路由能力；可通过原生命令在用户已有 SSH 环境中执行明确的远端操作。
@@ -277,7 +279,7 @@ ChatGPT、Notion、Slack 及其他 MCP Client 的外层 Tool Call timeout 可能
 
 等待固定使用实际运行连接，不在断线后重新启动/恢复任务。事件驱动唤醒并合并 250ms 内的流式通知，空闲每两秒回读原生状态；Desktop 重复的相同 revision 快照不会唤醒等待者，避免多个读取者互相触发回读；不依赖有限事件缓冲的连续 cursor。每个 wait 独立等待，不持有共享锁跨越网络读操作或等待。
 
-MCP notifications/cancelled 可取消对应 wait，返回 unconfirmed / wait-cancelled（若客户端仍接受响应），不会发送 turn/interrupt。当前无会话 MCP 入口要求并发等待使用唯一 JSON-RPC request ID，重复活跃 ID 会被拒绝。客户端关闭 HTTP/stdio 连接后释放等待；Connector shutdown 通知等待者退出。连接已经关闭时无法向原调用方交付响应，调用方应把结果视为未知并重新读取任务。客户端、Tunnel 或反向代理可能有更短的请求期限；本机 stdio 转发支持五分钟等待，但不能保证外部入口接受同样时长。
+MCP notifications/cancelled 可取消对应 wait，返回 unconfirmed / wait-cancelled（若客户端仍接受响应），不会发送 turn/interrupt。当前无会话 MCP 入口要求并发等待使用唯一 JSON-RPC request ID，重复活跃 ID 会被拒绝。本地 HTTP 的 MCP 和 plugin/call 等待在读完请求体后显式监听 socket EOF/错误，断开即丢弃等待 future 并释放该 ingress 的 wait ID；stdio 关闭会断开转发连接。此行为不依赖 Hyper 自动丢弃 service future，不会中断源任务；Connector shutdown 通知等待者退出。连接已经关闭时无法向原调用方交付响应，调用方应把结果视为未知并重新读取任务。客户端、Tunnel 或反向代理可能有更短的请求期限；本机 stdio 转发支持五分钟等待，但不能保证外部入口接受同样时长。
 
 这是有界同步等待，不是持久化监控订阅、定时任务或后台推送。普通 Chat 结束当前回复后不会继续执行等待。
 

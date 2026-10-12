@@ -139,8 +139,17 @@ impl Control {
         let rpc = self.utility().await?;
         // Resume only an explicit new-turn write; reads and interrupts never restart a task.
         if method == "turn/start" {
-            rpc.call("thread/resume", json!({"threadId":args["threadId"]}), 60000)
+            let state = rpc
+                .call(
+                    "thread/read",
+                    json!({"threadId":args["threadId"],"includeTurns":false}),
+                    60000,
+                )
                 .await?;
+            if state["thread"]["status"]["type"] == "notLoaded" {
+                rpc.call("thread/resume", json!({"threadId":args["threadId"]}), 60000)
+                    .await?;
+            }
         }
         let mut result = rpc.call(method, args, timeout).await?;
         if method == "thread/read" {
@@ -222,7 +231,10 @@ impl Control {
             return Ok(result);
         }
         if method == "thread/resume" {
-            return self.utility().await?.call(method, args, timeout).await;
+            // Desktop retains execution ownership; never load its task in our app-server.
+            return Ok(
+                json!({"threadId":args["threadId"],"executionOwner":"desktop","resumed":false,"reason":"desktop-resume-ignored"}),
+            );
         }
         if matches!(
             method,
@@ -700,13 +712,20 @@ impl Control {
                 self.request("thread/resume", resume, timeout).await?;
             }
             let state = if self.background(thread)? {
-                self.request(
-                    "thread/read",
-                    json!({"threadId":thread,"includeTurns":false}),
-                    60000,
-                )
-                .await?["thread"]
-                    .clone()
+                let mut state = self
+                    .request(
+                        "thread/read",
+                        json!({"threadId":thread,"includeTurns":false}),
+                        60000,
+                    )
+                    .await?["thread"]
+                    .clone();
+                if state["status"]["type"] == "active" {
+                    let latest = self.request("thread/turns/list",
+                        json!({"threadId":thread,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}), 60000).await?;
+                    state["turns"] = latest["data"].clone();
+                }
+                state
             } else {
                 self.ipc()
                     .await?
