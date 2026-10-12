@@ -368,7 +368,7 @@ schema, refresh or reconnect its MCP connection and check the server's actual
 
 ## macOS 界面观察与操作：screen
 
-`screen` 直接由 Core 启动随 App 打包的 Swift helper `clc-screen`，不经 Codex app-server。仅 macOS 可用；其他平台返回 `SCREEN_UNSUPPORTED`。安装版需要在系统设置中向 **Local Connector** 授予屏幕录制和辅助功能权限，缺少权限会返回对应的明确错误。直接从终端运行 helper 时，macOS 的权限归属取决于启动它的宿主，不代表安装版已授权。
+`screen` 直接由 Core 启动随 App 打包的 Swift helper `clc-screen`，不经 Codex app-server。仅 macOS 可用；其他平台返回 `SCREEN_UNSUPPORTED`。安装版需要在系统设置中向 **Local Connector** 授予屏幕录制和辅助功能权限。调用需要的权限尚未授予时，helper 主动请求对应的系统授权提示；尚未获得授权则返回明确错误，授权后重新调用即可。提示是否再次显示由 macOS 决定，已拒绝时可手动前往系统设置开启；若系统要求重新打开 App，请按提示操作。直接从终端运行 helper 时，macOS 的权限归属取决于启动它的宿主，不代表安装版已授权。
 
 除 `windows` 外，指定 `app`（名称包含匹配）、`bundleId`（精确匹配）、`title`（标题包含匹配）或 `windowId`；组合指定时同时匹配。同 App 多窗口优先选择主窗口。跨 App 存在歧义时，优先当前活动 App，否则要求更精确的目标。
 

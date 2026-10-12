@@ -43,12 +43,14 @@ func rectJSON(_ rect: CGRect) -> [String: Any] {
 }
 func requireAX() throws {
     if !AXIsProcessTrusted() {
-        try fail("ACCESSIBILITY_PERMISSION_REQUIRED: 请在系统设置 → 隐私与安全性 → 辅助功能中授权 Local Connector。")
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        if AXIsProcessTrustedWithOptions(options) { return }
+        try fail("ACCESSIBILITY_PERMISSION_REQUIRED: 已请求系统授权提示，请在系统设置 → 隐私与安全性 → 辅助功能中授权 Local Connector，然后重试。")
     }
 }
 func requireRecording() throws {
-    if !CGPreflightScreenCaptureAccess() {
-        try fail("SCREEN_RECORDING_PERMISSION_REQUIRED: 请在系统设置 → 隐私与安全性 → 屏幕与系统音频录制中授权 Local Connector。")
+    if !CGPreflightScreenCaptureAccess() && !CGRequestScreenCaptureAccess() {
+        try fail("SCREEN_RECORDING_PERMISSION_REQUIRED: 已请求系统授权提示，请在系统设置 → 隐私与安全性 → 屏幕与系统音频录制中授权 Local Connector，然后重试；若系统要求重新打开 App，请按提示操作。")
     }
 }
 struct Window {
