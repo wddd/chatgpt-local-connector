@@ -208,14 +208,17 @@ impl Client {
             active: RwLock::new(true),
             heartbeat: Default::default(),
         });
-        // Only a new entrypoint waits for a previous owner's lease to expire.
+        // Only a new entrypoint waits for a previous owner to finish shutting
+        // down or for its lease to expire.
         // Retrying under the request gate would serialize every UI poll for 18
         // seconds and keep update shutdown waiting behind all queued readers.
         let deadline = Instant::now() + Duration::from_secs(18);
         loop {
             match client.ensure().await {
                 Err(error)
-                    if error.starts_with("CORE_BUILD_MISMATCH") && Instant::now() < deadline =>
+                    if (error.starts_with("CORE_BUILD_MISMATCH")
+                        || error == "core shutting down")
+                        && Instant::now() < deadline =>
                 {
                     tokio::time::sleep(Duration::from_millis(200)).await;
                 }
