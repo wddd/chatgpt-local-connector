@@ -1,5 +1,18 @@
 # 版本说明
 
+## 0.8.24
+
+- fix(oauth): 展示授权连接时间并明确重连复用边界
+- docs(cli): 校正离线管理与重连帮助说明
+- fix(lifecycle): 通过系统应用入口启动并脱离调用方进程
+- fix(logs): 消除偏好同步的重复写入和审计噪声
+- fix(management): 保持日志最近视图并完整导入现有偏好
+- fix(management): 修复独立启动生命周期并补齐授权清理与日志归属
+- feat(management): 统一界面与 CLI MCP 管理能力并修复隧道失联恢复
+- fix(logs): 避免将隧道启动等待记为连接故障
+- fix(connection): 修复隧道诊断日志与状态显示并减少心跳噪声
+- docs(mcp): 完善图片处理与最近轮次分页说明
+
 ## 0.8.23
 
 - feat(mcp): 支持文件与 Codex 任务返回图片内容块
