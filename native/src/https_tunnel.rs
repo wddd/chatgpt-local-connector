@@ -59,7 +59,11 @@ impl Tunnel {
             Err(error) => error.clone(),
         };
         self.health_error = message.clone();
-        if self.reported_health.as_ref() != Some(&message) {
+        // An initial not-ready probe is expected while the provider starts.
+        // After readiness, retain each degradation and recovery transition.
+        if self.reported_health.as_ref() != Some(&message)
+            && (!matches!(&result, Ok(false)) || self.reported_health.is_some())
+        {
             self.reported_health = Some(message.clone());
             if let Some(owner) = self.owner.upgrade() {
                 if message.is_empty() {
