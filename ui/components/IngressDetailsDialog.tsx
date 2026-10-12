@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
 import { displayMessage } from "../messages";
-import { connector, refreshConnector } from "../state/connector";
+import { connector, refreshConnector, ingressState } from "../state/connector";
 import type { Ingress } from "../state/types";
 import {
   Button,
@@ -42,6 +42,7 @@ export default function IngressDetailsDialog({
     connecting = working || oauthBusy || entry.state === "starting";
   let endpoint = https ? entry.url : entry.config.tunnelId;
   const c = entry.config;
+  const state = ingressState(entry);
   if (https && !endpoint) {
     if (
       c.httpsProvider === "custom" ||
@@ -145,17 +146,15 @@ export default function IngressDetailsDialog({
         <span className="ingress-dialog-title">
           {entry.name}
           <Status
-            tone={entry.error ? "danger" : entry.running ? "success" : "neutral"}
+            tone={
+              state === "connectionError"
+                ? "danger"
+                : state === "connected"
+                  ? "success"
+                  : "neutral"
+            }
           >
-            {t(
-              entry.error
-                ? "connectionError"
-                : entry.running
-                  ? "connected"
-                  : entry.state === "starting"
-                    ? "connectingLabel"
-                    : "disconnected",
-            )}
+            {t(state)}
           </Status>
         </span>
       }

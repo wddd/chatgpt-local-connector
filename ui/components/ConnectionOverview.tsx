@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { t } from "../i18n";
 import { api } from "../api";
-import { connector, run, refreshConnector } from "../state/connector";
+import { ingressState, connector, run, refreshConnector } from "../state/connector";
 import {
   agents as agentStore,
   orderedAgents,
@@ -140,17 +140,7 @@ export default function ConnectionOverview({
         : "connectionError";
   }
   function sourceState(i: Ingress) {
-    return error
-      ? "unknown"
-      : !i.enabled
-        ? "disabled"
-        : ["error", "degraded"].includes(i.state)
-          ? "connectionError"
-          : ["starting", "stopping"].includes(i.state)
-            ? "connectingLabel"
-            : i.running
-              ? "connected"
-              : "disconnected";
+    return error ? "unknown" : ingressState(i);
   }
 
   const core = useRef<HTMLElement>(null),

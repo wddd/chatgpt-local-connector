@@ -223,9 +223,11 @@ impl Ingress {
             }
             self.mcp_url.lock().await.clear();
         }
+        let mut health_error = String::new();
         let managed_ready = if let Some(tunnel) = managed.as_mut() {
             match tunnel.ready().await {
                 Ok(ready) => {
+                    health_error = tunnel.health_error.clone();
                     let mut url = self.mcp_url.lock().await;
                     if *url != tunnel.url {
                         *url = tunnel.url.clone();
@@ -285,7 +287,10 @@ impl Ingress {
                 }
             }
         }
-        let error = self.failure.lock().await.clone();
+        let mut error = self.failure.lock().await.clone();
+        if error.is_empty() && !starting {
+            error = health_error;
+        }
         let state = if starting {
             "starting"
         } else if !running {
@@ -410,9 +415,13 @@ impl Ingress {
                 )
                 .await;
                 let proxy = crate::proxy::NetworkProxy::resolve(&settings).await?;
-                let tunnel =
-                    crate::https_tunnel::start(&settings, &format!("http://{address}"), &proxy)
-                        .await?;
+                let tunnel = crate::https_tunnel::start(
+                    self,
+                    &settings,
+                    &format!("http://{address}"),
+                    &proxy,
+                )
+                .await?;
                 let url = tunnel.url.clone();
                 *self.managed_tunnel.lock().await = Some(tunnel);
                 url

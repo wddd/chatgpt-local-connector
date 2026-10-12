@@ -8,6 +8,9 @@ use tokio::process::Child;
 
 pub struct Tunnel {
     child: Child,
+    owner: std::sync::Weak<crate::ingress::Ingress>,
+    pub health_error: String,
+    reported_health: Option<String>,
     error_readers: Vec<tokio::task::JoinHandle<Option<String>>>,
     dir: PathBuf,
     health: String,
@@ -47,6 +50,30 @@ impl Tunnel {
         let _ = self.child.kill().await;
     }
     pub async fn ready(&mut self) -> Result<bool> {
+        self.health_error.clear();
+        let result = self.probe_ready().await;
+        let message = match &result {
+            Ok(true) => String::new(),
+            Ok(false) if !self.health_error.is_empty() => self.health_error.clone(),
+            Ok(false) => format!("{} 隧道尚未就绪", self.provider),
+            Err(error) => error.clone(),
+        };
+        self.health_error = message.clone();
+        if self.reported_health.as_ref() != Some(&message) {
+            self.reported_health = Some(message.clone());
+            if let Some(owner) = self.owner.upgrade() {
+                if message.is_empty() {
+                    owner
+                        .log("INFO", &format!("{} tunnel ready", self.provider))
+                        .await;
+                } else {
+                    owner.log("WARN", &message).await;
+                }
+            }
+        }
+        result
+    }
+    async fn probe_ready(&mut self) -> Result<bool> {
         if self.child.try_wait().map_err(|e| e.to_string())?.is_some() {
             let mut code = None;
             for mut reader in self.error_readers.drain(..) {
@@ -94,10 +121,27 @@ impl Tunnel {
             .timeout(Duration::from_secs(2))
             .build()
             .map_err(|e| e.to_string())?;
-        let Ok(response) = client.get(&self.health).send().await else {
-            return Ok(false);
+        let response = match client.get(&self.health).send().await {
+            Ok(response) => response,
+            Err(error) => {
+                self.health_error = format!("{} 隧道健康检查失败：{error}", self.provider);
+                return Ok(false);
+            }
         };
         if !response.status().is_success() {
+            self.health_error = format!(
+                "{} 隧道未就绪（HTTP {}）",
+                self.provider,
+                response.status().as_u16()
+            );
+            if self.provider == "cloudflare" {
+                if let Ok(value) = response.json::<Value>().await {
+                    if let Some(count) = value["readyConnections"].as_u64() {
+                        self.health_error
+                            .push_str(&format!("，可用边缘连接数：{count}"));
+                    }
+                }
+            }
             return Ok(false);
         }
         if self.provider == "cloudflare" {
@@ -165,6 +209,7 @@ fn public_url(text: &str, cloudflare: bool) -> Option<String> {
     Some(format!("{}/mcp", u.origin().ascii_serialization()))
 }
 pub async fn start(
+    owner: &Arc<crate::ingress::Ingress>,
     settings: &Value,
     upstream: &str,
     proxy: &crate::proxy::NetworkProxy,
@@ -173,13 +218,14 @@ pub async fn start(
     let binary = install(provider, proxy).await?;
     let dir = root().join("runs").join(id());
     private_dir(&dir)?;
-    let result = spawn(settings, upstream, proxy, &binary, &dir).await;
+    let result = spawn(owner, settings, upstream, proxy, &binary, &dir).await;
     if result.is_err() {
         let _ = std::fs::remove_dir_all(&dir);
     }
     result
 }
 async fn spawn(
+    owner: &Arc<crate::ingress::Ingress>,
     settings: &Value,
     upstream: &str,
     proxy: &crate::proxy::NetworkProxy,
@@ -289,18 +335,10 @@ async fn spawn(
         }
         _ => return Err("HTTPS 服务商无效".into()),
     }
-    // Drain ngrok diagnostics, retaining only its public error code, never raw logs.
+    // Provider diagnostics are consumed continuously; Cloudflare uses the ingress redaction path.
     cmd.stdin(Stdio::null())
-        .stdout(if provider != "cloudflare" {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
-        .stderr(if provider != "cloudflare" {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        });
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     drop(reservation);
     let mut child = cmd
         .spawn()
@@ -308,7 +346,9 @@ async fn spawn(
     let mut error_readers = Vec::new();
     let (discovery, discovered) = tokio::sync::watch::channel(None);
     if let Some(stdout) = child.stdout.take() {
-        error_readers.push(if provider == "ngrok" {
+        error_readers.push(if provider == "cloudflare" {
+            tokio::spawn(cloudflare_output(stdout, Arc::downgrade(owner)))
+        } else if provider == "ngrok" {
             tokio::spawn(ngrok_error_code(stdout))
         } else {
             tokio::spawn(discover_output(
@@ -319,7 +359,9 @@ async fn spawn(
         });
     }
     if let Some(stderr) = child.stderr.take() {
-        error_readers.push(if provider == "ngrok" {
+        error_readers.push(if provider == "cloudflare" {
+            tokio::spawn(cloudflare_output(stderr, Arc::downgrade(owner)))
+        } else if provider == "ngrok" {
             tokio::spawn(ngrok_error_code(stderr))
         } else {
             tokio::spawn(discover_output(stderr, provider.to_owned(), discovery))
@@ -327,6 +369,9 @@ async fn spawn(
     }
     let mut tunnel = Tunnel {
         child,
+        owner: Arc::downgrade(owner),
+        health_error: String::new(),
+        reported_health: None,
         error_readers,
         dir: dir.into(),
         health,
@@ -683,4 +728,33 @@ async fn ngrok_error_code(mut stream: impl tokio::io::AsyncRead + Unpin) -> Opti
         }
     }
     code
+}
+
+async fn cloudflare_output(
+    stream: impl tokio::io::AsyncRead + Unpin,
+    owner: std::sync::Weak<crate::ingress::Ingress>,
+) -> Option<String> {
+    let mut reader = tokio::io::BufReader::new(stream);
+    while let Ok(bytes) = crate::line(&mut reader, 64 * 1024).await {
+        if bytes.is_empty() {
+            break;
+        }
+        let Some(owner) = owner.upgrade() else {
+            break;
+        };
+        let text = String::from_utf8_lossy(&bytes);
+        let level = if text.contains(" ERR ") {
+            "ERROR"
+        } else if text.contains(" WRN ") {
+            "WARN"
+        } else if text.contains(" DBG ") {
+            "DEBUG"
+        } else {
+            "INFO"
+        };
+        owner
+            .log(level, &format!("cloudflare: {}", text.trim()))
+            .await;
+    }
+    None
 }

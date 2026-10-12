@@ -417,14 +417,14 @@ impl Service {
         body: Value,
     ) -> Result<Value> {
         let operation = id();
-        let audit = method != "GET";
+        let audit = method != "GET" && route != "runtime/lease";
         if audit {
             crate::logs::append(
                 json!({"time":now(),"level":"INFO","msg":format!("{method} {route}: started"),"operationId":operation,"phase":"started"}),
             )?;
         }
         let result = self.request_inner(route, method, body).await;
-        if audit {
+        if audit || (route == "runtime/lease" && result.is_err()) {
             let outcome = if result.is_ok() {
                 "succeeded"
             } else {

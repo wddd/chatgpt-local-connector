@@ -132,6 +132,16 @@ pub fn recent(ingress: Option<&str>) -> Vec<String> {
             let Ok(row) = serde_json::from_slice::<Value>(line) else {
                 continue;
             };
+            // Lease renewals carry no user action or diagnostic information.
+            // Keep failures and leave the original on-disk history untouched.
+            if row["level"] == "INFO"
+                && matches!(
+                    row["msg"].as_str(),
+                    Some("POST runtime/lease: started" | "POST runtime/lease: succeeded")
+                )
+            {
+                continue;
+            }
             if ingress.is_none_or(|id| row["ingressId"] == id) {
                 rows.push(row.to_string());
                 if rows.len() == 200 {

@@ -2,7 +2,7 @@ import { createStore } from "./store";
 import { api } from "../api";
 import { t } from "../i18n";
 import { isDesktop, notifyNative } from "../platform";
-import type { Status } from "./types";
+import type { Ingress, Status } from "./types";
 export const connector = createStore<{
   status?: Status;
   busy: string;
@@ -92,4 +92,12 @@ export function startConnector() {
     stream?.close();
     clearTimeout(feedbackTimer);
   };
+}
+
+export function ingressState(entry: Ingress) {
+  if (!entry.enabled) return "disabled";
+  if (["starting", "stopping"].includes(entry.state)) return "connectingLabel";
+  if (entry.error || ["error", "degraded"].includes(entry.state))
+    return "connectionError";
+  return entry.state === "ready" ? "connected" : "disconnected";
 }
