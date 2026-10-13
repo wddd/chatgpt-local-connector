@@ -1,6 +1,60 @@
 use crate::{json, string, transport::forward_request, Value};
 use std::io::Read;
 
+const COMMANDS: &[&str] = &[
+    "capabilities",
+    "schema <operation>",
+    "call <operation> [--stdin]",
+    "mcp",
+    "watch",
+    "logs --stdin",
+    "logs --follow",
+    "logs --offline",
+    "app start",
+    "app status",
+    "app quit",
+    "app restart",
+    "storage compact",
+    "subscriptions get",
+    "subscriptions set --stdin",
+    "subscriptions refresh [providerId]",
+    "subscriptions open [providerId]",
+    "panel get",
+    "panel set --stdin",
+    "help",
+    "guide",
+    "context --stdin",
+    "status",
+    "onboarding",
+    "doctor",
+    "logs",
+    "configure --stdin",
+    "network --stdin",
+    "connect",
+    "disconnect",
+    "verify",
+    "verify --fresh",
+    "ingress list",
+    "ingress presets",
+    "ingress add --stdin",
+    "ingress update <id> --stdin",
+    "ingress remove <id>",
+    "ingress start <id>",
+    "ingress stop <id>",
+    "ingress restart <id>",
+    "ingress probe <id>",
+    "ingress start-all",
+    "ingress stop-all",
+    "ingress token rotate <id>",
+    "ingress oauth list <id>",
+    "ingress oauth decision <id> --stdin",
+    "ingress oauth request <id> <request-id>",
+    "ingress oauth register <id> --stdin",
+    "ingress oauth revoke <id> --stdin",
+    "ingress doctor <id>",
+    "ingress verify <id> [--fresh]",
+];
+
 const GUIDE: &str = include_str!("../../docs/codex-setup.md");
 
 fn onboarding(ingress: &Value) -> Value {
@@ -29,6 +83,264 @@ async fn doctor() -> crate::Result<Value> {
         json!({"ingresses":items,"summary":status["ingressSummary"],"desktop":status["core"]["desktop"],"appServer":status["core"]["appServer"],"executionVerified":false,"diagnostics":status["diagnostics"]}),
     )
 }
+// Keep help and argument validation on the same command grammar.
+fn command_usage(args: &[&str]) -> Result<String, (String, String)> {
+    if args.is_empty() || args == ["--help"] {
+        return Ok("cli help".into());
+    }
+    let mut candidates = COMMANDS.to_vec();
+    let mut depth = 0;
+    loop {
+        let mut branches: Vec<_> = candidates
+            .iter()
+            .filter_map(|command| command.split_whitespace().nth(depth))
+            .filter(|word| !word.starts_with(['<', '[', '-']))
+            .collect();
+        if branches.is_empty() {
+            break;
+        }
+        branches.sort_unstable();
+        branches.dedup();
+        let prefix = std::iter::once("cli")
+            .chain(args[..depth].iter().copied())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let usage = format!(
+            "{prefix} <子命令>；可用子命令：{}；完整用法见 cli help",
+            branches.join("、")
+        );
+        let Some(word) = args.get(depth) else {
+            return Err(("缺少子命令".into(), usage));
+        };
+        if !branches.contains(word) {
+            let message = if word.starts_with('-') {
+                flag_error(word)
+            } else {
+                format!("未知子命令 {word:?}")
+            };
+            return Err((message, usage));
+        }
+        candidates.retain(|command| command.split_whitespace().nth(depth) == Some(word));
+        depth += 1;
+    }
+    let usage = candidates
+        .iter()
+        .map(|s| format!("cli {s}"))
+        .collect::<Vec<_>>()
+        .join("；");
+    let mut best_error = (0, "参数不匹配".to_owned());
+    let mut best_usage = usage.clone();
+    for command in candidates {
+        let slots: Vec<_> = command.split_whitespace().collect();
+        let mut error = None;
+        for index in depth..slots.len().max(args.len()) {
+            let slot = slots.get(index).copied();
+            let arg = args.get(index).copied();
+            let optional = slot.is_some_and(|s| s.starts_with('['));
+            let expected = slot.map(|s| s.trim_matches(['[', ']']));
+            let message = match (expected, arg) {
+                (Some(_), None) if optional => continue,
+                (Some(expected), None) => format!("缺少参数 {expected}"),
+                (Some(expected), Some(arg)) if expected == arg => continue,
+                (Some(expected), Some(arg))
+                    if !arg.starts_with('-')
+                        && (expected.starts_with('<')
+                            || optional && !expected.starts_with('-')) =>
+                {
+                    continue
+                }
+                (_, Some(arg)) if arg.starts_with('-') => {
+                    if slot.is_some_and(|s| s.starts_with('<')) && slots.contains(&arg) {
+                        format!("缺少参数 {}（应放在 {arg} 之前）", slot.unwrap())
+                    } else if slots.contains(&arg) {
+                        format!("多余或重复的选项 {arg}")
+                    } else {
+                        flag_error(arg)
+                    }
+                }
+                (Some(expected), Some(_)) => format!(
+                    "cli 后第 {} 个参数应为 {expected}，实际为多余的位置参数",
+                    index + 1
+                ),
+                (None, Some(_)) => format!("多余的位置参数（cli 后第 {} 个参数）", index + 1),
+                (None, None) => continue,
+            };
+            error = Some((index, message));
+            break;
+        }
+        match error {
+            None => return Ok(format!("cli {command}")),
+            Some(error) if error.0 >= best_error.0 => {
+                best_usage = if error.0 > depth {
+                    format!("cli {command}")
+                } else {
+                    usage.clone()
+                };
+                best_error = error;
+            }
+            _ => {}
+        }
+    }
+    if args.starts_with(&["ingress", "update"])
+        && args.get(2).is_none_or(|arg| arg.starts_with('-'))
+    {
+        best_error.1.push_str("；id 必须放在 update 后的命令参数里；若 stdin 含 id，请移到参数里，stdin 只传需要修改的补丁字段");
+    }
+    Err((best_error.1, best_usage))
+}
+
+fn flag_error(arg: &str) -> String {
+    let flag = arg.split('=').next().unwrap_or(arg);
+    let normalized = flag
+        .trim_start_matches('-')
+        .replace(['-', '_'], "")
+        .to_ascii_lowercase();
+    if normalized == "bearertoken"
+        || normalized == "clientsecret"
+        || crate::ingress::config::secrets().any(|(key, _)| key.to_ascii_lowercase() == normalized)
+    {
+        format!("不接受命令行密钥选项 {flag}：密钥可能泄露到 shell 历史或进程列表；请使用 --stdin 传入 JSON")
+    } else {
+        format!("未知选项 {flag}；请使用用法中列出的选项")
+    }
+}
+
+fn json_type(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "布尔值（boolean）",
+        Value::Number(_) => "数字（number）",
+        Value::String(_) => "字符串（string）",
+        Value::Array(_) => "数组（array）",
+        Value::Object(_) => "对象（object）",
+    }
+}
+
+fn expect_type(field: &str, value: &Value, expected: &Value) -> crate::Result<()> {
+    if json_type(value) != json_type(expected) {
+        return Err(format!(
+            "字段 {field} 类型错误：期望 {}，实际为 {}",
+            json_type(expected),
+            json_type(value)
+        ));
+    }
+    Ok(())
+}
+
+fn known_fields(value: &Value, allowed: &[&str], prefix: &str) -> crate::Result<()> {
+    let unknown: Vec<_> = value
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| !allowed.contains(&key.as_str()))
+        .map(|(key, _)| format!("{prefix}{key}"))
+        .collect();
+    if !unknown.is_empty() {
+        return Err(format!(
+            "未知字段：{}；允许字段：{}",
+            unknown.join("、"),
+            allowed
+                .iter()
+                .map(|key| format!("{prefix}{key}"))
+                .collect::<Vec<_>>()
+                .join("、")
+        ));
+    }
+    Ok(())
+}
+
+fn validate_ingress_input(body: &Value, update: bool) -> crate::Result<()> {
+    let mut fields = vec![
+        "name",
+        "controlSource",
+        "transport",
+        "auth",
+        "bearerToken",
+        "enabled",
+        "toolPolicy",
+        "config",
+    ];
+    if update && body.get("id").is_some() {
+        return Err(
+            "补丁中不能包含 id：请将 id 放在 update 后的命令参数里，stdin 只传需要修改的补丁字段"
+                .into(),
+        );
+    }
+    if !update {
+        fields.push("id");
+    }
+    known_fields(body, &fields, "")?;
+    for (field, value) in body.as_object().unwrap() {
+        match field.as_str() {
+            "enabled" => expect_type(field, value, &json!(false))?,
+            "config" => {
+                expect_type(field, value, &json!({}))?;
+                let defaults = crate::ingress::config::defaults();
+                let fields: Vec<_> = defaults
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(String::as_str)
+                    .collect();
+                known_fields(value, &fields, "config.")?;
+                for (key, value) in value.as_object().unwrap() {
+                    expect_type(&format!("config.{key}"), value, &defaults[key])?;
+                }
+            }
+            "toolPolicy" if value == "all" => {}
+            "toolPolicy" => {
+                if !value.is_object() {
+                    return Err(format!(
+                        "字段 toolPolicy 期望字符串 \"all\" 或对象（object），实际为 {}",
+                        json_type(value)
+                    ));
+                }
+                known_fields(value, &["allowlist"], "toolPolicy.")?;
+                expect_type("toolPolicy.allowlist", &value["allowlist"], &json!([]))?;
+                for (index, item) in value["allowlist"].as_array().unwrap().iter().enumerate() {
+                    expect_type(&format!("toolPolicy.allowlist[{index}]"), item, &json!(""))?;
+                }
+            }
+            _ => expect_type(field, value, &json!(""))?,
+        }
+    }
+    Ok(())
+}
+
+fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
+    let code = crate::management::error_code(message);
+    let mut message = message.to_owned();
+    if message == "ingress not found" {
+        let id = if args.first() != Some(&"ingress") {
+            None
+        } else if matches!(args.get(1), Some(&"oauth" | &"token")) {
+            args.get(3)
+        } else {
+            args.get(2)
+        };
+        let id = id
+            .map(|id| format!(" id={}", json!(id)))
+            .unwrap_or_default();
+        message = format!("未找到入口{id}；请运行 cli ingress list 查看可用入口");
+    } else if message == "UNKNOWN_OPERATION" {
+        message = format!(
+            "未知操作 {}；请运行 cli capabilities 查看可用操作",
+            json!(args.get(1))
+        );
+    }
+    message.push_str(&format!("；正确用法：{usage}"));
+    let mut error = json!({"code":code,"message":message,"usage":usage});
+    if args.starts_with(&["ingress", "update"]) {
+        error["message"] = json!(format!(
+            "{}；stdin 最小合法示例：{{\"enabled\":false}}",
+            error["message"].as_str().unwrap()
+        ));
+        error["example"] = json!({"enabled":false});
+    }
+    println!("{}", json!({"schemaVersion":1,"ok":false,"error":error}));
+    1
+}
+
 fn stdin_json() -> crate::Result<Value> {
     let mut input = String::new();
     std::io::stdin()
@@ -39,15 +351,24 @@ fn stdin_json() -> crate::Result<Value> {
         return Err("输入超过 16 KiB".into());
     }
     // Never echo malformed input: it may contain a credential.
-    serde_json::from_str(&input).map_err(|_| "标准输入必须是 JSON 对象".into())
+    let value: Value = serde_json::from_str(&input).map_err(|error| {
+        format!(
+            "标准输入 JSON 语法错误：第 {} 行，第 {} 列；请检查 JSON 语法",
+            error.line(),
+            error.column()
+        )
+    })?;
+    if !value.is_object() {
+        return Err(format!(
+            "标准输入必须是 JSON 对象，实际为 {}",
+            json_type(&value)
+        ));
+    }
+    Ok(value)
 }
 
 async fn execute(args: &[String]) -> crate::Result<Value> {
-    let args: Vec<&str> = args
-        .iter()
-        .map(String::as_str)
-        .filter(|a| *a != "--json")
-        .collect();
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
     match args.as_slice() {
         ["capabilities"] => Ok(crate::management::catalog()),
         ["schema", name] => crate::management::catalog()["operations"]
@@ -73,7 +394,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         [] | ["help"] | ["--help"] => Ok(json!({"version":env!("CARGO_PKG_VERSION"),
             "usage":"<应用可执行文件> cli <command> [--json]",
             "capabilities":crate::management::catalog(),
-            "commands":["capabilities","schema <operation>","call <operation> [--stdin]","mcp","watch","logs --stdin","logs --follow","logs --offline","app start","app status","app quit","app restart","storage compact","subscriptions get","subscriptions set --stdin","subscriptions refresh [providerId]","subscriptions open [providerId]","panel get","panel set --stdin","help","guide","context --stdin","status","onboarding","doctor","logs","configure --stdin","network --stdin","connect","disconnect","verify","verify --fresh","ingress list","ingress presets","ingress add --stdin","ingress update <id> --stdin","ingress remove <id>","ingress start <id>","ingress stop <id>","ingress restart <id>","ingress probe <id>","ingress start-all","ingress stop-all","ingress token rotate <id>","ingress oauth list <id>","ingress oauth decision <id> --stdin","ingress oauth request <id> <request-id>","ingress oauth register <id> --stdin","ingress oauth revoke <id> --stdin","ingress doctor <id>","ingress verify <id> [--fresh]"],
+            "commands":COMMANDS,
             "subscriptionsInput":{"enabled":"boolean; required","providers":"complete array of IDs from subscriptions get; required","pinnedWindows":"complete provider-to-window map; required"},
             "subscriptionsNote":"get reads memory only. set replaces the complete settings: read get.settings first and preserve all intended selections/pins. refresh requests an online read for a selected eligible provider, or all such providers when omitted; accepted is not fresh-data success. Read observedAt/state/error afterwards. open activates the target instance's Agent detail panel, or the Agents panel when omitted.",
             "panelInput":{"autoCollapse":"boolean","size":"small | standard | large","spacing":"compact | standard | roomy","ends":"softened | round","horizontalPercentages":"boolean","alertColor":"boolean","notchFusion":"boolean","dock":"left | right | top | bottom | floating","resetPosition":"true; resets placement, takes precedence over dock"},
@@ -152,9 +473,15 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
             }
             Ok(items)
         }
-        ["ingress", "add", "--stdin"] => forward_request("ingress", "POST", stdin_json()?).await,
+        ["ingress", "add", "--stdin"] => {
+            let body = stdin_json()?;
+            validate_ingress_input(&body, false)?;
+            forward_request("ingress", "POST", body).await
+        }
         ["ingress", "update", id, "--stdin"] => {
-            forward_request(&format!("ingress/{id}"), "PUT", stdin_json()?).await
+            let body = stdin_json()?;
+            validate_ingress_input(&body, true)?;
+            forward_request(&format!("ingress/{id}"), "PUT", body).await
         }
         ["ingress", "remove", id] => {
             forward_request(&format!("ingress/{id}"), "DELETE", json!({})).await
@@ -227,12 +554,18 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
             }
             Ok(ingresses().await?)
         }
-        _ => Err("参数无效，请运行 cli help；不接受命令行密钥".into()),
+        _ => Err("命令参数不匹配，请检查用法".into()),
     }
 }
 
 pub async fn run(args: Vec<String>) -> i32 {
     crate::init_crypto();
+    let args: Vec<String> = args.into_iter().filter(|arg| arg != "--json").collect();
+    let words: Vec<&str> = args.iter().map(String::as_str).collect();
+    let usage = match command_usage(&words) {
+        Ok(usage) => usage,
+        Err((message, usage)) => return print_error(&message, &usage, &words),
+    };
     if args.first().is_some_and(|a| a == "mcp") {
         return match crate::management::stdio().await {
             Ok(()) => 0,
@@ -270,16 +603,11 @@ pub async fn run(args: Vec<String>) -> i32 {
             }
         }
     }
-    let (output, code) = match execute(&args).await {
-        Ok(result) => (json!({"schemaVersion":1,"ok":true,"result":result}), 0),
-        Err(message) => {
-            let code = crate::management::error_code(&message);
-            (
-                json!({"schemaVersion":1,"ok":false,"error":{"code":code,"message":message}}),
-                1,
-            )
+    match execute(&args).await {
+        Ok(result) => {
+            println!("{}", json!({"schemaVersion":1,"ok":true,"result":result}));
+            0
         }
-    };
-    println!("{output}");
-    code
+        Err(message) => print_error(&message, &usage, &words),
+    }
 }
