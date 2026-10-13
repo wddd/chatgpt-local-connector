@@ -1,5 +1,5 @@
 name: Release
-run-name: Release ${{ inputs.tag }} (macOS)
+run-name: Release ${{ inputs.tag }} (macOS + Linux)
 on:
   workflow_dispatch:
     inputs:
@@ -13,7 +13,53 @@ concurrency:
   group: connector-release
   cancel-in-progress: false
 jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: clippy
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+        with:
+          workspaces: native -> ../target
+          shared-key: linux-${{ matrix.arch }}
+      - name: Check and build headless Core
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          cargo clippy --manifest-path native/Cargo.toml --locked --target "$TARGET"
+          cargo build --manifest-path native/Cargo.toml --locked --release --bin local-connector --target "$TARGET"
+      - name: Package Linux tarball
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          TARGET: ${{ matrix.target }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          test "v$(target/$TARGET/release/local-connector --version)" = "$RELEASE_TAG"
+          mkdir -p linux-package linux-artifacts
+          cp "target/$TARGET/release/local-connector" LICENSE linux-package/
+          tar -czf "linux-artifacts/local-connector-$RELEASE_TAG-linux-$ARCH.tar.gz" -C linux-package local-connector LICENSE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: linux-artifacts/*.tar.gz
+          if-no-files-found: error
   release:
+    needs: linux
     runs-on: macos-latest
     defaults:
       run:
@@ -51,6 +97,16 @@ jobs:
         run: |
           npm run release:stage -- darwin-aarch64 target/aarch64-apple-darwin/release/bundle release-artifacts
           npm run release:finalize -- release-artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: linux-*
+          merge-multiple: true
+          path: release-artifacts
+      - name: Add Linux checksums and installer
+        run: |
+          cp tooling/install-linux.sh release-artifacts/install-linux.sh
+          cd release-artifacts
+          shasum -a 256 local-connector-*-linux-*.tar.gz install-linux.sh >> SHA256SUMS.txt
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,5 +115,5 @@ jobs:
           gh release create "$RELEASE_TAG"
           release-artifacts/*.dmg release-artifacts/*.gz release-artifacts/*.sig
           release-artifacts/latest.json release-artifacts/SHA256SUMS.txt
-          release-artifacts/local-connector.rb release-artifacts/release-notes.md
+          release-artifacts/local-connector.rb release-artifacts/release-notes.md release-artifacts/install-linux.sh
           --notes-file release-artifacts/release-notes.md --latest

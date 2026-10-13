@@ -1,6 +1,7 @@
 use crate::{string, Result};
 use reqwest::{ClientBuilder, Url};
 use serde_json::Value;
+#[cfg(any(target_os = "macos", windows))]
 use std::time::Duration;
 
 const PROXY_KEYS: [&str; 6] = [
@@ -83,6 +84,31 @@ impl NetworkProxy {
                 proxy.detect_macos().await?;
                 #[cfg(windows)]
                 proxy.detect_windows().await?;
+                #[cfg(target_os = "linux")]
+                {
+                    let env = |keys: [&str; 2]| -> Result<Option<Url>> {
+                        keys.iter()
+                            .filter_map(|key| std::env::var(key).ok())
+                            .find(|v| !v.is_empty())
+                            .map(|v| {
+                                // Native environment proxy URLs may include authentication.
+                                let url = Url::parse(&v)
+                                    .map_err(|_| "Invalid HTTP/HTTPS proxy environment URL")?;
+                                if !["http", "https"].contains(&url.scheme())
+                                    || url.host_str().is_none()
+                                {
+                                    return Err(
+                                        "HTTP/HTTPS proxy environment must use http:// or https://"
+                                            .into(),
+                                    );
+                                }
+                                Ok(url)
+                            })
+                            .transpose()
+                    };
+                    proxy.http = env(["http_proxy", "HTTP_PROXY"])?;
+                    proxy.https = env(["https_proxy", "HTTPS_PROXY"])?;
+                }
                 if proxy.http.is_some() || proxy.https.is_some() {
                     proxy.message = "Using system HTTP/HTTPS proxy";
                 }

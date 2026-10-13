@@ -73,6 +73,11 @@ pub async fn call(name: &str, args: Value) -> Result<Value> {
     }
     crate::transport::forward_request(&route, &method, body).await
 }
+#[cfg(target_os = "linux")]
+async fn start_app() -> Result<Value> {
+    crate::headless::start().await
+}
+#[cfg(not(target_os = "linux"))]
 async fn start_app() -> Result<Value> {
     if let Ok(status) = crate::transport::forward_request("app", "GET", json!({})).await {
         return Ok(status);

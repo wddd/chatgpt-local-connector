@@ -51,6 +51,16 @@ CLC 本身运行无需安装 Node、npm、Rust 或 Cargo；外部 Agent 仍使�
 
 Codex 保持默认，原生能力完整保留。所有外部 Agent 沿用自身配置和登录；首页右侧的“更多”入口打开 Agents 管理面板，按品牌显示安装状态和版本，并支持启用已安装的 Agent；标题旁的设置按钮打开外观、额度和用量设置。额度监控和用量估算见[订阅用量](docs/subscriptions.md)。native/adapter 类型与能力见[本地 Agents](docs/agents.md)，公共任务操作统一使用 `agent_*` 工具。
 
+## Linux 无界面版（x86_64 / aarch64）
+
+Linux 直接运行 `native/`，不需要 Tauri 或 Codex Desktop；Codex 任务统一通过已安装的 Codex CLI app-server 执行。不包含 GUI、打开终端或 screen 截图功能。
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/whzxc/chatgpt-local-connector/main/tooling/install-linux.sh | sh
+```
+
+选择包含 Linux tarball 的发行版，也可从源码构建。[Linux 安装与使用](docs/zh-CN/linux.md)包含精确构建命令、`start / stop / status`、token/provider/端口配置、使用 Bearer 鉴权的 `/mcp` HTTP 端点，以及 `systemd --user` 和 `loginctl enable-linger` 自启动说明。
+
 ## 安装：先选择入口
 
 | 使用方式 | 从这里开始 |

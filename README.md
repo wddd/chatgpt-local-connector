@@ -51,6 +51,16 @@ CLC itself requires no Node, npm, Rust, or Cargo installation. The [ChatGPT Desk
 
 Codex remains the default, with its native capabilities preserved. External Agents use their own configuration and sign-in. The home view’s More button opens Agents management, which lists brands, installation status and versions, and lets you enable installed Agents. Its settings button opens appearance, quota, and usage preferences. See [Subscription usage](docs/subscriptions.md) for quota monitoring and usage estimates. Native/adapter distinctions and capabilities are documented in [Local Agents](docs/agents.md). Codex tasks use `codex_*`; `agent_*` only accepts non-Codex agents and is hidden when none is available. New connections expose the default tool tier; advanced tools are enabled through All or Custom. See [MCP tools](docs/tools.md) for text editing, per-turn changes, logs, shell commands and compact receipts.
 
+## Linux headless (x86_64 / aarch64)
+
+Linux runs `native/` without Tauri or Codex Desktop. Codex tasks use the installed Codex CLI app-server. No GUI or screen capture is included.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/whzxc/chatgpt-local-connector/main/tooling/install-linux.sh | sh
+```
+
+Use a release containing Linux tarballs, or build from source. See [Linux installation and usage](docs/linux.md) for exact build commands, `start / stop / status`, token/provider/port configuration, the `/mcp` bearer-authenticated HTTP endpoint, and `systemd --user` with `loginctl enable-linger`.
+
 ## Installation: choose an entry point
 
 | How you want to use CLC | Start here |

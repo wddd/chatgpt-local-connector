@@ -148,3 +148,7 @@ macOS DMG 通过 `tooling/build-dmg.py` 调用固定版本的 dmgbuild，使用 
 ## ChatGPT Desktop 插件
 
 ChatGPT Desktop 插件分别由 [chatgpt-usage-plugin](https://github.com/whzxc/chatgpt-usage-plugin) 与 [chatgpt-kanban-plugin](https://github.com/whzxc/chatgpt-kanban-plugin) 独立维护、构建和分发。Connector Desktop 发布流程不生成插件 ZIP 或 Core 插件更新载荷，不同步 Git 插件市场，也不安装或更新宿主中的插件。
+
+## Linux 无界面产物
+
+`release.yml` 对同一 tag 在 Ubuntu 24.04 的 x86_64、aarch64 runner 上独立检查并构建 `native/Cargo.toml`，不构建 Tauri 或 GUI。两个 Linux 构建成功后，macOS 发布任务将 `local-connector-<tag>-linux-<arch>.tar.gz`、`install-linux.sh` 和相应 SHA256SUMS.txt 条目合并到同一 Release。tarball 包含 Core 和 MIT LICENSE，要求 glibc 2.39 或更新版本。Linux 不使用桌面 updater；安装脚本校验 SHA256 与版本，更新前停止 daemon、更新后重启。Linux 用法见 [Linux 无界面运行](zh-CN/linux.md)。

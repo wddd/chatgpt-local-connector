@@ -1,4 +1,5 @@
 use super::*;
+#[cfg(target_os = "macos")]
 use base64::Engine;
 
 async fn command(program: &str, args: &[&str]) -> Option<String> {

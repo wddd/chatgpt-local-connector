@@ -20,6 +20,7 @@ pub struct State {
     leases: std::sync::Mutex<HashMap<String, Lease>>,
     pub shutdown: Notify,
     closing: std::sync::atomic::AtomicBool,
+    pub daemon: std::sync::atomic::AtomicBool,
 }
 impl State {
     fn active(&self) -> std::sync::MutexGuard<'_, HashMap<String, Lease>> {
@@ -101,6 +102,12 @@ impl State {
         &self,
         operation: crate::transport::DesktopRequest,
     ) -> Result<Value> {
+        if cfg!(target_os = "linux") {
+            return Err(
+                "DESKTOP_UNSUPPORTED: this operation requires a desktop UI; Linux runs headless."
+                    .into(),
+            );
+        }
         let endpoint = self
             .active()
             .values()
@@ -149,7 +156,7 @@ pub fn build_id(binary: &Path) -> Result<String> {
     Ok(hash(std::fs::read(binary).map_err(|e| e.to_string())?))
 }
 
-async fn owner(build: &str) -> Result<Option<Value>> {
+pub(crate) async fn owner(build: &str) -> Result<Option<Value>> {
     let Ok(info) = load(&root().join("web/native.json")) else {
         return Ok(None);
     };
@@ -376,6 +383,10 @@ impl Drop for Client {
 }
 
 pub async fn serve() -> Result<()> {
+    serve_mode(false).await
+}
+
+pub async fn serve_mode(daemon: bool) -> Result<()> {
     init_crypto();
     private_dir(&root())?;
     let lock = File::options()
@@ -398,7 +409,20 @@ pub async fn serve() -> Result<()> {
         return Ok(());
     }
     let service = crate::service::Service::new()?;
+    service
+        .runtime
+        .daemon
+        .store(daemon, std::sync::atomic::Ordering::SeqCst);
+    #[cfg(unix)]
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .map_err(|e| e.to_string())?;
     let listener = crate::transport::listen(service.clone(), None).await?;
+    let startup_service = service.clone();
+    let startup = tokio::spawn(async move {
+        if daemon {
+            startup_service.autostart().await;
+        }
+    });
     let monitor_service = Arc::downgrade(&service);
     let monitor = tokio::spawn(async move {
         loop {
@@ -415,14 +439,22 @@ pub async fn serve() -> Result<()> {
         tokio::select! {
             _ = service.runtime.shutdown.notified() => break,
             _ = tokio::signal::ctrl_c() => break,
+            _ = async {
+                #[cfg(unix)]
+                terminate.recv().await;
+                #[cfg(not(unix))]
+                std::future::pending::<()>().await;
+            } => break,
             _ = tokio::time::sleep(Duration::from_millis(500)) => {
-                if service.runtime.active().is_empty() {
+                if !daemon && service.runtime.active().is_empty() {
                     let empty = empty_since.get_or_insert_with(Instant::now);
                     if started.elapsed() > Duration::from_secs(15) && empty.elapsed() > Duration::from_secs(2) { break; }
                 } else { empty_since = None; }
             }
         }
     }
+    startup.abort();
+    let _ = startup.await;
     monitor.abort();
     let result = service.stop().await;
     listener.abort();
