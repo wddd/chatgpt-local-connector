@@ -78,7 +78,7 @@ Managed quick tunnels use an ephemeral loopback port. `httpsPort` selects the fi
 
 ## systemd user service
 
-Install the binary at its permanent location first. Unit generation captures that binary, the state directory, PATH and relevant XDG/Agent path variables; it neither invokes systemctl nor enables linger.
+Install the binary at its permanent location first. Unit generation captures that binary, the state directory, PATH and relevant XDG/Agent path variables; it neither invokes systemctl nor enables linger. PATH entries are deduplicated in their original order. The unit does not set npm prefix variables; npm keeps its own configuration. The EnvironmentFile path is unquoted; XDG_CONFIG_HOME must be an absolute path containing only ASCII letters, digits, `/`, `.`, `_`, `-`, `@` or `+`. Paths containing spaces or other special characters are rejected before writing the unit.
 
 ```sh
 local-connector stop

@@ -136,12 +136,20 @@ pub fn systemd() -> Result<Value> {
         "XDG_CACHE_HOME",
         "CODEX_HOME",
         "NVM_DIR",
-        "NPM_CONFIG_PREFIX",
-        "npm_config_prefix",
         "BUN_INSTALL",
         "VOLTA_HOME",
     ] {
         if let Ok(value) = std::env::var(key) {
+            let value = if key == "PATH" {
+                let mut seen = std::collections::HashSet::new();
+                value
+                    .split(':')
+                    .filter(|entry| seen.insert(*entry))
+                    .collect::<Vec<_>>()
+                    .join(":")
+            } else {
+                value
+            };
             unit.push_str(&format!(
                 "Environment={}\n",
                 quote(&format!("{key}={value}"), false)?
@@ -149,9 +157,18 @@ pub fn systemd() -> Result<Value> {
         }
     }
     let env = config.join("chatgpt-local-connector/environment");
+    // EnvironmentFile takes a literal absolute path, not shell-style quotes.
+    // Reject special characters instead of interpreting escapes, globs or specifiers.
+    let env_path = env.to_str().ok_or("Invalid config path")?;
+    if !env.is_absolute()
+        || !env_path
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/._-@+".contains(&b))
+    {
+        return Err("Invalid EnvironmentFile path: set XDG_CONFIG_HOME to an absolute path using only ASCII letters, digits, / . _ - @ + (no spaces or special characters).".into());
+    }
     unit.push_str(&format!(
-        "EnvironmentFile=-{}\n\n[Install]\nWantedBy=default.target\n",
-        quote(env.to_str().ok_or("Invalid config path")?, false)?
+        "EnvironmentFile=-{env_path}\n\n[Install]\nWantedBy=default.target\n"
     ));
     save_bytes(&path, unit.as_bytes())?;
     Ok(
