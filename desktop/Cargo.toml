@@ -1,6 +1,6 @@
 [package]
 name = "local-connector-desktop"
-version = "0.8.26"
+version = "0.8.27"
 edition = "2021"
 license = "MIT"
 default-run = "local-connector-desktop"
