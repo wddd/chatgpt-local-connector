@@ -765,9 +765,11 @@ impl Control {
             if let Err(e) = crate::changes::record(thread, string(&r, "turnId"), &baseline) {
                 crate::logs::record("WARN", &e, None);
             }
-            return Ok(
-                json!({"threadId":thread,"turnId":r["turnId"],"resolved":result,"submitted":true,"desktopUrl":format!("codex://threads/{thread}"),"executionOwner":if background {"connector"} else {"desktop"},"desktop":{"state":if background {"not-opened"} else {"owner-confirmed"},"sharedBackend":false}}),
-            );
+            let mut response = json!({"threadId":thread,"turnId":r["turnId"],"resolved":result,"submitted":true,"executionOwner":if background {"connector"} else {"desktop"},"desktop":{"state":if background {"not-opened"} else {"owner-confirmed"},"sharedBackend":false}});
+            if !background {
+                response["desktopUrl"] = json!(format!("codex://threads/{thread}"));
+            }
+            return Ok(response);
         }
         if operation == "send" {
             let input = task_input(args)?;
@@ -1233,7 +1235,11 @@ fn summary(t: &Value) -> Value {
             _ => None,
         })
     });
-    json!({"archived":archived,"threadId":t["id"],"project":t["cwd"],"title":t["name"],"preview":t["preview"],"cwd":t["cwd"],"runtimeStatus":state,"runtimeSource":if state=="unknown"{json!("persisted-history-only")}else{t["runtimeSource"].clone()},"configuration":{"scope":"thread-defaults","source":"thread/read-or-list","model":t.get("model").unwrap_or(&json!("unknown")),"effort":t.get("reasoningEffort").unwrap_or(&json!("unknown")),"modelProvider":t.get("modelProvider").unwrap_or(&json!("unknown")),"turnEffective":"unknown"},"actions":{"read":true,"send":if state=="idle"{"new-turn"}else if state=="active"{"steer"}else{"requires-native-ownership-check"},"interrupt":"native-ownership-check","configurationChange":if state=="idle"{"new-turn-and-subsequent"}else{"requires-idle"}},"activeFlags":t["status"].get("activeFlags").unwrap_or(&json!([])),"updatedAt":t["updatedAt"],"observedAt":now(),"businessDelivery":"not-assessed","desktopUrl":format!("codex://threads/{}",string(t,"id"))})
+    let mut summary = json!({"archived":archived,"threadId":t["id"],"project":t["cwd"],"title":t["name"],"preview":t["preview"],"cwd":t["cwd"],"runtimeStatus":state,"runtimeSource":if state=="unknown"{json!("persisted-history-only")}else{t["runtimeSource"].clone()},"configuration":{"scope":"thread-defaults","source":"thread/read-or-list","model":t.get("model").unwrap_or(&json!("unknown")),"effort":t.get("reasoningEffort").unwrap_or(&json!("unknown")),"modelProvider":t.get("modelProvider").unwrap_or(&json!("unknown")),"turnEffective":"unknown"},"actions":{"read":true,"send":if state=="idle"{"new-turn"}else if state=="active"{"steer"}else{"requires-native-ownership-check"},"interrupt":"native-ownership-check","configurationChange":if state=="idle"{"new-turn-and-subsequent"}else{"requires-idle"}},"activeFlags":t["status"].get("activeFlags").unwrap_or(&json!([])),"updatedAt":t["updatedAt"],"observedAt":now(),"businessDelivery":"not-assessed"});
+    if !cfg!(target_os = "linux") && t["runtimeSource"] != "connector-app-server" {
+        summary["desktopUrl"] = json!(format!("codex://threads/{}", string(t, "id")));
+    }
+    summary
 }
 pub(crate) fn item(v: &Value, offset: usize, len: usize) -> Value {
     let text = match string(v, "type") {

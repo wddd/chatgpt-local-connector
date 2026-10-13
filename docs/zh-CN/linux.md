@@ -77,7 +77,7 @@ local-connector cli ingress list
 
 ## systemd 用户服务
 
-先把二进制安装到固定位置。生成器保存当前可执行路径、状态目录、PATH 和相关 XDG/Agent 路径变量，只生成 unit，不自动调用 systemctl 或启用 linger。
+先把二进制安装到固定位置。生成器保存当前可执行路径、状态目录、PATH 和相关 XDG/Agent 路径变量，只生成 unit，不自动调用 systemctl 或启用 linger。PATH 保留原顺序去重；unit 不写入 npm prefix 环境变量，npm 沿用自身配置。EnvironmentFile 使用不带引号的绝对路径；XDG_CONFIG_HOME 仅可包含 ASCII 字母、数字及 `/`、`.`、`_`、`-`、`@`、`+`，空格等特殊字符会在写入 unit 前被明确拒绝。
 
 ```sh
 local-connector stop
