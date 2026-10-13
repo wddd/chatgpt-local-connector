@@ -34,21 +34,31 @@ impl Control {
             projects: Default::default(),
         })
     }
+    fn rpc_binary(&self) -> Result<PathBuf> {
+        if cfg!(target_os = "linux") && !cfg!(feature = "test-fixture") {
+            crate::agents::codex_binary().ok_or_else(|| "CODEX_NOT_FOUND: install Codex CLI and log in as this user; searched PATH, ~/.local/bin, /usr/local/bin, npm global prefixes, nvm, bun and Volta directories.".into())
+        } else {
+            Ok(self.binary.clone())
+        }
+    }
     pub async fn utility(&self) -> Result<Arc<Rpc>> {
         let mut rpc = self.rpc.lock().await;
         if rpc.as_ref().is_none_or(|r| !r.alive()) {
-            *rpc = Some(Rpc::start(&self.binary, self.events.clone(), &self.session).await?)
+            *rpc = Some(Rpc::start(&self.rpc_binary()?, self.events.clone(), &self.session).await?)
         }
         Ok(rpc.as_ref().unwrap().clone())
     }
     pub async fn account_rate_limits(&self) -> Result<Value> {
         // A short-lived reader follows the current native login on each refresh.
-        let rpc = Rpc::start(&self.binary, Default::default(), &id()).await?;
+        let rpc = Rpc::start(&self.rpc_binary()?, Default::default(), &id()).await?;
         let result = rpc.call("account/rateLimits/read", json!({}), 15000).await;
         rpc.close().await;
         result
     }
     pub(crate) async fn ipc(&self) -> Result<Arc<Ipc>> {
+        if cfg!(target_os = "linux") {
+            return Err("DESKTOP_UNSUPPORTED: headless Linux uses Codex CLI app-server.".into());
+        }
         let mut ipc = self.monitor.lock().await;
         if ipc.as_ref().is_none_or(|i| !i.alive()) {
             *ipc = Some(Arc::new(
@@ -89,10 +99,16 @@ impl Control {
         }
     }
     pub fn auto_open_codex(&self) -> Result<bool> {
+        if cfg!(target_os = "linux") {
+            return Ok(false);
+        }
         let path = root().join("task-settings.json");
         Ok(!path.exists() || load(&path)?["autoOpenCodex"] != false)
     }
     pub(crate) fn background(&self, thread: &str) -> Result<bool> {
+        if cfg!(target_os = "linux") {
+            return Ok(!thread.is_empty());
+        }
         if uuid::Uuid::parse_str(thread).is_err() {
             return Ok(false);
         }
@@ -162,7 +178,7 @@ impl Control {
         if args["ephemeral"] == true {
             return Err("DESKTOP_TASK_MUST_PERSIST".into());
         }
-        let seed = Rpc::start(&self.binary, Default::default(), &id()).await?;
+        let seed = Rpc::start(&self.rpc_binary()?, Default::default(), &id()).await?;
         let result = async {
             let mut args = args;
             args["ephemeral"] = json!(false);
@@ -324,7 +340,7 @@ impl Control {
         if cache.is_none() {
             let dir = std::env::temp_dir().join(format!("clc-schema-{}", id()));
             private_dir(&dir)?;
-            let result=async{output(&self.binary,&["app-server","generate-json-schema","--experimental","--out",dir.to_str().ok_or("invalid schema path")?]).await?;let mut responses=json!({});let server=load(&dir.join("ServerRequest.json"))?;for branch in server["oneOf"].as_array().into_iter().flatten(){let method=string(&branch["properties"]["method"]["enum"],"0");let method=branch["properties"]["method"]["enum"][0].as_str().unwrap_or(method);if let Some(param)=branch["properties"]["params"]["$ref"].as_str().and_then(|v|v.rsplit('/').next()){let file=format!("{}.json",param.trim_end_matches("Params").to_owned()+"Response");if let Ok(v)=load(&dir.join(file)){responses[method]=v;}}}Ok::<_,String>(json!({"client":load(&dir.join("ClientRequest.json"))?,"server":server,"responses":responses}))}.await;
+            let result=async{output(&self.rpc_binary()?,&["app-server","generate-json-schema","--experimental","--out",dir.to_str().ok_or("invalid schema path")?]).await?;let mut responses=json!({});let server=load(&dir.join("ServerRequest.json"))?;for branch in server["oneOf"].as_array().into_iter().flatten(){let method=string(&branch["properties"]["method"]["enum"],"0");let method=branch["properties"]["method"]["enum"][0].as_str().unwrap_or(method);if let Some(param)=branch["properties"]["params"]["$ref"].as_str().and_then(|v|v.rsplit('/').next()){let file=format!("{}.json",param.trim_end_matches("Params").to_owned()+"Response");if let Ok(v)=load(&dir.join(file)){responses[method]=v;}}}Ok::<_,String>(json!({"client":load(&dir.join("ClientRequest.json"))?,"server":server,"responses":responses}))}.await;
             let _ = std::fs::remove_dir_all(dir);
             *cache = Some(result?);
         }

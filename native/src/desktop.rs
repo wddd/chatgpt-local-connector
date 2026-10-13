@@ -571,6 +571,9 @@ pub async fn open_app() -> Result<()> {
     open_url(None).await
 }
 async fn open_url(url: Option<&str>) -> Result<()> {
+    if cfg!(target_os = "linux") {
+        return Err("DESKTOP_UNSUPPORTED: headless Linux has no Codex Desktop.".into());
+    }
     let installation = require_installation()?;
     #[cfg(windows)]
     {

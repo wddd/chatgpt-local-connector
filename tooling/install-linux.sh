@@ -1,0 +1,42 @@
+#!/bin/sh
+# Install a published headless Linux tarball for the current user.
+set -eu
+case "$(uname -s)" in Linux) ;; *) echo 'Linux only' >&2; exit 1 ;; esac
+case "$(uname -m)" in
+  x86_64) arch=x86_64 ;;
+  aarch64|arm64) arch=aarch64 ;;
+  *) echo 'Supported architectures: x86_64, aarch64' >&2; exit 1 ;;
+esac
+for command in curl tar sha256sum awk install mktemp; do
+  command -v "$command" >/dev/null || { echo "Missing command: $command" >&2; exit 1; }
+done
+repo=https://github.com/whzxc/chatgpt-local-connector
+version=${CLC_VERSION:-}
+if [ -z "$version" ]; then
+  latest=$(curl --proto '=https' --proto-redir '=https' -fsSL -o /dev/null -w '%{url_effective}' "$repo/releases/latest")
+  version=${latest##*/}
+fi
+case "$version" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo 'CLC_VERSION must be a v-prefixed release tag' >&2; exit 1 ;; esac
+case "$version" in *[!a-zA-Z0-9._-]*) echo 'Invalid release tag' >&2; exit 1 ;; esac
+destination=${CLC_INSTALL_DIR:-"$HOME/.local/bin"}
+stage=$(mktemp -d)
+trap 'rm -rf "$stage"' EXIT HUP INT TERM
+asset=local-connector-$version-linux-$arch.tar.gz
+url=$repo/releases/download/$version
+curl --proto '=https' --proto-redir '=https' -fsSL "$url/$asset" -o "$stage/$asset" || {
+  echo "Release $version has no downloadable $asset; choose a release containing Linux tarballs or build native/Cargo.toml from source." >&2
+  exit 1
+}
+curl --proto '=https' --proto-redir '=https' -fsSL "$url/SHA256SUMS.txt" -o "$stage/SHA256SUMS.txt"
+awk -v asset="$asset" '$2 == asset {print}' "$stage/SHA256SUMS.txt" > "$stage/checksum"
+[ "$(wc -l < "$stage/checksum" | tr -d ' ')" = 1 ] || { echo 'Missing or duplicate checksum' >&2; exit 1; }
+(cd "$stage" && sha256sum -c checksum)
+tar -xzf "$stage/$asset" -C "$stage" local-connector
+[ "$("$stage/local-connector" --version)" = "${version#v}" ] || { echo 'Version mismatch' >&2; exit 1; }
+mkdir -p "$destination"
+# Replace via rename so a running executable is never truncated.
+staged_binary=$(mktemp "$destination/.local-connector.XXXXXX")
+trap 'rm -rf "$stage"; rm -f "$staged_binary"' EXIT HUP INT TERM
+install -m 755 "$stage/local-connector" "$staged_binary"
+mv -f "$staged_binary" "$destination/local-connector"
+printf 'Installed %s to %s/local-connector\nAdd this directory to PATH. Stop the daemon before upgrading; restart it after installation.\n' "$version" "$destination"

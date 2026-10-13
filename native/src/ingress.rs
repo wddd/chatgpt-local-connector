@@ -341,7 +341,7 @@ impl Ingress {
         }
         let core = json!({"chatgpt":chat,"transport":{"state":state,"error":error}});
         Ok(
-            json!({"discoveredUrls":urls,"core":core,"connection":{"running":running,"updateAvailable":false,"mcpUrl":mcp_url},"config":config,"tunnel":{"state":state,"error":error,"health":tunnel_health},"connector":{"state":state},"logs":logs,"version":env!("CARGO_PKG_VERSION"),"platform":if cfg!(target_os="macos"){"darwin"}else{"win32"},"deviceName":std::env::var("HOSTNAME").unwrap_or_else(|_|"本机".into()),"taskApprovalEnabled":self.execution.approval_mode()?,"autoOpenCodex":self.execution.auto_open_codex()?,"chatgptUrl":"https://chatgpt.com/plugins"}),
+            json!({"discoveredUrls":urls,"core":core,"connection":{"running":running,"updateAvailable":false,"mcpUrl":mcp_url},"config":config,"tunnel":{"state":state,"error":error,"health":tunnel_health},"connector":{"state":state},"logs":logs,"version":env!("CARGO_PKG_VERSION"),"platform":if cfg!(target_os="macos"){"darwin"}else if cfg!(windows){"win32"}else{"linux"},"deviceName":std::env::var("HOSTNAME").unwrap_or_else(|_|"本机".into()),"taskApprovalEnabled":self.execution.approval_mode()?,"autoOpenCodex":self.execution.auto_open_codex()?,"chatgptUrl":"https://chatgpt.com/plugins"}),
         )
     }
     pub async fn stop(&self) -> Result<()> {
@@ -548,8 +548,7 @@ impl Ingress {
             // The official Tunnel admin bridge otherwise resolves the npm Codex launcher.
             .env(
                 "TUNNEL_CLIENT_CODEX_APP_SERVER_CMD",
-                crate::desktop::installation()
-                    .map(|i| i.binary)
+                crate::agents::codex_binary()
                     .unwrap_or_else(|| PathBuf::from(string(&settings, "codexBinary"))),
             )
             .env("TUNNEL_CLIENT_CODEX_APP_SERVER_ARGS", "app-server")
@@ -730,7 +729,7 @@ impl Ingress {
                     }
                 };
                 Ok(
-                    json!({"codex":describe(crate::desktop::installation().map(|i|i.binary)).await,"tunnel":describe(executable(string(&s,"tunnelBinary"))).await,"observedAt":now()}),
+                    json!({"codex":describe(crate::agents::codex_binary()).await,"tunnel":describe(executable(string(&s,"tunnelBinary"))).await,"observedAt":now()}),
                 )
             }
             ("POST", "install") => {
@@ -869,6 +868,8 @@ async fn install_tunnel(proxy: &crate::proxy::NetworkProxy) -> Result<PathBuf> {
         "darwin"
     } else if cfg!(windows) {
         "windows"
+    } else if cfg!(target_os = "linux") {
+        "linux"
     } else {
         return Err("不支持的平台".into());
     };

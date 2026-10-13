@@ -214,11 +214,8 @@ impl Service {
                 None,
             );
         }
-        let control = Control::new(
-            crate::desktop::installation()
-                .map(|i| i.binary)
-                .unwrap_or_else(|| PathBuf::from("codex")),
-        );
+        let control =
+            Control::new(crate::agents::codex_binary().unwrap_or_else(|| PathBuf::from("codex")));
         let agents = crate::agents::AgentHost::new()?;
         let execution = crate::execution::Execution::new(control.clone(), agents.clone());
         let token = id() + &id();
@@ -298,6 +295,29 @@ impl Service {
             .cloned()
             .ok_or("no ingresses; run cli ingress add --stdin".into())
     }
+    pub async fn autostart(self: &Arc<Self>) {
+        let mut jobs = tokio::task::JoinSet::new();
+        for ingress in self.entries().await {
+            let meta = ingress.meta.lock().await.clone();
+            if meta["enabled"] != true || meta["config"]["autoStart"] != true {
+                continue;
+            }
+            let service = self.clone();
+            jobs.spawn(async move {
+                if let Err(error) = service
+                    .request(&format!("ingress/{}/start", ingress.id), "POST", json!({}))
+                    .await
+                {
+                    crate::logs::record(
+                        "ERROR",
+                        &format!("Ingress {} autostart failed: {error}", ingress.id),
+                        None,
+                    );
+                }
+            });
+        }
+        while jobs.join_next().await.is_some() {}
+    }
     async fn entries(&self) -> Vec<Arc<Ingress>> {
         self.ingresses.lock().await.values().cloned().collect()
     }
@@ -323,7 +343,7 @@ impl Service {
             for (key, _) in secrets() {
                 config.as_object_mut().unwrap().remove(key);
             }
-            json!({"config":config,"core":{"desktop":{"state":"unknown"},"appServer":{"state":"unknown"},"chatgpt":{},"logs":[]},"connection":{"running":false,"mcpUrl":""},"connector":{"state":"stopped"},"tunnel":{"state":"stopped","error":""},"logs":[],"version":env!("CARGO_PKG_VERSION"),"platform":if cfg!(target_os="macos"){"darwin"}else{"win32"},"taskApprovalEnabled":self.control.approval_mode()?,"autoOpenCodex":self.control.auto_open_codex()?})
+            json!({"config":config,"core":{"desktop":{"state":"unknown"},"appServer":{"state":"unknown"},"chatgpt":{},"logs":[]},"connection":{"running":false,"mcpUrl":""},"connector":{"state":"stopped"},"tunnel":{"state":"stopped","error":""},"logs":[],"version":env!("CARGO_PKG_VERSION"),"platform":if cfg!(target_os="macos"){"darwin"}else if cfg!(windows){"win32"}else{"linux"},"taskApprovalEnabled":self.control.approval_mode()?,"autoOpenCodex":self.control.auto_open_codex()?})
         };
         let desktop = match self.control.ipc().await {
             Ok(_) => {
@@ -1017,9 +1037,8 @@ impl Service {
                     Ok(result)
                 }
                 ("GET", "codex/login") => {
-                    let binary = crate::desktop::installation()
-                        .ok_or("请先安装 Codex Desktop")?
-                        .binary;
+                    let binary = crate::agents::codex_binary()
+                        .ok_or(if cfg!(target_os = "linux") { "CODEX_NOT_FOUND: install Codex CLI and run codex login in your terminal." } else { "请先安装 Codex Desktop" })?;
                     let out = command(binary)
                         .args(["login", "status"])
                         .output()

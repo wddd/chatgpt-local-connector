@@ -8,6 +8,15 @@ mod manifest;
 mod process;
 mod wait;
 
+/// Codex Desktop supplies the CLI on desktop platforms; Linux uses the installed CLI.
+pub fn codex_binary() -> Option<PathBuf> {
+    if cfg!(target_os = "linux") {
+        driver::discover("codex")
+    } else {
+        crate::desktop::installation().map(|i| i.binary)
+    }
+}
+
 struct Operation {
     task: String,
     previous_turn: Value,
@@ -151,6 +160,11 @@ impl AgentHost {
         Ok(json!({"agent":agent,"enabled":enabled}))
     }
     /// Local UI action; interactive launches are owned by the user's app/terminal.
+    #[cfg(target_os = "linux")]
+    pub async fn open_interactive(&self, _agent: &str) -> Result<Value> {
+        Err("TERMINAL_UNSUPPORTED: headless Linux cannot open a terminal or Codex Desktop; run the Agent CLI in your own terminal.".into())
+    }
+    #[cfg(not(target_os = "linux"))]
     pub async fn open_interactive(&self, agent: &str) -> Result<Value> {
         let driver = self.drivers.get(agent).ok_or("UNKNOWN_AGENT")?;
         if matches!(driver, AgentDriver::CodexNative) {

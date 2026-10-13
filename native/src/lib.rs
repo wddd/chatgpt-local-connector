@@ -17,6 +17,7 @@ pub mod desktop;
 pub mod diagnostics;
 pub mod egress;
 pub mod execution;
+pub mod headless;
 pub mod https;
 pub mod https_tunnel;
 pub mod images;
@@ -60,6 +61,14 @@ pub fn root() -> PathBuf {
             if cfg!(windows) {
                 dirs::data_local_dir()
                     .unwrap()
+                    .join("chatgpt-local-connector")
+            } else if cfg!(target_os = "linux") {
+                dirs::state_dir()
+                    .unwrap_or_else(|| {
+                        dirs::home_dir()
+                            .expect("home directory")
+                            .join(".local/state")
+                    })
                     .join("chatgpt-local-connector")
             } else {
                 dirs::home_dir()

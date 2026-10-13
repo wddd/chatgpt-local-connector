@@ -3,6 +3,7 @@ pub fn credential() -> std::result::Result<Credential, Failure> {
     // OpenCode uses xdg-basedir on all platforms, not macOS Application Support.
     let data = std::env::var_os("XDG_DATA_HOME")
         .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute())
         .unwrap_or(home()?.join(".local/share"));
     let v = file(&data.join("opencode/auth.json"))?;
     Credential::new(

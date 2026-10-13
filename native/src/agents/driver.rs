@@ -17,7 +17,7 @@ impl AgentDriver {
     }
     pub fn binary(&self) -> Option<PathBuf> {
         match self {
-            Self::CodexNative => crate::desktop::installation().map(|i| i.binary),
+            Self::CodexNative => super::codex_binary(),
             Self::Pi => discover("pi"),
             Self::Acp(m) if m.id == "claude" => discover("claude"),
             Self::Acp(m) => m.candidates().into_iter().next(),
@@ -316,12 +316,55 @@ pub(super) fn search_paths() -> Vec<PathBuf> {
             home.join(".local/bin"),
             home.join(".opencode/bin"),
             home.join(".bun/bin"),
+            home.join(".npm-global/bin"),
+            home.join(".npm/bin"),
+            home.join(".volta/bin"),
+            home.join(".asdf/shims"),
         ]);
+    }
+    for key in [
+        "NPM_CONFIG_PREFIX",
+        "npm_config_prefix",
+        "BUN_INSTALL",
+        "VOLTA_HOME",
+    ] {
+        if let Some(prefix) = std::env::var_os(key) {
+            paths.push(PathBuf::from(prefix).join("bin"));
+        }
+    }
+    if let Some(home) = dirs::home_dir() {
+        // npm writes a custom global prefix here; no shell or npm process is needed.
+        if let Ok(config) = std::fs::read_to_string(home.join(".npmrc")) {
+            for line in config.lines() {
+                if let Some((key, value)) = line.split_once('=') {
+                    if key.trim() == "prefix" {
+                        let value = value.trim().trim_matches(['\"', '\'']);
+                        let prefix = value
+                            .strip_prefix("~/")
+                            .map(|v| home.join(v))
+                            .unwrap_or_else(|| PathBuf::from(value));
+                        if prefix.is_absolute() {
+                            paths.push(prefix.join("bin"));
+                        }
+                    }
+                }
+            }
+        }
+        let nvm = std::env::var_os("NVM_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".nvm"));
+        if let Ok(entries) = std::fs::read_dir(nvm.join("versions/node")) {
+            let mut bins: Vec<_> = entries.flatten().map(|e| e.path().join("bin")).collect();
+            bins.sort();
+            bins.reverse();
+            paths.extend(bins);
+        }
     }
     #[cfg(unix)]
     paths.extend([
         PathBuf::from("/opt/homebrew/bin"),
         PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/bin"),
     ]);
     #[cfg(windows)]
     if let Some(app) = dirs::config_dir() {

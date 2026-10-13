@@ -608,8 +608,10 @@ async fn install(provider: &str, proxy: &crate::proxy::NetworkProxy) -> Result<P
         "darwin"
     } else if cfg!(windows) {
         "windows"
+    } else if cfg!(target_os = "linux") {
+        "linux"
     } else {
-        return Err("仅支持 macOS 和 Windows".into());
+        return Err("不支持的平台".into());
     };
     let arch = if cfg!(target_arch = "aarch64") {
         "arm64"
@@ -647,15 +649,31 @@ async fn install(provider: &str, proxy: &crate::proxy::NetworkProxy) -> Result<P
     let (url, digest, extension) = match provider {
         "cloudflare" | "pinggy" => {
             let (repo, version, asset_name, extension) = if provider == "cloudflare" {
-                let extension = if cfg!(windows) { "exe" } else { "tgz" };
+                let extension = if cfg!(windows) {
+                    "exe"
+                } else if cfg!(target_os = "linux") {
+                    "binary"
+                } else {
+                    "tgz"
+                };
                 (
                     "cloudflare/cloudflared",
                     "latest",
-                    format!("cloudflared-{platform}-{arch}.{extension}"),
+                    if extension == "binary" {
+                        format!("cloudflared-{platform}-{arch}")
+                    } else {
+                        format!("cloudflared-{platform}-{arch}.{extension}")
+                    },
                     extension,
                 )
             } else {
-                let os = if cfg!(windows) { "win" } else { "macos" };
+                let os = if cfg!(windows) {
+                    "win"
+                } else if cfg!(target_os = "linux") {
+                    "linux"
+                } else {
+                    "macos"
+                };
                 let cpu = if arch == "amd64" { "x64" } else { "arm64" };
                 (
                     "Pinggy-io/cli-js",
@@ -694,11 +712,14 @@ async fn install(provider: &str, proxy: &crate::proxy::NetworkProxy) -> Result<P
                 .ok_or_else(|| format!("{provider} 官方校验和缺失"))?;
             (url.to_owned(), Some(digest.to_owned()), extension)
         }
-        "ngrok" => (
-            format!("https://bin.ngrok.com/c/bNyj1mQVY4c/ngrok-v3-stable-{platform}-{arch}.zip"),
-            None,
-            "zip",
-        ),
+        "ngrok" => {
+            let extension = if cfg!(target_os = "linux") {
+                "tgz"
+            } else {
+                "zip"
+            };
+            (format!("https://bin.ngrok.com/c/bNyj1mQVY4c/ngrok-v3-stable-{platform}-{arch}.{extension}"), None, extension)
+        }
         "localxpose" => {
             if cfg!(windows) && arch != "amd64" {
                 return Err("LocalXpose 未提供此平台的下载".into());
@@ -736,6 +757,18 @@ async fn install(provider: &str, proxy: &crate::proxy::NetworkProxy) -> Result<P
         let extracted = staging.join(&executable);
         if matches!(extension, "exe" | "binary") {
             std::fs::rename(&archive, &extracted).map_err(|e| e.to_string())?;
+        } else if cfg!(target_os = "linux") && extension == "zip" {
+            output(
+                "unzip",
+                &[
+                    "-o",
+                    archive.to_str().ok_or("invalid path")?,
+                    &executable,
+                    "-d",
+                    staging.to_str().ok_or("invalid path")?,
+                ],
+            )
+            .await?;
         } else {
             // Extract only the expected executable from the official archive.
             output(

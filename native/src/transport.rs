@@ -129,7 +129,7 @@ pub async fn listen(
     let build = crate::runtime::build_id(&std::env::current_exe().map_err(|e| e.to_string())?)?;
     save(
         &root().join("web/native.json"),
-        &json!({"port":port,"pid":std::process::id(),"token":service.token,"instance":service.control.session,"runtime":"rust","version":env!("CARGO_PKG_VERSION"),"owner":"core","build":build}),
+        &json!({"port":port,"pid":std::process::id(),"token":service.token,"instance":service.control.session,"runtime":"rust","version":env!("CARGO_PKG_VERSION"),"owner":"core","daemon":service.runtime.daemon.load(std::sync::atomic::Ordering::SeqCst),"build":build}),
     )?;
     Ok(tokio::spawn(async move {
         loop {
