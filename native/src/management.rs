@@ -157,7 +157,6 @@ pub async fn stdio() -> Result<()> {
     }
 }
 async fn respond(request: Value, output: Arc<tokio::sync::Mutex<tokio::io::Stdout>>) -> Result<()> {
-    use tokio::io::AsyncWriteExt;
     let result: Result<Value> = match string(&request, "method") {
         "initialize" => Ok(
             json!({"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"local-connector-management","version":env!("CARGO_PKG_VERSION")},"instructions":"Local authenticated administration. Discover operation schemas before calls; writes may stop this MCP host. Lifecycle acceptance must be read back after reconnect."}),
@@ -198,12 +197,7 @@ async fn respond(request: Value, output: Arc<tokio::sync::Mutex<tokio::io::Stdou
         }
     };
     let mut output = output.lock().await;
-    output
-        .write_all(format!("{response}\n").as_bytes())
-        .await
-        .map_err(|e| e.to_string())?;
-    output.flush().await.map_err(|e| e.to_string())?;
-    Ok(())
+    crate::output::async_line(&mut output, response).await
 }
 
 pub fn desktop_route(route: &str) -> bool {
