@@ -386,7 +386,22 @@ Section WebView2
 SectionEnd
 
 Section Install
-  SetOutPath $INSTDIR
+  ; Validate here as well: passive and silent installs skip the welcome page.
+  ${If} $INSTDIR == ""
+    SetErrorLevel 1
+    Abort "安装位置为空，无法继续安装。"
+  ${EndIf}
+  StrCpy $0 $INSTDIR 2 1
+  ${If} $0 != ":\"
+    SetErrorLevel 1
+    Abort "安装位置必须是完整的本地路径。"
+  ${EndIf}
+  ClearErrors
+  SetOutPath "$INSTDIR"
+  ${If} ${Errors}
+    SetErrorLevel 1
+    Abort "无法创建或访问安装目录：$INSTDIR"
+  ${EndIf}
 
   !ifmacrodef NSIS_HOOK_PREINSTALL
     !insertmacro NSIS_HOOK_PREINSTALL
@@ -399,7 +414,12 @@ Section Install
 
   ; Copy resources
   {{#each resources_dirs}}
+    ClearErrors
     CreateDirectory "$INSTDIR\\{{this}}"
+    ${If} ${Errors}
+      SetErrorLevel 1
+      Abort "无法创建资源目录：$INSTDIR\\{{this}}"
+    ${EndIf}
   {{/each}}
   {{#each resources}}
     File /a "/oname={{this.[1]}}" "{{no-escape @key}}"
