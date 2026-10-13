@@ -122,7 +122,9 @@ Function ConnectorWelcomeLeave
     MessageBox MB_ICONEXCLAMATION "请选择完整的本地安装路径，例如 C:\Apps\Local Connector。"
     Abort
   ${EndIf}
-  GetFullPathName $INSTDIR $0
+  ; The directory may not exist yet. GetFullPathName clears its output in
+  ; that case, so retain the validated path until SetOutPath creates it.
+  StrCpy $INSTDIR $0
   ${NSD_GetState} $ConnectorDesktopControl $ConnectorDesktopShortcut
 FunctionEnd
 
