@@ -2,7 +2,7 @@ use crate::service::Service;
 use crate::*;
 use std::time::Duration;
 use tokio::{
-    io::{AsyncWriteExt, BufReader},
+    io::BufReader,
     net::{TcpListener, TcpStream},
 };
 pub enum DesktopRequest {
@@ -530,8 +530,7 @@ pub async fn stdio() -> Result<()> {
             };
             if request.get("id").is_some() && !response.is_null() {
                 let mut out = out.lock().await;
-                let _ = out.write_all(format!("{response}\n").as_bytes()).await;
-                let _ = out.flush().await;
+                let _ = crate::output::async_line(&mut out, response).await;
             }
         });
         while jobs.try_join_next().is_some() {}

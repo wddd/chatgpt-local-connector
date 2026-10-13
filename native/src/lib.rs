@@ -27,6 +27,7 @@ pub mod logs;
 pub mod management;
 pub mod oauth;
 pub mod operations;
+pub mod output;
 pub mod preferences;
 pub mod projects;
 pub mod proxy;

@@ -189,6 +189,60 @@ fn command_usage(args: &[&str]) -> Result<String, (String, String)> {
     Err((best_error.1, best_usage))
 }
 
+// Read stdin only when inserting <id> would make this a valid command.
+fn stdin_id_hint(args: &[&str]) -> Option<(String, String)> {
+    let slots = COMMANDS.iter().find_map(|command| {
+        let slots: Vec<_> = command.split_whitespace().collect();
+        (slots.contains(&"<id>")
+            && slots.contains(&"--stdin")
+            && slots
+                .iter()
+                .copied()
+                .filter(|slot| *slot != "<id>")
+                .eq(args.iter().copied()))
+        .then_some(slots)
+    })?;
+    let body = stdin_json().ok()?;
+    // Do not render objects or other fields: pasted input may contain credentials.
+    let id = body.get("id")?.as_str()?;
+    let argument = if !id.is_empty()
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_./:@+-".contains(&byte))
+    {
+        id.to_owned()
+    } else {
+        format!("'{}'", id.replace('\'', "'\"'\"'"))
+    };
+    let usage = std::iter::once("cli")
+        .chain(slots.iter().map(|slot| {
+            if *slot == "<id>" {
+                argument.as_str()
+            } else {
+                slot
+            }
+        }))
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some((
+        format!(
+            "检测到 stdin 中的 id={}，请把它移到命令参数，stdin 只传需要修改的补丁字段",
+            json!(id)
+        ),
+        usage,
+    ))
+}
+
+fn print_output(value: Value) -> i32 {
+    match crate::output::line(value) {
+        Ok(()) => 0,
+        Err(error) => {
+            eprintln!("{error}");
+            1
+        }
+    }
+}
+
 fn flag_error(arg: &str) -> String {
     let flag = arg.split('=').next().unwrap_or(arg);
     let normalized = flag
@@ -337,7 +391,7 @@ fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
         ));
         error["example"] = json!({"enabled":false});
     }
-    println!("{}", json!({"schemaVersion":1,"ok":false,"error":error}));
+    print_output(json!({"schemaVersion":1,"ok":false,"error":error}));
     1
 }
 
@@ -564,7 +618,10 @@ pub async fn run(args: Vec<String>) -> i32 {
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     let usage = match command_usage(&words) {
         Ok(usage) => usage,
-        Err((message, usage)) => return print_error(&message, &usage, &words),
+        Err((message, usage)) => {
+            let (message, usage) = stdin_id_hint(&words).unwrap_or((message, usage));
+            return print_error(&message, &usage, &words);
+        }
     };
     if args.first().is_some_and(|a| a == "mcp") {
         return match crate::management::stdio().await {
@@ -590,7 +647,9 @@ pub async fn run(args: Vec<String>) -> i32 {
                 Ok(value) => {
                     cursor = string(&value, "cursor").to_owned();
                     if !logs || value["rows"].as_array().is_some_and(|a| !a.is_empty()) {
-                        println!("{}", json!({"ok":true,"result":value}));
+                        if print_output(json!({"ok":true,"result":value})) != 0 {
+                            return 1;
+                        }
                     }
                 }
                 Err(e) => {
@@ -604,10 +663,7 @@ pub async fn run(args: Vec<String>) -> i32 {
         }
     }
     match execute(&args).await {
-        Ok(result) => {
-            println!("{}", json!({"schemaVersion":1,"ok":true,"result":result}));
-            0
-        }
+        Ok(result) => print_output(json!({"schemaVersion":1,"ok":true,"result":result})),
         Err(message) => print_error(&message, &usage, &words),
     }
 }
