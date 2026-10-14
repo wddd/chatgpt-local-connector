@@ -1,5 +1,15 @@
 # 版本说明
 
+## 0.8.28
+
+- fix(oauth): 放宽回调地址校验并记录被拒地址摘要
+- fix(oauth): 放宽动态注册的 scope 与类型校验并记录失败字段
+- feat(ingress): 新增 Grok 控制源与 OAuth 接入指引
+- fix(cli): 识别 stdin 中的 id 并安静处理管道关闭
+- fix(cli): 明确参数错误提示并给出正确用法
+- fix(linux): 修正用户服务配置与后台任务回执
+- feat(linux): 支持双架构无界面核心与用户服务
+
 ## 0.8.27
 
 - fix(installer): 修复首次安装时安装路径被清空
