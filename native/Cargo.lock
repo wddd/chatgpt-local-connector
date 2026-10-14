@@ -177,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "connector-core"
-version = "0.8.27"
+version = "0.8.28"
 dependencies = [
  "base64 0.22.1",
  "chrono",
