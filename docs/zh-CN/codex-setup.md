@@ -10,7 +10,7 @@ macOS 通常使用 `/Applications/Local Connector.app/Contents/MacOS/local-conne
 
 ## CLI 配置与生命周期
 
-- `ingress presets`：离线查看 8 个精选控制源、推荐 transport/auth 与支持边界。
+- `ingress presets`：离线查看 9 个精选控制源、推荐 transport/auth 与支持边界。
 - `ingress list`：每入口脱敏配置、URL、运行状态、日志和验证。
 - `ingress add --stdin`：JSON 新建入口。
 - `ingress update <id> --stdin`：局部更新，config 按字段合并；先停止目标入口。

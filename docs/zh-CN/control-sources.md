@@ -1,11 +1,12 @@
 # 控制源支持矩阵
 
-固定 8 个 curated preset 加 Custom；其他 MCP 客户端使用 Custom。预设只提供客户端类型与接入建议，不代表已完成官方客户端验收，也不创建独立协议或 Service。同一类型允许任意多个入口，以 ingress.id 区分。
+固定 9 个 curated preset 加 Custom；其他 MCP 客户端使用 Custom。预设只提供客户端类型与接入建议，不代表已完成官方客户端验收，也不创建独立协议或 Service。同一类型允许任意多个入口，以 ingress.id 区分。
 
 | 控制源 | Remote MCP | 推荐 transport | 推荐认证 | CLC 当前程度 | 主要边界 / 官方资料 |
 | --- | --- | --- | --- | --- | --- |
 | ChatGPT | 支持 | openai-tunnel | openai | 现有路径可用 | 优先 Secure Tunnel；HTTPS 也支持本机应用确认的 OAuth。Tunnel 与客户端开发者模式权限分别管理。 [官方 1](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) / [官方 2](https://developers.openai.com/api/docs/guides/developer-mode) |
 | Claude | 支持 | https | oauth | 有条件支持 | OAuth 使用本机应用确认或已认证 CLI 确认，支持动态注册或预注册客户端凭据。组织静态请求头 Beta 仍可使用 Bearer；需确认客户端注册流程。 [官方 1](https://claude.com/docs/connectors/building) / [官方 2](https://claude.com/docs/connectors/building/authentication) |
+| Grok | 支持 | https | oauth | 有条件支持 | Plugins → New Connector → Custom，填写公网 MCP URL 并通过本机应用确认 OAuth；需转发 /mcp 和 OAuth 发现、授权路由。Grok Bot 使用自定义控制源。 [官方](https://docs.x.ai/grok/connectors) |
 | Microsoft Copilot | 支持 | https | bearer | 有条件支持 | Copilot Studio 可通过 API key 请求头使用 Authorization: Bearer，或使用已注册客户端凭据接入 OAuth；需确认租户兼容性。尚无其他 API key 请求头。可发布到 Teams / Microsoft 365 Copilot。 [官方 1](https://learn.microsoft.com/en-us/microsoft-copilot-studio/mcp-add-existing-server-to-agent) / [官方 2](https://learn.microsoft.com/en-us/microsoft-copilot-studio/mcp-create-new-server) / [官方 3](https://learn.microsoft.com/en-us/microsoft-copilot-studio/publication-fundamentals-publish-channels) |
 | Notion | 支持 | https | bearer | 现有路径可用 | Custom Agents 支持请求头认证；使用 Authorization: Bearer，需有工作区权限及相应套餐。 [官方 1](https://www.notion.com/help/mcp-connections-for-custom-agents) |
 | Slack | 支持 | https | oauth | 有条件支持 | OAuth 支持动态注册或本机预注册，通过本机应用或已认证 CLI 确认，需核对 Slack 客户端流程。尚未实现 Slack 身份签名；不支持 Bearer。 [官方 1](https://docs.slack.dev/ai/slackbot-mcp-client/) |
