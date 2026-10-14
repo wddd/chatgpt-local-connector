@@ -863,7 +863,7 @@ impl Service {
                     return Ok(json!({"ok":true}));
                 }
                 if method == "POST" && action == "oauth/register" {
-                    return oauth.register(&body, &resource);
+                    return oauth.register(&body, &resource).map_err(String::from);
                 }
                 return Err("UNKNOWN_ROUTE".into());
             }
