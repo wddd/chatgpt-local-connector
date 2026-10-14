@@ -62,18 +62,57 @@ pub struct OAuth {
 pub struct RegistrationError {
     code: String,
     field: Option<&'static str>,
+    detail: Option<String>,
 }
 impl RegistrationError {
     fn metadata(code: &str, field: &'static str) -> Self {
         Self {
             code: code.to_owned(),
             field: Some(field),
+            detail: None,
         }
+    }
+    fn redirect(reason: &str, url: Option<&reqwest::Url>) -> Self {
+        let summary = url.map(|url| {
+            let mut summary = format!("{}://{}", url.scheme(), url.host_str().unwrap_or(""));
+            if let Some(port) = url.port() {
+                summary.push_str(&format!(":{port}"));
+            }
+            summary.push_str(url.path());
+            if let Some(query) = url.query() {
+                let keys = query
+                    .split('&')
+                    .filter(|pair| !pair.is_empty())
+                    .map(|pair| pair.split_once('=').map_or(pair, |(key, _)| key))
+                    .collect::<Vec<_>>();
+                if !keys.is_empty() {
+                    summary.push('?');
+                    summary.push_str(&keys.join("&"));
+                }
+            }
+            summary
+        });
+        let mut error = Self::metadata("invalid_redirect_uri", "redirect_uris");
+        error.detail = Some(
+            format!(
+                "reason={reason} uri={}",
+                summary.as_deref().unwrap_or("<unavailable>")
+            )
+            .chars()
+            .filter(|c| !c.is_control())
+            .take(300)
+            .collect(),
+        );
+        error
     }
 }
 impl From<String> for RegistrationError {
     fn from(code: String) -> Self {
-        Self { code, field: None }
+        Self {
+            code,
+            field: None,
+            detail: None,
+        }
     }
 }
 impl From<RegistrationError> for String {
@@ -154,35 +193,42 @@ impl OAuth {
         }
         let redirects = body["redirect_uris"]
             .as_array()
-            .ok_or_else(|| RegistrationError::metadata("invalid_redirect_uri", "redirect_uris"))?;
+            .ok_or_else(|| RegistrationError::redirect("count", None))?;
         if redirects.is_empty() || redirects.len() > 8 {
-            return Err(RegistrationError::metadata(
-                "invalid_redirect_uri",
-                "redirect_uris",
-            ));
+            return Err(RegistrationError::redirect("count", None));
         }
         let redirects: Vec<String> = redirects
             .iter()
             .map(|r| {
-                let text = r.as_str().ok_or("invalid_redirect_uri")?;
-                let url = reqwest::Url::parse(text).map_err(|_| "invalid_redirect_uri")?;
-                let loopback = matches!(url.host_str(), Some("127.0.0.1" | "[::1]"));
-                if text.len() > 2048
-                    || url.fragment().is_some()
-                    || !url.username().is_empty()
-                    || url.password().is_some()
-                    || url.host_str().is_none()
-                    || !(url.scheme() == "https" || url.scheme() == "http" && loopback)
-                    || url
-                        .query_pairs()
-                        .any(|(k, _)| matches!(k.as_ref(), "code" | "state" | "error" | "iss"))
-                {
-                    return Err("invalid_redirect_uri");
+                let text = r
+                    .as_str()
+                    .ok_or_else(|| RegistrationError::redirect("not_string", None))?;
+                let parsed = reqwest::Url::parse(text);
+                if text.len() > 2048 {
+                    return Err(RegistrationError::redirect(
+                        "too_long",
+                        parsed.as_ref().ok(),
+                    ));
+                }
+                let url = parsed.map_err(|_| RegistrationError::redirect("parse", None))?;
+                let loopback = matches!(url.host_str(), Some("127.0.0.1" | "[::1]" | "localhost"));
+                let reason = if url.fragment().is_some() {
+                    Some("fragment")
+                } else if !url.username().is_empty() || url.password().is_some() {
+                    Some("userinfo")
+                } else if url.host_str().is_none() {
+                    Some("no_host")
+                } else if !(url.scheme() == "https" || url.scheme() == "http" && loopback) {
+                    Some("scheme")
+                } else {
+                    None
+                };
+                if let Some(reason) = reason {
+                    return Err(RegistrationError::redirect(reason, Some(&url)));
                 }
                 Ok(text.to_owned())
             })
-            .collect::<std::result::Result<_, &str>>()
-            .map_err(|code| RegistrationError::metadata(code, "redirect_uris"))?;
+            .collect::<std::result::Result<_, RegistrationError>>()?;
         for (key, required) in [
             ("grant_types", "authorization_code"),
             ("response_types", "code"),
@@ -628,11 +674,19 @@ pub async fn handle(
         "/oauth/register" | "/oauth/token" | "/oauth/revoke"
     ) || request.uri().path().starts_with("/.well-known/");
     let mut registration_field = None;
+    let mut registration_detail = None;
     let mut audit_error = None;
     let result = if cors && request.method() == hyper::Method::OPTIONS {
         Ok(response(204, Value::Null))
     } else {
-        route(request, ingress, resource, &mut registration_field).await
+        route(
+            request,
+            ingress,
+            resource,
+            &mut registration_field,
+            &mut registration_detail,
+        )
+        .await
     };
     let mut reply = match result {
         Ok(r) => r,
@@ -684,6 +738,9 @@ pub async fn handle(
                 audit_error.as_deref().unwrap_or("invalid_request"),
                 registration_field.unwrap_or("request"),
             ));
+            if let Some(detail) = registration_detail {
+                message.push_str(&format!(" detail={detail}"));
+            }
         }
         ingress
             .log(
@@ -718,6 +775,7 @@ async fn route(
     ingress: &crate::ingress::Ingress,
     resource: &str,
     registration_field: &mut Option<&'static str>,
+    registration_detail: &mut Option<String>,
 ) -> Result<Response<Full<Bytes>>> {
     let path = request.uri().path().to_owned();
     let issuer = resource.trim_end_matches("/mcp");
@@ -862,6 +920,7 @@ async fn route(
             201,
             oauth.register(&metadata, resource).map_err(|error| {
                 *registration_field = error.field;
+                *registration_detail = error.detail;
                 error.code
             })?,
         ));
