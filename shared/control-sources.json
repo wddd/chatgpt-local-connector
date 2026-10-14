@@ -75,6 +75,38 @@
     ]
   },
   {
+    "id": "grok",
+    "displayName": "Grok",
+    "shortName": "Grok",
+    "icon": "grok",
+    "curated": true,
+    "recommendedTransport": "https",
+    "recommendedAuth": "oauth",
+    "httpsAuth": "oauth",
+    "supportedAuth": [
+      "oauth"
+    ],
+    "remoteMcp": "supported",
+    "status": "conditional",
+    "clientAuth": [
+      "oauth"
+    ],
+    "customHeaders": "Grok web Custom Connector has no static Authorization header field.",
+    "capability": "Remote MCP over Streamable HTTP",
+    "caveat": {
+      "en": "In Grok, open Plugins → New Connector → Custom and enter the MCP URL. Use OAuth with local app consent. The public endpoint must also forward OAuth discovery and authorization routes. Grok Bot remains a custom control source.",
+      "zh-CN": "在 Grok 中打开 Plugins → New Connector → Custom，填写 MCP URL，通过本机应用确认 OAuth。公网入口还需转发 OAuth 发现与授权路由。Grok Bot 继续使用自定义控制源。"
+    },
+    "badge": {
+      "en": "OAuth · Local consent",
+      "zh-CN": "OAuth · 本机授权"
+    },
+    "homeUrl": "https://grok.com/connectors",
+    "docs": [
+      "https://docs.x.ai/grok/connectors"
+    ]
+  },
+  {
     "id": "microsoft-copilot",
     "displayName": "Microsoft Copilot",
     "shortName": "Microsoft Copilot",
