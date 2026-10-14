@@ -58,6 +58,29 @@ pub struct OAuth {
     pending: BTreeMap<String, Pending>,
     registrations: Vec<i64>,
 }
+#[derive(Debug)]
+pub struct RegistrationError {
+    code: String,
+    field: Option<&'static str>,
+}
+impl RegistrationError {
+    fn metadata(code: &str, field: &'static str) -> Self {
+        Self {
+            code: code.to_owned(),
+            field: Some(field),
+        }
+    }
+}
+impl From<String> for RegistrationError {
+    fn from(code: String) -> Self {
+        Self { code, field: None }
+    }
+}
+impl From<RegistrationError> for String {
+    fn from(error: RegistrationError) -> Self {
+        error.code
+    }
+}
 impl OAuth {
     pub fn new(dir: &Path) -> Result<Self> {
         let path = dir.join("oauth.json");
@@ -113,20 +136,30 @@ impl OAuth {
             .iter()
             .any(|g| g.resource == resource && g.access == digest && g.access_expires > clock())
     }
-    pub fn register(&mut self, body: &Value, resource: &str) -> Result<Value> {
+    pub fn register(
+        &mut self,
+        body: &Value,
+        resource: &str,
+    ) -> std::result::Result<Value, RegistrationError> {
         self.prepare(resource)?;
         if self.stored.clients.len() >= 128 || self.registrations.len() >= 20 {
-            return Err("temporarily_unavailable".into());
+            return Err("temporarily_unavailable".to_owned().into());
         }
         let name = string(body, "client_name").trim();
         if name.len() > 120 || name.chars().any(char::is_control) {
-            return Err("invalid_client_metadata".into());
+            return Err(RegistrationError::metadata(
+                "invalid_client_metadata",
+                "client_name",
+            ));
         }
         let redirects = body["redirect_uris"]
             .as_array()
-            .ok_or("invalid_redirect_uri")?;
+            .ok_or_else(|| RegistrationError::metadata("invalid_redirect_uri", "redirect_uris"))?;
         if redirects.is_empty() || redirects.len() > 8 {
-            return Err("invalid_redirect_uri".into());
+            return Err(RegistrationError::metadata(
+                "invalid_redirect_uri",
+                "redirect_uris",
+            ));
         }
         let redirects: Vec<String> = redirects
             .iter()
@@ -148,29 +181,37 @@ impl OAuth {
                 }
                 Ok(text.to_owned())
             })
-            .collect::<std::result::Result<_, &str>>()?;
-        for (key, allowed) in [
-            ("grant_types", &["authorization_code", "refresh_token"][..]),
-            ("response_types", &["code"][..]),
+            .collect::<std::result::Result<_, &str>>()
+            .map_err(|code| RegistrationError::metadata(code, "redirect_uris"))?;
+        for (key, required) in [
+            ("grant_types", "authorization_code"),
+            ("response_types", "code"),
         ] {
             if let Some(values) = body.get(key) {
                 if !values.as_array().is_some_and(|a| {
                     !a.is_empty()
-                        && a.iter()
-                            .all(|v| v.as_str().is_some_and(|s| allowed.contains(&s)))
+                        && a.iter().all(Value::is_string)
+                        && a.iter().any(|v| v.as_str() == Some(required))
                 }) {
-                    return Err("invalid_client_metadata".into());
+                    return Err(RegistrationError::metadata("invalid_client_metadata", key));
                 }
             }
         }
-        if body.get("scope").is_some_and(|v| v != "mcp") {
-            return Err("invalid_scope".into());
+        if body.get("scope").is_some_and(|v| {
+            !v.as_str().is_some_and(|scope| {
+                scope.is_empty() || scope.split(' ').any(|token| token == "mcp")
+            })
+        }) {
+            return Err(RegistrationError::metadata("invalid_scope", "scope"));
         }
         let method = body["token_endpoint_auth_method"]
             .as_str()
             .unwrap_or("client_secret_basic");
         if !["none", "client_secret_post", "client_secret_basic"].contains(&method) {
-            return Err("invalid_client_metadata".into());
+            return Err(RegistrationError::metadata(
+                "invalid_client_metadata",
+                "token_endpoint_auth_method",
+            ));
         }
         let client_id = secret();
         let client_secret = if method == "none" {
@@ -586,10 +627,12 @@ pub async fn handle(
         request.uri().path(),
         "/oauth/register" | "/oauth/token" | "/oauth/revoke"
     ) || request.uri().path().starts_with("/.well-known/");
+    let mut registration_field = None;
+    let mut audit_error = None;
     let result = if cors && request.method() == hyper::Method::OPTIONS {
         Ok(response(204, Value::Null))
     } else {
-        route(request, ingress, resource).await
+        route(request, ingress, resource, &mut registration_field).await
     };
     let mut reply = match result {
         Ok(r) => r,
@@ -611,6 +654,7 @@ pub async fn handle(
             } else {
                 "server_error"
             };
+            audit_error = Some(error.to_owned());
             let mut failure = response(
                 if error == "invalid_client" && supplied_auth {
                     401
@@ -633,6 +677,14 @@ pub async fn handle(
         }
     };
     if let Some(path) = audit_path {
+        let mut message = format!("OAuth {path}: HTTP {}", reply.status().as_u16());
+        if path == "/oauth/register" && reply.status() == 400 {
+            message.push_str(&format!(
+                " error={} fields={}",
+                audit_error.as_deref().unwrap_or("invalid_request"),
+                registration_field.unwrap_or("request"),
+            ));
+        }
         ingress
             .log(
                 if reply.status().is_success() || reply.status().is_redirection() {
@@ -640,7 +692,7 @@ pub async fn handle(
                 } else {
                     "WARN"
                 },
-                &format!("OAuth {path}: HTTP {}", reply.status().as_u16()),
+                &message,
             )
             .await;
     }
@@ -665,6 +717,7 @@ async fn route(
     request: Request<Incoming>,
     ingress: &crate::ingress::Ingress,
     resource: &str,
+    registration_field: &mut Option<&'static str>,
 ) -> Result<Response<Full<Bytes>>> {
     let path = request.uri().path().to_owned();
     let issuer = resource.trim_end_matches("/mcp");
@@ -798,14 +851,19 @@ async fn route(
     let mut oauth = ingress.oauth.lock().await;
     if path == "/oauth/register" {
         if content != "application/json" {
+            *registration_field = Some("content-type");
             return Err("invalid_request".into());
         }
+        let metadata = serde_json::from_slice(&body).map_err(|_| {
+            *registration_field = Some("body");
+            "invalid_request"
+        })?;
         return Ok(response(
             201,
-            oauth.register(
-                &serde_json::from_slice(&body).map_err(|_| "invalid_request")?,
-                resource,
-            )?,
+            oauth.register(&metadata, resource).map_err(|error| {
+                *registration_field = error.field;
+                error.code
+            })?,
         ));
     }
     if content != "application/x-www-form-urlencoded" {
