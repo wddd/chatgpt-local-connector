@@ -21,6 +21,7 @@ export default function ActivityInteraction({ agent, session, questions = false 
     <span className="activity-error" tabIndex={0} role="alert" aria-label={`${t("activity.failed")} ${submission.error || ""}`}><Icon icon={AlertCircle} /></span>
   </Tooltip>;
   if (interaction.kind === "permission") return <div className="activity-actions">
+    <span className="activity-once">{t("timeline.allowOnce")}</span>
     {feedback ? <span role="status" title={submission?.error}>{feedback}</span> : <>
       {(["deny", "allow"] as const).map(decision => <Button key={decision} variant={decision === "allow" ? "primary" : "secondary"}
         disabled={!permissionResponse(interaction, decision) || (!!submission && submission.decision !== decision)}

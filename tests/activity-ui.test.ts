@@ -217,3 +217,44 @@ test("file approvals use path labels in interaction bubbles and timeline cards",
   assert.equal(command.text, permission.summary);
   assert.equal(activityHeadline({ ...bubble, phase: "file", interaction: undefined, headline: path }).path, path);
 });
+
+
+test("approval projection hides only its unexecuted tool in the same turn and preserves execution results", async () => {
+  const { visibleTimelineEntries, interactionTool } = await import("../ui/state/timelineModel.ts");
+  const tool = { ...entry("write", 1, "", 1), type: "file" as const, status: "pending" as const, path: "/workspace/example/file.txt", operation: "write" as const };
+  const interaction = { ...entry("approval", 2, "", 2), type: "interaction" as const, status: "pending" as const, interaction: { ...permission, path: tool.path } };
+  const other = { ...tool, id: "other-turn", turnId: "other" };
+  const entries = [other, tool, interaction];
+  assert.equal(interactionTool(entries, interaction), tool);
+  assert.deepEqual(visibleTimelineEntries(entries).map(e => e.id), ["other-turn", "approval"]);
+  for (const status of ["running", "completed", "failed", "cancelled"] as const)
+    assert.equal(visibleTimelineEntries([{ ...tool, status }, interaction]).length, 2);
+  assert.equal(visibleTimelineEntries([tool, { ...interaction, status: "completed" }]).length, 1);
+  assert.equal(visibleTimelineEntries([{ ...tool, path: "/workspace/example/other.txt" }, interaction]).length, 2);
+  assert.equal(visibleTimelineEntries([tool, { ...tool, id: "parallel" }, interaction]).length, 3);
+  const command = { ...tool, type: "command" as const, path: undefined, command: "printf example" };
+  const commandApproval = { ...interaction, interaction: { ...permission, command: command.command } };
+  assert.equal(visibleTimelineEntries([command, commandApproval]).length, 1);
+  assert.equal(visibleTimelineEntries([command, { ...commandApproval, interaction: { ...permission, summary: command.command } }]).length, 2);
+});
+
+test("approval wording uses structured operations and retains generic file access when unknown", async () => {
+  const { permissionRequestLabel } = await import("../ui/state/timelineModel.ts");
+  const tool = { ...entry("file", 1, "", 1), type: "file" as const };
+  assert.equal(permissionRequestLabel({ ...tool, operation: "read" }), "timeline.readRequest");
+  for (const operation of ["write", "edit", "create"] as const)
+    assert.equal(permissionRequestLabel({ ...tool, operation }), "timeline.writeRequest");
+  assert.equal(permissionRequestLabel({ ...tool, type: "command" }), "timeline.commandRequest");
+  assert.equal(permissionRequestLabel({ ...tool, title: "Write file.txt" }), "timeline.fileRequest");
+  assert.equal(permissionRequestLabel(), "timeline.fileRequest");
+});
+
+test("timeline tools only expand when there is detail beyond the summary object", async () => {
+  const { expandableTimelineEntry } = await import("../ui/state/timelineModel.ts");
+  const file = { ...entry("file", 1, "", 1), type: "file" as const, path: "src/file.ts" };
+  assert.equal(expandableTimelineEntry(file), false);
+  assert.equal(expandableTimelineEntry({ ...file, changes: [{ path: file.path, operation: "edit" }] }), false);
+  assert.equal(expandableTimelineEntry({ ...file, changes: [{ path: "src/other.ts", operation: "edit" }] }), true);
+  assert.equal(expandableTimelineEntry({ ...file, exitCode: 0 }), true);
+  assert.equal(expandableTimelineEntry({ ...file, output: { text: "result", state: "available", truncated: false, sha256: "example", hashScope: "excerpt" } }), true);
+});

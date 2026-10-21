@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, useId } from "react";
-import { AlertCircle, Brain, Check, FileText, ListChecks, MessageSquare, Terminal, Wrench } from "lucide-react";
+import { AlertCircle, ArrowUpRight, ChevronRight, ShieldAlert, X, Bot, Brain, Check, FileText, ListChecks, MessageSquare, Terminal, Wrench } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { AgentActivitySession, AgentTimeline, AgentTimelineEntry } from "../types";
 import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
-import { followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
+import { expandableTimelineEntry, interactionTool, permissionRequestLabel, visibleTimelineEntries, followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
 import { useInterval } from "../state/hooks";
-import { Button, Dialog, Icon } from "./ui";
+import { Button, Dialog, Icon, IconButton, Tooltip } from "./ui";
 import { Markdown } from "./ui/Markdown";
 import ActivityInteraction from "./ActivityInteraction";
 import FilePath from "./FilePath";
@@ -35,23 +35,33 @@ function TimelineEntry({ entry, agent, session, now }: {
     </li>)}</ul>
   </div>;
   if (entry.type === "interaction") {
-    const pending = entry.status === "pending";
-    // Timeline receipts share the footer card's request identity and submission lock.
     const interactionSession = { ...session, phase: "interaction" as const, headline: entry.interaction?.summary ?? "", phaseSince: entry.startedAt, interaction: entry.interaction };
     const headline = activityHeadline(interactionSession);
-    return <article className={`timeline-interaction ${pending ? "needs-attention" : ""}`}>
-      <p title={headline.fullText}>{headline.path ? <FilePath path={headline.path} project={session.project} /> : headline.text}</p>
-      <span className="timeline-meta">{submissions[interactionKey(agent, interactionSession)]?.status === "submitted"
-        ? t(["deny", "cancel"].includes(submissions[interactionKey(agent, interactionSession)].decision) ? "timeline.denied" : "timeline.allowed")
-        : t(`timeline.status.${entry.status}`)}</span>
-    </article>;
+    const receipt = submissions[interactionKey(agent, interactionSession)];
+    const resolved = receipt?.status === "submitted";
+    const denied = resolved && ["deny", "cancel"].includes(receipt.decision);
+    const pending = !resolved && entry.status === "pending";
+    const label = resolved ? denied ? "timeline.denied" : "timeline.allowed"
+      : pending ? entry.interaction?.kind === "permission" ? "activity.phase.interaction" : "activity.question" : `timeline.status.${entry.status}`;
+    return <div className="timeline-interaction" data-pending={pending || undefined} data-resolved={resolved || undefined}>
+      <Icon icon={pending ? ShieldAlert : denied ? X : Check} />
+      <span className="timeline-interaction-state">{t(label)} ·</span>
+      <span className="timeline-entry-title" title={headline.fullText}>{headline.path ? <FilePath path={headline.path} project={session.project} /> : headline.text}</span>
+    </div>;
   }
   const kind = entry.type as keyof typeof icons;
   const title = kind === "thinking" ? entry.text?.trim().split("\n").at(-1) || t("activity.phase.thinking")
     : entry.command || entry.path || entry.title || t(`activity.phase.${kind}`);
+  const expandable = expandableTimelineEntry(entry);
+  const summary = <>
+    {expandable && <Icon icon={ChevronRight} className="timeline-chevron" />}
+    <Icon icon={icons[kind]} /><span className="timeline-entry-title" title={title}>{kind === "file" && entry.path ? <FilePath path={entry.path} project={session.project || entry.cwd} /> : title}</span>
+    <span className={`timeline-status ${entry.status === "failed" ? "activity-error" : ""}`}>{t(`timeline.status.${entry.status}`)}</span>
+    {Number.isFinite(duration) && <time>{time}</time>}
+  </>;
+  if (!expandable) return <div className="timeline-detail"><div className="timeline-summary">{summary}</div></div>;
   return <details className="timeline-detail">
-    <summary><Icon icon={icons[kind]} /><span className="timeline-entry-title" title={title}>{kind === "file" && entry.path ? <FilePath path={entry.path} project={session.project || entry.cwd} /> : title}</span>
-      <span className={`timeline-status ${entry.status === "failed" ? "activity-error" : ""}`}>{t(`timeline.status.${entry.status}`)}</span><time>{time}</time></summary>
+    <summary className="timeline-summary">{summary}</summary>
     <div className="timeline-output">
       {kind === "thinking" ? <Markdown>{entry.text ?? ""}</Markdown> : <>
         {entry.cwd && <div className="timeline-meta">{entry.cwd}</div>}
@@ -118,23 +128,31 @@ export default function ActivityTimeline({ agent, session, onClose, onMotion }: 
   useEffect(() => {
     if (showCard) document.getElementById(cardId)?.focus({ preventScroll: true });
   }, [showCard, pendingSession?.phaseSince, cardId]);
+  const pendingEntry = timeline?.entries.find(entry => entry.type === "interaction" && pendingSession
+    && interactionKey(agent, { ...pendingSession, phaseSince: entry.startedAt, interaction: entry.interaction }) === interactionKey(agent, pendingSession));
+  const tool = pendingEntry && timeline ? interactionTool(timeline.entries, pendingEntry) : undefined;
+  const requestLabel = pendingSession?.interaction?.kind === "question" ? "timeline.questionRequest"
+    : pendingSession?.interaction?.command ? "timeline.commandRequest" : permissionRequestLabel(tool);
+  const subtitle = [agentName, session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop(),
+    duration === undefined ? undefined : t("activity.seconds", { count: duration })].filter(Boolean).join(" · ");
   const footer = showCard && <section className="activity-approval-card" id={cardId} tabIndex={-1} aria-label={t("activity.needsAttention")}>
-    <strong>{t(pendingSession.interaction?.kind === "question" ? "timeline.questionRequest" : pendingSession.interaction?.path ? "timeline.fileRequest" : "timeline.commandRequest", { agent: agentName })}</strong>
+    <strong>{t(requestLabel, { agent: agentName })}</strong>
     <p className="mono">{pendingSession.interaction?.path
       ? <FilePath path={pendingSession.interaction.path} project={pendingSession.project} />
       : pendingSession.interaction?.command || pendingSession.interaction?.summary}</p>
-    {pendingSession.interaction?.kind === "permission" && <span className="timeline-meta">{t("timeline.allowOnce")}</span>}
     <ActivityInteraction key={interactionKey(agent, pendingSession)} agent={agent} session={pendingSession} questions />
   </section>;
-  return <Dialog title={<span className="activity-panel-title"><strong>{session.title || t("timeline.title")}</strong>
-    <span>{agentName}{session.project ? ` · ${session.project.replace(/[\\/]+$/, "").split(/[\\/]/).pop()}` : ""}{duration === undefined ? "" : ` · ${t("activity.seconds", { count: duration })}`}</span></span>}
-    leading={agentIcons[agent] && <span className="activity-panel-agent" aria-hidden="true" dangerouslySetInnerHTML={{ __html: agentIcons[agent] }} />}
-    width={400} dockRight onClose={onClose} onMotion={onMotion} returnFocus={`[data-activity-session="${CSS.escape(JSON.stringify([agent, session.id]))}"]`} initialFocus={showCard ? cardId : undefined} footer={footer}
-    actions={<><span className="activity-status" data-state={showCard ? "attention" : running ? "running" : "completed"}>
+  return <Dialog title={<span className="activity-panel-title" title={session.title || t("timeline.title")}>{session.title || t("timeline.title")}</span>}
+    leading={<span className="activity-panel-agent" aria-hidden="true">{agentIcons[agent] ? <span dangerouslySetInnerHTML={{ __html: agentIcons[agent] }} /> : <Icon icon={Bot} />}</span>}
+    headerDetail={<div className="activity-panel-subline">
+      <span className="activity-status" data-state={showCard ? "attention" : running ? "running" : "completed"}>
         {t(showCard ? pendingSession.interaction?.kind === "question" ? "activity.question" : "activity.phase.interaction" : running ? "timeline.status.running" : "activity.completed")}
-      </span>{nativeSession.open && <Button variant="ghost" onClick={() => {
+      </span><span className="activity-panel-meta" title={subtitle}>{subtitle}</span>
+    </div>}
+    width={400} dockRight onClose={onClose} onMotion={onMotion} returnFocus={`[data-activity-session="${CSS.escape(JSON.stringify([agent, session.id]))}"]`} initialFocus={showCard ? cardId : undefined} footer={footer}
+    actions={nativeSession.open && <Tooltip text={t("activity.open")}><IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
       setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));
-    }}>{t("activity.open")}</Button>}</>}>
+    }} /></Tooltip>}>
     <div className="task-timeline">
       {timeline?.coverage.state === "partial" && <p className="timeline-partial" role="status">{t("timeline.partial")}</p>}
       {(error || openError) && <p className="timeline-error" role="alert">{error || openError}</p>}
@@ -149,7 +167,7 @@ export default function ActivityTimeline({ agent, session, onClose, onMotion }: 
         <div ref={content} className="timeline-entries">
           {!timeline && !error && <p role="status">{t("timeline.loading")}</p>}
           {timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
-          {timeline?.entries.map(entry => <motion.div key={entry.id} className="timeline-item" data-status={entry.status}
+          {visibleTimelineEntries(timeline?.entries ?? []).map(entry => <motion.div key={entry.id} className="timeline-item" data-status={entry.status}
             initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.24 }}>
             <TimelineEntry entry={entry} agent={agent} session={nativeSession} now={now} />
           </motion.div>)}

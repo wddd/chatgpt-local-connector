@@ -577,5 +577,7 @@
   "timeline.allowOnce": "Allow this time only",
   "timeline.allowed": "Allowed",
   "timeline.denied": "Denied",
-  "timeline.latest": "Back to latest"
+  "timeline.latest": "Back to latest",
+  "timeline.readRequest": "{agent} requests to read a file",
+  "timeline.writeRequest": "{agent} requests to write a file"
 }

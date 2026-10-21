@@ -41,7 +41,7 @@ function PhaseIcon({ phase, completed }: { phase: AgentPhase; completed: boolean
   if (phase === "text") return <span className="activity-cursor" aria-hidden="true" />;
   return <Icon className={`activity-icon-${phase}`} icon={{ command: LoaderCircle, file: Pencil, tool: Wrench, interaction: ShieldAlert, idle: CirclePause }[phase]} />;
 }
-function ActivityBubble({ agent, session, now, onOpen }: { agent: string; session: TrackedActivity; now: number; onOpen?: () => void }) {
+function ActivityBubble({ agent, session, now, onOpen, listRow = false }: { agent: string; session: TrackedActivity; now: number; onOpen?: () => void; listRow?: boolean }) {
   const [opening, setOpening] = useState(false), [error, setError] = useState("");
   const completed = session.endedAt !== undefined, external = session.source === "transcript";
   const phase = session.interaction ? "interaction" : session.phase;
@@ -49,7 +49,7 @@ function ActivityBubble({ agent, session, now, onOpen }: { agent: string; sessio
   const canOpen = external ? !!session.open : session.timeline || !!session.open;
   const hint = t(!external && session.timeline ? "timeline.open" : session.open ? "activity.open" : "activity.noEntry");
   return <Tooltip text={error || `${hint}${activityHeadline(session).fullText ? ` · ${activityHeadline(session).fullText}` : ""}`}>
-    <button type="button" className={`activity-bubble ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
+    <button type="button" className={`${listRow ? "activity-task-row" : "activity-bubble"} ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
       data-timeline-anchor={!external && session.timeline || undefined} aria-disabled={!canOpen || opening}
       data-activity-session={JSON.stringify([agent, session.id])}
       aria-label={`${session.title || t(phaseLabel)} · ${hint}`} onClick={() => {
@@ -188,7 +188,7 @@ export default function ActivityBubbles({ nodes, graph, boundary, tracked, enabl
     {error && <span className="sr-only" role="status">{t("activity.disconnected")}</span>}
   </div>
     {listAgent && <Dialog width={400} title={t("activity.agentTasks", { agent: name(orderedAgents().find(a => a.agent === listAgent) ?? { agent: listAgent }) })} onClose={() => setListAgent(undefined)}>
-      <div className="activity-task-list">{(tracked[listAgent] ?? []).map(session => <ActivityBubble key={session.id} agent={listAgent} session={session} now={now} onOpen={() => setListAgent(undefined)} />)}</div>
+      <div className="activity-task-list">{(tracked[listAgent] ?? []).map(session => <ActivityBubble listRow key={session.id} agent={listAgent} session={session} now={now} onOpen={() => setListAgent(undefined)} />)}</div>
     </Dialog>}
     {selected && <ActivityTimeline key={`${selected.agent}:${selected.session.id}`} agent={selected.agent} session={selected.session} onMotion={follow} onClose={() => activityTimeline.set(undefined)} />}
   </>;

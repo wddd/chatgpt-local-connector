@@ -36,6 +36,7 @@ export default function ElasticPanel({
   footer,
   actions,
   leading,
+  headerDetail,
   wide = false,
   busy = false,
   unframed = false,
@@ -55,6 +56,7 @@ export default function ElasticPanel({
   footer?: ReactNode;
   actions?: ReactNode;
   leading?: ReactNode;
+  headerDetail?: ReactNode;
   wide?: boolean;
   busy?: boolean;
   unframed?: boolean;
@@ -332,6 +334,7 @@ export default function ElasticPanel({
                     <X size={20} strokeWidth={1.75} />
                   </button>
                 </div>
+                {headerDetail}
               </header>
             )}
             <div className="dialog-body">{children}</div>

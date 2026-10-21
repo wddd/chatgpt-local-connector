@@ -577,5 +577,7 @@
   "timeline.allowOnce": "仅允许这一次",
   "timeline.allowed": "已允许",
   "timeline.denied": "已拒绝",
-  "timeline.latest": "回到最新"
+  "timeline.latest": "回到最新",
+  "timeline.readRequest": "{agent} 请求读取文件",
+  "timeline.writeRequest": "{agent} 请求写入文件"
 }
