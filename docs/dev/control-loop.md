@@ -107,13 +107,13 @@ ARC 只适配控制源提供的可控外部途径，不使用 computer use、浏
 - 签名密钥须为 whsec_ 加 base64 编码的 24–64 字节。激活前发送短期、随机、单次签名 challenge，要求 2xx 与恒定时间匹配。按入口及 URL 缓存有限时间的成功验证；密钥轮换短期双签名。失败返回 -32015 和分类 reason。
 - 复用现有通知事件、每 channel+target 的持久化令牌桶和指数退避；每请求一个事件，eventId 跨重试不变，重试不重复扣令牌，最多六次发送。410 删除订阅，410/413 不重试。
 - Standard Webhooks 签名覆盖实际发送的正文；正文不超过 256 KiB，仅含状态、摘要、标识和建议 query，完整结果由模型读取。2xx 只记录 callback-accepted（回调已接收）。notify_status 提供订阅和投递，不暴露回调 URL 或签名密钥。
-- 普通 Chat 无可控主动唤醒途径，继续 L5 分段等待与收件箱。使用场景约束：用户主要使用普通 Chat，因为 GPT-6 Astra Pro 仅在 Chat 可用；Work 通道不能替代该场景。
+- 普通 Chat 无可控主动唤醒途径，继续 L5 分段等待与收件箱。Chat 与 Work 的模型可用性和交互能力不同，分别提供适用的控制回路。
 
-实测中，ARC 通知入队到回调接收约 1.2 秒，ChatGPT 平台约 5 分钟后才开始处理。官方接口与当前任务编辑页没有可调的批处理窗口参数；需要提前处理时只能在平台手动 Run now。该数据不代表固定延迟或服务保证。**该通道适合长任务，不适合紧密循环**；短任务继续分段等待。
+回调接收与 ChatGPT 平台开始处理是不同阶段，平台调度可能带来分钟级延迟。官方接口与当前任务编辑页没有可调的批处理窗口参数；需要提前处理时可在平台手动 Run now。**该通道适合长任务，不适合紧密循环**；短任务继续分段等待。
 
 候选事件 op：文件变化、进程退出、新提交、入口掉线、额度阈值。这里只记录可能的扩展方向，本次不实现，也不在事件目录宣称可用。
 
-事件触发后的 act 写操作仍服从 ChatGPT 的工具确认和 ARC 入口策略；主动唤醒不构成额外写入授权。是否需要用户逐次确认须在真实 Work 事件触发后观察，不能从 webhook 接收或工具 annotations 推断。
+事件触发后的 act 写操作仍服从 ChatGPT 的工具确认和 ARC 入口策略；主动唤醒不构成额外写入授权。是否需要用户逐次确认取决于连接权限与操作，不能从 webhook 接收或工具 annotations 推断。
 
 ## 6. 控制源使用规范
 
@@ -126,11 +126,11 @@ ARC 只适配控制源提供的可控外部途径，不使用 computer use、浏
 - 默认返回编排内容、常用 query / act 调用示例与当前入口启用的 op 一行索引；op 名沿用原工具名。其他操作均通过 `query({op,args})` 或 `act({op,args,requestId?})` 调用。
 - **按控制源返回不同内容**：根据请求所在入口判断控制源类型（Claude、ChatGPT、其他），返回该控制源能用的 Loop 路径。
 - 内容放在 catalog（或与 catalog 同级的本地化文案）里，随版本发布，每个 topic 的编排正文（含附加通用要点）不超过 40 行；参数签名、示例与 op 索引不计入，单个 op schema 按需返回。中英文按现有 locale 机制。
-- topic 只保留派发/绑定、结束回合、事件审查/续轮、respond 直接代答、异常先查 notify_status、权限边界和 arcVersion 刷新。Work 约五分钟延迟及长任务适用性属于决策信息，须保留。
+- topic 只保留派发/绑定、结束回合、事件审查/续轮、respond 直接代答、异常先查 notify_status、权限边界和 arcVersion 刷新。Work 的平台调度延迟及长任务适用性属于决策信息，须保留。
 - 诊断字段与过滤规则归 notify_status，治理行为归 notify_control，队列归 codex_queue/codex_queue_control，容量恢复归 codex_wait，交互契约归 codex_respond；通过 guide({op}) 按需读取。令牌桶配置、退避/合并调度、健康行、清理等没有直接操作入口的实现规则只留维护文档，不注入 topic。
 - 各控制源的 `loop` 要点：
   - **Claude**：派发时用 `notify` 绑定自己的云端会话 → 结束回合 → 收到 `[ARC]` 消息后用 `query codex_read` / `query codex_items` / `query codex_changes` 对照验收标准审查 → `act codex_send` 续轮并再次绑定。短任务可直接分段 `query codex_wait`。无法读取自己会话 ID 时请用户粘贴会话链接。
-  - **ChatGPT Work**：派发后在聊天中订阅 notification（op=task_status），在 args 中按 threadId 过滤；订阅生效后可结束回合；约五分钟平台延迟，适合长任务，短循环用分段等待。事件到达后按 query 读取、审查，再按用户授权续轮。
+  - **ChatGPT Work**：派发后在聊天中订阅 notification（op=task_status），在 args 中按 threadId 过滤；订阅生效后可结束回合；平台调度可能延迟，适合长任务，短循环用分段等待。事件到达后按 query 读取、审查，再按用户授权续轮。
   - **ChatGPT Chat**：不支持主动唤醒；分段 query codex_wait，保留标识，用户回来后续查 arcInbox。
   - **其他**：分段 `query codex_wait` + 关注 `arcInbox`。
 - Codex 派发前读取 `query dispatch_policy`，按用户准则显式传 model、effort 和 reason；失败后同线程提档续轮；审查终态后用 codex_review 提交 pass/rework。配置、约束与逐轮记录见[派发策略](dispatch-policy.md)。
@@ -213,12 +213,12 @@ Codex completed 通知附检测到完成时保存的改动摘要（采集最多�
 
 ## 已确认边界与待验证
 
-- ChatGPT 对话的本机主动投递已有调研结论：普通 Chat 没有可控外部途径；backend-api 发送被风控拒绝，且违反条款，已排除。桌面内部聊天工具可供本次专用测试使用，不是 ARC 的公共接入接口。
+- 普通 Chat 没有可控的外部主动唤醒途径；ARC 不使用非官方对话接口或桌面内部聊天工具作为公共接入接口。
 - MCP Events 依赖插件事件扫描及工作区事件触发权限，服务端可用不代表当前聊天已订阅。
 - ChatGPT 是否透传 MCP instructions 仍需验证。
 - 插件需扫描事件目录；既有插件仅刷新普通 tools 可能没有加载事件。全新连接能发现 notification，既有聊天仍无订阅能力时需新建 Work Cloud 聊天；平台通过事件 triggers 管理原生订阅，不依赖定时轮询。
 - Desktop 创建任务必须带文本；短任务需先建立入口订阅，再派发并缩小监控范围，避免等待空线程或漏掉快速完成事件。
 - 回调 DNS 必须给出真实公网地址。Fake-IP DNS 返回的 198.18.0.0/15 等非公网地址会触发 non_public_address，需在网络侧为实际回调域名提供真实解析，不能放宽公网校验。协议日志记录方法、结果及被拒绝的 DNS 域名和地址，不记录回调路径或签名密钥。
-- 真实闭环已验证：使用真实公网 DNS 后，签名 challenge、原生订阅和只回复 OK 的 Codex 自测均成功；事件一次投递为 callback-accepted，约五分钟后平台通过 mcp_server/event 自动开启模型回合，模型读取 OK 并调用 notification_ack。此延迟是一次观测，不是时效保证；2xx 与模型处理仍需分别核对，直接消息、轮询和手动运行不能作为事件唤醒证明。
-- 写操作确认结论：此次事件唤醒后，已明确授权的 act notification_ack 未出现用户确认提示，调用返回 alreadyRead（此前读取已标记已读）。该结论仅适用于本次连接权限与操作，不能推广为所有 act 写操作均无需确认；仍遵守平台权限和入口策略。
-- 测试订阅需由普通交互回合显式停用。平台 webhook 自动运行上下文会要求保留持久触发器，不能仅依赖事件处理 prompt 中“完成后取消”来完成一次性测试清理；停用后核对 events/unsubscribe 和 ARC 订阅状态。
+- 签名 challenge、原生订阅、callback-accepted 与模型处理分别表示不同阶段。2xx 只证明回调接收；自动唤醒需确认平台通过事件开启模型回合并处理任务结果，直接消息、轮询和手动运行不能作为证明。
+- 写操作是否需要确认取决于平台连接权限与具体操作；事件唤醒不改变平台权限和入口策略。
+- 一次性订阅需由普通交互回合显式停用。平台 webhook 自动运行上下文会要求保留持久触发器，不能仅依赖事件处理 prompt 中“完成后取消”来清理；停用后核对 events/unsubscribe 和 ARC 订阅状态。

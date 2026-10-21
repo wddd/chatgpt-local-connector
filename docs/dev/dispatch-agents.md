@@ -8,15 +8,15 @@
 
 模型属于 Agent 当前启动配置和提供商，不能仅凭 Agent 名称推断。模型目录、原生配置确认、单轮实际执行是三个不同层次。目录列出的选项不等于账号有权执行；配置 RPC 成功也不能证明服务端实际使用该模型。
 
-能力矩阵中的“握手”指实际启动相应版本、读取 initialize/session/new；未发送推理请求，不代表模型切换或推理验收通过。“源码”指原生安装包或 magpie 实现。具体机器的安装、认证、额度和会话信息由查询返回，不固定进文档。
+能力矩阵中的会话目录来自 initialize/session/new，不代表模型切换或推理能力。“源码”指原生安装包或 magpie 实现。具体机器的安装、认证、额度和会话信息由查询返回，不固定进文档。
 
 | Agent | 模型来源 | 可选维度 | 设置粒度与可用证据 | 额度来源 | 依据与未验证部分 |
 | --- | --- | --- | --- | --- | --- |
 | Codex | app-server `model/list` | 模型原生 efforts、serviceTiers | 线程默认及单轮覆盖；持久化 turn_context；tier 证据限制见现有文档 | ARC `codex-account` / `account/rateLimits/read` | ARC 当前实现；跨 Agent 扩展需跑现有回归 |
-| Claude Code | ACP `configOptions` 的 model | effort、fast、mode；effort 随模型改变 | 会话设置，在新轮之前应用；set_config_option 返回全量配置，实际模型仍需轮次证据 | 现有 `claude-code` provider，原生 OAuth usage | adapter 0.79.0 / CLI 2.1.304 握手；模型/effort 切换与短推理已验证；fast 的会话确认不等于轮次速度证据 |
-| Cursor | 原生登录后 ACP model options | mode；effort/context/fast 等编码在 modelId 中，不自行拆分枚举 | 会话配置；先 authenticate(cursor_login) 复用原生登录；返回配置可确认会话选择 | 现有 Cursor DashboardService / usage-summary | 2026.09.18 握手及 authenticate 成功；ARC driver 已接 authenticate；默认推理已验证；模型 setter 持久化用户默认，暂不开放覆盖 |
-| Grok | ACP models/configOptions；原生 settings 模型目录 | reasoning_effort；Fast 是独立模型；contextWindows 元数据暂不作为可写字段 | 会话配置；set_config_option / 原生更新可确认选择 | 现有 grok provider：credits 与 CLI settings | 1.0.62 会话配置与短推理已验证；magpie `agent/grok.go` 读取原生目录 |
-| DeepSeek Harness | ACP profile 的分组 model options | reasoning_effort；官方模型示例 off/low/high/max，以切换后返回值为准 | 会话设置；model 是原样保留的 JSON 数组编码字符串；Desktop 默认不代表 ACP 默认 | 尚无 ARC provider；DeepSeek API balance 只证明 API 余额，不能冒充账号订阅额度 | 0.2.1-rc.2 会话配置与短推理已验证；magpie `agent/dsh.go` 的 profile/default-model；切模后须重读目录 |
+| Claude Code | ACP `configOptions` 的 model | effort、fast、mode；effort 随模型改变 | 会话设置，在新轮之前应用；set_config_option 返回全量配置，实际模型仍需轮次证据 | 现有 `claude-code` provider，原生 OAuth usage | 支持原生模型与 effort 选择；fast 的会话确认不等于轮次速度证据 |
+| Cursor | 原生登录后 ACP model options | mode；effort/context/fast 等编码在 modelId 中，不自行拆分枚举 | 会话配置；先 authenticate(cursor_login) 复用原生登录；返回配置可确认会话选择 | 现有 Cursor DashboardService / usage-summary | ARC driver 支持 authenticate 与默认推理；模型 setter 持久化用户默认，暂不开放覆盖 |
+| Grok | ACP models/configOptions；原生 settings 模型目录 | reasoning_effort；Fast 是独立模型；contextWindows 元数据暂不作为可写字段 | 会话配置；set_config_option / 原生更新可确认选择 | 现有 grok provider：credits 与 CLI settings | 支持会话配置；magpie `agent/grok.go` 读取原生目录 |
+| DeepSeek Harness | ACP profile 的分组 model options | reasoning_effort；官方模型示例 off/low/high/max，以切换后返回值为准 | 会话设置；model 是原样保留的 JSON 数组编码字符串；Desktop 默认不代表 ACP 默认 | 尚无 ARC provider；DeepSeek API balance 只证明 API 余额，不能冒充账号订阅额度 | 支持会话配置；magpie `agent/dsh.go` 的 profile/default-model；切模后须重读目录 |
 | Pi | 原生 RPC get_available_models，安装包 registry 与用户 providers | get_available_thinking_levels；原生模型支持的 thinkingLevel | 会话内 set_model、set_thinking_level；get_state 确认，assistant message 的 model/provider 可补轮次证据 | 按 provider；不把 Codex/Claude 的其他登录额度直接挂到 Pi | Pi 1.3.0 RPC 类型及 magpie `agent/pi.go`、`nativemodels.go`；未实测推理 |
 | OpenCode | 原生 providers/model 配置及 ACP 会话目录 | 仅接握手公开的模式/配置，不把配置文件字段当作 ACP 参数 | 会话配置；必须取得对应版本握手和设置响应 | 现有 opencode-go provider 只覆盖 Go，不代表其他 provider 或 Zen 的余额 | magpie `provider/opencode_client.go`、`opencode_endpoints.go`；未实测 ACP 选择 |
 | Gemini | 原生 model.name / ACP 会话目录 | 仅接原生会话公开维度 | magpie 配置只证明启动选择；ACP 待验 | magpie Google 登录额度；不能用 Antigravity 额度替代 | magpie `agent/gemini.go`、`provider/google.go`；未实测 |
