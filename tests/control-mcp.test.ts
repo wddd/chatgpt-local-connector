@@ -725,7 +725,31 @@ test('creation starts its first turn without legacy history reads, cleans defini
   const create = async (model: string) => completed('codex_create', {
     project: directory, prompt: 'ping', thread: { model }, requestId: randomUUID(), waitMs: 1000,
   });
-  const accepted = await create('fixture-dispatch');
+  const providerConfig = path.join(directory, 'context-provider.json');
+  const providerCalled = path.join(directory, 'provider-called');
+  await writeFile(providerConfig, JSON.stringify({command: process.execPath, args: ['-e',
+    `require('node:fs').writeFileSync(${JSON.stringify(providerCalled)}, 'called')`]}));
+  let accepted;
+  try {
+    accepted = await create('fixture-dispatch');
+    assert.equal(accepted.state, 'completed');
+    await mkdir(path.join(directory, 'execution'), {recursive:true});
+    await writeFile(path.join(directory, 'execution', accepted.threadId+'.json'), JSON.stringify({owner:'connector'}));
+    const sent = await completed('codex_send', {threadId: accepted.threadId,
+      input: [{type:'text', text:'original input', text_elements:[]}], context:true, intent:'ignored',
+      requestId:randomUUID()});
+    assert.equal(sent.state, 'completed', JSON.stringify(sent));
+    const rows = JSON.parse(await readFile(path.join(directory, 'dispatch-fixture.json'), 'utf8'));
+    assert.deepEqual(rows[accepted.threadId].turns[0].input, [{type:'text', text:'ping', text_elements:[]}]);
+    assert.deepEqual(rows[accepted.threadId].turns[1].input, [{type:'text', text:'original input', text_elements:[]}]);
+    for (const receipt of [accepted, sent]) {
+      assert.equal(receipt.contextEntryIds, undefined);
+      assert.equal(receipt.warnings, undefined);
+    }
+    await assert.rejects(readFile(providerCalled), {code:'ENOENT'});
+  } finally {
+    await rm(providerConfig, {force:true});
+  }
   assert.equal(accepted.state, 'completed');
   assert.ok(accepted.threadId && accepted.turnId);
   // Exercise the real background waiter against paginated history, including
@@ -749,7 +773,7 @@ test('creation starts its first turn without legacy history reads, cleans defini
   assert.equal(uncertain.state, 'unconfirmed');
   assert.equal(uncertain.cleanup, undefined);
   const saved = JSON.parse(await readFile(path.join(directory, 'dispatch-fixture.json'), 'utf8'));
-  assert.equal(saved[accepted.threadId].turns.length, 2);
+  assert.equal(saved[accepted.threadId].turns.length, 3);
   if (process.platform !== 'linux') assert.ok(saved[accepted.threadId].metadataReads > 0);
   assert.equal(saved[rejected.threadId].archived, true);
   assert.equal(saved[uncertain.threadId].turns.length, 1);

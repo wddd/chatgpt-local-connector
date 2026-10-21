@@ -688,9 +688,7 @@ impl AgentHost {
             let arguments = r["arguments"].clone();
             let task = string(&r, "taskId").to_owned();
             let name = string(&r, "operation").to_owned();
-            let result = host
-                .perform(&driver, &name, &arguments, &task, &mut r)
-                .await;
+            let result = host.perform(&driver, &name, &arguments, &task).await;
             match result {
                 Ok(v) => {
                     r["state"] = json!(if v["configurationError"].is_string() {
@@ -734,7 +732,6 @@ impl AgentHost {
         name: &str,
         args: &Value,
         task: &str,
-        receipt: &mut Value,
     ) -> Result<Value> {
         let agent = string(args, "agent");
         self.ensure_enabled(agent).await?;
@@ -804,26 +801,7 @@ impl AgentHost {
                         );
                     }
                 }
-                let (prefix, metadata) = crate::context_provider::prepare(
-                    args,
-                    string(&snapshot, "cwd"),
-                    string(args, "prompt"),
-                )
-                .await;
-                crate::context_provider::annotate(receipt, &metadata);
-                RECEIPTS.checkpoint(receipt)?;
-                {
-                    let mut state = p.state.lock().await;
-                    crate::context_provider::annotate(&mut state["dispatch"], &metadata);
-                }
-                driver
-                    .prompt(
-                        &p,
-                        &format!("{prefix}{}", string(args, "prompt")),
-                        args,
-                        name,
-                    )
-                    .await
+                driver.prompt(&p, string(args, "prompt"), args, name).await
             }
             "agent_interrupt" => driver.interrupt(&p).await,
             "agent_respond" => driver.respond(&p, args).await,
