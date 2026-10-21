@@ -1096,7 +1096,7 @@ test('ACP task tracking keeps approvals active and projects context, SSE and inc
   assert.ok(activity.activeAgents.includes('tracking-example'));
   const transcripts=activity.agents.claude.sessions.filter((r: any)=>transcriptIds.includes(r.id));
   assert.equal(transcripts.length,2);
-  assert.ok(transcripts.every((r: any)=>r.source==='transcript'&&r.phase==='thinking'&&r.headline==='Review example'&&r.timeline===false));
+  assert.ok(transcripts.every((r: any)=>r.source==='transcript'&&r.phase==='thinking'&&r.headline==='Review example'&&r.timeline===true));
   const session=activity.agents['tracking-example'].sessions[0];
   assert.equal(session.id,taskId);
   assert.equal(session.phase,'interaction');
