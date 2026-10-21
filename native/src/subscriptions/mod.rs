@@ -50,6 +50,7 @@ impl SubscriptionService {
                         view: ProviderSnapshot {
                             provider_id: r.id.into(),
                             agent_id: r.agent.into(),
+                            agent_ids: associated_agents(&settings, r.id),
                             name: r.name.into(),
                             eligible: false,
                             state: "idle".into(),
@@ -177,13 +178,20 @@ impl SubscriptionService {
     pub async fn inventory(&self, inventory: &Value) {
         let mut state = self.state.lock().await;
         for slot in state.slots.values_mut() {
-            let agent = inventory["agents"]
+            let agents = inventory["agents"]
                 .as_array()
-                .and_then(|rows| rows.iter().find(|r| r["agent"] == slot.view.agent_id));
+                .into_iter()
+                .flatten()
+                .filter(|r| slot.view.agent_ids.iter().any(|id| r["agent"] == *id))
+                .collect::<Vec<_>>();
             let standalone = providers::standalone_available(&slot.view.provider_id);
-            let eligible = agent.map_or(standalone, |r| {
-                r["enabled"] == true && (r["installed"] == true || standalone)
-            });
+            let eligible = if agents.is_empty() {
+                standalone
+            } else {
+                agents
+                    .into_iter()
+                    .any(|r| r["enabled"] == true && (r["installed"] == true || standalone))
+            };
             if slot.view.eligible != eligible {
                 slot.view.eligible = eligible;
                 invalidate(slot);
@@ -292,6 +300,7 @@ impl SubscriptionService {
                 let enabled_changed = state.settings.enabled != settings.enabled;
                 let interval_changed = state.settings.refresh_minutes != settings.refresh_minutes;
                 for (id, slot) in &mut state.slots {
+                    slot.view.agent_ids = associated_agents(&settings, id);
                     if interval_changed && slot.view.error.is_none() {
                         slot.due =
                             Instant::now() + Duration::from_secs(settings.refresh_minutes * 60);
@@ -490,7 +499,31 @@ fn expire(s: &mut Slot) {
     }
 }
 
+fn associated_agents(settings: &Settings, provider: &str) -> Vec<String> {
+    let registration = REGISTRY.iter().find(|r| r.id == provider).unwrap();
+    let mut agents: Vec<String> = settings
+        .agent_providers
+        .iter()
+        .filter(|(_, providers)| providers.iter().any(|id| id == provider))
+        .map(|(agent, _)| agent.clone())
+        .collect();
+    if !settings.agent_providers.contains_key(registration.agent) {
+        agents.push(registration.agent.into());
+    }
+    agents
+}
+
 fn validate(s: &Settings) -> Result<()> {
+    for (agent, providers) in &s.agent_providers {
+        if agent.trim().is_empty()
+            || providers
+                .iter()
+                .any(|id| !REGISTRY.iter().any(|r| r.id == id))
+        {
+            return Err("invalid agent provider association".into());
+        }
+    }
+
     if ![1, 3, 5, 10].contains(&s.refresh_minutes) {
         return Err("invalid subscription refresh interval".into());
     }

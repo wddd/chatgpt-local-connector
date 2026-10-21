@@ -140,7 +140,7 @@ pub(crate) async fn prepare(args: &Value, cwd: &str, prompt: &str) -> (String, V
         }
         let origin = crate::kernel::origin::current_origin();
         let caller = origin["controlSource"].as_str().unwrap_or("local");
-        let result = call("resolve", json!({"project":cwd,"intent":prompt.chars().take(2000).collect::<String>(),"caller":caller}), Duration::from_secs(3)).await?;
+        let result = call("resolve", json!({"project":cwd,"intent":args["intent"].as_str().map(str::to_owned).unwrap_or_else(|| prompt.chars().take(500).collect::<String>()),"caller":caller}), Duration::from_secs(3)).await?;
         let entries = result["entries"].as_array().ok_or("CONTEXT_PROVIDER_INVALID_ENTRIES")?;
         let mut ids = Vec::new();
         let mut prefix = String::new();
@@ -181,4 +181,35 @@ pub(crate) async fn inject(args: &Value, cwd: &str, input: &mut Value, receipt: 
     }
     annotate(receipt, &metadata);
     annotate(&mut receipt["task"]["dispatch"], &metadata);
+}
+
+/// ACP launches the same provider with its configured cwd and environment.
+pub(crate) fn acp_server() -> Result<Option<Value>> {
+    if config()?.is_none() {
+        return Ok(None);
+    }
+    Ok(Some(json!({"name":"context-provider",
+        "command":crate::runtime::binary()?,
+        "args":["context-provider-stdio"],
+        "env":[{"name":"ARC_STATE_DIR","value":root()}]})))
+}
+
+pub async fn stdio() -> Result<()> {
+    let config = config()?.ok_or("CONTEXT_PROVIDER_NOT_CONFIGURED")?;
+    let mut command = crate::command(&config.command);
+    command
+        .args(config.args)
+        .envs(config.env)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+    if let Some(cwd) = config.cwd {
+        command.current_dir(cwd);
+    }
+    let status = command.status().await.map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("CONTEXT_PROVIDER_EXIT: {status}"))
+    }
 }

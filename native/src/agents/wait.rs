@@ -119,7 +119,7 @@ impl WaitSource for AgentSource {
             "recordedStatus":t["status"],"runtimeStatus":if state=="unconfirmed"{"unknown"}else{status},
             "runtimeSource":self.host.drivers[&self.agent].protocol(),"processSession":t["processSession"],
             "finalResponse":if state=="completed" || state=="failed" || state=="cancelled" {t["output"].clone()}else{Value::Null},
-            "outputTruncated":t["outputTruncated"],
+            "outputTruncated":t["outputTruncated"],"contextUsage":t["contextUsage"],
             "error":if t["error"].is_null(){&t["lastMessage"]["errorMessage"]}else{&t["error"]},
             "stopReason":if t["stopReason"].is_null(){&t["lastMessage"]["stopReason"]}else{&t["stopReason"]},
             "interaction":t["interaction"].as_array().cloned().unwrap_or_default(),

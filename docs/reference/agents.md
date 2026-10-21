@@ -97,3 +97,22 @@ compatibility can describe helpArgs/helpContains/identityContains, versionRequir
 ## Limits
 
 Agents need their own login, provider access, and runtime. Discovery is not an inference test. ACP supports initialize, new/load, prompt/update, cancel, and request_permission; ARC advertises no client filesystem, terminal, or interactive-login capability. Generic Agent ops expose only session-advertised model/config options (legacy models/modes use their native setters). They do not expose fork/list/import, image prompts, arbitrary extensions, or ACP v2. Pi extension interactions are not an additional OS sandbox. A Pi session that has never received a prompt may not yet have a persistent session file.
+
+## ACP MCP servers and context occupancy
+
+Configure `agents/mcp.json` under the ARC state directory. Each key is an agent ID; settings apply to new ACP processes and supported session loads:
+
+```json
+{
+  "opencode": {
+    "mcpServers": [
+      {"name": "project-tools", "command": "/absolute/bin/project-tools", "args": ["stdio"], "env": {"LOG_LEVEL": "warn"}}
+    ],
+    "includeContextProvider": true
+  }
+}
+```
+
+Commands must be absolute paths and server names unique. `args` and `env` default to empty. `includeContextProvider` defaults to true for every ACP agent: when `context-provider.json` is configured, ARC adds `context-provider`, preserving the provider's command, arguments, environment and working directory through its stdio launcher. Set false to opt out. `context:false` only disables prompt reference injection; it does not change this session-level setting. Without explicit servers or a context provider, `mcpServers` remains empty. Do not mount the same server again in the agent's native profile. The launcher command `arc context-provider-stdio` runs the configured provider directly with inherited stdio. Task readback exposes server names only, not arguments or environment secrets.
+
+Completed, failed and cancelled `agent_read` and `agent_wait` results expose `finalResponse`; running tasks return null and `agent_read.output` remains the streamed text. Completion notifications carry the final reply and failure/interruption errors. ACP `usage_update` is exposed as `contextUsage` with `kind: "context-occupancy"`, `used`, `size` and observation time. It is context-window occupancy, not subscription quota or account balance.

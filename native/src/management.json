@@ -661,6 +661,16 @@
               "refreshMinutes": {
                 "type": "integer",
                 "minimum": 1
+              },
+              "agentProviders": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "uniqueItems": true
+                }
               }
             },
             "additionalProperties": false,

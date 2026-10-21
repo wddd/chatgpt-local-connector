@@ -6,6 +6,7 @@ mod adapter;
 mod dispatch;
 pub(crate) mod driver;
 mod manifest;
+mod mcp;
 mod process;
 mod wait;
 
@@ -591,6 +592,14 @@ impl AgentHost {
         }
         if name == "agent_read" {
             let mut task = self.task(agent, string(&args, "taskId")).await?;
+            task["finalResponse"] = if matches!(
+                string(&task, "status"),
+                "completed" | "failed" | "cancelled"
+            ) {
+                task["output"].clone()
+            } else {
+                Value::Null
+            };
             task["dispatches"] = json!(crate::dispatch_policy::records(string(&args, "taskId"))?);
             return Ok(task);
         }

@@ -5,6 +5,8 @@ pub struct Settings {
     pub enabled: bool,
     #[serde(default = "default_refresh_minutes")]
     pub refresh_minutes: u64,
+    #[serde(default)]
+    pub agent_providers: std::collections::BTreeMap<String, Vec<String>>,
 }
 fn default_refresh_minutes() -> u64 {
     3
@@ -14,6 +16,7 @@ impl Default for Settings {
         Self {
             enabled: true,
             refresh_minutes: default_refresh_minutes(),
+            agent_providers: Default::default(),
         }
     }
 }
@@ -54,6 +57,7 @@ impl From<&'static str> for Failure {
 pub struct ProviderSnapshot {
     pub provider_id: String,
     pub agent_id: String,
+    pub agent_ids: Vec<String>,
     pub name: String,
     pub eligible: bool,
     pub state: String,

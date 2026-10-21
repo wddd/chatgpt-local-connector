@@ -125,7 +125,9 @@ impl Process {
                 crate::event(&p.events, &task, method, msg.clone()).await;
                 if method == "session/update" {
                     let update = &msg["params"]["update"];
-                    if update["sessionUpdate"] == "config_option_update" {
+                    if update["sessionUpdate"] == "usage_update" {
+                        state["contextUsage"] = json!({"kind":"context-occupancy","source":"acp-usage-update","used":update["used"],"size":update["size"],"observedAt":now()});
+                    } else if update["sessionUpdate"] == "config_option_update" {
                         state["metadata"]["configOptions"] = update["configOptions"].clone();
                         state["configurationObservedAt"] = json!(now());
                     } else if update["sessionUpdate"] == "current_mode_update" {
@@ -206,7 +208,7 @@ impl Process {
                     if let Err(error) = crate::claude_notify::observe(
                         string(&state, "taskId"),
                         string(&state, "turnId"),
-                        &json!({"state":state["status"],"title":state["title"]}),
+                        &json!({"state":state["status"],"title":state["title"],"finalResponse":state["output"],"error":state["lastMessage"]["errorMessage"]}),
                     )
                     .await
                     {

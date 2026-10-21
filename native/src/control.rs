@@ -393,6 +393,45 @@ impl Control {
         self.request_inner(method, args, timeout).await
     }
     async fn request_inner(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
+        if matches!(method, "turn/start" | "turn/steer") {
+            let thread = string(&args, "threadId");
+            let mut turns = Vec::new();
+            let mut cursor = Value::Null;
+            loop {
+                let page = self.request_native("thread/turns/list", json!({"threadId":thread,"limit":100,"cursor":cursor,"sortDirection":"desc","itemsView":"full"}), timeout).await?;
+                turns.extend(
+                    page["data"]
+                        .as_array()
+                        .ok_or("native-turns-missing")?
+                        .iter()
+                        .cloned(),
+                );
+                let next = page["nextCursor"].clone();
+                if next.is_null() {
+                    break;
+                }
+                if next == cursor {
+                    return Err("native-turn-cursor-repeated".into());
+                }
+                cursor = next;
+            }
+            turns.reverse();
+            crate::external_inputs::observe(thread, &turns, None)?;
+            let token = crate::external_inputs::begin(
+                thread,
+                &turns,
+                &args["input"],
+                &args["expectedTurnId"],
+            )?;
+            let result = self.request_native(method, args.clone(), timeout).await;
+            crate::external_inputs::submitted(thread, &token, &result).map_err(|e| {
+                format!("SUBMISSION_UNCONFIRMED: input provenance persistence failed: {e}")
+            })?;
+            return result;
+        }
+        self.request_native(method, args, timeout).await
+    }
+    async fn request_native(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
         #[cfg(feature = "test-fixture")]
         {
             return self.utility().await?.call(method, args, timeout).await;
@@ -958,7 +997,19 @@ impl Control {
                 };
                 r["state"] = json!("responding");
                 self.checkpoint(r)?;
-                let result = self.ipc().await?.respond(key, &args["result"]).await?;
+                crate::external_inputs::responding(
+                    string(&pending["params"], "threadId"),
+                    &pending,
+                )?;
+                let result = self.ipc().await?.respond(key, &args["result"]).await;
+                if let Err(error) = &result {
+                    crate::external_inputs::response_failed(
+                        string(&pending["params"], "threadId"),
+                        &pending,
+                        error,
+                    )?;
+                }
+                let result = result?;
                 if let Some(turn) = result["nextTurnId"].as_str() {
                     let thread = string(&result, "threadId");
                     if let Err(e) = crate::changes::record(thread, turn, &baseline) {
@@ -983,6 +1034,7 @@ impl Control {
                 "error"
             };
             response[field] = args[field].clone();
+            crate::external_inputs::responding(string(&pending["params"], "threadId"), &pending)?;
             rpc.write(response)
                 .await
                 .map_err(|e| format!("SUBMISSION_UNCONFIRMED: {e}"))?;
@@ -1427,6 +1479,19 @@ impl Control {
                 if args["statusOnly"] != true {
                     let page=self.request("thread/turns/list",json!({"threadId":id,"cursor":args["cursor"],"limit":num(&args,"limit",2),"sortDirection":"desc","itemsView":"full"}),60000).await?;
                     result["nextCursor"] = page["nextCursor"].clone();
+                    let mut turns = page["data"].as_array().cloned().unwrap_or_default();
+                    turns.reverse();
+                    crate::external_inputs::observe(id, &turns, None)?;
+                    let external = crate::external_inputs::inputs(id, None)?;
+                    result["externalUserInputs"] = json!(external
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter(
+                            |input| turns.iter().any(|turn| input["turnId"] == turn["id"]
+                                || input["answeredTurnId"] == turn["id"])
+                        )
+                        .collect::<Vec<_>>());
                     if args["includeImages"] == true {
                         let raw: Vec<Value> = page["data"]
                             .as_array()
@@ -1456,7 +1521,8 @@ impl Control {
                         let items: Vec<_> = turn["items"].as_array().into_iter().flatten()
                             .filter_map(|i| if full {Some(item(i,0,600))} else {compact_item(i,600)}).collect();
                         let mut row = json!({"turnId":turn["id"],"recordedStatus":turn["status"],
-                            "items":items.iter().skip(items.len().saturating_sub(15)).collect::<Vec<_>>()});
+                            "items":items.iter().skip(items.len().saturating_sub(15)).collect::<Vec<_>>(),
+                            "externalUserInputs":crate::external_inputs::inputs(id, turn["id"].as_str()).unwrap_or(json!([]))});
                         if items.len()>15 {row["itemsTruncated"]=json!(true);}
                         if !turn["error"].is_null() {row["error"]=turn["error"].clone();}
                         if full {

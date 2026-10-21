@@ -51,8 +51,7 @@ export async function saveSubscriptions(patch: Partial<Settings>) {
   if (!snapshot) throw new Error("Subscription settings unavailable");
   acceptSubscriptions(
     await api<Snapshot>("subscriptions/settings", "PUT", {
-      enabled: snapshot.settings.enabled,
-      refreshMinutes: snapshot.settings.refreshMinutes,
+      ...snapshot.settings,
       ...patch,
     }),
   );

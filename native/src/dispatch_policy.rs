@@ -274,7 +274,11 @@ pub(crate) async fn query(
             .as_array()
             .into_iter()
             .flatten()
-            .filter(|p| p["agentId"] == agent)
+            .filter(|p| {
+                p["agentIds"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|id| id == &agent))
+            })
             .map(|p| {
                 json!({
                     "providerId":p["providerId"],"state":p["state"],"observedAt":p["observedAt"],

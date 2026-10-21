@@ -43,3 +43,17 @@ Claude reset counts show currently usable grants and expiry; ARC does not redeem
 ## Limits
 
 Quota availability comes from the provider. Cached values do not trigger live alerts or pace forecasts. ARC does not collect local usage logs, count Tokens, or estimate charges. Provider-reported credits and product shares are displayed as quota information.
+
+## Agent associations
+
+`subscriptions/settings.json` in the ARC state directory accepts `agentProviders`, an object from agent IDs to provider ID arrays. It is also returned and updated by `cli subscriptions get` / `cli subscriptions set --stdin`. For example:
+
+```json
+{
+  "enabled": true,
+  "refreshMinutes": 3,
+  "agentProviders": {"opencode": ["opencode-go"], "dsh": ["opencode-go"]}
+}
+```
+
+An explicit array replaces that agent's default association; an empty array removes it. Omitted agents retain their built-in association. Each provider is read once and its snapshot advertises `agentIds`; `agentId` still identifies its native credential source and branding. Agent quota displays and `dispatch_policy` use `agentIds`. Associations describe shared billing only and do not select the agent's model or route; configure the native route separately. `modelAssociation: "unknown"` remains explicit until the upstream provides that evidence.

@@ -128,6 +128,13 @@ pub(crate) fn pending(state: &Value, session: &str) -> Vec<Value> {
 
 pub(super) async fn sync(events: &SharedEvents, state: &Value, session: &str) {
     let requests = pending(state, session);
+    if let Ok(turns) = turns(state) {
+        if let Err(error) =
+            crate::external_inputs::observe(string(state, "id"), &turns, Some(&requests))
+        {
+            crate::logs::record("WARN", &error, None);
+        }
+    }
     let mut events = events.lock().await;
     events
         .pending
@@ -166,12 +173,25 @@ impl Ipc {
                 .into_iter()
                 .rev()
                 .find(|t| t["status"] == "inProgress");
-            if let Some(turn) = active {
+            let token = crate::external_inputs::begin(
+                thread,
+                &turns(&state)?,
+                &args["input"],
+                &active
+                    .as_ref()
+                    .map(|t| t["id"].clone())
+                    .unwrap_or(Value::Null),
+            )?;
+            let result = if let Some(turn) = active {
                 args["expectedTurnId"] = turn["id"].clone();
-                self.mutate("turn/steer", &args).await?;
+                self.mutate("turn/steer", &args).await
             } else {
-                next_turn = self.mutate("turn/start", &args).await?["turn"]["id"].clone();
-            }
+                self.mutate("turn/start", &args).await
+            };
+            crate::external_inputs::submitted(thread, &token, &result).map_err(|e| {
+                format!("SUBMISSION_UNCONFIRMED: input provenance persistence failed: {e}")
+            })?;
+            next_turn = result?["turn"]["id"].clone();
         } else {
             let (method, field) =
                 route(string(&request, "method")).ok_or("DESKTOP_RESPONSE_UNSUPPORTED")?;

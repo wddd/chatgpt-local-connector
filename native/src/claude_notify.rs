@@ -85,6 +85,8 @@ struct Delivery {
     #[serde(default, skip_serializing_if = "Value::is_null")]
     final_response: Value,
     #[serde(default, skip_serializing_if = "Value::is_null")]
+    external_user_inputs: Value,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
     changes: Value,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     dispatches: Value,
@@ -379,7 +381,7 @@ fn event(b: &Binding, d: &Delivery) -> Value {
     } else {
         json!({"hint":"Read the result and review its changes.","via":"query","op":"codex_read","args":{"threadId":b.thread_id}})
     };
-    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":b.title,"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":format!("ARC task {kind}."),"interaction":d.interaction,"dispatches":d.dispatches,"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
+    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":b.title,"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":format!("ARC task {kind}."),"interaction":d.interaction,"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":d.task_error,"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
 }
 fn literal(value: &Value) -> String {
     value
@@ -575,6 +577,9 @@ fn message(b: &Binding) -> String {
             format!("{}={} turn={} event={}", if agent {"task"} else {"thread"}, b.thread_id, b.turn_id, d.event_id)];
         if agent { lines.push(format!("agent={}",b.agent)); }
         if !d.dispatches.is_null() { lines.push(format!("dispatches: {}",d.dispatches)); }
+        for input in d.external_user_inputs.as_array().into_iter().flatten().take(5) {
+            lines.push(format!("external user input [{}]: {}", input["timestamp"], string(input,"text").chars().take(240).collect::<String>()));
+        }
         match string(&event,"kind") {
             "completed" => {
                 let text = d.final_response.as_str().or_else(|| d.final_response["text"].as_str());
@@ -910,6 +915,7 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
             } else {
                 Value::Null
             },
+            external_user_inputs: observation["externalUserInputs"].clone(),
             changes: observation["changes"].clone(),
             dispatches: observation["dispatches"].clone(),
             task_error: if matches!(string(observation, "state"), "failed" | "cancelled") {
@@ -3150,6 +3156,7 @@ mod tests {
             interaction: Value::Null,
             status: "sending".into(),
             final_response: Value::Null,
+            external_user_inputs: Value::Null,
             changes: Value::Null,
             dispatches: Value::Null,
             task_error: Value::Null,

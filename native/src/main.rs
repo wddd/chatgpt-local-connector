@@ -16,6 +16,7 @@ async fn run() -> Result<()> {
         .collect::<Vec<_>>()
         .as_slice()
     {
+        ["context-provider-stdio"] => arc_core::context_provider::stdio().await,
         ["stdio"] => arc_core::transport::stdio().await,
         ["serve"] => runtime::serve().await,
         ["daemon"] => runtime::serve_mode(true).await,

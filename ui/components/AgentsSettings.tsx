@@ -87,7 +87,7 @@ export function AgentDetails({
   const { snapshot } = subscriptions.use();
   const provider = snapshot?.settings.enabled
     ? snapshot.providers.find(
-        (p) => p.agentId === agent.agent && p.eligible,
+        (p) => p.agentIds.includes(agent.agent) && p.eligible,
       )
     : undefined;
   return (

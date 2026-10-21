@@ -58,7 +58,7 @@ export function AgentQuotaIcon({ agent }: { agent: string }) {
   quotaDisplay.use();
   const provider = snapshot?.settings.enabled
     ? snapshot.providers.find(
-        (p) => p.agentId === agent && p.eligible,
+        (p) => p.agentIds.includes(agent) && p.eligible,
       )
     : undefined;
   const windows =
@@ -128,7 +128,7 @@ export default function QuotaRing({
       (w) => w.id === provider.displayWindowId,
     ),
     value = quotaValue(current),
-    running = active.includes(provider.agentId);
+    running = provider.agentIds.some(id => active.includes(id));
   return (
     <span
       className={`quota-ring ${provider.state === "stale" ? "stale" : ""}`}

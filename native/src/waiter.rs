@@ -127,7 +127,7 @@ fn deadline_result(last: Value, started: Instant, baseline: Option<&str>) -> Val
     }
 }
 fn snapshot_hash(v: &Value) -> String {
-    hash(json!({"turnId":v["turnId"],"recordedStatus":v["recordedStatus"],"runtimeStatus":v["runtimeStatus"],"interaction":v["interaction"],"finalResponse":v["finalResponse"],"error":v["error"]}).to_string())
+    hash(json!({"turnId":v["turnId"],"recordedStatus":v["recordedStatus"],"runtimeStatus":v["runtimeStatus"],"interaction":v["interaction"],"finalResponse":v["finalResponse"],"error":v["error"],"externalUserInputs":v["externalUserInputs"]}).to_string())
 }
 fn finish(
     mut v: Value,
@@ -220,7 +220,7 @@ fn classify(observation: &Value, selected: &mut Option<String>) -> Value {
         .find(|i| i["type"] == "agentMessage")
         .map(|i| crate::control::item(i, 0, 6000));
     json!({"state":state,"reason":reason,"title":t["name"],"threadId":t["id"],"turnId":selected,"recordedStatus":turn["status"],"runtimeStatus":runtime,
-        "runtimeSource":t["runtimeSource"],"finalResponse":assistant,"error":turn["error"],"interaction":interactions,
+        "runtimeSource":t["runtimeSource"],"externalUserInputs":observation["externalUserInputs"].as_array().into_iter().flatten().filter(|r| r["turnId"].as_str()==selected.as_deref() || (r["answeredTurnId"].is_string() && r["answeredTurnId"].as_str()==selected.as_deref())).collect::<Vec<_>>(),"finalResponse":assistant,"error":turn["error"],"interaction":interactions,
         "activeFlags":flags,"interactionAction":if blocked && interactions.is_empty(){Some("Inspect Codex Desktop for the pending interaction; this owner exposes no callback ID to Agent Remote Control")}else if !interactions.is_empty(){Some("Use codex_respond with id=responseId and backendSession; do not resend the task")}else{None},
         "observedAt":now()})
 }
@@ -333,6 +333,15 @@ impl WaitSource for CodexSource {
         for request in &mut pending {
             crate::respond_tokens::issue(string(&origin, "ingressId"), request)?;
         }
+        crate::external_inputs::observe(
+            &self.thread,
+            value["thread"]["turns"]
+                .as_array()
+                .map(Vec::as_slice)
+                .unwrap_or(&[]),
+            Some(&pending),
+        )?;
+        value["externalUserInputs"] = crate::external_inputs::inputs(&self.thread, None)?;
         value["pending"] = json!(pending);
         Ok(value)
     }

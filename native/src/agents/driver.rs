@@ -142,12 +142,14 @@ impl AgentDriver {
                 }
                 let t=p.state.lock().await.clone();
                 if resume && init["agentCapabilities"]["loadSession"]!=true {return Err("RESUME_UNSUPPORTED".into());}
-                let mut params=json!({"cwd":cwd,"mcpServers":[]});
+                let servers = super::mcp::servers(string(&t,"agent"))?;
+                let mut params=json!({"cwd":cwd,"mcpServers":servers});
                 if resume {params["sessionId"]=t["sessionId"].clone();}
                 let result=p.call(if resume {"session/load"}else{"session/new"},params,60000).await?;
                 p.capabilities.lock().await["session"]=result.clone();
                 let mut t=p.state.lock().await;
                 if !resume {if string(&result,"sessionId").is_empty(){return Err("MISSING_SESSION_ID".into());}t["sessionId"]=result["sessionId"].clone();}
+                t["mcpServers"]=json!(servers.iter().map(|s| s["name"].clone()).collect::<Vec<_>>());
                 t["metadata"]=result;
             }
             let mut t=p.state.lock().await;t["status"]=json!("idle");t["processState"]=json!("running");t["configurationObservedAt"]=json!(now());save_task(&t)?;
@@ -229,6 +231,9 @@ impl AgentDriver {
                     "completed"
                 });
                 t["stopReason"] = v["stopReason"].clone();
+                if t["status"] == "cancelled" {
+                    t["error"] = json!("cancelled");
+                }
                 // The managed Claude adapter reports per-prompt model usage, including
                 // internal calls. It is not proof of effort, fast mode or a single main model.
                 if t["agent"] == "claude" {
@@ -271,7 +276,7 @@ impl AgentDriver {
         if let Err(error) = crate::claude_notify::observe(
             string(&t, "taskId"),
             string(&t, "turnId"),
-            &json!({"state":t["status"],"title":t["title"]}),
+            &json!({"state":t["status"],"title":t["title"],"finalResponse":t["output"],"error":t["error"]}),
         )
         .await
         {
@@ -312,7 +317,7 @@ impl AgentDriver {
         if let Err(error) = crate::claude_notify::observe(
             string(&t, "taskId"),
             string(&t, "turnId"),
-            &json!({"state":t["status"],"title":t["title"]}),
+            &json!({"state":t["status"],"title":t["title"],"finalResponse":t["output"],"error":t["error"]}),
         )
         .await
         {
