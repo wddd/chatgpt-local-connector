@@ -56,8 +56,16 @@ impl Execution {
                 .find(|op| op["name"] == name)
                 .unwrap();
             crate::egress::validate_op(spec, &args)?;
-            return crate::context_provider::call(name.strip_prefix("context_").unwrap(), args)
-                .await;
+            let timeout = std::time::Duration::from_secs(match name {
+                "context_amend" | "context_check" => 120,
+                _ => 10,
+            });
+            return crate::context_provider::call(
+                name.strip_prefix("context_").unwrap(),
+                args,
+                timeout,
+            )
+            .await;
         }
         if name == "dispatch_policy" {
             let catalog = crate::catalog();

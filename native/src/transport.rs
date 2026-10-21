@@ -671,6 +671,12 @@ pub async fn stdio() -> Result<()> {
                 .bearer_auth(token)
                 .timeout(Duration::from_secs(if is_wait(&request) {
                     330
+                } else if matches!(
+                    request["params"]["arguments"]["op"].as_str(),
+                    Some("context_amend" | "context_check")
+                ) {
+                    // Leave room for the provider's 120-second deadline and response delivery.
+                    150
                 } else {
                     120
                 }))

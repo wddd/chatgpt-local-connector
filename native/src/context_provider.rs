@@ -74,7 +74,7 @@ async fn response(
     }
 }
 
-pub(crate) async fn call(name: &str, args: Value) -> Result<Value> {
+pub(crate) async fn call(name: &str, args: Value, timeout: Duration) -> Result<Value> {
     let config = config()?.ok_or("CONTEXT_PROVIDER_NOT_CONFIGURED")?;
     let mut command = crate::command(&config.command);
     command.args(&config.args).envs(&config.env);
@@ -87,7 +87,7 @@ pub(crate) async fn call(name: &str, args: Value) -> Result<Value> {
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("CONTEXT_PROVIDER_START_FAILED: {e}"))?;
-    let result = tokio::time::timeout(Duration::from_secs(3), async {
+    let result = tokio::time::timeout(timeout, async {
         let mut input = child.stdin.take().ok_or("CONTEXT_PROVIDER_MISSING_STDIN")?;
         let mut output = BufReader::new(child.stdout.take().ok_or("CONTEXT_PROVIDER_MISSING_STDOUT")?);
         write(&mut input, json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
@@ -110,7 +110,7 @@ pub(crate) async fn call(name: &str, args: Value) -> Result<Value> {
             .filter(|item| item["type"] == "text")
             .map(|item| string(item, "text")).collect::<Vec<_>>().join("\n");
         serde_json::from_str(&text).map_err(|e| format!("CONTEXT_PROVIDER_INVALID_RESULT: {e}"))
-    }).await.unwrap_or_else(|_| Err("CONTEXT_PROVIDER_TIMEOUT: 3000ms; read current provider state before retrying a write".into()));
+    }).await.unwrap_or_else(|_| Err(format!("CONTEXT_PROVIDER_TIMEOUT: {}ms; read current provider state before retrying a write", timeout.as_millis())));
     // Also reap a timed-out or failed process; kill_on_drop covers caller cancellation.
     let _ = child.kill().await;
     result
@@ -140,7 +140,7 @@ pub(crate) async fn prepare(args: &Value, cwd: &str, prompt: &str) -> (String, V
         }
         let origin = crate::kernel::origin::current_origin();
         let caller = origin["controlSource"].as_str().unwrap_or("local");
-        let result = call("resolve", json!({"project":cwd,"intent":prompt.chars().take(2000).collect::<String>(),"caller":caller})).await?;
+        let result = call("resolve", json!({"project":cwd,"intent":prompt.chars().take(2000).collect::<String>(),"caller":caller}), Duration::from_secs(3)).await?;
         let entries = result["entries"].as_array().ok_or("CONTEXT_PROVIDER_INVALID_ENTRIES")?;
         let mut ids = Vec::new();
         let mut prefix = String::new();
