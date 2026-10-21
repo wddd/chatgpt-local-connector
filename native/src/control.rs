@@ -366,6 +366,50 @@ impl Control {
             .await?;
         Ok(true)
     }
+    pub(crate) async fn timeline(&self, thread: &str, after: u64) -> Result<Value> {
+        let _read = self.requests.lock(&format!("timeline-read:{thread}")).await;
+        let (baseline, observed) = {
+            let mut events = self.events.lock().await;
+            let timeline = events.timelines.entry(thread.into()).or_default();
+            if after > timeline.revision {
+                return Err("TIMELINE_CURSOR_EXPIRED: fetch again without after".into());
+            }
+            if timeline.history_loaded {
+                return Ok(timeline.response(thread, after));
+            }
+            (timeline.revision, timeline.observed_events)
+        };
+        // Reconnect the desktop observation stream before reading its persisted history.
+        // This is read-only: it never resumes a background task.
+        #[cfg(not(feature = "test-fixture"))]
+        if !self.background(thread)? && !cfg!(target_os = "linux") {
+            let _ = self.follow(thread).await;
+        }
+        let history = async {
+            self.utility()
+                .await?
+                .call(
+                    "thread/read",
+                    json!({"threadId":thread,"includeTurns":true}),
+                    15000,
+                )
+                .await
+        }
+        .await;
+        let mut events = self.events.lock().await;
+        let timeline = events.timelines.entry(thread.into()).or_default();
+        match history {
+            Ok(result) => timeline.backfill_codex(&result["thread"], baseline, observed, &now()),
+            Err(_) => {
+                timeline.partial = true;
+                timeline.history_loaded = true;
+            }
+        }
+        if after > timeline.revision {
+            return Err("TIMELINE_CURSOR_EXPIRED: fetch again without after".into());
+        }
+        Ok(timeline.response(thread, after))
+    }
     pub async fn request(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
         if method == "turn/start" {
             let thread = string(&args, "threadId");

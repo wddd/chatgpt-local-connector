@@ -5,6 +5,7 @@ import type { AgentActivitySession, AgentActivitySnapshot } from "../types";
 import { beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission } from "./activityModel";
 
 export const agentActivity = createStore<{ snapshot?: AgentActivitySnapshot; error: string }>({ error: "" });
+export const activityTimeline = createStore<{ agent: string; session: AgentActivitySession } | undefined>(undefined);
 export const activityApprovals = createStore<Record<string, ApprovalSubmission>>({});
 export function acceptActivity(snapshot: AgentActivitySnapshot) {
   const next = mergeActivity(agentActivity.get().snapshot, snapshot);
@@ -12,7 +13,11 @@ export function acceptActivity(snapshot: AgentActivitySnapshot) {
   agentActivity.set({ snapshot: next, error: "" });
   const keys = new Set(Object.entries(next.agents).flatMap(([agent, value]) => value.sessions
     .filter(session => session.interaction).map(session => interactionKey(agent, session))));
-  activityApprovals.set(old => Object.fromEntries(Object.entries(old).filter(([key]) => keys.has(key))));
+  const retained = activityTimeline.get();
+  activityApprovals.set(old => Object.fromEntries(Object.entries(old).filter(([key]) => {
+    const [agent, id] = JSON.parse(key);
+    return keys.has(key) || (retained && retained.agent === agent && retained.session.id === id);
+  })));
 }
 export function startAgentActivity() {
   let stopped = false, connected = false, reading = false, generation = 0;
@@ -58,10 +63,15 @@ export function startAgentActivity() {
     document.removeEventListener("visibilitychange", resume);
   };
 }
-export async function submitActivityApproval(agent: string, session: AgentActivitySession, decision: ApprovalDecision) {
+export async function submitActivityApproval(agent: string, session: AgentActivitySession, decision: "allow" | "deny") {
   if (!session.interaction) return;
-  const key = interactionKey(agent, session), payload = permissionResponse(session.interaction, decision);
+  const payload = permissionResponse(session.interaction, decision);
   if (!payload) return;
+  return submitActivityResponse(agent, session, decision, payload);
+}
+export async function submitActivityResponse(agent: string, session: AgentActivitySession, decision: ApprovalDecision,
+  payload: import("./activityModel").ApprovalPayload) {
+  const key = interactionKey(agent, session);
   const submission = beginApproval(activityApprovals.get()[key], decision, payload, () => crypto.randomUUID());
   if (!submission) return;
   activityApprovals.set(old => ({ ...old, [key]: submission }));
@@ -70,7 +80,7 @@ export async function submitActivityApproval(agent: string, session: AgentActivi
     finish(finishApproval(submission, await api("agents/respond", "POST", submission.payload)));
   } catch (error) { finish({ ...submission, status: "failed", error: String(error) }); }
 }
-// 2C can supply the timeline opener without changing native-entry fallback.
+// Timeline and native entry use the same session identity.
 export async function openActivitySession(agent: string, session: AgentActivitySession,
   openTimeline?: (session: AgentActivitySession) => void) {
   if (session.timeline && openTimeline) { openTimeline(session); return; }

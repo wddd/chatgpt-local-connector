@@ -280,7 +280,10 @@ pub async fn event(events: &SharedEvents, session: &str, method: &str, params: V
                 .or_else(|| removed["params"]["conversationId"].as_str())
                 .unwrap_or("");
             if let Some(t) = e.timelines.get_mut(thread) {
-                t.partial = true;
+                // A complete projected history survives eviction of its raw events.
+                if !t.history_loaded {
+                    t.partial = true;
+                }
             }
         }
         e.bytes -= removed.to_string().len();

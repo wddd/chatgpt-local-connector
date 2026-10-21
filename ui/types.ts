@@ -39,6 +39,7 @@ export interface AgentInteraction {
   title?: string | null;
   options?: unknown;
   canRespond?: boolean;
+  method?: "select" | "confirm" | "input" | "editor";
 }
 export interface AgentActivitySession {
   id: string;
@@ -63,9 +64,11 @@ export interface AgentTimelineEntry {
   id: string;
   type: "user" | "text" | "thinking" | "command" | "file" | "tool" | "plan" | "interaction" | "error";
   status: "pending" | "running" | "completed" | "failed" | "cancelled" | "unknown";
-  startedAt: string;
+  startedAt: string | null;
   updatedAt: string;
-  endedAt?: string;
+  position?: number;
+  durationMs?: number;
+  endedAt?: string | null;
   cursor: number;
   turnId: string;
   text?: string;
@@ -91,6 +94,7 @@ export interface AgentTrackingExcerpt {
   hashScope: "excerpt";
 }
 export interface AgentTimeline {
+  status?: string;
   sessionId: string;
   entries: AgentTimelineEntry[];
   cursor: number;

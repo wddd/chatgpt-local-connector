@@ -15,9 +15,9 @@ export function visibleActivity(sessions: readonly AgentActivitySession[], avail
 export function interactionKey(agent: string, session: AgentActivitySession) {
   return JSON.stringify([agent, session.id, session.phaseSince, session.interaction?.respond]);
 }
-export type ApprovalDecision = "allow" | "deny";
+export type ApprovalDecision = "allow" | "deny" | "answer" | "cancel";
 export type ApprovalPayload = { op: "agent_respond" | "codex_respond"; args: Record<string, unknown> };
-export function permissionResponse(interaction: AgentInteraction, decision: ApprovalDecision): ApprovalPayload | undefined {
+export function permissionResponse(interaction: AgentInteraction, decision: "allow" | "deny"): ApprovalPayload | undefined {
   const { op, args } = interaction.respond;
   if (interaction.kind !== "permission" || interaction.canRespond === false || !op || !args) return;
   if (op === "codex_respond") return { op, args: { ...args, result: { decision: decision === "allow" ? "accept" : "decline" } } };
@@ -44,4 +44,11 @@ export function finishApproval(submission: ApprovalSubmission, receipt: { state?
   if (["pending", "running", "reserved"].includes(receipt.state ?? "")) return { ...submission, status: "pending" };
   return { ...submission, status: receipt.state === "unconfirmed" ? "unconfirmed" : "failed",
     error: typeof receipt.error === "string" ? receipt.error : JSON.stringify(receipt.error ?? receipt.result?.error ?? receipt.state ?? "Unknown response") };
+}
+
+export function questionResponse(interaction: AgentInteraction, value: string, cancelled = false): ApprovalPayload | undefined {
+  const { op, args } = interaction.respond;
+  if (interaction.kind !== "question" || interaction.canRespond === false || op !== "agent_respond" || args?.agent !== "pi") return;
+  if (!cancelled && interaction.method === "select" && (!Array.isArray(interaction.options) || !interaction.options.includes(value))) return;
+  return { op, args: { ...args, ...(cancelled ? { cancelled: true } : { value }) } };
 }

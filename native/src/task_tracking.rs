@@ -179,6 +179,10 @@ pub(crate) struct Timeline {
     pub status: String,
     pub turn: String,
     #[serde(skip)]
+    pub history_loaded: bool,
+    #[serde(skip)]
+    activity_entry: Option<String>,
+    #[serde(skip)]
     chunk: Option<(String, String, String)>,
     pi_message: u64,
     #[serde(skip)]
@@ -191,6 +195,11 @@ impl Timeline {
         let old = index.map(|i| self.entries[i].clone()).unwrap_or(json!({}));
         row["startedAt"] = old.get("startedAt").cloned().unwrap_or(json!(at));
         row["updatedAt"] = json!(at);
+        row["position"] = row
+            .get("position")
+            .cloned()
+            .or_else(|| old.get("position").cloned())
+            .unwrap_or_else(|| json!(index.map_or(self.revision + 1, |i| i as u64)));
         if !row["turnId"].is_string() {
             row["turnId"] = json!(self.turn);
         }
@@ -210,6 +219,7 @@ impl Timeline {
         if self.bytes == 0 && !self.entries.is_empty() {
             self.bytes = self.entries.iter().map(|r| r.to_string().len()).sum();
         }
+        self.activity_entry = Some(string(&row, "id").to_owned());
         self.revision += 1;
         row["cursor"] = json!(self.revision);
         self.bytes += row.to_string().len();
@@ -386,7 +396,7 @@ impl Timeline {
                 .into_iter()
                 .find(|s| !s.is_empty())
                 .unwrap_or("Interaction required");
-                self.put(json!({"id":format!("interaction:{}",msg["id"]),"type":"interaction","status":"pending","interaction":{"kind":kind,"summary":cut(&redact(title),SUMMARY).0,"command":sanitize(&call["command"]),"path":sanitize(&call["path"]),"title":sanitize(&call["title"]),"options":sanitize(if method=="session/request_permission" {&msg["params"]["options"]} else {&msg["options"]}),"respond":{"via":"act","op":"agent_respond","args":{"interactionId":msg["id"]}}}}),at);
+                self.put(json!({"id":format!("interaction:{}",msg["id"]),"type":"interaction","status":"pending","interaction":{"kind":kind,"summary":cut(&redact(title),SUMMARY).0,"method":msg["method"],"command":sanitize(&call["command"]),"path":sanitize(&call["path"]),"title":sanitize(&call["title"]),"options":sanitize(if method=="session/request_permission" {&msg["params"]["options"]} else {&msg["options"]}),"respond":{"via":"act","op":"agent_respond","args":{"interactionId":msg["id"]}}}}),at);
             }
             "tool_execution_start" | "tool_execution_update" | "tool_execution_end" => {
                 self.end_chunk(at);
@@ -613,6 +623,99 @@ impl Timeline {
         }
         self.put(row, at);
     }
+    /// Project history first, then overlay observations made while the read was in flight.
+    pub fn backfill_codex(&mut self, thread: &Value, baseline: u64, observed: u64, at: &str) {
+        let activity_entry = self.activity_entry.clone();
+        let mut history = Timeline::default();
+        let turns = thread["turns"].as_array();
+        history.partial = turns.is_none();
+        for turn in turns.into_iter().flatten() {
+            history.turn = string(turn, "id").into();
+            history.status = string(turn, "status").into();
+            history.partial |= !turn["items"].is_array();
+            for item in turn["items"].as_array().into_iter().flatten() {
+                let status = match string(item, "status") {
+                    "failed" | "declined" => "failed",
+                    "inProgress" | "running" => "running",
+                    "completed" => "completed",
+                    "cancelled" | "interrupted" => "cancelled",
+                    _ if history.status == "inProgress"
+                        && !matches!(
+                            string(item, "type"),
+                            "userMessage" | "steeringUserMessage"
+                        ) =>
+                    {
+                        "running"
+                    }
+                    _ => "completed",
+                };
+                history.codex_item(item, status, at);
+            }
+        }
+        let live = self.entries.clone();
+        for row in &mut history.entries {
+            if let Some(old) = live.iter().find(|old| old["id"] == row["id"]) {
+                if old["cursor"].as_u64().unwrap_or(0) > baseline {
+                    *row = old.clone();
+                } else {
+                    row["startedAt"] = old["startedAt"].clone();
+                    if old.get("endedAt").is_some() {
+                        row["endedAt"] = old["endedAt"].clone();
+                    }
+                }
+            } else {
+                // History supplies content and native duration, not an observed start/end.
+                row["startedAt"] = Value::Null;
+                row["endedAt"] = Value::Null;
+            }
+        }
+        let historical_ids: std::collections::HashSet<_> = history
+            .entries
+            .iter()
+            .map(|r| string(r, "id").to_owned())
+            .collect();
+        history.entries.extend(
+            live.into_iter()
+                .filter(|r| !historical_ids.contains(string(r, "id"))),
+        );
+        self.partial = history.partial || history.entries.iter().any(|r| r["truncated"] == true);
+        self.tool_observed |= history.tool_observed;
+        if self.observed_events == observed || self.status.is_empty() {
+            self.status = history.status;
+            self.turn = history.turn;
+        }
+        self.observed_events += 1;
+        self.entries.clear();
+        self.bytes = 0;
+        for mut row in history.entries {
+            // Preserve explicit unknown times and ordering through the incremental API.
+            let started = row["startedAt"].clone();
+            let ended = row.get("endedAt").cloned();
+            row["position"] = json!(self.revision + 1);
+            self.put(row, at);
+            if let Some(row) = self.entries.last_mut() {
+                row["startedAt"] = started;
+                if let Some(ended) = ended {
+                    row["endedAt"] = ended;
+                }
+            }
+        }
+        self.bytes = self.entries.iter().map(|r| r.to_string().len()).sum();
+        if self.info.is_null() {
+            self.info = json!({"id":thread["id"],"title":thread["name"],"project":thread["cwd"]});
+        }
+        for row in &self.entries {
+            if row["status"] == "running" && matches!(string(row, "type"), "text" | "thinking") {
+                self.buffers
+                    .entry(string(row, "id").into())
+                    .or_insert_with(|| string(row, "text").to_owned());
+            }
+        }
+        if activity_entry.is_some() {
+            self.activity_entry = activity_entry;
+        }
+        self.history_loaded = true;
+    }
     pub fn codex_item(&mut self, item: &Value, status: &str, at: &str) {
         let id = string(item, "id");
         if id.is_empty() {
@@ -632,10 +735,17 @@ impl Timeline {
             | "webSearch"
             | "imageGeneration"
             | "collabAgentToolCall" => "tool",
-            _ => return,
+            "contextCompaction" | "enteredReviewMode" | "exitedReviewMode" => return,
+            _ => {
+                self.partial = true;
+                return;
+            }
         };
         let mut row = self.entry(id, kind, status);
         row["type"] = json!(kind);
+        if item["durationMs"].is_number() {
+            row["durationMs"] = item["durationMs"].clone();
+        }
         match kind {
             "user" | "text" | "thinking" => {
                 let text = if kind == "thinking" {
@@ -731,10 +841,14 @@ impl Timeline {
             .collect::<Vec<_>>())
     }
     pub fn response(&self, session: &str, after: u64) -> Value {
-        json!({"sessionId":session,"entries":self.entries.iter().filter(|r|r["cursor"].as_u64().unwrap_or(0)>after).collect::<Vec<_>>(),"cursor":self.revision,"coverage":{"state":if self.partial {"partial"} else {"complete"},"truncated":self.partial},"executionEvidence":self.execution_evidence()})
+        json!({"sessionId":session,"status":self.status,"entries":self.entries.iter().enumerate().filter(|(_,r)|r["cursor"].as_u64().unwrap_or(0)>after).map(|(i,r)| { let mut row=r.clone(); if row.get("position").is_none() { row["position"]=json!(i); } row }).collect::<Vec<_>>(),"cursor":self.revision,"coverage":{"state":if self.partial {"partial"} else {"complete"},"truncated":self.partial},"executionEvidence":self.execution_evidence()})
     }
     pub fn session(&self, info: &Value, source: &str, pending: Option<Value>) -> Value {
-        let latest = self.entries.iter().max_by_key(|r| r["cursor"].as_u64());
+        let latest = self
+            .activity_entry
+            .as_ref()
+            .and_then(|id| self.entries.iter().find(|r| r["id"] == *id))
+            .or_else(|| self.entries.iter().max_by_key(|r| r["cursor"].as_u64()));
         let interaction = pending.or_else(|| {
             self.entries
                 .iter()
@@ -866,6 +980,103 @@ mod tests {
             timeline.agent(string(&row, "method"), &row["params"], AT);
         }
         timeline
+    }
+    #[test]
+    fn codex_history_merges_by_item_and_preserves_inflight_updates() {
+        let mut t = Timeline::default();
+        t.turn = "turn".into();
+        t.status = "running".into();
+        t.codex_item(
+            &json!({"id":"reply","type":"agentMessage","text":"partial"}),
+            "running",
+            AT,
+        );
+        let baseline = t.revision;
+        t.codex_item(
+            &json!({"id":"reply","type":"agentMessage","text":"new live reply"}),
+            "completed",
+            LATER,
+        );
+        let history = json!({"id":"thread","turns":[{"id":"turn","status":"completed","items":[
+            {"id":"request","type":"userMessage","content":[{"text":"Example request"}]},
+            {"id":"cmd","type":"commandExecution","status":"completed","command":"printf example","aggregatedOutput":"example","durationMs":750,"exitCode":0},
+            {"id":"reply","type":"agentMessage","text":"older snapshot"}
+        ]}]});
+        t.backfill_codex(&history, baseline, 0, LATER);
+        assert_eq!(t.entries.len(), 3);
+        assert_eq!(t.entries[0]["id"], "request");
+        assert!(t.entries[0]["startedAt"].is_null());
+        assert_eq!(t.entries[1]["durationMs"], 750);
+        assert_eq!(t.entries[2]["text"], "new live reply");
+        assert_eq!(t.entries[2]["startedAt"], AT);
+        assert_eq!(t.entries[2]["endedAt"], LATER);
+        assert!(!t.partial);
+        assert!(t.history_loaded);
+        assert_eq!(
+            t.response("thread", baseline)["entries"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+        assert!(t
+            .entries
+            .windows(2)
+            .all(|rows| rows[0]["position"].as_u64() < rows[1]["position"].as_u64()));
+        let revision = t.revision;
+        t.codex_item(
+            &json!({"id":"reply","type":"agentMessage","text":"new live reply"}),
+            "completed",
+            LATER,
+        );
+        assert_eq!(t.revision, revision);
+        assert_eq!(t.entries.len(), 3);
+    }
+    #[test]
+    fn codex_history_completes_unobserved_items_and_detects_missing_history() {
+        let mut t = Timeline::default();
+        t.partial = true;
+        t.codex_item(
+            &json!({"id":"reply","type":"agentMessage","text":"partial"}),
+            "running",
+            AT,
+        );
+        t.backfill_codex(
+            &json!({"turns":[{"id":"turn","status":"completed","items":[
+                {"id":"reply","type":"agentMessage","text":"full reply"}
+            ]}]}),
+            t.revision,
+            0,
+            LATER,
+        );
+        assert!(!t.partial);
+        assert_eq!(t.entries[0]["text"], "full reply");
+        assert_eq!(t.entries[0]["status"], "completed");
+        assert_eq!(t.entries[0]["startedAt"], AT);
+        let mut missing = Timeline::default();
+        missing.backfill_codex(&json!({"turns":[{"id":"turn"}]}), 0, 0, AT);
+        assert!(missing.partial);
+        let mut absent = Timeline::default();
+        absent.backfill_codex(&json!({}), 0, 0, AT);
+        assert!(absent.partial);
+        let mut empty = Timeline::default();
+        empty.backfill_codex(&json!({"turns":[]}), 0, 0, AT);
+        assert!(!empty.partial);
+        let mut running = Timeline::default();
+        running.backfill_codex(
+            &json!({"turns":[{"id":"turn","status":"inProgress","items":[
+                {"id":"reply","type":"agentMessage","text":"Hello "}
+            ]}]}),
+            0,
+            0,
+            AT,
+        );
+        running.codex(
+            "item/agentMessage/delta",
+            &json!({"itemId":"reply","delta":"world"}),
+            LATER,
+        );
+        assert_eq!(running.entries[0]["text"], "Hello world");
     }
     #[test]
     fn acp_fixture_projects_entries_evidence_and_snapshot() {

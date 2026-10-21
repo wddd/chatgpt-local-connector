@@ -14,7 +14,7 @@
 
 ## Native 当前接口
 
-- 归一化在 Core 内维护；ACP/Pi 随 ARC 任务记录保存，Codex app-server 按本次 Core 观察到的派发线程维护。时间戳是 ARC 观察时间，不推断未观察到的开始/完成时间。
+- 归一化在 Core 内维护；ACP/Pi 随 ARC 任务记录保存，Codex app-server 在首次时间线请求时读取线程历史，并与本次 Core 观察到的派发线程合并。实时条目的时间戳是 ARC 观察时间；只在历史中出现的条目开始/结束时间为 null，耗时优先使用上游 durationMs，不推断未观察到的时间。
 - `agents/activity` 返回会话快照与兼容字段 `activeAgents`。等待审批、问题或选择的会话仍计为活动。
 - `agent_context.evidence` 是所选回合的 command/file 条目，`executionEvidence` 按本会话观察返回 `true`、`false` 或 `"partial"`；有协议事件但没有工具调用时返回空证据，不报 unsupported。
 - 首页使用会话快照；Desktop 订阅 `agents:activity`，Web 订阅 SSE，首屏与订阅失败时用 GET。`activeAgents` 仅保留供旧调用方兼容。
@@ -41,7 +41,7 @@
 
 - **ACP**：`session/update` 的 `agent_message_chunk`、`agent_thought_chunk`、`tool_call`、`tool_call_update`、`plan`，以及 `session/request_permission`。工具 `kind` 缺失或为 `other` 时，按 `rawInput.command` / `rawInput.file_path` 与工具名回退判断；`toolCallId` 关联 call 与 result；`exitCode` 优先取 `rawOutput`，否则从输出文本保守提取，提取不到留空。
 - **Pi RPC**：`message_end`、工具事件、`extension_ui_request`、`agent_settled`。
-- **Codex**：app-server 的 thread item（已类型化，含 reasoning 摘要）。
+- **Codex**：app-server 的 thread item（已类型化，含 reasoning 摘要），首次读取用 app-server 线程历史回填。
 - **非 ARC 会话**（Codex/Claude Code 本地 transcript）：只读尾部，给出 phase 与 headline 即可，不产出完整条目。
 
 审批上下文回填：审批请求只带 `toolCallId` 时，用同 id 的 `tool_call` 补齐 command/path/title，供通知、气泡和时间线展示“在批准什么”。
@@ -96,16 +96,17 @@
 | 会话时间线 | `GET /api/agents/timeline/{id}?after={cursor}`；CLI `agents.timeline`，参数 `{"id":"…","body":{"after":12}}` |
 | 已验证 CLI 会话入口 | `POST /api/agents/sessions/{id}/open`，body `{"agent":"claude"}`；CLI `agents.session.open` |
 
-`id` 使用活动快照的 `sessions[].id`：ACP/Pi 为 ARC taskId（另给 `nativeSessionId`），Codex 为 threadId。`after` 可省略，默认 0；它是条目更新序号，同一 id 的 chunk 合并、完成与审批解决也推进游标。客户端按 id 替换条目，保留未出现在增量响应中的条目；游标超过当前序号时报 `TIMELINE_CURSOR_EXPIRED`，重新全量读取。时间线不需要前端处理原始 chunk。
+`id` 使用活动快照的 `sessions[].id`：ACP/Pi 为 ARC taskId（另给 `nativeSessionId`），Codex 为 threadId。`after` 可省略，默认 0；它是条目更新序号，同一 id 的 chunk 合并、完成与审批解决也推进游标。客户端按 id 替换条目，保留未出现在增量响应中的条目，并按 `position` 排序（回填旧条目时也会更新已有条目的位置）；游标超过当前序号时报 `TIMELINE_CURSOR_EXPIRED`，重新全量读取。时间线不需要前端处理原始 chunk。
 
 ```json
 {
   "sessionId": "<activity-session-id>",
+  "status": "completed",
   "entries": [
     {
       "id": "command-example", "type": "command", "status": "completed",
       "startedAt": "2026-01-01T00:00:00.000Z", "endedAt": "2026-01-01T00:00:01.000Z",
-      "updatedAt": "2026-01-01T00:00:01.000Z", "cursor": 13, "turnId": "turn-example",
+      "updatedAt": "2026-01-01T00:00:01.000Z", "cursor": 13, "position": 0, "turnId": "turn-example",
       "command": "printf example", "exitCode": 0, "exitCodeSource": "rawOutput"
     }
   ],
@@ -115,7 +116,9 @@
 }
 ```
 
-工具输入与输出摘要沿用 `agent_context` 的 1024 字节 excerpt 结构，含 `truncated`、摘要 hash；文本合并上限沿用 256 KiB，事件/条目窗口沿用 2000 条与 8 MiB。窗口丢失或合并文本截断后 `coverage.state` 为 `partial`，不宣称全历史完整。Codex 的缓存仅覆盖当前 Core 已跟踪的派发，Core 重启前的完整时间线不由此缓存恢复；原生历史仍由 Codex 负责。
+工具输入与输出摘要沿用 `agent_context` 的 1024 字节 excerpt 结构，含 `truncated`、摘要 hash；文本合并上限沿用 256 KiB，事件/条目窗口沿用 2000 条与 8 MiB。窗口丢失或合并文本截断后 `coverage.state` 为 `partial`，不宣称全历史完整。Codex 首次读取在当前 Core 内按线程串行回填一次：调用 app-server `thread/read`（`includeTurns: true`），将各 turn 的 items 投影为同一词表，按 item id 与实时条目去重。回填读期间更新过的实时条目优先，已有观察时间保留；历史顺序优先，实时独有条目保留。重启后根据 ARC 任务记录识别可回填的 threadId，并在活动快照中恢复该线程的时间线入口；Desktop 线程先恢复只读事件订阅，不恢复或重启后台任务。非 ARC transcript 仍不提供时间线。原生历史读取失败、缺少 turns/items 或超过内容/条目上限时返回 partial；成功投影的历史不因原始事件窗口淘汰而变成 partial。回填失败保留实时条目，本次 Core 不自动反复重试回填。
+
+响应 `status` 表示任务状态，`position` 为条目顺序键（不要求连续，窗口淘汰后不回退），`durationMs` 为可用的原生耗时。历史条目没有可信观察时间时 `startedAt` / `endedAt` 可为 null。Pi interaction 附 `method`（select / confirm / input / editor）；选择传 `value`，输入或编辑传字符串 `value`，取消传 `cancelled: true`，均沿用 `agent_respond`。
 
 活动推送约每秒检查一次，忽略 `observedAt` 的单独变化；本地 transcript 尾部约每两秒采样，不产生时间线。`phaseSince` 在同一条目的内容变化时保持其开始时间。待处理条目的 `interaction.respond` 复用原有 `agent_respond` / `codex_respond` 参数，调用时按既有契约补选项、答案与新的 requestId。`open.kind=url` 直接打开 target；`open.kind=agent-session` 将 target 交给上述 session open 接口。
 
@@ -129,17 +132,19 @@
 
 ### 第二级：摘要气泡
 
-- 每个活动会话一个气泡，从 Agent 图标向右铺开：阶段图标 + 阶段名 + 持续时间，下一行为单行省略的 headline。
+- 每个活动会话一个气泡，从 Agent 图标向右铺开：阶段图标 + 阶段名 + 持续时间，下一行为单行省略的 headline；thinking 没有内容时省略摘要行，仅显示阶段与计时。
 - headline 更新最多每秒一次，160ms 交叉淡入，不用打字机效果；reduced-motion 下直接切换。
-- 最多同时展示 3 个，其余折叠为“+N”；需关注的排最前。气泡宽 180–220px、间隔 8px，距节点右侧 32px，右侧保留 12px 边距；空间不足 180px 时隐藏。
+- 最多同时展示 3 个，其余折叠为“+N”；需关注的排最前。气泡宽 180–220px、间隔 8px，距节点右侧 32px，右侧保留与容器左侧内边距对称的空间（至少 12px）；空间不足 180px 时隐藏。
 - 右侧横向空间不足以放下最小气泡宽度时不显示气泡，只保留第一级。
-- 审批类直接给“允许 / 拒绝”，通过本地认证转发至现有 respond 所有者；重复提交沿用同一 requestId 回读回执。ACP 允许仅选择 allow_once；没有单次允许选项时不可允许，不自动授予持久权限。问题类仅提示；有原生入口时引导打开，无入口时提示时间线暂未开放。
+- 审批类直接给“允许 / 拒绝”，通过本地认证转发至现有 respond 所有者；重复提交沿用同一 requestId 回读回执。ACP 允许仅选择 allow_once；没有单次允许选项时不可允许，不自动授予持久权限。问题类在气泡中提示打开时间线回答；非 ARC 会话仍按可用原生入口引导。
 - 与配额悬停气泡（QuotaBubble）错开触发方式与位置，互不遮挡。
 - 气泡不改变节点排序、拖动和连线行为；拖动节点时气泡跟随或暂时隐藏。
 
 ### 第三级：执行时间线
 
-- 点击 ARC 派发任务的气泡，从气泡位置变形展开面板（复用 `ElasticPanel`）。
+- 点击 ARC 派发任务的气泡，从整个气泡的位置变形展开面板（复用 `ElasticPanel` / `panelMorph`）。首选宽 680px，最大宽为窗口减 40px；阅读区高 `min(520px, 100dvh - 160px)`，外壳最高为窗口减 40px。标题与原生入口在顶部，提示区和滚动区在正文。
+- 打开/关闭沿用首页形变约 200ms、内容淡入 150ms；reduced-motion 下直接切换。展开条目仅影响内部滚动区，不改变面板尺寸；Escape 关闭并恢复触发点焦点。
+- 首次全量请求，随后每次读取完成约 1s 后用 after 拉取增量，不重叠请求；游标过期时丢弃旧列表、无 after 全量重拉。关闭后停止轮询。
 - 条目渲染：
   - `text`：复用现有 Markdown 组件，按快照刷新，不逐字流式。
   - `thinking`：默认折叠为一行。
@@ -147,10 +152,11 @@
   - `plan`：勾选列表。
   - `interaction`：审批（允许/拒绝）与选择/输入类问题就地处理，与气泡同一通道。
   - `error`：醒目单行。
-- 运行中自动跟随到底部，用户上翻后停止跟随。
+- 首次载入定位到底部；运行中自动跟随到底部，用户上翻后停止跟随，主动滚回底部 24px 范围内恢复。结束时保留最后一次跟随，之后阅读不自动跳动。
 - `coverage: partial` 时顶部提示记录不完整。
 - 有原生入口的（如 Codex）在面板头部给“在 Agent 中打开”按钮。
-- 不提供输入框；`agent_send` 排队（`sendMode`）落地后再加“追加消息”。
+- 任务结束后保留面板与完整已取得结果，关闭面板后已结束的气泡才消失；仍受原生记录覆盖范围与上限约束。
+- 不提供追加消息输入框（interaction 的回答字段除外）；`agent_send` 排队（`sendMode`）落地后再加“追加消息”。
 - 回合结束后，按回合改动统计落地时在时间线末尾挂改动摘要。
 - 非 ARC 会话的气泡点击直接调用 `open`；无入口时不可点击，悬停提示原因。
 

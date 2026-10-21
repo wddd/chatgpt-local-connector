@@ -102,7 +102,7 @@ export function capturePanelOrigin(target: EventTarget | null) {
   if (!(target instanceof Element)) return;
   const trigger = target.closest<HTMLElement>("button, [data-panel-anchor]");
   if (!trigger) return;
-  const visual = trigger.querySelector<HTMLElement>("[data-panel-visual]") ?? trigger;
+  const visual = trigger.matches("[data-timeline-anchor]") ? trigger.closest<HTMLElement>(".activity-bubble") ?? trigger : trigger.querySelector<HTMLElement>("[data-panel-visual]") ?? trigger;
   const origin = readOrigin(trigger, visual);
   if (origin) pending = { origin, at: performance.now() };
 }

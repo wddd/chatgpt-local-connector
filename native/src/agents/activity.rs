@@ -205,7 +205,34 @@ pub(super) fn insert(agents: &mut serde_json::Map<String, Value>, agent: &str, s
         .unwrap()
         .push(session);
 }
+fn transcript_text(text: &str) -> String {
+    use std::sync::OnceLock;
+    static BLOCKS: OnceLock<regex::Regex> = OnceLock::new();
+    static TAGS: OnceLock<regex::Regex> = OnceLock::new();
+    let text = text.trim();
+    if text.starts_with("# AGENTS.md instructions") || text.starts_with("<INSTRUCTIONS>") {
+        return String::new();
+    }
+    let blocks = BLOCKS.get_or_init(|| regex::Regex::new(
+        r"(?is)<(?:system-reminder|system_reminder|environment_context|environment_details|image_resize_notice|total_tokens|token_budget|instructions|INSTRUCTIONS|app-context|permissions instructions|collaboration_mode|skills_instructions)(?:\s[^>]*)?>.*?(?:</(?:system-reminder|system_reminder|environment_context|environment_details|image_resize_notice|total_tokens|token_budget|instructions|INSTRUCTIONS|app-context|permissions instructions|collaboration_mode|skills_instructions)>|\z)"
+    ).unwrap());
+    let tags = TAGS.get_or_init(|| regex::Regex::new(r"^\s*(?:</?[A-Za-z_][^>]*>\s*)+$").unwrap());
+    blocks
+        .replace_all(text, "")
+        .lines()
+        .filter(|line| !tags.is_match(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 fn phase(record: &Value, agent: &str) -> Option<(String, String, Value)> {
+    let role = if agent == "codex" {
+        string(&record["payload"], "role")
+    } else {
+        string(&record["message"], "role")
+    };
+    if matches!(role, "system" | "developer") || record["isMeta"] == true {
+        return None;
+    }
     let blocks: Vec<&Value> = if agent == "codex" {
         vec![&record["payload"]]
     } else {
@@ -217,23 +244,38 @@ fn phase(record: &Value, agent: &str) -> Option<(String, String, Value)> {
                 "thinking",
                 b["thinking"]
                     .as_str()
-                    .or_else(|| b["summary"][0]["text"].as_str())
-                    .unwrap_or("Thinking"),
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| {
+                        b["summary"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|s| s["text"].as_str())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    }),
             ),
-            "function_call" | "custom_tool_call" | "tool_use" => ("tool", string(b, "name")),
+            "function_call" | "custom_tool_call" | "tool_use" => {
+                ("tool", string(b, "name").to_owned())
+            }
             "message" => (
                 "text",
                 b["content"]
                     .as_array()
-                    .and_then(|c| c.last())
-                    .and_then(|c| c["text"].as_str())
-                    .unwrap_or(""),
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|c| c["text"].as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
             ),
-            "text" => ("text", string(b, "text")),
-            "agent_message" => ("text", string(b, "message")),
+            "text" => ("text", string(b, "text").to_owned()),
+            "agent_message" => ("text", string(b, "message").to_owned()),
             _ => continue,
         };
-        let headline = crate::task_tracking::headline(kind, text);
+        let headline = crate::task_tracking::headline(kind, &transcript_text(&text));
+        if headline.is_empty() && kind != "thinking" {
+            continue;
+        }
         return Some((
             kind.into(),
             headline.chars().take(240).collect(),
@@ -241,6 +283,48 @@ fn phase(record: &Value, agent: &str) -> Option<(String, String, Value)> {
         ));
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn transcript_headlines_skip_injected_content_and_tags() {
+        for agent in ["codex", "claude"] {
+            let text = "First sentence. Actual update.\n<image_resize_notice>Injected details</image_resize_notice>\n<total_tokens>1234</total_tokens>\n</image_resize_notice>";
+            let record = if agent == "codex" {
+                json!({"payload":{"type":"message","role":"assistant","content":[{"text":text}]}})
+            } else {
+                json!({"message":{"role":"assistant","content":[{"type":"text","text":text}]}})
+            };
+            assert_eq!(phase(&record, agent).unwrap().1, "Actual update.");
+        }
+        assert!(phase(&json!({"payload":{"type":"message","role":"developer","content":[{"text":"Injected instructions"}]}}), "codex").is_none());
+        assert!(phase(&json!({"isMeta":true,"message":{"content":[{"type":"text","text":"Injected instructions"}]}}), "claude").is_none());
+        assert_eq!(
+            transcript_text("<environment_context>\nWorking directory\n</environment_context>"),
+            ""
+        );
+        assert_eq!(
+            transcript_text("# AGENTS.md instructions for example\nRules"),
+            ""
+        );
+        assert!(phase(
+            &json!({"payload":{"type":"message","content":[{"text":"</image_resize_notice>"}]}}),
+            "codex"
+        )
+        .is_none());
+        assert_eq!(
+            phase(
+                &json!({"payload":{"type":"reasoning","summary":[]}}),
+                "codex"
+            )
+            .unwrap()
+            .1,
+            ""
+        );
+        assert_eq!(phase(&json!({"message":{"content":[{"type":"thinking","thinking":"First\nLast thought"}]}}), "claude").unwrap().1, "Last thought");
+    }
 }
 fn transcript_session(
     id: &str,

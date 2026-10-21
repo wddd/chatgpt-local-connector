@@ -6,6 +6,7 @@ import {
   useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
+  type TextareaHTMLAttributes,
   type ReactNode,
   type CSSProperties,
   type Ref,
@@ -114,6 +115,9 @@ export function Input({
   ...props
 }: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`input ${className}`} />;
+}
+export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...props} className={`input ${className}`} />;
 }
 export function Field({
   id,

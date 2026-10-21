@@ -405,8 +405,22 @@ impl AgentHost {
             .filter(|a| !disabled.contains(*a))
             .map(str::to_owned)
             .collect();
-        for (agent, session) in self.activity.lock().await.sample(selected).await {
+        let transcripts = self.activity.lock().await.sample(selected).await;
+        let recorded = if transcripts.iter().any(|(agent, _)| agent == "codex") {
+            control.task_records().await.unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        for (agent, mut session) in transcripts {
             if !native_sessions.contains(&(agent.clone(), string(&session, "id").to_owned())) {
+                if agent == "codex"
+                    && recorded.iter().any(|r| {
+                        r["threadId"] == session["id"] || r["task"]["threadId"] == session["id"]
+                    })
+                {
+                    session["timeline"] = json!(true);
+                    session["source"] = json!("codex-thread");
+                }
                 activity::insert(&mut agents, &agent, session);
             }
         }
@@ -424,11 +438,16 @@ impl AgentHost {
         session: &str,
         after: u64,
     ) -> Result<Value> {
-        if let Some(timeline) = control.events.lock().await.timelines.get(session) {
-            if after > timeline.revision {
-                return Err("TIMELINE_CURSOR_EXPIRED: fetch again without after".into());
-            }
-            return Ok(timeline.response(session, after));
+        let known = control.events.lock().await.timelines.contains_key(session);
+        if known
+            || (!task_path(session)?.exists()
+                && control
+                    .task_records()
+                    .await?
+                    .iter()
+                    .any(|r| r["threadId"] == session || r["task"]["threadId"] == session))
+        {
+            return control.timeline(session, after).await;
         }
         let process = self.processes.lock().await.get(session).cloned();
         let state = if let Some(p) = process {
