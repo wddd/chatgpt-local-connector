@@ -36,6 +36,29 @@ impl Execution {
         true
     }
     pub async fn call(&self, name: &str, args: Value, policy: Value) -> Result<Value> {
+        if matches!(
+            name,
+            "context_resolve"
+                | "context_search"
+                | "context_read"
+                | "context_check"
+                | "context_amend"
+        ) {
+            let mut args = args;
+            // The frozen act envelope's request ID is ARC metadata, not a provider argument.
+            if name == "context_amend" {
+                args.as_object_mut().map(|args| args.remove("requestId"));
+            }
+            let spec = catalog()["ops"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|op| op["name"] == name)
+                .unwrap();
+            crate::egress::validate_op(spec, &args)?;
+            return crate::context_provider::call(name.strip_prefix("context_").unwrap(), args)
+                .await;
+        }
         if name == "dispatch_policy" {
             let catalog = crate::catalog();
             let spec = catalog["ops"]

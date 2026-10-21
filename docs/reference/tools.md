@@ -16,13 +16,13 @@ The public MCP surface is frozen at three tools. Call `guide` first; use `guide(
 
 If a session cached the older guide schema without `op`, call `query({"op":"guide","args":{"op":"codex_create"}})` instead. `query guide` accepts the same topic/op arguments and returns the same content. The three MCP tool parameter structures remain unchanged.
 
-The embedded [catalog](../../native/src/catalog.json) defines the fixed tools and 49 ops. Names of the former tools remain op names, without tool aliases. The table below lists each op’s assigned entrypoint; mixed read/write ops such as receipt, screen, mcp, and codex_thread always use act, even for a read action. Assignment follows readOnlyHint, with connector_verify marked as a write because it saves verification state.
+The embedded [catalog](../../native/src/catalog.json) defines the fixed tools and current op registry. Names of the former tools remain op names, without tool aliases. The table below lists each op’s assigned entrypoint; mixed read/write ops such as receipt, screen, mcp, and codex_thread always use act, even for a read action. Assignment follows readOnlyHint, with connector_verify marked as a write because it saves verification state.
 
 | Group | Ops via query | Ops via act |
 | --- | --- | --- |
-| Default (29) | `guide`, `dispatch_policy`, `projects`, `overview`, `tree`, `search`, `read`, `git`, `codex_tasks`, `codex_queue`, `codex_queue_control`, `codex_read`, `codex_wait`, `codex_items`, `codex_pending`, `control_output`, `codex_changes`, `logs` | `connector_verify`, `screen`, `command`, `codex_create`, `codex_send`, `codex_review`, `codex_interrupt`, `receipt`, `codex_respond`, `edit`, `write` |
-| Advanced (12) | `codex_account`, `file_search`, `codex_capabilities`, `codex_schema`, `codex_query`, `codex_events` | `git_write`, `fs`, `process`, `mcp`, `codex_thread`, `codex_call` |
-| Conditional default (12) | `agents`, `agent_capabilities`, `agent_tasks`, `agent_read`, `agent_context`, `agent_wait`, `agent_events`, `agent_pending` | `agent_create`, `agent_send`, `agent_interrupt`, `agent_respond` |
+| Default | `context_resolve`, `context_search`, `context_read`, `context_check`, `guide`, `dispatch_policy`, `projects`, `overview`, `tree`, `search`, `read`, `git`, `codex_tasks`, `codex_queue`, `codex_queue_control`, `codex_read`, `codex_wait`, `codex_items`, `codex_pending`, `control_output`, `codex_changes`, `logs` | `context_amend`, `connector_verify`, `screen`, `command`, `codex_create`, `codex_send`, `codex_review`, `codex_interrupt`, `receipt`, `codex_respond`, `edit`, `write` |
+| Advanced | `codex_account`, `file_search`, `codex_capabilities`, `codex_schema`, `codex_query`, `codex_events` | `git_write`, `fs`, `process`, `mcp`, `codex_thread`, `codex_call` |
+| Conditional default | `agents`, `agent_capabilities`, `agent_tasks`, `agent_read`, `agent_context`, `agent_wait`, `agent_events`, `agent_pending` | `agent_create`, `agent_send`, `agent_interrupt`, `agent_respond` |
 
 Default stores an explicit op allowlist; All enables the registry; Custom stores an exact selection. Read-only retains connector_verify through act as its connection-maintenance exception. Saving a selection includes necessary receipt, status, wait, and output dependencies. Existing allowlists retain their op names; guide is always available through both its fixed tool and the query op, even when absent from a saved allowlist.
 
@@ -33,6 +33,39 @@ Every tool result carries `arcVersion`, a short SHA-256 of the guide text, publi
 INVALID_ARGUMENTS gives a field path, a short reason, a nearby supported parameter name when available, and a query guide call for the current schema. Error responses put error first in the text result, omit the full schema and inbox events, and do not consume unread inbox events. UNKNOWN_OP supplies up to three closest enabled op names and points to guide. WRONG_TOOL supplies the assigned entrypoint. These are MCP tool errors (`isError=true`) with arcVersion, so a client can correct the call once without refreshing its cached tools.
 
 Upgrading from the former tool surface requires one client tool refresh and renewed authorization. Later capabilities change through ops and guide.
+
+## Context provider
+
+An optional context provider supplies standard practices for the user's environment through an external MCP stdio server. Configure zero or one provider in `context-provider.json` under the ARC state directory (`ARC_STATE_DIR` when set). The defaults are `~/.local/state/agent-remote-control` on macOS, `$XDG_STATE_HOME/agent-remote-control` (or `~/.local/state/agent-remote-control`) on Linux, and `%LOCALAPPDATA%/agent-remote-control` on Windows.
+
+```json
+{
+  "command": "/absolute/path/to/context-provider",
+  "args": ["serve"],
+  "env": {"EXAMPLE_SETTING": "example-value"},
+  "cwd": "/absolute/path/to/provider-workspace"
+}
+```
+
+`command` is required; `args`, `env` and `cwd` are optional. Use an executable accessible to the Core, preferably an absolute path. Environment overrides extend the Core process environment. ARC reads the file on each call; no restart is needed. Remove the file or set its JSON value to `null` to disable the integration. ARC does not create this configuration automatically. Keep private configuration outside the repository.
+
+Each call starts a process, performs MCP initialization, invokes one tool, and terminates the process. Calls have a three-second timeout. Results use MCP `structuredContent` when present, otherwise JSON decoded from text content. There is no cache or automatic retry.
+
+| ARC entrypoint | Provider tool and arguments | Provider result |
+| --- | --- | --- |
+| query `context_resolve` | `resolve({project?, intent?, caller?, budgetChars?})` | `{entries:[{id,title,scope,path,verified,avoid,body}], truncated}` |
+| query `context_search` | `search({query, scope?, limit?})` | `{entries:[{id,title,scope,projects,intents,verified,snippet}]}` |
+| query `context_read` | `read({id})` | One full entry |
+| query `context_check` | `check({id?})` | Per-entry pass/fail results |
+| act `context_amend` | `amend({id?, content, reason, caller?})` | `{id, path, commit}` |
+
+Arguments and results are passed through under ARC's normal result envelope. Provider ops return `CONTEXT_PROVIDER_NOT_CONFIGURED` when no provider is configured. Existing ingress allowlists must enable these ops (or reselect the Common/Read-only preset for the corresponding ops). `context_amend` forwards the write directly; an outer act `requestId` is not sent to the provider and does not provide ARC receipt replay. If an amendment times out, read the entry before deciding whether to retry.
+
+`codex_create`, `codex_send`, `agent_create` and `agent_send` automatically call `resolve` just before submitting a prompt. `project` is the effective task working directory, `intent` is the first 2,000 Unicode characters of the prompt (Codex native input uses its text items), and `caller` is the ingress control-source identifier, or `local` for local calls. Empty Agent creates only discover capabilities and do not resolve context. Queued sends resolve at execution time.
+
+Resolved entries are prepended in a separated reference block containing each title, verification date, avoid list and body. Existing input items remain unchanged; native input restrictions still apply. The reference instructs the agent to follow current observed facts when they conflict and report the conflict. Pass `context:false` in dispatch args to skip resolution. With a configured provider, completed dispatch receipts and dispatch records carry `contextEntryIds`; failures or timeouts leave the prompt unchanged and add `warnings` with an empty ID list. Pending receipts may precede resolution; read the same request's receipt to obtain the final metadata. Provider failure does not block dispatch. Disabled integration and explicit skips add no context metadata.
+
+When configured, the loop guide recommends `context_resolve`/`context_search` before planning project or infrastructure work. Dispatch already injects references, so controllers need not paste them into prompts. When a user corrects a practice, first `context_read` the entry, then `context_amend` it, putting the old practice in `avoid`. Current observed facts take precedence.
 
 ## Project facts and files
 

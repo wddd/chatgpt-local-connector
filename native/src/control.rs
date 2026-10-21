@@ -1034,6 +1034,11 @@ impl Control {
             }
             turn["threadId"] = json!(thread);
             turn["input"] = input;
+            let cwd = turn["cwd"]
+                .as_str()
+                .unwrap_or_else(|| string(&result["thread"], "cwd"))
+                .to_owned();
+            crate::context_provider::inject(args, &cwd, &mut turn["input"], r).await;
             let step = std::time::Instant::now();
             let baseline = crate::changes::capture(
                 turn["cwd"]
@@ -1202,6 +1207,11 @@ impl Control {
         r["threadId"] = params["threadId"].clone();
         r["state"] = json!("submitting");
         if operation == "send" {
+            let cwd = params["cwd"]
+                .as_str()
+                .unwrap_or_else(|| string(&r["task"], "directory"))
+                .to_owned();
+            crate::context_provider::inject(args, &cwd, &mut params["input"], r).await;
             r["task"]["dispatch"]["submittedAt"] = json!(now());
         }
         self.checkpoint(r)?;

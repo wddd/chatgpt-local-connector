@@ -16,6 +16,7 @@ use tokio::sync::Mutex;
 pub mod agents;
 pub mod cli;
 pub mod context;
+mod context_provider;
 pub mod control;
 pub mod control_sources;
 pub mod desktop;

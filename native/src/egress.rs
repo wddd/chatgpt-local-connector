@@ -59,6 +59,8 @@ pub fn receipt(value: Value) -> Value {
         "executionOwner",
         "failureStage",
         "cleanup",
+        "contextEntryIds",
+        "warnings",
         "next",
     ] {
         if !value[key].is_null() {
@@ -455,7 +457,12 @@ pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -
             entry
         })
         .collect();
-    json!({"events":crate::claude_notify::subscriptions::guide(),"topic":topic,"controlSource":source,"content":format!("{}\n{}",body.as_str().unwrap_or(""),guides["common"].as_str().unwrap_or("")),"examples":examples,"ops":index})
+    let context = if topic == "loop" && crate::context_provider::configured() {
+        guides["contextProvider"].as_str().unwrap_or("")
+    } else {
+        ""
+    };
+    json!({"events":crate::claude_notify::subscriptions::guide(),"topic":topic,"controlSource":source,"content":format!("{}\n{}{}",body.as_str().unwrap_or(""),guides["common"].as_str().unwrap_or(""),context),"examples":examples,"ops":index})
 }
 
 /// Only suggest reads or waits; a suggested next step never authorizes a write.

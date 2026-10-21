@@ -676,13 +676,11 @@ impl AgentHost {
         let previous_turn = r["previousTurnId"].clone();
         let origin = r["origin"].clone();
         let job = tokio::spawn(crate::kernel::origin::ORIGIN.scope(origin, async move {
+            let arguments = r["arguments"].clone();
+            let task = string(&r, "taskId").to_owned();
+            let name = string(&r, "operation").to_owned();
             let result = host
-                .perform(
-                    &driver,
-                    string(&r, "operation"),
-                    &r["arguments"],
-                    string(&r, "taskId"),
-                )
+                .perform(&driver, &name, &arguments, &task, &mut r)
                 .await;
             match result {
                 Ok(v) => {
@@ -727,6 +725,7 @@ impl AgentHost {
         name: &str,
         args: &Value,
         task: &str,
+        receipt: &mut Value,
     ) -> Result<Value> {
         let agent = string(args, "agent");
         self.ensure_enabled(agent).await?;
@@ -796,7 +795,26 @@ impl AgentHost {
                         );
                     }
                 }
-                driver.prompt(&p, string(args, "prompt"), args, name).await
+                let (prefix, metadata) = crate::context_provider::prepare(
+                    args,
+                    string(&snapshot, "cwd"),
+                    string(args, "prompt"),
+                )
+                .await;
+                crate::context_provider::annotate(receipt, &metadata);
+                RECEIPTS.checkpoint(receipt)?;
+                {
+                    let mut state = p.state.lock().await;
+                    crate::context_provider::annotate(&mut state["dispatch"], &metadata);
+                }
+                driver
+                    .prompt(
+                        &p,
+                        &format!("{prefix}{}", string(args, "prompt")),
+                        args,
+                        name,
+                    )
+                    .await
             }
             "agent_interrupt" => driver.interrupt(&p).await,
             "agent_respond" => driver.respond(&p, args).await,
