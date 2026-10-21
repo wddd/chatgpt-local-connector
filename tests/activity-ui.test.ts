@@ -144,3 +144,28 @@ test("file labels are relative only inside the project and keep the filename sep
   assert.equal(filePathParts("/example/目录/文件.ts", "/").filename, "文件.ts");
   assert.equal(filePathParts("/example/very/long/directory/file.ts").filename, "file.ts");
 });
+
+test("file approvals use path labels in interaction bubbles and timeline cards", async () => {
+  const { activityHeadline, filePathParts } = await import("../ui/state/activityModel.ts");
+  const project = "/workspace/example";
+  const path = `${project}/nested/deep/approval-file.txt`;
+  const interaction = { ...permission, path, summary: path };
+  const bubble = { ...session("task", interaction), project, headline: interaction.summary };
+  const card = { ...bubble, phase: "interaction" as const, headline: interaction.summary, interaction };
+  for (const item of [bubble, card]) {
+    const label = activityHeadline(item);
+    assert.equal(label.path, path);
+    assert.equal(label.fullText, path);
+    assert.deepEqual(filePathParts(label.path!, item.project), {
+      fullPath: path, displayPath: "nested/deep/approval-file.txt", directory: "nested/deep/", filename: "approval-file.txt",
+    });
+  }
+  const relative = activityHeadline({ ...bubble, interaction: { ...interaction, path: "src/approval-file.txt" } });
+  assert.equal(relative.fullText, `${project}/src/approval-file.txt`);
+  const outside = activityHeadline({ ...bubble, interaction: { ...interaction, path: "/other/approval-file.txt" } });
+  assert.equal(filePathParts(outside.path!, project).displayPath, "/other/approval-file.txt");
+  const command = activityHeadline({ ...bubble, phase: "file", interaction: permission, headline: permission.summary });
+  assert.equal(command.path, undefined);
+  assert.equal(command.text, permission.summary);
+  assert.equal(activityHeadline({ ...bubble, phase: "file", interaction: undefined, headline: path }).path, path);
+});

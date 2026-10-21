@@ -220,8 +220,6 @@ pub(crate) struct Timeline {
     #[serde(skip)]
     pub history_loaded: bool,
     #[serde(skip)]
-    activity_entry: Option<String>,
-    #[serde(skip)]
     chunk: Option<(String, String, String)>,
     pi_message: u64,
     #[serde(skip)]
@@ -258,7 +256,6 @@ impl Timeline {
         if self.bytes == 0 && !self.entries.is_empty() {
             self.bytes = self.entries.iter().map(|r| r.to_string().len()).sum();
         }
-        self.activity_entry = Some(string(&row, "id").to_owned());
         self.revision += 1;
         row["cursor"] = json!(self.revision);
         self.bytes += row.to_string().len();
@@ -664,7 +661,6 @@ impl Timeline {
     }
     /// Project history first, then overlay observations made while the read was in flight.
     pub fn backfill_codex(&mut self, thread: &Value, baseline: u64, observed: u64, at: &str) {
-        let activity_entry = self.activity_entry.clone();
         let mut history = Timeline::default();
         let turns = thread["turns"].as_array();
         history.partial = turns.is_none();
@@ -749,9 +745,6 @@ impl Timeline {
                     .entry(string(row, "id").into())
                     .or_insert_with(|| string(row, "text").to_owned());
             }
-        }
-        if activity_entry.is_some() {
-            self.activity_entry = activity_entry;
         }
         self.history_loaded = true;
     }
@@ -884,18 +877,14 @@ impl Timeline {
     }
     pub fn session(&self, info: &Value, source: &str, pending: Option<Value>) -> Value {
         let latest = self
-            .activity_entry
-            .as_ref()
-            .and_then(|id| {
-                self.entries
-                    .iter()
-                    .find(|r| r["id"] == *id && r["type"] != "interaction")
-            })
-            .or_else(|| {
-                self.entries
-                    .iter()
-                    .filter(|r| r["type"] != "interaction")
-                    .max_by_key(|r| r["cursor"].as_u64())
+            .entries
+            .iter()
+            .filter(|r| r["type"] != "interaction")
+            .max_by_key(|r| {
+                (
+                    matches!(string(r, "status"), "pending" | "running"),
+                    r["cursor"].as_u64(),
+                )
             });
         let interaction = pending.or_else(|| {
             self.entries
@@ -1229,6 +1218,65 @@ mod tests {
             only_interaction.session(&info, "arc-task", None)["phase"],
             "idle"
         );
+    }
+    #[test]
+    fn running_command_wins_over_late_completed_file_updates() {
+        let mut t = Timeline::default();
+        let info = json!({"id":"task","taskId":"task","agent":"example","startedAt":AT});
+        for (id, kind) in [("read", "read"), ("write", "edit")] {
+            acp(
+                &mut t,
+                json!({"sessionUpdate":"tool_call","toolCallId":id,"kind":kind,"rawInput":{"file_path":"src/result.txt"},"status":"in_progress"}),
+                AT,
+            );
+            acp(
+                &mut t,
+                json!({"sessionUpdate":"tool_call_update","toolCallId":id,"status":"completed"}),
+                LATER,
+            );
+        }
+        let command_start = "2026-01-01T00:00:02.000Z";
+        acp(
+            &mut t,
+            json!({"sessionUpdate":"tool_call","toolCallId":"command","kind":"execute","rawInput":{"command":"printf example"},"status":"pending"}),
+            command_start,
+        );
+        t.agent("session/request_permission", &json!({"id":17,"params":{"toolCall":{"toolCallId":"command","command":"printf example"}}}), command_start);
+        assert_eq!(t.session(&info, "arc-task", None)["phase"], "interaction");
+        t.resolve(&json!(17), "2026-01-01T00:00:03.000Z");
+        for status in ["pending", "in_progress"] {
+            acp(
+                &mut t,
+                json!({"sessionUpdate":"tool_call_update","toolCallId":"command","status":status}),
+                "2026-01-01T00:00:04.000Z",
+            );
+            let revision = t.revision;
+            acp(
+                &mut t,
+                json!({"sessionUpdate":"tool_call_update","toolCallId":"write","status":"completed","rawOutput":{"text":format!("late file output during {status}")}}),
+                "2026-01-01T00:00:05.000Z",
+            );
+            assert!(t.revision > revision);
+            let snapshot = t.session(&info, "arc-task", None);
+            assert_eq!(snapshot["phase"], "command");
+            assert_eq!(snapshot["headline"], "printf example");
+            assert_eq!(snapshot["phaseSince"], command_start);
+            assert!(snapshot.get("interaction").is_none());
+        }
+        acp(
+            &mut t,
+            json!({"sessionUpdate":"tool_call_update","toolCallId":"command","status":"completed"}),
+            "2026-01-01T00:00:06.000Z",
+        );
+        assert_eq!(t.session(&info, "arc-task", None)["phase"], "command");
+        acp(
+            &mut t,
+            json!({"sessionUpdate":"tool_call_update","toolCallId":"write","status":"completed","rawOutput":{"text":"final file output"}}),
+            "2026-01-01T00:00:07.000Z",
+        );
+        let snapshot = t.session(&info, "arc-task", None);
+        assert_eq!(snapshot["phase"], "file");
+        assert_eq!(snapshot["phaseSince"], AT);
     }
     #[test]
     fn headlines_are_plain_text_without_changing_commands_or_paths() {

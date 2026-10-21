@@ -10,7 +10,7 @@ import { Button, Dialog, Icon } from "./ui";
 import { Markdown } from "./ui/Markdown";
 import ActivityInteraction from "./ActivityInteraction";
 import FilePath from "./FilePath";
-import { filePathParts } from "../state/activityModel";
+import { activityHeadline, filePathParts } from "../state/activityModel";
 
 const icons = { thinking: Brain, command: Terminal, file: FileText, tool: Wrench };
 function TimelineEntry({ entry, agent, session, now }: {
@@ -33,9 +33,10 @@ function TimelineEntry({ entry, agent, session, now }: {
   if (entry.type === "interaction") {
     const pending = entry.status === "pending";
     // The same native request and phase start share the 2B receipt and lock.
-    const interactionSession = { ...session, phaseSince: entry.startedAt, interaction: entry.interaction };
+    const interactionSession = { ...session, phase: "interaction" as const, headline: entry.interaction?.summary ?? "", phaseSince: entry.startedAt, interaction: entry.interaction };
+    const headline = activityHeadline(interactionSession);
     return <article className={`timeline-interaction ${pending ? "needs-attention" : ""}`}>
-      <p>{entry.interaction?.summary}</p>
+      <p title={headline.fullText}>{headline.path ? <FilePath path={headline.path} project={session.project} /> : headline.text}</p>
       {pending ? <ActivityInteraction agent={agent} session={interactionSession} questions /> : <span className="timeline-meta">{t(`timeline.status.${entry.status}`)}</span>}
     </article>;
   }

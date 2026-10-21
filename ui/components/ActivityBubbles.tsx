@@ -4,7 +4,7 @@ import { Brain, Terminal, FileText, Wrench, MessageSquare, CirclePause, CircleHe
 import { t } from "../i18n";
 import type { AgentActivitySession, AgentPhase } from "../types";
 import { activityTimeline, agentActivity, openActivitySession } from "../state/activity";
-import { activityLayout, filePathParts, visibleActivity } from "../state/activityModel";
+import { activityLayout, activityHeadline, visibleActivity } from "../state/activityModel";
 import { useInterval } from "../state/hooks";
 import { Button, Icon, Tooltip } from "./ui";
 
@@ -20,17 +20,17 @@ function elapsed(since: string | null | undefined, now: number) {
   if (seconds < 3600) return t("activity.minutes", { count: Math.floor(seconds / 60) });
   return t("activity.hours", { count: Math.floor(seconds / 3600), minutes: Math.floor(seconds / 60) % 60 });
 }
-function Headline({ text, phase, project }: { text: string; phase: AgentPhase; project?: string | null }) {
+function Headline({ text, path, phase, project }: { text: string; path?: string; phase: AgentPhase; project?: string | null }) {
   const reduced = useReducedMotion();
-  const latest = useRef({ text, phase, project });
-  latest.current = { text, phase, project };
+  const latest = useRef({ text, path, phase, project });
+  latest.current = { text, path, phase, project };
   const [display, setDisplay] = useState(latest.current);
   useInterval(() => setDisplay(latest.current), 1000);
   if (display.phase === "thinking" && !display.text) return null;
   return <span className="activity-headline">
     <AnimatePresence initial={false}>
       <motion.span key={`${display.phase}:${display.text}`} initial={{ opacity: reduced ? 1 : 0 }} animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>{display.phase === "file" && display.text ? <FilePath path={display.text} project={display.project} /> : display.text || t("activity.noHeadline")}</motion.span>
+        exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>{display.path ? <FilePath path={display.path} project={display.project} /> : display.text || t("activity.noHeadline")}</motion.span>
     </AnimatePresence>
   </span>;
 }
@@ -40,15 +40,15 @@ function ActivityBubble({ agent, session, now, overflow = 0 }: { agent: string; 
   const phase: AgentPhase = interaction ? "interaction" : session.phase;
   const phaseLabel = interaction?.kind === "question" ? "activity.question" : `activity.phase.${phase}`;
   const hint = t(session.timeline ? "timeline.open" : session.open ? "activity.open" : "activity.noEntry");
-  const fullHeadline = phase === "file" ? filePathParts(session.headline, session.project).fullPath : session.headline;
+  const headline = activityHeadline(session);
   const content = <>
     <span className="activity-phase"><Icon icon={interaction?.kind === "question" ? CircleHelp : phaseIcons[phase]} />
       <span>{t(phaseLabel)}</span><time>{elapsed(session.phaseSince ?? session.startedAt, now)}</time>
       {overflow > 0 && <span className="activity-more" title={t("activity.more", { count: overflow })}>+{overflow}</span>}</span>
-    <Headline text={session.headline} phase={phase} project={session.project} />
+    <Headline text={headline.text} path={headline.path} phase={phase} project={session.project} />
   </>;
   return <article className={`activity-bubble ${interaction ? "needs-attention" : ""}`} aria-label={session.title || t(phaseLabel)}>
-    <Tooltip text={`${hint}${fullHeadline ? ` · ${fullHeadline}` : ""}`}>
+    <Tooltip text={`${hint}${headline.fullText ? ` · ${headline.fullText}` : ""}`}>
       {session.timeline || session.open ? <Button data-timeline-anchor={session.timeline || undefined} variant="ghost" className="activity-summary" disabled={opening} onClick={() => {
         setOpening(true); setOpenError("");
         void openActivitySession(agent, session, selected => activityTimeline.set({ agent, session: selected })).catch(error => setOpenError(String(error))).finally(() => setOpening(false));

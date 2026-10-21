@@ -76,3 +76,9 @@ export function filePathParts(path: string, project?: string | null) {
   const split = displayPath.lastIndexOf("/") + 1;
   return { fullPath, displayPath, directory: displayPath.slice(0, split), filename: displayPath.slice(split) };
 }
+
+export function activityHeadline(session: Pick<AgentActivitySession, "headline" | "phase" | "interaction" | "project">) {
+  const path = session.interaction ? session.interaction.path || undefined : session.phase === "file" ? session.headline || undefined : undefined;
+  const text = path || session.headline;
+  return { text, path, fullText: path ? filePathParts(path, session.project).fullPath : text };
+}
