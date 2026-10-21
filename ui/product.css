@@ -1154,3 +1154,27 @@
   width: 0;
   min-width: 100%;
 }
+
+/* Activity is an overlay; it never participates in topology layout or drag hit areas. */
+.connection-graph { position: relative; }
+.activity-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.activity-row { position: absolute; display: flex; align-items: center; gap: 8px; transform: translateY(-50%); }
+.activity-bubble { position: relative; pointer-events: auto; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface); color: var(--text); padding: 5px 8px; min-width: 0; }
+.activity-bubble.needs-attention { border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); }
+.activity-bubble .activity-summary { display: block; width: 100%; padding: 0; min-height: 0; border: 0; border-radius: 4px; background: transparent; box-shadow: none; text-align: left; font-weight: 400; }
+.activity-phase { display: flex; align-items: center; gap: 4px; height: 18px; font-size: var(--text-xs); white-space: nowrap; }
+.activity-phase > span { overflow: hidden; text-overflow: ellipsis; }
+.activity-phase > .icon { flex: none; }
+.activity-phase time { margin-left: auto; flex: none; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.needs-attention .activity-phase > .icon { color: var(--warning); }
+.activity-headline { display: grid; height: 18px; line-height: 18px; font-size: var(--text-xs); color: var(--text-secondary); }
+.activity-headline > span { grid-area: 1 / 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.activity-actions { display: flex; align-items: center; gap: 4px; height: 22px; font-size: var(--text-xs); }
+.activity-actions .button { min-height: 22px; height: 22px; padding: 0 6px; font-size: var(--text-xs); }
+.activity-actions > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-note { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); line-height: 22px; color: var(--text-secondary); }
+.activity-error { color: var(--danger); }
+.activity-more { flex: none; height: 18px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--surface-raised); color: var(--text-secondary); box-shadow: 0 0 0 1px var(--border); font-size: var(--text-xs); line-height: 18px; }
+.needs-attention .activity-more { color: var(--warning); background: var(--warning-soft); }
+
+.activity-open-error { position: absolute; right: 4px; bottom: 4px; color: var(--danger); background: var(--surface); display: flex; border-radius: 4px; }

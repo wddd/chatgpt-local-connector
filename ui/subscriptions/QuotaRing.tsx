@@ -1,7 +1,8 @@
 import { Bot } from "lucide-react";
 import { t } from "../i18n";
 import { icons } from "../state/agents";
-import { activeAgents, subscriptions } from "../state/subscriptions";
+import { subscriptions } from "../state/subscriptions";
+import { agentActivity } from "../state/activity";
 import { useNow } from "../state/hooks";
 import {
   quotaDisplay,
@@ -13,13 +14,13 @@ import { readingStatus, brandIcon, quotaColor } from "./presentation";
 import { windowLabel } from "./labels";
 import { quotaPace } from "./pace";
 import type { ProviderSnapshot, QuotaWindow } from "./types";
-export function ActivityArc() {
+export function ActivityArc({ attention = false }: { attention?: boolean }) {
   return (
     <svg
-      className="activity-arc"
+      className={`activity-arc ${attention ? "needs-attention" : ""}`}
       viewBox="0 0 48 48"
       role="img"
-      aria-label={t("agentTaskRunning")}
+      aria-label={t(attention ? "activity.needsAttention" : "agentTaskRunning")}
     >
       <circle cx="24" cy="24" r="16" pathLength="100" strokeDasharray="33 67" />
     </svg>
@@ -53,7 +54,7 @@ function TimeTick({
 }
 export function AgentQuotaIcon({ agent }: { agent: string }) {
   const { snapshot } = subscriptions.use();
-  const active = activeAgents.use();
+  const activity = agentActivity.use().snapshot;
   const now = useNow();
   quotaDisplay.use();
   const provider = snapshot?.settings.enabled
@@ -70,7 +71,9 @@ export function AgentQuotaIcon({ agent }: { agent: string }) {
         )
       : [];
   const current = windows.find((w) => w.id === provider?.displayWindowId),
-    running = active.includes(agent),
+    sessions = activity?.agents[agent]?.sessions ?? [],
+    running = sessions.length > 0,
+    attention = sessions.some(session => session.interaction),
     label = current
       ? `${windowLabel(current.label)} · ${quotaLabel()} ${quotaPercent(current)}`
       : undefined;
@@ -101,7 +104,8 @@ export function AgentQuotaIcon({ agent }: { agent: string }) {
           />
         </svg>
       )}
-      {running && <ActivityArc />}
+      {running && <ActivityArc attention={attention} />}
+      {sessions.length > 1 && <span className={`activity-count ${attention ? "needs-attention" : ""}`} aria-label={t("activity.sessionCount", { count: sessions.length })}>{sessions.length}</span>}
       {icons[agent] ? (
         <span
           className="agent-logo"
@@ -123,12 +127,14 @@ export default function QuotaRing({
 }) {
   const now = useNow();
   quotaDisplay.use();
-  const active = activeAgents.use();
+  const activity = agentActivity.use().snapshot;
   const current = provider.windows.find(
       (w) => w.id === provider.displayWindowId,
     ),
     value = quotaValue(current),
-    running = provider.agentIds.some(id => active.includes(id));
+    sessions = provider.agentIds.flatMap(id => activity?.agents[id]?.sessions ?? []),
+    running = sessions.length > 0,
+    attention = sessions.some(session => session.interaction);
   return (
     <span
       className={`quota-ring ${provider.state === "stale" ? "stale" : ""}`}
@@ -156,7 +162,7 @@ export default function QuotaRing({
             radius={18}
           />
         </svg>
-        {running && <ActivityArc />}
+        {running && <ActivityArc attention={attention} />}
         <img src={brandIcon(provider.agentId)} alt="" />
       </span>
       {showPercentage && (

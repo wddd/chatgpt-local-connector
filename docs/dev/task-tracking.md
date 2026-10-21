@@ -17,7 +17,7 @@
 - 归一化在 Core 内维护；ACP/Pi 随 ARC 任务记录保存，Codex app-server 按本次 Core 观察到的派发线程维护。时间戳是 ARC 观察时间，不推断未观察到的开始/完成时间。
 - `agents/activity` 返回会话快照与兼容字段 `activeAgents`。等待审批、问题或选择的会话仍计为活动。
 - `agent_context.evidence` 是所选回合的 command/file 条目，`executionEvidence` 按本会话观察返回 `true`、`false` 或 `"partial"`；有协议事件但没有工具调用时返回空证据，不报 unsupported。
-- 2A 不改变首页视觉。`ActivityArc` 和现有前端轮询继续使用 `activeAgents`，2B/2C 可切换到会话结构与推送。
+- 首页使用会话快照；Desktop 订阅 `agents:activity`，Web 订阅 SSE，首屏与订阅失败时用 GET。`activeAgents` 仅保留供旧调用方兼容。
 
 ## 归一化层（native）
 
@@ -90,6 +90,7 @@
 | 操作 | 接口 |
 |---|---|
 | 一次性活动快照 | `GET /api/agents/activity`；CLI `agents.activity` |
+| 本地交互响应 | `POST /api/agents/respond`，body 为快照的 `{op,args}` 并在 args 补入选项与稳定 `requestId`；CLI `agents.respond`，参数 `{"body":{"op":"agent_respond","args":{…}}}` |
 | Web 推送 | `GET /api/agents/activity/events`，SSE `event: snapshot` |
 | Desktop 推送 | Tauri `agents:activity`，payload 与 GET 一致 |
 | 会话时间线 | `GET /api/agents/timeline/{id}?after={cursor}`；CLI `agents.timeline`，参数 `{"id":"…","body":{"after":12}}` |
@@ -129,10 +130,10 @@
 ### 第二级：摘要气泡
 
 - 每个活动会话一个气泡，从 Agent 图标向右铺开：阶段图标 + 阶段名 + 持续时间，下一行为单行省略的 headline。
-- headline 更新最多约每秒一次，交叉淡入，不用打字机效果。
-- 最多同时展示约 3 个，其余折叠为“+N”；需关注的排最前。
+- headline 更新最多每秒一次，160ms 交叉淡入，不用打字机效果；reduced-motion 下直接切换。
+- 最多同时展示 3 个，其余折叠为“+N”；需关注的排最前。气泡宽 180–220px、间隔 8px，距节点右侧 32px，右侧保留 12px 边距；空间不足 180px 时隐藏。
 - 右侧横向空间不足以放下最小气泡宽度时不显示气泡，只保留第一级。
-- 审批类直接给“允许 / 拒绝”，走现有 respond 通道；问题类提示并引导进入时间线。
+- 审批类直接给“允许 / 拒绝”，通过本地认证转发至现有 respond 所有者；重复提交沿用同一 requestId 回读回执。ACP 允许仅选择 allow_once；没有单次允许选项时不可允许，不自动授予持久权限。问题类仅提示；有原生入口时引导打开，无入口时提示时间线暂未开放。
 - 与配额悬停气泡（QuotaBubble）错开触发方式与位置，互不遮挡。
 - 气泡不改变节点排序、拖动和连线行为；拖动节点时气泡跟随或暂时隐藏。
 

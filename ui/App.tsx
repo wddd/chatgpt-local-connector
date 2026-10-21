@@ -22,7 +22,8 @@ import { t, locale } from "./i18n";
 import { isDesktop } from "./platform";
 import { connector, notify, startConnector } from "./state/connector";
 import { startAgents } from "./state/agents";
-import { startAgentActivity, startSubscriptions } from "./state/subscriptions";
+import { startSubscriptions } from "./state/subscriptions";
+import { startAgentActivity } from "./state/activity";
 import { startTasks, tasks } from "./state/tasks";
 import {
   startUpdateChecks,

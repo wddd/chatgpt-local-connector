@@ -27,6 +27,7 @@ import {
 import type { Ingress } from "../state/types";
 import SourceIcon from "./SourceIcon";
 import GraphNode from "./GraphNode";
+import ActivityBubbles, { type ActivityBubblesHandle } from "./ActivityBubbles";
 import ConnectionWires, { type ConnectionWiresHandle, type WireState } from "./ConnectionWires";
 import IngressDialog from "./IngressDialog";
 import SetupDialog from "./SetupDialog";
@@ -161,6 +162,9 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     if (!i.enabled) return "disabled";
     return error ? "unknown" : ingressState(i);
   }
+  const graph = useRef<HTMLDivElement>(null);
+  const bubbles = useRef<ActivityBubblesHandle>(null);
+  const [dragging, setDragging] = useState<ReadonlySet<string>>(new Set());
   const core = useRef<HTMLElement>(null),
     leftWires = useRef<ConnectionWiresHandle>(null),
     rightWires = useRef<ConnectionWiresHandle>(null);
@@ -169,6 +173,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const followWires = useCallback(() => {
     leftWires.current?.follow();
     rightWires.current?.follow();
+    bubbles.current?.follow();
   }, []);
   const [dimensions, setDimensions] = useState({
       width: 1000,
@@ -271,7 +276,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             </span>
           </button>
         </div>
-        <div className="connection-graph" style={{ height }}>
+        <div ref={graph} className="connection-graph" style={{ height }}>
           <Reorder.Group
             as="div"
             axis="y"
@@ -323,7 +328,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
                   label={`${name(agent)}: ${t(agentState(agent))}`}
                   state={wireState(agentState(agent))} nodes={agentNodes.current}
                   onMove={agent.enabled ? by => moveVisibleAgent(agent.agent, by) : undefined}
-                  onMotion={followWires} onOpen={() => setDetailAgent(agent)}>
+                  onMotion={followWires} onOpen={() => setDetailAgent(agent)}
+                  onDragging={value => setDragging(old => { const next = new Set(old); if (value) next.add(agent.agent); else next.delete(agent.agent); return next; })}>
                   <AgentQuotaIcon agent={agent.agent} />
                   <span className="graph-node-name">{name(agent)}</span>
                 </GraphNode>
@@ -338,6 +344,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
               </button>
             </Reorder.Group>
           </div>
+          <ActivityBubbles ref={bubbles} graph={graph} boundary={core} nodes={agentNodes.current} hidden={dragging}
+            enabled={visible && !detailAgent && !agentsOpen && !details && !formOpen && !setupMode} />
         </div>
         {setup.snapshot?.goal && !setup.snapshot.complete && <div className="setup-resume"><Button onClick={() => setSetupMode("progress")}>{t("setup.resume")}</Button></div>}
         {error && (

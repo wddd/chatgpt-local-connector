@@ -1122,3 +1122,8 @@ pre {
 .update-action-label {
   position: relative;
 }
+
+.activity-arc.needs-attention { color: var(--warning); animation-play-state: paused; }
+.activity-count { position: absolute; left: calc(100% + 1px); bottom: calc(100% - 8px); min-width: 18px; height: 18px; padding: 0 4px; display: grid; place-items: center; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--border); color: var(--text); font-size: var(--text-xs); font-weight: 600; line-height: 18px; font-variant-numeric: tabular-nums; }
+.activity-count.needs-attention { color: var(--warning); background: var(--warning-soft); }
+@media (prefers-reduced-motion: reduce) { .activity-arc { animation: none; } }

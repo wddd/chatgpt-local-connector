@@ -1521,6 +1521,49 @@
       }
     },
     {
+      "name": "agents.respond",
+      "route": "agents/respond",
+      "method": "POST",
+      "description": "Respond to a pending activity interaction through its supplied op and args. A stable requestId replays the existing response receipt; unconfirmed outcomes must be read back, never resent under a new ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "op": {
+                "enum": [
+                  "agent_respond",
+                  "codex_respond"
+                ]
+              },
+              "args": {
+                "type": "object",
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "requestId"
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "args"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "agents.timeline",
       "route": "agents/timeline/{id}",
       "method": "GET",

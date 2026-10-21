@@ -4,7 +4,7 @@ import { springTransition } from "../motion/geometry";
 import { t } from "../i18n";
 import type { WireState } from "./ConnectionWires";
 
-export default function GraphNode({ id, label, state, nodes, onOpen, onMove, onMotion, children }: {
+export default function GraphNode({ id, label, state, nodes, onOpen, onMove, onMotion, onDragging, children }: {
   id: string;
   label: string;
   state: WireState;
@@ -12,6 +12,7 @@ export default function GraphNode({ id, label, state, nodes, onOpen, onMove, onM
   onOpen: () => void;
   onMove?: (by: number) => void;
   onMotion: () => void;
+  onDragging?: (dragging: boolean) => void;
   children: ReactNode;
 }) {
   const dragged = useRef(false);
@@ -54,8 +55,8 @@ export default function GraphNode({ id, label, state, nodes, onOpen, onMove, onM
     dragMomentum={false}
     dragElastic={!reduced}
     whileDrag={{ cursor: "grabbing" }}
-    onDragStart={() => { dragged.current = true; onMotion(); }}
-    onDragEnd={onMotion}
+    onDragStart={() => { dragged.current = true; onDragging?.(true); onMotion(); }}
+    onDragEnd={() => { onDragging?.(false); onMotion(); }}
     onDragTransitionEnd={onMotion}
     onKeyDown={event => {
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {

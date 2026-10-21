@@ -93,30 +93,3 @@ export function startSubscriptions() {
     clearInterval(timer);
   };
 }
-export const activeAgents = createStore<string[]>([]);
-export function startAgentActivity() {
-  let stopped = false,
-    timer: ReturnType<typeof setTimeout> | undefined,
-    expires: ReturnType<typeof setTimeout> | undefined;
-  async function read() {
-    try {
-      const result = await api<{ activeAgents: string[] }>("agents/activity");
-      if (!stopped) {
-        activeAgents.set(result.activeAgents);
-        clearTimeout(expires);
-        expires = setTimeout(() => activeAgents.set([]), 10000);
-      }
-    } catch {
-      if (!stopped) activeAgents.set([]);
-    } finally {
-      if (!stopped) timer = setTimeout(read, 2000);
-    }
-  }
-  void read();
-  return () => {
-    stopped = true;
-    clearTimeout(timer);
-    clearTimeout(expires);
-    activeAgents.set([]);
-  };
-}

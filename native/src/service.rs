@@ -571,6 +571,19 @@ impl Service {
         if route.starts_with("runtime/") && method == "POST" {
             return self.runtime.request(route, body);
         }
+        if route == "agents/respond" && method == "POST" {
+            // Local authentication is enforced by transport; keep the existing
+            // respond owners responsible for scope, validation and UUID replay.
+            crate::management::resolve("agents.respond", &json!({"body":body}))?;
+            return self
+                .execution
+                .call(
+                    string(&body, "op"),
+                    body["args"].clone(),
+                    crate::kernel::policy::default_policy(),
+                )
+                .await;
+        }
         if route == "agents/activity" && method == "GET" {
             return Ok(self.agents.activity(&self.control).await);
         }
