@@ -119,6 +119,13 @@ impl Rpc {
             }
             let mut events = events.lock().await;
             events.pending.retain(|_, r| r["owner"] == "desktop");
+            for timeline in events.timelines.values_mut() {
+                if timeline.info["runtimeSource"] == "connector-app-server"
+                    && matches!(timeline.status.as_str(), "running" | "inProgress")
+                {
+                    timeline.finish("unknown", &now());
+                }
+            }
             events.wake.notify_waiters();
         });
         rpc.call("initialize",json!({"clientInfo":{"name":"agent-remote-control","version":env!("ARC_BUILD_VERSION")},"capabilities":{"experimentalApi":true}}),60000).await?;

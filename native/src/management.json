@@ -1512,11 +1512,74 @@
       "name": "agents.activity",
       "route": "agents/activity",
       "method": "GET",
-      "description": "Current active Agent IDs.",
+      "description": "Active sessions with normalized phases, pending interactions and timeline availability; retains activeAgents.",
       "localOnly": true,
       "inputSchema": {
         "type": "object",
         "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "agents.timeline",
+      "route": "agents/timeline/{id}",
+      "method": "GET",
+      "description": "Normalized entries for an activity session ID. after is the last returned update cursor; merge entries by id. Coverage reports bounded history.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "after": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "agents.session.open",
+      "route": "agents/sessions/{id}/open",
+      "method": "POST",
+      "description": "Open a verified native session entry from agents/activity. macOS Claude resumes through its own CLI; no private index changes.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "agent": {
+                "const": "claude"
+              }
+            },
+            "required": [
+              "agent"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "body"
+        ],
         "additionalProperties": false
       }
     },

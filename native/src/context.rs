@@ -63,14 +63,24 @@ pub async fn read(
                 out["selectedTurnId"] = t["turnId"].clone();
                 out["runtime"]["owner"] = t["runtimeSource"].clone();
                 out["runtime"]["recordedStatus"] = t["status"].clone();
-                out["claims"].as_array_mut().unwrap().push(json!({"source":{"kind":"agent-record","taskId":task,"turnId":t["turnId"]},"excerpt":excerpt(string(&t,"output")),"verified":false}));
+                out["claims"].as_array_mut().unwrap().push(json!({"source":{"kind":"agent-record","taskId":task,"turnId":t["turnId"]},"excerpt":excerpt(&crate::task_tracking::redact(string(&t,"output"))),"verified":false}));
                 next(
                     &mut out,
                     &policy,
                     "agent_read",
                     json!({"agent":agent,"taskId":task}),
                 );
-                missing(&mut out, "STRUCTURED_COMMAND_EVIDENCE_UNSUPPORTED");
+                let timeline: crate::task_tracking::Timeline =
+                    serde_json::from_value(t["tracking"].clone()).unwrap_or_default();
+                out["evidence"] = timeline.evidence(t["turnId"].as_str());
+                out["executionEvidence"] = timeline.execution_evidence();
+                if timeline.observed_events == 0 {
+                    missing(&mut out, "STRUCTURED_COMMAND_EVIDENCE_UNSUPPORTED");
+                }
+                if timeline.partial {
+                    out["coverage"]["truncated"] = json!(true);
+                    missing(&mut out, "EVENT_WINDOW_TRUNCATED");
+                }
                 missing(&mut out, "LIVE_STATE_NOT_QUERIED");
             }
             Ok(Err(_)) => missing(&mut out, "TASK_UNAVAILABLE"),

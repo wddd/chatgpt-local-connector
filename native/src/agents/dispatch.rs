@@ -258,7 +258,7 @@ pub(super) fn catalog_facts(
 ) -> Value {
     let mut facts = json!({
         "source":source,"taskId":task["taskId"],"observedAt":observed,
-        "scope":"session","executionEvidence":false
+        "scope":"session","executionEvidence":serde_json::from_value::<crate::task_tracking::Timeline>(task["tracking"].clone()).unwrap_or_default().execution_evidence()
     });
     if task["agent"] == "pi" {
         let model = &metadata["model"];

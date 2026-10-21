@@ -60,11 +60,15 @@ impl Process {
             .map_err(|e| e.to_string())?;
         let input = child.stdin.take().ok_or("MISSING_STDIN")?;
         let stdout = child.stdout.take().ok_or("MISSING_STDOUT")?;
+        let mut tracking: crate::task_tracking::Timeline =
+            serde_json::from_value(state["tracking"].clone()).unwrap_or_default();
+        tracking.info = json!({"id":state["taskId"],"project":state["cwd"]});
         let process = Arc::new(Self {
             input: Mutex::new(input),
             child: Mutex::new(child),
             replies: Default::default(),
             events: Arc::new(Mutex::new(Events {
+                timelines: HashMap::from([(string(&state, "taskId").to_owned(), tracking)]),
                 durable: true,
                 ..Events::default()
             })),
@@ -90,7 +94,7 @@ impl Process {
                 if dsh && frame.starts_with(b"[llm-deepseek-account] ") {
                     continue;
                 }
-                let msg: Value = match serde_json::from_slice(&frame) {
+                let mut msg: Value = match serde_json::from_slice(&frame) {
                     Ok(v) => v,
                     Err(_) => break,
                 };
@@ -115,13 +119,20 @@ impl Process {
                     string(&msg, "type")
                 } else {
                     string(&msg, "method")
-                };
+                }
+                .to_owned();
+                let method = method.as_str();
                 if !pi && msg.get("id").is_some() && method != "session/request_permission" {
                     let _ = p.write(json!({"jsonrpc":"2.0","id":msg["id"],"error":{"code":-32601,"message":"Client capability not supported"}})).await;
                     continue;
                 }
                 let mut state = p.state.lock().await;
                 let task = string(&state, "taskId").to_owned();
+                if method == "session/request_permission" {
+                    if let Some(timeline) = p.events.lock().await.timelines.get(&task) {
+                        timeline.enrich_permission(&mut msg);
+                    }
+                }
                 crate::event(&p.events, &task, method, msg.clone()).await;
                 if method == "session/update" {
                     let update = &msg["params"]["update"];
@@ -215,6 +226,7 @@ impl Process {
                         crate::logs::record("WARN", &error, None);
                     }
                 }
+                p.snapshot_tracking(&mut state).await;
                 state["updatedAt"] = json!(now());
                 if let Err(e) = super::save_task(&state) {
                     state["storageError"] = json!(e);
@@ -230,6 +242,13 @@ impl Process {
                     s["status"] = json!("unknown");
                 }
                 s["processState"] = json!("exited");
+                {
+                    let mut events = p.events.lock().await;
+                    if let Some(t) = events.timelines.get_mut(string(&s, "taskId")) {
+                        t.finish("unknown", &now());
+                    }
+                }
+                p.snapshot_tracking(&mut s).await;
                 let _ = super::save_task(&s);
                 {
                     let mut events = p.events.lock().await;
@@ -243,6 +262,17 @@ impl Process {
             }
         });
         Ok(process)
+    }
+    pub async fn snapshot_tracking(&self, state: &mut Value) {
+        if let Some(timeline) = self
+            .events
+            .lock()
+            .await
+            .timelines
+            .get(string(state, "taskId"))
+        {
+            state["tracking"] = serde_json::to_value(timeline).unwrap_or(Value::Null);
+        }
     }
     pub async fn check_alive(&self) -> Result<()> {
         if !self.alive.load(std::sync::atomic::Ordering::SeqCst)

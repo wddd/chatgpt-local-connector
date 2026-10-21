@@ -207,6 +207,27 @@ fn main() {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
             });
+            let handle = app.handle().clone();
+            let activity_client = service.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut previous = Value::Null;
+                loop {
+                    if let Ok(snapshot) = activity_client
+                        .request("agents/activity", "GET", json!({}))
+                        .await
+                    {
+                        let mut comparison = snapshot.clone();
+                        if let Some(fields) = comparison.as_object_mut() {
+                            fields.remove("observedAt");
+                        }
+                        if comparison != previous {
+                            let _ = handle.emit_to("main", "agents:activity", &snapshot);
+                            previous = comparison;
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            });
             let autostart = std::env::args().any(|arg| arg == "--autostart");
             let resume =
                 updates::take_resume().or_else(

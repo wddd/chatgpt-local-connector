@@ -572,16 +572,28 @@ impl Service {
             return self.runtime.request(route, body);
         }
         if route == "agents/activity" && method == "GET" {
-            let selected = self
-                .subscriptions
-                .subscribe()
-                .borrow()
-                .providers
-                .iter()
-                .filter(|p| p.eligible)
-                .map(|p| p.agent_id.clone())
-                .collect();
-            return Ok(self.agents.activity(selected).await);
+            return Ok(self.agents.activity(&self.control).await);
+        }
+        if let Some(session) = route
+            .strip_prefix("agents/timeline/")
+            .filter(|_| method == "GET")
+        {
+            let after = match body.get("after") {
+                None => 0,
+                Some(v) => v.as_u64().ok_or("INVALID_TIMELINE_CURSOR")?,
+            };
+            return self.agents.timeline(&self.control, session, after).await;
+        }
+
+        if let Some(session) = route
+            .strip_prefix("agents/sessions/")
+            .and_then(|r| r.strip_suffix("/open"))
+            .filter(|_| method == "POST")
+        {
+            return self
+                .agents
+                .open_session(string(&body, "agent"), session)
+                .await;
         }
         if route == "subscriptions" || route.starts_with("subscriptions/") {
             return self.subscriptions.request(route, method, body).await;

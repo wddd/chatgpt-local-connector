@@ -158,6 +158,30 @@ for await (const line of createInterface({ input: process.stdin })) {
   else if (params?.delay) setTimeout(reply, params.delay); else reply();
 }
 `);
+  const acpFixture = path.join(directory, 'tracking-acp.mjs');
+  await writeFile(acpFixture, `
+import { createInterface } from 'node:readline';
+const emit = value => process.stdout.write(JSON.stringify(value) + '\\n');
+const update = value => emit({jsonrpc:'2.0',method:'session/update',params:{sessionId:'example-session',update:value}});
+let promptId;
+for await (const line of createInterface({input:process.stdin})) {
+  const r=JSON.parse(line);
+  if(r.method==='initialize')emit({jsonrpc:'2.0',id:r.id,result:{protocolVersion:1,agentCapabilities:{}}});
+  else if(r.method==='session/new')emit({jsonrpc:'2.0',id:r.id,result:{sessionId:'example-session'}});
+  else if(r.method==='session/prompt') {
+    promptId=r.id;
+    update({sessionUpdate:'tool_call',toolCallId:'example-command',title:'Bash',kind:'other',status:'in_progress',rawInput:{command:'printf example',api_key:'fixture-secret-value'}});
+    emit({jsonrpc:'2.0',id:'example-permission',method:'session/request_permission',params:{toolCall:{toolCallId:'example-command'},options:[{optionId:'allow',kind:'allow_once',name:'Allow'}]}});
+  } else if(r.id==='example-permission') {
+    update({sessionUpdate:'tool_call_update',toolCallId:'example-command',status:'completed',rawOutput:{exitCode:0},content:[{type:'content',content:{type:'text',text:'example'}}]});
+    update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'All '}});
+    update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'done'}});
+    emit({jsonrpc:'2.0',id:promptId,result:{stopReason:'end_turn'}});
+  }
+}
+`);
+  await mkdir(path.join(directory,'agents'),{recursive:true});
+  await writeFile(path.join(directory,'agents/manifests.json'),JSON.stringify([{id:'tracking-example',command:process.execPath,args:[acpFixture],versionArgs:[],protocol:'acp-v1'}]));
   const target = fileURLToPath(new URL('../target', import.meta.url));
   execFileSync('cargo', ['build', '--locked', '--quiet', '-p', 'contract-fixture', '--target-dir', target], {
     cwd: fileURLToPath(new URL('../', import.meta.url)), stdio: 'inherit',
@@ -229,10 +253,11 @@ test('MCP lists frozen tools and guide exposes existing ops and native domains w
   }
   assert.ok(operations.find(tool => tool.name === 'codex_items')!.inputSchema.properties?.latest);
   const agents = (await management('agents')).agents;
-  assert.deepEqual(agents.map((agent: { agent: string }) => agent.agent).sort(), ['claude', 'cline', 'codebuddy', 'codex', 'copilot', 'cursor', 'devin', 'droid', 'dsh', 'gemini', 'goose', 'grok', 'hermes', 'junie', 'kimi', 'kiro', 'omp', 'opencode', 'pi', 'qwen']);
+  assert.deepEqual(agents.map((agent: { agent: string }) => agent.agent).sort(), ['claude', 'cline', 'codebuddy', 'codex', 'copilot', 'cursor', 'devin', 'droid', 'dsh', 'gemini', 'goose', 'grok', 'hermes', 'junie', 'kimi', 'kiro', 'omp', 'opencode', 'pi', 'qwen', 'tracking-example']);
   for (const agent of agents.filter((agent: { protocol: string }) => agent.protocol === 'acp-v1')) {
     assert.equal(agent.descriptor.protocol, 'acp-v1');
-    assert.ok(['native', 'adapter'].includes(agent.integration));
+    if (agent.agent==='tracking-example') assert.equal(agent.integration,'custom');
+    else assert.ok(['native', 'adapter'].includes(agent.integration));
   }
   const gitWrite = operations.find(tool => tool.name === 'git_write')!;
   assert.equal(gitWrite.annotations?.readOnlyHint, false);
@@ -1053,4 +1078,57 @@ test('review receipts omit notification delivery details including replay',async
   assert.equal(reviewed.state,'completed',JSON.stringify(reviewed));assert.equal(reviewed.notification,undefined);assert.equal(reviewed.notificationError,undefined);
   const replay=(await call('receipt',{requestId})).result;
   assert.equal(replay.state,'completed');assert.equal(replay.notification,undefined);assert.equal(replay.notificationError,undefined);
+});
+
+
+test('ACP task tracking keeps approvals active and projects context, SSE and incremental timeline', async () => {
+  const transcriptDir=path.join(directory,'home/.claude/projects/example');
+  await mkdir(transcriptDir,{recursive:true});
+  const transcriptIds=[randomUUID(),randomUUID()];
+  for (const sessionId of transcriptIds) await writeFile(path.join(transcriptDir,sessionId+'.jsonl'),JSON.stringify({type:'assistant',sessionId,cwd:directory,timestamp:new Date().toISOString(),message:{stop_reason:null,content:[{type:'thinking',thinking:'Review example'}]}})+'\n');
+  const requestId=randomUUID();
+  const created=(await call('agent_create',{agent:'tracking-example',cwd:directory,prompt:'Check example',title:'Example task',requestId,approval:'approved',purpose:'self-test',waitMs:1})).result;
+  assert.ok(created.taskId,JSON.stringify(created));
+  const taskId=created.taskId;
+  const wait=(await call('agent_wait',{agent:'tracking-example',taskId,timeoutMs:10000})).result;
+  assert.equal(wait.state,'interaction-required',JSON.stringify(wait));
+  const activity=await management('agents/activity');
+  assert.ok(activity.activeAgents.includes('tracking-example'));
+  const transcripts=activity.agents.claude.sessions.filter((r: any)=>transcriptIds.includes(r.id));
+  assert.equal(transcripts.length,2);
+  assert.ok(transcripts.every((r: any)=>r.source==='transcript'&&r.phase==='thinking'&&r.headline==='Review example'&&r.timeline===false));
+  const session=activity.agents['tracking-example'].sessions[0];
+  assert.equal(session.id,taskId);
+  assert.equal(session.phase,'interaction');
+  assert.equal(session.headline,'printf example');
+  assert.equal(session.timeline,true);
+  const pending=(await call('agent_pending',{agent:'tracking-example',taskId})).result;
+  assert.equal(pending.requests[0].params.toolCall.command,'printf example');
+  const initial=await management(`agents/timeline/${taskId}`);
+  assert.equal(initial.entries[0].type,'user');
+  assert.ok(initial.entries.some((r: any)=>r.type==='interaction'&&r.status==='pending'));
+  assert.ok(!JSON.stringify(initial).includes('fixture-secret-value'));
+  const endpoint=JSON.parse(await readFile(path.join(directory,'app/native.json'),'utf8'));
+  const abort=new AbortController();
+  try {
+    const stream=await fetch(`http://127.0.0.1:${endpoint.port}/api/agents/activity/events`,{headers:{Authorization:`Bearer ${endpoint.token}`},signal:abort.signal});
+    assert.equal(stream.headers.get('Content-Type'),'text/event-stream');
+    const first=await stream.body!.getReader().read();
+    const snapshot=JSON.parse(new TextDecoder().decode(first.value).split('data: ')[1].trim());
+    assert.equal(snapshot.agents['tracking-example'].sessions[0].phase,'interaction');
+  } finally {abort.abort();}
+  const responded=await completed('agent_respond',{agent:'tracking-example',taskId,interactionId:'example-permission',optionId:'allow',requestId:randomUUID()});
+  assert.equal(responded.state,'completed',JSON.stringify(responded));
+  const settled=(await call('agent_wait',{agent:'tracking-example',taskId,timeoutMs:10000})).result;
+  assert.equal(settled.state,'completed');
+  const timeline=await management(`agents/timeline/${taskId}?after=${initial.cursor}`);
+  assert.equal(timeline.coverage.state,'complete');
+  assert.ok(timeline.entries.some((r: any)=>r.id==='example-command'&&r.exitCode===0&&r.status==='completed'));
+  const text=timeline.entries.filter((r: any)=>r.type==='text');
+  assert.equal(text.length,1);assert.equal(text[0].text,'All done');
+  const context=(await call('agent_context',{agent:'tracking-example',taskId})).result;
+  assert.equal(context.executionEvidence,true);
+  assert.equal(context.evidence[0].command,'printf example');
+  assert.ok(!context.coverage.missing.includes('STRUCTURED_COMMAND_EVIDENCE_UNSUPPORTED'));
+  assert.ok(!(await management('agents/activity')).activeAgents.includes('tracking-example'));
 });

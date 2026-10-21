@@ -236,6 +236,15 @@ async fn local_request(
     }
     let method = request.method().to_string();
     let path = request.uri().path().to_owned();
+    let timeline_after = if path.starts_with("/api/agents/timeline/") {
+        request
+            .uri()
+            .query()
+            .and_then(|q| q.split('&').find_map(|p| p.strip_prefix("after=")))
+            .map(str::to_owned)
+    } else {
+        None
+    };
     let parsed = tokio::time::timeout(Duration::from_secs(5), async {
         let bytes = Limited::new(request.into_body(), 16 * 1024 * 1024)
             .collect()
@@ -249,18 +258,33 @@ async fn local_request(
         }
     })
     .await;
-    let body = match parsed {
+    let mut body = match parsed {
         Ok(Ok(body)) => body,
         Ok(Err(e)) => return local_reply(400, json!({"error":e})),
         Err(_) => return local_reply(408, json!({"error":"request timeout"})),
     };
-    if method == "GET" && matches!(path.as_str(), "/api/events" | "/api/subscriptions/events") {
+    if let Some(after) = timeline_after {
+        match after.parse::<u64>() {
+            Ok(after) => body["after"] = json!(after),
+            Err(_) => return local_reply(400, json!({"error":"INVALID_TIMELINE_CURSOR"})),
+        }
+    }
+    if method == "GET"
+        && matches!(
+            path.as_str(),
+            "/api/events" | "/api/subscriptions/events" | "/api/agents/activity/events"
+        )
+    {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             let subscriptions = path == "/api/subscriptions/events";
+            let activity = path == "/api/agents/activity/events";
+            let mut previous = Value::Null;
             let mut changes = s.subscriptions.subscribe();
             loop {
-                let snapshot = if subscriptions {
+                let snapshot = if activity {
+                    s.agents.activity(&s.control).await
+                } else if subscriptions {
                     json!(&*changes.borrow_and_update())
                 } else {
                     match tokio::select! { _ = tx.closed() => return, v = s.status() => v } {
@@ -268,19 +292,26 @@ async fn local_request(
                         Err(_) => return,
                     }
                 };
-                if tx
-                    .send(hyper::body::Bytes::from(format!(
-                        "event: snapshot\ndata: {snapshot}\n\n"
-                    )))
-                    .await
-                    .is_err()
-                {
-                    return;
+                let mut comparison = snapshot.clone();
+                if activity {
+                    comparison.as_object_mut().unwrap().remove("observedAt");
+                }
+                if !activity || comparison != previous {
+                    previous = comparison;
+                    if tx
+                        .send(hyper::body::Bytes::from(format!(
+                            "event: snapshot\ndata: {snapshot}\n\n"
+                        )))
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
                 }
                 tokio::select! {
                     _ = tx.closed() => return,
                     result = changes.changed(), if subscriptions => if result.is_err() { return; },
-                    _ = tokio::time::sleep(Duration::from_secs(if subscriptions { 15 } else { 2 })) => {},
+                    _ = tokio::time::sleep(Duration::from_secs(if subscriptions { 15 } else if activity { 1 } else { 2 })) => {},
                 }
             }
         });

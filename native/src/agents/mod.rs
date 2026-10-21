@@ -184,15 +184,20 @@ impl AgentHost {
         }
         #[cfg(not(target_os = "linux"))]
         {
-            self.launch_interactive("claude", " auth login").await
+            self.launch_interactive("claude", " auth login", None).await
         }
     }
     #[cfg(not(target_os = "linux"))]
     pub async fn open_interactive(&self, agent: &str) -> Result<Value> {
-        self.launch_interactive(agent, "").await
+        self.launch_interactive(agent, "", None).await
     }
     #[cfg(not(target_os = "linux"))]
-    async fn launch_interactive(&self, agent: &str, arguments: &str) -> Result<Value> {
+    async fn launch_interactive(
+        &self,
+        agent: &str,
+        arguments: &str,
+        directory: Option<PathBuf>,
+    ) -> Result<Value> {
         let driver = self.drivers.get(agent).ok_or("UNKNOWN_AGENT")?;
         if matches!(driver, AgentDriver::CodexNative) {
             crate::desktop::open_app().await?;
@@ -204,7 +209,7 @@ impl AgentHost {
             driver.binary()
         }
         .ok_or("AGENT_NOT_INSTALLED")?;
-        let home = dirs::home_dir().ok_or("HOME_NOT_FOUND")?;
+        let home = directory.or_else(dirs::home_dir).ok_or("HOME_NOT_FOUND")?;
         #[cfg(target_os = "macos")]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -253,6 +258,36 @@ impl AgentHost {
         #[cfg(not(any(target_os = "macos", windows)))]
         return Err("UNSUPPORTED_PLATFORM".into());
         Ok(json!({"opened":true,"target":"terminal"}))
+    }
+    pub async fn open_session(&self, agent: &str, session: &str) -> Result<Value> {
+        // Only verified native resume paths are exposed; never edit an agent's index.
+        if agent != "claude" || !cfg!(target_os = "macos") {
+            return Err("AGENT_SESSION_OPEN_UNSUPPORTED".into());
+        }
+        uuid::Uuid::parse_str(session).map_err(|_| "INVALID_SESSION_ID")?;
+        let (native, cwd) = if let Ok(task) = self.task(agent, session).await {
+            (
+                string(&task, "sessionId").to_owned(),
+                PathBuf::from(string(&task, "cwd")),
+            )
+        } else {
+            let rows = self.activity.lock().await.sample(vec![agent.into()]).await;
+            let (_, row) = rows
+                .iter()
+                .find(|(a, row)| a == agent && row["id"] == session)
+                .ok_or("ACTIVE_SESSION_NOT_FOUND")?;
+            (session.to_owned(), PathBuf::from(string(row, "project")))
+        };
+        uuid::Uuid::parse_str(&native).map_err(|_| "INVALID_SESSION_ID")?;
+        if !cwd.is_absolute() || !cwd.is_dir() {
+            return Err("SESSION_WORKSPACE_UNAVAILABLE".into());
+        }
+        #[cfg(not(target_os = "linux"))]
+        return self
+            .launch_interactive(agent, &format!(" --resume {native}"), Some(cwd))
+            .await;
+        #[cfg(target_os = "linux")]
+        Err("AGENT_SESSION_OPEN_UNSUPPORTED".into())
     }
     /// UI polling reuses discovery facts; manual refresh bypasses the cache.
     /// MCP discovery and task launch continue to verify the actual executables.
@@ -308,25 +343,115 @@ impl AgentHost {
             });
         }
     }
-    pub async fn activity(&self, selected: Vec<String>) -> Value {
+    pub async fn activity(&self, control: &control::Control) -> Value {
         let processes: Vec<_> = self.processes.lock().await.values().cloned().collect();
-        let mut active = std::collections::BTreeSet::new();
+        let disabled = self.disabled.lock().await.clone();
+        let mut agents = serde_json::Map::new();
+        let mut native_sessions = HashSet::new();
         for process in processes {
-            if process.alive.load(std::sync::atomic::Ordering::SeqCst) {
-                let state = process.state.lock().await;
-                if state["status"] == "running" {
-                    active.insert(string(&state, "agent").to_owned());
+            if !process.alive.load(std::sync::atomic::Ordering::SeqCst) {
+                continue;
+            }
+            let state = process.state.lock().await;
+            let agent = string(&state, "agent");
+            if disabled.contains(agent) {
+                continue;
+            }
+            let events = process.events.lock().await;
+            if !matches!(
+                string(&state, "status"),
+                "running" | "waiting-permission" | "starting" | "cancelling"
+            ) && events.pending.is_empty()
+            {
+                continue;
+            }
+            native_sessions.insert((agent.to_owned(), string(&state, "sessionId").to_owned()));
+            let info = json!({"id":state["taskId"],"taskId":state["taskId"],"agent":agent,"title":state["title"],"project":state["cwd"],"startedAt":state["createdAt"]});
+            let timeline = events
+                .timelines
+                .get(string(&state, "taskId"))
+                .cloned()
+                .unwrap_or_default();
+            let mut session = timeline.session(&info, "arc-task", None);
+            session["nativeSessionId"] = state["sessionId"].clone();
+            if agent == "claude"
+                && cfg!(target_os = "macos")
+                && uuid::Uuid::parse_str(string(&state, "sessionId")).is_ok()
+            {
+                session["open"] = json!({"kind":"agent-session","target":state["taskId"]});
+            }
+            activity::insert(&mut agents, agent, session);
+        }
+        if !disabled.contains("codex") {
+            let events = control.events.lock().await;
+            for (id, timeline) in &events.timelines {
+                let pending = events
+                    .pending
+                    .values()
+                    .any(|p| p["params"]["threadId"] == *id);
+                if !matches!(timeline.status.as_str(), "running" | "inProgress") && !pending {
+                    continue;
                 }
+                native_sessions.insert(("codex".into(), id.clone()));
+                activity::insert(
+                    &mut agents,
+                    "codex",
+                    timeline.session(&timeline.info, "codex-thread", None),
+                );
             }
         }
-        let disabled = self.disabled.lock().await.clone();
-        let selected = selected
+        let selected = ["codex", "claude"]
             .into_iter()
-            .filter(|id| !disabled.contains(id))
+            .filter(|a| !disabled.contains(*a))
+            .map(str::to_owned)
             .collect();
-        active.extend(self.activity.lock().await.sample(selected).await);
-        active.retain(|id| !disabled.contains(id));
-        json!({"activeAgents":active,"observedAt":now(),"scope":"selected-local-transcripts-and-connector-live-sessions"})
+        for (agent, session) in self.activity.lock().await.sample(selected).await {
+            if !native_sessions.contains(&(agent.clone(), string(&session, "id").to_owned())) {
+                activity::insert(&mut agents, &agent, session);
+            }
+        }
+        for agent in agents.values_mut() {
+            agent["sessions"]
+                .as_array_mut()
+                .unwrap()
+                .sort_by(|a, b| string(a, "id").cmp(string(b, "id")));
+        }
+        json!({"activeAgents":agents.keys().collect::<Vec<_>>(),"agents":agents,"observedAt":now(),"scope":"selected-local-transcripts-and-connector-live-sessions"})
+    }
+    pub async fn timeline(
+        &self,
+        control: &control::Control,
+        session: &str,
+        after: u64,
+    ) -> Result<Value> {
+        if let Some(timeline) = control.events.lock().await.timelines.get(session) {
+            if after > timeline.revision {
+                return Err("TIMELINE_CURSOR_EXPIRED: fetch again without after".into());
+            }
+            return Ok(timeline.response(session, after));
+        }
+        let process = self.processes.lock().await.get(session).cloned();
+        let state = if let Some(p) = process {
+            p.state.lock().await.clone()
+        } else {
+            load(&task_path(session)?)?
+        };
+        let mut timeline: crate::task_tracking::Timeline =
+            serde_json::from_value(state["tracking"].clone()).unwrap_or_default();
+        if state["tracking"].is_null() {
+            timeline.partial = true;
+        }
+        if after > timeline.revision {
+            return Err("TIMELINE_CURSOR_EXPIRED: fetch again without after".into());
+        }
+        let mut result = timeline.response(session, after);
+        for entry in result["entries"].as_array_mut().unwrap() {
+            if entry["type"] == "interaction" {
+                entry["interaction"]["respond"]["args"]["agent"] = state["agent"].clone();
+                entry["interaction"]["respond"]["args"]["taskId"] = state["taskId"].clone();
+            }
+        }
+        Ok(result)
     }
     pub async fn inventory(&self) -> Value {
         let mut rows = Vec::new();
@@ -601,6 +726,7 @@ impl AgentHost {
                 Value::Null
             };
             task["dispatches"] = json!(crate::dispatch_policy::records(string(&args, "taskId"))?);
+            task.as_object_mut().unwrap().remove("tracking");
             return Ok(task);
         }
         if matches!(name, "agent_events" | "agent_pending") {

@@ -423,7 +423,29 @@ impl Control {
                 &args["input"],
                 &args["expectedTurnId"],
             )?;
+            // Register before submission so fast native events cannot escape the timeline.
+            let info = self
+                .request_native(
+                    "thread/read",
+                    json!({"threadId":thread,"includeTurns":false}),
+                    timeout.min(5000),
+                )
+                .await
+                .unwrap_or(Value::Null);
+            {
+                let mut events = self.events.lock().await;
+                let unseen_history = !events.timelines.contains_key(thread) && !turns.is_empty();
+                let timeline = events.timelines.entry(thread.into()).or_default();
+                timeline.partial |= unseen_history;
+                timeline.info = json!({"runtimeSource":if self.background(thread).unwrap_or(false) {"connector-app-server"} else {"desktop"},"id":thread,"title":info["thread"]["name"].as_str().unwrap_or("Codex task"),"project":info["thread"]["cwd"],"startedAt":timeline.info.get("startedAt").cloned().unwrap_or(json!(now()))});
+                timeline.status = "running".into();
+            }
             let result = self.request_native(method, args.clone(), timeout).await;
+            if result.is_err() {
+                if let Some(t) = self.events.lock().await.timelines.get_mut(thread) {
+                    t.finish("unknown", &now());
+                }
+            }
             crate::external_inputs::submitted(thread, &token, &result).map_err(|e| {
                 format!("SUBMISSION_UNCONFIRMED: input provenance persistence failed: {e}")
             })?;
@@ -1038,7 +1060,16 @@ impl Control {
             rpc.write(response)
                 .await
                 .map_err(|e| format!("SUBMISSION_UNCONFIRMED: {e}"))?;
-            self.events.lock().await.pending.remove(key);
+            {
+                let mut events = self.events.lock().await;
+                events.pending.remove(key);
+                if let Some(t) = events
+                    .timelines
+                    .get_mut(string(&pending["params"], "threadId"))
+                {
+                    t.resolve(&pending["id"], &now());
+                }
+            }
             crate::respond_tokens::consume(args).map_err(|e| {
                 format!("SUBMISSION_UNCONFIRMED: response sent; token persistence failed: {e}")
             })?;

@@ -216,7 +216,15 @@ impl AgentDriver {
             }
             p.events.lock().await.wake.notify_waiters();
         }
-        let sid = p.state.lock().await["sessionId"].clone();
+        let task = p.state.lock().await.clone();
+        crate::event(
+            &p.events,
+            string(&task, "taskId"),
+            "arc/user",
+            json!({"text":text,"turnId":task["turnId"]}),
+        )
+        .await;
+        let sid = task["sessionId"].clone();
         let result = if p.pi {
             p.call("prompt", json!({"message":text}), 30000).await
         } else {
@@ -266,6 +274,16 @@ impl AgentDriver {
             }
             _ => {}
         }
+        if !p.pi || result.is_err() {
+            crate::event(
+                &p.events,
+                string(&t, "taskId"),
+                "arc/settled",
+                json!({"status":t["status"],"error":t["error"]}),
+            )
+            .await;
+        }
+        p.snapshot_tracking(&mut t).await;
         t["updatedAt"] = json!(now());
         let submission = if result.is_ok() {
             "accepted"
@@ -380,10 +398,14 @@ impl AgentDriver {
         p.write(response)
             .await
             .map_err(|e| format!("SUBMISSION_UNCONFIRMED: {e}"))?;
+        if let Some(timeline) = pending.timelines.values_mut().next() {
+            timeline.resolve(&a["interactionId"], &now());
+        }
         pending.pending.remove(&key);
         let empty = pending.pending.is_empty();
         drop(pending);
         let mut t = p.state.lock().await;
+        p.snapshot_tracking(&mut t).await;
         if empty && t["status"] == "waiting-permission" {
             t["status"] = json!("running");
         }

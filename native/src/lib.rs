@@ -5,6 +5,7 @@ pub mod screen;
 mod setup_secret;
 mod shell_command;
 mod task_overview;
+mod task_tracking;
 mod text_files;
 mod uninstall;
 use serde_json::{json, Value};
@@ -216,6 +217,7 @@ fn decode_command_output(bytes: &[u8]) -> String {
 }
 #[derive(Default)]
 pub struct Events {
+    pub(crate) timelines: std::collections::HashMap<String, task_tracking::Timeline>,
     pub wake: Arc<tokio::sync::Notify>,
     pub rows: Vec<Value>,
     pub bytes: usize,
@@ -246,13 +248,41 @@ pub async fn event(events: &SharedEvents, session: &str, method: &str, params: V
         }
         e.desktop_states.insert(key, digest);
     }
+    let at = now();
+    let durable = e.durable;
+    task_tracking::observe(&mut e.timelines, session, method, &params, &at, durable);
+    if !durable {
+        let pending: Vec<_> = e.pending.values().cloned().collect();
+        for (thread, timeline) in &mut e.timelines {
+            let requests: Vec<_> = pending
+                .iter()
+                .filter(|r| r["params"]["threadId"] == *thread)
+                .cloned()
+                .collect();
+            timeline.sync_interactions(&requests, &at);
+        }
+    }
     e.sequence += 1;
-    let row = json!({"cursor":e.sequence,"backendSession":session,"method":method,"params":params,"time":now()});
+    let row = json!({"cursor":e.sequence,"backendSession":session,"method":method,"params":params,"time":at});
     e.bytes += row.to_string().len();
     e.rows.push(row.clone());
     e.wake.notify_waiters();
     while e.rows.len() > 2000 || e.bytes > 8 * 1024 * 1024 {
         let removed = e.rows.remove(0);
+        if durable {
+            if let Some(t) = e.timelines.get_mut(session) {
+                t.partial = true;
+            }
+        }
+        if !durable {
+            let thread = removed["params"]["threadId"]
+                .as_str()
+                .or_else(|| removed["params"]["conversationId"].as_str())
+                .unwrap_or("");
+            if let Some(t) = e.timelines.get_mut(thread) {
+                t.partial = true;
+            }
+        }
         e.bytes -= removed.to_string().len();
     }
     // Codex owns its history. Only Agent Remote Control-owned Agent streams need an archive.
