@@ -105,7 +105,6 @@ export function AgentQuotaIcon({ agent }: { agent: string }) {
         </svg>
       )}
       {running && <ActivityArc attention={attention} />}
-      {sessions.length > 1 && <span className={`activity-count ${attention ? "needs-attention" : ""}`} aria-label={t("activity.sessionCount", { count: sessions.length })}>{sessions.length}</span>}
       {icons[agent] ? (
         <span
           className="agent-logo"

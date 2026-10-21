@@ -546,7 +546,7 @@
   "activity.questionOpen": "请在 Agent 中回答",
   "activity.questionPending": "待回答，时间线暂未开放",
   "activity.openFailed": "打开会话失败",
-  "activity.more": "另有 {count} 个活动会话",
+  "activity.more": "还有 {count} 个任务",
   "activity.disconnected": "活动连接暂不可用，显示最近快照",
   "activity.questionTimeline": "打开时间线回答",
   "timeline.open": "打开执行时间线",
@@ -567,5 +567,15 @@
   "timeline.status.failed": "失败",
   "timeline.status.cancelled": "已取消",
   "timeline.status.unknown": "未知",
-  "timeline.responseUnavailable": "此交互无法在这里回答。"
+  "timeline.responseUnavailable": "此交互无法在这里回答。",
+  "activity.completed": "已完成",
+  "activity.viewAll": "查看全部",
+  "activity.agentTasks": "{agent} 的任务",
+  "timeline.fileRequest": "{agent} 请求访问文件",
+  "timeline.commandRequest": "{agent} 请求运行命令",
+  "timeline.questionRequest": "{agent} 有一个问题",
+  "timeline.allowOnce": "仅允许这一次",
+  "timeline.allowed": "已允许",
+  "timeline.denied": "已拒绝",
+  "timeline.latest": "回到最新"
 }

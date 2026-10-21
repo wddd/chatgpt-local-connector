@@ -546,7 +546,7 @@
   "activity.questionOpen": "Open in Agent to answer",
   "activity.questionPending": "Awaiting answer · timeline coming later",
   "activity.openFailed": "Could not open session",
-  "activity.more": "{count} more active sessions",
+  "activity.more": "{count} more tasks",
   "activity.disconnected": "Activity connection unavailable; showing the last snapshot",
   "activity.questionTimeline": "Open timeline to answer",
   "timeline.open": "Open execution timeline",
@@ -567,5 +567,15 @@
   "timeline.status.failed": "Failed",
   "timeline.status.cancelled": "Cancelled",
   "timeline.status.unknown": "Unknown",
-  "timeline.responseUnavailable": "This interaction cannot be answered here."
+  "timeline.responseUnavailable": "This interaction cannot be answered here.",
+  "activity.completed": "Completed",
+  "activity.viewAll": "View all",
+  "activity.agentTasks": "{agent} tasks",
+  "timeline.fileRequest": "{agent} requests file access",
+  "timeline.commandRequest": "{agent} requests to run a command",
+  "timeline.questionRequest": "{agent} has a question",
+  "timeline.allowOnce": "Allow this time only",
+  "timeline.allowed": "Allowed",
+  "timeline.denied": "Denied",
+  "timeline.latest": "Back to latest"
 }

@@ -4,13 +4,33 @@ import type { AgentActivitySession, AgentActivitySnapshot, AgentInteraction } fr
 export function mergeActivity(current: AgentActivitySnapshot | undefined, next: AgentActivitySnapshot) {
   return current && Date.parse(next.observedAt) < Date.parse(current.observedAt) ? current : next;
 }
-export const activityLayout = { minWidth: 180, maxWidth: 220, gap: 8, nodeGap: 32, edge: 12 };
-export function visibleActivity(sessions: readonly AgentActivitySession[], available: number) {
-  const count = available < activityLayout.minWidth ? 0 : Math.min(3, sessions.length,
-    Math.floor((available + activityLayout.gap) / (activityLayout.minWidth + activityLayout.gap)));
-  const sorted = [...sessions].sort((a, b) => Number(!!b.interaction) - Number(!!a.interaction) || a.id.localeCompare(b.id));
-  return { sessions: sorted.slice(0, count), hidden: Math.max(0, sessions.length - count),
-    width: count ? Math.min(activityLayout.maxWidth, (available - (count - 1) * activityLayout.gap) / count) : 0 };
+export const activityLayout = { width: 232, height: 54, pitch: 64, gap: 10, radius: 34, nodeGap: 110, hold: 2000, fade: 300 };
+export type TrackedActivity = AgentActivitySession & { orderAt: number; endedAt?: number };
+// Freeze the start order on first observation; changing phases/headlines never moves a task.
+export function trackActivity(previous: readonly TrackedActivity[], sessions: readonly AgentActivitySession[], now: number, pinnedId?: string): TrackedActivity[] {
+  const old = new Map(previous.map(s => [s.id, s]));
+  const live = new Set(sessions.map(s => s.id));
+  return [
+    ...sessions.map(s => ({ ...s, orderAt: old.get(s.id)?.orderAt ?? (Number.isFinite(Date.parse(s.startedAt ?? "")) ? Date.parse(s.startedAt!) : now) })),
+    ...previous.filter(s => !live.has(s.id)).map(s => ({ ...s, interaction: undefined, endedAt: s.endedAt ?? now }))
+      .filter(s => s.id === pinnedId || now < s.endedAt + activityLayout.hold + activityLayout.fade),
+  ].sort((a, b) => Number(!!b.interaction) - Number(!!a.interaction) || a.orderAt - b.orderAt || a.id.localeCompare(b.id));
+}
+export function visibleActivity(sessions: readonly TrackedActivity[], pinnedId?: string) {
+  const visible = sessions.slice(0, sessions.length > 5 ? 4 : 5);
+  const pinned = sessions.find(s => s.id === pinnedId);
+  if (pinned && !visible.includes(pinned)) visible[visible.length - 1] = pinned;
+  return { sessions: visible, hidden: sessions.length > 5 ? sessions.length - 4 : 0,
+    count: Math.min(5, sessions.length) };
+}
+export function activityRowHeight(count: number) { return count ? Math.min(5, count) * activityLayout.pitch + 8 : 46; }
+export function activityScene(counts: readonly number[], viewport: number) {
+  const column = counts.reduce((sum, n) => sum + activityRowHeight(n), 0) + Math.max(0, counts.length - 1) * activityLayout.gap;
+  return { column, height: Math.max(viewport, column + 160) };
+}
+export function activityPorts(count: number) {
+  const span = Math.min(58, 16 + 11 * count);
+  return { span, angles: Array.from({ length: count }, (_, j) => count === 1 ? 0 : -0.72 * span + j * 1.44 * span / (count - 1)) };
 }
 export function interactionKey(agent: string, session: AgentActivitySession) {
   return JSON.stringify([agent, session.id, session.phaseSince, session.interaction?.respond]);

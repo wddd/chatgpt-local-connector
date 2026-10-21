@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergeActivity, visibleActivity, beginApproval, finishApproval, permissionResponse, interactionKey } from "../ui/state/activityModel.ts";
+import { mergeActivity, trackActivity, activityRowHeight, activityScene, activityPorts, activityLayout, visibleActivity, beginApproval, finishApproval, permissionResponse, interactionKey } from "../ui/state/activityModel.ts";
 import type { AgentActivitySession, AgentActivitySnapshot, AgentInteraction } from "../ui/types.ts";
 const permission: AgentInteraction = { kind: "permission", summary: "Run example command", respond: { via: "act", op: "agent_respond", args: { agent: "claude", taskId: "task-example", interactionId: 1 } }, options: [{ kind: "allow_once", optionId: "yes" }, { kind: "reject_once", optionId: "no" }] };
 function session(id: string, interaction?: AgentInteraction): AgentActivitySession {
@@ -17,24 +17,72 @@ test("full snapshots update sessions, remove completed ones and reject older obs
   assert.equal(mergeActivity(next, first), next);
   assert.equal(mergeActivity(next, snapshot(3, [])).agents.claude.sessions.length, 0);
 });
-test("attention sorts first; at most three bubbles with exact overflow and stable identity order", () => {
-  const sessions = [session("e"), session("d"), session("c"), session("b", permission), session("a", permission)];
-  const shown = visibleActivity(sessions, 1000);
-  assert.deepEqual(shown.sessions.map(s => s.id), ["a", "b", "c"]);
-  assert.equal(shown.hidden, 2);
-  assert.equal(shown.width, 220);
-  assert.equal(sessions[0].id, "e");
+test("task heights reserve 64px slots, 46px idle rows and 10px gaps; scene fills viewport or scrolls", () => {
+  assert.equal(activityRowHeight(0), 46);
+  assert.equal(activityRowHeight(1), 72);
+  assert.equal(activityRowHeight(5), 328);
+  assert.equal(activityRowHeight(20), 328);
+  assert.deepEqual(activityScene([0, 1, 3], 300), { column: 338, height: 498 });
+  assert.deepEqual(activityScene([0, 1, 3], 800), { column: 338, height: 800 });
+  assert.deepEqual(activityScene([], 300), { column: 0, height: 300 });
 });
-test("narrow widths hide all bubbles; exact thresholds respect minimum width and gaps", () => {
-  const sessions = [session("one"), session("two"), session("three")];
-  for (const available of [-30, 0, 179]) assert.equal(visibleActivity(sessions, available).sessions.length, 0);
-  assert.equal(visibleActivity(sessions, 180).sessions.length, 1);
-  assert.equal(visibleActivity(sessions, 367).sessions.length, 1);
-  assert.equal(visibleActivity(sessions, 368).sessions.length, 2);
-  assert.equal(visibleActivity(sessions, 556).sessions.length, 3);
-  assert.equal(visibleActivity(sessions, 180).hidden, 2);
-  assert.equal(visibleActivity([session("one")], 1000).width, 220);
-  assert.equal(visibleActivity([], 1000).width, 0);
+test("secondary ports spread evenly inside the expanding outer arc", () => {
+  assert.deepEqual(activityPorts(1), { span: 27, angles: [0] });
+  assert.equal(activityPorts(2).span, 38);
+  assert.equal(activityPorts(5).span, 58);
+  for (let n = 2; n <= 5; n++) {
+    const { span, angles } = activityPorts(n);
+    assert.equal(angles.length, n);
+    assert.ok(Math.abs(angles[0] + span * 0.72) < 1e-9);
+    assert.ok(Math.abs(angles[n - 1] - span * 0.72) < 1e-9);
+    for (let i = 1; i < n; i++) assert.ok(Math.abs(angles[i] - angles[i - 1] - 1.44 * span / (n - 1)) < 1e-9);
+  }
+});
+test("five tasks stay individual; overflow replaces slot five and counts every hidden task", () => {
+  for (let n = 0; n <= 9; n++) {
+    const tracked = trackActivity([], Array.from({ length: n }, (_, i) => session(String(i))), 1000);
+    const shown = visibleActivity(tracked);
+    assert.equal(shown.count, Math.min(n, 5));
+    assert.equal(shown.sessions.length, n > 5 ? 4 : n);
+    assert.equal(shown.hidden, n > 5 ? n - 4 : 0);
+    assert.equal(shown.sessions.length + shown.hidden, n);
+  }
+  assert.equal(activityLayout.width, 232); assert.equal(activityLayout.height, 54);
+});
+test("start order is stable across phases, payload order and corrected timestamps; only attention reorders", () => {
+  const first = { ...session("first"), startedAt: "2026-01-01T00:00:01Z" };
+  const second = { ...session("second"), startedAt: "2026-01-01T00:00:02Z" };
+  let tracked = trackActivity([], [second, first], 10);
+  assert.deepEqual(tracked.map(s => s.id), ["first", "second"]);
+  tracked = trackActivity(tracked, [{ ...second, phase: "thinking", startedAt: "2025-01-01T00:00:00Z" }, { ...first, headline: "changed" }], 20);
+  assert.deepEqual(tracked.map(s => s.id), ["first", "second"]);
+  tracked = trackActivity(tracked, [first, { ...second, interaction: permission }], 30);
+  assert.deepEqual(tracked.map(s => s.id), ["second", "first"]);
+  tracked = trackActivity(tracked, [second, first], 40);
+  assert.deepEqual(tracked.map(s => s.id), ["first", "second"]);
+  const fallback = trackActivity([], [session("b"), session("a")], 100);
+  assert.deepEqual(trackActivity(fallback, [session("a"), session("b")], 200).map(s => s.orderAt), [100, 100]);
+});
+test("missing sessions complete for two seconds plus fade; repeated snapshots do not reset expiry", () => {
+  const active = trackActivity([], [session("one", permission)], 100);
+  const ended = trackActivity(active, [], 500);
+  assert.equal(ended[0].endedAt, 500);
+  assert.equal(ended[0].interaction, undefined);
+  assert.equal(trackActivity(ended, [], 2499)[0].endedAt, 500);
+  assert.equal(trackActivity(ended, [], 2500).length, 1);
+  assert.equal(trackActivity(ended, [], 2799).length, 1);
+  assert.equal(trackActivity(ended, [], 2800).length, 0);
+  assert.equal(trackActivity(ended, [session("one")], 1000)[0].endedAt, undefined);
+  assert.equal(trackActivity(ended, [session("one")], 1000)[0].orderAt, active[0].orderAt);
+});
+test("an open task keeps its origin and branch for focus restoration, even beyond the visible cap", () => {
+  const active = trackActivity([], Array.from({ length: 7 }, (_, i) => session(String(i))), 100);
+  const shown = visibleActivity(active, "6");
+  assert.deepEqual(shown.sessions.map(s => s.id), ["0", "1", "2", "6"]);
+  assert.equal(shown.hidden, 3);
+  const ended = trackActivity(active, [], 500);
+  assert.deepEqual(trackActivity(ended, [], 5000, "6").map(s => s.id), ["6"]);
+  assert.equal(trackActivity(ended, [], 5000).length, 0);
 });
 test("approvals use ACP single-use choices, Pi confirmation and Codex decisions; questions do not submit", () => {
   assert.equal(permissionResponse(permission, "allow")?.args.optionId, "yes");

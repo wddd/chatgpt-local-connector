@@ -55,8 +55,8 @@ export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = (
   if (content) observer.observe(content);
   const motion = {
     get running() { return active; },
-    to(target: Surface, { from, retain = false }: {
-      from?: Surface; retain?: boolean;
+    to(target: Surface, { from, retain = false, duration = surfaceDuration }: {
+      from?: Surface; retain?: boolean; duration?: number;
     } = {}): AnimationPlaybackControlsWithThen {
       const id = ++generation;
       retained = retain;
@@ -99,7 +99,7 @@ export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = (
       controls = animate(0, 1, {
         type: "tween",
         autoplay: reduced.matches,
-        duration: reduced.matches ? 0 : surfaceDuration,
+        duration: reduced.matches ? 0 : duration,
         ease: [0.2, 0.8, 0.3, 1],
         onUpdate: (progress) => {
           rendered = { ...interpolate(progress) };

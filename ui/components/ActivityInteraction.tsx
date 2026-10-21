@@ -22,7 +22,7 @@ export default function ActivityInteraction({ agent, session, questions = false 
   </Tooltip>;
   if (interaction.kind === "permission") return <div className="activity-actions">
     {feedback ? <span role="status" title={submission?.error}>{feedback}</span> : <>
-      {(["allow", "deny"] as const).map(decision => <Button key={decision} variant="ghost"
+      {(["deny", "allow"] as const).map(decision => <Button key={decision} variant={decision === "allow" ? "primary" : "secondary"}
         disabled={!permissionResponse(interaction, decision) || (!!submission && submission.decision !== decision)}
         busy={submission?.status === "submitting" && submission.decision === decision}
         onClick={() => void submitActivityApproval(agent, session, decision)}>

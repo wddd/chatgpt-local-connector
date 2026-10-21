@@ -43,6 +43,8 @@ export default function ElasticPanel({
   width,
   depthOffset = 0,
   initialFocus,
+  dockRight = false,
+  returnFocus,
 }: {
   open?: boolean;
   onClose: () => void;
@@ -59,6 +61,8 @@ export default function ElasticPanel({
   width?: number;
   depthOffset?: number;
   initialFocus?: string;
+  dockRight?: boolean;
+  returnFocus?: string;
 }) {
   const [node, setNode] = useState<HTMLDivElement | null>(null),
     [position, setPosition] = useState({ x: 0, y: 0 });
@@ -67,8 +71,9 @@ export default function ElasticPanel({
     panelRef.current = el;
     setNode(el);
   }, []);
+  const dockPosition = () => ({ x: (innerWidth - Math.min(width ?? 400, innerWidth - 32)) / 2 - 16, y: 0 });
   const positionRef = useRef(position);
-  positionRef.current = position;
+  positionRef.current = dockRight ? dockPosition() : position;
   const visualOrigin = useRef<PanelOrigin | undefined>(undefined);
   const restoreOrigin = useRef<(() => void) | undefined>(undefined);
   const clearGhost = useRef<(() => void) | undefined>(undefined);
@@ -89,6 +94,7 @@ export default function ElasticPanel({
   latest.current = { onClose, onDismiss, busy, depthOffset };
   const moveTo = (x: number, y: number) => {
     if (!node) return;
+    if (dockRight) { setPosition(dockPosition()); return; }
     const maxX = Math.max(0, (innerWidth - node.offsetWidth) / 2 - 20),
       maxY = Math.max(0, (innerHeight - node.offsetHeight) / 2 - 20);
     setPosition({
@@ -106,14 +112,14 @@ export default function ElasticPanel({
     visualOrigin.current = visual;
     trigger.current = visual?.trigger ?? null;
     origin.current = visual?.rect;
-    parentPanel.current = visual?.parent;
+    parentPanel.current = dockRight ? undefined : visual?.parent;
     closing.current = false;
     setPosition({ x: 0, y: 0 });
   }, [open]);
   useLayoutEffect(() => {
     if (!node || !open) return;
     const previous = panelLayers.get().filter(panel => panel.isConnected && panel !== node).at(-1);
-    const parent = parentPanel.current?.isConnected ? parentPanel.current : previous;
+    const parent = dockRight ? undefined : parentPanel.current?.isConnected ? parentPanel.current : previous;
     parentPanel.current = parent;
     setBaseDepth(parent ? Number(parent.dataset.panelDepth || 1) + 1 : 1);
     const source = parent?.getBoundingClientRect() ?? visualOrigin.current?.rect ?? origin.current;
@@ -137,6 +143,7 @@ export default function ElasticPanel({
       const visual = visualOrigin.current;
       surface.to({ ...frameAt(rect, 1, "28px"), ...surfaceOf(node) }, {
         from: { ...frameAt(source, visual ? 1 : 0, "28px"), ...(visual?.surface ?? {}) },
+        duration: dockRight ? 0.25 : undefined,
       });
       if (visual) {
         restoreOrigin.current = hideOrigin(visual);
@@ -194,7 +201,7 @@ export default function ElasticPanel({
       const current = { ...frameAt(from, Number(style.opacity), style.borderRadius), ...surfaceOf(node) };
       const animation = motion.current?.to(
         { ...frameAt(to, visual || parent ? 1 : 0, parent ? "28px" : "50%"), ...(visual?.surface ?? {}) },
-        { retain: true, ...(motion.current.running ? {} : { from: current }) },
+        { retain: true, duration: dockRight ? 0.16 : undefined, ...(motion.current.running ? {} : { from: current }) },
       );
       if (visual) {
         restoreOrigin.current = hideOrigin(visual);
@@ -223,7 +230,7 @@ export default function ElasticPanel({
     >
       <D.Portal>
         <D.Overlay
-          className="elastic-backdrop"
+          className={`elastic-backdrop ${dockRight ? "activity-backdrop" : ""}`}
           style={{ zIndex: 100 + Math.max(0, layers.indexOf(node!)) * 2 }}
           onPointerDown={(e) => {
             backdropPressed.current =
@@ -234,7 +241,7 @@ export default function ElasticPanel({
             if (backdropPressed.current && e.target === e.currentTarget) {
               backdropPressed.current = false;
               void close(
-                panelAnchorAt(
+                dockRight ? undefined : panelAnchorAt(
                   e.clientX,
                   e.clientY,
                   trigger.current ?? undefined,
@@ -245,15 +252,15 @@ export default function ElasticPanel({
         />
         <D.Content
           ref={attach}
-          className={`dialog elastic-panel ${wide ? "dialog-wide" : ""} ${unframed ? "unframed" : ""} ${headerless ? "headerless" : ""}`}
+          className={`dialog elastic-panel ${wide ? "dialog-wide" : ""} ${unframed ? "unframed" : ""} ${headerless ? "headerless" : ""} ${dockRight ? "activity-panel" : ""}`}
           data-recessed={recessed || undefined}
           data-panel-depth={baseDepth + depthOffset}
           aria-describedby={undefined}
           style={
             {
               "--preferred-width": `${width ?? (wide ? 880 : 800)}px`,
-              transform: `translate(calc(-50% + ${position.x}px),calc(-50% + ${position.y}px))`,
-              zIndex: 101 + Math.max(0, layers.indexOf(node!)) * 2,
+              transform: `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
+              zIndex: (dockRight ? 102 : 101) + Math.max(0, layers.indexOf(node!)) * 2,
             } as CSSProperties
           }
           onOpenAutoFocus={(e) => {
@@ -263,8 +270,9 @@ export default function ElasticPanel({
           }}
           onCloseAutoFocus={(e) => {
             e.preventDefault();
-            if (trigger.current?.isConnected)
-              trigger.current.focus({ preventScroll: true });
+            const target = trigger.current?.isConnected ? trigger.current : returnFocus ? document.querySelector<HTMLElement>(returnFocus) : null;
+            // The home workspace loses inert when the final panel layer unmounts.
+            requestAnimationFrame(() => target?.focus({ preventScroll: true }));
           }}
           onEscapeKeyDown={(e) => {
             e.preventDefault();
@@ -280,7 +288,7 @@ export default function ElasticPanel({
                 className="dialog-header"
                 onPointerDown={(e) => {
                   if (
-                    e.button !== 0 ||
+                    dockRight || e.button !== 0 ||
                     !e.isPrimary ||
                     (e.target as Element).closest("button") ||
                     motion.current?.running

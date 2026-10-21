@@ -1,5 +1,5 @@
 import {
-  useCallback, useId, useImperativeHandle, useLayoutEffect, useRef, type Ref,
+  useCallback, useId, useImperativeHandle, useLayoutEffect, useRef, type Ref, type RefObject,
 } from "react";
 import { frame, cancelFrame } from "motion";
 import { useMotionValueEvent, useReducedMotion, useSpring } from "motion/react";
@@ -7,8 +7,8 @@ import { springTransition } from "../motion/geometry";
 
 type Point = { x: number; y: number };
 export type WireState = "normal" | "connecting" | "error" | "inactive";
-type WireEntry = { id: string; state: WireState };
-type Painter = (viewport: DOMRect) => boolean;
+type WireEntry = { id: string; state: WireState; idle?: boolean };
+export type Painter = (viewport: DOMRect) => boolean;
 export type ConnectionWiresHandle = {
   element: HTMLDivElement | null;
   follow: () => void;
@@ -60,7 +60,8 @@ function grownWire(
     gap: gap.length ? `M ${gap.map((p) => `${p.x} ${p.y}`).join(" L ")}` : "",
   };
 }
-function WireBranch({ entry, targetAngle, center, radius, scale, width, height, right, nodes, painters, follow }: {
+function WireBranch({ paintKey, entry, targetAngle, center, radius, scale, width, height, right, nodes, painters, follow }: {
+  paintKey: string;
   entry: WireEntry;
   targetAngle: number;
   center: Point;
@@ -119,17 +120,17 @@ function WireBranch({ entry, targetAngle, center, radius, scale, width, height, 
       gradient.current?.setAttribute("y2", String(start.y));
       return true;
     };
-    painters.set(entry.id, paint);
+    painters.set(paintKey, paint);
     follow();
     const resize = new ResizeObserver(follow);
     const node = nodes.get(entry.id);
     if (node) resize.observe(node);
     return () => {
-      painters.delete(entry.id);
+      painters.delete(paintKey);
       resize.disconnect();
     };
-  }, [entry.id, entry.state, nodes, painters, follow, center.x, center.y, radius, scale, width, height, right, angle]);
-  return <g data-state={entry.state}>
+  }, [paintKey, entry.id, entry.state, nodes, painters, follow, center.x, center.y, radius, scale, width, height, right, angle]);
+  return <g data-state={entry.state} style={{ opacity: right ? entry.idle ? 0.28 : 0.75 : undefined }}>
     <defs>
       <linearGradient ref={gradient} id={gradientId} gradientUnits="userSpaceOnUse" data-state={entry.state}>
         <stop offset="0" stopOpacity="1" />
@@ -144,17 +145,8 @@ function WireBranch({ entry, targetAngle, center, radius, scale, width, height, 
   </g>;
 }
 
-export default function ConnectionWires({ ref, entries, nodes, right = false, width, height, brandSize, coreColumnWidth }: {
-  ref?: Ref<ConnectionWiresHandle>;
-  entries: WireEntry[];
-  nodes: Map<string, HTMLButtonElement>;
-  right?: boolean;
-  width: number;
-  height: number;
-  brandSize: number;
-  coreColumnWidth: number;
-}) {
-  const element = useRef<HTMLDivElement>(null);
+// Shared frame scheduler: secondary branches read the same post-layout coordinates.
+export function useWireFollow(element: RefObject<HTMLElement | null>) {
   const painters = useRef(new Map<string, Painter>());
   const idleFrames = useRef(0);
   const mounted = useRef(false);
@@ -174,7 +166,6 @@ export default function ConnectionWires({ ref, entries, nodes, right = false, wi
     idleFrames.current = 0;
     frame.postRender(paint, true);
   }, [paint]);
-  useImperativeHandle(ref, () => ({ element: element.current, follow }), [follow]);
   useLayoutEffect(() => {
     mounted.current = true;
     follow();
@@ -182,7 +173,25 @@ export default function ConnectionWires({ ref, entries, nodes, right = false, wi
       mounted.current = false;
       cancelFrame(paint);
     };
-  }, [follow, paint, width, height, brandSize, coreColumnWidth]);
+  }, [follow, paint]);
+  return { painters, follow };
+}
+
+export default function ConnectionWires({ ref, entries, nodes, right = false, width, height, brandSize, coreColumnWidth, highlighted }: {
+  ref?: Ref<ConnectionWiresHandle>;
+  highlighted?: string;
+  entries: WireEntry[];
+  nodes: Map<string, HTMLButtonElement>;
+  right?: boolean;
+  width: number;
+  height: number;
+  brandSize: number;
+  coreColumnWidth: number;
+}) {
+  const element = useRef<HTMLDivElement>(null);
+  const { painters, follow } = useWireFollow(element);
+  useImperativeHandle(ref, () => ({ element: element.current, follow }), [follow]);
+  useLayoutEffect(follow, [follow, width, height, brandSize, coreColumnWidth, highlighted]);
   const connected = entries.filter(entry => entry.state !== "inactive");
   const scale = brandSize / (92 * 2.6), radius = 130 * scale;
   const center = { x: right ? -coreColumnWidth / 2 : width + coreColumnWidth / 2, y: height / 2 };
@@ -195,12 +204,18 @@ export default function ConnectionWires({ ref, entries, nodes, right = false, wi
   const start = onArc(-halfAngle), end = onArc(halfAngle);
   return <div ref={element} className={`graph-wires earmuff-wires ${right ? "right" : "left"}`}>
     <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-      {connected.map((entry, index) => <WireBranch key={entry.id} entry={entry}
+      {connected.map((entry, index) => <WireBranch key={entry.id} paintKey={entry.id} entry={entry}
         targetAngle={(index - (connected.length - 1) / 2) * spacing}
         center={center} radius={radius} scale={scale} width={width} height={height} right={right}
         nodes={nodes} painters={painters.current} follow={follow} />)}
       <path className="earmuff" style={{ strokeWidth: 14 * scale }}
         d={`M ${start.x} ${start.y} A ${radius} ${radius} 0 0 ${right ? 1 : 0} ${end.x} ${end.y}`} />
     </svg>
+    {highlighted && <svg className="highlighted-wire" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+      {connected.filter(entry => entry.id === highlighted).map(entry => <WireBranch key={entry.id} paintKey={`${entry.id}:highlight`} entry={entry}
+        targetAngle={(connected.indexOf(entry) - (connected.length - 1) / 2) * spacing}
+        center={center} radius={radius} scale={scale} width={width} height={height} right={right}
+        nodes={nodes} painters={painters.current} follow={follow} />)}
+    </svg>}
   </div>;
 }

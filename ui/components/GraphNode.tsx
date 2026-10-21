@@ -4,7 +4,7 @@ import { springTransition } from "../motion/geometry";
 import { t } from "../i18n";
 import type { WireState } from "./ConnectionWires";
 
-export default function GraphNode({ id, label, state, nodes, onOpen, onMove, onMotion, onDragging, children }: {
+export default function GraphNode({ id, label, state, nodes, onOpen, onMove, onMotion, onDragging, rowHeight, idle, highlighted, children }: {
   id: string;
   label: string;
   state: WireState;
@@ -13,6 +13,9 @@ export default function GraphNode({ id, label, state, nodes, onOpen, onMove, onM
   onMove?: (by: number) => void;
   onMotion: () => void;
   onDragging?: (dragging: boolean) => void;
+  rowHeight?: number;
+  idle?: boolean;
+  highlighted?: boolean;
   children: ReactNode;
 }) {
   const dragged = useRef(false);
@@ -27,11 +30,15 @@ export default function GraphNode({ id, label, state, nodes, onOpen, onMove, onM
     type: "button" as const,
     className: "graph-node",
     "data-panel-anchor": true,
+    "data-highlighted": highlighted || undefined,
+    "data-idle": idle || undefined,
+    animate: rowHeight === undefined ? undefined : { marginTop: (rowHeight - 44) / 2, marginBottom: (rowHeight - 44) / 2, scale: idle ? 0.78 : 1, opacity: idle ? 0.62 : 1 },
+    style: rowHeight === undefined ? undefined : { translate: idle ? "-26px 0" : "0px 0" },
     "data-connection-state": state,
     "aria-label": label,
     "aria-haspopup": "dialog" as const,
     layout: "position" as const,
-    transition: reduced ? { duration: 0 } : springTransition(0.3, 0.9),
+    transition: reduced ? { duration: 0 } : springTransition(rowHeight === undefined ? 0.3 : 0.42, 0.9),
     onPointerDownCapture: () => { dragged.current = false; },
     onClick: (event: MouseEvent<HTMLButtonElement>) => {
       if (dragged.current && event.detail !== 0) {

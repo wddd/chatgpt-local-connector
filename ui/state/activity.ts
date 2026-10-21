@@ -1,8 +1,9 @@
+import { useEffect, useRef, useState } from "react";
 import { createStore } from "./store";
 import { api } from "../api";
 import { isDesktop, openUrl } from "../platform";
 import type { AgentActivitySession, AgentActivitySnapshot } from "../types";
-import { beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission } from "./activityModel";
+import { trackActivity, activityLayout, type TrackedActivity, beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission } from "./activityModel";
 
 export const agentActivity = createStore<{ snapshot?: AgentActivitySnapshot; error: string }>({ error: "" });
 export const activityTimeline = createStore<{ agent: string; session: AgentActivitySession } | undefined>(undefined);
@@ -87,4 +88,33 @@ export async function openActivitySession(agent: string, session: AgentActivityS
   if (session.open?.kind === "url") await openUrl(session.open.target);
   else if (session.open?.kind === "agent-session")
     await api(`agents/sessions/${encodeURIComponent(session.open.target)}/open`, "POST", { agent });
+}
+
+// Presentation-only lifetime: the native snapshot and timeline contracts stay unchanged.
+export function useActivityTracking() {
+  const { snapshot } = agentActivity.use();
+  const selected = activityTimeline.use(), previousSelection = useRef(selected);
+  const [tracked, setTracked] = useState<Record<string, TrackedActivity[]>>({});
+  useEffect(() => {
+    if (!snapshot) return;
+    setTracked(old => Object.fromEntries([...new Set([...Object.keys(old), ...Object.keys(snapshot.agents)])]
+      .map(agent => [agent, trackActivity(old[agent] ?? [], snapshot.agents[agent]?.sessions ?? [], Date.now(), selected?.agent === agent ? selected.session.id : undefined)])));
+  }, [snapshot]);
+  useEffect(() => {
+    const previous = previousSelection.current;
+    previousSelection.current = selected;
+    // Keep the selected origin and its branch until dismissal can restore focus.
+    if (previous && previous !== selected) setTracked(old => ({ ...old, [previous.agent]: (old[previous.agent] ?? []).map(s =>
+      s.id === previous.session.id && s.endedAt !== undefined ? { ...s, endedAt: Date.now() } : s) }));
+  }, [selected]);
+  useEffect(() => {
+    const pinned = (agent: string, id: string) => selected?.agent === agent && selected.session.id === id;
+    const ends = Object.entries(tracked).flatMap(([agent, sessions]) => sessions.flatMap(s => s.endedAt === undefined || pinned(agent, s.id) ? [] : [s.endedAt + activityLayout.hold + activityLayout.fade]));
+    if (!ends.length) return;
+    const timer = setTimeout(() => setTracked(old => Object.fromEntries(Object.entries(old).map(([agent, sessions]) =>
+      [agent, sessions.filter(s => s.endedAt === undefined || pinned(agent, s.id) || Date.now() < s.endedAt + activityLayout.hold + activityLayout.fade)]))),
+      Math.max(0, Math.min(...ends) - Date.now()));
+    return () => clearTimeout(timer);
+  }, [tracked, selected]);
+  return tracked;
 }

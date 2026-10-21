@@ -1,3 +1,5 @@
+import { activityTimeline, useActivityTracking } from "../state/activity";
+import { activityRowHeight, activityScene } from "../state/activityModel";
 import { maxVisibleAgents } from "../subscriptions/displayPreferences";
 import { subscriptions } from "../state/subscriptions";
 import { navigation } from "../state/navigation";
@@ -11,7 +13,7 @@ import {
   useId,
   type CSSProperties,
 } from "react";
-import { motion, Reorder } from "motion/react";
+import { motion, Reorder, useReducedMotion } from "motion/react";
 import { Plus, Power, Ellipsis, LoaderCircle } from "lucide-react";
 import { t } from "../i18n";
 import { api } from "../api";
@@ -43,7 +45,8 @@ function wireState(state: string): WireState {
   return "inactive";
 }
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
-  const gradientId = useId();
+  const gradientId = useId(), reducedMotion = useReducedMotion();
+  const tracked = useActivityTracking(), selectedActivity = activityTimeline.use();
   const { status, busy, loading, error } = connector.use();
   agentStore.use();
   const max = maxVisibleAgents.use();
@@ -164,7 +167,6 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   }
   const graph = useRef<HTMLDivElement>(null);
   const bubbles = useRef<ActivityBubblesHandle>(null);
-  const [dragging, setDragging] = useState<ReadonlySet<string>>(new Set());
   const core = useRef<HTMLElement>(null),
     leftWires = useRef<ConnectionWiresHandle>(null),
     rightWires = useRef<ConnectionWiresHandle>(null);
@@ -203,12 +205,9 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       observer.disconnect();
     };
   }, []);
-  const rows = Math.max(Math.max(1, sources.length) + 1, agents.length + 1);
-  // Below the 70px compact row size, scroll instead of shrinking names or
-  // the 24px minimum Agent icon; reserve room for the last utility row.
-  const height = Math.max(320, dimensions.height - 180, rows * 70 + 64),
-    leftWidth = dimensions.left,
-    rightWidth = dimensions.right;
+  const { height } = activityScene(agents.map(a => tracked[a.agent]?.length ?? 0),
+    Math.max(dimensions.height, (sources.length + 1) * 70 + 64));
+  const leftWidth = dimensions.left, rightWidth = dimensions.right;
   const ringRadius = Math.max(
     dimensions.width < 600 ? 48 : 80,
     Math.min(130, dimensions.width * 0.13, dimensions.height * 0.2),
@@ -249,7 +248,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         ref={core}
         layoutScroll
         onScrollCapture={followWires}
-        className={`connection-core ${"brand-mode"}`}
+        className={`connection-core brand-mode ${selectedActivity ? "activity-focused" : ""}`}
         style={
           {
             "--graph-ring-radius": `${ringRadius}px`,
@@ -276,7 +275,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             </span>
           </button>
         </div>
-        <div ref={graph} className="connection-graph" style={{ height }}>
+        <motion.div ref={graph} className="connection-graph" animate={{ height }} transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 224, damping: 27 }} onUpdate={followWires}>
           <Reorder.Group
             as="div"
             axis="y"
@@ -317,19 +316,20 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             <svg className="graph-brand" viewBox="4 4 92 92" role="img" aria-label="Agent Remote Control"
                 dangerouslySetInnerHTML={{ __html: themedMark.replace(/^<svg[^>]*>|<\/svg>$/g, "").replaceAll("agent-theme", `${gradientId}-mark`) }} />
           </div>
-          <div className="agent-side" style={nodeStyle(agents.length)}>
+          <div className="agent-side">
             <ConnectionWires ref={rightWires} nodes={agentNodes.current} right
-              entries={agents.map(agent => ({ id: agent.agent, state: wireState(agentState(agent)) }))}
+              entries={agents.map(agent => ({ id: agent.agent, state: wireState(agentState(agent)), idle: !tracked[agent.agent]?.length }))}
+              highlighted={selectedActivity?.agent}
               width={rightWidth} height={height} brandSize={brandSize} coreColumnWidth={coreColumnWidth} />
             <Reorder.Group as="div" axis="y" className="graph-nodes agents" data-empty={!agents.length}
               values={agents.filter(agent => agent.enabled).map(agent => agent.agent)} onReorder={reorderAgents}>
               {agents.map(agent => (
                 <GraphNode key={agent.agent} id={agent.agent}
+                  rowHeight={activityRowHeight(tracked[agent.agent]?.length ?? 0)} idle={!tracked[agent.agent]?.length} highlighted={selectedActivity?.agent === agent.agent}
                   label={`${name(agent)}: ${t(agentState(agent))}`}
                   state={wireState(agentState(agent))} nodes={agentNodes.current}
                   onMove={agent.enabled ? by => moveVisibleAgent(agent.agent, by) : undefined}
-                  onMotion={followWires} onOpen={() => setDetailAgent(agent)}
-                  onDragging={value => setDragging(old => { const next = new Set(old); if (value) next.add(agent.agent); else next.delete(agent.agent); return next; })}>
+                  onMotion={followWires} onOpen={() => setDetailAgent(agent)}>
                   <AgentQuotaIcon agent={agent.agent} />
                   <span className="graph-node-name">{name(agent)}</span>
                 </GraphNode>
@@ -344,9 +344,10 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
               </button>
             </Reorder.Group>
           </div>
-          <ActivityBubbles ref={bubbles} graph={graph} boundary={core} nodes={agentNodes.current} hidden={dragging}
+          <ActivityBubbles ref={bubbles} graph={graph} boundary={core} nodes={agentNodes.current} tracked={tracked}
             enabled={visible && !detailAgent && !agentsOpen && !details && !formOpen && !setupMode} />
-        </div>
+        </motion.div>
+        <div className="activity-edge-fade" aria-hidden="true" />
         {setup.snapshot?.goal && !setup.snapshot.complete && <div className="setup-resume"><Button onClick={() => setSetupMode("progress")}>{t("setup.resume")}</Button></div>}
         {error && (
           <div className="graph-error">
