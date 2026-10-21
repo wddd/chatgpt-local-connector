@@ -52,3 +52,27 @@ export function questionResponse(interaction: AgentInteraction, value: string, c
   if (!cancelled && interaction.method === "select" && (!Array.isArray(interaction.options) || !interaction.options.includes(value))) return;
   return { op, args: { ...args, ...(cancelled ? { cancelled: true } : { value }) } };
 }
+
+// Lexical paths only: display never accesses the filesystem or changes native paths.
+export function filePathParts(path: string, project?: string | null) {
+  const normalize = (value: string) => {
+    const slash = value.replaceAll("\\", "/");
+    const root = slash.match(/^(?:[a-z]:\/|\/\/|\/)/i)?.[0] ?? "";
+    const parts: string[] = [];
+    for (const part of slash.slice(root.length).split("/")) {
+      if (!part || part === ".") continue;
+      if (part === ".." && parts.length && parts.at(-1) !== "..") parts.pop();
+      else if (part !== ".." || !root) parts.push(part);
+    }
+    return root + parts.join("/");
+  };
+  const base = project ? normalize(project).replace(/\/$/, "") : "";
+  const absolute = /^(?:[a-z]:[\\/]|[\\/])/i.test(path);
+  const fullPath = normalize(!absolute && project ? `${project}/${path}` : path);
+  const prefix = `${base}/`;
+  const windows = /^[a-z]:\//i.test(fullPath) || fullPath.startsWith("//");
+  const inside = !!project && (windows ? fullPath.toLowerCase().startsWith(prefix.toLowerCase()) : fullPath.startsWith(prefix));
+  const displayPath = inside ? fullPath.slice(prefix.length) : fullPath;
+  const split = displayPath.lastIndexOf("/") + 1;
+  return { fullPath, displayPath, directory: displayPath.slice(0, split), filename: displayPath.slice(split) };
+}

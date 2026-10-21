@@ -9,6 +9,8 @@ import { useInterval } from "../state/hooks";
 import { Button, Dialog, Icon } from "./ui";
 import { Markdown } from "./ui/Markdown";
 import ActivityInteraction from "./ActivityInteraction";
+import FilePath from "./FilePath";
+import { filePathParts } from "../state/activityModel";
 
 const icons = { thinking: Brain, command: Terminal, file: FileText, tool: Wrench };
 function TimelineEntry({ entry, agent, session, now }: {
@@ -41,12 +43,13 @@ function TimelineEntry({ entry, agent, session, now }: {
   const title = kind === "thinking" ? entry.text?.trim().split("\n").at(-1) || t("activity.phase.thinking")
     : entry.command || entry.path || entry.title || t(`activity.phase.${kind}`);
   return <details className="timeline-detail">
-    <summary><Icon icon={icons[kind]} /><span className="timeline-entry-title" title={title}>{title}</span>
+    <summary><Icon icon={icons[kind]} /><span className="timeline-entry-title" title={title}>{kind === "file" && entry.path ? <FilePath path={entry.path} project={session.project || entry.cwd} /> : title}</span>
       <span className={`timeline-status ${entry.status === "failed" ? "activity-error" : ""}`}>{t(`timeline.status.${entry.status}`)}</span><time>{time}</time></summary>
     <div className="timeline-output">
       {kind === "thinking" ? <Markdown>{entry.text ?? ""}</Markdown> : <>
         {entry.cwd && <div className="timeline-meta">{entry.cwd}</div>}
-        {entry.changes?.map(change => <div key={change.path}>{change.path}</div>)}
+        {entry.path && <div>{filePathParts(entry.path, session.project || entry.cwd).fullPath}</div>}
+        {entry.changes?.filter(change => change.path !== entry.path).map(change => <div key={change.path}>{filePathParts(change.path, session.project || entry.cwd).fullPath}</div>)}
         {entry.input?.text && <pre>{entry.input.text}</pre>}
         {entry.output?.text && <pre>{entry.output.text}</pre>}
         {entry.exitCode !== undefined && <div className="timeline-meta">{t("timeline.exitCode", { code: entry.exitCode })}</div>}

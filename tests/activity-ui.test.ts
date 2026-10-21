@@ -129,3 +129,18 @@ function entry(id: string, cursor: number, text: string, position: number): impo
 function timeline(entries: import("../ui/types.ts").AgentTimelineEntry[]): import("../ui/types.ts").AgentTimeline {
   return { sessionId: "example", entries, cursor: Math.max(0, ...entries.map(e => e.cursor)), coverage: { state: "complete", truncated: false }, executionEvidence: false };
 }
+
+test("file labels are relative only inside the project and keep the filename separate from the elided directory", async () => {
+  const { filePathParts } = await import("../ui/state/activityModel.ts");
+  assert.deepEqual(filePathParts("/workspace/example/src/deep/file_name.ts", "/workspace/example"), {
+    fullPath: "/workspace/example/src/deep/file_name.ts", displayPath: "src/deep/file_name.ts", directory: "src/deep/", filename: "file_name.ts",
+  });
+  assert.equal(filePathParts("/workspace/example-other/file.ts", "/workspace/example").displayPath, "/workspace/example-other/file.ts");
+  assert.equal(filePathParts("/workspace/example/../other/file.ts", "/workspace/example").displayPath, "/workspace/other/file.ts");
+  assert.equal(filePathParts("src/file.ts", "/workspace/example/").fullPath, "/workspace/example/src/file.ts");
+  assert.equal(filePathParts("/workspace/example/file.ts", "/workspace/example").directory, "");
+  assert.equal(filePathParts("C:\\Workspace\\Example\\src\\file.ts", "c:\\workspace\\example\\").displayPath, "src/file.ts");
+  assert.equal(filePathParts("D:\\other\\file.ts", "C:\\Workspace\\Example").displayPath, "D:/other/file.ts");
+  assert.equal(filePathParts("/example/目录/文件.ts", "/").filename, "文件.ts");
+  assert.equal(filePathParts("/example/very/long/directory/file.ts").filename, "file.ts");
+});

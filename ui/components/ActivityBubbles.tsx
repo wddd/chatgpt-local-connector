@@ -4,12 +4,13 @@ import { Brain, Terminal, FileText, Wrench, MessageSquare, CirclePause, CircleHe
 import { t } from "../i18n";
 import type { AgentActivitySession, AgentPhase } from "../types";
 import { activityTimeline, agentActivity, openActivitySession } from "../state/activity";
-import { activityLayout, visibleActivity } from "../state/activityModel";
+import { activityLayout, filePathParts, visibleActivity } from "../state/activityModel";
 import { useInterval } from "../state/hooks";
 import { Button, Icon, Tooltip } from "./ui";
 
 import ActivityInteraction from "./ActivityInteraction";
 import ActivityTimeline from "./ActivityTimeline";
+import FilePath from "./FilePath";
 
 const phaseIcons = { thinking: Brain, command: Terminal, file: FileText, tool: Wrench, text: MessageSquare, interaction: ShieldAlert, idle: CirclePause };
 function elapsed(since: string | null | undefined, now: number) {
@@ -19,17 +20,17 @@ function elapsed(since: string | null | undefined, now: number) {
   if (seconds < 3600) return t("activity.minutes", { count: Math.floor(seconds / 60) });
   return t("activity.hours", { count: Math.floor(seconds / 3600), minutes: Math.floor(seconds / 60) % 60 });
 }
-function Headline({ text, thinking }: { text: string; thinking: boolean }) {
+function Headline({ text, phase, project }: { text: string; phase: AgentPhase; project?: string | null }) {
   const reduced = useReducedMotion();
-  const latest = useRef(text);
-  latest.current = text;
-  const [display, setDisplay] = useState(text);
+  const latest = useRef({ text, phase, project });
+  latest.current = { text, phase, project };
+  const [display, setDisplay] = useState(latest.current);
   useInterval(() => setDisplay(latest.current), 1000);
-  if (thinking && !display) return null;
+  if (display.phase === "thinking" && !display.text) return null;
   return <span className="activity-headline">
     <AnimatePresence initial={false}>
-      <motion.span key={display} initial={{ opacity: reduced ? 1 : 0 }} animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>{display || t("activity.noHeadline")}</motion.span>
+      <motion.span key={`${display.phase}:${display.text}`} initial={{ opacity: reduced ? 1 : 0 }} animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>{display.phase === "file" && display.text ? <FilePath path={display.text} project={display.project} /> : display.text || t("activity.noHeadline")}</motion.span>
     </AnimatePresence>
   </span>;
 }
@@ -39,14 +40,15 @@ function ActivityBubble({ agent, session, now, overflow = 0 }: { agent: string; 
   const phase: AgentPhase = interaction ? "interaction" : session.phase;
   const phaseLabel = interaction?.kind === "question" ? "activity.question" : `activity.phase.${phase}`;
   const hint = t(session.timeline ? "timeline.open" : session.open ? "activity.open" : "activity.noEntry");
+  const fullHeadline = phase === "file" ? filePathParts(session.headline, session.project).fullPath : session.headline;
   const content = <>
     <span className="activity-phase"><Icon icon={interaction?.kind === "question" ? CircleHelp : phaseIcons[phase]} />
       <span>{t(phaseLabel)}</span><time>{elapsed(session.phaseSince ?? session.startedAt, now)}</time>
       {overflow > 0 && <span className="activity-more" title={t("activity.more", { count: overflow })}>+{overflow}</span>}</span>
-    <Headline text={session.headline} thinking={phase === "thinking"} />
+    <Headline text={session.headline} phase={phase} project={session.project} />
   </>;
   return <article className={`activity-bubble ${interaction ? "needs-attention" : ""}`} aria-label={session.title || t(phaseLabel)}>
-    <Tooltip text={`${hint}${session.headline ? ` · ${session.headline}` : ""}`}>
+    <Tooltip text={`${hint}${fullHeadline ? ` · ${fullHeadline}` : ""}`}>
       {session.timeline || session.open ? <Button data-timeline-anchor={session.timeline || undefined} variant="ghost" className="activity-summary" disabled={opening} onClick={() => {
         setOpening(true); setOpenError("");
         void openActivitySession(agent, session, selected => activityTimeline.set({ agent, session: selected })).catch(error => setOpenError(String(error))).finally(() => setOpening(false));

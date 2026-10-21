@@ -1208,3 +1208,8 @@
 .timeline-partial { color: var(--warning); font-size: var(--text-xs); margin: 0; }
 .timeline-error { color: var(--danger); display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; }
 .timeline-error > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Only the directory shrinks, so the omission sits before the filename. */
+.file-path { display: flex; min-width: 0; max-width: 100%; white-space: nowrap; }
+.file-path-directory { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.file-path-name { flex: none; }

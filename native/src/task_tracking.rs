@@ -67,15 +67,54 @@ fn cut(text: &str, limit: usize) -> (String, bool) {
     }
     (text[..end].to_owned(), end < text.len())
 }
+fn plain_headline(text: &str) -> String {
+    use std::sync::OnceLock;
+    static RULES: OnceLock<Vec<(regex::Regex, &'static str)>> = OnceLock::new();
+    let rules = RULES.get_or_init(|| {
+        [
+            (r"!?\[([^]\n]+)\]\([^\n)]*(?:\([^\n)]*\)[^\n)]*)*\)", "$1"),
+            (r"!?\[([^]\n]+)\]\[[^]\n]*\]", "$1"),
+            (r"<((?:https?://|mailto:)[^>\s]+)>", "$1"),
+            (r"(?m)^\s{0,3}(?:#{1,6}\s+|>\s*|[-*+]\s+|[0-9]+[.)]\s+)", ""),
+            (r"(?m)\s+#+\s*$", ""),
+            (r"\*\*|__|~~|`+", ""),
+            (r"\*([^*\s][^*\n]*?)\*", "$1"),
+            (
+                r"(^|[\s(])_([^_\s][^_\n]*?)_($|[\s).,!?:;。！？])",
+                "$1$2$3",
+            ),
+            (r"(?m)^\s*[*_]([^\s])", "$1"),
+        ]
+        .into_iter()
+        .map(|(pattern, replacement)| (regex::Regex::new(pattern).unwrap(), replacement))
+        .collect()
+    });
+    rules
+        .iter()
+        .fold(text.to_owned(), |text, (pattern, replacement)| {
+            pattern.replace_all(&text, *replacement).into_owned()
+        })
+}
 pub(crate) fn headline(kind: &str, text: &str) -> String {
-    let text = text.trim();
+    // Commands and paths are literal data, including underscores and shell syntax.
+    let plain = if matches!(kind, "text" | "thinking") {
+        plain_headline(text)
+    } else {
+        text.to_owned()
+    };
+    let text = plain.trim();
     let line = if kind == "text" {
         let punctuation = ['.', '!', '?', '。', '！', '？'];
         let prefix = text.trim_end_matches(punctuation);
         let start = prefix
             .char_indices()
             .rev()
-            .find(|(_, c)| punctuation.contains(c) || *c == '\n')
+            .find(|(i, c)| {
+                *c == '\n'
+                    || (punctuation.contains(c)
+                        && (*c != '.'
+                            || prefix[i + c.len_utf8()..].starts_with(char::is_whitespace)))
+            })
             .map_or(0, |(i, c)| i + c.len_utf8());
         text[start..].trim()
     } else {
@@ -847,8 +886,17 @@ impl Timeline {
         let latest = self
             .activity_entry
             .as_ref()
-            .and_then(|id| self.entries.iter().find(|r| r["id"] == *id))
-            .or_else(|| self.entries.iter().max_by_key(|r| r["cursor"].as_u64()));
+            .and_then(|id| {
+                self.entries
+                    .iter()
+                    .find(|r| r["id"] == *id && r["type"] != "interaction")
+            })
+            .or_else(|| {
+                self.entries
+                    .iter()
+                    .filter(|r| r["type"] != "interaction")
+                    .max_by_key(|r| r["cursor"].as_u64())
+            });
         let interaction = pending.or_else(|| {
             self.entries
                 .iter()
@@ -861,7 +909,7 @@ impl Timeline {
             let kind = string(item, "type");
             row["phase"] = json!(if matches!(
                 kind,
-                "thinking" | "command" | "file" | "tool" | "text" | "interaction"
+                "thinking" | "command" | "file" | "tool" | "text"
             ) {
                 kind
             } else {
@@ -871,7 +919,6 @@ impl Timeline {
                 "command" => string(item, "command"),
                 "file" => string(item, "path"),
                 "tool" => string(item, "title"),
-                "interaction" => string(&item["interaction"], "summary"),
                 _ => string(item, "text"),
             };
             row["headline"] = json!(headline(kind, text));
@@ -1146,6 +1193,85 @@ mod tests {
             .as_array()
             .unwrap()
             .is_empty());
+    }
+    #[test]
+    fn resolved_approval_restores_running_command_phase_and_start() {
+        let mut t = Timeline::default();
+        let info = json!({"id":"task","taskId":"task","agent":"example","startedAt":AT});
+        acp(
+            &mut t,
+            json!({"sessionUpdate":"tool_call","toolCallId":"command","kind":"execute","rawInput":{"command":"printf example"},"status":"in_progress"}),
+            AT,
+        );
+        let request = json!({"id":17,"params":{"toolCall":{"toolCallId":"command","command":"printf example"}}});
+        t.agent("session/request_permission", &request, LATER);
+        assert_eq!(t.session(&info, "arc-task", None)["phase"], "interaction");
+        t.resolve(&json!(17), LATER);
+        let snapshot = t.session(&info, "arc-task", None);
+        assert_eq!(snapshot["phase"], "command");
+        assert_eq!(snapshot["headline"], "printf example");
+        assert_eq!(snapshot["phaseSince"], AT);
+        assert!(snapshot.get("interaction").is_none());
+        // A command first observed after the approval is also selected.
+        acp(
+            &mut t,
+            json!({"sessionUpdate":"tool_call","toolCallId":"next","kind":"execute","rawInput":{"command":"printf next"},"status":"in_progress"}),
+            LATER,
+        );
+        t.resolve(&json!(17), "2026-01-01T00:00:02.000Z");
+        let snapshot = t.session(&info, "arc-task", None);
+        assert_eq!(snapshot["headline"], "printf next");
+        assert_eq!(snapshot["phaseSince"], LATER);
+        let mut only_interaction = Timeline::default();
+        only_interaction.agent("session/request_permission", &request, AT);
+        only_interaction.resolve(&json!(17), LATER);
+        assert_eq!(
+            only_interaction.session(&info, "arc-task", None)["phase"],
+            "idle"
+        );
+    }
+    #[test]
+    fn headlines_are_plain_text_without_changing_commands_or_paths() {
+        for (source, expected) in [
+            (
+                "**Configuring session timing**",
+                "Configuring session timing",
+            ),
+            ("**Configuring session timin…", "Configuring session timin…"),
+            ("## **Session configuration**", "Session configuration"),
+            ("First sentence. **Last sentence.**", "Last sentence."),
+            (
+                "Use `session_config` with *defaults* and _options_.",
+                "Use session_config with defaults and options.",
+            ),
+            (
+                "See [the guide](https://example.test/guide).",
+                "See the guide.",
+            ),
+            (
+                "Read [guide][reference] and ![diagram](image.png).",
+                "Read guide and diagram.",
+            ),
+            (
+                "Keep snake_case_name intact.",
+                "Keep snake_case_name intact.",
+            ),
+            ("~~Old~~ **New**", "Old New"),
+        ] {
+            assert_eq!(headline("text", source), expected, "{source}");
+        }
+        assert_eq!(
+            headline("thinking", "First line\n### **Last thought**"),
+            "Last thought"
+        );
+        assert_eq!(
+            headline("command", "printf '**example**' && echo `pwd`"),
+            "printf '**example**' && echo `pwd`"
+        );
+        assert_eq!(
+            headline("file", "/example/snake_case/file_name.rs"),
+            "/example/snake_case/file_name.rs"
+        );
     }
     #[test]
     fn permission_backfill_preserves_request_and_respond_identity() {
