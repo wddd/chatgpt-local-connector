@@ -7,7 +7,7 @@ export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)"
 
 // Morph the shell's real dimensions; its independently laid-out content is clipped,
 // never scaled. A shared monotonic curve keeps every edge between its endpoints.
-export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = () => ({})) {
+export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = () => ({}), onFrame?: () => void) {
   const base: Record<string, string> = {};
   const content = node.firstElementChild as HTMLElement | null;
   const contentTranslate = content?.style.translate ?? "";
@@ -105,6 +105,7 @@ export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = (
           rendered = { ...interpolate(progress) };
           Object.assign(node.style, rendered);
           pinContent();
+          onFrame?.();
         },
       });
       if (!reduced.matches) {

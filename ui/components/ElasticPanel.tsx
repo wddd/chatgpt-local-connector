@@ -45,6 +45,7 @@ export default function ElasticPanel({
   initialFocus,
   dockRight = false,
   returnFocus,
+  onMotion,
 }: {
   open?: boolean;
   onClose: () => void;
@@ -63,6 +64,7 @@ export default function ElasticPanel({
   initialFocus?: string;
   dockRight?: boolean;
   returnFocus?: string;
+  onMotion?: () => void;
 }) {
   const [node, setNode] = useState<HTMLDivElement | null>(null),
     [position, setPosition] = useState({ x: 0, y: 0 });
@@ -136,7 +138,7 @@ export default function ElasticPanel({
     }
     const surface = surfaceMotion(node, () => ({
       transform: `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
-    }));
+    }), onMotion);
     motion.current = surface;
     const fades: AnimationPlaybackControlsWithThen[] = [];
     if (!reduced() && source && rect.width && !parent && visualOrigin.current?.trigger.closest(".graph-node, [data-timeline-anchor]")) {

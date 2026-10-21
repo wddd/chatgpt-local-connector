@@ -129,7 +129,7 @@ function TaskBranch({ agent, nodes, painters, follow, session, count, index, now
     if (panel) observer.observe(panel);
     follow();
     return () => { painters.delete(key); observer.disconnect(); };
-  }, [agent, id, nodes, painters, follow, angle, offset, selected]);
+  }, [agent, id, nodes, painters, follow, angle, offset, selected, !!session?.interaction, session?.endedAt, session?.source]);
   const state = !session ? "summary" : session.endedAt !== undefined ? "completed" : session.source === "transcript" ? "external" : session.interaction ? "attention" : "running";
   const fading = !selected && session?.endedAt !== undefined && now >= session.endedAt + activityLayout.hold;
   return <>
@@ -190,6 +190,6 @@ export default function ActivityBubbles({ nodes, graph, boundary, tracked, enabl
     {listAgent && <Dialog width={400} title={t("activity.agentTasks", { agent: name(orderedAgents().find(a => a.agent === listAgent) ?? { agent: listAgent }) })} onClose={() => setListAgent(undefined)}>
       <div className="activity-task-list">{(tracked[listAgent] ?? []).map(session => <ActivityBubble key={session.id} agent={listAgent} session={session} now={now} onOpen={() => setListAgent(undefined)} />)}</div>
     </Dialog>}
-    {selected && <ActivityTimeline key={`${selected.agent}:${selected.session.id}`} agent={selected.agent} session={selected.session} onClose={() => activityTimeline.set(undefined)} />}
+    {selected && <ActivityTimeline key={`${selected.agent}:${selected.session.id}`} agent={selected.agent} session={selected.session} onMotion={follow} onClose={() => activityTimeline.set(undefined)} />}
   </>;
 }

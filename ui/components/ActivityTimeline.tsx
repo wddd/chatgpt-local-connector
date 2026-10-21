@@ -65,8 +65,8 @@ function TimelineEntry({ entry, agent, session, now }: {
     </div>
   </details>;
 }
-export default function ActivityTimeline({ agent, session, onClose }: {
-  agent: string; session: AgentActivitySession; onClose: () => void;
+export default function ActivityTimeline({ agent, session, onClose, onMotion }: {
+  agent: string; session: AgentActivitySession; onClose: () => void; onMotion: () => void;
 }) {
   const { snapshot } = agentActivity.use();
   const submissions = activityApprovals.use(), cardId = useId(), reduced = useReducedMotion();
@@ -129,7 +129,7 @@ export default function ActivityTimeline({ agent, session, onClose }: {
   return <Dialog title={<span className="activity-panel-title"><strong>{session.title || t("timeline.title")}</strong>
     <span>{agentName}{session.project ? ` · ${session.project.replace(/[\\/]+$/, "").split(/[\\/]/).pop()}` : ""}{duration === undefined ? "" : ` · ${t("activity.seconds", { count: duration })}`}</span></span>}
     leading={agentIcons[agent] && <span className="activity-panel-agent" aria-hidden="true" dangerouslySetInnerHTML={{ __html: agentIcons[agent] }} />}
-    width={400} dockRight onClose={onClose} returnFocus={`[data-activity-session="${CSS.escape(JSON.stringify([agent, session.id]))}"]`} initialFocus={showCard ? cardId : undefined} footer={footer}
+    width={400} dockRight onClose={onClose} onMotion={onMotion} returnFocus={`[data-activity-session="${CSS.escape(JSON.stringify([agent, session.id]))}"]`} initialFocus={showCard ? cardId : undefined} footer={footer}
     actions={<><span className="activity-status" data-state={showCard ? "attention" : running ? "running" : "completed"}>
         {t(showCard ? pendingSession.interaction?.kind === "question" ? "activity.question" : "activity.phase.interaction" : running ? "timeline.status.running" : "activity.completed")}
       </span>{nativeSession.open && <Button variant="ghost" onClick={() => {
