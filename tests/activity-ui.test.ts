@@ -258,3 +258,27 @@ test("timeline tools only expand when there is detail beyond the summary object"
   assert.equal(expandableTimelineEntry({ ...file, exitCode: 0 }), true);
   assert.equal(expandableTimelineEntry({ ...file, output: { text: "result", state: "available", truncated: false, sha256: "example", hashScope: "excerpt" } }), true);
 });
+
+
+test("bubble headlines prefer current content, then recent readable content, then title", async () => {
+  const { activityHeadline } = await import("../ui/state/activityModel.ts");
+  const base = { ...session("one"), title: "Task title", fallbackHeadline: "Previous readable command" };
+  assert.equal(activityHeadline(base).text, "printf example");
+  assert.equal(activityHeadline(base).fallback, false);
+  const thinking = { ...base, phase: "thinking" as const, headline: " \n " };
+  assert.equal(activityHeadline(thinking).text, "Previous readable command");
+  assert.equal(activityHeadline(thinking).fallback, true);
+  assert.equal(activityHeadline({ ...thinking, fallbackHeadline: " " }).text, "Task title");
+  assert.equal(activityHeadline({ ...thinking, phase: "file" }).path, undefined);
+  assert.equal(activityHeadline({ ...base, phase: "file", headline: "src/main.rs" }).path, "src/main.rs");
+});
+test("every source and phase has a visible fallback even before readable content arrives", async () => {
+  const { activityHeadline } = await import("../ui/state/activityModel.ts");
+  for (const source of ["arc-task", "codex-thread", "transcript"] as const) {
+    for (const phase of ["thinking", "command", "file", "tool", "text", "interaction", "idle"] as const) {
+      const headline = activityHeadline({ ...session("one"), ...{ source }, phase, headline: "" }, "Task details");
+      assert.equal(headline.text, "Task details");
+      assert.equal(headline.fallback, true);
+    }
+  }
+});

@@ -49,6 +49,8 @@ export interface AgentActivitySession {
   project?: string | null;
   phase: AgentPhase;
   headline: string;
+  fallbackHeadline?: string;
+  recentContent?: string[];
   startedAt?: string | null;
   phaseSince: string | null;
   interaction?: AgentInteraction;
@@ -94,6 +96,7 @@ export interface AgentTrackingExcerpt {
   hashScope: "excerpt";
 }
 export interface AgentTimeline {
+  readOnly?: boolean;
   status?: string;
   sessionId: string;
   entries: AgentTimelineEntry[];

@@ -550,6 +550,7 @@
   "activity.disconnected": "Activity connection unavailable; showing the last snapshot",
   "activity.questionTimeline": "Open timeline to answer",
   "timeline.open": "Open execution timeline",
+  "timeline.external": "This session was not dispatched by ARC. View the full record in the Agent.",
   "timeline.title": "Execution timeline",
   "timeline.answer": "Answer",
   "timeline.submit": "Submit",

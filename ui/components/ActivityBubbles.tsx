@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useMotionValueEvent, useReducedMotion, useSpri
 import { Check, LoaderCircle, Pencil, Wrench, CirclePause, ShieldAlert, ArrowUpRight } from "lucide-react";
 import { t } from "../i18n";
 import type { AgentPhase } from "../types";
-import { activityTimeline, agentActivity, openActivitySession } from "../state/activity";
+import { activityTimeline, agentActivity } from "../state/activity";
 import { activityLayout, activityHeadline, activityPorts, visibleActivity, type TrackedActivity } from "../state/activityModel";
 import { useInterval } from "../state/hooks";
 import { springTransition } from "../motion/geometry";
@@ -25,8 +25,8 @@ function Headline({ session }: { session: TrackedActivity }) {
   latest.current = session;
   const [display, setDisplay] = useState(session);
   useInterval(() => setDisplay(latest.current), 1000);
-  const headline = activityHeadline(display);
-  return <span className={`activity-headline ${display.phase === "command" ? "mono" : ""}`}>
+  const headline = activityHeadline(display, t("timeline.title"));
+  return <span className={`activity-headline ${!headline.fallback && display.phase === "command" ? "mono" : ""} ${headline.fallback ? "activity-headline-fallback" : ""}`}>
     <AnimatePresence initial={false}>
       <motion.span key={`${display.phase}:${headline.text}`} initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 5 }} animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: reduced ? 0 : -5 }} transition={{ duration: reduced ? 0 : 0.22 }}>
@@ -42,27 +42,20 @@ function PhaseIcon({ phase, completed }: { phase: AgentPhase; completed: boolean
   return <Icon className={`activity-icon-${phase}`} icon={{ command: LoaderCircle, file: Pencil, tool: Wrench, interaction: ShieldAlert, idle: CirclePause }[phase]} />;
 }
 function ActivityBubble({ agent, session, now, onOpen, listRow = false }: { agent: string; session: TrackedActivity; now: number; onOpen?: () => void; listRow?: boolean }) {
-  const [opening, setOpening] = useState(false), [error, setError] = useState("");
   const completed = session.endedAt !== undefined, external = session.source === "transcript";
   const phase = session.interaction ? "interaction" : session.phase;
   const phaseLabel = completed ? "activity.completed" : session.interaction?.kind === "question" ? "activity.question" : `activity.phase.${phase}`;
-  const canOpen = external ? !!session.open : session.timeline || !!session.open;
-  const hint = t(!external && session.timeline ? "timeline.open" : session.open ? "activity.open" : "activity.noEntry");
-  return <Tooltip text={error || `${hint}${activityHeadline(session).fullText ? ` · ${activityHeadline(session).fullText}` : ""}`}>
+  const hint = t("timeline.open"), headline = activityHeadline(session, t("timeline.title"));
+  return <Tooltip text={`${hint} · ${headline.fullText}`}>
     <button type="button" className={`${listRow ? "activity-task-row" : "activity-bubble"} ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
-      data-timeline-anchor={!external && session.timeline || undefined} aria-disabled={!canOpen || opening}
+      data-timeline-anchor
       data-activity-session={JSON.stringify([agent, session.id])}
       aria-label={`${session.title || t(phaseLabel)} · ${hint}`} onClick={() => {
-        if (!canOpen || opening) return;
-        setOpening(true); setError("");
-        void openActivitySession(agent, session, external ? undefined : selected => {
-          onOpen?.(); activityTimeline.set({ agent, session: selected });
-        }).catch(error => setError(`${t("activity.openFailed")} ${String(error)}`)).finally(() => setOpening(false));
+        onOpen?.(); activityTimeline.set({ agent, session });
       }}>
       <span className="activity-phase"><PhaseIcon phase={phase} completed={completed} /><span>{t(phaseLabel)}</span>
         {external && <Icon icon={ArrowUpRight} />}<time>{elapsed(session.phaseSince ?? session.startedAt, session.endedAt ?? now)}</time></span>
       <Headline session={session} />
-      {error && <span role="alert" className="sr-only">{error}</span>}
     </button>
   </Tooltip>;
 }

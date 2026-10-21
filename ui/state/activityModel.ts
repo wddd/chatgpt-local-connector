@@ -97,8 +97,9 @@ export function filePathParts(path: string, project?: string | null) {
   return { fullPath, displayPath, directory: displayPath.slice(0, split), filename: displayPath.slice(split) };
 }
 
-export function activityHeadline(session: Pick<AgentActivitySession, "headline" | "phase" | "interaction" | "project">) {
-  const path = session.interaction ? session.interaction.path || undefined : session.phase === "file" ? session.headline || undefined : undefined;
-  const text = path || session.headline;
-  return { text, path, fullText: path ? filePathParts(path, session.project).fullPath : text };
+export function activityHeadline(session: Pick<AgentActivitySession, "headline" | "phase" | "interaction" | "project" | "fallbackHeadline" | "title">, empty = "") {
+  const path = session.interaction ? session.interaction.path?.trim() || undefined : session.phase === "file" ? session.headline.trim() || undefined : undefined;
+  const current = path || session.headline.trim();
+  const text = current || session.fallbackHeadline?.trim() || session.title?.trim() || empty;
+  return { text, path, fallback: !current, fullText: path ? filePathParts(path, session.project).fullPath : text };
 }

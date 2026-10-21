@@ -1567,7 +1567,7 @@
       "name": "agents.timeline",
       "route": "agents/timeline/{id}",
       "method": "GET",
-      "description": "Normalized entries for an activity session ID. after is the last returned update cursor; merge entries by id. Coverage reports bounded history.",
+      "description": "Normalized entries for an activity session ID. after is the last returned update cursor; merge entries by id. External sessions return readOnly full snapshots without after. Coverage reports bounded history.",
       "localOnly": true,
       "inputSchema": {
         "type": "object",

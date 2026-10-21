@@ -1181,6 +1181,8 @@
 .completed .activity-phase > .icon { color: var(--success); }
 .activity-headline { display: grid; height: 19px; line-height: 19px; font-size: 13px; color: var(--text); }
 .activity-headline > span { grid-area: 1 / 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.activity-headline-fallback { color: var(--text-tertiary); }
+.activity-session-summary { overflow-wrap: anywhere; }
 .activity-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: var(--text-xs); margin-top: 12px; }
 .activity-note { display: block; font-size: var(--text-xs); line-height: 22px; color: var(--text-secondary); }
 .activity-error { color: var(--danger); }

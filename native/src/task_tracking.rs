@@ -67,6 +67,25 @@ fn cut(text: &str, limit: usize) -> (String, bool) {
     }
     (text[..end].to_owned(), end < text.len())
 }
+pub(crate) fn transcript_text(text: &str) -> String {
+    use std::sync::OnceLock;
+    static BLOCKS: OnceLock<regex::Regex> = OnceLock::new();
+    static TAGS: OnceLock<regex::Regex> = OnceLock::new();
+    let text = text.trim();
+    if text.starts_with("# AGENTS.md instructions") || text.starts_with("<INSTRUCTIONS>") {
+        return String::new();
+    }
+    let blocks = BLOCKS.get_or_init(|| regex::Regex::new(
+        r"(?is)<(?:system-reminder|system_reminder|environment_context|environment_details|image_resize_notice|total_tokens|token_budget|instructions|INSTRUCTIONS|app-context|permissions instructions|collaboration_mode|skills_instructions)(?:\s[^>]*)?>.*?(?:</(?:system-reminder|system_reminder|environment_context|environment_details|image_resize_notice|total_tokens|token_budget|instructions|INSTRUCTIONS|app-context|permissions instructions|collaboration_mode|skills_instructions)>|\z)"
+    ).unwrap());
+    let tags = TAGS.get_or_init(|| regex::Regex::new(r"^\s*(?:</?[A-Za-z_][^>]*>\s*)+$").unwrap());
+    blocks
+        .replace_all(text, "")
+        .lines()
+        .filter(|line| !tags.is_match(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 fn plain_headline(text: &str) -> String {
     use std::sync::OnceLock;
     static RULES: OnceLock<Vec<(regex::Regex, &'static str)>> = OnceLock::new();
@@ -593,6 +612,7 @@ impl Timeline {
             "completed" => "completed",
             "failed" => "failed",
             "cancelled" => "cancelled",
+            "unknown" => "unknown",
             _ => self
                 .entries
                 .iter()
@@ -658,6 +678,62 @@ impl Timeline {
             }
         }
         self.put(row, at);
+    }
+    /// Local Claude history uses the same text/tool vocabulary, without approvals.
+    pub fn backfill_claude(&mut self, records: &[Value]) {
+        for record in records {
+            let role = string(&record["message"], "role");
+            if record["isMeta"] == true || !matches!(role, "user" | "assistant") {
+                continue;
+            }
+            let at = string(record, "timestamp");
+            let id = string(record, "uuid");
+            if id.is_empty() || at.is_empty() {
+                self.partial = true;
+                continue;
+            }
+            self.info["project"] = record["cwd"].clone();
+            let raw = &record["message"]["content"];
+            let blocks = if raw.is_string() {
+                vec![json!({"type":"text","text":raw})]
+            } else {
+                raw.as_array().cloned().unwrap_or_default()
+            };
+            if role == "user" && blocks.iter().any(|b| b["type"] == "text") {
+                self.turn = id.into();
+            }
+            for (index, block) in blocks.iter().enumerate() {
+                match string(block, "type") {
+                    "text" | "thinking" => {
+                        let thinking = block["type"] == "thinking";
+                        let text = transcript_text(string(
+                            block,
+                            if thinking { "thinking" } else { "text" },
+                        ));
+                        if text.trim().is_empty() {
+                            continue;
+                        }
+                        let (text, truncated) = cut(&redact(&text), MAX_TEXT);
+                        self.put(json!({"id":format!("{id}:{index}"),"type":if role == "user" {"user"} else if thinking {"thinking"} else {"text"},"status":"completed","text":text,"truncated":truncated}), at);
+                    }
+                    "tool_use" => {
+                        self.tool(&json!({"toolCallId":block["id"],"title":block["name"],"rawInput":block["input"],"status":"unknown"}), at);
+                        // A request alone does not establish execution or an end time.
+                        if let Some(row) = self.entries.iter_mut().find(|r| r["id"] == block["id"])
+                        {
+                            row.as_object_mut().unwrap().remove("endedAt");
+                        }
+                    }
+                    "tool_result" => {
+                        if !self.entries.iter().any(|e| e["id"] == block["tool_use_id"]) {
+                            self.partial = true;
+                        }
+                        self.tool(&json!({"toolCallId":block["tool_use_id"],"rawOutput":block["content"],"status":if block["is_error"] == true {"failed"} else {"completed"}}), at);
+                    }
+                    _ => self.partial = true,
+                }
+            }
+        }
     }
     /// Project history first, then overlay observations made while the read was in flight.
     pub fn backfill_codex(&mut self, thread: &Value, baseline: u64, observed: u64, at: &str) {
@@ -876,6 +952,29 @@ impl Timeline {
         json!({"sessionId":session,"status":self.status,"entries":self.entries.iter().enumerate().filter(|(_,r)|r["cursor"].as_u64().unwrap_or(0)>after).map(|(i,r)| { let mut row=r.clone(); if row.get("position").is_none() { row["position"]=json!(i); } row }).collect::<Vec<_>>(),"cursor":self.revision,"coverage":{"state":if self.partial {"partial"} else {"complete"},"truncated":self.partial},"executionEvidence":self.execution_evidence()})
     }
     pub fn session(&self, info: &Value, source: &str, pending: Option<Value>) -> Value {
+        let recent: Vec<_> = self
+            .entries
+            .iter()
+            .rev()
+            .filter(|r| matches!(string(r, "type"), "thinking" | "text" | "command" | "file"))
+            .map(entry_headline)
+            .filter(|s| !s.trim().is_empty())
+            .take(3)
+            .collect();
+        let title = headline("text", string(info, "title"));
+        let fallback = recent.first().cloned().unwrap_or_else(|| {
+            if !title.is_empty() {
+                title
+            } else {
+                self.entries
+                    .iter()
+                    .rev()
+                    .filter(|r| r["type"] == "user")
+                    .map(entry_headline)
+                    .find(|s| !s.is_empty())
+                    .unwrap_or_default()
+            }
+        });
         let latest = self
             .entries
             .iter()
@@ -894,6 +993,8 @@ impl Timeline {
                 .map(|r| r["interaction"].clone())
         });
         let mut row = json!({"id":info["id"],"source":source,"title":redact(string(info,"title")),"project":info["project"],"phase":"idle","headline":"","startedAt":info["startedAt"],"phaseSince":info["startedAt"],"timeline":true});
+        row["fallbackHeadline"] = json!(fallback);
+        row["recentContent"] = json!(recent.iter().rev().collect::<Vec<_>>());
         if let Some(item) = latest {
             let kind = string(item, "type");
             row["phase"] = json!(if matches!(
@@ -904,13 +1005,7 @@ impl Timeline {
             } else {
                 "idle"
             });
-            let text = match kind {
-                "command" => string(item, "command"),
-                "file" => string(item, "path"),
-                "tool" => string(item, "title"),
-                _ => string(item, "text"),
-            };
-            row["headline"] = json!(headline(kind, text));
+            row["headline"] = json!(entry_headline(item));
             row["phaseSince"] = item["startedAt"].clone();
         }
         if let Some(mut interaction) = interaction {
@@ -937,6 +1032,16 @@ impl Timeline {
         }
         row
     }
+}
+fn entry_headline(item: &Value) -> String {
+    let kind = string(item, "type");
+    let text = match kind {
+        "command" => string(item, "command"),
+        "file" => string(item, "path"),
+        "tool" => string(item, "title"),
+        _ => string(item, "text"),
+    };
+    headline(kind, text)
 }
 pub(crate) fn codex_open(id: &str) -> Option<Value> {
     if cfg!(target_os = "linux")
@@ -1005,6 +1110,83 @@ mod tests {
     use super::*;
     const AT: &str = "2026-01-01T00:00:00.000Z";
     const LATER: &str = "2026-01-01T00:00:01.000Z";
+    #[test]
+    fn empty_reasoning_keeps_phase_and_uses_recent_readable_content() {
+        let mut t = Timeline::default();
+        let info = json!({"id":"example","title":"Task title"});
+        t.codex_item(
+            &json!({"id":"u","type":"userMessage","content":[{"text":"User request"}]}),
+            "completed",
+            AT,
+        );
+        t.codex_item(
+            &json!({"id":"r","type":"reasoning","summary":[]}),
+            "running",
+            LATER,
+        );
+        let row = t.session(&info, "codex-thread", None);
+        assert_eq!(row["phase"], "thinking");
+        assert_eq!(row["headline"], "");
+        assert_eq!(row["fallbackHeadline"], "Task title");
+        assert_eq!(
+            t.session(&json!({"id":"example"}), "codex-thread", None)["fallbackHeadline"],
+            "User request"
+        );
+        t.codex_item(
+            &json!({"id":"c","type":"commandExecution","command":"printf example"}),
+            "completed",
+            LATER,
+        );
+        assert_eq!(
+            t.session(&info, "codex-thread", None)["fallbackHeadline"],
+            "printf example"
+        );
+        t.codex_item(&json!({"id":"f","type":"fileChange","changes":[{"path":"src/example.rs","kind":{"type":"update"}}]}), "completed", LATER);
+        assert_eq!(
+            t.session(&info, "codex-thread", None)["fallbackHeadline"],
+            "src/example.rs"
+        );
+        t.codex_item(
+            &json!({"id":"t","type":"agentMessage","text":"Latest readable text"}),
+            "completed",
+            LATER,
+        );
+        let row = t.session(&info, "codex-thread", None);
+        assert_eq!(row["fallbackHeadline"], "Latest readable text");
+        assert_eq!(row["recentContent"].as_array().unwrap().len(), 3);
+    }
+    #[test]
+    fn claude_transcript_projects_readonly_text_and_tool_results() {
+        let records = vec![
+            json!({"uuid":"meta","timestamp":AT,"isMeta":true,"message":{"role":"user","content":"Injected"}}),
+            json!({"uuid":"u","timestamp":AT,"message":{"role":"user","content":"Read example"}}),
+            json!({"uuid":"a","timestamp":AT,"message":{"role":"assistant","content":[
+                {"type":"thinking","thinking":"Checking example"},
+                {"type":"tool_use","id":"read","name":"Read","input":{"file_path":"src/example.rs"}},
+                {"type":"tool_use","id":"cmd","name":"Bash","input":{"command":"printf example"}}
+            ]}}),
+            json!({"uuid":"r","timestamp":LATER,"message":{"role":"user","content":[
+                {"type":"tool_result","tool_use_id":"read","content":"Example content"},
+                {"type":"tool_result","tool_use_id":"cmd","is_error":true,"content":"Error"}
+            ]}}),
+            json!({"uuid":"answer","timestamp":LATER,"message":{"role":"assistant","content":[{"type":"text","text":"Done"}]}}),
+        ];
+        let mut t = Timeline::default();
+        t.backfill_claude(&records);
+        assert_eq!(t.entries.len(), 5);
+        assert_eq!(t.entries[0]["type"], "user");
+        assert_eq!(t.entries[1]["type"], "thinking");
+        let read = &t.entries[2];
+        assert_eq!(read["type"], "file");
+        assert_eq!(read["operation"], "read");
+        assert_eq!(read["status"], "completed");
+        assert_eq!(read["output"]["text"], "Example content");
+        assert_eq!(read["startedAt"], AT);
+        assert_eq!(read["endedAt"], LATER);
+        assert_eq!(t.entries[3]["status"], "failed");
+        assert!(t.entries.iter().all(|e| e["interaction"].is_null()));
+        assert!(!t.partial);
+    }
     fn acp(t: &mut Timeline, update: Value, at: &str) {
         t.agent("session/update", &json!({"params":{"update":update}}), at);
     }

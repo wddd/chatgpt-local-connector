@@ -449,6 +449,22 @@ impl AgentHost {
         {
             return control.timeline(session, after).await;
         }
+        // External history is a read-only snapshot; it must not enroll the thread
+        // in ARC's live dispatch/approval ownership or expose a filesystem path.
+        let external = self.activity.lock().await.external(session);
+        if !task_path(session)?.exists() {
+            if let Some(external) = external {
+                if external.agent == "codex" {
+                    return control.external_timeline(session).await;
+                }
+                let session = session.to_owned();
+                return tokio::task::spawn_blocking(move || {
+                    activity::claude_timeline(&external.path, &session)
+                })
+                .await
+                .map_err(|e| e.to_string())?;
+            }
+        }
         let process = self.processes.lock().await.get(session).cloned();
         let state = if let Some(p) = process {
             p.state.lock().await.clone()

@@ -366,6 +366,22 @@ impl Control {
             .await?;
         Ok(true)
     }
+    pub(crate) async fn external_timeline(&self, thread: &str) -> Result<Value> {
+        let history = self
+            .utility()
+            .await?
+            .call(
+                "thread/read",
+                json!({"threadId":thread,"includeTurns":true}),
+                15000,
+            )
+            .await?;
+        let mut timeline = crate::task_tracking::Timeline::default();
+        timeline.backfill_codex(&history["thread"], 0, 0, &now());
+        let mut result = timeline.response(thread, 0);
+        result["readOnly"] = json!(true);
+        Ok(result)
+    }
     pub(crate) async fn timeline(&self, thread: &str, after: u64) -> Result<Value> {
         let _read = self.requests.lock(&format!("timeline-read:{thread}")).await;
         let (baseline, observed) = {

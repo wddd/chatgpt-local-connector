@@ -1,3 +1,4 @@
+use crate::task_tracking::transcript_text;
 use crate::*;
 use std::{
     fs::File,
@@ -10,8 +11,18 @@ pub(super) struct Monitor {
     sampled: Option<Instant>,
     selected: Vec<String>,
     active: Vec<(String, Value)>,
+    known: Vec<External>,
+}
+#[derive(Clone)]
+pub(super) struct External {
+    pub agent: String,
+    pub session: Value,
+    pub path: PathBuf,
 }
 impl Monitor {
+    pub fn external(&self, id: &str) -> Option<External> {
+        self.known.iter().find(|s| s.session["id"] == id).cloned()
+    }
     pub async fn sample(&mut self, mut selected: Vec<String>) -> Vec<(String, Value)> {
         selected.retain(|id| matches!(id.as_str(), "codex" | "claude"));
         selected.sort();
@@ -22,16 +33,28 @@ impl Monitor {
                 .is_none_or(|at| at.elapsed() >= Duration::from_secs(2))
         {
             self.selected = selected.clone();
-            self.active = tokio::task::spawn_blocking(move || scan(&selected))
+            let scanned = tokio::task::spawn_blocking(move || scan(&selected))
                 .await
                 .unwrap_or_default();
+            self.active = scanned
+                .iter()
+                .map(|s| (s.agent.clone(), s.session.clone()))
+                .collect();
+            for session in scanned {
+                self.known
+                    .retain(|s| s.session["id"] != session.session["id"]);
+                self.known.push(session);
+            }
+            if self.known.len() > 128 {
+                self.known.drain(..self.known.len() - 128);
+            }
             self.sampled = Some(Instant::now());
         }
         self.active.clone()
     }
 }
 
-fn scan(selected: &[String]) -> Vec<(String, Value)> {
+fn scan(selected: &[String]) -> Vec<External> {
     let mut active = Vec::new();
     let Some(home) = dirs::home_dir() else {
         return active;
@@ -78,7 +101,11 @@ fn scan(selected: &[String]) -> Vec<(String, Value)> {
                     continue;
                 }
                 if let Some(session) = working(&entry.path(), agent, modified, now) {
-                    active.push((agent.clone(), session));
+                    active.push(External {
+                        agent: agent.clone(),
+                        session,
+                        path: entry.path(),
+                    });
                 }
             }
         }
@@ -86,28 +113,36 @@ fn scan(selected: &[String]) -> Vec<(String, Value)> {
     active
 }
 
-fn working(path: &Path, agent: &str, modified: SystemTime, now: SystemTime) -> Option<Value> {
-    let Ok(mut file) = File::open(path) else {
-        return None;
-    };
-    let Ok(size) = file.seek(SeekFrom::End(0)) else {
-        return None;
-    };
-    let start = size.saturating_sub(128 * 1024);
-    if file.seek(SeekFrom::Start(start)).is_err() {
-        return None;
-    }
+fn read_tail(path: &Path, limit: u64) -> Result<(Vec<Value>, bool)> {
+    let mut file = File::open(path).map_err(|e| e.to_string())?;
+    let size = file.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
+    let start = size.saturating_sub(limit);
+    file.seek(SeekFrom::Start(start))
+        .map_err(|e| e.to_string())?;
     let mut bytes = Vec::new();
-    if file.take(128 * 1024).read_to_end(&mut bytes).is_err() {
-        return None;
-    }
+    file.take(limit)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
     let mut lines = bytes.split(|b| *b == b'\n');
     if start > 0 {
         lines.next();
     }
-    let records: Vec<Value> = lines
+    let records = lines
         .filter_map(|line| serde_json::from_slice(line).ok())
         .collect();
+    Ok((records, start > 0))
+}
+pub(super) fn claude_timeline(path: &Path, session: &str) -> Result<Value> {
+    let (records, truncated) = read_tail(path, 8 * 1024 * 1024)?;
+    let mut timeline = crate::task_tracking::Timeline::default();
+    timeline.partial = truncated;
+    timeline.backfill_claude(&records);
+    let mut result = timeline.response(session, 0);
+    result["readOnly"] = json!(true);
+    Ok(result)
+}
+fn working(path: &Path, agent: &str, modified: SystemTime, now: SystemTime) -> Option<Value> {
+    let (records, _) = read_tail(path, 128 * 1024).ok()?;
     let metadata = records
         .iter()
         .find(|r| r["type"] == "session_meta")
@@ -183,6 +218,7 @@ fn working(path: &Path, agent: &str, modified: SystemTime, now: SystemTime) -> O
             project,
             latest,
             record["timestamp"].clone(),
+            &records,
         ));
     }
     if now.duration_since(modified).unwrap_or_default() > Duration::from_secs(30) {
@@ -194,6 +230,7 @@ fn working(path: &Path, agent: &str, modified: SystemTime, now: SystemTime) -> O
         project,
         latest,
         json!(chrono::DateTime::<chrono::Utc>::from(modified).to_rfc3339()),
+        &records,
     ))
 }
 
@@ -205,26 +242,10 @@ pub(super) fn insert(agents: &mut serde_json::Map<String, Value>, agent: &str, s
         .unwrap()
         .push(session);
 }
-fn transcript_text(text: &str) -> String {
-    use std::sync::OnceLock;
-    static BLOCKS: OnceLock<regex::Regex> = OnceLock::new();
-    static TAGS: OnceLock<regex::Regex> = OnceLock::new();
-    let text = text.trim();
-    if text.starts_with("# AGENTS.md instructions") || text.starts_with("<INSTRUCTIONS>") {
-        return String::new();
-    }
-    let blocks = BLOCKS.get_or_init(|| regex::Regex::new(
-        r"(?is)<(?:system-reminder|system_reminder|environment_context|environment_details|image_resize_notice|total_tokens|token_budget|instructions|INSTRUCTIONS|app-context|permissions instructions|collaboration_mode|skills_instructions)(?:\s[^>]*)?>.*?(?:</(?:system-reminder|system_reminder|environment_context|environment_details|image_resize_notice|total_tokens|token_budget|instructions|INSTRUCTIONS|app-context|permissions instructions|collaboration_mode|skills_instructions)>|\z)"
-    ).unwrap());
-    let tags = TAGS.get_or_init(|| regex::Regex::new(r"^\s*(?:</?[A-Za-z_][^>]*>\s*)+$").unwrap());
-    blocks
-        .replace_all(text, "")
-        .lines()
-        .filter(|line| !tags.is_match(line))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
 fn phase(record: &Value, agent: &str) -> Option<(String, String, Value)> {
+    phase_content(record, agent, true)
+}
+fn phase_content(record: &Value, agent: &str, current: bool) -> Option<(String, String, Value)> {
     let role = if agent == "codex" {
         string(&record["payload"], "role")
     } else {
@@ -232,6 +253,13 @@ fn phase(record: &Value, agent: &str) -> Option<(String, String, Value)> {
     };
     if matches!(role, "system" | "developer") || record["isMeta"] == true {
         return None;
+    }
+    if agent == "claude" && record["message"]["content"].is_string() {
+        let text = crate::task_tracking::headline(
+            "text",
+            &transcript_text(string(&record["message"], "content")),
+        );
+        return (!text.is_empty()).then(|| ("text".into(), text, record["timestamp"].clone()));
     }
     let blocks: Vec<&Value> = if agent == "codex" {
         vec![&record["payload"]]
@@ -256,7 +284,21 @@ fn phase(record: &Value, agent: &str) -> Option<(String, String, Value)> {
                     }),
             ),
             "function_call" | "custom_tool_call" | "tool_use" => {
-                ("tool", string(b, "name").to_owned())
+                let input = if b["input"].is_object() {
+                    b["input"].clone()
+                } else {
+                    serde_json::from_str::<Value>(string(b, "arguments")).unwrap_or_default()
+                };
+                if let Some(command) = input["command"].as_str().or_else(|| input["cmd"].as_str()) {
+                    ("command", command.to_owned())
+                } else if let Some(path) = input["file_path"]
+                    .as_str()
+                    .or_else(|| input["path"].as_str())
+                {
+                    ("file", path.to_owned())
+                } else {
+                    ("tool", string(b, "name").to_owned())
+                }
             }
             "message" => (
                 "text",
@@ -273,7 +315,7 @@ fn phase(record: &Value, agent: &str) -> Option<(String, String, Value)> {
             _ => continue,
         };
         let headline = crate::task_tracking::headline(kind, &transcript_text(&text));
-        if headline.is_empty() && kind != "thinking" {
+        if headline.is_empty() && (kind != "thinking" || !current) || !current && kind == "tool" {
             continue;
         }
         return Some((
@@ -288,6 +330,33 @@ fn phase(record: &Value, agent: &str) -> Option<(String, String, Value)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn external_summary_falls_back_without_changing_the_current_phase() {
+        let records = vec![
+            json!({"message":{"role":"user","content":"Read example"}}),
+            json!({"message":{"role":"assistant","content":[
+                {"type":"text","text":"Checking example"},
+                {"type":"thinking","thinking":""}
+            ]}}),
+        ];
+        let current = phase(&records[1], "claude");
+        assert_eq!(current.as_ref().unwrap().1, "");
+        let row = transcript_session("example", "claude", None, current, Value::Null, &records);
+        assert_eq!(row["source"], "transcript");
+        assert_eq!(row["timeline"], true);
+        assert_eq!(row["headline"], "");
+        assert_eq!(row["phase"], "thinking");
+        assert_eq!(row["fallbackHeadline"], "Checking example");
+        assert_eq!(row["title"], "Read example");
+        assert_eq!(row["recentContent"], json!(["Checking example"]));
+        assert!(row["interaction"].is_null());
+        let row = transcript_session("example", "claude", None, None, Value::Null, &records[..1]);
+        assert_eq!(row["fallbackHeadline"], "Read example");
+        let command = json!({"payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"printf example\"}"}});
+        let phase = phase(&command, "codex").unwrap();
+        assert_eq!(phase.0, "command");
+        assert_eq!(phase.1, "printf example");
+    }
     #[test]
     fn transcript_headlines_skip_injected_content_and_tags() {
         for agent in ["codex", "claude"] {
@@ -332,9 +401,33 @@ fn transcript_session(
     project: Option<&str>,
     phase: Option<(String, String, Value)>,
     observed: Value,
+    records: &[Value],
 ) -> Value {
     let (phase, headline, since) = phase.unwrap_or(("thinking".into(), "".into(), observed));
-    let mut row = json!({"id":id,"source":"transcript","project":project,"phase":phase,"headline":headline,"phaseSince":since,"timeline":false});
+    let is_user = |r: &Value| {
+        if agent == "codex" {
+            r["payload"]["role"] == "user"
+        } else {
+            r["message"]["role"] == "user"
+        }
+    };
+    let recent: Vec<_> = records
+        .iter()
+        .rev()
+        .filter(|r| !is_user(r))
+        .filter_map(|r| phase_content(r, agent, false))
+        .map(|(_, text, _)| text)
+        .take(3)
+        .collect();
+    let title = records
+        .iter()
+        .rev()
+        .filter(|r| is_user(r))
+        .find_map(|r| phase_content(r, agent, false))
+        .map(|(_, text, _)| text)
+        .unwrap_or_default();
+    let mut row = json!({"id":id,"source":"transcript","project":project,"phase":phase,"headline":headline,"phaseSince":since,"timeline":true,
+        "title":title,"fallbackHeadline":recent.first().unwrap_or(&title),"recentContent":recent.iter().rev().collect::<Vec<_>>()});
     if agent == "claude"
         && cfg!(target_os = "macos")
         && project.is_some()

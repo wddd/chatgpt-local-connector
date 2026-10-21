@@ -72,6 +72,7 @@ export async function submitActivityApproval(agent: string, session: AgentActivi
 }
 export async function submitActivityResponse(agent: string, session: AgentActivitySession, decision: ApprovalDecision,
   payload: import("./activityModel").ApprovalPayload) {
+  if (session.source === "transcript") return;
   const key = interactionKey(agent, session);
   const submission = beginApproval(activityApprovals.get()[key], decision, payload, () => crypto.randomUUID());
   if (!submission) return;
@@ -81,10 +82,8 @@ export async function submitActivityResponse(agent: string, session: AgentActivi
     finish(finishApproval(submission, await api("agents/respond", "POST", submission.payload)));
   } catch (error) { finish({ ...submission, status: "failed", error: String(error) }); }
 }
-// Timeline and native entry use the same session identity.
-export async function openActivitySession(agent: string, session: AgentActivitySession,
-  openTimeline?: (session: AgentActivitySession) => void) {
-  if (session.timeline && openTimeline) { openTimeline(session); return; }
+// Native navigation is only exposed by the detail header.
+export async function openActivitySession(agent: string, session: AgentActivitySession) {
   if (session.open?.kind === "url") await openUrl(session.open.target);
   else if (session.open?.kind === "agent-session")
     await api(`agents/sessions/${encodeURIComponent(session.open.target)}/open`, "POST", { agent });

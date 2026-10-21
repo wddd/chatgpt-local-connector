@@ -87,23 +87,26 @@ export default function ActivityTimeline({ agent, session, onClose, onMotion }: 
   const viewport = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null);
   const following = useRef(true), initial = useRef(true), previousRunning = useRef(true), previousTop = useRef(0);
   const live = snapshot?.agents[agent]?.sessions.find(s => s.id === session.id);
+  const external = session.source === "transcript";
   const running = timeline?.status ? ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline.status) : !!live;
   const followAllowed = useRef(true);
   followAllowed.current = running;
   useInterval(() => setNow(Date.now()), running ? 1000 : null);
   useEffect(() => {
+    if (!session.timeline) return;
     let stopped = false, timer: ReturnType<typeof setTimeout>, current: AgentTimeline | undefined;
     async function read() {
       try {
-        const next = await refreshTimeline(current, after => api<AgentTimeline>(`agents/timeline/${encodeURIComponent(session.id)}${after === undefined ? "" : `?after=${after}`}`));
+        const read = (after?: number) => api<AgentTimeline>(`agents/timeline/${encodeURIComponent(session.id)}${after === undefined ? "" : `?after=${after}`}`);
+        const next = external ? await read() : await refreshTimeline(current, read);
         if (stopped) return;
         current = next; setTimeline(next); setError("");
       } catch (error) { if (!stopped) setError(String(error)); }
-      if (!stopped) timer = setTimeout(read, 1000);
+      if (!stopped) timer = setTimeout(read, external ? 5000 : 1000);
     }
     void read();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [session.id]);
+  }, [session.id, session.timeline, external]);
   useLayoutEffect(() => {
     const node = viewport.current;
     if (!node || !timeline) return;
@@ -120,7 +123,7 @@ export default function ActivityTimeline({ agent, session, onClose, onMotion }: 
     return () => observer.disconnect();
   }, []);
   const nativeSession = live ?? { ...session, interaction: undefined };
-  const pendingSession = live?.interaction ? live : undefined;
+  const pendingSession = !external && !timeline?.readOnly && live?.interaction ? live : undefined;
   const submission = pendingSession ? submissions[interactionKey(agent, pendingSession)] : undefined;
   const showCard = !!pendingSession && submission?.status !== "submitted";
   const agentName = name(orderedAgents().find(a => a.agent === agent) ?? { agent });
@@ -155,7 +158,7 @@ export default function ActivityTimeline({ agent, session, onClose, onMotion }: 
     }} /></Tooltip>}>
     <div className="task-timeline">
       {timeline?.coverage.state === "partial" && <p className="timeline-partial" role="status">{t("timeline.partial")}</p>}
-      {(error || openError) && <p className="timeline-error" role="alert">{error || openError}</p>}
+      {((!external && error) || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => { if (event.deltaY < 0) following.current = false; }}
         onScroll={event => {
@@ -165,8 +168,14 @@ export default function ActivityTimeline({ agent, session, onClose, onMotion }: 
           setAtLatest(node.scrollHeight - node.scrollTop - node.clientHeight <= 24);
         }}>
         <div ref={content} className="timeline-entries">
-          {!timeline && !error && <p role="status">{t("timeline.loading")}</p>}
-          {timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
+          {external && <p className="timeline-meta">{t("timeline.external")}</p>}
+          {!timeline && session.timeline && !error && <p role="status">{t("timeline.loading")}</p>}
+          {(!session.timeline || !timeline?.entries.length && (external || !!error)) && <section className="activity-session-summary">
+            <span className="timeline-meta">{t(`activity.phase.${nativeSession.phase}`)}</span>
+            {(nativeSession.recentContent?.length ? nativeSession.recentContent : [activityHeadline(nativeSession, t("timeline.title")).text])
+              .map((text, index) => <p key={index}>{text}</p>)}
+          </section>}
+          {!external && timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
           {visibleTimelineEntries(timeline?.entries ?? []).map(entry => <motion.div key={entry.id} className="timeline-item" data-status={entry.status}
             initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.24 }}>
             <TimelineEntry entry={entry} agent={agent} session={nativeSession} now={now} />
