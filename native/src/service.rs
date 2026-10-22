@@ -101,8 +101,11 @@ fn normalize(mut entry: Value) -> Result<Value> {
     if !entry["enabled"].is_boolean() {
         return Err("enabled must be boolean".into());
     }
-    if !["openai-tunnel", "https", "relay"].contains(&string(&entry, "transport")) {
-        return Err("transport must be openai-tunnel, https or relay".into());
+    if !["openai-tunnel", "https", "relay", "local"].contains(&string(&entry, "transport")) {
+        return Err("transport must be openai-tunnel, https, relay or local".into());
+    }
+    if entry["transport"] == "local" && entry["auth"] != "none" {
+        return Err("Local connections use authenticated IPC".into());
     }
     if entry["transport"] == "openai-tunnel" {
         if entry["auth"] != "openai" {
@@ -143,7 +146,9 @@ fn normalize(mut entry: Value) -> Result<Value> {
     {
         config[k] = v.clone();
     }
-    config["connectionMode"] = json!(if entry["transport"] == "relay" {
+    config["connectionMode"] = json!(if entry["transport"] == "local" {
+        "local"
+    } else if entry["transport"] == "relay" {
         "relay"
     } else if entry["transport"] == "https" {
         "https"
@@ -495,6 +500,9 @@ impl Service {
     ) -> Result<Value> {
         if self.closing.load(Ordering::SeqCst) {
             return Err("core shutting down".into());
+        }
+        if route.starts_with("local-access/") {
+            return crate::local_access::request(self, route, method, body).await;
         }
         if route.starts_with("relay/") {
             return crate::relay::request(self, route, method, body).await;
@@ -883,13 +891,18 @@ impl Service {
                     return Err("OAuth is not enabled for this connection".into());
                 }
                 let resource = i.mcp_url.lock().await.clone();
+                let mut oauth = i.oauth.lock().await;
+                let resource = if resource.is_empty() {
+                    oauth.resource().to_owned()
+                } else {
+                    resource
+                };
                 if resource.is_empty() {
                     return Err("Start this connection before managing OAuth".into());
                 }
                 let resource = reqwest::Url::parse(&resource)
                     .map_err(|_| "Invalid OAuth resource URL")?
                     .to_string();
-                let mut oauth = i.oauth.lock().await;
                 if method == "GET" && action == "oauth" {
                     return oauth.management(&resource);
                 }

@@ -6,6 +6,7 @@ const COMMANDS: &[&str] = &[
     "schema <operation>",
     "call <operation> [--stdin]",
     "mcp",
+    "local-mcp <id>",
     "watch",
     "logs --stdin",
     "logs --follow",
@@ -711,6 +712,15 @@ pub async fn run(args: Vec<String>) -> i32 {
             return print_error(&message, &usage, &words);
         }
     };
+    if let ["local-mcp", id] = words.as_slice() {
+        return match crate::local_access::stdio(id).await {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
+        };
+    }
     if args.first().is_some_and(|a| a == "mcp") {
         return match crate::management::stdio().await {
             Ok(()) => 0,

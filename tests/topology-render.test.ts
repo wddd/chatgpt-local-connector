@@ -233,7 +233,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
   }
 });
 
-test("control source dock preserves editing, guided creation, field navigation and cross-side dispatch paths", async () => {
+test("control source dock preserves editing, new onboarding, field navigation and cross-side dispatch paths", async () => {
   const window = new Window({ url: "http://localhost" });
   const styles = window.document.createElement("style");
   styles.textContent = readFileSync(new URL("../ui/tokens.css", import.meta.url), "utf8")
@@ -286,6 +286,8 @@ test("control source dock preserves editing, guided creation, field navigation a
       let value: unknown = {};
       if (path === "status") value = status;
       else if (path === "setup/next") value = { hasState: false, complete: false, goal: null, steps: [], step: null, progress: { done: 0, total: 0 }, cliPath: "arc", stateDir: "fixture" };
+      else if (path === "relay/list") value = { relays: [], version: "test" };
+      else if (path === "relay/progress") value = { phase: "idle" };
       else if (path === "tool-catalog") value = { tools: [], groups: [], required: [] };
       else if (path === "codex/login") value = { state: "authenticated" };
       else if (path.endsWith("/oauth")) value = { grants: [] };
@@ -308,35 +310,29 @@ test("control source dock preserves editing, guided creation, field navigation a
     await flush();
     const first = () => mount.querySelector('[data-source-node="one"] button');
     await click(first());
-    const shell = document.querySelector(".elastic-panel")!;
+    let shell = document.querySelector(".elastic-panel")!;
     assert.equal(shell.getAttribute("data-panel-dock"), "left");
     assert.equal(document.querySelector(".elastic-backdrop"), null);
-    assert.ok(document.querySelector(".source-connection-card .oauth-grants") || document.querySelector(".source-connection-card")?.textContent?.includes(t("oauthSessions")) || calls.some(c => c.path === "ingress/one/oauth"));
+    assert.ok([...document.querySelectorAll<HTMLInputElement>(".source-connection-card input")].some(input => input.value === t("connect.tryPrompt")));
     assert.ok(mount.querySelector('.activity-slot:not([inert])'), "right bubbles remain available");
     assert.equal(mount.querySelector('[data-source-node="one"]')?.getAttribute("data-reorderable"), null);
     await click(document.querySelector('[role="switch"]'));
     assert.ok(calls.some(c => c.path === "ingress/one" && c.method === "PUT" && c.body.enabled === false));
     await click(document.querySelector('[role="switch"]'));
-    // A central entry must not inherit the nonmodal side dock as its parent surface.
+    // Adding a control source replaces the current left dock without a backdrop.
     await click(mount.querySelector(".hub-source"));
-    const centered = document.querySelector('.elastic-panel:not([data-panel-dock])');
-    assert.equal(centered?.getAttribute("data-panel-depth"), "1");
-    assert.ok(document.querySelector('.source-choices'));
-    const stats = shell.querySelector<HTMLElement>('.actions[aria-hidden="false"]')!;
-    assert.ok(stats, "loaded tool statistics are present while the dock is recessed");
-    assert.equal(stats.style.visibility, "", "loaded statistics inherit the enclosing panel visibility");
-    assert.equal(shell.getAttribute("data-recessed"), "true");
-    assert.equal(shell.hasAttribute("inert"), true);
-    assert.equal(getComputedStyle(shell).opacity, "0", "the entire recessed surface is hidden");
+    assert.equal(document.querySelector('[data-panel-dock]')?.getAttribute('data-panel-dock'), 'left');
+    assert.equal(document.querySelector('.elastic-backdrop'), null);
+    assert.ok(document.querySelector('.source-grid'));
+    assert.equal(ingressPanel.get(), undefined);
     await escape();
-    assert.equal(document.querySelector(".elastic-panel"), shell);
-    assert.equal(shell.hasAttribute("data-recessed"), false);
-    assert.equal(shell.hasAttribute("inert"), false);
+    await click(first());
+    shell = document.querySelector(".elastic-panel")!;
     const footer = shell.querySelector<HTMLElement>('.side-panel-layer > .dialog-footer')!;
     assert.equal(footer.previousElementSibling?.className, "side-panel-scroll");
     assert.equal(getComputedStyle(footer).borderTopWidth, "1px");
     assert.equal(getComputedStyle(footer).flexShrink, "0");
-    await click(button(t("sourcePanel.edit")));
+    await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
     assert.equal(document.querySelector(".elastic-panel"), shell);
     assert.ok(document.querySelector(".ingress-edit-layer form"));
     await click(button(t("back"), document.querySelector(".ingress-edit-layer")!));
@@ -348,7 +344,7 @@ test("control source dock preserves editing, guided creation, field navigation a
     assert.equal(document.querySelector(".elastic-panel"), shell);
     assert.equal(document.querySelector(".ingress-edit-layer"), null);
     assert.equal(calls.filter(c => c.path === "ingress/one/start").length, 1, "save reconnects exactly once");
-    await click(button(t("sourcePanel.edit"))); await click(button(t("cancel")));
+    await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush(); await click(button(t("cancel")));
     assert.equal(calls.filter(c => c.path === "ingress/one/start").length, 1, "cancelling edit does not replay autoConnect");
     await click(mount.querySelector('[data-source-node="two"] button'));
     assert.equal(document.querySelector(".elastic-panel"), shell);
@@ -372,34 +368,27 @@ test("control source dock preserves editing, guided creation, field navigation a
     await click(button(t("sourcePanel.allRecords")));
     assert.equal(navigation.get().page, "logs"); assert.equal(navigation.get().recordsSource, "one");
     await act(() => navigation.set({}));
-    // New sources stay at the central dot, including guided/manual round trips.
-    await click(mount.querySelector(".hub-source"));
-    assert.equal(document.querySelector('[data-panel-dock]'), null);
-    assert.ok(document.querySelector('.source-choices'));
-    await click(document.querySelector('[data-source="claude"]'));
-    assert.ok(button(t("setup.manual")));
-    await click(button(t("setup.manual")));
-    assert.ok(document.querySelector('#ingress-name'));
-    assert.equal(document.querySelector('[data-panel-dock]'), null);
-    await click(button(t("back")));
-    await click(document.querySelector('[data-source="claude"]'));
-    assert.ok(document.querySelector('#ingress-name'), "manual setup does not bounce back to guidance");
-    await escape(); await escape();
-    await click(mount.querySelector('.hub-source')); await click(document.querySelector('[data-source="chatgpt"]'));
-    assert.ok(button(t("setup.manual"))); await click(button(t("setup.manual")));
-    assert.ok(document.querySelector('#ingress-tunnelId'), "ChatGPT guidance returns to its Tunnel form");
-    await escape(); await escape();
-    await click(mount.querySelector('.hub-source')); await click(document.querySelector('[data-source="custom"]'));
-    assert.ok(document.querySelector('#ingress-source'), "custom control source stays in the manual form");
-    await escape(); await escape();
-    await click(first()); await click(button(t("sourcePanel.edit"))); await click(button(t("remove")));
+    // New source selection stays in the left dock; ChatGPT uses the same link flow.
+    for (const id of ["claude", "chatgpt", "custom"]) {
+      await click(mount.querySelector(".hub-source"));
+      assert.equal(document.querySelector('[data-panel-dock]')?.getAttribute('data-panel-dock'), 'left');
+      assert.ok(document.querySelector('.source-grid'));
+      await click(document.querySelector(`[data-source="${id}"]`));
+      assert.ok(document.querySelector('.connection-steps'));
+      assert.equal(document.querySelector('#ingress-tunnelId'), null);
+      await click(button(t("back")));
+      assert.ok(document.querySelector('.source-grid'));
+      await escape();
+    }
+    await click(first());
+    await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
+    await click(button(t("remove")));
     assert.equal(ingressPanel.get(), undefined); assert.equal(document.querySelector('[data-panel-dock]'), null);
     assert.ok(calls.some(c => c.path === 'ingress/one' && c.method === 'DELETE'));
     assert.equal(document.querySelector('[data-source-node="one"]'), null);
     await act(() => { status.ingresses = []; connector.set({ ...connector.get(), status: { ...status } }); });
     await click(mount.querySelector('.hub-source'));
-    assert.ok(button(t("setup.manual")), "empty source wing opens guided entry directly");
-    await click(button(t("setup.manual"))); assert.ok(document.querySelector('.source-choices'));
+    assert.ok(document.querySelector(".welcome-choices"), "empty source wing opens the welcome choices");
     await escape();
     const { default: RecordsPage } = await server.ssrLoadModule("/ui/components/RecordsPage.tsx");
     await act(() => {

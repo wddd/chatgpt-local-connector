@@ -17,18 +17,11 @@
 
 Claude 网页、手机和桌面均可使用远程连接器。尚未安装 ARC 时，先看[上手](../getting-started.md)。
 
-## 通过 HTTPS 和 OAuth 连接
+## 通过远程链接连接
 
-1. 在 ARC 添加 **Claude**，保留 **HTTPS** 和 **OAuth**。
-2. 选择[提供商](connections.md)。首次可用 Cloudflare 临时域名，日常工作使用固定 HTTPS 地址。
-3. 保存并连接，复制生成的 `/mcp` URL。
-4. 在 Claude 添加自定义连接器，填入 URL，发起 OAuth 授权。
-5. 保持网页授权页打开，点击**打开 ARC**，在本机应用核对目标连接和回调地址，再允许请求。回到授权页完成跳转。
-6. 在 Claude 启用连接器，执行连接的验证提示词。
+在 ARC 开启远程链接：创建自己的中继，或加入可信任的共享中继。然后添加 Claude，复制链接，在 Claude 的「设置 → 连接器 → 添加自定义连接器」中粘贴，回到 ARC 核对四位配对码并批准。浏览器在批准后自动返回。
 
-浏览器位于另一台设备时，在执行电脑的 ARC 中同意。本机 Agent 也可以通过已认证的 [OAuth CLI](../../reference/oauth.md#local-management)处理。自定义反向代理需同时转发 OAuth 路由和 `/mcp`。
-
-Claude 的[连接器文档](https://claude.com/docs/connectors/building)说明远程 MCP 和客户端注册流程。ARC 提供 OAuth 服务和本机同意，无需授权密码。
+只在这台电脑使用时，选择本机模式添加 Claude Code 或 Claude 桌面版。详细步骤及共享中继的信任边界见[上手](../getting-started.md)。已有自有地址配置保留在「设置 → 远程链接 → 高级」。
 
 ## 从实时事实开始
 

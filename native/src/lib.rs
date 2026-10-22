@@ -34,6 +34,7 @@ pub mod i18n;
 pub mod images;
 pub mod ingress;
 pub mod kernel;
+pub mod local_access;
 pub mod logs;
 pub mod management;
 pub mod oauth;

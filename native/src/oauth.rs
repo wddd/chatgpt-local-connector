@@ -36,6 +36,7 @@ struct Grant {
 }
 #[derive(Clone)]
 struct Pending {
+    pairing_code: String,
     client: String,
     redirect: String,
     state: String,
@@ -346,9 +347,20 @@ impl OAuth {
             return Err("temporarily_unavailable".into());
         }
         let key = secret();
+        let alphabet = b"23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+        let pairing_code = loop {
+            let candidate: String = uuid::Uuid::new_v4().as_bytes()[..4]
+                .iter()
+                .map(|b| alphabet[usize::from(*b) % alphabet.len()] as char)
+                .collect();
+            if !self.pending.values().any(|p| p.pairing_code == candidate) {
+                break candidate;
+            }
+        };
         self.pending.insert(
             key.clone(),
             Pending {
+                pairing_code,
                 client: get("client_id").to_owned(),
                 redirect: get("redirect_uri").to_owned(),
                 state: get("state").to_owned(),
@@ -364,6 +376,13 @@ impl OAuth {
     }
     pub fn management(&mut self, resource: &str) -> Result<Value> {
         self.prepare(resource)?;
+        self.snapshot()
+    }
+    pub fn resource(&self) -> &str {
+        &self.stored.resource
+    }
+    pub fn snapshot(&self) -> Result<Value> {
+        let resource = &self.stored.resource;
         let pending: Vec<_> = self
             .pending
             .keys()
@@ -390,7 +409,7 @@ impl OAuth {
     pub fn status(&self, key: &str, resource: &str) -> Result<Value> {
         if let Some(p) = self.pending.get(key).filter(|p| p.resource == resource) {
             return Ok(
-                json!({"id":key,"clientName":self.stored.clients.get(&p.client).map(|c|c.name.as_str()),"clientId":p.client,"redirectUri":p.redirect,"resource":p.resource,"expiresAt":p.expires,"status":if p.expires <= clock() { "expired" } else { match p.decision { Some(true) => "approved", Some(false) => "denied", None => "pending" } }}),
+                json!({"id":key,"pairingCode":p.pairing_code,"clientName":self.stored.clients.get(&p.client).map(|c|c.name.as_str()),"clientId":p.client,"redirectUri":p.redirect,"resource":p.resource,"expiresAt":p.expires,"status":if p.expires <= clock() { "expired" } else { match p.decision { Some(true) => "approved", Some(false) => "denied", None => "pending" } }}),
             );
         }
         if let Some(g) = self

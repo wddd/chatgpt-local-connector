@@ -28,6 +28,7 @@ import {
 } from "../state/agents";
 import type { Ingress } from "../state/types";
 import SourceIcon from "./SourceIcon";
+import { controlSource } from "../controlSources";
 import GraphNode from "./GraphNode";
 import { ActivityBubble } from "./ActivityBubbles";
 import Topology, { type TopologyHandle, type NodeView } from "../topology/Topology";
@@ -35,9 +36,8 @@ import TuningPanel from "../topology/TuningPanel";
 import { topologyTuningEnabled } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
 import type { WireState } from "../topology/render";
-import IngressDialog from "./IngressDialog";
-import SetupDialog from "./SetupDialog";
-import { useSetup, type SetupGoal } from "../state/setup";
+import Onboarding from "./Onboarding";
+import { onboarding, openOnboarding, sourceForClient, sourceLabels } from "../state/onboarding";
 import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
 import { Button, Icon, Notice } from "./ui";
@@ -52,26 +52,19 @@ function wireState(state: string): WireState {
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
   const tuning = topologyTuningEnabled.use();
   const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use(), sourceSelection = ingressPanel.use();
-  const panelOpen = !!selection || !!sourceSelection;
+  const flow = onboarding.use(), labels = sourceLabels.use();
+  const panelOpen = !!selection || !!sourceSelection || !!flow;
   const { status, busy, loading, error } = connector.use();
   const inventory = agentStore.use();
   const max = maxVisibleAgents.use();
   const { snapshot } = subscriptions.use(), nav = navigation.use();
-  const [setupMode, setSetupMode] = useState<"entry" | "progress" | null>(null);
-  const [setupGoal, setSetupGoal] = useState<SetupGoal>();
-  const [initialSource, setInitialSource] = useState<string>();
-  const [manualSetup, setManualSetup] = useState(false);
-  const [formOpen, setFormOpen] = useState(false),
-    [agentsOpen, setAgentsOpen] = useState(false),
-    [settingsAgent, setSettingsAgent] = useState<Agent>();
-  const setup = useSetup(visible && !formOpen && !sourceSelection && !agentsOpen && !selection);
+  const [agentsOpen, setAgentsOpen] = useState(false), [settingsAgent, setSettingsAgent] = useState<Agent>();
   const initialSetupShown = useRef(false);
   useEffect(() => {
-    if (!visible || initialSetupShown.current || !status || loading || error || !setup.snapshot) return;
+    if (!visible || initialSetupShown.current || !status || loading || error) return;
     initialSetupShown.current = true;
-    if (setup.snapshot.hasState && !setup.snapshot.complete) setSetupMode("progress");
-    else if (!setup.snapshot.hasState && !status.ingresses.length) setSetupMode("entry");
-  }, [visible, status, loading, error, setup.snapshot]);
+    if (!status.ingresses.some(i => i.transport !== "relay" || i.oauth?.grants.length)) openOnboarding("welcome");
+  }, [visible, status, loading, error]);
   const sources = orderedSources();
   const agents = orderedAgents()
     .filter((a) => a.installed)
@@ -81,9 +74,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       !!busy || sources.some((i) => ["starting", "stopping"].includes(i.state));
   function edit(ingress?: Ingress, field?: string) {
     if (ingress) { selectIngressPanel(ingress, { editing: true, field }); return; }
-    setInitialSource(undefined);
-    setManualSetup(false);
-    setFormOpen(true);
+    openOnboarding("sources");
   }
   useEffect(() => {
     if (!nav.ingressEdit) return;
@@ -186,14 +177,27 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     const target = enabled[index + by];
     if (index >= 0 && target) moveAgent(id, target.agent);
   }
-  const sourceViews: NodeView[] = sources.map(source => ({
-    id: source.id, state: wireState(sourceState(source)), attention: false, selected: sourceSelection?.ingress.id === source.id, tasks: [], reorderable: !panelOpen,
-    content: <GraphNode label={`${source.name}: ${t(sourceState(source))}`} state={wireState(sourceState(source))}
-      highlighted={sourceSelection?.ingress.id === source.id}
-      onMove={panelOpen ? undefined : by => moveSource(source.id, by)} onOpen={() => selectIngressPanel(source, { toggle: true })}>
-      <SourceIcon platform={source.controlSource} panelVisual /><span className="graph-node-name">{source.name}</span>
-    </GraphNode>,
-  }));
+  const sourceViews: NodeView[] = sources.flatMap(source => {
+    const grants = source.transport === "relay" ? source.oauth?.grants ?? [] : [];
+    if (source.transport === "relay" && !grants.length) return [];
+    return (source.transport === "relay" ? grants.map(grant => ({
+      id: `${source.id}:${grant.id}`, name: grant.clientName,
+      platform: labels[grant.id] ?? sourceForClient(grant.clientName), grantId: grant.id,
+    })) : [{ id: source.id, name: source.name, platform: source.controlSource, grantId: undefined }]).map(view => ({
+      id: view.id, state: wireState(sourceState(source)), attention: false,
+      selected: sourceSelection?.ingress.id === source.id && sourceSelection?.client?.id === view.grantId, tasks: [], reorderable: !panelOpen && !view.grantId,
+      content: <GraphNode label={`${view.name}: ${t(sourceState(source))}`} state={wireState(sourceState(source))}
+        highlighted={sourceSelection?.ingress.id === source.id && sourceSelection?.client?.id === view.grantId}
+        onMove={panelOpen || view.grantId ? undefined : by => moveSource(source.id, by)}
+        onOpen={() => selectIngressPanel(source, { toggle: true, client: view.grantId ? { id: view.grantId, name: view.name, source: view.platform } : undefined })}>
+        <SourceIcon platform={view.platform} panelVisual /><span className="graph-node-name">{view.name}</span>
+      </GraphNode>,
+    }));
+  });
+  if (flow?.step === "connect" && flow.source && !sources.some(s => s.oauth?.grants.some(g => g.id === flow.requestId))) {
+    sourceViews.push({ id: flow.requestId && flow.ingressId ? `${flow.ingressId}:${flow.requestId}` : `pending:${flow.source}`, state: "connecting", attention: false, selected: true, tasks: [], reorderable: false,
+      content: <GraphNode label={t("connect.waitClient", { name: flow.source })} state="connecting" highlighted onOpen={() => {}}><SourceIcon platform={flow.source} panelVisual /><span className="graph-node-name">{controlSource(flow.source)?.shortName ?? t("connect.other")}</span></GraphNode> });
+  }
   const agentViews: NodeView[] = agents.map(agent => {
     const sessions = orderActivity(tracked[agent.agent] ?? [], manualOrder[agent.agent] ?? []), selected = selection?.agent === agent.agent;
     const shown = visibleActivity(sessions, selected ? selection.session?.id : undefined);
@@ -247,16 +251,16 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
           </button>
         </div>
         <Topology ref={topology} boundary={core} left={sourceViews} right={agentViews}
-          onReorderNodes={(side, ids) => side === -1 ? reorderSources(ids) : reorderAgents(ids)}
+          onReorderNodes={(side, ids) => side === -1 ? reorderSources([...new Set(ids.filter(id => !id.startsWith("pending:")).map(id => id.split(":")[0]))]) : reorderAgents(ids)}
           onReorderTasks={(_side, agent, ids) => reorderTasks(agent, ids.map(id => JSON.parse(id)[1] as string), tracked[agent] ?? [])}
-          brand={<Hub sourceEmpty={!sources.length} agentEmpty={!agents.length}
-            onAddSource={() => { if (!sources.length) { setSetupGoal(undefined); setSetupMode("entry"); } else edit(); }}
+          brand={<Hub sourceEmpty={!sourceViews.length} agentEmpty={!agents.length}
+            onAddSource={() => openOnboarding(sources.length ? "sources" : "welcome")}
             onManageAgents={() => setAgentsOpen(true)} />} />
         {selectedAgent && visible && <AgentPanel agent={selectedAgent} state={agentState(selectedAgent)} sessions={tracked[selectedAgent.agent] ?? []} now={now}
           onSettings={() => { setSettingsAgent(selectedAgent); setAgentsOpen(true); }} onPanelFrame={panelFrame} />}
         {sourceSelection && visible && <IngressPanel onPanelFrame={panelFrame} />}
         <div className="activity-edge-fade" aria-hidden="true" />
-        {setup.snapshot?.goal && !setup.snapshot.complete && <div className="setup-resume"><Button onClick={() => setSetupMode("progress")}>{t("setup.resume")}</Button></div>}
+
         {error && (
           <div className="graph-error">
             <Notice
@@ -272,33 +276,9 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         )}
       </section>
       {visible && tuning && <TuningPanel />}
-      {setupMode && visible && <SetupDialog mode={setupMode} setMode={setSetupMode} fixedGoal={setupGoal} snapshot={setup.snapshot} error={setup.error} refresh={setup.refresh}
-        onClose={() => { setSetupMode(null); if (setup.snapshot?.complete) requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".hub-source")?.focus()); }} onManual={() => {
-          setSetupMode(null);
-          edit();
-          setManualSetup(true);
-          setInitialSource(setupGoal === "claude-loop" ? "claude" : setupGoal === "chatgpt-chat" ? "chatgpt" : undefined);
-        }} />}
-      {formOpen && (
-        <IngressDialog
-          initialSource={initialSource}
-          onGuided={manualSetup ? undefined : source => {
-            const goal = source === "claude" ? "claude-loop" : source === "chatgpt" ? "chatgpt-chat" : undefined;
-            if (!goal) return false;
-            setSetupGoal(goal);
-            setFormOpen(false);
-            setSetupMode("entry");
-            return true;
-          }}
-          onClose={() => setFormOpen(false)}
-          onRemoved={() => setFormOpen(false)}
-          onSaved={(ingress) => {
-            setFormOpen(false);
-            if (setupMode) { void setup.refresh(); return; }
-            selectIngressPanel(ingress, { autoConnect: true });
-          }}
-        />
-      )}
+      {flow && visible && <Onboarding onPanelFrame={panelFrame} onAdvanced={() => {
+        onboarding.set(undefined); navigation.set(old => ({ ...old, page: "settings", remoteAdvanced: true }));
+      }} />}
       {agentsOpen && <AgentsSettings initialAgent={settingsAgent} onClose={() => { setAgentsOpen(false); setSettingsAgent(undefined); }} />}
     </>
   );

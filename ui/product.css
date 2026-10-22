@@ -844,7 +844,6 @@
 .setup-steps li[aria-current="step"] { color: var(--text); font-weight: 600; }
 .setup-current { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); }
 .setup-current h3 { margin: 0; font-size: var(--text-lg); }
-.setup-resume { text-align: center; margin-top: var(--space-4); }
 .setup-address { display: grid; gap: var(--space-2); width: 100%; min-width: 0; }
 @media (max-width: 560px) {
   .setup-progress-columns { grid-template-columns: 1fr; }
@@ -1161,3 +1160,47 @@ button.timeline-summary:focus-visible { outline: 2px solid var(--accent); outlin
 .source-dispatch-row[data-state="running"] .source-dispatch-meta > span { color: var(--phase-thinking); }
 .source-dispatch-row[data-state="completed"] .source-dispatch-meta > span { color: var(--success); }
 .source-dispatch-row[data-state="failed"] .source-dispatch-meta > span, .source-dispatch-row[data-state="failed"] .phase-tile { color: var(--danger); }
+
+/* Remote-link onboarding uses the same left panel and semantic controls. */
+.onboarding { display:flex; flex-direction:column; gap:20px; }
+.onboarding p { margin:0; }
+.onboarding form { display:grid; gap:16px; }
+.welcome-logo { width:40px; height:40px; flex-shrink:0; }
+.welcome-choices { display:grid; gap:12px; }
+.button.welcome-card { min-height:118px; display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:20px; border-radius:20px; white-space:normal; text-align:start; }
+.welcome-card strong { font-size:16px; }
+.welcome-card small, .choice-cards small { color:var(--text-secondary); font-size:12px; font-weight:400; }
+.welcome-status { display:flex; flex-wrap:wrap; gap:4px; }
+.welcome-status .button { padding-inline:4px; font-size:12px; }
+.choice-cards .choice-measure { display:none; }
+.choice-cards .choice-radio { display:grid; gap:10px; background:none; border:0; padding:0; }
+.choice-cards .choice-option { min-height:82px; justify-content:flex-start; border:1px solid var(--border); border-radius:12px; text-align:start; padding:16px; white-space:normal; }
+.choice-cards .choice-option[data-state="checked"] { border-color:var(--action); box-shadow:inset 0 0 0 1px var(--action); }
+.choice-cards small { display:block; margin-top:6px; }
+.source-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.button.source-card { min-height:112px; display:flex; flex-direction:column; gap:9px; border-radius:12px; white-space:normal; }
+.source-card.custom { border-style:dashed; }
+.source-card small { font-size:11px; color:var(--text-secondary); }
+.remote-footer { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12px; }
+.remote-steps { list-style:none; display:grid; gap:28px; margin:0 0 24px; padding:0; }
+.remote-steps li { display:flex; align-items:flex-start; gap:14px; }
+.remote-steps li > div { display:grid; gap:6px; }
+.remote-steps small { color:var(--text-secondary); }
+.remote-steps [aria-current="step"] { color:var(--action); }
+.remote-progress { display:grid; gap:16px; }
+.remote-ready { width:48px; height:48px; border-radius:50%; color:var(--success); background:var(--surface-subtle); display:grid; place-items:center; }
+.connection-steps { display:grid; gap:24px; padding-left:25px; margin:0; }
+.connection-steps > li { padding-left:4px; }
+.connection-steps > li > strong { display:block; margin-bottom:10px; }
+.connection-steps p { margin-bottom:10px; }
+.pairing-card, .try-card { padding:16px; border:1px solid var(--border); border-radius:12px; display:grid; gap:12px; }
+.pairing-card h3, .pairing-card p { margin:0; }
+.pairing-code { font:600 42px ui-monospace,monospace; letter-spacing:.18em; text-align:center; padding:12px 0; }
+.pairing-card details { font-size:12px; overflow-wrap:anywhere; }
+.relay-settings { padding-block:16px; border-bottom:1px solid var(--border); }
+.relay-settings .actions { flex-wrap:wrap; margin-block:12px; }
+.relay-settings h3 { margin-bottom:6px; }
+.remote-advanced { margin-top:20px; }
+.remote-advanced > summary { cursor:pointer; color:var(--text-secondary); }
+.remote-advanced .actions { margin-top:12px; flex-wrap:wrap; }
+.approved-sources { margin-top:20px; }

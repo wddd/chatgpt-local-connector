@@ -8,7 +8,7 @@ export const connector = createStore<{
   busy: string;
   loading: boolean;
   error: string;
-  feedback: { text: string; error: boolean };
+  feedback: { text: string; error: boolean; copy?: string };
 }>({
   busy: "",
   loading: true,
@@ -35,13 +35,13 @@ export function reorderSources(ids: string[]) {
   sourceOrder.set(next);
 }
 let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
-export function notify(text: string, error = false) {
+export function notify(text: string, error = false, copy?: string) {
   clearTimeout(feedbackTimer);
-  patch({ feedback: { text, error } });
+  patch({ feedback: { text, error, copy } });
   if (text && !error)
     feedbackTimer = setTimeout(
       () => patch({ feedback: { text: "", error: false } }),
-      4500,
+      copy ? 12000 : 4500,
     );
 }
 let reading: Promise<void> | undefined;

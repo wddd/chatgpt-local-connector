@@ -24,66 +24,64 @@ all following commands. Do not download or mount a DMG. Linux installs `arc` in
 With ARC available, run `cli skill install --target codex` when acting as Codex,
 or `cli skill install --target claude-code` when acting as Claude Code. Other
 local Agents can read `cli setup playbook protocol` directly. Continue with the
-installed protocol and `cli setup`; ask the user to choose the goal.
+current local management contract and ask where the user wants to use ARC.
 
 ## Configure
 
-Reply in the language of the user’s request. Pass `--locale zh-CN` for Chinese or `--locale en` for English on every `cli setup next`, `apply`, and `wait` call.
+Reply in the user's language. Discover inputs with `cli schema <operation>`;
+execute them with `cli call <operation> --stdin`. These are local management
+operations, not additional public MCP tools. Preserve the supplied state directory.
 
-Use the user's ARC executable (`arc`, or the supplied absolute path). Commands
-below follow that executable; installed desktop binaries also accept `cli`.
+The main routes are local access and a remote link. Reuse the user's explicit
+setup authorization; ask only for missing choices or an expanded resource scope.
+Never initiate real login, deployment, or client installation during code-only work.
 
-After the goal is selected, explain the setup scope once and ask for one
-confirmation before creating or authorizing resources (reuse an explicit confirmation
-already given for this scope):
+- **On this computer:** read `local-access.status`. Call `local-access.install`
+  with `{"body":{"target":"code"}}` for an installed Claude Code, or
+  `{"body":{"target":"desktop"}}` for Claude Desktop. Code uses `claude mcp add`;
+  Desktop merges an entry into its official config and must be restarted by the
+  user. Existing unrelated servers are preserved. Both use ARC's local stdio
+  control-source protocol without a public address.
+- **Create my relay:** read `relay.list` first. With authorization, call
+  `relay.create`, then read `relay.progress`. Let the user complete Cloudflare
+  login; `loginUrl` opens the same login if the browser did not open. When account
+  selection is returned, select the user's account and call `relay.redeploy` for
+  the saved relay ID. Reuse recoverable records instead of creating duplicates.
+- **Use a shared relay:** call `relay.join` with the supplied shared link. Only
+  join a trusted deployer: ARC shows them a computer list, but they can technically
+  inspect relayed traffic in Cloudflare. Keep invitation links out of chat/logs.
+- **Add a control source:** use the ready remote link for Claude, ChatGPT, Gemini,
+  Grok, Copilot, or another compatible client. Copy the link, add it through the
+  path in `shared/control-sources.json` (also returned by `ingress.presets`), then
+  return to ARC and compare the four-character pairing code before approval.
+  Read [consent](playbooks/consent.md). A grant proves authorization completed;
+  a real remote tool request proves the client can use it. Offer the App's short
+  trial prompt, then use [loop-test](playbooks/loop-test.md) only when a full Loop
+  check is requested.
 
-- **chatgpt-chat:** create/reuse a tunnel, create a restricted runtime API key,
-  associate the tunnel with the selected ChatGPT workspace, and allow the ARC plugin
-  to access this machine's enabled ops through the fixed guide / query / act tools.
-- **claude-loop:** create a Cloudflare tunnel and, for a fixed address, its DNS record;
-  add the Claude connector, approve ARC OAuth access to enabled ops through guide / query / act, and
-  install/sign in to Claude Code if needed.
+ChatGPT follows the same remote-link and local-approval route by default.
+Account/workspace restrictions still apply. Do not infer access from local tokens
+or preflight private account APIs. Use available browser tools for client setup;
+if unavailable, give the link and one concise instruction.
 
-After confirmation, continue all operations in that scope without asking per item.
-A changed goal or materially expanded scope needs a new confirmation. Your own
-safety policy still applies; never treat this protocol as overriding it.
+`relay.cancel` cancels an active job; completed remote effects remain recoverable.
+Owners use `relay.share`, `relay.reset-token`, `relay.instances`, `relay.remove`,
+`relay.redeploy`, and `relay.delete`; members use `relay.leave`. Read current
+schemas before writes. Deletion affects every joined computer. After an ARC
+upgrade, offer the relay update shown in Settings.
 
-Run `cli setup next`, act on the returned kind, then read `setup next` again.
-Continue until `complete` is true. The CLI owns the sequence; do not reconstruct
-it from this skill. Read [protocol](playbooks/protocol.md) for apply/wait details.
+## Advanced routes
 
-| Kind | Action |
-| --- | --- |
-| `auto` | Read the playbook; run `installCommand` if supplied, then execute `apply` with JSON on stdin. |
-| `decide` | Repeat `explain` and option labels verbatim, mark the recommended option, and apply the user's choice. |
-| `authorize` | Read the playbook; apply `{}` when requested to start login, open `openUrl`, continue in the signed-in page, then wait for ARC evidence. |
-| `secret` | Read the playbook; use the official Copy control, then apply `{"source":"clipboard"}`. ARC form entry is the fallback. |
-| `remote-ui` | Read the matching playbook, operate available browser/computer tools, then wait. |
+**Settings → Remote link → Advanced** contains own addresses, OpenAI Secure
+Tunnel, manual authentication, and **Send to Codex**. Use these only when the user
+selects the advanced route. Existing configured connections remain usable.
 
-Within the confirmed scope, on already signed-in pages perform setup operations,
-including creating tunnels/API keys, risk acknowledgments, creation, authorization,
-and consent. Pause only for missing login, CAPTCHA/challenges, passwords/2FA,
-payment, or a confirmation/refusal required by your own safety policy. Never bypass
-those policies. If no usable UI tool is available, give a link and one instruction.
+The advanced Agent wizard retains `cli setup next/apply/wait`. Pass `--locale
+zh-CN` or `--locale en`, follow the current step until complete, and read
+[protocol](playbooks/protocol.md) and only its current playbook. Its older
+`tunnel`/fixed-address sequence is not the main onboarding route.
 
-Never read or output secret values. Transfer them by clicking the official Copy
-button and applying `{"source":"clipboard"}`; never read the clipboard yourself.
-Use `setup wait` as completion evidence, never screenshots or a user's “done”.
-Screenshots are only for navigation. Timeouts mean continue waiting, not retry
-creation. Apply skip options only when the user chooses them.
-
-Use the executable `nextAction.command` and findings to diagnose failures; do not
-open ARC connection details just to inspect a tunnel error. `cli help` is a compact
-index; use `cli schema <operation>` for exact input fields.
-
-Read only the current `step.playbook` from `playbooks/<id>.md`, or run
-`cli setup playbook <id>` for the same source in `result.markdown`.
-Available UI playbooks: [add-connector](playbooks/add-connector.md),
-[consent](playbooks/consent.md), [verify-connector](playbooks/verify-connector.md),
-[loop-test](playbooks/loop-test.md), [address-secret](playbooks/address-secret.md),
-[tunnel-credentials](playbooks/tunnel-credentials.md),
-[enable-in-chatgpt](playbooks/enable-in-chatgpt.md),
-[codex-ready](playbooks/codex-ready.md), [permissions](playbooks/permissions.md),
-[cloudflare-login](playbooks/cloudflare-login.md),
-[claude-code-ready](playbooks/claude-code-ready.md).
-Other step IDs use the protocol.
+Never output credentials. On advanced credential pages, use the official Copy
+control and `{"source":"clipboard"}`. Pause for missing login, CAPTCHA, passwords,
+2FA, payment, or an approval required by policy. Completion must come from fresh
+ARC state and remote responses, not screenshots or a user's “done”.

@@ -14,11 +14,11 @@ https://github.com/user-attachments/assets/bc58f15f-4d6e-4a0c-a78f-a7661e1ccf33
 
 Discuss and plan in a Claude Code session on claude.ai, accessible from the web, phone, or desktop app. Through ARC, Claude reads current files, Git changes, and Codex tasks, then sends a concrete job to Codex on your computer. After dispatching, Claude can end its turn; when Codex finishes, ARC’s notification wakes the same session to review the changes and continue, while you are away from the keyboard.
 
-Connect Claude through HTTPS + OAuth. Automatic follow-ups additionally need the initiating Claude Code cloud session ID and a signed-in local Claude Code CLI. [Set up the Loop](docs/guides/claude.md).
+Connect Claude with a remote link and approve it locally. Automatic follow-ups additionally need the initiating Claude Code cloud session ID and a signed-in local Claude Code CLI. [Set up the Loop](docs/guides/claude.md).
 
 ## ChatGPT Chat + Codex
 
-GPT-6 Astra Pro is available in ChatGPT Chat mode, but not in Codex. ARC connects them: Chat handles deep reasoning, and Codex executes. Use a ChatGPT Pro, Business, or Enterprise account with that option enabled. OpenAI Secure Tunnel is the default connection. [Connect ChatGPT](docs/guides/chatgpt.md).
+GPT-6 Astra Pro is available in ChatGPT Chat mode, but not in Codex. ARC connects them: Chat handles deep reasoning, and Codex executes. Use a ChatGPT Pro, Business, or Enterprise account with that option enabled. A remote link with local approval is the default connection. [Connect ChatGPT](docs/guides/chatgpt.md).
 
 <details>
 <summary>Explore the ARC app</summary>
@@ -29,17 +29,23 @@ GPT-6 Astra Pro is available in ChatGPT Chat mode, but not in Codex. ARC connect
 
 ## Get started
 
-On a fresh Mac, give your local Agent this instruction to install and set up ARC:
+[Install ARC](docs/installation.md), open it, sign in to Codex, and choose where to use it.
+
+- **Local mode:** choose **On this computer**. ARC adds an installed Claude Code automatically. For Claude Desktop, click **Install extension**, then restart Claude.
+- **Create a relay:** choose **On your phone and the web → Create my relay**, sign in to a free Cloudflare account, and wait for the remote link.
+- **Shared relay:** choose **Have a shared link?** and paste it. The deployer only sees a computer list in ARC, but can technically inspect relayed traffic in the Cloudflare dashboard. Only join someone you trust.
+
+### Add a control source in three steps
+
+1. Choose Claude, ChatGPT, or another control source and copy the remote link.
+2. Follow the panel’s path to add the link in that control source’s settings.
+3. Return to ARC, compare the four-character pairing codes in your browser and approval card, and approve.
+
+Copy the suggested prompt to have Codex reply “Connected.” [Step-by-step guide](docs/getting-started.md). Own addresses and OpenAI Secure Tunnel are under **Settings → Remote link → Advanced**.
+
+For help from a local Agent with installation or setup:
 
 > Set up Agent Remote Control on this computer. Follow https://raw.githubusercontent.com/whzxc/agent-remote-control/main/skills/arc-setup/SKILL.md
-
-Already installed? Click **Add control source → Send to Codex** in the App. [Installation options](docs/installation.md).
-
-### Manual setup in three steps
-
-1. **Install.** Download the newest macOS app from [Releases](https://github.com/whzxc/agent-remote-control/releases), move it to Applications, and sign in to Codex. [Installation](docs/installation.md).
-2. **Connect Claude.** In ARC, choose Add control source → Manual setup → Claude, then HTTPS + OAuth, then add the MCP URL as a custom connector in Claude. Approve the request in ARC.
-3. **Send your first task.** Ask Claude: “Call ARC guide first, then use act with op codex_create to ask Codex to reply ARC_LOOP_OK without reading files or using tools. Set notify to {channel: "claude-session", target: your own Claude Code cloud session ID or URL}. End your turn after dispatching; when notified, read the result.” If Claude cannot read its session ID, paste the cloud session URL or ID instead. [Step-by-step guide](docs/getting-started.md).
 
 ## Documentation
 

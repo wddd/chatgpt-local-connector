@@ -1,8 +1,9 @@
 # Approve ARC access
 
 Read `cli ingress oauth list <ingressId>` and the pending request with
-`cli ingress oauth request <ingressId> <request-id>`. Check its client, callback,
-and resource belong to the connector being configured. Use authenticated local
+`cli ingress oauth request <ingressId> <request-id>`. Compare `pairingCode` with the four-character code in the browser. Check the
+client and requested permissions. Callback and resource are available in details
+when diagnosing a mismatch. Use authenticated local
 `cli ingress oauth decision <ingressId> --stdin` with
 `{"id":"<request-id>","allow":true}` for this delegated setup. Follow the
 protocol's safety-policy exceptions; do not approve unrelated pending requests.
@@ -14,4 +15,5 @@ protocol's safety-policy exceptions; do not approve unrelated pending requests.
 - **Neither:** The CLI decision still works. If browser completion is needed,
   give the remote connector link and ask the user to finish connecting.
 
-Run `cli setup wait`; ARC checks for a grant.
+Read `cli ingress oauth list <ingressId>` for the resulting grant. In the advanced
+Agent wizard, `cli setup wait` also checks for a grant.

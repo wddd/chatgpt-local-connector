@@ -5,8 +5,8 @@
     "shortName": "ChatGPT",
     "icon": "chatgpt",
     "curated": true,
-    "recommendedTransport": "openai-tunnel",
-    "recommendedAuth": "openai",
+    "recommendedTransport": "https",
+    "recommendedAuth": "oauth",
     "httpsAuth": "oauth",
     "supportedAuth": [
       "openai",
@@ -24,8 +24,8 @@
     "customHeaders": "No general static-header configuration documented for ChatGPT HTTPS apps.",
     "capability": "Remote MCP over Streamable HTTP",
     "caveat": {
-      "en": "Prefer Secure Tunnel. HTTPS also supports OAuth with local app consent via agent-remote-control:// or authenticated CLI consent. Tunnel access and client developer-mode permissions are separate.",
-      "zh-CN": "优先 Secure Tunnel；HTTPS 也支持本机应用确认的 OAuth。Tunnel 与客户端开发者模式权限分别管理。"
+      "en": "Use a remote link with local approval. OpenAI Secure Tunnel remains available in Advanced. Client developer-mode permissions still apply.",
+      "zh-CN": "使用远程链接并在本机批准。OpenAI Secure Tunnel 保留在高级设置；仍需客户端开发者模式权限。"
     },
     "badge": {
       "en": "",
@@ -35,7 +35,14 @@
     "docs": [
       "https://developers.openai.com/api/docs/guides/secure-mcp-tunnels",
       "https://developers.openai.com/api/docs/guides/developer-mode"
-    ]
+    ],
+    "setup": {
+      "path": {
+        "en": "Settings › Apps › Create",
+        "zh-CN": "设置 › 应用 › 创建"
+      },
+      "url": "https://chatgpt.com/#settings/Connectors"
+    }
   },
   {
     "id": "claude",
@@ -72,7 +79,14 @@
     "docs": [
       "https://claude.com/docs/connectors/building",
       "https://claude.com/docs/connectors/building/authentication"
-    ]
+    ],
+    "setup": {
+      "path": {
+        "en": "Settings › Connectors › Add custom connector",
+        "zh-CN": "设置 › 连接器 › 添加自定义连接器"
+      },
+      "url": "https://claude.ai/settings/connectors"
+    }
   },
   {
     "id": "gemini",
@@ -104,7 +118,14 @@
     "homeUrl": "https://gemini.google.com/",
     "docs": [
       "https://support.google.com/gemini/answer/17209137"
-    ]
+    ],
+    "setup": {
+      "path": {
+        "en": "Settings › Connected Apps › Custom apps",
+        "zh-CN": "设置 › 关联的应用 › 自定义应用"
+      },
+      "url": "https://gemini.google.com/"
+    }
   },
   {
     "id": "grok",
@@ -136,12 +157,19 @@
     "homeUrl": "https://grok.com/connectors",
     "docs": [
       "https://docs.x.ai/grok/connectors"
-    ]
+    ],
+    "setup": {
+      "path": {
+        "en": "Plugins › New Connector › Custom",
+        "zh-CN": "插件 › 新建连接器 › 自定义"
+      },
+      "url": "https://grok.com/connectors"
+    }
   },
   {
     "id": "microsoft-copilot",
     "displayName": "Microsoft Copilot",
-    "shortName": "Microsoft Copilot",
+    "shortName": "Copilot",
     "icon": "microsoft-copilot",
     "curated": true,
     "recommendedTransport": "https",
@@ -175,7 +203,14 @@
       "https://learn.microsoft.com/en-us/microsoft-copilot-studio/mcp-add-existing-server-to-agent",
       "https://learn.microsoft.com/en-us/microsoft-copilot-studio/mcp-create-new-server",
       "https://learn.microsoft.com/en-us/microsoft-copilot-studio/publication-fundamentals-publish-channels"
-    ]
+    ],
+    "setup": {
+      "path": {
+        "en": "Copilot Studio › Tools › Add a tool",
+        "zh-CN": "Copilot Studio › 工具 › 添加工具"
+      },
+      "url": "https://copilotstudio.microsoft.com/"
+    }
   },
   {
     "id": "notion",

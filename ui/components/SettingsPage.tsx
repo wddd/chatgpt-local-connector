@@ -10,6 +10,7 @@ import { connector, run, notify, refreshConnector } from "../state/connector";
 import { useInterval } from "../state/hooks";
 import type { Service } from "../state/types";
 import { Button, Group, Row, Switch, SingleChoice, Input, Field } from "./ui";
+import RemoteLinkSettings from "./RemoteLinkSettings";
 import { AppUpdate } from "./AppUpdate";
 export default function SettingsPage() {
   const { status, busy } = connector.use();
@@ -88,6 +89,7 @@ export default function SettingsPage() {
   }
   return (
     <div className="settings-page">
+      <RemoteLinkSettings />
       <Group title={t("behavior")}>
         <Row title={t("controlSourceNotifications")} description={t("controlSourceNotificationsDescription")}>
           <Switch label={t("controlSourceNotifications")} checked={status?.notificationsEnabled !== false}

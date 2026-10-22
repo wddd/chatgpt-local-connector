@@ -298,3 +298,16 @@ request remains the ChatGPT enablement signal. Follow `tunnel-credentials` and
 `enable-in-chatgpt` to associate the workspace. The setup protocol requests one
 scope confirmation after goal selection, and replaces/revokes only identified
 ARC-created keys after replacement authentication succeeds.
+
+## Local control sources
+
+`cli call local-access.status` reports Claude client availability and installed configuration.
+Use `cli call local-access.install --stdin` with `{"body":{"target":"code"}}` or
+`{"body":{"target":"desktop"}}`. Claude Code is added in user scope with `claude mcp add`;
+Claude Desktop receives a dedicated entry in its official configuration file and requires a restart.
+Other servers are preserved; a conflicting same-name entry is rejected.
+
+The installed command is `arc cli local-mcp <ingressId>` with the instance's `ARC_STATE_DIR`.
+It leases the local Core and forwards the existing `guide`, `query`, `act` and `notification`
+contracts through authenticated loopback IPC. A local ingress has `transport: "local"`,
+`auth: "none"`; it exposes no public listener. Its enabled state and tool policy still apply.

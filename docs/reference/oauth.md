@@ -60,3 +60,12 @@ For public preregistered clients, use token_endpoint_auth_method none; the defau
 ## Limits
 
 Client ID Metadata Documents, external authorization servers, per-tool OAuth scopes, and per-user task isolation are not implemented. Initial local consent is required. URL changes, revoked access, or discarded client credentials require a new authorization.
+
+## Pairing display
+
+Each pending authorization has a stable four-character `pairingCode`, shown both by
+`/oauth/status` and local request/list responses. It excludes ambiguous characters and
+is only a visual comparison aid; request identity, PKCE, consent, expiry and token
+validation continue to authorize the connection. A retry of the same pending request
+keeps its code. Existing grants are unchanged. ARC displays consent inline during
+control-source setup, or in a dialog for other requests, and notifies in the background.

@@ -17,18 +17,11 @@ If Claude cannot read its own ID, paste the cloud session URL or ID instead.
 
 Claude on the web, mobile, and desktop can use the remote connector. Start with [Getting started](../getting-started.md) if ARC is not installed.
 
-## Connect through HTTPS and OAuth
+## Connect with a remote link
 
-1. In ARC, add **Claude**. Keep **HTTPS** and **OAuth** selected.
-2. Select a [provider](connections.md). Start with Cloudflare Temporary, or use a fixed HTTPS address for ongoing work.
-3. Save and connect. Copy the resulting `/mcp` URL.
-4. Add a custom connector in Claude with that URL and start OAuth authorization.
-5. Keep the web authorization page open. Select **Open ARC**, review the target connection and callback, then allow the request in the local app. Return to the authorization tab to complete the redirect.
-6. Enable the connector in Claude and run the connection's verification prompt.
+Enable a remote link in ARC by creating your relay or joining a trusted shared relay. Add Claude, copy the link, and paste it into **Settings → Connectors → Add custom connector** in Claude. Return to ARC, compare the four-character pairing codes, and approve. The browser returns automatically.
 
-If the browser is on another device, approve in ARC on the execution computer. A local Agent can also use the authenticated [OAuth CLI](../reference/oauth.md#local-management). For a custom reverse proxy, forward OAuth routes as well as `/mcp`.
-
-Claude's [connector documentation](https://claude.com/docs/connectors/building) describes its remote MCP and registration flow. ARC supplies the OAuth server and local consent; no authorization password is needed.
+For use on this computer only, choose local mode to add Claude Code or Claude Desktop. See [Getting started](../getting-started.md) for instructions and shared-relay trust boundaries. Existing own-address configurations remain under **Settings → Remote link → Advanced**.
 
 ## Start with current facts
 

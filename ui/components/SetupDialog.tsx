@@ -9,17 +9,16 @@ import type { Setup, SetupGoal } from "../state/setup";
 import type { Login } from "../state/types";
 import { Button, CopyField, Dialog, Icon, Loading, Notice, SingleChoice } from "./ui";
 
-export default function SetupDialog({ mode, setMode, fixedGoal, snapshot, error: readError, refresh, onClose, onManual }: {
+export default function SetupDialog({ mode, setMode, snapshot, error: readError, refresh, onClose, onManual }: {
   mode: "entry" | "progress";
   setMode: (mode: "entry" | "progress") => void;
-  fixedGoal?: SetupGoal;
   snapshot?: Setup;
   error: string;
   refresh: () => Promise<Setup>;
   onClose: () => void;
   onManual: () => void;
 }) {
-  const [goal, setGoal] = useState<SetupGoal>(fixedGoal ?? "claude-loop");
+  const [goal, setGoal] = useState<SetupGoal>("claude-loop");
   const [login, setLogin] = useState<string>("loading");
   const [working, setWorking] = useState(false), [error, setError] = useState("");
   useEffect(() => {
@@ -94,8 +93,8 @@ export default function SetupDialog({ mode, setMode, fixedGoal, snapshot, error:
     </>}>
     {(error || readError) && <Notice tone="danger">{displayMessage(error || readError)}</Notice>}
     {mode === "entry" ? <div className="setup-entry">
-      {!fixedGoal && <SingleChoice value={goal} onChange={value => setGoal(value as SetupGoal)} label={t("setup.choose-goal.title")} disabled={working}
-        options={[{ value: "claude-loop", label: t("setup.claudeRecommended") }, { value: "chatgpt-chat", label: "ChatGPT" }]} />}
+      <SingleChoice value={goal} onChange={value => setGoal(value as SetupGoal)} label={t("setup.choose-goal.title")} disabled={working}
+        options={[{ value: "claude-loop", label: t("setup.claudeRecommended") }, { value: "chatgpt-chat", label: "ChatGPT" }]} />
       <p className="muted">{t(`setup.option.${goal}.explain`)}</p>
       {login !== "loading" && !ready && <Notice tone="warning">
         {t(missing ? "setup.codexMissing" : "setup.codexSignedOut")}

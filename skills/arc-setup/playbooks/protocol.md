@@ -1,4 +1,6 @@
-# Setup protocol
+# Advanced setup protocol
+
+Use this sequence only for the explicitly selected Agent wizard under Settings → Remote link → Advanced. Local mode and shared relays use the main skill’s local-access / relay operations; ChatGPT uses a remote link by default.
 
 Reply in the language of the user’s request. Pass `--locale zh-CN` for Chinese or `--locale en` for English on every `cli setup next`, `apply`, and `wait` call.
 

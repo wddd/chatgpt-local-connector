@@ -751,7 +751,8 @@
                 "enum": [
                   "https",
                   "openai-tunnel",
-                  "relay"
+                  "relay",
+                  "local"
                 ]
               },
               "auth": {
@@ -845,7 +846,8 @@
                 "enum": [
                   "https",
                   "openai-tunnel",
-                  "relay"
+                  "relay",
+                  "local"
                 ]
               },
               "auth": {
@@ -2325,6 +2327,49 @@
       },
       "description": "Owner signature only: tombstone the relay, disconnect all instances, then delete the Worker with Wrangler. Returns a progress job. Failed physical deletion can be retried.",
       "localOnly": true
+    },
+    {
+      "name": "local-access.status",
+      "method": "GET",
+      "route": "local-access/status",
+      "localOnly": true,
+      "description": "Read local Claude client availability and matching configuration.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "local-access.install",
+      "method": "POST",
+      "route": "local-access/install",
+      "localOnly": true,
+      "description": "Add a local control source using Claude Code CLI or Claude Desktop configuration; never replaces another server.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "object",
+            "required": [
+              "target"
+            ],
+            "properties": {
+              "target": {
+                "enum": [
+                  "code",
+                  "desktop"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
     }
   ]
 }

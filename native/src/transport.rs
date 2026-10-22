@@ -559,6 +559,13 @@ pub(crate) async fn mcp_ingress_authenticated(
     request: Value,
     header: Option<&str>,
 ) -> Result<Value> {
+    let (local, enabled) = {
+        let meta = s.meta.lock().await;
+        (meta["transport"] == "local", meta["enabled"] == true)
+    };
+    if local && (!s.connected.load(std::sync::atomic::Ordering::SeqCst) || !enabled) {
+        return Err("Local connection disabled".into());
+    }
     let mut origin = s.origin().await;
     if let Ok(principal) = crate::claude_notify::mcp_events::principal(s, header).await {
         origin["eventPrincipal"] = json!(principal);
@@ -697,12 +704,15 @@ pub async fn stdio() -> Result<()> {
         .parse::<u16>()
         .map_err(|_| "invalid port")?;
     let token = std::env::var("ARC_NATIVE_TOKEN").map_err(|_| "missing connector token")?;
+    let ingress = std::env::var("ARC_INGRESS_ID").map_err(|_| "missing ingress id")?;
+    stdio_connection(port, token, ingress).await
+}
+pub(crate) async fn stdio_connection(port: u16, token: String, ingress: String) -> Result<()> {
     let client = reqwest::Client::builder()
         .no_proxy()
         .timeout(Duration::from_secs(120))
         .build()
         .map_err(|e| e.to_string())?;
-    let ingress = std::env::var("ARC_INGRESS_ID").map_err(|_| "missing ingress id")?;
     let stdout = Arc::new(Mutex::new(tokio::io::stdout()));
     let mut reader = BufReader::new(tokio::io::stdin());
     let mut jobs = tokio::task::JoinSet::new();

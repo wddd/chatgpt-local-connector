@@ -4,32 +4,27 @@
 
 Call `guide` first for this connection’s workflow, enabled ops, and examples. Use `guide({"op":"codex_create"})` for the full schema. Invoke operations through `query({"op":"…","args":{…}})` or `act({"op":"…","args":{…}})`; reread `guide` when a result’s `arcVersion` changes.
 
-## Set up with an Agent
+## Install and connect
 
-On a fresh Mac, [let a local Agent install and configure ARC](auto-setup.md). If ARC is already installed, open **Add control source**, choose **Claude** (recommended) or **ChatGPT**, and click **Send to Codex**. ARC installs the setup skill and shows progress while Codex handles signed-in setup pages, credential transfer, and the first remote test; you choose the route and help when login or its safety policy requires you.
+[Install ARC](installation.md), open it, and sign in to Codex. Choose **On this computer** or **On your phone and the web**. Use the status shortcuts to review permissions.
 
-If prompted, sign in to Codex first. Without Codex, copy the prompt to another local Agent or use the download link. See [Automatic setup](auto-setup.md) for the universal prompt and the steps that need you. Return through **Continue setup** on the home screen; when complete, choose **Back to home** to see your connections.
+### Local mode
 
-## Manual setup
+ARC adds a connection to an installed Claude Code automatically. For Claude Desktop, click **Install extension**; ARC merges a dedicated entry into its official configuration file and preserves other extensions. Restart Claude, then copy the suggested prompt. No network configuration is needed.
 
-### 1. Install on macOS
+### Create or join a relay
 
-Download the newest Apple Silicon DMG from [Releases](https://github.com/whzxc/agent-remote-control/releases). Drag **Agent Remote Control** into Applications, eject the DMG, and open the app. Install Codex Desktop and sign in. For automatic follow-ups, also install and sign in to Claude Code CLI.
+Choose **Create my relay** and sign in to a free Cloudflare account. ARC signs in, deploys, and connects this computer, then displays your remote link. With an existing shared link, choose **Use a shared relay** and paste it.
 
-If macOS blocks a verified download, use **System Settings → Privacy & Security → Open Anyway**. For a “damaged” warning, remove quarantine from this app:
+The deployer only sees a computer list in ARC, but can technically inspect relayed traffic in the Cloudflare dashboard. Only join someone you trust. Owners can copy or reset the shared link and remove computers in **Settings → Remote link**; members can leave.
 
-```sh
-xattr -rd com.apple.quarantine "/Applications/Agent Remote Control.app"
-```
+### Add a control source
 
-### 2. Connect Claude
+1. Choose Claude, ChatGPT, or another control source and copy the link.
+2. Follow the panel’s path to add it in the control source’s settings.
+3. Return to ARC, compare the four-character pairing codes, and approve. The browser returns automatically. Copy the suggested prompt once connected.
 
-1. Click **Add control source → Manual setup** on the ARC home screen and choose **Claude**.
-2. Choose **HTTPS**, **OAuth**, and a provider. Cloudflare Temporary works for a first try; use a fixed address for regular use.
-3. Save, connect, and copy the displayed MCP URL.
-4. In Claude's connector settings, add a custom connector with that URL. Start its authorization flow.
-5. Keep the authorization page open. Choose **Open ARC**, check the request in ARC, and allow it. Return to Claude and enable the connector for the conversation.
-6. Copy the connection's verification prompt and ask Claude to run it. It calls `act connector_verify` through the connection you just added.
+ChatGPT uses the same remote-link flow by default. Existing addresses, OpenAI Secure Tunnel, and Agent-assisted setup are under **Settings → Remote link → Advanced**.
 
 ### 3. Dispatch and receive a notification
 

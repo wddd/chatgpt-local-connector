@@ -312,6 +312,7 @@ export type Choice = {
   label: string;
   icon?: LucideIcon;
   color?: string;
+  description?: string;
 };
 export function SingleChoice({
   value,
@@ -321,6 +322,7 @@ export function SingleChoice({
   disabled,
   swatches = false,
   compact = false,
+  cards = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -329,6 +331,7 @@ export function SingleChoice({
   disabled?: boolean;
   swatches?: boolean;
   compact?: boolean;
+  cards?: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const measure = useRef<HTMLDivElement>(null);
@@ -353,7 +356,7 @@ export function SingleChoice({
     <div
       ref={container}
       style={compact ? { width: contentWidth } : undefined}
-      className={`choice ${swatches ? "choice-swatches" : ""}`}
+      className={`choice ${swatches ? "choice-swatches" : ""} ${cards ? "choice-cards" : ""}`}
     >
       {!swatches && options.length <= 5 && (
         <div ref={measure} className="choice-measure" aria-hidden="true">
@@ -364,13 +367,13 @@ export function SingleChoice({
           ))}
         </div>
       )}
-      {swatches || (options.length <= 5 && fits) ? (
+      {cards || swatches || (options.length <= 5 && fits) ? (
         <RadioGroup.Root
           value={value}
           onValueChange={onChange}
           disabled={disabled}
           aria-label={label}
-          orientation="horizontal"
+          orientation={cards ? "vertical" : "horizontal"}
           className="choice-radio"
         >
           {options.map((option) => (
@@ -390,7 +393,7 @@ export function SingleChoice({
               ) : (
                 <>
                   {option.icon && <Icon icon={option.icon} />}
-                  <span>{option.label}</span>
+                  <span>{option.label}{cards && option.description && <small>{option.description}</small>}</span>
                 </>
               )}
             </RadioGroup.Item>

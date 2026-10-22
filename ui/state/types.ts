@@ -27,7 +27,10 @@ export interface Config {
   autoStart: boolean;
   hasApiKey: boolean;
 }
+export type OAuthRequest = { id: string; status: string; clientName: string; redirectUri: string; resource: string; pairingCode?: string; expiresAt?: number };
+export type OAuthGrant = { id: string; clientName: string; clientId: string; connectedAt: number | null; registeredAt: number | null };
 export interface Ingress {
+  oauth?: { pending: OAuthRequest[]; grants: OAuthGrant[] };
   toolPolicy?: ToolPolicy;
   discoveredUrls?: string[];
   id: string;

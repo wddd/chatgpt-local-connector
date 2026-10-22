@@ -14,11 +14,11 @@ https://github.com/user-attachments/assets/bc58f15f-4d6e-4a0c-a78f-a7661e1ccf33
 
 在 claude.ai 的 Claude Code 会话里讨论和规划，网页、手机和桌面 App 都能打开。Claude 通过 ARC 读取当前文件、Git 改动和 Codex 任务，再把明确的工作派给本机 Codex。派发后 Claude 可以直接结束本轮；Codex 完成时，ARC 的通知会唤醒同一云端会话，让 Claude 审查改动并继续。离开键盘，也能继续推进。
 
-Claude 使用 HTTPS + OAuth 接入。自动回访还需要发起方的 Claude Code 云端会话 ID，以及本机已登录的 Claude Code CLI。[建立闭环](docs/zh-CN/guides/claude.md)。
+Claude 使用远程链接并在本机批准接入。自动回访还需要发起方的 Claude Code 云端会话 ID，以及本机已登录的 Claude Code CLI。[建立闭环](docs/zh-CN/guides/claude.md)。
 
 ## ChatGPT Chat + Codex
 
-GPT-6 Astra Pro 在 ChatGPT Chat 模式里可用，Codex 里没有。ARC 把两者接起来：Chat 负责深度推理，Codex 负责执行。使用已开放该选项的 ChatGPT Pro、Business 或 Enterprise 账号，默认通过 OpenAI Secure Tunnel 连接。[接入 ChatGPT](docs/zh-CN/guides/chatgpt.md)。
+GPT-6 Astra Pro 在 ChatGPT Chat 模式里可用，Codex 里没有。ARC 把两者接起来：Chat 负责深度推理，Codex 负责执行。使用已开放该选项的 ChatGPT Pro、Business 或 Enterprise 账号，默认使用远程链接并在本机批准。[接入 ChatGPT](docs/zh-CN/guides/chatgpt.md)。
 
 <details>
 <summary>查看 ARC 应用界面</summary>
@@ -29,17 +29,23 @@ GPT-6 Astra Pro 在 ChatGPT Chat 模式里可用，Codex 里没有。ARC 把两�
 
 ## 开始使用
 
-全新 Mac 上，把这句话交给本机 Agent，即可从安装开始配置 ARC：
+[安装 ARC](docs/zh-CN/installation.md)，打开应用并登录 Codex，然后选择在哪里使用。
+
+- **本机模式：**选择「在这台电脑上」。ARC 自动添加已安装的 Claude Code；Claude 桌面版点击「安装扩展」，完成后重启 Claude。
+- **创建中继：**选择「在手机和网页上 → 创建我的中继」，登录免费的 Cloudflare 账号，等待远程链接就绪。
+- **共享中继：**已有共享链接时，选择「有共享链接？」并粘贴。部署者在 ARC 内只看得到电脑列表，但技术上可在 Cloudflare 后台看到经过中继的流量；仅加入你信任的人。
+
+### 添加控制源：三步
+
+1. 选择 Claude、ChatGPT 或其他控制源，复制远程链接。
+2. 按面板内的路径，在控制源设置里添加该链接。
+3. 回到 ARC，核对浏览器与批准卡片上的四位配对码，再批准。
+
+连接完成后，复制试用提示，让 Codex 回复「连接成功」。[逐步上手](docs/zh-CN/getting-started.md)。自有地址和 OpenAI Secure Tunnel 位于**设置 → 远程链接 → 高级**。
+
+需要本机 Agent 协助安装或配置：
 
 > 在这台电脑上配置 Agent Remote Control，按照 https://raw.githubusercontent.com/whzxc/agent-remote-control/main/skills/arc-setup/SKILL.md 操作。
-
-已经安装？在 App 中点击**添加控制源 → 发送给 Codex**。[其他安装方式](docs/zh-CN/installation.md)。
-
-### 手动配置：三步开始
-
-1. **安装。** 从 [Releases](https://github.com/whzxc/agent-remote-control/releases) 下载最新的 macOS 应用，移入 Applications，并登录 Codex。[安装说明](docs/zh-CN/installation.md)。
-2. **接入 Claude。** 在 ARC 选择添加控制源 → 手动配置 → Claude，再选择 HTTPS + OAuth，把 MCP URL 添加为 Claude 自定义连接器，再到 ARC 同意授权。
-3. **派出首个任务。** 告诉 Claude：“先调用 ARC 的 guide，再通过 act 的 codex_create op 让 Codex 不读文件、不调用工具，只回复 ARC_LOOP_OK。设置 notify 为 {channel: "claude-session", target: 你自己的 Claude Code 云端会话 ID 或 URL}。派发后结束本轮，收到通知再读取结果。”若 Claude 无法读取自身会话 ID，再手动粘贴云端会话 URL 或 ID。[逐步上手](docs/zh-CN/getting-started.md)。
 
 ## 文档
 

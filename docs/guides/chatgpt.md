@@ -12,10 +12,14 @@ Use a ChatGPT Pro, Business, or Enterprise account where the Chat Pro option is 
 
 Codex offers the ordinary `gpt-6-astra` model; its model list does not expose a separate Astra Pro option. Choose the reasoning model in Chat and the execution model in Codex independently. ARC forwards the task's model settings; it does not add Chat models to Codex. See OpenAI's [model guide](https://learn.chatgpt.com/docs/models) for current Codex choices.
 
-## Connect with OpenAI Secure Tunnel
+## Connect with a remote link
+
+Create a relay or join a trusted shared relay in ARC, choose ChatGPT, and copy the link. Follow the panel’s path to add an app in ChatGPT. Return to ARC, compare the four-character pairing codes, and approve. Enable ARC in the conversation once connected. See [Getting started](../getting-started.md).
+
+## Advanced: OpenAI Secure Tunnel
 
 1. Install ARC and sign in to Codex Desktop.
-2. Follow the official [Secure MCP Tunnel setup](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) to obtain a Tunnel ID and runtime API key. Enter them directly in ARC's **ChatGPT** connection form.
+2. Follow the official [Secure MCP Tunnel setup](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) to obtain a Tunnel ID and runtime API key. Select OpenAI Secure Tunnel in ARC’s ChatGPT form under **Settings → Remote link → Advanced** and enter them there.
 3. Save and connect. ARC prepares and manages the official Tunnel Client, reusing a qualifying cached version before downloading the supported official release with SHA256 verification. Startup does not depend on the anonymous GitHub API.
 4. Enable **Developer Mode** in ChatGPT where available. Open [Plugins](https://chatgpt.com/plugins), create a developer-mode connection, choose **Tunnel**, and select the same tunnel. Follow the current [connection instructions](https://developers.openai.com/plugins/deploy/connect-chatgpt) if the UI labels differ.
 5. Enable ARC in the Chat conversation. Run the verification prompt shown by ARC; it calls `act connector_verify` with that ingress's code.

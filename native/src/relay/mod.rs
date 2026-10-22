@@ -299,7 +299,7 @@ pub(crate) fn request<'a>(
         }
         if ["create", "redeploy", "join", "connect", "delete"].contains(&action) {
             let state = Arc::new(Mutex::new(
-                json!({"jobId":id(),"phase":if ["create","redeploy"].contains(&action){"login"}else{"connecting"},"reason":null,"loginUrl":null}),
+                json!({"jobId":id(),"action":action,"phase":if ["create","redeploy"].contains(&action){"login"}else{"connecting"},"reason":null,"loginUrl":null}),
             ));
             let status = state.clone();
             let service = service.clone();
@@ -314,6 +314,7 @@ pub(crate) fn request<'a>(
                         status["result"] = value;
                     }
                     Err(error) => {
+                        status["failedPhase"] = status["phase"].clone();
                         status["phase"] = json!("failed");
                         status["reason"] = json!(error);
                     }

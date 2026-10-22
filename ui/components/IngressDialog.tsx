@@ -36,8 +36,6 @@ import ToolPolicyField from "./ToolPolicyField";
 export default function IngressDialog({
   ingress: initialIngress,
   focusField,
-  initialSource,
-  onGuided,
   onClose,
   onSaved,
   onRemoved,
@@ -48,8 +46,6 @@ export default function IngressDialog({
   onBusy?: (busy: boolean) => void;
   ingress?: Ingress;
   focusField?: string;
-  initialSource?: string;
-  onGuided?: (source: string) => boolean;
   onClose: () => void;
   onSaved: (ingress: Ingress) => void;
   onRemoved: () => void;
@@ -159,9 +155,6 @@ export default function IngressDialog({
     setAuth(preset?.httpsAuth ?? "bearer");
     setErrors({});
   }
-  useEffect(() => {
-    if (!ingress && initialSource) choose(initialSource);
-  }, [initialSource]);
   function validate() {
     const next: Record<string, string> = {};
     if (!name.trim()) next.name = t("fieldRequired");
@@ -334,7 +327,7 @@ export default function IngressDialog({
               key={option.value}
               data-source={option.value}
               variant="ghost"
-              onClick={() => { if (!onGuided?.(option.value)) choose(option.value); }}
+              onClick={() => choose(option.value)}
             >
               <SourceIcon
                 platform={option.value}

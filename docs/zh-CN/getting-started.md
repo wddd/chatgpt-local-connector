@@ -4,32 +4,27 @@
 
 先调用 `guide` 读取当前入口的编排指南、可用 op 和调用示例；`guide({"op":"codex_create"})` 可查看完整参数。所有操作通过 `query({"op":"…","args":{…}})` 或 `act({"op":"…","args":{…}})` 调用；结果中的 `arcVersion` 变化时重新读取 `guide`。
 
-## 交给 Agent 配置
+## 安装与连接
 
-全新 Mac 可[交给本机 Agent 从安装开始配置](auto-setup.md)。已经安装 ARC 时，打开**添加控制源**，选择 **Claude（推荐）**或 **ChatGPT**，点击**发送给 Codex**。ARC 会安装配置 skill 并显示进度，Codex 操作已登录页面并完成配置、凭据传递和首次远端测试；你负责路线选择，在需要登录或安全策略要求时协助。
+[安装 ARC](installation.md)，打开应用并登录 Codex。在欢迎页选择「在这台电脑上」或「在手机和网页上」，按底部状态入口补齐权限。
 
-如有提示，先登录 Codex。尚未安装时，可以复制提示词给其他本机 Agent，或打开下载入口。[自动配置](auto-setup.md)提供通用提示词，以及需要你参与的步骤。稍后可从首页的**继续配置**重入；完成后点击**返回首页**查看连接拓扑。
+### 本机模式
 
-## 手动配置
+ARC 自动为已安装的 Claude Code 添加连接。Claude 桌面版点击「安装扩展」；ARC 合并官方配置文件中的独立条目，保留其他扩展，完成后重启 Claude。复制面板中的试用提示，无需配置网络。
 
-### 1. 在 macOS 安装
+### 创建或加入中继
 
-从 [Releases](https://github.com/whzxc/agent-remote-control/releases) 下载最新的 Apple Silicon DMG。把 **Agent Remote Control** 拖入 Applications，推出 DMG，再打开应用。安装 Codex Desktop 并登录。要接收自动回访，再安装并登录 Claude Code CLI。
+选择「创建我的中继」，登录免费的 Cloudflare 账号。ARC 依次完成登录、部署和连接，随后显示远程链接。已有共享链接时，选择「使用共享中继」并粘贴。
 
-macOS 拦截已核验的下载时，在**系统设置 → 隐私与安全性 → 仍要打开**中处理。若提示“已损坏”，仅移除此应用的隔离标记：
+部署者在 ARC 内只看得到电脑列表，但技术上可在 Cloudflare 后台看到经过中继的流量；仅加入你信任的人。拥有者在「设置 → 远程链接」复制或重置共享链接、移除电脑；加入者可以退出。
 
-```sh
-xattr -rd com.apple.quarantine "/Applications/Agent Remote Control.app"
-```
+### 添加控制源
 
-### 2. 接入 Claude
+1. 选择 Claude、ChatGPT 或其他控制源，复制链接。
+2. 按面板提示，在控制源设置中添加链接。
+3. 回到 ARC，确认四位配对码与浏览器相同，再批准。浏览器会自动返回，连接完成后可复制试用提示。
 
-1. 在 ARC 首页点击**添加控制源 → 手动配置**，选择 **Claude**。
-2. 选择 **HTTPS**、**OAuth** 和隧道提供商。首次可用 Cloudflare 临时域名，长期使用选择固定地址。
-3. 保存并连接，复制显示的 MCP URL。
-4. 在 Claude 的连接器设置里添加自定义连接器，填入 URL，发起授权。
-5. 保持授权页打开，点击**打开 ARC**，在 ARC 核对请求并允许。返回 Claude，在对话中启用连接器。
-6. 复制连接的验证提示词，让 Claude 执行；它会通过刚添加的连接调用 `act connector_verify`。
+ChatGPT 默认使用同一条远程链接流程。已有地址、OpenAI Secure Tunnel 和 Agent 辅助配置在「设置 → 远程链接 → 高级」。
 
 ### 3. 派任务并接收通知
 

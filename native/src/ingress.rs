@@ -183,6 +183,9 @@ impl Ingress {
         let meta = self.meta.lock().await;
         let config = status["config"].clone();
         let mut result = json!({"health":status["tunnel"]["health"],"controlPlane":status["tunnel"]["controlPlane"],"tunnelDependency":status["tunnel"]["dependency"],"tunnelError":status["tunnel"]["lastError"],"discoveredUrls":status["discoveredUrls"],"id":self.id,"name":meta["name"],"controlSource":meta["controlSource"],"transport":meta["transport"],"provider":config["httpsProvider"],"enabled":meta["enabled"],"auth":meta["auth"],"toolPolicy":meta["toolPolicy"],"config":config,"running":status["connection"]["running"],"state":status["tunnel"]["state"],"error":status["tunnel"]["error"],"url":status["connection"]["mcpUrl"],"verification":status["core"]["chatgpt"],"logs":status["logs"]});
+        if meta["auth"] == "oauth" {
+            result["oauth"] = self.oauth.lock().await.snapshot()?;
+        }
         result["diagnostics"] = crate::diagnostics::ingress(&result);
         Ok(result)
     }
@@ -305,12 +308,15 @@ impl Ingress {
             .await
             .as_ref()
             .map(|r| r.status.borrow().clone());
-        let running = relay_status.is_some()
+        let local_ready = self.meta.lock().await["transport"] == "local"
+            && self.connected.load(std::sync::atomic::Ordering::SeqCst);
+        let running = local_ready
+            || relay_status.is_some()
             || starting
             || tunnel_running
             || (https_running && self.connected.load(std::sync::atomic::Ordering::SeqCst));
         let mut ready = !starting
-            && https_running
+            && (https_running || local_ready)
             && self.connected.load(std::sync::atomic::Ordering::SeqCst)
             && managed_ready;
         let mut control_plane = self.control_plane.lock().await.clone();
@@ -519,6 +525,14 @@ impl Ingress {
         self.stop().await?;
         if !configured(&settings) {
             return Err("请先填写连接信息".into());
+        }
+        if settings["connectionMode"] == "local" {
+            self.connected
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            self.stopping
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            *self.started.lock().await = Some(Instant::now());
+            return Ok(());
         }
         if settings["connectionMode"] == "relay" {
             let (task, address) =

@@ -19,7 +19,7 @@ import {
 import { animate } from "motion";
 import { reducedMotion } from "./motion/surface";
 import { t, locale } from "./i18n";
-import { isDesktop } from "./platform";
+import { copyText, isDesktop } from "./platform";
 import { connector, notify, startConnector } from "./state/connector";
 import { startAgents } from "./state/agents";
 import { startSubscriptions } from "./state/subscriptions";
@@ -45,7 +45,7 @@ import TasksPage from "./components/TasksPage";
 import RecordsPage from "./components/RecordsPage";
 import SettingsPage from "./components/SettingsPage";
 import { AppUpdateDialogs } from "./components/AppUpdate";
-import { Icon, IconButton, Notice, HoverScope } from "./components/ui";
+import { Button, Icon, IconButton, Notice, HoverScope } from "./components/ui";
 import { api } from "./api";
 import PermissionsPage from "./components/PermissionsPage";
 import { permissions, permissionsReady, refreshPermissions, startPermissions } from "./state/permissions";
@@ -363,11 +363,11 @@ export default function App() {
           <Notice
             tone={feedback.error ? "danger" : "success"}
             action={
-              <IconButton
+              <>{feedback.copy && <Button onClick={() => void copyText(feedback.copy!).catch(() => notify(t("connect.actionFailed"), true))}>{t("copy")}</Button>}<IconButton
                 icon={X}
                 label={t("dismissMessage")}
                 onClick={() => notify("")}
-              />
+              /></>
             }
           >
             {displayMessage(feedback.text)}
@@ -375,7 +375,7 @@ export default function App() {
         </div>
       )}
       <AppUpdateDialogs />
-      <OAuthApproval requested={oauthRequest} onClose={() => setOauthRequest(undefined)} />
+      <OAuthApproval inlineEnabled={page === "overview"} requested={oauthRequest} onClose={() => setOauthRequest(undefined)} />
     </div>
   );
 }

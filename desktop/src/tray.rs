@@ -1,5 +1,6 @@
 use crate::i18n::t;
 use std::time::Duration;
+use tauri::Manager;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -98,12 +99,50 @@ pub fn install(app: &tauri::App) -> tauri::Result<()> {
     // Keep the native menu current even while the main WebView is hidden.
     let handle = app.handle().clone();
     tauri::async_runtime::spawn(async move {
+        let mut notified = std::collections::HashSet::new();
         loop {
             let result = tokio::time::timeout(
                 Duration::from_secs(4),
                 crate::request(&handle, "status", "GET", serde_json::json!({})),
             )
             .await;
+            if let Ok(Ok(value)) = &result {
+                let focused = handle
+                    .get_webview_window("main")
+                    .is_some_and(|w| w.is_focused().unwrap_or(false));
+                let mut current = std::collections::HashSet::new();
+                if let Some(entries) = value["ingresses"].as_array() {
+                    for entry in entries {
+                        if let Some(pending) = entry["oauth"]["pending"].as_array() {
+                            for request in pending.iter().filter(|r| r["status"] == "pending") {
+                                let id = request["id"].as_str().unwrap_or("").to_owned();
+                                current.insert(id.clone());
+                                if !focused && !notified.contains(&id) {
+                                    let body = t("connect.notification")
+                                        .replace(
+                                            "{name}",
+                                            request["clientName"].as_str().unwrap_or("AI"),
+                                        )
+                                        .replace(
+                                            "{code}",
+                                            request["pairingCode"].as_str().unwrap_or(""),
+                                        );
+                                    if crate::permissions::notify(
+                                        &handle,
+                                        &serde_json::json!({"body":body}),
+                                    )
+                                    .await
+                                    .is_ok()
+                                    {
+                                        notified.insert(id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                notified.retain(|id| current.contains(id));
+            }
             let key = match result {
                 Ok(Ok(value)) => match value["ingressSummary"]["running"].as_u64() {
                     Some(1..) => "trayConnected",
