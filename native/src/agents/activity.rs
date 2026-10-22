@@ -138,7 +138,9 @@ fn turn_start(record: &Value, agent: &str) -> Option<Value> {
     } else {
         record["message"]["role"] == "user" && phase_content(record, agent, false).is_some()
     };
-    if !starts { return None; }
+    if !starts {
+        return None;
+    }
     record.get("timestamp").filter(|v| v.is_string()).cloned()
 }
 
@@ -155,7 +157,9 @@ fn turn_started_at(path: &Path, agent: &str, clock: &mut TurnClock) -> Result<Va
     let mut line = Vec::new();
     loop {
         line.clear();
-        let count = reader.read_until(b'\n', &mut line).map_err(|e| e.to_string())?;
+        let count = reader
+            .read_until(b'\n', &mut line)
+            .map_err(|e| e.to_string())?;
         if count == 0 || line.last() != Some(&b'\n') {
             break;
         }
