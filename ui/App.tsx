@@ -51,6 +51,7 @@ import PermissionsPage from "./components/PermissionsPage";
 import { permissions, permissionsReady, refreshPermissions, startPermissions } from "./state/permissions";
 export default function App() {
   locale.use();
+  const nav = navigation.use();
   const [oauthRequest, setOauthRequest] = useState<{ id: string }>();
   const { feedback, status } = connector.use(),
     taskState = tasks.use();
@@ -108,6 +109,12 @@ export default function App() {
       if (replacement) replacement.click();
     });
   }
+
+  useEffect(() => {
+    if (!nav.page) return;
+    navigate(nav.page);
+    navigation.set(old => ({ ...old, page: undefined }));
+  }, [nav.page]);
 
   function navigate(next: Page) {
     if (next !== "overview") {

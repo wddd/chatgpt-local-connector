@@ -626,5 +626,16 @@
   "agentPanel.pending": "Awaiting approval",
   "agentPanel.noQuota": "No quota source is available for this Agent.",
   "agentPanel.noEnded": "No readable ARC tasks ended during this Core session.",
-  "agentPanel.noActive": "No active tasks."
+  "agentPanel.noActive": "No active tasks.",
+  "sourcePanel.dispatches": "Recent dispatches",
+  "sourcePanel.allRecords": "View all records",
+  "sourcePanel.edit": "Edit configuration",
+  "sourcePanel.recordsScope": "Available Codex dispatches; unconfirmed task states are marked separately.",
+  "sourcePanel.noRecords": "No dispatch records for this control source.",
+  "sourcePanel.running": "Running",
+  "sourcePanel.pending": "Awaiting approval",
+  "sourcePanel.completed": "Completed",
+  "sourcePanel.failed": "Failed",
+  "sourcePanel.unknown": "Unconfirmed",
+  "sourcePanel.enabled": "Enable this control source"
 }

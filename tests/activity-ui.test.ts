@@ -288,3 +288,20 @@ test("ended history retains ARC snapshot data, excludes external sessions and re
   assert.equal(endedActivity(ended, [], [], 5000)[0].endedAt, 500);
   assert.equal(endedActivity(ended, [], [task], 6000).length, 0);
 });
+
+test("source dispatches filter ownership and never equate a dispatch receipt with task completion", async () => {
+  const { sourceDispatches, dispatchState, isLatestDispatch } = await import("../ui/state/sourceDispatch.ts");
+  const row = (id: string, source: string, date: string) => ({ requestId: id, origin: { ingressId: source }, state: "completed", createdAt: date,
+    updatedAt: date, approval: { decision: "allowed", source: "local", at: date }, task: { kind: "create", threadId: "thread", prompt: "Fixture", input: {}, settings: {} } });
+  const older = row("older", "left", "2026-01-01"), latest = row("latest", "left", "2026-01-02"), other = row("other", "right", "2026-01-03");
+  assert.deepEqual(sourceDispatches([older, other, latest], "left").map(r => r.requestId), ["latest", "older"]);
+  assert.equal(isLatestDispatch(latest, [older, latest]), true);
+  assert.equal(isLatestDispatch(latest, [older, latest, other]), false, "a later dispatch from another source owns current thread state");
+  assert.equal(dispatchState(latest, undefined, undefined), "unknown");
+  assert.equal(dispatchState(latest, { runtimeStatus: "idle", observedAt: "", stale: true }, undefined), "unknown");
+  assert.equal(dispatchState(latest, { runtimeStatus: "idle", observedAt: "" }, undefined), "completed");
+  assert.equal(dispatchState(latest, { runtimeStatus: "active", observedAt: "" }, undefined), "running");
+  assert.equal(dispatchState(latest, undefined, session("thread", permission)), "pending");
+  assert.equal(dispatchState({ ...latest, state: "failed" }, undefined, undefined), "failed");
+  assert.deepEqual(sourceDispatches([{ ...latest, origin: undefined, task: { ...latest.task, origin: { ingressId: "left" } } }], "left").length, 1);
+});

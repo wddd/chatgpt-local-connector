@@ -3,6 +3,7 @@ import { api } from "../api";
 import { notifyNative } from "../platform";
 import { t } from "../i18n";
 export interface TaskRecord {
+  origin?: { ingressId?: string };
   requestId: string;
   executionOwner?: "desktop" | "connector";
   threadId?: string;
@@ -14,6 +15,7 @@ export interface TaskRecord {
   approval: { decision: string; source: string; at: string };
   error?: { message?: string };
   task: {
+    origin?: { ingressId?: string };
     detailsRecorded?: boolean;
     kind: string;
     title?: string;

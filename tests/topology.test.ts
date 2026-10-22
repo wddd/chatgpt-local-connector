@@ -190,3 +190,18 @@ test("narrow docks expose an 18px node edge and mirror the left dock", () => {
     assert.ok(Number.isFinite(layout.hub.x));
   }
 });
+
+test("source dock moves the scene right, clears labels and keeps Agent bubbles in their original rows", () => {
+  for (const vw of [760, 900, 1280, 1800]) {
+    const scene = { ...fixtures.busy, vw }, base = solve(scene);
+    for (const selected of scene.left.map(n => n.id)) {
+      const docked = solve({ ...scene, panel: { side: -1, edge: 416, selected } });
+      assert.ok(docked.hub.x > base.hub.x);
+      assert.deepEqual(docked.wings.map(w => w.nodes.map(n => [n.id, n.y])), base.wings.map(w => w.nodes.map(n => [n.id, n.y])));
+      const node = docked.wings[0].nodes.find(n => n.id === selected)!;
+      assert.ok(node.x - LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 >= 456 - 1e-6);
+      assert.ok(docked.wings[1].tasks.every(t => !t.hidden));
+      assert.deepEqual(docked.wings[1].tasks.map(t => [t.id, t.y]), base.wings[1].tasks.map(t => [t.id, t.y]));
+    }
+  }
+});

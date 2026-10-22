@@ -1,5 +1,6 @@
+import { agentPanel, selectAgentPanel, ingressPanel, selectIngressPanel } from "../state/overviewPanels";
 import { PhaseTile, PhaseLabel } from "./activity";
-import { agentPanel, selectAgentPanel, resetActivityHistory, useActivityTracking } from "../state/activity";
+import { resetActivityHistory, useActivityTracking } from "../state/activity";
 import { orderActivity, visibleActivity } from "../state/activityModel";
 import { taskOrder, reorderTasks } from "../state/taskOrder";
 import { useInterval } from "../state/hooks";
@@ -37,7 +38,7 @@ import type { WireState } from "../topology/render";
 import IngressDialog from "./IngressDialog";
 import SetupDialog from "./SetupDialog";
 import { useSetup, type SetupGoal } from "../state/setup";
-import IngressDetailsDialog from "./IngressDetailsDialog";
+import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
 import { Button, Icon, Notice } from "./ui";
 import AgentPanel from "./AgentPanel";
@@ -50,7 +51,8 @@ function wireState(state: string): WireState {
 }
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
   const tuning = topologyTuningEnabled.use();
-  const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use();
+  const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use(), sourceSelection = ingressPanel.use();
+  const panelOpen = !!selection || !!sourceSelection;
   const { status, busy, loading, error } = connector.use();
   const inventory = agentStore.use();
   const max = maxVisibleAgents.use();
@@ -59,14 +61,10 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const [setupGoal, setSetupGoal] = useState<SetupGoal>();
   const [initialSource, setInitialSource] = useState<string>();
   const [manualSetup, setManualSetup] = useState(false);
-  const [focusField, setFocusField] = useState<string>();
-  const [editing, setEditing] = useState<Ingress>(),
-    [formOpen, setFormOpen] = useState(false),
-    [details, setDetails] = useState<Ingress>(),
-    [autoConnect, setAutoConnect] = useState(false),
+  const [formOpen, setFormOpen] = useState(false),
     [agentsOpen, setAgentsOpen] = useState(false),
     [settingsAgent, setSettingsAgent] = useState<Agent>();
-  const setup = useSetup(visible && !formOpen && !details && !agentsOpen && !selection);
+  const setup = useSetup(visible && !formOpen && !sourceSelection && !agentsOpen && !selection);
   const initialSetupShown = useRef(false);
   useEffect(() => {
     if (!visible || initialSetupShown.current || !status || loading || error || !setup.snapshot) return;
@@ -82,10 +80,9 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     progressing =
       !!busy || sources.some((i) => ["starting", "stopping"].includes(i.state));
   function edit(ingress?: Ingress, field?: string) {
-    setFocusField(field);
+    if (ingress) { selectIngressPanel(ingress, { editing: true, field }); return; }
     setInitialSource(undefined);
     setManualSetup(false);
-    setEditing(ingress);
     setFormOpen(true);
   }
   useEffect(() => {
@@ -190,9 +187,10 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     if (index >= 0 && target) moveAgent(id, target.agent);
   }
   const sourceViews: NodeView[] = sources.map(source => ({
-    id: source.id, state: wireState(sourceState(source)), attention: false, selected: false, tasks: [], reorderable: !selection,
+    id: source.id, state: wireState(sourceState(source)), attention: false, selected: sourceSelection?.ingress.id === source.id, tasks: [], reorderable: !panelOpen,
     content: <GraphNode label={`${source.name}: ${t(sourceState(source))}`} state={wireState(sourceState(source))}
-      onMove={selection ? undefined : by => moveSource(source.id, by)} onOpen={() => { setAutoConnect(false); setDetails(source); }}>
+      highlighted={sourceSelection?.ingress.id === source.id}
+      onMove={panelOpen ? undefined : by => moveSource(source.id, by)} onOpen={() => selectIngressPanel(source, { toggle: true })}>
       <SourceIcon platform={source.controlSource} panelVisual /><span className="graph-node-name">{source.name}</span>
     </GraphNode>,
   }));
@@ -200,9 +198,9 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     const sessions = orderActivity(tracked[agent.agent] ?? [], manualOrder[agent.agent] ?? []), selected = selection?.agent === agent.agent;
     const shown = visibleActivity(sessions, selected ? selection.session?.id : undefined);
     return {
-      id: agent.agent, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled && !selection,
+      id: agent.agent, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled && !panelOpen,
       content: <GraphNode label={`${name(agent)}: ${t(agentState(agent))}`} state={wireState(agentState(agent))}
-        onMove={agent.enabled && !selection ? by => moveVisibleAgent(agent.agent, by) : undefined}
+        onMove={agent.enabled && !panelOpen ? by => moveVisibleAgent(agent.agent, by) : undefined}
         highlighted={selected} onOpen={() => selectAgentPanel({ type: "toggle", agent: agent.agent })}>
         <AgentQuotaIcon agent={agent.agent} />
         {selection && !selected && sessions.some(s => s.endedAt === undefined) && <span className="agent-task-count" data-attention={sessions.some(s => !!s.interaction) || undefined}>{sessions.filter(s => s.endedAt === undefined).length}</span>}
@@ -211,8 +209,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       tasks: [
         ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]),
           state: (session.endedAt !== undefined ? "completed" : session.interaction ? "attention" : session.source === "transcript" ? "external" : "running") as import("../topology/render").TaskState,
-          selected: selected && selection.session?.id === session.id, reorderable: !selection,
-          content: <ActivityBubble agent={agent.agent} session={session} now={now} onMove={selection ? undefined : by => {
+          selected: selected && selection.session?.id === session.id, reorderable: !panelOpen,
+          content: <ActivityBubble agent={agent.agent} session={session} now={now} onMove={panelOpen ? undefined : by => {
             const group = shown.sessions.filter(s => !!s.interaction === !!session.interaction);
             const from = group.findIndex(s => s.id === session.id), to = from + by;
             if (to < 0 || to >= group.length) return;
@@ -230,7 +228,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   });
   return (
     <>
-      <section ref={core} className={`connection-core brand-mode ${selection ? "agent-panel-open" : ""}`} aria-label={t("connectionStatus")}>
+      <section ref={core} className={`connection-core brand-mode ${panelOpen ? "side-panel-open" : ""}`} aria-label={t("connectionStatus")}>
         <div className="core-toggle">
           <button
             className={`connection-action ${switchOn ? "is-on" : ""} ${progressing ? "is-busy" : ""}`}
@@ -256,6 +254,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             onManageAgents={() => setAgentsOpen(true)} />} />
         {selectedAgent && visible && <AgentPanel agent={selectedAgent} state={agentState(selectedAgent)} sessions={tracked[selectedAgent.agent] ?? []} now={now}
           onSettings={() => { setSettingsAgent(selectedAgent); setAgentsOpen(true); }} onPanelFrame={panelFrame} />}
+        {sourceSelection && visible && <IngressPanel onPanelFrame={panelFrame} />}
         <div className="activity-edge-fade" aria-hidden="true" />
         {setup.snapshot?.goal && !setup.snapshot.complete && <div className="setup-resume"><Button onClick={() => setSetupMode("progress")}>{t("setup.resume")}</Button></div>}
         {error && (
@@ -282,9 +281,6 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         }} />}
       {formOpen && (
         <IngressDialog
-          key={`${editing?.id ?? "new"}:${focusField ?? ""}`}
-          ingress={editing}
-          focusField={focusField}
           initialSource={initialSource}
           onGuided={manualSetup ? undefined : source => {
             const goal = source === "claude" ? "claude-loop" : source === "chatgpt" ? "chatgpt-chat" : undefined;
@@ -295,22 +291,11 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             return true;
           }}
           onClose={() => setFormOpen(false)}
-          onRemoved={() => { setFormOpen(false); setDetails(undefined); }}
+          onRemoved={() => setFormOpen(false)}
           onSaved={(ingress) => {
             setFormOpen(false);
             if (setupMode) { void setup.refresh(); return; }
-            setAutoConnect(true);
-            setDetails(ingress);
-          }}
-        />
-      )}
-      {details && (
-        <IngressDetailsDialog
-          ingress={details}
-          autoConnect={autoConnect}
-          onClose={() => setDetails(undefined)}
-          onEdit={(ingress) => {
-            edit(ingress);
+            selectIngressPanel(ingress, { autoConnect: true });
           }}
         />
       )}

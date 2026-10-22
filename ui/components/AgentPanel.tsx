@@ -1,9 +1,10 @@
+import { agentPanel, selectAgentPanel } from "../state/overviewPanels";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { ArrowUpRight, Settings, X } from "lucide-react";
 import { t } from "../i18n";
 import { api } from "../api";
-import { agentPanel, activityHistory, agentActivity, selectAgentPanel } from "../state/activity";
+import { activityHistory, agentActivity } from "../state/activity";
 import { orderActivity, type TrackedActivity } from "../state/activityModel";
 import { taskOrder } from "../state/taskOrder";
 import { subscriptions } from "../state/subscriptions";

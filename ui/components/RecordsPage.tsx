@@ -1,3 +1,5 @@
+import SourceDispatches from "./SourceDispatches";
+import { navigation } from "../state/navigation";
 import { useState } from "react";
 import { t, locale, type MessageKey } from "../i18n";
 import { displayMessage } from "../messages";
@@ -5,6 +7,7 @@ import { connector } from "../state/connector";
 import { Empty, Input, SingleChoice, Status } from "./ui";
 export default function RecordsPage() {
   const { status } = connector.use();
+  const { recordsSource } = navigation.use();
   const [filter, setFilter] = useState("all"),
     [query, setQuery] = useState("");
   const internalMessage =
@@ -118,6 +121,7 @@ export default function RecordsPage() {
   const hasResult = rows.some(row => row.result);
   const visibleRows = grouped.filter(
     (row) =>
+      (!recordsSource || row.sourceId === recordsSource || row.sourceId === `local:${recordsSource}`) &&
       (filter === "all" || row.kind === filter) &&
       `${row.source} ${row.message} ${row.detail}`
         .toLowerCase()
@@ -126,6 +130,8 @@ export default function RecordsPage() {
   return (
     <section>
       <div className="list-toolbar">
+        <SingleChoice label={t("recordSource")} value={recordsSource ? `source:${recordsSource}` : "all"} onChange={value => navigation.set(old => ({ ...old, recordsSource: value === "all" ? undefined : value.slice(7) }))}
+          options={[{ value: "all", label: t("all") }, ...(status?.ingresses ?? []).map(i => ({ value: `source:${i.id}`, label: i.name }))]} />
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -146,6 +152,7 @@ export default function RecordsPage() {
           ].map((value) => ({ value, label: t(value) }))}
         />
       </div>
+      {recordsSource && <section><h3>{t("sourcePanel.dispatches")}</h3><SourceDispatches key={recordsSource} ingressId={recordsSource} /></section>}
       <div className="log-table-scroll">
         <table className="log-table">
           <caption className="sr-only">{t("connectionLogContents")}</caption>

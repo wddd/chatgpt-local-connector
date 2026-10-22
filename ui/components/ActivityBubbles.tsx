@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowUpRight, ChevronRight } from "lucide-react";
 import { t } from "../i18n";
 import { PhaseTile, PhaseLabel, StepTrail } from "./activity";
-import { selectAgentPanel } from "../state/activity";
+import { selectAgentPanel } from "../state/overviewPanels";
 import { activityHeadline, type TrackedActivity } from "../state/activityModel";
 import { useInterval } from "../state/hooks";
 import { Icon, Tooltip } from "./ui";

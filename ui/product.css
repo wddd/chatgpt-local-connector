@@ -1102,4 +1102,25 @@ summary.timeline-summary { cursor: pointer; }
 .activity-pending-tag { color: var(--warning); background: var(--warning-soft); border-radius: var(--radius-pill); padding: 0 5px; font-size: 10px; margin-left: auto; }
 .agent-task-count { position: absolute; top: -6px; right: -8px; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box; border-radius: var(--radius-pill); background: var(--accent); color: var(--surface); font: 10px/18px var(--font-ui); text-align: center; }
 .agent-task-count[data-attention] { background: var(--warning); }
-.agent-panel-open .topology-node[data-highlighted]::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; box-shadow: 0 0 0 2px var(--accent), 0 0 18px color-mix(in srgb, var(--accent) 20%, transparent); pointer-events: none; }
+.side-panel-open .topology-node[data-highlighted]::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; box-shadow: 0 0 0 2px var(--accent), 0 0 18px color-mix(in srgb, var(--accent) 20%, transparent); pointer-events: none; }
+
+/* Mirrored control-source dock uses the same fixed shell and scroll boundaries. */
+.side-panel-layer { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+.side-panel-layer > .dialog-header, .side-panel-layer > .dialog-footer { flex: none; }
+.side-panel-layer > .dialog-header > .source-icon { width: 32px; height: 32px; }
+.side-panel-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 16px; display: flex; flex-direction: column; gap: 20px; }
+.side-panel-scroll h3 { margin: 0 0 8px; font-size: 13px; }
+.source-connection-card { padding: 12px; border: 1px solid var(--border); border-radius: 12px; }
+.source-connection-card .form { gap: 12px; }
+.side-panel-scroll .copy-field { min-width: 0; }
+.source-dispatch-list { display: grid; gap: 8px; }
+.source-dispatch-row { width: 100%; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); text-align: left; color: var(--text); }
+.source-dispatch-row:disabled { opacity: 1; cursor: default; }
+.source-dispatch-row > span:not(.phase-tile) { flex: 1; min-width: 0; }
+.source-dispatch-row strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
+.source-dispatch-meta { font-size: 12px; color: var(--text-secondary); }
+.source-dispatch-row[data-state="pending"] { border-color: var(--warning); }
+.source-dispatch-row[data-state="pending"] .source-dispatch-meta > span { color: var(--warning); }
+.source-dispatch-row[data-state="running"] .source-dispatch-meta > span { color: var(--phase-thinking); }
+.source-dispatch-row[data-state="completed"] .source-dispatch-meta > span { color: var(--success); }
+.source-dispatch-row[data-state="failed"] .source-dispatch-meta > span, .source-dispatch-row[data-state="failed"] .phase-tile { color: var(--danger); }

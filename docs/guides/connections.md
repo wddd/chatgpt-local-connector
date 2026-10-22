@@ -16,13 +16,15 @@ For Claude, add an HTTPS ingress with OAuth. For ChatGPT, start with [Secure Tun
 
 ## Connect
 
-1. Open the control source in ARC and edit its connection.
+1. Click the control source on the home screen to open its left-side view, then choose **Edit configuration**.
 2. Choose the provider and enter the required fields. Use **Get token** links when offered.
 3. Select the client's authentication: OAuth for Claude, or Bearer for clients supporting the `Authorization` header. Keep the Default op list to begin.
-4. Save and connect. ARC downloads the provider component when needed and manages its process.
+4. Save to return to the connection view and connect automatically. ARC downloads the provider component when needed and manages its process.
 5. Copy the displayed MCP URL into the client and run the connection's verification prompt there.
 
 Provider credentials connect the tunnel; MCP authentication controls access through it. They are separate fields. A fixed domain must already be assigned in your provider account.
+
+The source view also shows recent available Codex dispatches. Open a running row to switch to the Agent task detail, or choose **View all records** to see records filtered by this source. Add a new source from the central left dot; guided and manual setup remain there.
 
 ## Use a custom reverse proxy
 

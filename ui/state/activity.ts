@@ -1,13 +1,13 @@
+import { agentPanel } from "./overviewPanels";
 import { useEffect, useRef, useState } from "react";
 import { createStore } from "./store";
 import { api } from "../api";
 import { isDesktop, openUrl } from "../platform";
 import type { AgentActivitySession, AgentActivitySnapshot } from "../types";
-import { trackActivity, activityLayout, type TrackedActivity, beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission, type AgentPanelSelection, type AgentPanelAction, agentPanelSelection, endedActivity } from "./activityModel";
+import { trackActivity, activityLayout, type TrackedActivity, beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission, endedActivity } from "./activityModel";
 
 export const agentActivity = createStore<{ snapshot?: AgentActivitySnapshot; error: string }>({ error: "" });
-export const agentPanel = createStore<AgentPanelSelection>(undefined);
-export function selectAgentPanel(action: AgentPanelAction) { agentPanel.set(old => agentPanelSelection(old, action)); }
+
 export const activityHistory = createStore<Record<string, TrackedActivity[]>>({});
 let historyCore: string | undefined;
 export function resetActivityHistory(core: string) {

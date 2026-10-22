@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, useEffect, type ReactNode, type ComponentProps } from "react";
 import { ChevronLeft } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
@@ -41,7 +41,11 @@ export default function IngressDialog({
   onClose,
   onSaved,
   onRemoved,
+  embedded = false,
+  onBusy,
 }: {
+  embedded?: boolean;
+  onBusy?: (busy: boolean) => void;
   ingress?: Ingress;
   focusField?: string;
   initialSource?: string;
@@ -278,8 +282,10 @@ export default function IngressDialog({
       />
     </Field>
   );
+  useEffect(() => { onBusy?.(working); return () => onBusy?.(false); }, [working, onBusy]);
+  const Frame = embedded ? IngressEditLayer : Dialog;
   return (
-    <Dialog
+    <Frame
       initialFocus={focusField ? `ingress-${focusField}` : undefined}
       title={`${t(ingress ? "editControlSource" : "addControlSource")}${selected ? " · " + (preset?.displayName || t("customControlSource")) : ""}`}
       onClose={() => !ingress && selected ? setSelected("") : onClose()}
@@ -301,9 +307,9 @@ export default function IngressDialog({
               </Button>
             )}
             <span className="spacer" />
-            <DialogClose asChild>
+            {embedded ? <Button disabled={working} onClick={onClose}>{t("cancel")}</Button> : <DialogClose asChild>
               <Button disabled={working}>{t("cancel")}</Button>
-            </DialogClose>
+            </DialogClose>}
             <Button
               variant="primary"
               busy={working}
@@ -507,6 +513,22 @@ export default function IngressDialog({
           {error && <Notice>{displayMessage(error)}</Notice>}
         </form>
       )}
-    </Dialog>
+    </Frame>
   );
+}
+
+function IngressEditLayer({ title, children, footer, onClose, initialFocus, busy }: ComponentProps<typeof Dialog>) {
+  const root = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const target = initialFocus ? root.current?.querySelector<HTMLElement>(`#${CSS.escape(initialFocus)}`) : root.current?.querySelector<HTMLElement>("h2");
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [initialFocus]);
+  return <section className="ingress-edit-layer side-panel-layer" ref={root}>
+    <header className="dialog-header"><IconButton icon={ChevronLeft} label={t("back")} disabled={busy} onClick={onClose} />
+      <h2 className="activity-panel-title" tabIndex={-1}>{title}</h2></header>
+    <div className="side-panel-scroll">{children}</div><footer className="dialog-footer">{footer}</footer>
+  </section>;
 }

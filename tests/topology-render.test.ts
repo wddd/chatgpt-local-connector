@@ -135,7 +135,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
   class Observer { observe() {} unobserve() {} disconnect() {} }
   Object.assign(globalThis, {
     window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element, Node: window.Node,
-    NodeFilter: window.NodeFilter, HTMLInputElement: window.HTMLInputElement, HTMLFormElement: window.HTMLFormElement, HTMLSelectElement: window.HTMLSelectElement, CustomEvent: window.CustomEvent,
+    NodeFilter: window.NodeFilter, DocumentFragment: window.DocumentFragment, HTMLInputElement: window.HTMLInputElement, HTMLFormElement: window.HTMLFormElement, HTMLSelectElement: window.HTMLSelectElement, CustomEvent: window.CustomEvent,
     Event: window.Event, MutationObserver: window.MutationObserver, DOMRect: window.DOMRect, CSS: window.CSS,
     localStorage: window.localStorage, getComputedStyle: window.getComputedStyle.bind(window),
     ResizeObserver: Observer, matchMedia: () => media, innerHeight: 800, IS_REACT_ACT_ENVIRONMENT: true,
@@ -154,7 +154,8 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
   try {
     const { default: AgentPanel } = await server.ssrLoadModule("/ui/components/AgentPanel.tsx");
     const { TooltipProvider } = await server.ssrLoadModule("/ui/components/ui/index.tsx");
-    const { agentPanel, selectAgentPanel, agentActivity } = await server.ssrLoadModule("/ui/state/activity.ts");
+    const { agentPanel, selectAgentPanel } = await server.ssrLoadModule("/ui/state/overviewPanels.ts");
+    const { agentActivity } = await server.ssrLoadModule("/ui/state/activity.ts");
     const { panelLayers } = await server.ssrLoadModule("/ui/state/panels.ts");
     const { capturePanelOrigin } = await server.ssrLoadModule("/ui/components/panelMorph.ts");
     const session = { id: "example", source: "transcript", title: "External example", phase: "thinking", phaseSince: null, headline: "Summary", timeline: false, orderAt: 1 };
@@ -227,6 +228,168 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
 
   } finally {
     await act(() => root.unmount());
+    await server.close(); await window.happyDOM.close();
+  }
+});
+
+test("control source dock preserves editing, guided creation, field navigation and cross-side dispatch paths", async () => {
+  const window = new Window({ url: "http://localhost" });
+  const frames = new Map<number, FrameRequestCallback>(); let sequence = 0;
+  const media = { matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} };
+  class Observer { observe() {} unobserve() {} disconnect() {} }
+  Object.assign(globalThis, {
+    window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element, Node: window.Node,
+    NodeFilter: window.NodeFilter, DocumentFragment: window.DocumentFragment, HTMLInputElement: window.HTMLInputElement, HTMLFormElement: window.HTMLFormElement, HTMLSelectElement: window.HTMLSelectElement,
+    CustomEvent: window.CustomEvent, Event: window.Event, MutationObserver: window.MutationObserver, DOMRect: window.DOMRect, CSS: window.CSS,
+    localStorage: window.localStorage, getComputedStyle: window.getComputedStyle.bind(window),
+    ResizeObserver: Observer, matchMedia: () => media, innerHeight: 800, IS_REACT_ACT_ENVIRONMENT: true,
+    requestAnimationFrame: (callback: FrameRequestCallback) => { frames.set(++sequence, callback); return sequence; },
+    cancelAnimationFrame: (id: number) => frames.delete(id),
+  });
+  Object.defineProperty(globalThis, "innerWidth", { configurable: true, value: 1280 });
+  window.matchMedia = () => media as unknown as MediaQueryList;
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
+    return this.classList.contains("elastic-panel") ? new window.DOMRect(16, 16, 400, 768) : new window.DOMRect(550, 260, 44, 44);
+  };
+  const server = await createServer({ configFile: false, server: { middlewareMode: true, watch: null, ws: false } });
+  const { createRoot } = await import("react-dom/client");
+  const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
+  const originalFetch = globalThis.fetch;
+  try {
+    const { default: Overview } = await server.ssrLoadModule("/ui/components/ConnectionOverview.tsx");
+    const { default: UiProvider } = await server.ssrLoadModule("/ui/components/UiProvider.tsx");
+    const { capturePanelOrigin } = await server.ssrLoadModule("/ui/components/panelMorph.ts");
+    const { connector } = await server.ssrLoadModule("/ui/state/connector.ts");
+    const { agentPanel, ingressPanel } = await server.ssrLoadModule("/ui/state/overviewPanels.ts");
+    const { navigation } = await server.ssrLoadModule("/ui/state/navigation.ts");
+    const { agentActivity } = await server.ssrLoadModule("/ui/state/activity.ts");
+    const { tasks } = await server.ssrLoadModule("/ui/state/tasks.ts");
+    const { agents } = await server.ssrLoadModule("/ui/state/agents.ts");
+    const { t } = await server.ssrLoadModule("/ui/i18n.ts");
+    const config = { configured: true, httpsProvider: "cloudflare", cloudflareMode: "quick", httpsUrl: "", tunnelId: "tunnel_fixture", hasApiKey: true };
+    const source = (id: string) => ({ id, name: `Source ${id}`, controlSource: "claude", enabled: true, running: true, state: "ready", auth: "oauth", transport: "https", error: "", config, url: "https://example.com/mcp" });
+    const status = { ingresses: [source("one"), source("two")], core: { backendSession: "fixture", appServer: { state: "ready" } }, platform: "darwin", logs: [], autoOpenCodex: false };
+    connector.set({ status, loading: false, busy: "", error: "", feedback: { text: "", error: false } });
+    agents.set({ items: [{ agent: "codex", installed: true, enabled: true, available: true, status: "ready" }], loading: false, error: "" });
+    const session = { id: "thread", source: "codex-thread", title: "Dispatch fixture", phase: "command", headline: "Fixture", phaseSince: null, timeline: true };
+    agentActivity.set({ snapshot: { observedAt: "2026-01-01", activeAgents: ["codex"], agents: { codex: { sessions: [session] } } }, error: "" });
+    tasks.set({ records: [{ requestId: "dispatch", origin: { ingressId: "one" }, state: "completed", createdAt: "2026-01-01", task: { kind: "create", threadId: "thread", title: "Dispatch fixture", prompt: "Fixture" } }], error: "", loading: false });
+    const calls: { path: string; method: string; body: any }[] = [];
+    globalThis.fetch = async (input, init) => {
+      const path = String(input).replace("/api/", ""), method = init?.method || "GET", body = init?.body ? JSON.parse(String(init.body)) : {};
+      calls.push({ path, method, body });
+      let value: unknown = {};
+      if (path === "status") value = status;
+      else if (path === "setup/next") value = { hasState: false, complete: false, goal: null, steps: [], step: null, progress: { done: 0, total: 0 }, cliPath: "arc", stateDir: "fixture" };
+      else if (path === "tool-catalog") value = { tools: [], groups: [], required: [] };
+      else if (path === "codex/login") value = { state: "authenticated" };
+      else if (path.endsWith("/oauth")) value = { grants: [] };
+      else if (path.startsWith("tasks/runtime/")) value = { runtimeStatus: "active", observedAt: "2026-01-01" };
+      else if (path.startsWith("agents/timeline/")) value = { sessionId: "thread", status: "running", entries: [], cursor: 0, coverage: { state: "complete" } };
+      else if (path === "ingress/one" && method === "PUT") { Object.assign(status.ingresses[0], body); value = status.ingresses[0]; }
+      else if (path === "ingress/one" && method === "DELETE") status.ingresses = status.ingresses.filter(i => i.id !== "one");
+      return new Response(JSON.stringify(value), { status: 200 });
+    };
+    const flush = async () => {
+      for (let i = 0; i < 4; i++) await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const pending = [...frames.values()]; frames.clear(); pending.forEach(cb => cb(16));
+      });
+    };
+    const click = async (node: Element | null) => { assert.ok(node); await act(() => (node as HTMLElement).click()); await flush(); };
+    const button = (label: string, scope: ParentNode = document) => [...scope.querySelectorAll("button")].find(e => e.textContent === label || e.getAttribute("aria-label") === label)!;
+    const escape = async () => { await act(() => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }))); await flush(); };
+    await act(() => root.render(h(UiProvider, null, h("div", { onClickCapture: (e: { target: EventTarget }) => capturePanelOrigin(e.target) }, h(Overview)))));
+    await flush();
+    const first = () => mount.querySelector('[data-source-node="one"] button');
+    await click(first());
+    const shell = document.querySelector(".elastic-panel")!;
+    assert.equal(shell.getAttribute("data-panel-dock"), "left");
+    assert.equal(document.querySelector(".elastic-backdrop"), null);
+    assert.ok(document.querySelector(".source-connection-card .oauth-grants") || document.querySelector(".source-connection-card")?.textContent?.includes(t("oauthSessions")) || calls.some(c => c.path === "ingress/one/oauth"));
+    assert.ok(mount.querySelector('.activity-slot:not([inert])'), "right bubbles remain available");
+    assert.equal(mount.querySelector('[data-source-node="one"]')?.getAttribute("data-reorderable"), null);
+    await click(document.querySelector('[role="switch"]'));
+    assert.ok(calls.some(c => c.path === "ingress/one" && c.method === "PUT" && c.body.enabled === false));
+    await click(document.querySelector('[role="switch"]'));
+    // A central entry must not inherit the nonmodal side dock as its parent surface.
+    await click(mount.querySelector(".hub-source"));
+    const centered = document.querySelector('.elastic-panel:not([data-panel-dock])');
+    assert.equal(centered?.getAttribute("data-panel-depth"), "1");
+    assert.ok(document.querySelector('.source-choices'));
+    await escape();
+    assert.equal(document.querySelector(".elastic-panel"), shell);
+    await click(button(t("sourcePanel.edit")));
+    assert.equal(document.querySelector(".elastic-panel"), shell);
+    assert.ok(document.querySelector(".ingress-edit-layer form"));
+    await click(button(t("back"), document.querySelector(".ingress-edit-layer")!));
+    assert.equal(document.querySelector(".elastic-panel"), shell);
+    await act(() => navigation.set({ ingressEdit: { id: "one", field: "name" } })); await flush();
+    assert.equal(document.activeElement?.id, "ingress-name");
+    assert.equal(navigation.get().ingressEdit, undefined);
+    await click(button(t("save")));
+    assert.equal(document.querySelector(".elastic-panel"), shell);
+    assert.equal(document.querySelector(".ingress-edit-layer"), null);
+    assert.equal(calls.filter(c => c.path === "ingress/one/start").length, 1, "save reconnects exactly once");
+    await click(button(t("sourcePanel.edit"))); await click(button(t("cancel")));
+    assert.equal(calls.filter(c => c.path === "ingress/one/start").length, 1, "cancelling edit does not replay autoConnect");
+    await click(mount.querySelector('[data-source-node="two"] button'));
+    assert.equal(document.querySelector(".elastic-panel"), shell);
+    assert.equal(ingressPanel.get().ingress.id, "two");
+    await escape(); assert.equal(ingressPanel.get(), undefined);
+    assert.equal(document.activeElement, mount.querySelector('[data-source-node="two"] button'));
+    await click(first()); await click(first()); assert.equal(ingressPanel.get(), undefined);
+    await click(first()); await click(document.querySelector('.source-dispatch-row'));
+    assert.equal(ingressPanel.get(), undefined); assert.equal(agentPanel.get().session.id, "thread");
+    assert.equal(document.querySelectorAll('[data-panel-dock]').length, 1);
+    assert.equal(document.querySelector('[data-panel-dock]')?.getAttribute('data-panel-dock'), 'right');
+    await click(first()); assert.equal(agentPanel.get(), undefined); assert.ok(ingressPanel.get());
+    await click(button(t("sourcePanel.allRecords")));
+    assert.equal(navigation.get().page, "logs"); assert.equal(navigation.get().recordsSource, "one");
+    await act(() => navigation.set({}));
+    // New sources stay at the central dot, including guided/manual round trips.
+    await click(mount.querySelector(".hub-source"));
+    assert.equal(document.querySelector('[data-panel-dock]'), null);
+    assert.ok(document.querySelector('.source-choices'));
+    await click(document.querySelector('[data-source="claude"]'));
+    assert.ok(button(t("setup.manual")));
+    await click(button(t("setup.manual")));
+    assert.ok(document.querySelector('#ingress-name'));
+    assert.equal(document.querySelector('[data-panel-dock]'), null);
+    await click(button(t("back")));
+    await click(document.querySelector('[data-source="claude"]'));
+    assert.ok(document.querySelector('#ingress-name'), "manual setup does not bounce back to guidance");
+    await escape(); await escape();
+    await click(mount.querySelector('.hub-source')); await click(document.querySelector('[data-source="chatgpt"]'));
+    assert.ok(button(t("setup.manual"))); await click(button(t("setup.manual")));
+    assert.ok(document.querySelector('#ingress-tunnelId'), "ChatGPT guidance returns to its Tunnel form");
+    await escape(); await escape();
+    await click(mount.querySelector('.hub-source')); await click(document.querySelector('[data-source="custom"]'));
+    assert.ok(document.querySelector('#ingress-source'), "custom control source stays in the manual form");
+    await escape(); await escape();
+    await click(first()); await click(button(t("sourcePanel.edit"))); await click(button(t("remove")));
+    assert.equal(ingressPanel.get(), undefined); assert.equal(document.querySelector('[data-panel-dock]'), null);
+    assert.ok(calls.some(c => c.path === 'ingress/one' && c.method === 'DELETE'));
+    assert.equal(document.querySelector('[data-source-node="one"]'), null);
+    await act(() => { status.ingresses = []; connector.set({ ...connector.get(), status: { ...status } }); });
+    await click(mount.querySelector('.hub-source'));
+    assert.ok(button(t("setup.manual")), "empty source wing opens guided entry directly");
+    await click(button(t("setup.manual"))); assert.ok(document.querySelector('.source-choices'));
+    await escape();
+    const { default: RecordsPage } = await server.ssrLoadModule("/ui/components/RecordsPage.tsx");
+    await act(() => {
+      connector.set({ ...connector.get(), status: { ...status, ingresses: [source("one"), source("two")], logs: [
+        JSON.stringify({ ingressId: "one", msg: "Request processed: fixture-one" }),
+        JSON.stringify({ ingressId: "two", msg: "Request processed: fixture-two" }),
+      ] } });
+      navigation.set({ recordsSource: "one" }); root.render(h(UiProvider, null, h(RecordsPage)));
+    });
+    await flush();
+    assert.match(mount.querySelector(".log-table")!.textContent!, /fixture-one/);
+    assert.doesNotMatch(mount.querySelector(".log-table")!.textContent!, /fixture-two/);
+    assert.equal(mount.querySelectorAll(".source-dispatch-row").length, 1);
+  } finally {
+    await act(() => root.unmount()); globalThis.fetch = originalFetch;
     await server.close(); await window.happyDOM.close();
   }
 });

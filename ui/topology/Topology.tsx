@@ -213,7 +213,7 @@ export default function Topology({ left, right, brand, boundary, onReorderNodes,
     <svg ref={svg} className="topology-wires" aria-hidden="true" />
     <div ref={hub} className="topology-hub">{brand}</div>
     {nodes.map(n => <div key={nodeKey(n.side, n.id)} ref={el => { const key = nodeKey(n.side, n.id); if (el) elements.current.set(key, el); else elements.current.delete(key); }}
-      data-agent-node={n.side === 1 ? n.id : undefined}
+      data-agent-node={n.side === 1 ? n.id : undefined} data-source-node={n.side === -1 ? n.id : undefined}
       className={`topology-node ${n.side === 1 ? "agents" : "sources"}`} data-highlighted={n.selected || undefined} data-reorderable={n.reorderable || undefined}
       onPointerDown={n.reorderable ? event => startDrag(event, "node", n.side, n.id) : undefined}
       onClickCapture={event => suppressClick(event, nodeKey(n.side, n.id))}>{n.content}</div>)}

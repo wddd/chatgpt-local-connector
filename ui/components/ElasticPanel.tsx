@@ -128,7 +128,7 @@ export default function ElasticPanel({
   }, [open]);
   useLayoutEffect(() => {
     if (!node || !open) return;
-    const previous = panelLayers.get().filter(panel => panel.isConnected && panel !== node).at(-1);
+    const previous = panelLayers.get().filter(panel => panel.isConnected && panel !== node && !panel.dataset.panelDock).at(-1);
     const parent = dock ? undefined : parentPanel.current?.isConnected ? parentPanel.current : previous;
     parentPanel.current = parent;
     setBaseDepth(parent ? Number(parent.dataset.panelDepth || 1) + 1 : 1);
@@ -240,7 +240,7 @@ export default function ElasticPanel({
         replacement.click();
       });
   }
-  useEffect(() => { if (closeRequested) void close(undefined, true); }, [closeRequested]);
+  useEffect(() => { if (closeRequested) void close(undefined, true); }, [closeRequested, busy]);
   const previousOrigin = useRef(originKey);
   useLayoutEffect(() => {
     if (previousOrigin.current === originKey) return;
@@ -304,6 +304,7 @@ export default function ElasticPanel({
             e.preventDefault();
             // Wait for the scene to restore its bubbles and remove modal inert.
             requestAnimationFrame(() => {
+              if (dock && document.querySelector("[data-panel-dock]")) return;
               const fallback = returnFocus ? document.querySelector<HTMLElement>(returnFocus) : null;
               const target = trigger.current?.isConnected && !trigger.current.closest("[inert]") ? trigger.current : fallback;
               target?.focus({ preventScroll: true });

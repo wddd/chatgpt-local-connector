@@ -626,5 +626,16 @@
   "agentPanel.pending": "待审批",
   "agentPanel.noQuota": "此 Agent 暂无额度来源。",
   "agentPanel.noEnded": "本次 Core 暂无已结束且仍可读取的 ARC 任务。",
-  "agentPanel.noActive": "暂无进行中的任务。"
+  "agentPanel.noActive": "暂无进行中的任务。",
+  "sourcePanel.dispatches": "最近派发",
+  "sourcePanel.allRecords": "查看全部记录",
+  "sourcePanel.edit": "编辑配置",
+  "sourcePanel.recordsScope": "显示可取得的 Codex 派发；无法确认的任务状态会单独标明。",
+  "sourcePanel.noRecords": "暂无此控制源的派发记录。",
+  "sourcePanel.running": "运行中",
+  "sourcePanel.pending": "待审批",
+  "sourcePanel.completed": "已完成",
+  "sourcePanel.failed": "失败",
+  "sourcePanel.unknown": "状态待确认",
+  "sourcePanel.enabled": "启用此控制源"
 }
