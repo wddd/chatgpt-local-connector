@@ -1,5 +1,5 @@
 import { NODE_R, deg, type Side, type Layout, type Point } from "./solve";
-import { arcPath, grownWire } from "./geometry";
+import { arcPath, grownWire, finitePoints } from "./geometry";
 import { TopologyAnimator, nodeKey, taskKey } from "./animate";
 import type { SurfaceRect } from "../motion/surface";
 
@@ -44,7 +44,7 @@ export class TopologyPainter {
     this.guides?.replaceChildren();
     if (debug && !this.guides) this.guides = element("g", this.svg, { class: "topology-guides" });
     const controls = (end: Point, c1: Point, c2: Point, port: Point) => {
-      if (!debug) return;
+      if (!debug || !finitePoints(end, c1, c2, port)) return;
       element("path", this.guides!, { d: `M${end.x},${end.y} L${c1.x},${c1.y} M${c2.x},${c2.y} L${port.x},${port.y}`, class: "guide-tangent" });
       for (const point of [c1, c2]) element("circle", this.guides!, { cx: String(point.x), cy: String(point.y), r: "3" });
     };
@@ -101,7 +101,7 @@ export class TopologyPainter {
     if (debug) {
       const g = this.guides!, height = animator.values("scene")!.height, middle = debug.vw / 2;
       const line = (x1: number, y1: number, x2: number, y2: number, name = "") =>
-        element("path", g, { d: `M${x1},${y1} L${x2},${y2}`, class: name });
+        [x1, y1, x2, y2].every(Number.isFinite) && element("path", g, { d: `M${x1},${y1} L${x2},${y2}`, class: name });
       const label = (x: number, y: number, text: string, anchor = "middle") => {
         element("text", g, { x: String(x), y: String(y), "text-anchor": anchor }).textContent = text;
       };

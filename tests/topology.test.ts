@@ -1,3 +1,4 @@
+import { arcPath, grownWire } from "../ui/topology/geometry.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULTS, PARAMETERS, PARAMETER_GROUPS, distribute, extentOf, solve, type Scene } from "../ui/topology/solve.ts";
@@ -133,4 +134,23 @@ test("upgraded defaults apply to untouched parameters while manual overrides rem
   assert.ok(imported.ok);
   assert.deepEqual(loadParameters(imported.document, upgraded), loaded);
   assert.deepEqual(parameterDiff({ ...loaded, damping: upgraded.damping }, upgraded), emptyParameters());
+});
+
+test("path generation skips non-finite coordinates and recovers on the next frame", () => {
+  const points = [{ x: 484, y: 348 }, { x: 447.5, y: 348 }, { x: 581.82, y: 348 }, { x: 557, y: 348 }];
+  const empty = { outline: "", centerline: "", gap: "" };
+  for (const invalid of [NaN, Infinity, -Infinity]) {
+    for (let i = 0; i < 4; i++) for (const axis of ["x", "y"]) {
+      const frame = points.map((p, j) => j === i ? { ...p, [axis]: invalid } : p);
+      assert.deepEqual(grownWire(frame[0], frame[1], frame[2], frame[3], 1, 1, true), empty);
+    }
+    for (let i = 0; i < 5; i++) {
+      const args = [450, 340, 130, -30, 30]; args[i] = invalid;
+      assert.equal(arcPath(args[0], args[1], args[2], args[3], args[4], 1), "");
+    }
+    assert.deepEqual(grownWire(points[0], points[1], points[2], points[3], invalid, 1), empty);
+  }
+  const shape = grownWire(points[0], points[1], points[2], points[3], 1, 1, true);
+  assert.equal(shape.centerline, "M 484 348 C 447.5 348 581.82 348 557 348");
+  assert.ok(shape.outline && !/NaN|Infinity/.test(shape.outline));
 });

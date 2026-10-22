@@ -154,7 +154,11 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
   const suppressClick = (event: MouseEvent, key: string) => {
     if (event.detail !== 0 && suppressedClick.current === key) { event.preventDefault(); event.stopPropagation(); }
   };
-  useImperativeHandle(ref, () => ({ panelFrame(rect) { panel.current = rect; paint(); } }), [paint]);
+  useImperativeHandle(ref, () => ({ panelFrame(rect) {
+    // DOMRect dimensions are prototype accessors, not enumerable own properties.
+    panel.current = rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+    paint();
+  } }), [paint]);
   useLayoutEffect(() => { setRetained(latest.current.allTasks); }, [left, right]);
   useLayoutEffect(() => { target(); });
   // Parent host refs attach after child layout effects. Initialize after the

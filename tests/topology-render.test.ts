@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { createServer } from "vite";
-import { act, createElement as h, useRef } from "react";
+import { act, createElement as h, createRef, useRef } from "react";
 import { DEFAULTS, solve } from "../ui/topology/solve.ts";
 
 test("mounted topology paints paths, observes its parent viewport and reacts to motion changes", async () => {
@@ -40,8 +40,9 @@ test("mounted topology paints paths, observes its parent viewport and reacts to 
       tasks: Array.from({ length: n }, (_, j) => ({ id: `${side}${i}/${j}`, state: "running", selected: false, content: h("button", null, "Task") })),
     }));
     const left = nodes("source", [0, 0, 0]), right = nodes("agent", [2, 3, 1, 0, 0, 0]);
+    const topology = createRef<{ panelFrame(rect: { x: number; y: number; width: number; height: number } | null): void }>();
     function Parent() {
-      const boundary = useRef<HTMLElement>(null), topology = useRef(null);
+      const boundary = useRef<HTMLElement>(null);
       return h("section", { ref: boundary, className: "boundary" }, h(Topology, {
         left, right, boundary, ref: topology, brand: "ARC", leftUtility: null, rightUtility: null,
         onReorderNodes() {}, onReorderTasks() {},
@@ -91,6 +92,29 @@ test("mounted topology paints paths, observes its parent viewport and reacts to 
     assert.equal(mount.querySelector(".topology-hub")!.getAttribute("style"), null, "zero-size containers must not use a fabricated viewport");
     width = 1280; height = 800; await resize(); await settle(); assertHub();
     assert.ok(mount.querySelector(".topology-ear")?.getAttribute("d"));
+    width = 900; height = 680; await resize(); await settle();
+    // ElasticPanel first sends a DOMRect (prototype accessors), then plain
+    // interpolated frames, and finally another DOMRect before closing.
+    const rect = Object.create({ get x() { return 484; }, get y() { return 16; },
+      get width() { return 400; }, get height() { return 648; } });
+    assert.deepEqual(Object.keys(rect), []);
+    for (const agent of right.slice(0, 2)) {
+      const task = agent.tasks[0]; task.state = "external"; task.selected = true;
+      await act(() => root.render(h(Parent)));
+      for (let opening = 0; opening < 2; opening++) {
+        for (const frame of [rect, { x: 520, y: 60, width: 350, height: 560 }, rect]) {
+          await act(() => topology.current!.panelFrame(frame));
+          const path = mount.querySelector(".secondary .external-wire")!.getAttribute("d")!;
+          assert.ok(path && !/NaN|Infinity/.test(path), "every panel frame, including DOMRect, must retain a finite wire");
+          assert.equal(Number(path.split(" ")[1]), frame.x, "first frame must already dock to the panel edge");
+          assert.ok([...mount.querySelectorAll(".topology-wires path")].every(p => !/NaN|Infinity/.test(p.getAttribute("d") ?? "")));
+        }
+        await act(() => topology.current!.panelFrame(null));
+        assert.ok(mount.querySelector(".secondary .external-wire")!.getAttribute("d"));
+      }
+      task.state = "running"; task.selected = false;
+      await act(() => root.render(h(Parent)));
+    }
   } finally {
     await act(() => root.unmount());
     await server.close(); await window.happyDOM.close();
