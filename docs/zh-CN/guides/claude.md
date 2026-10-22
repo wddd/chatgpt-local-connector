@@ -35,7 +35,11 @@ Claude 网页、手机和桌面均可使用远程连接器。尚未安装 ARC �
 
 ## 接收、审查、继续
 
-派发后 Claude 可以直接结束本轮。Codex 完成时，通知会唤醒同一 Claude Code 云端会话，让它审查改动并继续。
+绑定新会话后查询 `notify_status({target})`。`unverified` 表示尚未确认收到消息，`failed` 表示投递失败或握手过期。订阅 active、令牌充足都不证明可达。
+
+调用 `notify_control({action:"verify",target})`，ARC 会向该会话发送一次性验证码；Claude 收到后须在五分钟内调用 `notification_ack({target,code})`。只有 `verified` 且投递可用时才可结束回合等待通知。本机 Claude Code 登录须能访问该云端会话。
+
+未验证、失败或未绑定时，使用回执中的等待参数。如果 Claude 能安排稍后回到本会话，就按匹配历史耗时给出的 `next.revisitAfterMinutes` 回访；无样本不建议分钟数。仅短任务在回合内分段等待。Claude 每次等待最多 170000 ms，超时按 `next` 续等。
 
 绑定的轮次完成、失败、中断或等待审批/输入时，ARC 发送固定状态消息，标明项目、任务和轮次。Claude 随后通过 `query codex_read` / `query codex_items` 读取实际输出，通过 `query codex_changes` 或 `query git` 审查改动。
 

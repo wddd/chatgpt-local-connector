@@ -31,6 +31,8 @@ Tunnel 创建和使用权限属于 OpenAI Platform 组织，Developer Mode 属�
 > 通过 ARC 阅读这个项目的当前文件、Git 状态和近期 Codex 任务。比较可选方案，给出计划与验收标准。我们确定后，用新 requestId 派给 Codex，保留返回的任务 ID。
 
 新任务使用 `act codex_create`，下一轮使用 `act codex_send`，进度使用 `query codex_wait`。超时后保留 threadId/turnId，并把上次 snapshotHash 作为 expectedHash 继续等待。让 Chat 审查 `query codex_changes` 和最终输出，再决定下一步。
+没有主动投递时使用回执中的等待参数。若控制源能安排稍后回到本会话，按匹配历史耗时给出的 `next.revisitAfterMinutes` 回访；无样本不建议分钟数。仅短任务在回合内分段等待。
+
 
 让本机 Agent 协助时，查看[自动配置](../auto-setup.md)。HTTPS + OAuth 替代方案见[连接指南](connections.md)。
 

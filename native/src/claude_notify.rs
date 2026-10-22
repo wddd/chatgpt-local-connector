@@ -3,6 +3,7 @@ use crate::*;
 pub(crate) mod continuation;
 mod governance;
 pub(crate) mod mcp_events;
+mod reachability;
 mod retry;
 pub(crate) mod subscriptions;
 use governance::State;
@@ -265,9 +266,18 @@ pub(crate) async fn bind(
         }
         b.retry = json!({"model":args["_retryModel"],"turn":args["_retryTurn"],"attempts":args["_retryAttempt"].as_u64().unwrap_or(0),"origin":crate::kernel::origin::current_origin()});
     }
-    let state = State::load(&dir)?;
+    let mut state = State::load(&dir)?;
     if let Some(rule) = state.rule(&b) {
         governance::apply_rebind(&mut b, rule);
+    }
+    if let Some(target) = &b.target {
+        state.target(
+            b.channel,
+            target,
+            chrono::Utc::now().timestamp(),
+            &settings()?,
+        );
+        state.save(&dir)?;
     }
     persist(&dir, &b)
 }
@@ -331,10 +341,24 @@ pub(crate) fn read(thread: &str, turn: &str) -> Result<Value> {
     read_since(thread, turn, None)
 }
 pub(crate) fn read_since(thread: &str, turn: &str, since: Option<&str>) -> Result<Value> {
-    Ok(notification_since(
-        binding(&directory(), thread, turn)?,
-        since,
-    ))
+    let mut result = notification_since(binding(&directory(), thread, turn)?, since);
+    if result.is_object() {
+        let state = State::load(&directory())?;
+        let reachability = state
+            .targets
+            .iter()
+            .find(|t| {
+                result["channel"] == serde_json::to_value(t.channel).unwrap()
+                    && result["target"] == t.target
+            })
+            .map(|t| t.reachability.clone())
+            .unwrap_or_default();
+        let mut reachability = reachability;
+        reachability.expire(chrono::Utc::now().timestamp());
+        result["reachability"] = json!(reachability.state);
+        result["reason"] = json!(reachability.reason);
+    }
+    Ok(result)
 }
 fn notification_since(mut b: Option<Binding>, since: Option<&str>) -> Value {
     if let (Some(b), Some(at)) = (
@@ -1218,6 +1242,9 @@ pub(crate) async fn acknowledge(args: &Value) -> Result<Value> {
     acknowledge_in(&directory(), &ingress, args)
 }
 fn acknowledge_in(dir: &Path, ingress: &str, args: &Value) -> Result<Value> {
+    if args.get("code").is_some() {
+        return reachability::acknowledge(dir, ingress, args);
+    }
     let path = inbox_path(dir, ingress);
     let mut rows = if path.exists() {
         load(&path)?
@@ -1825,6 +1852,9 @@ async fn flush(
         if let Some(t) = state.targets.iter_mut().find(|t| {
             t.channel == batch[0].channel && Some(t.target.as_str()) == batch[0].target.as_deref()
         }) {
+            if status == "failed" {
+                t.reachability.fail("delivery-failed");
+            }
             if let Some(record) = t
                 .batches
                 .iter_mut()
@@ -1952,6 +1982,24 @@ pub(crate) async fn migrate() -> Result<()> {
                     d.timing =
                         serde_json::from_value(row["timing"].clone()).map_err(|e| e.to_string())?;
                     b.deliveries.push(d);
+                }
+            }
+        }
+    }
+    // Older targets have no handshake. Preserve known failures without treating a
+    // historical successful send as controller acknowledgement.
+    let settings = settings()?;
+    for b in &all {
+        for d in &b.deliveries {
+            if !d.target.is_empty() && d.failures > 0 {
+                let t = state.target(
+                    d.channel,
+                    &d.target,
+                    chrono::Utc::now().timestamp(),
+                    &settings,
+                );
+                if t.reachability.reason == "handshake-required" {
+                    t.reachability.fail("delivery-failed");
                 }
             }
         }
@@ -2553,7 +2601,7 @@ mod tests {
         let compact = governance::status_in(&dir.0, "claude", &json!({}), now, &settings).unwrap();
         assert_eq!(
             compact["summary"],
-            json!({"totalTargets":8,"totalThreads":8,"totalBindings":9,"hidden":{"targets":2,"threads":4,"bindings":5}})
+            json!({"totalTargets":8,"totalThreads":8,"totalBindings":9,"hidden":{"targets":0,"threads":4,"bindings":5}})
         );
         let recent = compact["threads"]
             .as_array()
@@ -3344,7 +3392,10 @@ mod tests {
 }
 
 pub(crate) fn push_available(notification: &Value) -> bool {
-    if notification["channel"] != "claude-session" || !notification["target"].is_string() {
+    if notification["reachability"] != "verified"
+        || notification["channel"] != "claude-session"
+        || !notification["target"].is_string()
+    {
         return false;
     }
     let Ok(settings) = settings() else {

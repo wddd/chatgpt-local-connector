@@ -419,6 +419,35 @@ fn history(agent: &str) -> Result<Value> {
     Ok(history)
 }
 
+/// Match the effective configuration; never substitute another model's duration.
+pub(crate) fn revisit_minutes(receipt: &Value) -> Option<u64> {
+    let selection = receipt
+        .get("dispatch")
+        .or_else(|| receipt.pointer("/result/dispatch"))?;
+    let agent = receipt["agent"].as_str().unwrap_or("codex");
+    let history = history(agent).ok()?;
+    let groups = history["groups"].as_array()?;
+    let candidates = groups.iter().filter(|g| {
+        g["model"] == selection["model"]
+            && g["effort"].as_str().unwrap_or("") == selection["effort"].as_str().unwrap_or("")
+            && g["options"].as_object()
+                == selection.get("options").unwrap_or(&json!({})).as_object()
+    });
+    // Service-tier history is separate. Without a known tier, do not guess among groups.
+    let mut candidates: Vec<_> = candidates
+        .filter(|g| {
+            selection["serviceTier"]
+                .as_str()
+                .is_none_or(|tier| g["serviceTier"] == tier)
+        })
+        .collect();
+    if candidates.len() != 1 {
+        return None;
+    }
+    let ms = candidates.pop()?["medianObservedDurationMs"].as_f64()?;
+    Some((ms / 60000.0).ceil().max(1.0) as u64)
+}
+
 fn directory(thread: &str) -> Result<PathBuf> {
     uuid::Uuid::parse_str(thread).map_err(|_| "INVALID_THREAD_ID")?;
     Ok(root().join("dispatches").join(thread))

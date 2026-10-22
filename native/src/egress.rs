@@ -343,10 +343,35 @@ fn signature(op: &Value) -> String {
                 "?"
             };
             let property = &schema["properties"][name.as_str().unwrap()];
-            let bound = property
-                .get("maximum")
-                .map(|max| format!("≤{max}"))
-                .unwrap_or_default();
+            // Long native method catalogs belong in the per-op guide, not every index.
+            let choices = property["enum"].as_array().map(|values| {
+                values
+                    .iter()
+                    .map(|v| {
+                        v.as_str()
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| v.to_string())
+                    })
+                    .collect::<Vec<_>>()
+                    .join("|")
+            });
+            let bound = if let Some(choices) = choices.filter(|s| s.len() <= 80) {
+                format!(":{choices}")
+            } else if property["minLength"] == 1 {
+                "(≥1 char)".into()
+            } else if name == "timeoutMs"
+                && matches!(
+                    string(op, "name"),
+                    "codex_wait" | "agent_wait" | "inbox_wait"
+                )
+            {
+                property
+                    .get("maximum")
+                    .map(|max| format!("≤{max}"))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
             format!("{}{optional}{bound}", name.as_str().unwrap())
         })
         .collect();
@@ -407,6 +432,10 @@ pub(crate) fn unknown_op(name: &str, ops: &[Value]) -> String {
 }
 
 pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -> Value {
+    let ops = ops
+        .iter()
+        .map(|op| source_spec(op, origin))
+        .collect::<Vec<_>>();
     if let Some(name) = args["op"].as_str() {
         let spec = catalog()["ops"]
             .as_array()
@@ -414,6 +443,8 @@ pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -
             .iter()
             .find(|op| op["name"] == name)
             .unwrap();
+        let spec = source_spec(spec, origin);
+        let spec = &spec;
         return json!({"op":name,"via":via(spec),"description":spec["description"],"inputSchema":spec["inputSchema"],"signature":signature(spec),"example":example(spec)});
     }
     let topic = args["topic"].as_str().unwrap_or("loop");
@@ -423,14 +454,14 @@ pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -
         _ => "other",
     };
     let guides = &catalog()["guides"][if locale == "zh-CN" { "zh-CN" } else { "en" }];
-    let body = if topic == "loop" {
+    let body = if guides[topic].is_object() {
         &guides[topic][source]
     } else {
         &guides[topic]
     };
     let examples: Vec<_> = ops
         .iter()
-        .filter(|op| matches!(string(op, "name"), "codex_create" | "codex_wait" | "read"))
+        .filter(|op| topic == "loop" && string(op, "name") == "codex_create")
         .map(|op| {
             let mut call = example(op);
             if source == "claude" && matches!(string(op, "name"), "codex_create" | "codex_send") {
@@ -460,7 +491,43 @@ pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -
     } else {
         ""
     };
-    json!({"events":crate::claude_notify::subscriptions::guide(),"topic":topic,"controlSource":source,"content":format!("{}\n{}{}",body.as_str().unwrap_or(""),guides["common"].as_str().unwrap_or(""),context),"examples":examples,"ops":index})
+    let mut result = json!({"topic":topic,"controlSource":source,"content":format!("{}\n{}{}",body.as_str().unwrap_or(""),if topic == "loop" {guides["common"].as_str().unwrap_or("")} else {""},context),"examples":examples,"ops":index});
+    if source == "chatgpt" {
+        result["events"] = crate::claude_notify::subscriptions::guide();
+    }
+    result
+}
+
+fn source_spec(op: &Value, origin: &Value) -> Value {
+    let mut op = op.clone();
+    if matches!(
+        string(&op, "name"),
+        "codex_wait" | "agent_wait" | "inbox_wait"
+    ) {
+        let limit = crate::control_sources::preset(string(origin, "controlSource"))
+            ["waitTimeoutMs"]
+            .as_u64()
+            .unwrap_or(1800000);
+        op["inputSchema"]["properties"]["timeoutMs"]["description"] = json!(format!("Wait up to {limit}ms per call; on timeout follow next.args with the same IDs and expectedHash. Transport heartbeats do not extend the client deadline."));
+        if let Some(description) = op["description"].as_str() {
+            op["description"] = json!(
+                description.replace("Claude 单轮封顶 170000 毫秒，超出时返回 waitLimit；", "")
+            );
+        }
+        if let Some(limit) = crate::control_sources::preset(string(origin, "controlSource"))
+            ["waitTimeoutMs"]
+            .as_u64()
+        {
+            op["inputSchema"]["properties"]["timeoutMs"]["maximum"] = json!(limit);
+            if op["example"]["timeoutMs"]
+                .as_u64()
+                .is_some_and(|ms| ms > limit)
+            {
+                op["example"]["timeoutMs"] = json!(limit);
+            }
+        }
+    }
+    op
 }
 
 /// Only suggest reads or waits; a suggested next step never authorizes a write.
@@ -474,11 +541,13 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
         .as_str()
         .or_else(|| args["threadId"].as_str());
     let turn = value["turnId"].as_str().or_else(|| args["turnId"].as_str());
-    let wait_args = if agent {
+    let mut wait_args = if agent {
         json!({"agent":value["agent"].as_str().or_else(||args["agent"].as_str()),"taskId":task,"turnId":turn})
     } else {
         json!({"threadId":thread,"turnId":turn})
     };
+    wait_args["until"] = json!("terminal");
+    wait_args["timeoutMs"] = json!(30000);
     let wait_tool = if agent { "agent_wait" } else { "codex_wait" };
     let next = if value["state"] == "awaiting-approval" {
         json!({"hint":"Inspect the original request, then decide according to user intent.","via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"}})
@@ -516,7 +585,16 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
         if push_available {
             json!({"hint":"You may end this turn and wait for an [ARC] notification; use guide for the review workflow."})
         } else {
-            json!({"hint":"Active wakeup is unavailable; continue with segmented waits and watch arcInbox.","via":"query","op":wait_tool,"args":wait_args})
+            let minutes = crate::dispatch_policy::revisit_minutes(value);
+            let hint = match minutes {
+                Some(minutes) => format!("Notification channel unverified or unavailable; do not rely on proactive notifications. If you can schedule a return to this conversation, revisit in {minutes} minute(s), based on this Agent/model/reasoning configuration's historical median. Only short tasks should use segmented waits within this turn; on timeout follow next. Do not redispatch."),
+                None => "Notification channel unverified or unavailable; do not rely on proactive notifications. If you can schedule a later return to this conversation, do so and use these wait arguments. No matching duration samples are available. Only short tasks should use segmented waits within this turn; on timeout follow next. Do not redispatch.".into(),
+            };
+            let mut next = json!({"hint":hint,"via":"query","op":wait_tool,"args":wait_args});
+            if let Some(minutes) = minutes {
+                next["revisitAfterMinutes"] = json!(minutes);
+            }
+            next
         }
     } else {
         return;

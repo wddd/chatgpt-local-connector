@@ -30,6 +30,14 @@ npm run accept:ui -- --webkit
 
 手动查看运行 `npm run dev:ui` 后打开 `http://127.0.0.1:5187/?scenario=<场景名>`。只有 Vite 开发模式加载场景；发布构建不包含 fixture 模块。截图固定时间、减少动画，便于比较布局；不代表真实 Agent 或原生窗口验收。
 
+## 通知可达性与控制源 guide
+
+```sh
+node tooling/acceptance/notifications.mjs
+```
+
+通过独立临时状态、MCP fixture、原生 Agent 模拟进程及本地假 Claude CLI 验收；所有派发使用 `purpose:"self-test"`。覆盖新目标、发送成功但未确认、一次性确认/重放、重启持久化、握手超时、投递失败与恢复，以及四种派发回执的等待分支。历史中位耗时使用合成记录，超时边界只修改临时状态中的截止时间。验证来源裁剪、schema 索引与 dispatch_policy 默认筛选，输出至 `output/acceptance/notifications/`（可传一个输出目录参数）。不调用真实账号或通知目标；真实云端会话收到验证码并回调仍需独立确认。
+
 ## 已安装 App 自截图
 
 ```sh

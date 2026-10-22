@@ -33,6 +33,8 @@ Tunnel creation/use permissions belong to the OpenAI Platform organization. Deve
 > Read this project's current files, Git state, and recent Codex tasks through ARC. Compare the options and propose a plan with acceptance criteria. Once we agree, dispatch it to Codex with a fresh requestId and preserve the returned task IDs.
 
 Use `act codex_create` for a new task, `act codex_send` for another round, and `query codex_wait` for progress. After a timeout, continue with the same threadId/turnId and previous snapshotHash as expectedHash. Ask Chat to review `query codex_changes` and the final task output before deciding what comes next.
+Without proactive delivery, use the receipt’s wait arguments. If the controller can schedule a return to this conversation, use `next.revisitAfterMinutes` from matching historical durations; no samples means no minute recommendation. Only short tasks use segmented waits within the turn.
+
 
 For setup by a local Agent, use [Automatic setup](../auto-setup.md). On an actual Tunnel access failure, Agent setup offers HTTPS + OAuth with a Cloudflare fixed address or a temporary address; it keeps the ChatGPT goal and reuses the existing OAuth steps. See [Connections](connections.md). HTTPS does not bypass workspace restrictions on custom MCP connections.
 

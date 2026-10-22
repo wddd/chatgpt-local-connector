@@ -554,7 +554,7 @@ async fn call_tool(s: &ControlSource<'_>, tool: &str, envelope: Value) -> Result
         if let Some(request_id) = envelope.get("requestId") {
             args["requestId"] = request_id.clone();
         }
-        if matches!(name, "codex_wait" | "agent_wait") {
+        if matches!(name, "codex_wait" | "agent_wait" | "inbox_wait") {
             let op = catalog()["ops"].as_array().unwrap().iter().find(|op| op["name"] == name).unwrap();
             crate::egress::validate_op(op, &args)?;
             wait_limit = crate::control_sources::limit_wait(&s.origin().await, &mut args);
@@ -563,8 +563,12 @@ async fn call_tool(s: &ControlSource<'_>, tool: &str, envelope: Value) -> Result
     }.await;
     let mut images = Vec::new();
     let mut reads = Vec::new();
+    let mut notify_requested = args["notify"].is_object();
     let (mut value, error) = match result {
         Ok(mut value) => {
+            if crate::egress::dispatch_receipt(&value) && value["arguments"].is_object() {
+                notify_requested = value["arguments"]["notify"].is_object();
+            }
             if let Some(limit) = wait_limit {
                 value["waitLimit"] = limit;
             }
@@ -623,7 +627,8 @@ async fn call_tool(s: &ControlSource<'_>, tool: &str, envelope: Value) -> Result
                 }
             }
         }
-        let available = crate::claude_notify::push_available(&value["notification"]);
+        let available =
+            notify_requested && crate::claude_notify::push_available(&value["notification"]);
         crate::egress::next(&mut value, name, &args, available);
     }
     if error {

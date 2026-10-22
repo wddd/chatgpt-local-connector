@@ -55,7 +55,9 @@ impl AgentHost {
         let mut rows = Vec::new();
         for item in inventory["agents"].as_array().into_iter().flatten() {
             let agent = string(item, "agent");
-            if filter.is_some_and(|id| id != agent) {
+            if filter.is_some_and(|id| id != agent)
+                || (args["all"] != true && (item["installed"] != true || item["enabled"] != true))
+            {
                 continue;
             }
             let mut row = json!({

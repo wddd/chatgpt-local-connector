@@ -23,6 +23,8 @@ pub(super) struct Target {
     pub escalated: bool,
     pub escalation_error: Option<String>,
     pub batches: Vec<Batch>,
+    #[serde(default)]
+    pub reachability: super::reachability::Reachability,
 }
 impl Target {
     pub fn refill(&mut self, now: i64, settings: &Value) {
@@ -138,10 +140,12 @@ impl State {
                     escalated: false,
                     escalation_error: None,
                     batches: vec![],
+                    reachability: Default::default(),
                 });
                 self.targets.len() - 1
             });
         self.targets[index].refill(now, settings);
+        self.targets[index].reachability.expire(now);
         &mut self.targets[index]
     }
     pub fn thread(&mut self, b: &Binding, now: i64) -> &mut Thread {
@@ -287,7 +291,7 @@ pub(super) fn status_in(
                 }
             }
             let pending=bindings.iter().flat_map(|b|b.deliveries.iter().filter(|d|d.channel==channel && d.target==target && matches!(d.status.as_str(),"pending"|"sending")).map(|d|json!({"threadId":b.thread_id,"turnId":b.turn_id,"eventId":d.event_id,"kind":event(b,d)["kind"],"status":d.status,"createdAt":d.created_at,"nextAttemptAt":d.next_attempt_at,"timing":d.timing}))).collect::<Vec<_>>();
-            targets.push(json!({"channel":channel,"target":target,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"nextTokenAt":if t.tokens<capacity(settings){Some(t.refilled_at+refill_seconds(settings))}else{None},"breaker":t.breaker,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error,"pending":pending,"recentBatches":batches}));
+            targets.push(json!({"channel":channel,"target":target,"reachability":t.reachability.state,"reason":t.reachability.reason,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"nextTokenAt":if t.tokens<capacity(settings){Some(t.refilled_at+refill_seconds(settings))}else{None},"breaker":t.breaker,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error,"pending":pending,"recentBatches":batches}));
         }
         if !threads.iter().any(|v: &Value| v["threadId"] == b.thread_id) {
             let rule = state.rule(b);
@@ -332,7 +336,7 @@ pub(super) fn status_in(
             t["target"] == s.target && t["channel"] == serde_json::to_value(s.channel).unwrap()
         }) {
             let t = state.target(s.channel, &s.target, now, settings);
-            targets.push(json!({"channel":s.channel,"target":s.target,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"breaker":t.breaker,"pending":[],"recentBatches":t.batches,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error}));
+            targets.push(json!({"channel":s.channel,"target":s.target,"reachability":t.reachability.state,"reason":t.reachability.reason,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"breaker":t.breaker,"pending":[],"recentBatches":t.batches,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error}));
         }
     }
     let deliveries=bindings.iter().flat_map(|b|b.deliveries.iter().filter(|d|args["target"].as_str().is_none_or(|t|d.target==t || d.subscription==t)).map(|d|json!({"subscriptionId":d.subscription,"channel":d.channel,"target":d.target,"op":"task_status","eventId":d.event_id,"kind":event(b,d)["kind"],"threadId":event(b,d)["threadId"],"taskId":event(b,d)["taskId"],"turnId":b.turn_id,"state":d.status,"attempts":d.failures+u32::from(matches!(d.status.as_str(),"sending"|"delivered"|"digested"|"callback-accepted")),"nextAttemptAt":d.next_attempt_at,"error":d.error,"timing":d.timing}))).collect::<Vec<_>>();
@@ -341,7 +345,8 @@ pub(super) fn status_in(
     let compact = args["all"] != true && args["target"].is_null() && args["threadId"].is_null();
     if compact {
         targets.retain(|t| {
-            !t["recentBatches"].as_array().unwrap().is_empty()
+            t["reachability"] != "verified"
+                || !t["recentBatches"].as_array().unwrap().is_empty()
                 || !t["pending"].as_array().unwrap().is_empty()
                 || t["breaker"] == true
                 || !t["emptySince"].is_null()
@@ -386,12 +391,16 @@ pub(super) fn status_in(
         .collect::<Vec<_>>();
     ranking.sort_by_key(|v| std::cmp::Reverse(v["wakes"].as_u64().unwrap_or(0)));
     let unbound_pending=bindings.iter().flat_map(|b|b.deliveries.iter().filter(|d|d.target.is_empty() && d.status=="pending").map(|d|json!({"threadId":b.thread_id,"turnId":b.turn_id,"eventId":d.event_id,"kind":event(b,d)["kind"],"timing":d.timing}))).collect::<Vec<_>>();
+    state.save(dir)?;
     Ok(
         json!({"subscriptions":subscriptions.iter().map(|s|s.public(now)).collect::<Vec<_>>(),"deliveries":deliveries,"at":now,"summary":summary,"notificationsEnabled":settings["notificationsEnabled"]!=false,"unboundPending":unbound_pending,"recentWindowSeconds":3600,"targets":targets,"threads":threads,"mostWokenThreads":ranking}),
     )
 }
 pub(crate) async fn notify_control(args: &Value) -> Result<Value> {
     let ingress = scope()?;
+    if args["action"] == "verify" {
+        return super::reachability::verify(&ingress, args).await;
+    }
     let _guard = LOCK.lock().await;
     control_in(
         &directory(),

@@ -35,7 +35,11 @@ Call `act` with op `codex_create`, place `project`, `prompt`, and `notify` in ar
 
 ## Receive, review, continue
 
-After dispatching, Claude can end its turn. When Codex finishes, the notification wakes the same Claude Code cloud session to review the changes and continue.
+Check `notify_status({target})` after binding a new session. `unverified` means receipt has not been confirmed; `failed` means a delivery failed or a handshake expired. Subscription status and available tokens do not prove reachability.
+
+Call `notify_control({action:"verify",target})`. ARC sends a one-time code to that session; after receiving it, Claude calls `notification_ack({target,code})` within five minutes. Only `verified` with available delivery allows ending the turn to wait for a notification. The local Claude Code login must be able to reach that cloud session.
+
+If unverified, failed or unbound, use the receipt's wait arguments. If Claude can schedule a return to the same conversation, use `next.revisitAfterMinutes` from matching historical duration samples; no samples means no minute recommendation. Only short tasks use segmented waits within the turn. Each Claude wait is at most 170000 ms; after timeout follow `next`.
 
 ARC sends a fixed status message when a bound turn completes, fails, is interrupted, or needs approval/input. The message identifies the project, task, and turn. Claude then reads the actual output through `query codex_read` / `query codex_items`, and the changes through `query codex_changes` or `query git`.
 
