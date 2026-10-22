@@ -286,6 +286,7 @@ export default function ElasticPanel({
           className={`dialog elastic-panel ${wide ? "dialog-wide" : ""} ${unframed ? "unframed" : ""} ${headerless ? "headerless" : ""} ${dock ? "activity-panel" : ""}`}
           data-panel-dock={dock}
           data-recessed={recessed || undefined}
+          inert={recessed || undefined}
           data-panel-depth={baseDepth + depthOffset}
           aria-describedby={undefined}
           style={

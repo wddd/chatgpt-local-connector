@@ -106,7 +106,7 @@ export default function ToolPolicyField({
           options={options}
           disabled={disabled || !catalog}
         />
-        <div className="actions" style={{ visibility: catalog ? "visible" : "hidden" }} aria-hidden={!catalog}>
+        <div className="actions" style={{ visibility: catalog ? undefined : "hidden" }} aria-hidden={!catalog}>
           <span className="muted small">
             {t("toolSelectionCount", {
               groups: new Set(exposed.map((tool) => tool.group)).size,

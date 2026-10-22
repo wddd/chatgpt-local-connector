@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { Window } from "happy-dom";
 import { createServer } from "vite";
 import { act, createElement as h, createRef, useRef } from "react";
@@ -234,6 +235,10 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
 
 test("control source dock preserves editing, guided creation, field navigation and cross-side dispatch paths", async () => {
   const window = new Window({ url: "http://localhost" });
+  const styles = window.document.createElement("style");
+  styles.textContent = readFileSync(new URL("../ui/tokens.css", import.meta.url), "utf8")
+    + readFileSync(new URL("../ui/product.css", import.meta.url), "utf8");
+  window.document.head.append(styles);
   const frames = new Map<number, FrameRequestCallback>(); let sequence = 0;
   const media = { matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} };
   class Observer { observe() {} unobserve() {} disconnect() {} }
@@ -317,8 +322,20 @@ test("control source dock preserves editing, guided creation, field navigation a
     const centered = document.querySelector('.elastic-panel:not([data-panel-dock])');
     assert.equal(centered?.getAttribute("data-panel-depth"), "1");
     assert.ok(document.querySelector('.source-choices'));
+    const stats = shell.querySelector<HTMLElement>('.actions[aria-hidden="false"]')!;
+    assert.ok(stats, "loaded tool statistics are present while the dock is recessed");
+    assert.equal(stats.style.visibility, "", "loaded statistics inherit the enclosing panel visibility");
+    assert.equal(shell.getAttribute("data-recessed"), "true");
+    assert.equal(shell.hasAttribute("inert"), true);
+    assert.equal(getComputedStyle(shell).opacity, "0", "the entire recessed surface is hidden");
     await escape();
     assert.equal(document.querySelector(".elastic-panel"), shell);
+    assert.equal(shell.hasAttribute("data-recessed"), false);
+    assert.equal(shell.hasAttribute("inert"), false);
+    const footer = shell.querySelector<HTMLElement>('.side-panel-layer > .dialog-footer')!;
+    assert.equal(footer.previousElementSibling?.className, "side-panel-scroll");
+    assert.equal(getComputedStyle(footer).borderTopWidth, "1px");
+    assert.equal(getComputedStyle(footer).flexShrink, "0");
     await click(button(t("sourcePanel.edit")));
     assert.equal(document.querySelector(".elastic-panel"), shell);
     assert.ok(document.querySelector(".ingress-edit-layer form"));
@@ -343,6 +360,14 @@ test("control source dock preserves editing, guided creation, field navigation a
     assert.equal(ingressPanel.get(), undefined); assert.equal(agentPanel.get().session.id, "thread");
     assert.equal(document.querySelectorAll('[data-panel-dock]').length, 1);
     assert.equal(document.querySelector('[data-panel-dock]')?.getAttribute('data-panel-dock'), 'right');
+    const agentShell = document.querySelector('[data-panel-dock="right"]')!;
+    await click(mount.querySelector('.hub-agent'));
+    assert.equal(agentShell.getAttribute("data-recessed"), "true");
+    assert.equal(agentShell.hasAttribute("inert"), true);
+    assert.equal(getComputedStyle(agentShell).opacity, "0", "Agent dock is fully hidden below central management too");
+    await escape();
+    assert.equal(agentShell.hasAttribute("data-recessed"), false);
+    assert.equal(agentShell.hasAttribute("inert"), false);
     await click(first()); assert.equal(agentPanel.get(), undefined); assert.ok(ingressPanel.get());
     await click(button(t("sourcePanel.allRecords")));
     assert.equal(navigation.get().page, "logs"); assert.equal(navigation.get().recordsSource, "one");
