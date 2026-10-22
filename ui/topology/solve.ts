@@ -31,10 +31,10 @@ export const PARAMETERS = [
   { key: "pitch", group: "rows", label: { en: "Task pitch", "zh-CN": "任务槽高" }, min: 52, max: 80, step: 1, default: 64 },
   { key: "rowGap", group: "rows", label: { en: "Row gap", "zh-CN": "行间距" }, min: 0, max: 30, step: 1, default: 12 },
   { key: "sourceRow", group: "rows", label: { en: "Source row height", "zh-CN": "控制源行高" }, min: 56, max: 96, step: 1, default: 78 },
-  { key: "idleRow", group: "rows", label: { en: "Idle Agent row height", "zh-CN": "Agent 空闲行高" }, min: 40, max: 84, step: 1, default: 58 },
+  { key: "idleRow", group: "rows", label: { en: "Idle Agent row height", "zh-CN": "Agent 空闲行高" }, min: 40, max: 96, step: 1, default: 78 },
   { key: "idleIndent", group: "rows", label: { en: "Idle indentation", "zh-CN": "空闲左缩进" }, min: 0, max: 60, step: 1, default: 22 },
   { key: "activeScale", group: "rows", label: { en: "Active scale", "zh-CN": "活跃缩放" }, min: 1, max: 1.4, step: 0.02, default: 1.1 },
-  { key: "idleScale", group: "rows", label: { en: "Idle scale", "zh-CN": "空闲缩放" }, min: 0.6, max: 1, step: 0.02, default: 0.9 },
+  { key: "idleScale", group: "rows", label: { en: "Idle scale", "zh-CN": "空闲缩放" }, min: 0.6, max: 1, step: 0.02, default: 1 },
   { key: "minIdleScale", group: "rows", label: { en: "Minimum idle scale", "zh-CN": "空闲缩放下限" }, min: 0.6, max: 0.9, step: 0.02, default: 0.6 },
   { key: "minIdleRow", group: "rows", label: { en: "Minimum idle row height", "zh-CN": "压缩下限" }, min: 34, max: 60, step: 1, default: 44 },
   { key: "stiffness", group: "motion", label: { en: "Stiffness", "zh-CN": "刚度" }, min: 60, max: 600, step: 5, default: 210 },
@@ -99,11 +99,12 @@ function solveWing(list: readonly Entity[], side: Side, hub: Point, Re: number, 
   const compression = Math.max(0, Math.min(1, rowCompression, columnCompression));
   const minIdleScale = Math.min(p.minIdleScale, p.idleScale);
   const idleScale = minIdleScale + (p.idleScale - minIdleScale) * compression;
+  const idleIndent = p.idleIndent * (1 - compression);
   const nodes: NodeGeometry[] = rows.map((r) => {
     const active = r.n > 0, idle = opt.idleStyle && !active;
     const ny = y + r.h / 2; y += r.h + p.rowGap;
     const nodeDrag = drag && drag.kind === 'node' && drag.id === r.e.id;
-    return { id: r.e.id, port: 0, arc: null, tasks: r.e.tasks, active, x: nodeDrag ? drag.x : colX - side * (idle ? p.idleIndent : 0),
+    return { id: r.e.id, port: 0, arc: null, tasks: r.e.tasks, active, x: nodeDrag ? drag.x : colX - side * (idle ? idleIndent : 0),
       y: nodeDrag ? drag.y : ny, scale: active ? p.activeScale : idle ? idleScale : 1, opacity: idle ? 0.62 : 1, dim: idle, side };
   });
   // Earmuff ports follow the direction from the hub to each node.
@@ -128,7 +129,7 @@ function solveWing(list: readonly Entity[], side: Side, hub: Point, Re: number, 
   });
   // Utilities occupy the fixed tail, independent of the pointer's displacement.
   const last = rows.at(-1);
-  const utility = { x: colX - side * (opt.idleStyle && last?.n === 0 ? p.idleIndent : 0),
+  const utility = { x: colX - side * (opt.idleStyle && last?.n === 0 ? idleIndent : 0),
     y: last ? hub.y + H / 2 + Math.max(16, 64 - last.h / 2) + 16 : hub.y };
   return { side, H, nodes, ear: { lo, hi }, utility, tasks };
 }

@@ -559,7 +559,6 @@
   "timeline.plan": "计划",
   "timeline.exitCode": "退出码：{code}",
   "timeline.truncated": "输出已截断",
-  "timeline.partial": "部分历史记录不可用，此时间线可能不完整。",
   "timeline.loading": "正在加载时间线…",
   "timeline.empty": "暂无时间线条目",
   "timeline.status.pending": "待处理",

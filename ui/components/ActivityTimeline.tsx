@@ -88,7 +88,8 @@ export default function ActivityTimeline({ agent, session, onClose, onPanelFrame
   const following = useRef(true), initial = useRef(true), previousRunning = useRef(true), previousTop = useRef(0);
   const live = snapshot?.agents[agent]?.sessions.find(s => s.id === session.id);
   const external = session.source === "transcript";
-  const running = timeline?.status ? ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline.status) : !!live;
+  // Completed history entries do not override a session in the live snapshot.
+  const running = !!live || !external && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? "");
   const followAllowed = useRef(true);
   followAllowed.current = running;
   useInterval(() => setNow(Date.now()), running ? 1000 : null);
@@ -157,7 +158,6 @@ export default function ActivityTimeline({ agent, session, onClose, onPanelFrame
       setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));
     }} /></Tooltip>}>
     <div className="task-timeline">
-      {timeline?.coverage.state === "partial" && <p className="timeline-partial" role="status">{t("timeline.partial")}</p>}
       {((!external && error) || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => { if (event.deltaY < 0) following.current = false; }}

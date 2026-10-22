@@ -559,7 +559,6 @@
   "timeline.plan": "Plan",
   "timeline.exitCode": "Exit code: {code}",
   "timeline.truncated": "Output truncated",
-  "timeline.partial": "Some history is unavailable. This timeline may be incomplete.",
   "timeline.loading": "Loading timeline…",
   "timeline.empty": "No recorded entries yet",
   "timeline.status.pending": "Pending",

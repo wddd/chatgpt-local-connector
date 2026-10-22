@@ -1024,7 +1024,6 @@ summary.timeline-summary { cursor: pointer; }
 .timeline-interaction[data-pending] > .icon, .timeline-interaction[data-pending] .timeline-interaction-state { color: var(--warning); }
 .timeline-interaction[data-resolved] > .icon { color: var(--success); }
 .timeline-question { display: grid; gap: 8px; }
-.timeline-partial { color: var(--warning); font-size: var(--text-xs); margin: 0; }
 .timeline-error { color: var(--danger); display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; }
 .timeline-error > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
