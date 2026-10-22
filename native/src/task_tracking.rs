@@ -1013,6 +1013,22 @@ impl Timeline {
         row["turnStartedAt"] = json!(self.turn_started_at);
         row["fallbackHeadline"] = json!(fallback);
         row["recentContent"] = json!(recent.iter().rev().collect::<Vec<_>>());
+        // Entries already merge chunks and tool updates by stable id. Preserve
+        // entry order (including native history backfill), not update cursors.
+        let steps: Vec<_> = self
+            .entries
+            .iter()
+            .rev()
+            .map(|entry| string(entry, "type"))
+            .filter(|kind| {
+                matches!(
+                    *kind,
+                    "thinking" | "command" | "file" | "tool" | "text" | "interaction"
+                )
+            })
+            .take(5)
+            .collect();
+        row["recentSteps"] = json!(steps.into_iter().rev().collect::<Vec<_>>());
         if let Some(item) = latest {
             let kind = string(item, "type");
             row["phase"] = json!(if matches!(
@@ -1128,6 +1144,38 @@ mod tests {
     use super::*;
     const AT: &str = "2026-01-01T00:00:00.000Z";
     const LATER: &str = "2026-01-01T00:00:01.000Z";
+    #[test]
+    fn recent_steps_merge_chunks_and_updates_and_keep_last_five_in_order() {
+        let mut timeline = Timeline::default();
+        let snapshot = |t: &Timeline| t.session(&json!({"id":"example"}), "arc-task", None);
+        assert_eq!(snapshot(&timeline)["recentSteps"], json!([]));
+        timeline.chunk("thinking", "First", AT);
+        timeline.chunk("thinking", " second", AT);
+        assert_eq!(snapshot(&timeline)["recentSteps"], json!(["thinking"]));
+        timeline.end_chunk(AT);
+        for (id, kind) in ["command", "file", "tool", "text", "interaction"]
+            .iter()
+            .enumerate()
+        {
+            timeline.put(
+                json!({"id":id.to_string(),"type":kind,"status":"running"}),
+                AT,
+            );
+        }
+        timeline.put(json!({"id":"0","type":"command","status":"completed"}), AT);
+        timeline.put(json!({"id":"user","type":"user","text":"Prompt"}), AT);
+        timeline.put(json!({"id":"plan","type":"plan"}), AT);
+        timeline.put(json!({"id":"error","type":"error"}), AT);
+        assert_eq!(
+            snapshot(&timeline)["recentSteps"],
+            json!(["command", "file", "tool", "text", "interaction"])
+        );
+        timeline.put(json!({"id":"next","type":"command"}), AT);
+        assert_eq!(
+            snapshot(&timeline)["recentSteps"],
+            json!(["file", "tool", "text", "interaction", "command"])
+        );
+    }
     #[test]
     fn empty_reasoning_keeps_phase_and_uses_recent_readable_content() {
         let mut t = Timeline::default();

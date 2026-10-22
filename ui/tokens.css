@@ -42,6 +42,11 @@
   --brand-orange: #d97757;
   --brand-agent-start: #9c8cff;
   --brand-agent-end: #3f63ff;
+  --phase-thinking: #6950b8;
+  --phase-command: #285fac;
+  --phase-file: #176b63;
+  --phase-tool: #595960;
+  --phase-text: #3c52b8;
 
   --topology-error: #d7263d;
   --success: #21714a;
@@ -72,6 +77,11 @@
   --brand-orange: #e8865e;
   --brand-agent-start: #b7aaff;
   --brand-agent-end: #5c7cff;
+  --phase-thinking: #b7aaff;
+  --phase-command: #8dbbff;
+  --phase-file: #75cbbb;
+  --phase-tool: #b8b8c0;
+  --phase-text: #9aaeff;
 
   --topology-error: #ff4967;
   --success: #8ad8ad;

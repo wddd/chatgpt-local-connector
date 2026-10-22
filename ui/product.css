@@ -917,8 +917,8 @@
 .topology-wires .secondary[data-state="completed"] { --task-color: var(--success); }
 .topology-wires .secondary[data-state="summary"] { --task-color: var(--border-strong); }
 .topology-wires .task-body { fill: var(--task-color); opacity: 0.62; }
-.topology-wires .secondary[data-state="completed"] .task-body { opacity: 0.55; }
-.topology-wires .activity-flow { fill: none; stroke: var(--task-color); stroke-width: 1.5; stroke-dasharray: 2 10; animation: activity-flow calc(900ms * var(--topology-time-scale, 1)) linear infinite; }
+.topology-wires .secondary[data-state="completed"] .task-body { opacity: 0.25; transition: opacity 300ms; }
+.topology-wires .activity-flow { fill: none; stroke: color-mix(in srgb, var(--phase-text) 45%, var(--surface)); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 1 14; animation: activity-flow calc(1s * var(--topology-time-scale, 1)) linear infinite; }
 .topology-wires .external-wire { fill: none; stroke: var(--text-tertiary); stroke-width: 1.5; stroke-dasharray: 3 5; }
 @keyframes graph-connecting { to { stroke-dashoffset: -11; } }
 .activity-slot { position: absolute; left: 0; top: 0; width: 232px; height: 54px; z-index: 3; }
@@ -930,16 +930,16 @@
 .activity-focused .topology-wires, .activity-focused .topology-node[data-highlighted] { z-index: 101; }
 .activity-focused .topology-node[data-highlighted] { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .topology-wires .connecting-wire, .topology-wires .activity-flow { animation: none; } }
-.activity-bubble, .activity-task-row { display: block; position: relative; box-sizing: border-box; width: 232px; height: 54px; pointer-events: auto; border: 0; border-radius: 13px; background: var(--surface); color: var(--text); padding: 8px 12px; min-width: 0; text-align: left; font-family: ui-rounded, "SF Pro Rounded", var(--font-ui); font-weight: 400; box-shadow: inset 0 0 0 1px var(--border), var(--shadow); }
+.activity-bubble, .activity-task-row { display: flex; align-items: center; gap: 8px; position: relative; box-sizing: border-box; width: 232px; height: 54px; pointer-events: auto; border: 0; border-radius: 13px; background: var(--surface); color: var(--text); padding: 8px 12px; min-width: 0; text-align: left; font-family: ui-rounded, "SF Pro Rounded", var(--font-ui); font-weight: 400; box-shadow: inset 0 0 0 1px var(--border), var(--shadow); }
 .activity-bubble:hover, .activity-task-row:hover { background: var(--surface-subtle); }
-.activity-bubble.needs-attention { box-shadow: inset 0 0 0 1.5px var(--warning), var(--shadow); }
+.activity-bubble.needs-attention, .activity-task-row.needs-attention { box-shadow: inset 0 0 0 1.5px var(--warning), var(--shadow); }
 .activity-bubble[aria-disabled="true"], .activity-task-row[aria-disabled="true"] { cursor: default; }
 .activity-phase { display: flex; align-items: center; gap: 4px; height: 17px; line-height: 17px; font-size: 12px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
-.activity-phase > span { overflow: hidden; text-overflow: ellipsis; }
-.activity-phase > .icon { flex: none; width: 14px; height: 14px; }
-.activity-phase time { margin-left: auto; flex: none; color: var(--text-tertiary); font-size: 11.5px; font-weight: 400; font-variant-numeric: tabular-nums; }
-.needs-attention .activity-phase > .icon { color: var(--warning); }
-.completed .activity-phase > .icon { color: var(--success); }
+.activity-copy { display: block; flex: 1; min-width: 0; }
+.activity-bubble.completed, .activity-task-row.completed { opacity: 0.72; }
+.activity-headline.mono { font-family: var(--font-mono); font-size: 11.5px; }
+.activity-phase time .icon { width: 12px; height: 12px; }
+.activity-phase time { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; font-family: var(--font-mono); flex: none; color: var(--text-tertiary); font-size: 11.5px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .activity-phase > .activity-unread { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--accent); }
 .activity-headline { display: grid; height: 19px; line-height: 19px; font-size: 13px; color: var(--text); }
 .activity-headline > span { grid-area: 1 / 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -948,13 +948,6 @@
 .activity-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: var(--text-xs); margin-top: 12px; }
 .activity-note { display: block; font-size: var(--text-xs); line-height: 22px; color: var(--text-secondary); }
 .activity-error { color: var(--danger); }
-.activity-thinking { flex: none; display: flex; gap: 2px; align-items: center; width: 14px; height: 14px; }
-.activity-thinking i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: activity-breathe 1.2s ease-in-out infinite; }
-.activity-thinking i:nth-child(2) { animation-delay: 150ms; }
-.activity-thinking i:nth-child(3) { animation-delay: 300ms; }
-.activity-icon-command { animation: status-spin 1.4s linear infinite; }
-.activity-icon-file { animation: activity-pencil 900ms ease-in-out infinite; }
-.activity-cursor { width: 2px; height: 12px; margin-inline: 6px; background: currentColor; animation: activity-breathe 900ms steps(2) infinite; }
 .activity-edge-fade { position: fixed; inset: 0 0 0 auto; width: 32px; background: linear-gradient(to right, transparent, var(--canvas)); pointer-events: none; z-index: 4; }
 .activity-focused { overflow-y: hidden !important; }
 .activity-backdrop { background: var(--overlay); animation: activity-scrim 220ms ease-out; }
@@ -984,12 +977,11 @@
 .activity-task-row:last-child { border-bottom: 0; }
 .activity-once { flex: 1; color: var(--text-secondary); }
 .activity-actions .button { flex: none; }
-@keyframes activity-flow { to { stroke-dashoffset: -12; } }
+@keyframes activity-flow { to { stroke-dashoffset: 15; } }
 @keyframes activity-breathe { 50% { opacity: 0.35; } }
-@keyframes activity-pencil { 50% { transform: translateY(-2px); } }
 @keyframes activity-scrim { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .activity-flow, .activity-thinking i, .activity-cursor, .activity-icon-command, .activity-icon-file, .activity-status::before, .activity-backdrop { animation: none !important; }
+  .activity-flow, .activity-status::before, .activity-backdrop { animation: none !important; }
 }
 
 /* The timeline owns its scroll viewport; snapshots never resize the outer shell. */
@@ -1083,3 +1075,17 @@ summary.timeline-summary { cursor: pointer; }
 .topology-guides .guide-left { stroke: var(--topology-source); }
 .topology-guides .guide-right { stroke: var(--topology-agent); }
 .topology-guides text { stroke: var(--canvas); stroke-width: 3px; paint-order: stroke; fill: var(--text-secondary); font: 11px var(--font-mono); }
+
+/* A fixed outer halo animates on the compositor without resizing the bubble. */
+.activity-bubble.needs-attention::after, .activity-task-row.needs-attention::after {
+  content: ""; position: absolute; inset: -6px; border: 6px solid color-mix(in srgb, var(--warning) 16%, transparent);
+  border-radius: 19px; pointer-events: none; animation: activity-attention 2.4s ease-in-out infinite;
+}
+.activity-bubble[data-external]::after, .activity-task-row[data-external]::after { animation: none; opacity: 0; }
+@keyframes activity-attention {
+  0%, 100% { transform: scale(0.95, 0.82); opacity: 0; }
+  50% { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .activity-bubble::after, .activity-task-row::after { animation: none !important; opacity: 0; }
+}

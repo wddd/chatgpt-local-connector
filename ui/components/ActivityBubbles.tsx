@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Check, LoaderCircle, Pencil, Wrench, CirclePause, ShieldAlert, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { t } from "../i18n";
-import type { AgentPhase } from "../types";
+import { PhaseTile, PhaseLabel, StepTrail } from "./activity";
 import { activityTimeline, agentActivity } from "../state/activity";
 import { activityHeadline, type TrackedActivity } from "../state/activityModel";
 import { useInterval } from "../state/hooks";
@@ -24,29 +24,25 @@ function Headline({ session }: { session: TrackedActivity }) {
   const [display, setDisplay] = useState(session);
   useInterval(() => setDisplay(latest.current), 1000);
   const headline = activityHeadline(display, t("timeline.title"));
-  return <span className={`activity-headline ${!headline.fallback && display.phase === "command" ? "mono" : ""} ${headline.fallback ? "activity-headline-fallback" : ""}`}>
+  return <span className={`activity-headline ${!headline.fallback && (display.phase === "command" || !!headline.path) ? "mono" : ""} ${headline.fallback ? "activity-headline-fallback" : ""}`}>
     <AnimatePresence initial={false}>
       <motion.span key={`${display.phase}:${headline.text}`} initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 5 }} animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: reduced ? 0 : -5 }} transition={{ duration: reduced ? 0 : 0.22 }}>
+        exit={{ opacity: 0, y: reduced ? 0 : -5 }} transition={{ duration: reduced ? 0 : 0.16 }}>
         {headline.path ? <FilePath path={headline.path} project={display.project} /> : headline.text}
       </motion.span>
     </AnimatePresence>
   </span>;
 }
-function PhaseIcon({ phase, completed }: { phase: AgentPhase; completed: boolean }) {
-  if (completed) return <Icon icon={Check} />;
-  if (phase === "thinking") return <span className="activity-thinking" aria-hidden="true"><i /><i /><i /></span>;
-  if (phase === "text") return <span className="activity-cursor" aria-hidden="true" />;
-  return <Icon className={`activity-icon-${phase}`} icon={{ command: LoaderCircle, file: Pencil, tool: Wrench, interaction: ShieldAlert, idle: CirclePause }[phase]} />;
-}
 export function ActivityBubble({ agent, session, now, onOpen, onMove, listRow = false }: { agent: string; session: TrackedActivity; now: number; onOpen?: () => void; onMove?: (by: number) => void; listRow?: boolean }) {
   const completed = session.endedAt !== undefined, external = session.source === "transcript";
+  const running = !completed && !external && !session.interaction && session.phase !== "idle";
   const unread = completed && session.readAt === undefined;
   const phase = session.interaction ? "interaction" : session.phase;
   const phaseLabel = completed ? "activity.completed" : session.interaction?.kind === "question" ? "activity.question" : `activity.phase.${phase}`;
   const hint = t("timeline.open"), headline = activityHeadline(session, t("timeline.title"));
   return <Tooltip text={`${hint} · ${headline.fullText}`}>
     <button type="button" className={`${listRow ? "activity-task-row" : "activity-bubble"} ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
+      data-external={external || undefined}
       data-timeline-anchor
       data-unread={unread || undefined}
       aria-keyshortcuts={onMove ? "ArrowUp ArrowDown" : undefined} aria-description={onMove ? t("reorderNodeHint") : undefined}
@@ -57,10 +53,16 @@ export function ActivityBubble({ agent, session, now, onOpen, onMove, listRow = 
       aria-label={`${session.title || t(phaseLabel)}${unread ? ` · ${t("activity.unread")}` : ""} · ${hint}`} onClick={() => {
         onOpen?.(); activityTimeline.set({ agent, session });
       }}>
-      <span className="activity-phase"><PhaseIcon phase={phase} completed={completed} /><span>{t(phaseLabel)}</span>
-        {unread && <span className="activity-unread" role="img" aria-label={t("activity.unread")} />}
-        {external && <Icon icon={ArrowUpRight} />}<time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}</time></span>
-      <Headline session={session} />
+      <PhaseTile phase={phase} running={running} completed={completed} animated={!external} />
+      <span className="activity-copy">
+        <span className="activity-phase">
+          <PhaseLabel phase={phase} running={running} completed={completed}>{t(phaseLabel)}</PhaseLabel>
+          <StepTrail steps={session.recentSteps} running={running} />
+          {unread && <span className="activity-unread" role="img" aria-label={t("activity.unread")} />}
+          <time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}{external && <Icon icon={ArrowUpRight} />}</time>
+        </span>
+        <Headline session={session} />
+      </span>
     </button>
   </Tooltip>;
 }

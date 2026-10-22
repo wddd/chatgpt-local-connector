@@ -51,6 +51,7 @@ export interface AgentActivitySession {
   headline: string;
   fallbackHeadline?: string;
   recentContent?: string[];
+  recentSteps?: Exclude<AgentPhase, "idle">[];
   startedAt?: string | null;
   turnStartedAt?: string | null;
   phaseSince: string | null;

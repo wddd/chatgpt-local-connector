@@ -1,3 +1,4 @@
+import { PhaseTile, PhaseLabel } from "./activity";
 import { activityTimeline, useActivityTracking } from "../state/activity";
 import { orderActivity, visibleActivity } from "../state/activityModel";
 import { taskOrder, reorderTasks } from "../state/taskOrder";
@@ -218,7 +219,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         })),
         ...(shown.hidden ? [{ id: JSON.stringify([agent.agent, null]), state: "summary" as const, selected: false,
           content: <button type="button" className="activity-bubble activity-summary" onClick={() => setListAgent(agent.agent)}>
-            <span className="activity-phase">{t("activity.more", { count: shown.hidden })}</span><span className="activity-headline">{t("activity.viewAll")}</span>
+            <PhaseTile phase="tool" animated={false} /><span className="activity-copy"><span className="activity-phase"><PhaseLabel phase="tool">{t("activity.more", { count: shown.hidden })}</PhaseLabel></span><span className="activity-headline">{t("activity.viewAll")}</span></span>
           </button>,
         }] : []),
       ],

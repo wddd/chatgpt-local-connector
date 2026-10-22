@@ -33,7 +33,7 @@ export class TopologyPainter {
     const gradient = element("linearGradient", defs, { id: `${this.prefix}-${++this.sequence}`, gradientUnits: "userSpaceOnUse" });
     element("stop", gradient, { offset: "0", "stop-opacity": "1" });
     const solid = element("stop", gradient, { "stop-opacity": "1" }), fade = element("stop", gradient), end = element("stop", gradient, { offset: "1" });
-    const flow = element("path", group), outline = element("path", group), gap = element("path", group), arc = element("path", group);
+    const outline = element("path", group), flow = element("path", group), gap = element("path", group), arc = element("path", group);
     branch = { group, outline, flow, gap, arc, gradient, solid, fade, end };
     this.groups.set(key, branch); return branch;
   }
