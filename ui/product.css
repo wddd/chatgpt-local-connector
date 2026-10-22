@@ -927,8 +927,6 @@
 .topology-scene [data-dragging] { z-index: 6; }
 .topology-scene [data-dragging] button { cursor: grabbing; }
 .activity-slot[inert] button { pointer-events: none; }
-.activity-focused .topology-wires, .activity-focused .topology-node[data-highlighted] { z-index: 101; }
-.activity-focused .topology-node[data-highlighted] { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .topology-wires .connecting-wire, .topology-wires .activity-flow { animation: none; } }
 .activity-bubble, .activity-task-row { display: flex; align-items: center; gap: 8px; position: relative; box-sizing: border-box; width: 232px; height: 54px; pointer-events: auto; border: 0; border-radius: 13px; background: var(--surface); color: var(--text); padding: 8px 12px; min-width: 0; text-align: left; font-family: ui-rounded, "SF Pro Rounded", var(--font-ui); font-weight: 400; box-shadow: inset 0 0 0 1px var(--border), var(--shadow); }
 .activity-bubble:hover, .activity-task-row:hover { background: var(--surface-subtle); }
@@ -949,8 +947,6 @@
 .activity-note { display: block; font-size: var(--text-xs); line-height: 22px; color: var(--text-secondary); }
 .activity-error { color: var(--danger); }
 .activity-edge-fade { position: fixed; inset: 0 0 0 auto; width: 32px; background: linear-gradient(to right, transparent, var(--canvas)); pointer-events: none; z-index: 4; }
-.activity-focused { overflow-y: hidden !important; }
-.activity-backdrop { background: var(--overlay); animation: activity-scrim 220ms ease-out; }
 .dialog.activity-panel { --panel-layout-width: min(400px, calc(100vw - 32px)); height: calc(100dvh - 32px); max-height: calc(100dvh - 32px); border-radius: 20px; }
 .activity-panel .elastic-panel-content { height: calc(100dvh - 34px); max-height: calc(100dvh - 34px); }
 .activity-panel .dialog-header { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; padding: 16px 14px; gap: 10px; cursor: default; }
@@ -979,9 +975,8 @@
 .activity-actions .button { flex: none; }
 @keyframes activity-flow { to { stroke-dashoffset: 15; } }
 @keyframes activity-breathe { 50% { opacity: 0.35; } }
-@keyframes activity-scrim { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .activity-flow, .activity-status::before, .activity-backdrop { animation: none !important; }
+  .activity-flow, .activity-status::before { animation: none !important; }
 }
 
 /* The timeline owns its scroll viewport; snapshots never resize the outer shell. */
@@ -1089,3 +1084,22 @@ summary.timeline-summary { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .activity-bubble::after, .activity-task-row::after { animation: none !important; opacity: 0; }
 }
+
+/* A dock keeps the scene interactive; only its contents change between levels. */
+.dialog.activity-panel > .elastic-panel-content > .dialog-body { padding: 0; overflow: hidden; display: flex; }
+.agent-panel-view, .agent-panel-layer { width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.agent-panel-layer > .dialog-header { flex: none; }
+.agent-view-scroll { min-height: 0; overflow: auto; padding: 0 16px 16px; display: flex; flex-direction: column; gap: 16px; }
+.agent-view-scroll .quota-bubble { width: 100%; min-width: 0; box-sizing: border-box; }
+.agent-panel-layer > .task-timeline { flex: 1; height: auto; padding: 0 16px 16px; }
+.agent-panel-layer > .dialog-footer { max-height: 50%; }
+.agent-panel-layer .agent-quota-icon { --agent-quota-size: 32px; width: 32px; height: 32px; }
+.activity-task-row { gap: 8px; padding: 10px 0; }
+.activity-task-row.needs-attention { border-radius: 13px; padding: 10px 8px; margin-block: 3px; }
+.activity-row-title { display: flex; align-items: center; gap: 8px; min-width: 0; line-height: 20px; }
+.activity-row-title strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; font-size: 13px; }
+.activity-row-title time { font: 11.5px var(--font-mono); color: var(--text-tertiary); flex: none; }
+.activity-pending-tag { color: var(--warning); background: var(--warning-soft); border-radius: var(--radius-pill); padding: 0 5px; font-size: 10px; margin-left: auto; }
+.agent-task-count { position: absolute; top: -6px; right: -8px; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box; border-radius: var(--radius-pill); background: var(--accent); color: var(--surface); font: 10px/18px var(--font-ui); text-align: center; }
+.agent-task-count[data-attention] { background: var(--warning); }
+.agent-panel-open .topology-node[data-highlighted]::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; box-shadow: 0 0 0 2px var(--accent), 0 0 18px color-mix(in srgb, var(--accent) 20%, transparent); pointer-events: none; }

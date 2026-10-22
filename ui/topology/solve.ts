@@ -47,14 +47,14 @@ export const DEFAULTS = Object.fromEntries(PARAMETERS.map(p => [p.key, p.default
 export type Side = -1 | 1;
 export interface Task { id: string }
 export interface Entity { id: string; tasks: readonly Task[] }
-export interface Scene { vw: number; vh: number; left: readonly Entity[]; right: readonly Entity[] }
+export interface Scene { vw: number; vh: number; left: readonly Entity[]; right: readonly Entity[]; panel?: { side: Side; edge: number; selected: string; narrow?: boolean } }
 export interface Drag extends Point { kind: "node" | "task"; side: Side; id: string }
 export interface Point { x: number; y: number }
 export interface NodeGeometry extends Point {
   id: string; tasks: readonly Task[]; active: boolean; size: number; scale: number; opacity: number; dim: boolean; side: Side;
   port: number; arc: { R: number; lo: number; hi: number } | null;
 }
-export interface TaskGeometry extends Point { id: string; parent: string; side: Side; port: number }
+export interface TaskGeometry extends Point { id: string; parent: string; side: Side; port: number; hidden?: boolean }
 interface WingOptions { idleStyle: boolean; rowScale: number; squeeze: number }
 interface Row { e: Entity; n: number; h: number }
 export interface Wing { side: Side; H: number; nodes: NodeGeometry[]; ear: { lo: number; hi: number }; tasks: TaskGeometry[] }
@@ -165,13 +165,25 @@ export function solve(sc: Scene, p: Params = DEFAULTS, drag: Drag | null = null)
   const at = (x: number) => ({ x, y: sceneH / 2 });
   const dragOf = (side: Side) => drag && drag.side === side ? drag : null;
   // Horizontal: squeeze column distances only when the whole scene cannot fit.
+  const panelWing = (wing: Wing) => {
+    if (sc.panel?.side !== wing.side) return wing;
+    for (const n of wing.nodes) {
+      if (n.id === sc.panel.selected) { n.scale = Math.max(n.scale, 1.18); n.opacity = 1; }
+      n.arc = null;
+    }
+    for (const t of wing.tasks) { t.hidden = true; t.x -= wing.side * 12; }
+    return wing;
+  };
   const measure = () => {
     const L = solveWing(sc.left, -1, at(0), Re, p, optL, null);
     const R = solveWing(sc.right, 1, at(0), Re, p, optR, null);
-    return { eL: extentOf(L, 0, Re), eR: extentOf(R, 0, Re) };
+    const extent = (wing: Wing) => extentOf(sc.panel?.side === wing.side ? { ...panelWing(wing), tasks: [] } : wing, 0, Re);
+    return { eL: extent(L), eR: extent(R) };
   };
   let e = measure();
-  const avail = vw - 2 * m;
+  const leftEdge = sc.panel?.side === -1 ? sc.panel.edge + 40 : m;
+  const rightEdge = sc.panel?.side === 1 ? sc.panel.edge - 40 : vw - m;
+  const avail = rightEdge - leftEdge;
   for (let i = 0; i < 24 && e.eL.full + e.eR.full > avail; i++) {
     if (optL.squeeze > p.squeezeMin) optL.squeeze = Math.max(p.squeezeMin, optL.squeeze - 0.02);
     else if (optR.squeeze > p.squeezeMin) optR.squeeze = Math.max(p.squeezeMin, optR.squeeze - 0.02);
@@ -181,13 +193,19 @@ export function solve(sc: Scene, p: Params = DEFAULTS, drag: Drag | null = null)
   // Balance: centre the optically weighted bounds, then let the window edges
   // push the hub — a long right wing squeezes the ring toward free left space.
   const eff = (x: { core: number; full: number }) => x.core + p.bubbleWeight * (x.full - x.core);
-  let hx = vw / 2 + (eff(e.eL) - eff(e.eR)) / 2;
-  const minX = m + e.eL.full, maxX = vw - m - e.eR.full;
+  let hx = (leftEdge + rightEdge) / 2 + (eff(e.eL) - eff(e.eR)) / 2;
+  const minX = leftEdge + e.eL.full, maxX = rightEdge - e.eR.full;
   if (minX <= maxX) hx = Math.max(minX, Math.min(maxX, hx));
-  else hx = minX; // cannot fit: keep the left wing whole, truncate the right edge
+  else hx = sc.panel?.side === 1 ? maxX : minX; // A dock prioritizes its selected node; the far wing may clip.
+  if (sc.panel?.narrow) {
+    const side = sc.panel.side;
+    const wing = panelWing(solveWing(side === 1 ? sc.right : sc.left, side, at(0), Re, p, side === 1 ? optR : optL, null));
+    const selected = wing.nodes.find(n => n.id === sc.panel!.selected);
+    if (selected) hx = sc.panel.edge + side * (selected.size * selected.scale / 2 - 18) - selected.x;
+  }
   const hub = { x: hx, y: sceneH / 2, Re };
-  const L = solveWing(sc.left, -1, hub, Re, p, optL, dragOf(-1));
-  const R = solveWing(sc.right, 1, hub, Re, p, optR, dragOf(1));
+  const L = panelWing(solveWing(sc.left, -1, hub, Re, p, optL, dragOf(-1)));
+  const R = panelWing(solveWing(sc.right, 1, hub, Re, p, optR, dragOf(1)));
   return { vw, vh, sceneH, hub, wings: [L, R], balance: [
     { ...e.eL, effective: eff(e.eL), squeeze: optL.squeeze },
     { ...e.eR, effective: eff(e.eR), squeeze: optR.squeeze },

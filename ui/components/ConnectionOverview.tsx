@@ -1,5 +1,5 @@
 import { PhaseTile, PhaseLabel } from "./activity";
-import { activityTimeline, useActivityTracking } from "../state/activity";
+import { agentPanel, selectAgentPanel, resetActivityHistory, useActivityTracking } from "../state/activity";
 import { orderActivity, visibleActivity } from "../state/activityModel";
 import { taskOrder, reorderTasks } from "../state/taskOrder";
 import { useInterval } from "../state/hooks";
@@ -28,7 +28,7 @@ import {
 import type { Ingress } from "../state/types";
 import SourceIcon from "./SourceIcon";
 import GraphNode from "./GraphNode";
-import ActivityBubbles, { ActivityBubble } from "./ActivityBubbles";
+import { ActivityBubble } from "./ActivityBubbles";
 import Topology, { type TopologyHandle, type NodeView } from "../topology/Topology";
 import TuningPanel from "../topology/TuningPanel";
 import { topologyTuningEnabled } from "../state/topology";
@@ -38,8 +38,9 @@ import IngressDialog from "./IngressDialog";
 import SetupDialog from "./SetupDialog";
 import { useSetup, type SetupGoal } from "../state/setup";
 import IngressDetailsDialog from "./IngressDetailsDialog";
-import AgentsSettings, { AgentDetails } from "./AgentsSettings";
+import AgentsSettings from "./AgentsSettings";
 import { Button, Icon, Notice } from "./ui";
+import AgentPanel from "./AgentPanel";
 import Hub from "../topology/Hub";
 function wireState(state: string): WireState {
   if (["connected", "agentAvailable"].includes(state)) return "normal";
@@ -49,9 +50,9 @@ function wireState(state: string): WireState {
 }
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
   const tuning = topologyTuningEnabled.use();
-  const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selectedActivity = activityTimeline.use();
+  const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use();
   const { status, busy, loading, error } = connector.use();
-  agentStore.use();
+  const inventory = agentStore.use();
   const max = maxVisibleAgents.use();
   const { snapshot } = subscriptions.use(), nav = navigation.use();
   const [setupMode, setSetupMode] = useState<"entry" | "progress" | null>(null);
@@ -64,8 +65,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     [details, setDetails] = useState<Ingress>(),
     [autoConnect, setAutoConnect] = useState(false),
     [agentsOpen, setAgentsOpen] = useState(false),
-    [detailAgent, setDetailAgent] = useState<Agent>();
-  const setup = useSetup(visible && !formOpen && !details && !agentsOpen && !detailAgent);
+    [settingsAgent, setSettingsAgent] = useState<Agent>();
+  const setup = useSetup(visible && !formOpen && !details && !agentsOpen && !selection);
   const initialSetupShown = useRef(false);
   useEffect(() => {
     if (!visible || initialSetupShown.current || !status || loading || error || !setup.snapshot) return;
@@ -76,7 +77,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const sources = orderedSources();
   const agents = orderedAgents()
     .filter((a) => a.installed)
-    .slice(0, [4, 6, 8, 10].includes(max) ? max : 4);
+    .filter((a, index) => index < ([4, 6, 8, 10].includes(max) ? max : 4) || a.agent === selection?.agent);
   const running = sources.some((i) => i.running),
     progressing =
       !!busy || sources.some((i) => ["starting", "stopping"].includes(i.state));
@@ -134,14 +135,12 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     const provider = snapshot?.providers.find(
       (p) => p.providerId === nav.providerId,
     );
-    if (!provider) return;
-    const agent = orderedAgents().find((a) => a.agent === provider.agentId) || {
-      agent: provider.agentId,
-      displayName: provider.name,
-    };
-    setDetailAgent(agent);
+    const agent = orderedAgents().find((a) => a.agent === nav.providerId || a.agent === provider?.agentId)
+      ?? (provider ? { agent: provider.agentId, displayName: provider.name } : undefined);
+    if (!agent) return;
+    selectAgentPanel({ type: "agent", agent: agent.agent });
     navigation.set((old) => ({ ...old, providerId: undefined }));
-  }, [nav.providerId, snapshot]);
+  }, [nav.providerId, snapshot, inventory.items]);
   function agentState(a: Agent) {
     {
       if (a.adapter?.state === "preparing") return "preparing";
@@ -169,8 +168,10 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     return error ? "unknown" : ingressState(i);
   }
   const core = useRef<HTMLElement>(null), topology = useRef<TopologyHandle>(null);
-  const [listAgent, setListAgent] = useState<string>(), [now, setNow] = useState(Date.now);
+  const [now, setNow] = useState(Date.now);
   useInterval(() => setNow(Date.now()), visible && Object.values(tracked).some(s => s.length) ? 1000 : null);
+  useEffect(() => { if (status?.core.backendSession) resetActivityHistory(status.core.backendSession); }, [status?.core.backendSession]);
+  const selectedAgent = selection && (orderedAgents().find(a => a.agent === selection.agent) ?? { agent: selection.agent });
   const panelFrame = useCallback((rect: SurfaceRect | null) => topology.current?.panelFrame(rect), []);
   const [switchOn, setSwitchOn] = useState<boolean>();
   useEffect(() => { if (!progressing && status) setSwitchOn(running); }, [running, progressing, status]);
@@ -189,27 +190,29 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     if (index >= 0 && target) moveAgent(id, target.agent);
   }
   const sourceViews: NodeView[] = sources.map(source => ({
-    id: source.id, state: wireState(sourceState(source)), attention: false, selected: false, tasks: [], reorderable: true,
+    id: source.id, state: wireState(sourceState(source)), attention: false, selected: false, tasks: [], reorderable: !selection,
     content: <GraphNode label={`${source.name}: ${t(sourceState(source))}`} state={wireState(sourceState(source))}
-      onMove={by => moveSource(source.id, by)} onOpen={() => { setAutoConnect(false); setDetails(source); }}>
+      onMove={selection ? undefined : by => moveSource(source.id, by)} onOpen={() => { setAutoConnect(false); setDetails(source); }}>
       <SourceIcon platform={source.controlSource} panelVisual /><span className="graph-node-name">{source.name}</span>
     </GraphNode>,
   }));
   const agentViews: NodeView[] = agents.map(agent => {
-    const sessions = orderActivity(tracked[agent.agent] ?? [], manualOrder[agent.agent] ?? []), selected = selectedActivity?.agent === agent.agent;
-    const shown = visibleActivity(sessions, selected ? selectedActivity.session.id : undefined);
+    const sessions = orderActivity(tracked[agent.agent] ?? [], manualOrder[agent.agent] ?? []), selected = selection?.agent === agent.agent;
+    const shown = visibleActivity(sessions, selected ? selection.session?.id : undefined);
     return {
-      id: agent.agent, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled,
+      id: agent.agent, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled && !selection,
       content: <GraphNode label={`${name(agent)}: ${t(agentState(agent))}`} state={wireState(agentState(agent))}
-        onMove={agent.enabled ? by => moveVisibleAgent(agent.agent, by) : undefined}
-        highlighted={selected} onOpen={() => setDetailAgent(agent)}>
-        <AgentQuotaIcon agent={agent.agent} /><span className="graph-node-name">{name(agent)}</span>
+        onMove={agent.enabled && !selection ? by => moveVisibleAgent(agent.agent, by) : undefined}
+        highlighted={selected} onOpen={() => selectAgentPanel({ type: "toggle", agent: agent.agent })}>
+        <AgentQuotaIcon agent={agent.agent} />
+        {selection && !selected && sessions.some(s => s.endedAt === undefined) && <span className="agent-task-count" data-attention={sessions.some(s => !!s.interaction) || undefined}>{sessions.filter(s => s.endedAt === undefined).length}</span>}
+        <span className="graph-node-name">{name(agent)}</span>
       </GraphNode>,
       tasks: [
         ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]),
           state: (session.endedAt !== undefined ? "completed" : session.interaction ? "attention" : session.source === "transcript" ? "external" : "running") as import("../topology/render").TaskState,
-          selected: selected && selectedActivity.session.id === session.id, reorderable: true,
-          content: <ActivityBubble agent={agent.agent} session={session} now={now} onMove={by => {
+          selected: selected && selection.session?.id === session.id, reorderable: !selection,
+          content: <ActivityBubble agent={agent.agent} session={session} now={now} onMove={selection ? undefined : by => {
             const group = shown.sessions.filter(s => !!s.interaction === !!session.interaction);
             const from = group.findIndex(s => s.id === session.id), to = from + by;
             if (to < 0 || to >= group.length) return;
@@ -218,7 +221,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
           }} />,
         })),
         ...(shown.hidden ? [{ id: JSON.stringify([agent.agent, null]), state: "summary" as const, selected: false,
-          content: <button type="button" className="activity-bubble activity-summary" onClick={() => setListAgent(agent.agent)}>
+          content: <button type="button" className="activity-bubble activity-summary" onClick={() => selectAgentPanel({ type: "agent", agent: agent.agent })}>
             <PhaseTile phase="tool" animated={false} /><span className="activity-copy"><span className="activity-phase"><PhaseLabel phase="tool">{t("activity.more", { count: shown.hidden })}</PhaseLabel></span><span className="activity-headline">{t("activity.viewAll")}</span></span>
           </button>,
         }] : []),
@@ -227,7 +230,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   });
   return (
     <>
-      <section ref={core} className={`connection-core brand-mode ${selectedActivity ? "activity-focused" : ""}`} aria-label={t("connectionStatus")}>
+      <section ref={core} className={`connection-core brand-mode ${selection ? "agent-panel-open" : ""}`} aria-label={t("connectionStatus")}>
         <div className="core-toggle">
           <button
             className={`connection-action ${switchOn ? "is-on" : ""} ${progressing ? "is-busy" : ""}`}
@@ -251,8 +254,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
           brand={<Hub sourceEmpty={!sources.length} agentEmpty={!agents.length}
             onAddSource={() => { if (!sources.length) { setSetupGoal(undefined); setSetupMode("entry"); } else edit(); }}
             onManageAgents={() => setAgentsOpen(true)} />} />
-        <ActivityBubbles tracked={tracked} listAgent={listAgent} onListClose={() => setListAgent(undefined)} onPanelFrame={panelFrame}
-          enabled={visible && !detailAgent && !agentsOpen && !details && !formOpen && !setupMode} />
+        {selectedAgent && visible && <AgentPanel agent={selectedAgent} state={agentState(selectedAgent)} sessions={tracked[selectedAgent.agent] ?? []} now={now}
+          onSettings={() => { setSettingsAgent(selectedAgent); setAgentsOpen(true); }} onPanelFrame={panelFrame} />}
         <div className="activity-edge-fade" aria-hidden="true" />
         {setup.snapshot?.goal && !setup.snapshot.complete && <div className="setup-resume"><Button onClick={() => setSetupMode("progress")}>{t("setup.resume")}</Button></div>}
         {error && (
@@ -311,13 +314,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
           }}
         />
       )}
-      {agentsOpen && <AgentsSettings onClose={() => setAgentsOpen(false)} />}{" "}
-      {detailAgent && (
-        <AgentDetails
-          agent={detailAgent}
-          onClose={() => setDetailAgent(undefined)}
-        />
-      )}
+      {agentsOpen && <AgentsSettings initialAgent={settingsAgent} onClose={() => { setAgentsOpen(false); setSettingsAgent(undefined); }} />}
     </>
   );
 }

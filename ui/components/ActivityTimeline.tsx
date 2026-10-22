@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useId } from "react";
-import { AlertCircle, ArrowUpRight, ChevronRight, ShieldAlert, X, Bot, Brain, Check, FileText, ListChecks, MessageSquare, Terminal, Wrench } from "lucide-react";
+import { AlertCircle, ArrowUpRight, ChevronRight, ShieldAlert, X, ArrowLeft, Brain, Check, FileText, ListChecks, MessageSquare, Terminal, Wrench } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { api } from "../api";
 import { t } from "../i18n";
@@ -7,13 +7,13 @@ import type { AgentActivitySession, AgentTimeline, AgentTimelineEntry } from "..
 import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
 import { expandableTimelineEntry, interactionTool, permissionRequestLabel, visibleTimelineEntries, followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
 import { useInterval } from "../state/hooks";
-import { Button, Dialog, Icon, IconButton, Tooltip } from "./ui";
+import { Button, Icon, IconButton, Tooltip } from "./ui";
 import { Markdown } from "./ui/Markdown";
 import ActivityInteraction from "./ActivityInteraction";
 import FilePath from "./FilePath";
 import { activityHeadline, filePathParts, interactionKey, type TrackedActivity } from "../state/activityModel";
 
-import { name, orderedAgents, icons as agentIcons } from "../state/agents";
+import { name, orderedAgents } from "../state/agents";
 
 const icons = { thinking: Brain, command: Terminal, file: FileText, tool: Wrench };
 function TimelineEntry({ entry, agent, session, now }: {
@@ -75,8 +75,8 @@ function TimelineEntry({ entry, agent, session, now }: {
     </div>
   </details>;
 }
-export default function ActivityTimeline({ agent, session, onClose, onPanelFrame }: {
-  agent: string; session: TrackedActivity; onClose: () => void; onPanelFrame: (rect: import("../motion/surface").SurfaceRect | null) => void;
+export default function ActivityTimeline({ agent, session, onClose, onBack }: {
+  agent: string; session: TrackedActivity; onClose: () => void; onBack: () => void;
 }) {
   const { snapshot } = agentActivity.use();
   const submissions = activityApprovals.use(), cardId = useId(), reduced = useReducedMotion();
@@ -150,17 +150,22 @@ export default function ActivityTimeline({ agent, session, onClose, onPanelFrame
       : pendingSession.interaction?.command || pendingSession.interaction?.summary}</p>
     <ActivityInteraction key={interactionKey(agent, pendingSession)} agent={agent} session={pendingSession} questions />
   </section>;
-  return <Dialog title={<span className="activity-panel-title" title={session.title || t("timeline.title")}>{session.title || t("timeline.title")}</span>}
-    leading={<span className="activity-panel-agent" aria-hidden="true">{agentIcons[agent] ? <span dangerouslySetInnerHTML={{ __html: agentIcons[agent] }} /> : <Icon icon={Bot} />}</span>}
-    headerDetail={<div className="activity-panel-subline">
-      <span className="activity-status" data-state={showCard ? "attention" : running ? "running" : "completed"}>
-        {t(showCard ? pendingSession.interaction?.kind === "question" ? "activity.question" : "activity.phase.interaction" : running ? "timeline.status.running" : "activity.completed")}
-      </span><span className="activity-panel-meta" title={subtitle}>{subtitle}</span>
-    </div>}
-    width={400} dockRight onClose={onClose} onPanelFrame={onPanelFrame} returnFocus={`[data-activity-session="${CSS.escape(JSON.stringify([agent, session.id]))}"]`} initialFocus={showCard ? cardId : undefined} footer={footer}
-    actions={nativeSession.open && <Tooltip text={t("activity.open")}><IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
-      setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));
-    }} /></Tooltip>}>
+  return <section className="agent-panel-layer task-detail-layer">
+    <header className="dialog-header">
+      <IconButton icon={ArrowLeft} label={t("back")} onClick={onBack} />
+      <h2 className="activity-panel-title">{agentName} / {session.title || t("timeline.title")}</h2>
+      <div className="actions">
+        {nativeSession.open && <Tooltip text={t("activity.open")}><IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
+          setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));
+        }} /></Tooltip>}
+        <IconButton icon={X} label={t("close")} onClick={onClose} />
+      </div>
+      <div className="activity-panel-subline">
+        <span className="activity-status" data-state={showCard ? "attention" : running ? "running" : "completed"}>
+          {t(showCard ? pendingSession.interaction?.kind === "question" ? "activity.question" : "activity.phase.interaction" : running ? "timeline.status.running" : "activity.completed")}
+        </span><span className="activity-panel-meta" title={subtitle}>{subtitle}</span>
+      </div>
+    </header>
     <div className="task-timeline">
       {((!external && error) || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
@@ -172,6 +177,7 @@ export default function ActivityTimeline({ agent, session, onClose, onPanelFrame
           setAtLatest(node.scrollHeight - node.scrollTop - node.clientHeight <= 24);
         }}>
         <div ref={content} className="timeline-entries">
+          {timeline?.coverage.state === "partial" && <p className="timeline-meta">{t("timeline.truncated")}</p>}
           {external && <p className="timeline-meta">{t("timeline.external")}</p>}
           {!timeline && session.timeline && !error && <p role="status">{t("timeline.loading")}</p>}
           {(!session.timeline || !timeline?.entries.length && (external || !!error)) && <section className="activity-session-summary">
@@ -191,5 +197,6 @@ export default function ActivityTimeline({ agent, session, onClose, onPanelFrame
         if (node) { node.scrollTop = node.scrollHeight; following.current = true; setAtLatest(true); }
       }}>{t("timeline.latest")}</Button>}
     </div>
-  </Dialog>;
+    {footer && <footer className="dialog-footer">{footer}</footer>}
+  </section>;
 }

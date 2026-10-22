@@ -106,10 +106,10 @@ export function AgentDetails({
     </Dialog>
   );
 }
-export default function AgentsSettings({ onClose }: { onClose: () => void }) {
+export default function AgentsSettings({ onClose, initialAgent }: { onClose: () => void; initialAgent?: Agent }) {
   const state = agents.use(),
     items = orderedAgents();
-  const [detail, setDetail] = useState<Agent>(),
+  const [detail, setDetail] = useState<Agent | undefined>(initialAgent),
     [display, setDisplay] = useState(false),
     [overview, setOverview] = useState(false),
     [error, setError] = useState("");

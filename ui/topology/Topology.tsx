@@ -57,13 +57,14 @@ export default function Topology({ left, right, brand, boundary, onReorderNodes,
       const key = taskKey(t.side, t.id), v = a.values(key), el = elements.current.get(key);
       if (!el) continue;
       el.style.opacity = String(v?.op ?? 0);
-      el.style.pointerEvents = a.live.get(key)?.alive ? "" : "none";
-      el.inert = !a.live.get(key)?.alive;
+      const hidden = latest.current.nodes.some(n => n.side === t.side && n.selected);
+      el.style.pointerEvents = a.live.get(key)?.alive && !hidden ? "" : "none";
+      el.inert = !a.live.get(key)?.alive || hidden;
       if (v) el.style.transform = `translate(${v.x - (t.side === -1 ? BUBBLE_W : 0)}px, ${v.y - 27}px)`;
     }
     const rect = panel.current ? { ...panel.current, x: panel.current.x - origin.current.x, y: panel.current.y - origin.current.y } : null;
     svg.current?.style.setProperty("--topology-time-scale", latest.current.slow ? "4" : "1");
-    painter.current?.paint(a, latest.current.nodes, latest.current.allTasks, rect, latest.current.tasks.some(t => t.selected),
+    painter.current?.paint(a, latest.current.nodes, latest.current.allTasks, rect,
       latest.current.guides ? layout.current : null);
   }, []);
   const tick = useCallback((time: number) => {
@@ -83,6 +84,10 @@ export default function Topology({ left, right, brand, boundary, onReorderNodes,
   const wake = useCallback(() => { if (!frame.current) frame.current = requestAnimationFrame(tick); }, [tick]);
   const scene = useCallback((): Scene => {
     const sc: Scene = { ...size.current!, left: latest.current.left, right: latest.current.right }, d = drag.current;
+    const selected = latest.current.nodes.find(n => n.selected);
+    if (selected) sc.panel = { side: selected.side, selected: selected.id,
+      edge: selected.side === 1 ? innerWidth - Math.min(400, innerWidth - 32) - 16 - origin.current.x : 16 + Math.min(400, innerWidth - 32) - origin.current.x,
+      narrow: innerWidth < 760 };
     if (!d?.active) return sc;
     const wing = d.side === -1 ? "left" : "right";
     if (d.kind === "node") sc[wing] = orderedSubset(sc[wing], d.order);
@@ -99,7 +104,7 @@ export default function Topology({ left, right, brand, boundary, onReorderNodes,
     if (!size.current) return;
     let d = drag.current;
     if (d && (!(d.kind === "node" ? latest.current.nodes : latest.current.tasks).some(item => item.side === d!.side && item.id === d!.id)
-      || latest.current.tasks.some(t => t.selected))) {
+      || latest.current.nodes.some(n => n.selected))) {
       delete d.slot.dataset.dragging; drag.current = null;
       if (d.target.hasPointerCapture(d.pointer)) d.target.releasePointerCapture(d.pointer);
       d = null;
@@ -112,7 +117,7 @@ export default function Topology({ left, right, brand, boundary, onReorderNodes,
     paint(); wake();
   }, [paint, wake, scene]);
   const startDrag = (event: PointerEvent<HTMLDivElement>, kind: Drag["kind"], side: Side, id: string, parent?: string) => {
-    if (event.button !== 0 || !event.isPrimary || latest.current.tasks.some(t => t.selected)) return;
+    if (event.button !== 0 || !event.isPrimary || latest.current.nodes.some(n => n.selected)) return;
     const key = kind === "node" ? nodeKey(side, id) : taskKey(side, id), v = animator.current.values(key);
     const button = (event.target as Element).closest("button");
     if (!v || !button || drag.current) return;
@@ -159,6 +164,15 @@ export default function Topology({ left, right, brand, boundary, onReorderNodes,
   } }), [paint]);
   useLayoutEffect(() => { setRetained(latest.current.allTasks); }, [left, right]);
   useLayoutEffect(() => { target(); });
+  const selectedKey = nodes.find(n => n.selected)?.id;
+  useLayoutEffect(() => {
+    const container = boundary.current, selected = layout.current?.wings.flatMap(w => w.nodes).find(n => n.id === selectedKey);
+    if (!container || !selected) return;
+    const top = selected.y - selected.size * selected.scale / 2 - 8;
+    const bottom = selected.y + selected.size * selected.scale / 2 + 24;
+    if (top < container.scrollTop) container.scrollTop = Math.max(0, top);
+    else if (bottom > container.scrollTop + container.clientHeight) container.scrollTop = bottom - container.clientHeight;
+  }, [selectedKey, boundary]);
   // Parent host refs attach after child layout effects. Initialize after the
   // whole commit so the painter and viewport observer always mount together.
   useEffect(() => {
@@ -199,6 +213,7 @@ export default function Topology({ left, right, brand, boundary, onReorderNodes,
     <svg ref={svg} className="topology-wires" aria-hidden="true" />
     <div ref={hub} className="topology-hub">{brand}</div>
     {nodes.map(n => <div key={nodeKey(n.side, n.id)} ref={el => { const key = nodeKey(n.side, n.id); if (el) elements.current.set(key, el); else elements.current.delete(key); }}
+      data-agent-node={n.side === 1 ? n.id : undefined}
       className={`topology-node ${n.side === 1 ? "agents" : "sources"}`} data-highlighted={n.selected || undefined} data-reorderable={n.reorderable || undefined}
       onPointerDown={n.reorderable ? event => startDrag(event, "node", n.side, n.id) : undefined}
       onClickCapture={event => suppressClick(event, nodeKey(n.side, n.id))}>{n.content}</div>)}

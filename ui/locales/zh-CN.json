@@ -620,5 +620,11 @@
   "resourceState.not_applicable": "当前平台不适用。",
   "resourceFinding.CORE_NOFILE_DEGRADED": "Core 在限制降级的情况下继续运行，原因见详情。",
   "resourceFinding.APP_SERVER_NOFILE_DEGRADED": "app-server 的文件描述符限制低于目标。",
-  "resourceFinding.APP_SERVER_FD_PRESSURE": "app-server 文件描述符占用已达到软上限的 90%；ready 只表示通信通道存活。"
+  "resourceFinding.APP_SERVER_FD_PRESSURE": "app-server 文件描述符占用已达到软上限的 90%；ready 只表示通信通道存活。",
+  "agentPanel.active": "进行中 {count}",
+  "agentPanel.ended": "已结束",
+  "agentPanel.pending": "待审批",
+  "agentPanel.noQuota": "此 Agent 暂无额度来源。",
+  "agentPanel.noEnded": "本次 Core 暂无已结束且仍可读取的 ARC 任务。",
+  "agentPanel.noActive": "暂无进行中的任务。"
 }

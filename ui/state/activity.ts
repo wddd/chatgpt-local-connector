@@ -3,21 +3,34 @@ import { createStore } from "./store";
 import { api } from "../api";
 import { isDesktop, openUrl } from "../platform";
 import type { AgentActivitySession, AgentActivitySnapshot } from "../types";
-import { trackActivity, activityLayout, type TrackedActivity, beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission } from "./activityModel";
+import { trackActivity, activityLayout, type TrackedActivity, beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission, type AgentPanelSelection, type AgentPanelAction, agentPanelSelection, endedActivity } from "./activityModel";
 
 export const agentActivity = createStore<{ snapshot?: AgentActivitySnapshot; error: string }>({ error: "" });
-export const activityTimeline = createStore<{ agent: string; session: TrackedActivity } | undefined>(undefined);
+export const agentPanel = createStore<AgentPanelSelection>(undefined);
+export function selectAgentPanel(action: AgentPanelAction) { agentPanel.set(old => agentPanelSelection(old, action)); }
+export const activityHistory = createStore<Record<string, TrackedActivity[]>>({});
+let historyCore: string | undefined;
+export function resetActivityHistory(core: string) {
+  if (historyCore && historyCore !== core) {
+    activityHistory.set({});
+    agentActivity.set({ error: "" });
+  }
+  historyCore = core;
+}
 export const activityApprovals = createStore<Record<string, ApprovalSubmission>>({});
 export function acceptActivity(snapshot: AgentActivitySnapshot) {
   const next = mergeActivity(agentActivity.get().snapshot, snapshot);
   if (next !== snapshot) return;
+  const previous = agentActivity.get().snapshot;
+  activityHistory.set(old => Object.fromEntries([...new Set([...Object.keys(old), ...Object.keys(previous?.agents ?? {})])]
+    .map(agent => [agent, endedActivity(old[agent] ?? [], previous?.agents[agent]?.sessions ?? [], next.agents[agent]?.sessions ?? [], Date.now())])));
   agentActivity.set({ snapshot: next, error: "" });
   const keys = new Set(Object.entries(next.agents).flatMap(([agent, value]) => value.sessions
     .filter(session => session.interaction).map(session => interactionKey(agent, session))));
-  const retained = activityTimeline.get();
+  const retained = agentPanel.get();
   activityApprovals.set(old => Object.fromEntries(Object.entries(old).filter(([key]) => {
     const [agent, id] = JSON.parse(key);
-    return keys.has(key) || (retained && retained.agent === agent && retained.session.id === id);
+    return keys.has(key) || (retained && retained.agent === agent && retained.session?.id === id);
   })));
 }
 export function startAgentActivity() {
@@ -92,12 +105,18 @@ export async function openActivitySession(agent: string, session: AgentActivityS
 // Presentation-only lifetime: the native snapshot and timeline contracts stay unchanged.
 export function useActivityTracking() {
   const { snapshot } = agentActivity.use();
-  const selected = activityTimeline.use(), previousSelection = useRef(selected);
+  const selected = agentPanel.use(), previousSelection = useRef(selected);
   const [tracked, setTracked] = useState<Record<string, TrackedActivity[]>>({});
+  const trackingCore = useRef(historyCore);
   useEffect(() => {
     if (!snapshot) return;
-    setTracked(old => Object.fromEntries([...new Set([...Object.keys(old), ...Object.keys(snapshot.agents)])]
-      .map(agent => [agent, trackActivity(old[agent] ?? [], snapshot.agents[agent]?.sessions ?? [], Date.now(), selected?.agent === agent ? selected.session.id : undefined)])));
+    const changedCore = trackingCore.current !== historyCore;
+    trackingCore.current = historyCore;
+    setTracked(old => {
+      if (changedCore) old = {};
+      return Object.fromEntries([...new Set([...Object.keys(old), ...Object.keys(snapshot.agents)])]
+        .map(agent => [agent, trackActivity(old[agent] ?? [], snapshot.agents[agent]?.sessions ?? [], Date.now(), selected?.agent === agent ? selected.session?.id : undefined)]));
+    });
   }, [snapshot]);
   useEffect(() => {
     const previous = previousSelection.current;
@@ -105,11 +124,11 @@ export function useActivityTracking() {
     // Opening reads a completion; closing starts its dismissal delay without
     // changing the actual completion time or removing the focus origin early.
     setTracked(old => Object.fromEntries(Object.entries(old).map(([agent, sessions]) => [agent, sessions.map(s =>
-      s.endedAt !== undefined && ((selected?.agent === agent && selected.session.id === s.id)
-        || (previous?.agent === agent && previous.session.id === s.id)) ? { ...s, readAt: Date.now() } : s)])));
+      s.endedAt !== undefined && ((selected?.agent === agent && selected.session?.id === s.id)
+        || (previous?.agent === agent && previous.session?.id === s.id)) ? { ...s, readAt: Date.now() } : s)])));
   }, [selected]);
   useEffect(() => {
-    const pinned = (agent: string, id: string) => selected?.agent === agent && selected.session.id === id;
+    const pinned = (agent: string, id: string) => selected?.agent === agent && selected.session?.id === id;
     const ends = Object.entries(tracked).flatMap(([agent, sessions]) => sessions.flatMap(s => s.endedAt === undefined || s.readAt === undefined || pinned(agent, s.id) ? [] : [s.readAt + activityLayout.hold + activityLayout.fade]));
     if (!ends.length) return;
     const timer = setTimeout(() => setTracked(old => Object.fromEntries(Object.entries(old).map(([agent, sessions]) =>

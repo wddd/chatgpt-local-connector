@@ -1,14 +1,12 @@
 import { useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, ChevronRight } from "lucide-react";
 import { t } from "../i18n";
 import { PhaseTile, PhaseLabel, StepTrail } from "./activity";
-import { activityTimeline, agentActivity } from "../state/activity";
+import { selectAgentPanel } from "../state/activity";
 import { activityHeadline, type TrackedActivity } from "../state/activityModel";
 import { useInterval } from "../state/hooks";
-import { name, orderedAgents } from "../state/agents";
-import { Dialog, Icon, Tooltip } from "./ui";
-import ActivityTimeline from "./ActivityTimeline";
+import { Icon, Tooltip } from "./ui";
 import FilePath from "./FilePath";
 
 export function elapsed(since: string | null | undefined, now: number) {
@@ -33,7 +31,7 @@ function Headline({ session }: { session: TrackedActivity }) {
     </AnimatePresence>
   </span>;
 }
-export function ActivityBubble({ agent, session, now, onOpen, onMove, listRow = false }: { agent: string; session: TrackedActivity; now: number; onOpen?: () => void; onMove?: (by: number) => void; listRow?: boolean }) {
+export function ActivityBubble({ agent, session, now, onMove, listRow = false }: { agent: string; session: TrackedActivity; now: number; onMove?: (by: number) => void; listRow?: boolean }) {
   const completed = session.endedAt !== undefined, external = session.source === "transcript";
   const running = !completed && !external && !session.interaction && session.phase !== "idle";
   const unread = completed && session.readAt === undefined;
@@ -51,34 +49,21 @@ export function ActivityBubble({ agent, session, now, onOpen, onMove, listRow = 
       } }}
       data-activity-session={JSON.stringify([agent, session.id])}
       aria-label={`${session.title || t(phaseLabel)}${unread ? ` · ${t("activity.unread")}` : ""} · ${hint}`} onClick={() => {
-        onOpen?.(); activityTimeline.set({ agent, session });
+        selectAgentPanel({ type: "task", agent, session });
       }}>
       <PhaseTile phase={phase} running={running} completed={completed} animated={!external} />
       <span className="activity-copy">
+        {listRow && <span className="activity-row-title"><strong>{session.title || t("timeline.title")}</strong><time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}</time></span>}
         <span className="activity-phase">
           <PhaseLabel phase={phase} running={running} completed={completed}>{t(phaseLabel)}</PhaseLabel>
           <StepTrail steps={session.recentSteps} running={running} />
           {unread && <span className="activity-unread" role="img" aria-label={t("activity.unread")} />}
-          <time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}{external && <Icon icon={ArrowUpRight} />}</time>
+          {listRow ? session.interaction && <span className="activity-pending-tag">{t("agentPanel.pending")}</span>
+            : <time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}{external && <Icon icon={ArrowUpRight} />}</time>}
         </span>
         <Headline session={session} />
       </span>
+      {listRow && <Icon icon={external ? ArrowUpRight : ChevronRight} />}
     </button>
   </Tooltip>;
-}
-export default function ActivityBubbles({ tracked, enabled, listAgent, onListClose, onPanelFrame }: {
-  tracked: Record<string, TrackedActivity[]>; enabled: boolean; listAgent?: string; onListClose: () => void;
-  onPanelFrame: (rect: import("../motion/surface").SurfaceRect | null) => void;
-}) {
-  const selected = activityTimeline.use(), { error } = agentActivity.use();
-  const [now, setNow] = useState(Date.now);
-  useInterval(() => setNow(Date.now()), enabled && !!listAgent ? 1000 : null);
-  if (!enabled) return null;
-  return <>
-    {error && <span className="sr-only" role="status">{t("activity.disconnected")}</span>}
-    {listAgent && <Dialog width={400} title={t("activity.agentTasks", { agent: name(orderedAgents().find(a => a.agent === listAgent) ?? { agent: listAgent }) })} onClose={onListClose}>
-      <div className="activity-task-list">{(tracked[listAgent] ?? []).map(session => <ActivityBubble listRow key={session.id} agent={listAgent} session={session} now={now} onOpen={onListClose} />)}</div>
-    </Dialog>}
-    {selected && <ActivityTimeline key={`${selected.agent}:${selected.session.id}`} agent={selected.agent} session={selected.session} onPanelFrame={onPanelFrame} onClose={() => activityTimeline.set(undefined)} />}
-  </>;
 }

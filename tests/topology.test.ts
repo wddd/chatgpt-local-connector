@@ -159,3 +159,34 @@ test("path generation skips non-finite coordinates and recovers on the next fram
   assert.equal(shape.centerline, "M 484 348 C 447.5 348 581.82 348 557 348");
   assert.ok(shape.outline && !/NaN|Infinity/.test(shape.outline));
 });
+
+
+test("Agent dock reserves its width and label clearance without reordering or moving rows", () => {
+  for (const vw of [760, 900, 1280, 1800]) {
+    const scene = { ...fixtures.busy, vw }, base = solve(scene), edge = vw - 416;
+    for (const selected of scene.right.map(n => n.id)) {
+      const docked = solve({ ...scene, panel: { side: 1, edge, selected } });
+      assert.equal(docked.sceneH, base.sceneH);
+      assert.deepEqual(docked.wings.map(w => w.nodes.map(n => [n.id, n.y])), base.wings.map(w => w.nodes.map(n => [n.id, n.y])));
+      const node = docked.wings[1].nodes.find(n => n.id === selected)!;
+      assert.ok(node.x + LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 <= edge - 40 + 1e-6);
+      assert.ok(node.x - node.size * node.scale / 2 >= 0);
+      assert.ok(node.scale >= 1.18);
+      assert.ok(docked.hub.x < base.hub.x);
+      assert.ok(docked.wings[1].nodes.every(n => n.arc === null));
+      assert.ok(docked.wings[1].tasks.every(t => t.hidden));
+      assert.ok(docked.balance.every(w => w.squeeze >= DEFAULTS.squeezeMin));
+    }
+    assert.deepEqual(solve(scene), base, "closing restores the original geometry");
+  }
+});
+test("narrow docks expose an 18px node edge and mirror the left dock", () => {
+  for (const vw of [360, 600, 759]) for (const side of [-1, 1] as const) {
+    const edge = side === 1 ? vw - Math.min(400, vw - 32) - 16 : Math.min(400, vw - 32) + 16;
+    const selected = side === 1 ? "agent0" : "source0";
+    const layout = solve({ ...fixtures.bilateral, vw, panel: { side, selected, edge, narrow: true } });
+    const node = layout.wings.find(w => w.side === side)!.nodes.find(n => n.id === selected)!;
+    assert.ok(Math.abs(node.x - side * node.size * node.scale / 2 - (edge - side * 18)) < 1e-6);
+    assert.ok(Number.isFinite(layout.hub.x));
+  }
+});

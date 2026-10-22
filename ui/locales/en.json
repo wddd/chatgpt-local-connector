@@ -620,5 +620,11 @@
   "resourceState.not_applicable": "Not applicable on this platform.",
   "resourceFinding.CORE_NOFILE_DEGRADED": "Core continues with a reduced file descriptor limit. See details for the cause.",
   "resourceFinding.APP_SERVER_NOFILE_DEGRADED": "The app-server file descriptor limit is below the target.",
-  "resourceFinding.APP_SERVER_FD_PRESSURE": "App-server file descriptor usage is at least 90% of its soft limit. Ready describes communication only."
+  "resourceFinding.APP_SERVER_FD_PRESSURE": "App-server file descriptor usage is at least 90% of its soft limit. Ready describes communication only.",
+  "agentPanel.active": "In progress {count}",
+  "agentPanel.ended": "Ended",
+  "agentPanel.pending": "Awaiting approval",
+  "agentPanel.noQuota": "No quota source is available for this Agent.",
+  "agentPanel.noEnded": "No readable ARC tasks ended during this Core session.",
+  "agentPanel.noActive": "No active tasks."
 }

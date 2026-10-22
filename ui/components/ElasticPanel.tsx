@@ -44,7 +44,9 @@ export default function ElasticPanel({
   width,
   depthOffset = 0,
   initialFocus,
-  dockRight = false,
+  dock,
+  closeRequested = false,
+  originKey,
   returnFocus,
   onMotion,
   onPanelFrame,
@@ -65,7 +67,9 @@ export default function ElasticPanel({
   width?: number;
   depthOffset?: number;
   initialFocus?: string;
-  dockRight?: boolean;
+  dock?: "left" | "right";
+  closeRequested?: boolean;
+  originKey?: string;
   returnFocus?: string;
   onMotion?: () => void;
   onPanelFrame?: (rect: SurfaceRect | null) => void;
@@ -77,9 +81,9 @@ export default function ElasticPanel({
     panelRef.current = el;
     setNode(el);
   }, []);
-  const dockPosition = () => ({ x: (innerWidth - Math.min(width ?? 400, innerWidth - 32)) / 2 - 16, y: 0 });
+  const dockPosition = () => ({ x: (dock === "left" ? -1 : 1) * ((innerWidth - Math.min(width ?? 400, innerWidth - 32)) / 2 - 16), y: 0 });
   const positionRef = useRef(position);
-  positionRef.current = dockRight ? dockPosition() : position;
+  positionRef.current = dock ? dockPosition() : position;
   const visualOrigin = useRef<PanelOrigin | undefined>(undefined);
   const restoreOrigin = useRef<(() => void) | undefined>(undefined);
   const clearGhost = useRef<(() => void) | undefined>(undefined);
@@ -100,7 +104,7 @@ export default function ElasticPanel({
   latest.current = { onClose, onDismiss, busy, depthOffset };
   const moveTo = (x: number, y: number) => {
     if (!node) return;
-    if (dockRight) { setPosition(dockPosition()); return; }
+    if (dock) { setPosition(dockPosition()); return; }
     const maxX = Math.max(0, (innerWidth - node.offsetWidth) / 2 - 20),
       maxY = Math.max(0, (innerHeight - node.offsetHeight) / 2 - 20);
     setPosition({
@@ -118,14 +122,14 @@ export default function ElasticPanel({
     visualOrigin.current = visual;
     trigger.current = visual?.trigger ?? null;
     origin.current = visual?.rect;
-    parentPanel.current = dockRight ? undefined : visual?.parent;
+    parentPanel.current = dock ? undefined : visual?.parent;
     closing.current = false;
-    setPosition({ x: 0, y: 0 });
+    setPosition(dock ? dockPosition() : { x: 0, y: 0 });
   }, [open]);
   useLayoutEffect(() => {
     if (!node || !open) return;
     const previous = panelLayers.get().filter(panel => panel.isConnected && panel !== node).at(-1);
-    const parent = dockRight ? undefined : parentPanel.current?.isConnected ? parentPanel.current : previous;
+    const parent = dock ? undefined : parentPanel.current?.isConnected ? parentPanel.current : previous;
     parentPanel.current = parent;
     setBaseDepth(parent ? Number(parent.dataset.panelDepth || 1) + 1 : 1);
     const source = parent?.getBoundingClientRect() ?? visualOrigin.current?.rect ?? origin.current;
@@ -148,12 +152,16 @@ export default function ElasticPanel({
     const fades: AnimationPlaybackControlsWithThen[] = [];
     if (!reduced() && source && rect.width && !parent && visualOrigin.current?.trigger.closest(".graph-node, [data-timeline-anchor]")) {
       const visual = visualOrigin.current;
-      surface.to({ ...frameAt(rect, 1, "28px"), ...surfaceOf(node) }, {
+      const opening = surface.to({ ...frameAt(rect, 1, "28px"), ...surfaceOf(node) }, {
         from: { ...frameAt(source, visual ? 1 : 0, "28px"), ...(visual?.surface ?? {}) },
-        duration: dockRight ? 0.25 : undefined,
+        duration: dock ? 0.25 : undefined,
       });
       if (visual) {
         restoreOrigin.current = hideOrigin(visual);
+        if (dock) {
+          const restore = restoreOrigin.current;
+          void opening.then(() => { if (restoreOrigin.current === restore) { restore(); restoreOrigin.current = undefined; } });
+        }
         clearGhost.current = animateOriginContent(visual, Number(node.style.zIndex) + 1);
       }
       for (const child of Array.from(node.children))
@@ -178,8 +186,8 @@ export default function ElasticPanel({
     return () => window.removeEventListener("resize", resize);
   }, [node]);
   useLayoutEffect(() => {
-    if (node && dockRight && !motion.current?.running) onPanelFrame?.(node.getBoundingClientRect());
-  }, [node, position, dockRight, onPanelFrame]);
+    if (node && dock && !motion.current?.running) onPanelFrame?.(node.getBoundingClientRect());
+  }, [node, position, dock, onPanelFrame]);
   useLayoutEffect(() => {
     const returned = previousView.current.recessed && !recessed;
     const stepped = previousView.current.depthOffset !== depthOffset;
@@ -212,7 +220,7 @@ export default function ElasticPanel({
       const current = { ...frameAt(from, Number(style.opacity), style.borderRadius), ...surfaceOf(node) };
       const animation = motion.current?.to(
         { ...frameAt(to, visual || parent ? 1 : 0, parent ? "28px" : "50%"), ...(visual?.surface ?? {}) },
-        { retain: true, duration: dockRight ? 0.16 : undefined, ...(motion.current.running ? {} : { from: current }) },
+        { retain: true, duration: dock ? 0.16 : undefined, ...(motion.current.running ? {} : { from: current }) },
       );
       if (visual) {
         restoreOrigin.current = hideOrigin(visual);
@@ -232,16 +240,28 @@ export default function ElasticPanel({
         replacement.click();
       });
   }
+  useEffect(() => { if (closeRequested) void close(undefined, true); }, [closeRequested]);
+  const previousOrigin = useRef(originKey);
+  useLayoutEffect(() => {
+    if (previousOrigin.current === originKey) return;
+    previousOrigin.current = originKey;
+    restoreOrigin.current?.();
+    const visual = takePanelOrigin();
+    visualOrigin.current = visual;
+    trigger.current = visual?.trigger ?? null;
+    origin.current = visual?.rect;
+  }, [originKey]);
   return (
     <D.Root
+      modal={!dock}
       open={open}
       onOpenChange={(next) => {
         if (!next) void close();
       }}
     >
       <D.Portal>
-        <D.Overlay
-          className={`elastic-backdrop ${dockRight ? "activity-backdrop" : ""}`}
+        {!dock && <D.Overlay
+          className="elastic-backdrop"
           style={{ zIndex: 100 + Math.max(0, layers.indexOf(node!)) * 2 }}
           onPointerDown={(e) => {
             backdropPressed.current =
@@ -252,7 +272,7 @@ export default function ElasticPanel({
             if (backdropPressed.current && e.target === e.currentTarget) {
               backdropPressed.current = false;
               void close(
-                dockRight ? undefined : panelAnchorAt(
+                panelAnchorAt(
                   e.clientX,
                   e.clientY,
                   trigger.current ?? undefined,
@@ -260,10 +280,11 @@ export default function ElasticPanel({
               );
             }
           }}
-        />
+        />}
         <D.Content
           ref={attach}
-          className={`dialog elastic-panel ${wide ? "dialog-wide" : ""} ${unframed ? "unframed" : ""} ${headerless ? "headerless" : ""} ${dockRight ? "activity-panel" : ""}`}
+          className={`dialog elastic-panel ${wide ? "dialog-wide" : ""} ${unframed ? "unframed" : ""} ${headerless ? "headerless" : ""} ${dock ? "activity-panel" : ""}`}
+          data-panel-dock={dock}
           data-recessed={recessed || undefined}
           data-panel-depth={baseDepth + depthOffset}
           aria-describedby={undefined}
@@ -271,7 +292,7 @@ export default function ElasticPanel({
             {
               "--preferred-width": `${width ?? (wide ? 880 : 800)}px`,
               transform: `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
-              zIndex: (dockRight ? 102 : 101) + Math.max(0, layers.indexOf(node!)) * 2,
+              zIndex: (dock ? 102 : 101) + Math.max(0, layers.indexOf(node!)) * 2,
             } as CSSProperties
           }
           onOpenAutoFocus={(e) => {
@@ -281,15 +302,18 @@ export default function ElasticPanel({
           }}
           onCloseAutoFocus={(e) => {
             e.preventDefault();
-            const target = trigger.current?.isConnected ? trigger.current : returnFocus ? document.querySelector<HTMLElement>(returnFocus) : null;
-            // The home workspace loses inert when the final panel layer unmounts.
-            requestAnimationFrame(() => target?.focus({ preventScroll: true }));
+            // Wait for the scene to restore its bubbles and remove modal inert.
+            requestAnimationFrame(() => {
+              const fallback = returnFocus ? document.querySelector<HTMLElement>(returnFocus) : null;
+              const target = trigger.current?.isConnected && !trigger.current.closest("[inert]") ? trigger.current : fallback;
+              target?.focus({ preventScroll: true });
+            });
           }}
           onEscapeKeyDown={(e) => {
             e.preventDefault();
             void close();
           }}
-          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
         >
           <div className="elastic-panel-content">
             {unframed || headerless ? (
@@ -299,7 +323,7 @@ export default function ElasticPanel({
                 className="dialog-header"
                 onPointerDown={(e) => {
                   if (
-                    dockRight || e.button !== 0 ||
+                    dock || e.button !== 0 ||
                     !e.isPrimary ||
                     (e.target as Element).closest("button") ||
                     motion.current?.running

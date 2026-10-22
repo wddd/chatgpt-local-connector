@@ -6,6 +6,22 @@ export function mergeActivity(current: AgentActivitySnapshot | undefined, next: 
 }
 export const activityLayout = { width: 232, height: 54, hold: 2000, fade: 300 };
 export type TrackedActivity = AgentActivitySession & { orderAt: number; endedAt?: number; readAt?: number };
+export type AgentPanelSelection = { agent: string; session?: TrackedActivity; closing?: boolean } | undefined;
+export type AgentPanelAction = { type: "agent" | "toggle"; agent: string } | { type: "task"; agent: string; session: TrackedActivity } | { type: "back" } | { type: "dismiss" } | { type: "closed" };
+export function agentPanelSelection(current: AgentPanelSelection, action: AgentPanelAction): AgentPanelSelection {
+  if (action.type === "closed") return undefined;
+  if (action.type === "dismiss") return current && { ...current, closing: true };
+  if (action.type === "back") return current && { agent: current.agent };
+  if (action.type === "toggle" && current?.agent === action.agent) return { ...current, closing: true };
+  return { agent: action.agent, ...(action.type === "task" ? { session: action.session } : {}) };
+}
+// Keep only ARC sessions observed during this Core lifetime; transcript history belongs to its app.
+export function endedActivity(previous: readonly TrackedActivity[], before: readonly AgentActivitySession[], live: readonly AgentActivitySession[], now: number) {
+  const ids = new Set(live.map(s => s.id));
+  const ended = before.filter(s => s.source !== "transcript" && s.timeline && !ids.has(s.id))
+    .map(s => ({ ...s, interaction: undefined, orderAt: Date.parse(s.startedAt ?? "") || now, endedAt: now }));
+  return [...new Map([...previous, ...ended].map(s => [s.id, s])).values()].filter(s => !ids.has(s.id));
+}
 // Freeze the start order on first observation; changing phases/headlines never moves a task.
 export function trackActivity(previous: readonly TrackedActivity[], sessions: readonly AgentActivitySession[], now: number, pinnedId?: string): TrackedActivity[] {
   const old = new Map(previous.map(s => [s.id, s]));

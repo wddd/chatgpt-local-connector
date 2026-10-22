@@ -71,6 +71,7 @@ export default function App() {
     sheetClosing = useRef(false),
     backdropDown = useRef(false);
   const layers = panelLayers.use();
+  const modalOpen = layers.some(layer => !layer.dataset.panelDock);
   useEffect(() => { localStorage.setItem("arc-page", page); }, [page]);
   useEffect(() => {
     if (!isDesktop) return;
@@ -230,7 +231,7 @@ export default function App() {
       )}
       <main
         className="home-workspace"
-        inert={page !== "overview" || layers.length > 0}
+        inert={page !== "overview" || modalOpen}
       >
         <ConnectionOverview visible={page === "overview"} />
       </main>
@@ -315,12 +316,12 @@ export default function App() {
       )}
       <nav
         className={`navigation-capsule ${page !== "overview" ? "expanded" : ""} ${updateVisible() ? "has-update" : ""}`}
-        inert={page !== "overview" || layers.length > 0}
+        inert={page !== "overview" || modalOpen}
         aria-hidden={page !== "overview"}
         aria-label={t("mainNavigation")}
       >
         <HoverScope
-          activeKey={page !== "overview" || layers.length > 0 ? "" : undefined}
+          activeKey={page !== "overview" || modalOpen ? "" : undefined}
           className="capsule-icons"
           inert={page !== "overview"}
           aria-hidden={page !== "overview"}
