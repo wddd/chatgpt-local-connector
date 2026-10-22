@@ -11,6 +11,7 @@ export function PhaseTile({ phase, running = false, completed = false, animated 
   const drawing = animated && (completed || (running && phase === "file"));
   return <span className="phase-tile" style={drawing ? { "--phase-mask": `url(#${mask})` } as CSSProperties : undefined} data-phase={completed ? "completed" : phase}
     data-running={running || undefined} data-animated={animated || undefined} aria-hidden="true">
+    {running && <span className="phase-orbit" />}
     {drawing && <svg className="phase-mask" width="0" height="0"><defs>
       <mask id={mask} maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox" x="0" y="0" width="1" height="1">
         <rect className="phase-stroke-reveal" width="1" height="1" fill="white" />
@@ -23,7 +24,9 @@ export function PhaseTile({ phase, running = false, completed = false, animated 
 export function PhaseLabel({ phase, running = false, completed = false, children }: {
   phase: AgentPhase; running?: boolean; completed?: boolean; children: ReactNode;
 }) {
-  return <span className="phase-label" data-phase={completed ? "completed" : phase} data-running={running || undefined}>{children}</span>;
+  return <span className="phase-label" data-phase={completed ? "completed" : phase} data-running={running || undefined}>{children}
+    {running && <span className="phase-shimmer" aria-hidden="true"><span>{children}</span></span>}
+  </span>;
 }
 export function StepTrail({ steps = [], running = false }: {
   steps?: Exclude<AgentPhase, "idle">[]; running?: boolean;

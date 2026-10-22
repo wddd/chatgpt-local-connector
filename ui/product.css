@@ -880,12 +880,12 @@
 .hub-dot > svg { display: block; width: 100%; height: 100%; }
 .hub-symbol { transform-box: view-box; transform-origin: 10px 10px; opacity: 0; transform: scale(.3) rotate(-90deg); transition: transform 300ms cubic-bezier(.34, 1.56, .64, 1), opacity 150ms ease; }
 .topology-hub:hover .hub-symbol, .topology-hub:has(.hub-entry:focus-visible) .hub-symbol, .hub-entry[data-empty] .hub-symbol { opacity: 1; transform: none; }
-.topology-hub:hover .hub-dot { transform: scale(1.1); }
-.topology-hub .hub-entry:hover .hub-dot { transform: scale(1.25); box-shadow: 0 0 6px 2px color-mix(in srgb, var(--hub-color) 45%, transparent); }
+.topology-hub:hover .hub-dot, .topology-hub:has(.hub-entry:focus-visible) .hub-dot { transform: scale(1.1); }
+.topology-hub .hub-entry:is(:hover, :focus-visible) .hub-dot { transform: scale(1.25); box-shadow: 0 0 6px 2px color-mix(in srgb, var(--hub-color) 45%, transparent); }
 .hub-entry[data-empty] .hub-dot::after { content: ""; position: absolute; inset: 0; border: 1px solid var(--hub-color); border-radius: 50%; animation: hub-ripple 2s ease-out infinite; }
 .hub-hint { position: absolute; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); font-size: 12px; font-weight: 400; white-space: nowrap; pointer-events: none; animation: hub-hint-in 300ms ease both; }
-.hub-source .hub-hint { right: calc(100% + 8px); }
-.hub-agent .hub-hint { left: calc(100% + 8px); }
+.hub-source .hub-hint { right: calc(100% + var(--hub-dot-size) * 0.75); }
+.hub-agent .hub-hint { left: calc(100% + var(--hub-dot-size) * 0.75); }
 @keyframes hub-ripple { from { transform: scale(1); opacity: .45; } 80%, to { transform: scale(1.7); opacity: 0; } }
 @keyframes hub-hint-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {

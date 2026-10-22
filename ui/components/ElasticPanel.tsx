@@ -150,7 +150,7 @@ export default function ElasticPanel({
     onPanelFrame?.(rect);
     motion.current = surface;
     const fades: AnimationPlaybackControlsWithThen[] = [];
-    if (!reduced() && source && rect.width && !parent && visualOrigin.current?.trigger.closest(".graph-node, [data-timeline-anchor]")) {
+    if (!reduced() && source && rect.width && !parent && visualOrigin.current?.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]")) {
       const visual = visualOrigin.current;
       const opening = surface.to({ ...frameAt(rect, 1, "28px"), ...surfaceOf(node) }, {
         from: { ...frameAt(source, visual ? 1 : 0, "28px"), ...(visual?.surface ?? {}) },
@@ -167,7 +167,7 @@ export default function ElasticPanel({
       for (const child of Array.from(node.children))
         fades.push(animate(child, { opacity: [0, 1] }, { duration: 0.15 }));
     }
-    if (!reduced() && (parent || !visualOrigin.current?.trigger.closest(".graph-node, [data-timeline-anchor]")))
+    if (!reduced() && (parent || !visualOrigin.current?.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]")))
       fades.push(animate(node.firstElementChild!, { opacity: [0, 1] }, { duration: 0.16 }));
     return () => {
       cancelAnimationFrame(focusFrame);
@@ -215,7 +215,7 @@ export default function ElasticPanel({
     clearGhost.current?.();
     const from = node.getBoundingClientRect(),
       to = parent?.getBoundingClientRect() ?? visual?.rect ?? origin.current;
-    if (!replacement && to && !parent && visual?.trigger.closest(".graph-node, [data-timeline-anchor]") && !reduced()) {
+    if (!replacement && to && !parent && visual?.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]") && !reduced()) {
       const style = getComputedStyle(node);
       const current = { ...frameAt(from, Number(style.opacity), style.borderRadius), ...surfaceOf(node) };
       const animation = motion.current?.to(
