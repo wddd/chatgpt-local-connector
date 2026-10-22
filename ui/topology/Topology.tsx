@@ -12,14 +12,14 @@ export interface NodeView extends Omit<PaintNode, "side"> { content: ReactNode; 
 type PositionedTask = TaskView & { parent: string; side: Side };
 export interface TopologyHandle { panelFrame: (rect: SurfaceRect | null) => void }
 
-export default function Topology({ left, right, brand, leftUtility, rightUtility, boundary, onReorderNodes, onReorderTasks, ref }: {
-  left: NodeView[]; right: NodeView[]; brand: ReactNode; leftUtility: ReactNode; rightUtility: ReactNode;
+export default function Topology({ left, right, brand, boundary, onReorderNodes, onReorderTasks, ref }: {
+  left: NodeView[]; right: NodeView[]; brand: ReactNode;
   onReorderNodes: (side: Side, ids: string[]) => void;
   onReorderTasks: (side: Side, parent: string, ids: string[]) => void;
   boundary: RefObject<HTMLElement | null>; ref: Ref<TopologyHandle>;
 }) {
   const graph = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), hub = useRef<HTMLDivElement>(null);
-  const elements = useRef(new Map<string, HTMLDivElement>()), utilities = useRef(new Map<Side, HTMLDivElement>());
+  const elements = useRef(new Map<string, HTMLDivElement>());
   const animator = useRef(new TopologyAnimator()), painter = useRef<TopologyPainter | null>(null);
   const frame = useRef(0), lastTime = useRef(0), panel = useRef<SurfaceRect | null>(null);
   const origin = useRef({ x: 0, y: 0 }), size = useRef<{ vw: number; vh: number } | null>(null);
@@ -43,6 +43,7 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
     if (hub.current) {
       const size = h.Re * 240 / 130; // Preserve the ARC mark's existing earmuff clearance.
       hub.current.style.width = hub.current.style.height = `${size}px`;
+      hub.current.style.setProperty("--hub-dot-size", `${size * 20 / 92}px`);
       hub.current.style.transform = `translate(${h.x - size / 2}px, ${h.y - size / 2}px)`;
     }
     for (const n of latest.current.nodes) {
@@ -59,10 +60,6 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
       el.style.pointerEvents = a.live.get(key)?.alive ? "" : "none";
       el.inert = !a.live.get(key)?.alive;
       if (v) el.style.transform = `translate(${v.x - (t.side === -1 ? BUBBLE_W : 0)}px, ${v.y - 27}px)`;
-    }
-    for (const side of [-1, 1] as const) {
-      const v = a.values(`utility${side}`), el = utilities.current.get(side);
-      if (el && v) el.style.transform = `translate(${v.x - 16}px, ${v.y - 16}px)`;
     }
     const rect = panel.current ? { ...panel.current, x: panel.current.x - origin.current.x, y: panel.current.y - origin.current.y } : null;
     svg.current?.style.setProperty("--topology-time-scale", latest.current.slow ? "4" : "1");
@@ -209,7 +206,5 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
       className="activity-slot" data-highlighted={t.selected || undefined} data-reorderable={t.reorderable || undefined}
       onPointerDown={t.reorderable ? event => startDrag(event, "task", t.side, t.id, t.parent) : undefined}
       onClickCapture={event => suppressClick(event, taskKey(t.side, t.id))}>{t.content}</div>)}
-    <div className="topology-utility sources" ref={el => { if (el) utilities.current.set(-1, el); else utilities.current.delete(-1); }}>{leftUtility}</div>
-    <div className="topology-utility agents" ref={el => { if (el) utilities.current.set(1, el); else utilities.current.delete(1); }}>{rightUtility}</div>
   </div>;
 }

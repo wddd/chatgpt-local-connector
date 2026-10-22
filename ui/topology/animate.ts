@@ -32,7 +32,6 @@ export class TopologyAnimator {
     this.spring("shape", { t1Node, t1Root, t2End, t2Root, flare });
     for (const w of layout.wings) {
       this.spring(`ear${w.side}`, w.ear);
-      this.spring(`utility${w.side}`, { ...w.utility });
       for (const n of w.nodes) {
         const s = this.spring(nodeKey(w.side, n.id), { x: n.x, y: n.y, size: n.size, scale: n.scale, op: n.opacity, port: n.port,
           radius: n.arc?.R ?? n.size / 2 * n.scale + this.params.arcGap, alo: n.arc?.lo ?? 0, ahi: n.arc?.hi ?? 0, aop: n.arc ? 1 : 0 },

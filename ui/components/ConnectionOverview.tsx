@@ -11,9 +11,8 @@ import {
   useEffect,
   useState,
   useRef,
-  useId,
 } from "react";
-import { Plus, Power, Ellipsis, LoaderCircle } from "lucide-react";
+import { Power, LoaderCircle } from "lucide-react";
 import { t } from "../i18n";
 import { api } from "../api";
 import { ingressState, connector, run, refreshConnector, orderedSources, reorderSources } from "../state/connector";
@@ -40,7 +39,7 @@ import { useSetup, type SetupGoal } from "../state/setup";
 import IngressDetailsDialog from "./IngressDetailsDialog";
 import AgentsSettings, { AgentDetails } from "./AgentsSettings";
 import { Button, Icon, Notice } from "./ui";
-import themedMark from "../assets/arc/mark-theme.svg?raw";
+import Hub from "../topology/Hub";
 function wireState(state: string): WireState {
   if (["connected", "agentAvailable"].includes(state)) return "normal";
   if (["connectingLabel", "preparing"].includes(state)) return "connecting";
@@ -48,7 +47,7 @@ function wireState(state: string): WireState {
   return "inactive";
 }
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
-  const gradientId = useId(), tuning = topologyTuningEnabled.use();
+  const tuning = topologyTuningEnabled.use();
   const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selectedActivity = activityTimeline.use();
   const { status, busy, loading, error } = connector.use();
   agentStore.use();
@@ -248,15 +247,9 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         <Topology ref={topology} boundary={core} left={sourceViews} right={agentViews}
           onReorderNodes={(side, ids) => side === -1 ? reorderSources(ids) : reorderAgents(ids)}
           onReorderTasks={(_side, agent, ids) => reorderTasks(agent, ids.map(id => JSON.parse(id)[1] as string), tracked[agent] ?? [])}
-          brand={<svg className="graph-brand" viewBox="4 4 92 92" role="img" aria-label="Agent Remote Control"
-            dangerouslySetInnerHTML={{ __html: themedMark.replace(/^<svg[^>]*>|<\/svg>$/g, "").replaceAll("agent-theme", `${gradientId}-mark`) }} />}
-          leftUtility={<button data-panel-anchor className="graph-node add-source" aria-label={t("addControlSource")}
-            onClick={() => { if (!sources.length) { setSetupGoal(undefined); setSetupMode("entry"); } else edit(); }}>
-            <span className="source-icon" data-panel-visual><Icon icon={Plus} /></span>
-          </button>}
-          rightUtility={<button data-panel-anchor className="graph-node agents-more" aria-label={t("manageAgents")} onClick={() => setAgentsOpen(true)}>
-            <Icon icon={Ellipsis} size={20} />
-          </button>} />
+          brand={<Hub sourceEmpty={!sources.length} agentEmpty={!agents.length}
+            onAddSource={() => { if (!sources.length) { setSetupGoal(undefined); setSetupMode("entry"); } else edit(); }}
+            onManageAgents={() => setAgentsOpen(true)} />} />
         <ActivityBubbles tracked={tracked} listAgent={listAgent} onListClose={() => setListAgent(undefined)} onPanelFrame={panelFrame}
           enabled={visible && !detailAgent && !agentsOpen && !details && !formOpen && !setupMode} />
         <div className="activity-edge-fade" aria-hidden="true" />
@@ -277,7 +270,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       </section>
       {visible && tuning && <TuningPanel />}
       {setupMode && visible && <SetupDialog mode={setupMode} setMode={setSetupMode} fixedGoal={setupGoal} snapshot={setup.snapshot} error={setup.error} refresh={setup.refresh}
-        onClose={() => { setSetupMode(null); if (setup.snapshot?.complete) requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".add-source")?.focus()); }} onManual={() => {
+        onClose={() => { setSetupMode(null); if (setup.snapshot?.complete) requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".hub-source")?.focus()); }} onManual={() => {
           setSetupMode(null);
           edit();
           setManualSetup(true);

@@ -1,4 +1,4 @@
-// Reorder only the named members; hidden, disabled and utility items keep their slots.
+// Reorder only the named members; hidden and disabled items keep their slots.
 export function orderedSubset<T extends { id: string }>(items: readonly T[], ids: readonly string[]): T[] {
   const byId = new Map(items.map(item => [item.id, item]));
   const ordered = [...new Set(ids)].flatMap(id => byId.has(id) ? [byId.get(id)!] : []);

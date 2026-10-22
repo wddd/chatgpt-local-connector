@@ -44,7 +44,7 @@ test("mounted topology paints paths, observes its parent viewport and reacts to 
     function Parent() {
       const boundary = useRef<HTMLElement>(null);
       return h("section", { ref: boundary, className: "boundary" }, h(Topology, {
-        left, right, boundary, ref: topology, brand: "ARC", leftUtility: null, rightUtility: null,
+        left, right, boundary, ref: topology, brand: "ARC",
         onReorderNodes() {}, onReorderTasks() {},
       }));
     }

@@ -1,7 +1,7 @@
 import { arcPath, grownWire } from "../ui/topology/geometry.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULTS, PARAMETERS, PARAMETER_GROUPS, distribute, extentOf, solve, type Scene } from "../ui/topology/solve.ts";
+import { DEFAULTS, PARAMETERS, PARAMETER_GROUPS, distribute, extentOf, solve, LABEL_W, NODE_R, type Scene } from "../ui/topology/solve.ts";
 import { clampParameter, emptyParameters, importParameters, loadParameters, parameterDiff } from "../ui/topology/parameters.ts";
 
 const entities = (prefix: string, counts: number[]) => counts.map((count, i) => ({ id: `${prefix}${i}`,
@@ -31,6 +31,11 @@ for (const [name, scene] of Object.entries(fixtures)) test(`topology lab: ${name
         assert.ok(tasks[i].port - tasks[i - 1].port >= 9 - 1e-9);
       }
     }
+  }
+  // Bounds now include only the earmuff, nodes and tasks, with no column-tail entrance.
+  for (const wing of layout.wings) {
+    assert.equal(extentOf(wing, layout.hub.x, layout.hub.Re).core, Math.max(layout.hub.Re * 1.15,
+      ...wing.nodes.map(n => Math.abs(n.x - layout.hub.x) + LABEL_W * n.scale * n.size / (NODE_R * 2) / 2)));
   }
   const l = extentOf(left, layout.hub.x, layout.hub.Re), r = extentOf(right, layout.hub.x, layout.hub.Re);
   assert.ok(layout.hub.x - l.full >= DEFAULTS.margin - 1e-9);

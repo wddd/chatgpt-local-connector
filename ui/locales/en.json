@@ -202,6 +202,7 @@
   "officialSetup": "Official setup",
   "presetAuthMismatch": "This client flow does not support static Bearer authentication. Ask Codex to check the supported auth path before connecting.",
   "close": "Close",
+  "addAgent": "Add Agent",
   "manageAgents": "Manage Agents",
   "expandPanelWidth": "Expand panel width",
   "restorePanelWidth": "Restore panel width",

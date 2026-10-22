@@ -84,24 +84,11 @@
   width: 32px;
   height: 32px;
 }
-.add-source {
-  color: var(--text-secondary);
-  background: transparent;
-}
-.add-source .source-icon {
-  background: transparent;
-  border: 1px dashed currentColor;
-}
 .graph-error {
   color: var(--danger);
 }
 .graph-error {
   font-size: 12px;
-}
-.agents .agents-more {
-  border: 1px dashed var(--text-secondary);
-  border-radius: 50%;
-  color: var(--text);
 }
 .spinning {
   animation: status-spin 1s linear infinite;
@@ -127,14 +114,6 @@
 }
 .sources .graph-node:hover .platform-icon {
   transform: scale(1.1);
-}
-.sources .add-source .source-icon {
-  width: 34px;
-  height: 34px;
-}
-.sources .add-source .source-icon > svg {
-  width: 20px;
-  height: 20px;
 }
 .source-brand svg {
   width: 40px;
@@ -891,17 +870,35 @@
 .home-workspace .core-toggle { z-index: 5; }
 .connection-graph.topology-scene { position: relative; display: block; width: 100%; max-width: none; margin: 0; }
 .topology-wires { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 1; }
-.topology-hub { position: absolute; left: 0; top: 0; pointer-events: none; }
-.topology-hub .graph-brand { width: 100%; height: 100%; user-select: none; }
+.topology-hub { position: absolute; left: 0; top: 0; z-index: 2; }
+.topology-hub .graph-brand { width: 100%; height: 100%; user-select: none; pointer-events: none; }
+.hub-entry { position: absolute; top: 50%; width: calc(var(--hub-dot-size) + 8px); height: calc(var(--hub-dot-size) + 8px); min-width: 28px; min-height: 28px; padding: 4px; border: 0; border-radius: 50%; background: transparent; transform: translate(-50%, -50%); cursor: pointer; display: grid; place-items: center; }
+.hub-source { left: calc(14 / 92 * 100%); --hub-color: var(--topology-source); }
+.hub-agent { left: calc(78 / 92 * 100%); --hub-color: var(--mark-agent-end); }
+.hub-entry:focus-visible { box-shadow: 0 0 0 2px var(--hub-color); }
+.hub-dot { position: relative; display: block; width: var(--hub-dot-size); height: var(--hub-dot-size); border-radius: 50%; transition: transform 300ms cubic-bezier(.34, 1.56, .64, 1), box-shadow 180ms ease; pointer-events: none; }
+.hub-dot > svg { display: block; width: 100%; height: 100%; }
+.hub-symbol { transform-box: view-box; transform-origin: 10px 10px; opacity: 0; transform: scale(.3) rotate(-90deg); transition: transform 300ms cubic-bezier(.34, 1.56, .64, 1), opacity 150ms ease; }
+.topology-hub:hover .hub-symbol, .topology-hub:has(.hub-entry:focus-visible) .hub-symbol, .hub-entry[data-empty] .hub-symbol { opacity: 1; transform: none; }
+.topology-hub:hover .hub-dot { transform: scale(1.1); }
+.topology-hub .hub-entry:hover .hub-dot { transform: scale(1.25); box-shadow: 0 0 6px 2px color-mix(in srgb, var(--hub-color) 45%, transparent); }
+.hub-entry[data-empty] .hub-dot::after { content: ""; position: absolute; inset: 0; border: 1px solid var(--hub-color); border-radius: 50%; animation: hub-ripple 2s ease-out infinite; }
+.hub-hint { position: absolute; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); font-size: 12px; font-weight: 400; white-space: nowrap; pointer-events: none; animation: hub-hint-in 300ms ease both; }
+.hub-source .hub-hint { right: calc(100% + 8px); }
+.hub-agent .hub-hint { left: calc(100% + 8px); }
+@keyframes hub-ripple { from { transform: scale(1); opacity: .45; } 80%, to { transform: scale(1.7); opacity: 0; } }
+@keyframes hub-hint-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .hub-dot, .hub-symbol { transition: none; }
+  .topology-hub .hub-entry .hub-dot, .hub-symbol { transform: none; }
+  .hub-entry[data-empty] .hub-dot::after { animation: none; display: none; }
+  .hub-hint { animation: none; }
+}
 .topology-node { position: absolute; left: 0; top: 0; width: 44px; height: 44px; transform-origin: center; z-index: 2; }
 .topology-node .graph-node { width: 44px; height: 44px; margin: 0; --agent-quota-size: 44px; }
 .topology-node .source-icon, .topology-node .source-icon > span { display: grid; place-items: center; width: 44px; height: 44px; }
 .topology-node .source-icon svg { width: 38px; height: 38px; }
 .topology-node .agent-quota-icon:not(.has-quota) .agent-logo { width: 38px; height: 38px; }
-.topology-utility { position: absolute; left: 0; top: 0; z-index: 2; }
-.topology-utility .graph-node { width: 32px; height: 32px; margin: 0; border: 1px dashed var(--text-secondary); border-radius: 50%; }
-.topology-utility .source-icon { width: 100%; height: 100%; border: 0; }
-.topology-utility .source-icon > svg { width: 16px; height: 16px; }
 .graph-node-name { line-height: 14px; }
 .graph-node[data-connection-state="inactive"] .source-icon,
 .graph-node[data-connection-state="inactive"] .agent-logo,
