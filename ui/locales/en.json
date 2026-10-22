@@ -610,5 +610,15 @@
   "topology.importError.key": "The JSON contains an unknown parameter.",
   "topology.importError.value": "Every parameter must be a finite number.",
   "topology.importClamped": "Imported. Values clamped to their ranges: {labels}.",
-  "topology.imported": "Parameters imported. Unspecified parameters use defaults."
+  "topology.imported": "Parameters imported. Unspecified parameters use defaults.",
+  "resourceDiagnostics": "Resource diagnostics",
+  "resourceLimits": "Open files: soft / hard",
+  "resourceState.ok": "Resource limits meet the target.",
+  "resourceState.degraded": "Resource limit is below the startup target.",
+  "resourceState.pressure": "Open file usage is near the soft limit.",
+  "resourceState.unknown": "Resource usage is unknown.",
+  "resourceState.not_applicable": "Not applicable on this platform.",
+  "resourceFinding.CORE_NOFILE_DEGRADED": "Core continues with a reduced file descriptor limit. See details for the cause.",
+  "resourceFinding.APP_SERVER_NOFILE_DEGRADED": "The app-server file descriptor limit is below the target.",
+  "resourceFinding.APP_SERVER_FD_PRESSURE": "App-server file descriptor usage is at least 90% of its soft limit. Ready describes communication only."
 }

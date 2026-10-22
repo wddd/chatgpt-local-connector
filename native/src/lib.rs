@@ -43,6 +43,7 @@ pub mod permissions;
 pub mod preferences;
 pub mod projects;
 pub mod proxy;
+mod resources;
 mod respond_tokens;
 pub mod rpc;
 pub mod runtime;

@@ -21,6 +21,9 @@ pub struct Rpc {
     pub events: SharedEvents,
     pub session: String,
     alive: Arc<std::sync::atomic::AtomicBool>,
+    pid: Option<u32>,
+    started_at: String,
+    inherited_nofile: Value,
 }
 impl Rpc {
     pub async fn start(binary: &Path, events: SharedEvents, session: &str) -> Result<Arc<Self>> {
@@ -31,6 +34,7 @@ impl Rpc {
         command.arg("app-server");
         #[cfg(unix)]
         command.process_group(0);
+        let inherited_nofile = crate::resources::before_spawn();
         let mut child = command
             .kill_on_drop(true)
             .stdin(Stdio::piped())
@@ -38,6 +42,8 @@ impl Rpc {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| e.to_string())?;
+        let pid = child.id();
+        let started_at = now();
         let input = child.stdin.take().ok_or("missing stdin")?;
         let stdout = child.stdout.take().ok_or("missing stdout")?;
         let mut stderr = child.stderr.take().ok_or("missing stderr")?;
@@ -72,6 +78,9 @@ impl Rpc {
             events: events.clone(),
             session: session.into(),
             alive: alive.clone(),
+            pid,
+            started_at,
+            inherited_nofile,
         });
         let session = session.to_owned();
         tokio::spawn(async move {
@@ -134,6 +143,34 @@ impl Rpc {
     }
     pub fn alive(&self) -> bool {
         self.alive.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    pub async fn health(&self) -> Value {
+        // Hold the owned Child while sampling, and check for exit on both sides.
+        // Never sample an old PID after it has been reaped/reused.
+        let child = self.child.lock().await;
+        let mut resources = match crate::resources::child_running(child.id()) {
+            Ok(true) => crate::resources::child_status(
+                child.id(),
+                Some(&self.inherited_nofile),
+                "process PID unavailable",
+            ),
+            Ok(false) => {
+                crate::resources::child_status(None, Some(&self.inherited_nofile), "process exited")
+            }
+            Err(error) => crate::resources::child_status(
+                None,
+                Some(&self.inherited_nofile),
+                &error.to_string(),
+            ),
+        };
+        if !matches!(crate::resources::child_running(child.id()), Ok(true)) {
+            resources = crate::resources::child_status(
+                None,
+                Some(&self.inherited_nofile),
+                "process exited or could not be checked",
+            );
+        }
+        json!({"state":if self.alive(){"ready"}else{"stopped"},"pid":self.pid,"startedAt":self.started_at,"observedAt":now(),"evidence":"native-connector","stale":false,"resources":resources})
     }
     pub async fn write(&self, v: Value) -> Result<()> {
         let mut input = self.input.lock().await;

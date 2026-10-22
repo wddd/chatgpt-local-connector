@@ -23,6 +23,46 @@ Commands return a JSON envelope: `schemaVersion: 1`, `ok: true`, and `result`; e
 
 Choose the operation name from capabilities; command names and catalog operation names are not interchangeable. `cli call <operation> --stdin` sends JSON input. `cli mcp` exposes the local management catalog over stdio, separate from remote execution tools.
 
+## Resource diagnostics
+
+`cli status` (catalog operation `status`) and `cli doctor` expose the same Core
+resource observations used by the desktop Settings page. Sampling runs only when
+status is read, with no additional monitoring task. It never starts app-server or
+asks it to execute a shell. Doctor uses passive permissions and leaves Codex login
+and command permission `unknown`; use the permissions page for active probes.
+
+- `core.resources.nofile`: `soft`, `hard`, `state`, `source`, `observedAt`, `error`.
+  Values are numbers, `"unlimited"`, or null when unknown/not applicable.
+- `core.resources.startup`: `targetSoft` (8192), `original`, `actual`,
+  `attemptedSoft`, `platformCeiling`, `state`, `reasons`, `observedAt`.
+  macOS/Linux raise only the soft limit, within the hard and platform limits,
+  read it back, and keep higher existing limits. Core continues when this fails;
+  startup reports `degraded` and the reason. No system-wide limits are changed.
+- `core.appServer`: `pid`, `startedAt` (Core's spawn timestamp), `state`
+  (communication only), `observedAt`, and `resources`. These describe the shared
+  background RPC instance, not temporary account readers or Codex Desktop.
+- `core.appServer.resources`: `nofile`, `fd` (`count`, `sampledAt`, `attemptedAt`,
+  `state`, `error`), `usageRatio`, `warningRatio` (0.9), and resource `state`.
+  No process, exit during sampling, or a failed read leaves fd count null and
+  state `unknown`, never a fabricated zero. PID/start time and inherited limits
+  may remain as historical evidence after exit.
+
+Limit sources are `self-measured` (Core getrlimit), `child-measured` (Linux prlimit),
+`inherited-at-spawn` (Core's verified limit immediately before spawn), or
+`unavailable`. Inherited limits are not proof that a child has not changed them.
+Linux falls back to the inheritance record with `measurementError` if prlimit
+fails. macOS uses inheritance for limits and enumerates fd records with libproc;
+Linux counts `/proc/<pid>/fd`. Windows reports `not_applicable` with null values.
+
+`diagnostics.checks.resources` contains the same snapshots. Resource states are
+`ok`, `degraded`, `pressure`, `unknown`, or `not_applicable`, independently of
+communication `ready`. `diagnostics.findings` uses `CORE_NOFILE_DEGRADED`,
+`APP_SERVER_NOFILE_DEGRADED`, and `APP_SERVER_FD_PRESSURE` (fd count at least 90%
+of the known soft limit), with source evidence and a read-only next action.
+These observations do not establish a leak and do not trigger restarts or thread
+unsubscriptions. Doctor exposes Core resources at `resources` and the same
+app-server object at `appServer`.
+
 ## Uninstall
 
 Run the installed binary's `cli uninstall` to stop ARC and move its App/Core,
@@ -228,7 +268,7 @@ Manage only the selected instance. An app restart/quit can stop the CLI's own ho
 
 ## Permissions and readiness
 
-`cli doctor` includes `permissions.items` with stable IDs, state, owning process and observation time. The existing `overview` tool includes the same report. Detection never requests consent. Use ARC Permissions & readiness locally to request access and open System Settings. FDA is heuristic (granted / missing / unknown); Codex command execution is probed separately from Core. No additional MCP tool is required.
+`cli doctor` includes passive `permissions.items` with stable IDs, state, owning process and observation time. The existing `overview` tool uses the permission page's active report, including Codex login and command probes. Detection never requests consent. Use ARC Permissions & readiness locally to request access and open System Settings. FDA is heuristic (granted / missing / unknown); Codex command execution is probed separately from Core. No additional MCP tool is required.
 
 For the bundled Desktop launch chain, grant Full Disk Access to ARC App: Core and its Codex app-server children inherit that responsible application. A standalone Core launched by a terminal can instead inherit that terminal's identity; its probe does not prove the App is ready.
 

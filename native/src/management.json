@@ -11,7 +11,7 @@
         "properties": {},
         "additionalProperties": false
       },
-      "description": "status",
+      "description": "Read current state and passive resource diagnostics without starting app-server. core.resources exposes state, nofile {soft, hard, state, source, observedAt, error}, and startup {targetSoft:8192, original, actual, attemptedSoft, platformCeiling, state, reasons, observedAt}. core.appServer adds pid, startedAt (spawn time), communication state and resources {state, nofile, fd:{count,sampledAt,attemptedAt,state,error}, usageRatio, warningRatio:0.9}. Limit values are numbers, unlimited, or null; sources: self-measured, inherited-at-spawn, child-measured, unavailable. Linux child measurement failure falls back to inheritance with measurementError. Unknown fd counts are null; Windows is not_applicable. diagnostics.checks.resources reuses these snapshots; findings: CORE_NOFILE_DEGRADED, APP_SERVER_NOFILE_DEGRADED, APP_SERVER_FD_PRESSURE. ready describes communication only. Resource states: ok, degraded, pressure, unknown, not_applicable. Sampling is on status reads, without a background monitor. See cli guide Resource diagnostics.",
       "localOnly": true
     },
     {

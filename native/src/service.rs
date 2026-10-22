@@ -161,6 +161,7 @@ fn normalize(mut entry: Value) -> Result<Value> {
 }
 impl Service {
     pub fn new() -> Result<Arc<Self>> {
+        crate::resources::initialize();
         init_crypto();
         crate::logs::record("INFO", "Service starting", None);
         private_dir(&root())?;
@@ -335,7 +336,8 @@ impl Service {
         let health = self.control.health().await;
         for (key,value) in json!({"pid":std::process::id(),"activeTurns":0,"liveProcesses":0,"uncertain":false,"draining":false,"account":{"state":"unknown","observedAt":null},"lastInbound":null,"schemaDiscovered":"unknown","operationVerified":"business-delivery-not-assessed"}).as_object().unwrap() {status["core"][key]=value.clone();}
         status["core"]["desktop"] = desktop;
-        status["core"]["appServer"] = json!({"state":health["appServer"],"observedAt":now(),"evidence":"native-connector","stale":false});
+        status["core"]["appServer"] = health["appServer"].clone();
+        status["core"]["resources"] = health["resources"].clone();
         status["core"]["version"] = json!(env!("ARC_BUILD_VERSION"));
         status["core"]["backendSession"] = json!(self.control.session);
         status["core"]["activeWrites"] = health["activeWrites"].clone();
@@ -500,8 +502,16 @@ impl Service {
                 return crate::operations::read(id, &self.control.session);
             }
         }
-        if route == "permissions" && method == "GET" {
+        if matches!(route, "permissions" | "permissions/passive") && method == "GET" {
             let mut readiness = crate::permissions::status().await;
+            if route == "permissions/passive" {
+                if let Some(items) = readiness["items"].as_array_mut() {
+                    for id in ["codex-login", "command-full-disk-access"] {
+                        items.push(json!({"id":id,"process":"Codex app-server","state":"unknown","reason":"not probed by passive diagnostics"}));
+                    }
+                }
+                return Ok(readiness);
+            }
             let account = self
                 .control
                 .request("account/read", json!({"refreshToken":false}), 5000)

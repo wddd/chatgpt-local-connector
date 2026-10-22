@@ -71,7 +71,15 @@ impl Control {
         self.ipc().await?.follow(thread).await
     }
     pub async fn health(&self) -> Value {
-        json!({"appServer":if self.rpc.lock().await.as_ref().is_some_and(|r|r.alive()){"ready"}else{"stopped"},"activeWrites":self.jobs.lock().await.len()})
+        // Reading diagnostics never calls utility(), which can start app-server.
+        let rpc = self.rpc.lock().await.clone();
+        let app_server = match rpc {
+            Some(rpc) => rpc.health().await,
+            None => {
+                json!({"state":"stopped","pid":null,"startedAt":null,"observedAt":now(),"evidence":"native-connector","stale":false,"resources":crate::resources::child_status(None,None,"app-server has not been started")})
+            }
+        };
+        json!({"appServer":app_server,"resources":crate::resources::core_status(),"activeWrites":self.jobs.lock().await.len()})
     }
     pub fn stop_waits(&self) {
         self.shutdown.send_modify(|v| *v = v.wrapping_add(1));

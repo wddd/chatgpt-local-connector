@@ -1,3 +1,29 @@
+export interface NofileLimits {
+  state: "available" | "unknown" | "not_applicable";
+  soft: number | "unlimited" | null;
+  hard: number | "unlimited" | null;
+  source: "self-measured" | "inherited-at-spawn" | "child-measured" | "unavailable";
+  observedAt: string | null;
+  error: string | null;
+  measurementError?: string;
+}
+export interface ResourceSnapshot {
+  state: "ok" | "degraded" | "pressure" | "unknown" | "not_applicable";
+  nofile: NofileLimits;
+  startup?: {
+    targetSoft: number;
+    original: NofileLimits;
+    actual: NofileLimits;
+    attemptedSoft: number | null;
+    platformCeiling: number | null;
+    state: string;
+    reasons: string[];
+    observedAt: string;
+  };
+  fd?: { state: string; count: number | null; sampledAt: string | null; attemptedAt: string | null; error: string | null };
+  usageRatio?: number | null;
+  warningRatio?: number;
+}
 export interface CoreSnapshot {
   chatgpt?: { code: string; verifiedAt: string | null; challengeVerifiedAt?: string | null };
   desktop?: { supported: boolean; state: string; message: string };
@@ -12,8 +38,12 @@ export interface CoreSnapshot {
   liveProcesses: number;
   uncertain: boolean;
   draining: boolean;
+  resources: ResourceSnapshot;
   appServer: {
     state: string;
+    pid: number | null;
+    startedAt: string | null;
+    resources: ResourceSnapshot;
     observedAt: string | null;
     evidence: string;
     stale: boolean;

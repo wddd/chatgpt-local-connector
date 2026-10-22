@@ -44,6 +44,7 @@ export interface Ingress {
   verification?: { verifiedAt?: string; challengeVerifiedAt?: string };
 }
 export interface Status {
+  diagnostics: { findings: { code: string; severity: string; scope: { kind: string; id: string }; summary: string }[] };
   ingresses: Ingress[];
   ingressSummary: { running: number; ready: number; total: number };
   taskApprovalEnabled: boolean;

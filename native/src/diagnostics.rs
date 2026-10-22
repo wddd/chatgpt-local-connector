@@ -151,6 +151,39 @@ pub fn status(s: &Value) -> Value {
                 .unwrap_or_default()
         })
         .collect();
+    for (key, resources) in [
+        ("core", &s["core"]["resources"]),
+        ("appServer", &s["core"]["appServer"]["resources"]),
+    ] {
+        let code = if resources["state"] == "pressure" {
+            Some("APP_SERVER_FD_PRESSURE")
+        } else if resources["state"] == "degraded" {
+            Some(if key == "core" {
+                "CORE_NOFILE_DEGRADED"
+            } else {
+                "APP_SERVER_NOFILE_DEGRADED"
+            })
+        } else {
+            None
+        };
+        if let Some(code) = code {
+            let mut f = finding(
+                code,
+                "warning",
+                "resources",
+                &json!(key),
+                if code == "APP_SERVER_FD_PRESSURE" {
+                    "app-server fd 占用已达到软上限的 90%；RPC ready 仅表示通信通道存活。"
+                } else {
+                    "文件描述符限制未达到启动目标；Core 继续运行，查看限制来源、启动记录及失败原因。"
+                },
+                "inspect-resource-limits",
+            );
+            f["evidence"] = resources.clone();
+            f["nextAction"]["command"] = json!(crate::cli::command_line(&["status"], None));
+            findings.push(f);
+        }
+    }
     for (key, code) in [
         ("desktop", "DESKTOP_UNAVAILABLE"),
         ("appServer", "APP_SERVER_UNAVAILABLE"),
@@ -167,7 +200,7 @@ pub fn status(s: &Value) -> Value {
             ));
         }
     }
-    json!({"findings":findings,"checks":{"app":{"state":"reachable"},"execution":{"state":"not_checked"},"remoteClient":{"state":"unknown"},"receipts":{"state":"not_checked","nextAction":"read-original-requestId; never replay an unconfirmed write"}},"readOnly":true})
+    json!({"findings":findings,"checks":{"app":{"state":"reachable"},"resources":{"core":s["core"]["resources"],"appServer":s["core"]["appServer"]["resources"]},"execution":{"state":"not_checked"},"remoteClient":{"state":"unknown"},"receipts":{"state":"not_checked","nextAction":"read-original-requestId; never replay an unconfirmed write"}},"readOnly":true})
 }
 
 /// Reuse the Control receipt reader; never interpret operation completion as delivery.

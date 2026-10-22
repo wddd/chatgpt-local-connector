@@ -381,6 +381,7 @@ pub async fn serve() -> Result<()> {
 }
 
 pub async fn serve_mode(daemon: bool) -> Result<()> {
+    crate::resources::initialize();
     init_crypto();
     private_dir(&root())?;
     let lock = File::options()

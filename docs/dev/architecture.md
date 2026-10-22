@@ -17,6 +17,12 @@ React 在系统 WebView 中渲染。Desktop 管理主窗口、托盘、原生面
 
 service::Service 拥有唯一的 Control、AgentHost、execution::Execution 和入口集合。Execution 负责业务组合；kernel 保存与提供商无关的来源、工具策略、回执、结果和事件存储。传输层处理请求与结果封装，egress 统一投影错误和输出。
 
+Core 的 `resources` 模块统一负责进程资源策略。runtime 启动及 Service 初始化时执行一次，在每次 Rpc 创建 app-server 前再次检查；桌面、登录启动与 Linux daemon 共用此路径，登录项不维护限制值。macOS/Linux 将 `RLIMIT_NOFILE` 软限制尽力提高到 8192，保留更高软限制及原硬限制。macOS 的设置值还受 `OPEN_MAX` 和只读的 `kern.maxfilesperproc` 约束；不改系统全局限制。每次记录原值、目标、尝试值、设置后实测值及失败原因，失败或未达标不阻止 Core 运行。
+
+状态请求按需读取资源，不新增监控任务。Core 软/硬限制来自本进程实测；Rpc 保存子进程 PID、创建时间及启动时继承记录。Linux 用只读 prlimit 和 `/proc/<pid>/fd` 取得子进程限制与 fd 数量；macOS 用 `proc_pidinfo(PROC_PIDLISTFDS)` 枚举实际 fd，限制标注为启动继承记录。采样前后检查所持 Child 的退出状态，退出或读取失败时数量为 null、状态为 unknown，不向子进程发送命令。Windows 标注不适用。通信 ready 与资源状态分开，已知 fd 占用达到软上限 90% 时诊断给出 `APP_SERVER_FD_PRESSURE`；限制降级分别给出 `CORE_NOFILE_DEGRADED` / `APP_SERVER_NOFILE_DEGRADED`，不据此退订线程或重启进程。
+
+Service 状态、CLI status/doctor 和设置页共用资源快照及诊断规则。doctor 通过 `permissions/passive` 读取权限，Codex 登录与 command 权限保留 unknown；显式权限页仍使用原主动探测。读取资源诊断不会启动 app-server；字段及来源见 [CLI 参考](../reference/cli.md#resource-diagnostics)。
+
 ## 入口与认证
 
 每条 Ingress 独立拥有生命周期锁、监听器、提供商进程、临时目录、URL、验证挑战、日志和错误。停止或故障只影响当前入口。Core 关闭时先停止入口，再关闭自身 AgentHost/Control。所有入口共享项目和任务空间，入口名称不是认证用户。
