@@ -38,7 +38,7 @@ export default defineConfig({
           || request.headers['sec-fetch-site'] === 'cross-site'
           || ((request.method !== 'GET' || request.url === '/api/config/credentials') && request.headers['x-arc-request'] !== '1')) {
           response.writeHead(403, { 'Content-Type': 'application/json' });
-          response.end(JSON.stringify({ error: '仅允许本机页面访问。' })); return;
+          response.end(JSON.stringify({ error: 'Only local pages may access this endpoint.' })); return;
         }
         void endpoint().then(async info => {
           if (response.destroyed) return;
