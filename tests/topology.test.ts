@@ -61,10 +61,10 @@ test("ports fit the arc and drag is confined to its wing and item", () => {
   const crowded = distribute(Array(30).fill(80), 0.7, 7, 42);
   assert.equal(crowded[0], -42); assert.ok(crowded.at(-1)! <= 42 + 1e-9);
   const sc = fixtures.bilateral, base = solve(sc);
-  const dragged = solve(sc, DEFAULTS, { kind: "task", side: -1, id: "source0/task0", y: 123 });
+  const dragged = solve(sc, DEFAULTS, { kind: "task", side: -1, id: "source0/task0", x: base.wings[0].tasks[0].x, y: 123 });
   assert.equal(dragged.wings[0].tasks[0].y, 123);
   assert.deepEqual(dragged.wings[1], base.wings[1]);
-  assert.equal(solve(sc, DEFAULTS, { kind: "node", side: 1, id: "agent0", y: 234 }).wings[1].nodes[0].y, 234);
+  assert.equal(solve(sc, DEFAULTS, { kind: "node", side: 1, id: "agent0", x: base.wings[1].nodes[0].x, y: 234 }).wings[1].nodes[0].y, 234);
 });
 
 

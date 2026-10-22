@@ -1,8 +1,9 @@
 use crate::task_tracking::transcript_text;
 use crate::*;
 use std::{
+    collections::HashMap,
     fs::File,
-    io::{Read, Seek, SeekFrom},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom},
     time::{Duration, Instant, SystemTime},
 };
 
@@ -12,6 +13,12 @@ pub(super) struct Monitor {
     selected: Vec<String>,
     active: Vec<(String, Value)>,
     known: Vec<External>,
+    turn_clocks: HashMap<PathBuf, TurnClock>,
+}
+#[derive(Default)]
+struct TurnClock {
+    offset: u64,
+    started_at: Value,
 }
 #[derive(Clone)]
 pub(super) struct External {
@@ -33,9 +40,14 @@ impl Monitor {
                 .is_none_or(|at| at.elapsed() >= Duration::from_secs(2))
         {
             self.selected = selected.clone();
-            let scanned = tokio::task::spawn_blocking(move || scan(&selected))
-                .await
-                .unwrap_or_default();
+            let mut clocks = std::mem::take(&mut self.turn_clocks);
+            let (scanned, clocks) = tokio::task::spawn_blocking(move || {
+                let scanned = scan(&selected, &mut clocks);
+                (scanned, clocks)
+            })
+            .await
+            .unwrap_or_default();
+            self.turn_clocks = clocks;
             self.active = scanned
                 .iter()
                 .map(|s| (s.agent.clone(), s.session.clone()))
@@ -54,7 +66,7 @@ impl Monitor {
     }
 }
 
-fn scan(selected: &[String]) -> Vec<External> {
+fn scan(selected: &[String], clocks: &mut HashMap<PathBuf, TurnClock>) -> Vec<External> {
     let mut active = Vec::new();
     let Some(home) = dirs::home_dir() else {
         return active;
@@ -100,7 +112,13 @@ fn scan(selected: &[String]) -> Vec<External> {
                 if now.duration_since(modified).unwrap_or_default() > Duration::from_secs(300) {
                     continue;
                 }
-                if let Some(session) = working(&entry.path(), agent, modified, now) {
+                if let Some(mut session) = working(&entry.path(), agent, modified, now) {
+                    session["turnStartedAt"] = turn_started_at(
+                        &entry.path(),
+                        agent,
+                        clocks.entry(entry.path()).or_default(),
+                    )
+                    .unwrap_or(Value::Null);
                     active.push(External {
                         agent: agent.clone(),
                         session,
@@ -110,7 +128,45 @@ fn scan(selected: &[String]) -> Vec<External> {
             }
         }
     }
+    clocks.retain(|path, _| active.iter().any(|session| &session.path == path));
     active
+}
+
+fn turn_start(record: &Value, agent: &str) -> Option<Value> {
+    let starts = if agent == "codex" {
+        record["type"] == "event_msg" && record["payload"]["type"] == "task_started"
+    } else {
+        record["message"]["role"] == "user" && phase_content(record, agent, false).is_some()
+    };
+    if !starts { return None; }
+    record.get("timestamp").filter(|v| v.is_string()).cloned()
+}
+
+// Keep the turn boundary independently of the bounded headline tail. Each
+// complete record is scanned once while a transcript remains active.
+fn turn_started_at(path: &Path, agent: &str, clock: &mut TurnClock) -> Result<Value> {
+    let mut file = File::open(path).map_err(|e| e.to_string())?;
+    if file.metadata().map_err(|e| e.to_string())?.len() < clock.offset {
+        *clock = TurnClock::default();
+    }
+    file.seek(SeekFrom::Start(clock.offset))
+        .map_err(|e| e.to_string())?;
+    let mut reader = BufReader::new(file);
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        let count = reader.read_until(b'\n', &mut line).map_err(|e| e.to_string())?;
+        if count == 0 || line.last() != Some(&b'\n') {
+            break;
+        }
+        if let Ok(record) = serde_json::from_slice::<Value>(&line) {
+            if let Some(start) = turn_start(&record, agent) {
+                clock.started_at = start;
+            }
+        }
+        clock.offset += count as u64;
+    }
+    Ok(clock.started_at.clone())
 }
 
 fn read_tail(path: &Path, limit: u64) -> Result<(Vec<Value>, bool)> {
@@ -428,6 +484,11 @@ fn transcript_session(
         .unwrap_or_default();
     let mut row = json!({"id":id,"source":"transcript","project":project,"phase":phase,"headline":headline,"phaseSince":since,"timeline":true,
         "title":title,"fallbackHeadline":recent.first().unwrap_or(&title),"recentContent":recent.iter().rev().collect::<Vec<_>>()});
+    row["turnStartedAt"] = records
+        .iter()
+        .rev()
+        .find_map(|record| turn_start(record, agent))
+        .unwrap_or(Value::Null);
     if agent == "claude"
         && cfg!(target_os = "macos")
         && project.is_some()

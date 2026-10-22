@@ -56,7 +56,7 @@ export function ActivityBubble({ agent, session, now, onOpen, onMove, listRow = 
         onOpen?.(); activityTimeline.set({ agent, session });
       }}>
       <span className="activity-phase"><PhaseIcon phase={phase} completed={completed} /><span>{t(phaseLabel)}</span>
-        {external && <Icon icon={ArrowUpRight} />}<time>{elapsed(session.phaseSince ?? session.startedAt, session.endedAt ?? now)}</time></span>
+        {external && <Icon icon={ArrowUpRight} />}<time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}</time></span>
       <Headline session={session} />
     </button>
   </Tooltip>;

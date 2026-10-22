@@ -23,7 +23,7 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
   const animator = useRef(new TopologyAnimator()), painter = useRef<TopologyPainter | null>(null);
   const frame = useRef(0), lastTime = useRef(0), panel = useRef<SurfaceRect | null>(null);
   const origin = useRef({ x: 0, y: 0 }), size = useRef<{ vw: number; vh: number } | null>(null);
-  const drag = useRef<(Drag & { pointer: number; startClientY: number; grab: number; parent?: string;
+  const drag = useRef<(Drag & { pointer: number; startClientX: number; startClientY: number; grabX: number; grabY: number; parent?: string;
     order: string[]; active: boolean; target: HTMLElement; slot: HTMLElement; key: string }) | null>(null);
   const suppressedClick = useRef<string | null>(null);
   const reduced = useMedia("(prefers-reduced-motion: reduce)"), prefix = useId();
@@ -123,21 +123,22 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
     const candidates = kind === "node" ? latest.current.nodes.filter(n => n.side === side && n.reorderable)
       : latest.current.tasks.filter(t => t.side === side && t.parent === parent && t.reorderable
         && (t.state === "attention") === (latest.current.tasks.find(t => t.side === side && t.id === id)?.state === "attention"));
-    drag.current = { kind, side, id, parent, y: v.y, pointer: event.pointerId, startClientY: event.clientY,
-      grab: event.clientY - origin.current.y - v.y, order: candidates.map(n => n.id), active: false,
+    drag.current = { kind, side, id, parent, x: v.x, y: v.y, pointer: event.pointerId, startClientX: event.clientX, startClientY: event.clientY,
+      grabX: event.clientX - origin.current.x - v.x, grabY: event.clientY - origin.current.y - v.y, order: candidates.map(n => n.id), active: false,
       target: button, slot: event.currentTarget, key };
     button.setPointerCapture(event.pointerId);
   };
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d || d.pointer !== event.pointerId) return;
-    if (!d.active && Math.abs(event.clientY - d.startClientY) < 4) return;
+    if (!d.active && Math.hypot(event.clientX - d.startClientX, event.clientY - d.startClientY) < 4) return;
     d.active = true; d.slot.dataset.dragging = "true"; suppressedClick.current = d.key;
-    d.y = event.clientY - origin.current.y - d.grab;
+    const y = event.clientY - origin.current.y - d.grabY, movedY = y !== d.y;
+    d.x = event.clientX - origin.current.x - d.grabX; d.y = y;
     const layout = solve(scene(), latest.current.params), wing = layout.wings.find(w => w.side === d.side)!;
     const candidates = (d.kind === "node" ? wing.nodes : wing.tasks.filter(t => t.parent === d.parent)).filter(item => d.order.includes(item.id));
     if (!candidates.some(item => item.id === d.id)) { finishDrag(event, true); return; }
-    d.order = moveToY(candidates, d.id, d.y);
+    if (movedY) d.order = moveToY(candidates, d.id, d.y);
     target(); event.preventDefault();
   };
   const finishDrag = (event: PointerEvent<HTMLDivElement>, cancelled = false) => {
@@ -176,9 +177,9 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
     };
     const scroll = () => {
       const rect = graph.current!.getBoundingClientRect();
-      const dy = origin.current.y - rect.y;
+      const dx = origin.current.x - rect.x, dy = origin.current.y - rect.y;
       origin.current = { x: rect.x, y: rect.y };
-      if (drag.current?.active) { drag.current.y += dy; target(); } else paint();
+      if (drag.current?.active) { drag.current.x += dx; drag.current.y += dy; target(); } else paint();
     };
     const observer = new ResizeObserver(measure); observer.observe(container);
     container.addEventListener("scroll", scroll, { passive: true }); window.addEventListener("resize", measure);

@@ -54,7 +54,6 @@ function TimeTick({
 }
 export function AgentQuotaIcon({ agent }: { agent: string }) {
   const { snapshot } = subscriptions.use();
-  const activity = agentActivity.use().snapshot;
   const now = useNow();
   quotaDisplay.use();
   const provider = snapshot?.settings.enabled
@@ -71,16 +70,12 @@ export function AgentQuotaIcon({ agent }: { agent: string }) {
         )
       : [];
   const current = windows.find((w) => w.id === provider?.displayWindowId),
-    sessions = activity?.agents[agent]?.sessions ?? [],
-    running = sessions.length > 0,
-    attention = sessions.some(session => session.interaction),
     label = current
       ? `${windowLabel(current.label)} · ${quotaLabel()} ${quotaPercent(current)}`
       : undefined;
   return (
     <span
-      className={`agent-quota-icon ${current ? "has-quota" : ""} ${running ? "running" : ""}`}
-      aria-busy={running}
+      className={`agent-quota-icon ${current ? "has-quota" : ""}`}
       aria-label={label}
       role={label ? "img" : undefined}
     >
@@ -104,7 +99,6 @@ export function AgentQuotaIcon({ agent }: { agent: string }) {
           />
         </svg>
       )}
-      {running && <ActivityArc attention={attention} />}
       {icons[agent] ? (
         <span
           className="agent-logo"

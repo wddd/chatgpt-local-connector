@@ -236,6 +236,7 @@ pub(crate) struct Timeline {
     pub info: Value,
     pub status: String,
     pub turn: String,
+    turn_started_at: Option<String>,
     #[serde(skip)]
     pub history_loaded: bool,
     #[serde(skip)]
@@ -388,6 +389,7 @@ impl Timeline {
             "arc/user" => {
                 self.end_chunk(at);
                 self.turn = string(msg, "turnId").into();
+                self.turn_started_at = Some(at.into());
                 self.status = "running".into();
                 let (text, truncated) = cut(&redact(string(msg, "text")), MAX_TEXT);
                 self.partial |= truncated;
@@ -793,6 +795,9 @@ impl Timeline {
         self.tool_observed |= history.tool_observed;
         if self.observed_events == observed || self.status.is_empty() {
             self.status = history.status;
+            if self.turn != history.turn {
+                self.turn_started_at = None;
+            }
             self.turn = history.turn;
         }
         self.observed_events += 1;
@@ -917,10 +922,22 @@ impl Timeline {
     pub fn codex(&mut self, method: &str, params: &Value, at: &str) {
         self.observed_events += 1;
         match method {
-            "turn/started" => { self.turn=string(&params["turn"],"id").into();self.status="running".into(); }
+            "turn/started" => {
+                let turn = string(&params["turn"], "id");
+                if self.turn != turn || self.turn_started_at.is_none() {
+                    self.turn_started_at = Some(at.into());
+                }
+                self.turn = turn.into();
+                self.status = "running".into();
+            }
             "turn/completed" => {self.finish(match string(&params["turn"],"status") {"failed"=>"failed","interrupted"=>"cancelled",_=>"completed"},at);}
             "item/started"|"item/completed" => {
-                if let Some(turn)=params["turnId"].as_str() {self.turn=turn.into();}
+                if let Some(turn) = params["turnId"].as_str() {
+                    if self.turn != turn {
+                        self.turn_started_at = None;
+                    }
+                    self.turn = turn.into();
+                }
                 let status=match string(&params["item"],"status") {"failed"|"declined"=>"failed",_ if method=="item/completed"=>"completed",_=>"running"};
                 self.codex_item(&params["item"],status,at);
             }
@@ -993,6 +1010,7 @@ impl Timeline {
                 .map(|r| r["interaction"].clone())
         });
         let mut row = json!({"id":info["id"],"source":source,"title":redact(string(info,"title")),"project":info["project"],"phase":"idle","headline":"","startedAt":info["startedAt"],"phaseSince":info["startedAt"],"timeline":true});
+        row["turnStartedAt"] = json!(self.turn_started_at);
         row["fallbackHeadline"] = json!(fallback);
         row["recentContent"] = json!(recent.iter().rev().collect::<Vec<_>>());
         if let Some(item) = latest {

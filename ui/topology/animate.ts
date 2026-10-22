@@ -38,21 +38,25 @@ export class TopologyAnimator {
           radius: n.arc?.R ?? NODE_R + this.params.arcGap, alo: n.arc?.lo ?? 0, ahi: n.arc?.hi ?? 0, aop: n.arc ? 1 : 0 },
         { aop: 0, alo: 0, ahi: 0 });
         s.side = w.side;
-        if (drag?.kind === "node" && drag.side === w.side && drag.id === n.id) s.fields.y.pin = drag.y;
+        if (drag?.kind === "node" && drag.side === w.side && drag.id === n.id) {
+          s.fields.x.pin = drag.x; s.fields.y.pin = drag.y;
+        }
       }
       for (const t of w.tasks) {
         const parent = nodeKey(w.side, t.parent), n = this.values(parent)!;
         const s = this.spring(taskKey(w.side, t.id), { x: t.x, y: t.y, port: t.port, op: 1 },
           { x: n.x + t.side * n.radius, y: n.y, port: 0, op: 0 });
         s.parent = parent; s.side = w.side;
-        if (drag?.kind === "task" && drag.side === w.side && drag.id === t.id) s.fields.y.pin = drag.y;
+        if (drag?.kind === "task" && drag.side === w.side && drag.id === t.id) {
+          s.fields.x.pin = drag.x; s.fields.y.pin = drag.y;
+        }
       }
     }
     for (const [key, s] of this.live) {
       if (s.alive) continue;
       if (!s.parent) { this.live.delete(key); continue; }
       s.fields.op.t = 0; s.fields.port.t = 0;
-      s.fields.y.pin = undefined;
+      s.fields.x.pin = s.fields.y.pin = undefined;
     }
   }
   values(key: string) {

@@ -897,6 +897,7 @@
 .topology-node .graph-node { width: 44px; height: 44px; margin: 0; --agent-quota-size: 44px; }
 .topology-node .source-icon, .topology-node .source-icon > span { display: grid; place-items: center; width: 44px; height: 44px; }
 .topology-node .source-icon svg { width: 38px; height: 38px; }
+.topology-node .agent-quota-icon:not(.has-quota) .agent-logo { width: 38px; height: 38px; }
 .topology-utility { position: absolute; left: 0; top: 0; z-index: 2; }
 .topology-utility .graph-node { width: 32px; height: 32px; margin: 0; border: 1px dashed var(--text-secondary); border-radius: 50%; }
 .topology-utility .source-icon { width: 100%; height: 100%; border: 0; }

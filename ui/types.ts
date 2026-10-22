@@ -52,6 +52,7 @@ export interface AgentActivitySession {
   fallbackHeadline?: string;
   recentContent?: string[];
   startedAt?: string | null;
+  turnStartedAt?: string | null;
   phaseSince: string | null;
   interaction?: AgentInteraction;
   timeline: boolean;
