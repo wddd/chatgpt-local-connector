@@ -44,11 +44,11 @@ export async function installScenario(name: string) {
     });
   });
   const records = fixture.tasks.map((task, index) => ({ requestId: `fixture-request-${index}`, threadId: `fixture-task-${index}`, state: task.approval ? 'awaiting-approval' : 'completed', createdAt: now, updatedAt: now,
-    origin: { ingressId: 'fixture-source' }, approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } }));
+    origin: { ingressId: 'fixture-source', sourceId: 'fixture-source' }, approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } }));
   const permissionData = { items: [], observedAt: now };
   const subscriptionData = { instanceId: 'fixture', revision: 1, settings: { enabled: false, refreshMinutes: 30, agentProviders: {} }, providers: [] };
-  responses = { status, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, relay: { relays: [] } };
-  connector.set({ status, busy: '', loading: false, error: '', feedback: { text: '', error: false } });
+  responses = { status, source: { sources: status.ingresses.flatMap(i => i.sources ?? []) }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, relay: { relays: [] } };
+  connector.set({ status, sources: status.ingresses.flatMap(i => i.sources ?? []), busy: '', loading: false, error: '', feedback: { text: '', error: false } });
   agents.set({ items: inventory, loaded: true, loading: false, saving: '', error: '' });
   acceptActivity(activity); tasks.set({ records, loading: false, error: '' });
   permissions.set({ data: permissionData, loading: false, error: '' });

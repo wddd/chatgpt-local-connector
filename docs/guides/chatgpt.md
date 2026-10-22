@@ -14,15 +14,15 @@ Codex offers the ordinary `gpt-6-astra` model; its model list does not expose a 
 
 ## Connect with a remote link
 
-Create a relay or join a trusted shared relay in ARC, choose ChatGPT, and copy the link. Follow the panel’s path to add an app in ChatGPT. Return to ARC, compare the four-character pairing codes, and approve. Enable ARC in the conversation once connected. See [Getting started](../getting-started.md).
+Open **Add control source** in ARC, choose **ChatGPT**, then select an existing connection or create/join a relay. Copy the address and follow the panel’s path to add an app in ChatGPT. In the approval step, compare the pairing codes and check the client name and callback. Choose a new source or reauthorize an existing ChatGPT source on that connection, then approve. Enable ARC in the conversation once connected. See [Getting started](../getting-started.md).
 
 ## Advanced: OpenAI Secure Tunnel
 
 1. Install ARC and sign in to Codex Desktop.
-2. Follow the official [Secure MCP Tunnel setup](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) to obtain a Tunnel ID and runtime API key. Select OpenAI Secure Tunnel in ARC’s ChatGPT form under **Remote link → Advanced** and enter them there.
+2. Follow the official [Secure MCP Tunnel setup](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) to obtain a Tunnel ID and runtime API key. In **Add control source → ChatGPT**, select **OpenAI Secure Tunnel** in step two and enter them in the connection form.
 3. Save and connect. ARC prepares and manages the official Tunnel Client, reusing a qualifying cached version before downloading the supported official release with SHA256 verification. Startup does not depend on the anonymous GitHub API.
 4. Enable **Developer Mode** in ChatGPT where available. Open [Plugins](https://chatgpt.com/plugins), create a developer-mode connection, choose **Tunnel**, and select the same tunnel. Follow the current [connection instructions](https://developers.openai.com/plugins/deploy/connect-chatgpt) if the UI labels differ.
-5. Enable ARC in the Chat conversation. Run the verification prompt shown by ARC; it calls `act connector_verify` with that ingress's code.
+5. Enable ARC in the Chat conversation. Secure Tunnel uses its configured authentication and has no local pairing-code approval.
 
 The runtime API key comes from [Platform Runtime API keys](https://platform.openai.com/settings/organization/api-keys), with Tunnels Read + Use for the target tunnel. Tunnel creation requires Read + Manage. ARC requires observed control-plane authentication before reporting readiness; 401/403 returns Agent setup to the key step.
 

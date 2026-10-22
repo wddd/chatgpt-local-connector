@@ -1,3 +1,4 @@
+import { ArrowLeft } from "lucide-react";
 import { scenarioName } from "./scenarioMode";
 import { captureRequest, type PanelRequest } from "./acceptance";
 import {
@@ -222,7 +223,9 @@ export default function App() {
           !layers.length
         ) {
           e.preventDefault();
-          void closeSheet();
+          if (page === "remote" && (nav.remoteConnectionId || nav.remoteSourceId)) {
+            navigation.set(old => old.remoteConnectionId ? { ...old, remoteConnectionId: undefined } : { ...old, remoteSourceId: undefined });
+          } else void closeSheet();
         }
         if (e.key === "Tab" && page !== "overview" && !layers.length) {
           const nodes = Array.from(
@@ -284,8 +287,9 @@ export default function App() {
         >
           <div className="page-sheet-content">
             <header className="sheet-header">
+              {page === "remote" && (nav.remoteSourceId || nav.remoteConnectionId) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => old.remoteConnectionId ? { ...old, remoteConnectionId: undefined } : { ...old, remoteSourceId: undefined })} />}
               <h1 className="capsule-title" tabIndex={-1}>
-                {pages.find((item) => item.id === page)?.label}
+                {page === "remote" ? status?.ingresses.find(i => i.id === nav.remoteConnectionId)?.name ?? connector.get().sources.find(s => s.id === nav.remoteSourceId)?.label ?? t("source.title") : pages.find((item) => item.id === page)?.label}
                 {page === "logs" && (
                   <span className="muted small records-count">
                     {t("recentRecords", { count: status?.logs.length ?? 0 })}

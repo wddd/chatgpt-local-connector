@@ -29,7 +29,7 @@ import {
 } from "../state/agents";
 import type { Ingress } from "../state/types";
 import SourceIcon from "./SourceIcon";
-import { controlSource } from "../controlSources";
+import { isPendingSource } from "../sourcePresentation";
 import GraphNode from "./GraphNode";
 import { ActivityBubble } from "./ActivityBubbles";
 import Topology, { type TopologyHandle, type NodeView } from "../topology/Topology";
@@ -57,7 +57,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const detailOpen = !!selection || !!sourceSelection, panelOpen = detailOpen || !!flow;
   const [panelExpanded, setPanelExpanded] = useState(false);
   useEffect(() => { if (!detailOpen) setPanelExpanded(false); }, [detailOpen]);
-  const { status, busy, loading, error } = connector.use();
+  const { status, sources: sourceRecords, busy, loading, error } = connector.use();
   const inventory = agentStore.use();
   const max = maxVisibleAgents.use();
   const { snapshot } = subscriptions.use(), nav = navigation.use();
@@ -66,9 +66,10 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   useEffect(() => {
     if (scenarioName || !visible || initialSetupShown.current || !status || loading || error) return;
     initialSetupShown.current = true;
-    if (!status.ingresses.some(i => i.sources?.some(s => s.state !== "revoked" && !i.oauth?.pending.some(p => p.id === s.credential.grantId)))) openOnboarding("welcome");
-  }, [visible, status, loading, error]);
-  const sources = orderedSources();
+    if (!sourceRecords.some(s => s.state !== "revoked" && !isPendingSource(s, status.ingresses))) openOnboarding("welcome");
+  }, [visible, status, sourceRecords, loading, error]);
+  const sources = status?.ingresses ?? [];
+  const controlSources = orderedSources().filter(s => s.state !== "revoked" && !isPendingSource(s, sources));
   const agents = orderedAgents()
     .filter((a) => a.installed)
     .filter((a, index) => index < ([4, 6, 8, 10].includes(max) ? max : 4) || a.agent === selection?.agent);
@@ -77,7 +78,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       !!busy || sources.some((i) => ["starting", "stopping"].includes(i.state));
   function edit(ingress?: Ingress, field?: string) {
     if (ingress) { selectIngressPanel(ingress, { editing: true, field }); return; }
-    openOnboarding("sources");
+    openOnboarding("product");
   }
   useEffect(() => {
     if (!nav.ingressEdit) return;
@@ -167,7 +168,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const [switchOn, setSwitchOn] = useState<boolean>();
   useEffect(() => { if (!progressing && status) setSwitchOn(running); }, [running, progressing, status]);
   function moveSource(id: string, by: number) {
-    const ids = sources.map(source => source.id);
+    const ids = controlSources.map(source => source.id);
     const index = ids.indexOf(id), target = index + by;
     if (index < 0 || target < 0 || target >= ids.length) return;
     ids.splice(index, 1);
@@ -180,24 +181,20 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     const target = enabled[index + by];
     if (index >= 0 && target) moveAgent(id, target.agent);
   }
-  const sourceViews: NodeView[] = sources.flatMap(source => {
-    return (source.sources ?? []).filter(s => s.state !== "revoked" && !source.oauth?.pending.some(p => p.id === s.credential.grantId)).map(s => ({
-      id: s.id, name: s.label, platform: s.product, sourceId: s.id,
-    })).map(view => ({
-      id: view.id, state: wireState(sourceState(source)), attention: false,
-      selected: sourceSelection?.ingress.id === source.id && sourceSelection?.client?.id === view.sourceId, tasks: [], reorderable: !panelOpen && source.sources?.length === 1,
-      content: <GraphNode label={`${view.name}: ${t(sourceState(source))}`} state={wireState(sourceState(source))}
-        highlighted={sourceSelection?.ingress.id === source.id && sourceSelection?.client?.id === view.sourceId}
-        onMove={panelOpen || source.sources?.length !== 1 ? undefined : by => moveSource(source.id, by)}
-        onOpen={() => selectIngressPanel(source, { toggle: true, client: { id: view.sourceId, name: view.name, source: view.platform } })}>
-        <SourceIcon platform={view.platform} panelVisual /><span className="graph-node-name">{view.name}</span>
+  const sourceViews: NodeView[] = controlSources.flatMap(source => {
+    const ingress = sources.find(i => i.id === source.ingressId);
+    if (!ingress) return [];
+    const state = source.state === "disconnected" ? "disconnected" : sourceState(ingress);
+    const selected = sourceSelection?.client?.id === source.id;
+    return [{
+      id: source.id, state: wireState(state), attention: false, selected, tasks: [], reorderable: !panelOpen,
+      content: <GraphNode label={`${source.label}: ${t(state)}`} state={wireState(state)} highlighted={selected}
+        onMove={panelOpen ? undefined : by => moveSource(source.id, by)}
+        onOpen={() => selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } })}>
+        <SourceIcon platform={source.product} panelVisual /><span className="graph-node-name">{source.label}</span>
       </GraphNode>,
-    }));
+    }];
   });
-  if (flow?.step === "connect" && flow.source && !sources.some(s => s.oauth?.grants.some(g => g.id === flow.requestId))) {
-    sourceViews.push({ id: flow.requestId && flow.ingressId ? `${flow.ingressId}:${flow.requestId}` : `pending:${flow.source}`, state: "connecting", attention: false, selected: true, tasks: [], reorderable: false,
-      content: <GraphNode label={t("connect.waitClient", { name: flow.source })} state="connecting" highlighted onOpen={() => {}}><SourceIcon platform={flow.source} panelVisual /><span className="graph-node-name">{controlSource(flow.source)?.shortName ?? t("connect.other")}</span></GraphNode> });
-  }
   const agentViews: NodeView[] = agents.map(agent => {
     const sessions = orderActivity(tracked[agent.agent] ?? [], manualOrder[agent.agent] ?? []), selected = selection?.agent === agent.agent;
     const shown = visibleActivity(sessions, selected ? selection.session?.id : undefined);
@@ -251,10 +248,10 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
           </button>
         </div>
         <Topology ref={topology} boundary={core} left={sourceViews} right={agentViews} panelExpanded={panelExpanded}
-          onReorderNodes={(side, ids) => side === -1 ? reorderSources([...new Set(ids.filter(id => !id.startsWith("pending:")).map(id => id.split(":")[0]))]) : reorderAgents(ids)}
+          onReorderNodes={(side, ids) => side === -1 ? reorderSources(ids) : reorderAgents(ids)}
           onReorderTasks={(_side, agent, ids) => reorderTasks(agent, ids.map(id => JSON.parse(id)[1] as string), tracked[agent] ?? [])}
           brand={<Hub sourceEmpty={!sourceViews.length} agentEmpty={!agents.length}
-            onAddSource={() => openOnboarding(sources.length ? "sources" : "welcome")}
+            onAddSource={() => openOnboarding("product")}
             onManageAgents={() => setAgentsOpen(true)} />} />
         {selectedAgent && visible && <AgentPanel agent={selectedAgent} state={agentState(selectedAgent)}
           expanded={panelExpanded} onToggleWidth={() => setPanelExpanded(value => !value)}
@@ -277,9 +274,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         )}
       </section>
       {visible && tuning && <TuningPanel />}
-      {flow && visible && <Onboarding onPanelFrame={panelFrame} onAdvanced={() => {
-        onboarding.set(undefined); navigation.set(old => ({ ...old, page: "remote", remoteAdvanced: true }));
-      }} />}
+      {flow && visible && <Onboarding onPanelFrame={panelFrame} />}
       {agentsOpen && <AgentsSettings initialAgent={settingsAgent} onClose={() => { setAgentsOpen(false); setSettingsAgent(undefined); }} />}
     </>
   );

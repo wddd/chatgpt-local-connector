@@ -20,7 +20,7 @@ export function viewModel(layoutSettled = false) {
     window: { width: innerWidth, height: innerHeight, devicePixelRatio },
     theme: document.documentElement.dataset.theme, language: locale.get(),
     topology: topology?.() ?? null,
-    panels: { agent: agentPanel.get() ?? null, source: ingressPanel.get()?.ingress.id ?? null,
+    panels: { agent: agentPanel.get() ?? null, source: ingressPanel.get()?.client?.id ?? null,
       onboarding: onboarding.get()?.step ?? null, page: localStorage.getItem('arc-page') ?? 'overview' },
   };
 }
@@ -33,9 +33,10 @@ export function openSnapshotPanel(panel?: PanelRequest | null) {
     if (!agents.get().items.some(a => a.agent === panel.id)) throw new Error('SNAPSHOT_NODE_NOT_FOUND: agent');
     selectAgentPanel({ type: 'agent', agent: panel.id! });
   } else {
-    const source = connector.get().status?.ingresses.find(s => s.id === panel.id);
-    if (!source) throw new Error('SNAPSHOT_NODE_NOT_FOUND: source');
-    selectIngressPanel(source);
+    const source = connector.get().sources.find(s => s.id === panel.id);
+    const ingress = connector.get().status?.ingresses.find(i => i.id === source?.ingressId);
+    if (!source || !ingress) throw new Error('SNAPSHOT_NODE_NOT_FOUND: source');
+    selectIngressPanel(ingress, { client: { id: source.id, name: source.label, source: source.product } });
   }
 }
 export async function settledViewModel() {

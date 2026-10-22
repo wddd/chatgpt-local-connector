@@ -1,0 +1,20 @@
+import { Globe, Link, Monitor, Shield } from "lucide-react";
+import { t } from "./i18n";
+import type { ControlSource, Ingress } from "./state/types";
+
+export function connectionKind(ingress: Ingress) {
+  return ingress.transport === "local" ? "local" : ingress.transport === "relay" ? "relay" : ingress.transport === "openai-tunnel" ? "openai" : "tunnel";
+}
+export function connectionIcon(ingress: Ingress) {
+  return { local: Monitor, relay: Link, openai: Shield, tunnel: Globe }[connectionKind(ingress)];
+}
+export function connectionProvider(ingress: Ingress) {
+  return ingress.transport === "https" ? ingress.config.httpsProvider : t(`source.kind.${connectionKind(ingress)}`);
+}
+export function isPendingSource(source: ControlSource, ingresses: Ingress[]) {
+  return source.credential.type === "oauth-grant" && ingresses.some(i => i.id === source.ingressId && i.oauth?.pending.some(p => p.sourceId === source.id));
+}
+export function sourceCandidates(sources: ControlSource[], ingresses: Ingress[], ingressId: string, product: string, pendingId?: string) {
+  return sources.filter(s => s.id !== pendingId && s.ingressId === ingressId && s.product === product && s.credential.type === "oauth-grant" && !isPendingSource(s, ingresses)
+    && (s.state === "revoked" || s.connectedAt !== null || ingresses.find(i => i.id === ingressId)?.oauth?.grants.some(g => g.id === s.credential.grantId)));
+}

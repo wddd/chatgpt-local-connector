@@ -16,5 +16,5 @@ export function selectIngressPanel(ingress: Ingress, options: { client?: Ingress
   agentPanel.set(undefined);
   ingressPanel.set(old => options.toggle && old?.ingress.id === ingress.id && old?.client?.id === options.client?.id
     ? { ...old, closing: true }
-    : { ingress, client: options.client, editing: options.editing, field: options.field, autoConnect: options.autoConnect });
+    : { ingress, client: options.client ?? (old?.ingress.id === ingress.id ? old.client : undefined), editing: options.editing, field: options.field, autoConnect: options.autoConnect });
 }

@@ -311,6 +311,7 @@ export type Choice = {
   value: string;
   label: string;
   icon?: LucideIcon;
+  graphic?: ReactNode;
   color?: string;
   description?: string;
 };
@@ -392,6 +393,7 @@ export function SingleChoice({
                 <Icon icon={Check} />
               ) : (
                 <>
+                  {option.graphic}
                   {option.icon && <Icon icon={option.icon} />}
                   <span>{option.label}{cards && option.description && <small>{option.description}</small>}</span>
                 </>

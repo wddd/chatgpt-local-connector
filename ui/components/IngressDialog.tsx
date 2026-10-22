@@ -35,6 +35,9 @@ import SourceIcon from "./SourceIcon";
 import ToolPolicyField from "./ToolPolicyField";
 export default function IngressDialog({
   ingress: initialIngress,
+  initialProduct,
+  initialTransport,
+  initialProvider,
   focusField,
   onClose,
   onSaved,
@@ -42,6 +45,9 @@ export default function IngressDialog({
   embedded = false,
   onBusy,
 }: {
+  initialProduct?: string;
+  initialTransport?: "https" | "openai-tunnel";
+  initialProvider?: "custom";
   embedded?: boolean;
   onBusy?: (busy: boolean) => void;
   ingress?: Ingress;
@@ -58,15 +64,17 @@ export default function IngressDialog({
       ? controlSource(ingress.controlSource)?.curated
         ? ingress.controlSource
         : "custom"
-      : "",
+      : initialProduct ?? "",
   );
-  const [source, setSource] = useState(ingress?.controlSource || ""),
-    [name, setName] = useState(ingress?.name || ""),
+  const [source, setSource] = useState(ingress?.controlSource || initialProduct || ""),
+    [name, setName] = useState(ingress?.name || (initialProduct ? nextSourceName(initialProduct, status?.ingresses.map(i => i.name) ?? []) : "")),
     [form, setForm] = useState(() => {
       const f = connectionForm(ingress?.config);
       if (ingress)
         f.connectionMode =
           ingress.transport === "openai-tunnel" ? "tunnel" : "https";
+      if (!ingress && initialTransport) f.connectionMode = initialTransport === "openai-tunnel" ? "tunnel" : "https";
+      if (!ingress && initialProvider) f.httpsProvider = initialProvider;
       return f;
     });
   const [auth, setAuth] = useState(
@@ -74,7 +82,7 @@ export default function IngressDialog({
         ? "oauth"
         : ingress?.auth === "bearer"
           ? "bearer"
-          : "none",
+          : initialProduct ? controlSource(initialProduct)?.httpsAuth ?? "oauth" : "none",
     ),
     [toolPolicy, setToolPolicy] = useState<ToolPolicy | undefined>(
       ingress?.toolPolicy,
@@ -113,7 +121,7 @@ export default function IngressDialog({
     provider = providers[form.httpsProvider],
     https = form.connectionMode === "https",
     allowTunnel =
-      preset?.recommendedTransport === "openai-tunnel" || selected === "custom";
+      selected === "chatgpt" || selected === "custom" && !initialProduct;
   function change<K extends keyof ConnectionForm>(
     key: K,
     value: ConnectionForm[K],
@@ -280,11 +288,11 @@ export default function IngressDialog({
   return (
     <Frame
       initialFocus={focusField ? `ingress-${focusField}` : undefined}
-      title={`${t(ingress ? "editControlSource" : "addControlSource")}${selected ? " · " + (preset?.displayName || t("customControlSource")) : ""}`}
-      onClose={() => !ingress && selected ? setSelected("") : onClose()}
+      title={`${t(ingress ? "source.editConnection" : "source.newConnection")}${selected ? " · " + (preset?.displayName || t("customControlSource")) : ""}`}
+      onClose={() => !ingress && !initialProduct && selected ? setSelected("") : onClose()}
       onDismiss={onClose}
-      depthOffset={!ingress && selected ? 1 : 0}
-      leading={!ingress && selected ? <IconButton icon={ChevronLeft} label={t("back")} disabled={working} onClick={() => setSelected("")} /> : undefined}
+      depthOffset={!ingress && !initialProduct && selected ? 1 : 0}
+      leading={!ingress && !initialProduct && selected ? <IconButton icon={ChevronLeft} label={t("back")} disabled={working} onClick={() => setSelected("")} /> : undefined}
       width={!selected ? 480 : undefined}
       busy={working}
       footer={

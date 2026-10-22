@@ -2,14 +2,16 @@ import { createStore, acceptPreferences, preparePreferences, preference } from "
 import { api } from "../api";
 import { t } from "../i18n";
 import { isDesktop, notifyNative } from "../platform";
-import type { Ingress, Status } from "./types";
+import type { ControlSource, Ingress, Status } from "./types";
 export const connector = createStore<{
   status?: Status;
+  sources: ControlSource[];
   busy: string;
   loading: boolean;
   error: string;
   feedback: { text: string; error: boolean; copy?: string };
 }>({
+  sources: [],
   busy: "",
   loading: true,
   error: "",
@@ -21,10 +23,10 @@ const sourceOrder = preference<string[]>("arc.source-order", []);
 sourceOrder.subscribe(() => patch({}));
 export function orderedSources() {
   const order = sourceOrder.get();
-  return [...(connector.get().status?.ingresses || [])].sort((a, b) => {
+  return [...(connector.get().sources)].sort((a, b) => {
     const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
     if (ai >= 0 || bi >= 0) return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi);
-    return Number(b.controlSource === "chatgpt") - Number(a.controlSource === "chatgpt") || a.name.localeCompare(b.name);
+    return Number(b.product === "chatgpt") - Number(a.product === "chatgpt") || a.label.localeCompare(b.label);
   });
 }
 export function reorderSources(ids: string[]) {
@@ -47,8 +49,8 @@ export function notify(text: string, error = false, copy?: string) {
 let reading: Promise<void> | undefined;
 export function refreshConnector(): Promise<void> {
   if (reading) return reading;
-  reading = preparePreferences().then(() => api<Status>("status"))
-    .then(accept)
+  reading = preparePreferences().then(() => Promise.all([api<Status>("status"), api<{ sources: ControlSource[] }>("source")]))
+    .then(([status, result]) => { patch({ sources: result.sources }); accept(status); })
     .catch((e) => {
       patch({ error: String(e), loading: false });
       throw e;
@@ -95,6 +97,7 @@ export function startConnector() {
     stream.addEventListener("snapshot", (event) => {
       try {
         accept(JSON.parse((event as MessageEvent).data));
+        read();
       } catch {
         read();
       }

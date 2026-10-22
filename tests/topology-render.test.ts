@@ -216,7 +216,8 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
     // A bubble can open the second layer without visiting the Agent list first.
     const originalFetch = globalThis.fetch;
     let reads = 0;
-    globalThis.fetch = async () => {
+    globalThis.fetch = async (input, init) => {
+      if (String(input).endsWith("/agents/conversations")) return originalFetch(input, init);
       reads++;
       return new Response(JSON.stringify({ sessionId: "owned", status: "completed", cursor: 1,
         coverage: { state: "partial", truncated: true }, entries: [{ id: "result", type: "text", text: "Retained result", status: "completed", cursor: 1, turnId: "turn", startedAt: null, updatedAt: "2026-01-01" }] }), { status: 200 });
@@ -285,7 +286,7 @@ test("control source dock preserves editing, new onboarding, field navigation an
     const config = { configured: true, httpsProvider: "cloudflare", cloudflareMode: "quick", httpsUrl: "", tunnelId: "tunnel_fixture", hasApiKey: true };
     const source = (id: string) => ({ id, sources: [{ id, ingressId: id, credential: { type: "oauth-grant", grantId: `grant-${id}`, clientId: `client-${id}` }, product: "claude", platform: "anthropic", label: `Source ${id}`, createdAt: "2026-01-01", connectedAt: 1, lastSeenAt: 1, state: "connected" }], name: `Source ${id}`, controlSource: "claude", enabled: true, running: true, state: "ready", auth: "oauth", transport: "https", error: "", config, url: "https://example.com/mcp" });
     const status = { ingresses: [source("one"), source("two")], core: { backendSession: "fixture", appServer: { state: "ready" } }, platform: "darwin", logs: [], autoOpenCodex: false };
-    connector.set({ status, loading: false, busy: "", error: "", feedback: { text: "", error: false } });
+    connector.set({ status, sources: status.ingresses.flatMap(i => i.sources), loading: false, busy: "", error: "", feedback: { text: "", error: false } });
     agents.set({ items: [{ agent: "codex", installed: true, enabled: true, available: true, status: "ready" }], loading: false, error: "" });
     const session = { id: "thread", source: "codex-thread", title: "Dispatch fixture", phase: "command", headline: "Fixture", phaseSince: null, timeline: true };
     agentActivity.set({ snapshot: { observedAt: "2026-01-01", activeAgents: ["codex"], agents: { codex: { sessions: [session] } } }, error: "" });
@@ -386,9 +387,12 @@ test("control source dock preserves editing, new onboarding, field navigation an
       await click(mount.querySelector(".hub-source"));
       assert.equal(document.querySelector('[data-panel-dock]')?.getAttribute('data-panel-dock'), 'left');
       assert.ok(document.querySelector('.source-grid'));
-      await click(document.querySelector(`[data-source="${id}"]`));
+      await click(document.querySelector(`.source-grid [role="radio"][value="${id}"]`));
+      await click(button(t("source.next")));
+      await click(button(t("source.next")));
       assert.ok(document.querySelector('.connection-steps'));
       assert.equal(document.querySelector('#ingress-tunnelId'), null);
+      await click(button(t("back")));
       await click(button(t("back")));
       assert.ok(document.querySelector('.source-grid'));
       await escape();
@@ -399,13 +403,13 @@ test("control source dock preserves editing, new onboarding, field navigation an
     assert.equal(ingressPanel.get(), undefined); assert.equal(document.querySelector('[data-panel-dock]'), null);
     assert.ok(calls.some(c => c.path === 'ingress/one' && c.method === 'DELETE'));
     assert.equal(document.querySelector('[data-source-node="one"]'), null);
-    await act(() => { status.ingresses = []; connector.set({ ...connector.get(), status: { ...status } }); });
+    await act(() => { status.ingresses = []; connector.set({ ...connector.get(), sources: [], status: { ...status } }); });
     await click(mount.querySelector('.hub-source'));
-    assert.ok(document.querySelector(".welcome-choices"), "empty source wing opens the welcome choices");
+    assert.ok(document.querySelector(".source-grid"), "the source entry always opens the shared add flow");
     const { locale } = await server.ssrLoadModule("/ui/i18n.ts");
     const { onboarding } = await server.ssrLoadModule("/ui/state/onboarding.ts");
     await act(() => locale.set("en"));
-    for (const step of ["welcome", "local", "remote", "progress", "ready", "sources", "connect"]) {
+    for (const step of ["welcome", "product", "connection", "address", "approval"]) {
       await act(() => onboarding.set({ step, source: "claude" })); await flush();
       const header = document.querySelector<HTMLElement>(".elastic-panel-content > .dialog-header")!;
       assert.ok(header.querySelector("h2")?.textContent, `English ${step} title`);

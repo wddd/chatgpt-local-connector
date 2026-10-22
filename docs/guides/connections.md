@@ -2,7 +2,7 @@
 
 **English** | [简体中文](../zh-CN/guides/connections.md)
 
-For Claude, add an HTTPS ingress with OAuth. For ChatGPT, start with [Secure Tunnel](chatgpt.md). Each ingress has its own provider, credentials, URL, and allowed tools.
+Start with **Add control source** and choose a product, then an existing connection or a new relay link or dedicated tunnel. ChatGPT also supports [Secure Tunnel](chatgpt.md). Each connection has its own provider, credentials, URL, and allowed tools; OAuth connections may carry multiple sources.
 
 | Provider | What to enter | Address |
 | --- | --- | --- |
@@ -16,15 +16,15 @@ For Claude, add an HTTPS ingress with OAuth. For ChatGPT, start with [Secure Tun
 
 ## Connect
 
-1. Click the control source on the home screen to open its left-side view, then choose **Edit configuration**.
+1. To create a connection, choose **Dedicated tunnel** in step two of **Add control source**. To edit one, open **Remote link → Connections**, select it, and choose **Edit**.
 2. Choose the provider and enter the required fields. Use **Get token** links when offered.
 3. Select the client's authentication: OAuth for Claude, or Bearer for clients supporting the `Authorization` header. Keep the Default op list to begin.
 4. Save to return to the connection view and connect automatically. ARC downloads the provider component when needed and manages its process.
-5. Copy the displayed MCP URL into the client and run the connection's verification prompt there.
+5. Copy the displayed MCP URL into the client. For OAuth, return to ARC to compare the pairing code and approve. Choose a new source or reauthorize an existing source when prompted.
 
 Provider credentials connect the tunnel; MCP authentication controls access through it. They are separate fields. A fixed domain must already be assigned in your provider account.
 
-The source view also shows recent available Codex dispatches. Open a running row to switch to the Agent task detail, or choose **View all records** to see records filtered by this source. Add a new source from the central left dot; guided and manual setup remain there.
+The homepage and Remote link source detail show recent Codex dispatches for that source ID. Open a running row to switch to the Agent task detail. Source details also let you edit the label or product and disconnect with confirmation. Relay-owner sharing, member management, and deletion are in **Settings → Relay hosting**; joined relays can be left from their connection detail.
 
 ## Use a custom reverse proxy
 

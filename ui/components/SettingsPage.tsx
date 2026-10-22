@@ -10,6 +10,7 @@ import { connector, run, notify, refreshConnector } from "../state/connector";
 import { useInterval } from "../state/hooks";
 import type { Service } from "../state/types";
 import { Button, Group, Row, Switch, SingleChoice, Input, Field } from "./ui";
+import RelayHostingSettings from "./RelaySettings";
 import { AppUpdate } from "./AppUpdate";
 export default function SettingsPage() {
   const { status, busy } = connector.use();
@@ -257,6 +258,7 @@ export default function SettingsPage() {
           <Switch label={t("topology.tuning")} checked={tuning} onChange={topologyTuningEnabled.set} />
         </Row>
       </Group>
+      <RelayHostingSettings />
       <AppUpdate />
     </div>
   );
