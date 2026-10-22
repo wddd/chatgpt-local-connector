@@ -1,3 +1,4 @@
+import { topologyTuningEnabled } from "../state/topology";
 import { notificationsPreference } from "../state/store";
 import { useEffect, useState } from "react";
 import { Monitor, Sun, Moon } from "lucide-react";
@@ -26,7 +27,7 @@ export default function SettingsPage() {
     }),
     [appearanceReady, setAppearanceReady] = useState(false),
     [service, setService] = useState<Service>();
-  const notifications = notificationsPreference.use();
+  const notifications = notificationsPreference.use(), tuning = topologyTuningEnabled.use();
   const mac = isDesktop && navigator.platform.toLowerCase().includes("mac");
   useEffect(() => {
     if (mac)
@@ -250,6 +251,11 @@ export default function SettingsPage() {
             </form>
           </Field>
         )}
+      </Group>
+      <Group title={t("topology.experimental")}>
+        <Row title={t("topology.tuning")} description={t("topology.settingDescription")}>
+          <Switch label={t("topology.tuning")} checked={tuning} onChange={topologyTuningEnabled.set} />
+        </Row>
       </Group>
       <AppUpdate />
     </div>

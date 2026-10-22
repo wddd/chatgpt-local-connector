@@ -1,13 +1,46 @@
-// Pure topology geometry. Dimensions and port distribution are shared by both wings.
-export const DEFAULTS = {
-  bubbleWeight: 0.8, margin: 40, squeezeMin: 0.72,
-  ringScale: 1, earFollow: 0.7, earSep: 7, earMax: 42, earMin: 22, earPad: 7,
-  t1Node: 0.42, t1Root: 0.3, flare: 1,
-  arcGap: 11, arcFollow: 0.75, arcMax: 58, arcPad: 9, bubbleOffset: 104, t2Root: 0.34, t2End: 0.5,
-  colDist: 1.85, pitch: 64, rowGap: 12, sourceRow: 78, idleRow: 58,
-  idleIndent: 22, idleScale: 0.78, minIdleRow: 44, stiffness: 210, damping: 26,
-};
-export type Params = typeof DEFAULTS;
+// Metadata is the single source for solver defaults, controls and validation.
+export const PARAMETER_GROUPS = {
+  balance: { en: "Balance", "zh-CN": "平衡" },
+  hub: { en: "Hub and earmuffs", "zh-CN": "中心与耳罩" },
+  primary: { en: "Primary branches", "zh-CN": "一级触手" },
+  secondary: { en: "Outer arcs and task branches", "zh-CN": "外弧与二级触手" },
+  rows: { en: "Rows", "zh-CN": "行布局" },
+  motion: { en: "Motion", "zh-CN": "动效" },
+} as const;
+export const PARAMETERS = [
+  { key: "bubbleWeight", group: "balance", label: { en: "Bubble visual weight", "zh-CN": "气泡视觉权重" }, min: 0, max: 1, step: 0.05, default: 0.8 },
+  { key: "margin", group: "balance", label: { en: "Window margin", "zh-CN": "窗口留白" }, min: 16, max: 120, step: 2, default: 40 },
+  { key: "squeezeMin", group: "balance", label: { en: "Minimum column ratio", "zh-CN": "最小列距比例" }, min: 0.5, max: 1, step: 0.02, default: 0.72 },
+  { key: "ringScale", group: "hub", label: { en: "Ring size", "zh-CN": "环尺寸" }, min: 0.6, max: 1.4, step: 0.02, default: 1 },
+  { key: "earFollow", group: "hub", label: { en: "Port target following", "zh-CN": "端口随目标" }, min: 0, max: 1, step: 0.05, default: 0.7 },
+  { key: "earSep", group: "hub", label: { en: "Minimum port spacing (°)", "zh-CN": "端口最小间隔°" }, min: 2, max: 16, step: 0.5, default: 7 },
+  { key: "earMax", group: "hub", label: { en: "Maximum half-angle (°)", "zh-CN": "最大半角°" }, min: 20, max: 60, step: 1, default: 42 },
+  { key: "earMin", group: "hub", label: { en: "Minimum half-angle (°)", "zh-CN": "最小半角°" }, min: 8, max: 40, step: 1, default: 22 },
+  { key: "earPad", group: "hub", label: { en: "Arc end padding (°)", "zh-CN": "弧端余量°" }, min: 0, max: 16, step: 1, default: 7 },
+  { key: "t1Node", group: "primary", label: { en: "Node tension", "zh-CN": "节点端张力" }, min: 0.1, max: 0.8, step: 0.02, default: 0.42 },
+  { key: "t1Root", group: "primary", label: { en: "Root tension", "zh-CN": "根部端张力" }, min: 0.05, max: 0.7, step: 0.02, default: 0.3 },
+  { key: "flare", group: "primary", label: { en: "Root flare", "zh-CN": "根部展宽" }, min: 0, max: 2, step: 0.05, default: 1 },
+  { key: "arcGap", group: "secondary", label: { en: "Outer arc gap", "zh-CN": "外弧间距" }, min: 4, max: 30, step: 1, default: 11 },
+  { key: "arcFollow", group: "secondary", label: { en: "Port target following", "zh-CN": "端口随目标" }, min: 0, max: 1, step: 0.05, default: 0.75 },
+  { key: "arcMax", group: "secondary", label: { en: "Maximum half-angle (°)", "zh-CN": "最大半角°" }, min: 20, max: 75, step: 1, default: 58 },
+  { key: "arcPad", group: "secondary", label: { en: "Arc end padding (°)", "zh-CN": "弧端余量°" }, min: 0, max: 20, step: 1, default: 9 },
+  { key: "bubbleOffset", group: "secondary", label: { en: "Bubble offset", "zh-CN": "气泡距节点" }, min: 60, max: 220, step: 2, default: 104 },
+  { key: "t2Root", group: "secondary", label: { en: "Root tension", "zh-CN": "根部端张力" }, min: 0.05, max: 0.7, step: 0.02, default: 0.34 },
+  { key: "t2End", group: "secondary", label: { en: "Bubble tension", "zh-CN": "气泡端张力" }, min: 0.1, max: 0.8, step: 0.02, default: 0.5 },
+  { key: "colDist", group: "rows", label: { en: "Column distance", "zh-CN": "节点列距" }, min: 0.9, max: 2.6, step: 0.02, default: 1.85 },
+  { key: "pitch", group: "rows", label: { en: "Task pitch", "zh-CN": "任务槽高" }, min: 52, max: 80, step: 1, default: 64 },
+  { key: "rowGap", group: "rows", label: { en: "Row gap", "zh-CN": "行间距" }, min: 0, max: 30, step: 1, default: 12 },
+  { key: "sourceRow", group: "rows", label: { en: "Source row height", "zh-CN": "控制源行高" }, min: 56, max: 96, step: 1, default: 78 },
+  { key: "idleRow", group: "rows", label: { en: "Idle Agent row height", "zh-CN": "Agent 空闲行高" }, min: 40, max: 84, step: 1, default: 58 },
+  { key: "idleIndent", group: "rows", label: { en: "Idle indentation", "zh-CN": "空闲左缩进" }, min: 0, max: 60, step: 1, default: 22 },
+  { key: "idleScale", group: "rows", label: { en: "Idle scale", "zh-CN": "空闲缩放" }, min: 0.5, max: 1, step: 0.02, default: 0.78 },
+  { key: "minIdleRow", group: "rows", label: { en: "Minimum idle row height", "zh-CN": "压缩下限" }, min: 34, max: 60, step: 1, default: 44 },
+  { key: "stiffness", group: "motion", label: { en: "Stiffness", "zh-CN": "刚度" }, min: 60, max: 600, step: 5, default: 210 },
+  { key: "damping", group: "motion", label: { en: "Damping", "zh-CN": "阻尼" }, min: 8, max: 60, step: 1, default: 26 },
+] as const;
+export type ParameterKey = typeof PARAMETERS[number]["key"];
+export type Params = Record<ParameterKey, number>;
+export const DEFAULTS = Object.fromEntries(PARAMETERS.map(p => [p.key, p.default])) as Params;
 export type Side = -1 | 1;
 export interface Task { id: string }
 export interface Entity { id: string; tasks: readonly Task[] }
@@ -22,7 +55,8 @@ export interface TaskGeometry extends Point { id: string; parent: string; side: 
 interface WingOptions { idleStyle: boolean; rowScale: number; squeeze: number }
 interface Row { e: Entity; n: number; h: number }
 export interface Wing { side: Side; H: number; nodes: NodeGeometry[]; ear: { lo: number; hi: number }; utility: Point; tasks: TaskGeometry[] }
-export interface Layout { vw: number; vh: number; sceneH: number; hub: Point & { Re: number }; wings: Wing[] }
+export interface WingBalance { core: number; full: number; effective: number; squeeze: number }
+export interface Layout { balance: WingBalance[]; vw: number; vh: number; sceneH: number; hub: Point & { Re: number }; wings: Wing[] }
 export const deg = (d: number) => d * Math.PI / 180;
 export const NODE_R = 22, BUBBLE_W = 232, BUBBLE_H = 54, LABEL_W = 110;
 
@@ -142,5 +176,8 @@ export function solve(sc: Scene, p: Params = DEFAULTS, drag: Drag | null = null)
   const hub = { x: hx, y: sceneH / 2, Re };
   const L = solveWing(sc.left, -1, hub, Re, p, optL, dragOf(-1));
   const R = solveWing(sc.right, 1, hub, Re, p, optR, dragOf(1));
-  return { vw, vh, sceneH, hub, wings: [L, R] };
+  return { vw, vh, sceneH, hub, wings: [L, R], balance: [
+    { ...e.eL, effective: eff(e.eL), squeeze: optL.squeeze },
+    { ...e.eR, effective: eff(e.eR), squeeze: optR.squeeze },
+  ] };
 }

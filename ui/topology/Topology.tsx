@@ -1,9 +1,10 @@
 import { useCallback, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject, type PointerEvent, type MouseEvent } from "react";
 import { useReducedMotion } from "motion/react";
-import { solve, BUBBLE_W, type Side, type Scene, type Drag } from "./solve";
+import { solve, BUBBLE_W, type Side, type Scene, type Drag, type Layout } from "./solve";
 import { TopologyAnimator, nodeKey, taskKey } from "./animate";
 import { TopologyPainter, type PaintNode, type PaintTask } from "./render";
 import { orderedSubset, moveToY } from "./order";
+import { topologyValues, topologyDebug } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
 
 export interface TaskView extends Omit<PaintTask, "parent" | "side"> { content: ReactNode; reorderable?: boolean }
@@ -26,13 +27,15 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
     order: string[]; active: boolean; target: HTMLElement; slot: HTMLElement; key: string }) | null>(null);
   const suppressedClick = useRef<string | null>(null);
   const reduced = useReducedMotion(), prefix = useId();
+  const params = topologyValues.use(), { guides, slow } = topologyDebug.use();
+  const layout = useRef<Layout | null>(null);
   const nodes = [...left.map(n => ({ ...n, side: -1 as const })), ...right.map(n => ({ ...n, side: 1 as const }))];
   const tasks = nodes.flatMap(n => n.tasks.map(t => ({ ...t, parent: n.id, side: n.side })));
   // Retain departing HTML until its primitive has collapsed into the port.
   const [retained, setRetained] = useState<PositionedTask[]>([]);
   const allTasks = [...new Map([...retained, ...tasks].map(t => [taskKey(t.side, t.id), t])).values()];
-  const latest = useRef({ nodes, tasks, allTasks, left, right, reduced, onReorderNodes, onReorderTasks });
-  latest.current = { nodes, tasks, allTasks, left, right, reduced, onReorderNodes, onReorderTasks };
+  const latest = useRef({ nodes, tasks, allTasks, left, right, reduced, params, guides, slow, onReorderNodes, onReorderTasks });
+  latest.current = { nodes, tasks, allTasks, left, right, reduced, params, guides, slow, onReorderNodes, onReorderTasks };
   const paint = useCallback(() => {
     const a = animator.current, h = a.values("hub"), root = graph.current;
     if (!h || !root) return;
@@ -62,11 +65,14 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
       if (el && v) el.style.transform = `translate(${v.x - 16}px, ${v.y - 16}px)`;
     }
     const rect = panel.current ? { ...panel.current, x: panel.current.x - origin.current.x, y: panel.current.y - origin.current.y } : null;
-    painter.current?.paint(a, latest.current.nodes, latest.current.allTasks, rect, latest.current.tasks.some(t => t.selected));
+    svg.current?.style.setProperty("--topology-time-scale", latest.current.slow ? "4" : "1");
+    painter.current?.paint(a, latest.current.nodes, latest.current.allTasks, rect, latest.current.tasks.some(t => t.selected),
+      latest.current.guides ? layout.current : null);
   }, []);
   const tick = useCallback((time: number) => {
     frame.current = 0;
-    const moving = animator.current.step(Math.min(0.064, lastTime.current ? (time - lastTime.current) / 1000 : 1 / 60), !!latest.current.reduced);
+    const dt = Math.min(0.064, lastTime.current ? (time - lastTime.current) / 1000 : 1 / 60);
+    const moving = animator.current.step(dt * (latest.current.slow ? 0.25 : 1), !!latest.current.reduced);
     lastTime.current = time; paint();
     if (moving) frame.current = requestAnimationFrame(tick);
     else {
@@ -100,7 +106,9 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
       if (d.target.hasPointerCapture(d.pointer)) d.target.releasePointerCapture(d.pointer);
       d = null;
     }
-    animator.current.setTargets(solve(scene(), undefined, d?.active ? d : null), d?.active ? d : null);
+    animator.current.params = latest.current.params;
+    layout.current = solve(scene(), latest.current.params, d?.active ? d : null);
+    animator.current.setTargets(layout.current, d?.active ? d : null);
     // Pins follow the pointer immediately; their neighbours continue springing.
     animator.current.step(0, !!latest.current.reduced);
     paint(); wake();
@@ -125,7 +133,7 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
     if (!d.active && Math.abs(event.clientY - d.startClientY) < 4) return;
     d.active = true; d.slot.dataset.dragging = "true"; suppressedClick.current = d.key;
     d.y = event.clientY - origin.current.y - d.grab;
-    const layout = solve(scene()), wing = layout.wings.find(w => w.side === d.side)!;
+    const layout = solve(scene(), latest.current.params), wing = layout.wings.find(w => w.side === d.side)!;
     const candidates = (d.kind === "node" ? wing.nodes : wing.tasks.filter(t => t.parent === d.parent)).filter(item => d.order.includes(item.id));
     if (!candidates.some(item => item.id === d.id)) { finishDrag(event, true); return; }
     d.order = moveToY(candidates, d.id, d.y);

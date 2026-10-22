@@ -30,6 +30,8 @@ import SourceIcon from "./SourceIcon";
 import GraphNode from "./GraphNode";
 import ActivityBubbles, { ActivityBubble } from "./ActivityBubbles";
 import Topology, { type TopologyHandle, type NodeView } from "../topology/Topology";
+import TuningPanel from "../topology/TuningPanel";
+import { topologyTuningEnabled } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
 import type { WireState } from "../topology/render";
 import IngressDialog from "./IngressDialog";
@@ -46,7 +48,7 @@ function wireState(state: string): WireState {
   return "inactive";
 }
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
-  const gradientId = useId();
+  const gradientId = useId(), tuning = topologyTuningEnabled.use();
   const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selectedActivity = activityTimeline.use();
   const { status, busy, loading, error } = connector.use();
   agentStore.use();
@@ -273,6 +275,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
           </div>
         )}
       </section>
+      {visible && tuning && <TuningPanel />}
       {setupMode && visible && <SetupDialog mode={setupMode} setMode={setSetupMode} fixedGoal={setupGoal} snapshot={setup.snapshot} error={setup.error} refresh={setup.refresh}
         onClose={() => { setSetupMode(null); if (setup.snapshot?.complete) requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".add-source")?.focus()); }} onManual={() => {
           setSetupMode(null);

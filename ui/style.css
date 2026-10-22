@@ -1125,3 +1125,8 @@ pre {
 
 .activity-arc.needs-attention { color: var(--warning); animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .activity-arc { animation: none; } }
+
+.slider { position: relative; display: flex; align-items: center; min-width: 0; height: var(--control-md); touch-action: none; user-select: none; }
+.slider-track { position: relative; height: 4px; flex: 1; border-radius: var(--radius-pill); background: var(--border-strong); }
+.slider-fill { position: absolute; height: 100%; border-radius: inherit; background: var(--accent); }
+.slider-thumb { display: block; width: 16px; height: 16px; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--surface); box-shadow: var(--shadow); }

@@ -12,7 +12,7 @@ export interface Primitive {
 // Each mounted scene owns its springs and clock. Geometry is never sampled from DOM.
 export class TopologyAnimator {
   readonly live = new Map<string, Primitive>();
-  readonly params: typeof DEFAULTS;
+  params: typeof DEFAULTS;
   constructor(params = DEFAULTS) { this.params = params; }
   private spring(key: string, targets: Record<string, number>, spawn: Record<string, number> = {}) {
     let s = this.live.get(key);
@@ -28,6 +28,8 @@ export class TopologyAnimator {
     this.live.forEach(s => { s.alive = false; });
     this.spring("hub", { ...layout.hub });
     this.spring("scene", { height: layout.sceneH });
+    const { t1Node, t1Root, t2End, t2Root, flare } = this.params;
+    this.spring("shape", { t1Node, t1Root, t2End, t2Root, flare });
     for (const w of layout.wings) {
       this.spring(`ear${w.side}`, w.ear);
       this.spring(`utility${w.side}`, { ...w.utility });

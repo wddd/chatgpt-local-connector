@@ -1,4 +1,4 @@
-import { DEFAULTS, NODE_R, deg, type Side } from "./solve";
+import { NODE_R, deg, type Side, type Layout, type Point } from "./solve";
 import { arcPath, grownWire } from "./geometry";
 import { TopologyAnimator, nodeKey, taskKey } from "./animate";
 import type { SurfaceRect } from "../motion/surface";
@@ -24,6 +24,7 @@ export class TopologyPainter {
     arc: SVGPathElement; gradient: SVGLinearGradientElement; solid: SVGStopElement; fade: SVGStopElement; end: SVGStopElement }>();
   private ears = new Map<Side, SVGPathElement>();
   private sequence = 0;
+  private guides: SVGGElement | null = null;
   constructor(readonly svg: SVGSVGElement, readonly prefix: string) {}
   private branch(key: string) {
     let branch = this.groups.get(key);
@@ -36,10 +37,17 @@ export class TopologyPainter {
     branch = { group, outline, flow, gap, arc, gradient, solid, fade, end };
     this.groups.set(key, branch); return branch;
   }
-  paint(animator: TopologyAnimator, nodes: PaintNode[], tasks: PaintTask[], panel: SurfaceRect | null, focused: boolean) {
+  paint(animator: TopologyAnimator, nodes: PaintNode[], tasks: PaintTask[], panel: SurfaceRect | null, focused: boolean, debug: Layout | null = null) {
     const h = animator.values("hub");
     if (!h) return;
-    const p = DEFAULTS, scale = h.Re / 130, keep = new Set<string>();
+    const p = animator.values("shape")!, scale = h.Re / 130, keep = new Set<string>();
+    this.guides?.replaceChildren();
+    if (debug && !this.guides) this.guides = element("g", this.svg, { class: "topology-guides" });
+    const controls = (end: Point, c1: Point, c2: Point, port: Point) => {
+      if (!debug) return;
+      element("path", this.guides!, { d: `M${end.x},${end.y} L${c1.x},${c1.y} M${c2.x},${c2.y} L${port.x},${port.y}`, class: "guide-tangent" });
+      for (const point of [c1, c2]) element("circle", this.guides!, { cx: String(point.x), cy: String(point.y), r: "3" });
+    };
     for (const n of nodes) {
       const key = nodeKey(n.side, n.id), v = animator.values(key);
       if (!v) continue;
@@ -47,8 +55,10 @@ export class TopologyPainter {
       const b = this.branch(key), a = deg(v.port), radial = { x: n.side * Math.cos(a), y: Math.sin(a) };
       const port = { x: h.x + h.Re * radial.x, y: h.y + h.Re * radial.y };
       const start = { x: v.x - n.side * (NODE_R * v.scale + 6), y: v.y }, D = Math.hypot(start.x - port.x, start.y - port.y);
-      const shape = grownWire(start, { x: start.x - n.side * D * p.t1Node, y: start.y },
-        { x: port.x + radial.x * D * p.t1Root, y: port.y + radial.y * D * p.t1Root }, port, scale, p.flare, false, n.state === "connecting");
+      const c1 = { x: start.x - n.side * D * p.t1Node, y: start.y };
+      const c2 = { x: port.x + radial.x * D * p.t1Root, y: port.y + radial.y * D * p.t1Root };
+      const shape = grownWire(start, c1, c2, port, scale, p.flare, false, n.state === "connecting");
+      if (n.state !== "inactive") controls(start, c1, c2, port);
       attr(b.group, { class: `topology-branch primary ${n.side === 1 ? "right" : "left"}`, "data-state": n.state,
         opacity: focused && !n.selected ? 0.16 : 1 });
       attr(b.gradient, { x1: port.x, y1: port.y, x2: start.x, y2: start.y });
@@ -71,8 +81,10 @@ export class TopologyPainter {
       const end = t.selected && panel ? { x: t.side === 1 ? panel.x : panel.x + panel.width,
         y: clamp(v.y, panel.y + 27, panel.y + panel.height - 27) } : { x: v.x, y: v.y };
       const D = Math.hypot(end.x - port.x, end.y - port.y);
-      const shape = grownWire(end, { x: end.x - t.side * D * p.t2End, y: end.y },
-        { x: port.x + radial.x * D * p.t2Root, y: port.y + radial.y * D * p.t2Root }, port, scale, p.flare, true);
+      const c1 = { x: end.x - t.side * D * p.t2End, y: end.y };
+      const c2 = { x: port.x + radial.x * D * p.t2Root, y: port.y + radial.y * D * p.t2Root };
+      const shape = grownWire(end, c1, c2, port, scale, p.flare, true);
+      controls(end, c1, c2, port);
       attr(b.group, { class: `topology-branch secondary ${t.side === 1 ? "right" : "left"}`, "data-state": t.state,
         opacity: v.op * (focused && !t.selected ? 0.16 : 1) });
       attr(b.outline, { d: t.state === "external" ? "" : shape.outline, class: "task-body" });
@@ -86,6 +98,26 @@ export class TopologyPainter {
       attr(ear, { d: arcPath(h.x, h.y, h.Re, v.lo, v.hi, side), "stroke-width": 14 * scale, opacity: focused ? 0.16 : 1 });
       this.svg.append(ear); // caps cover the roots after additions as well
     }
+    if (debug) {
+      const g = this.guides!, height = animator.values("scene")!.height, middle = debug.vw / 2;
+      const line = (x1: number, y1: number, x2: number, y2: number, name = "") =>
+        element("path", g, { d: `M${x1},${y1} L${x2},${y2}`, class: name });
+      const label = (x: number, y: number, text: string, anchor = "middle") => {
+        element("text", g, { x: String(x), y: String(y), "text-anchor": anchor }).textContent = text;
+      };
+      line(middle, 0, middle, height, "guide-midline");
+      line(h.x, 0, h.x, height, "guide-hubline");
+      const y = Math.max(22, h.y - h.Re - 38);
+      line(middle, y, h.x, y);
+      label((middle + h.x) / 2, y - 8, `Δx ${(h.x - middle).toFixed(1)} px`);
+      for (const [index, side] of ([-1, 1] as const).entries()) {
+        const b = debug.balance[index], edge = h.x + side * b.effective;
+        line(h.x, y + 24, edge, y + 24, side === -1 ? "guide-left" : "guide-right");
+        line(edge, y + 18, edge, y + 30);
+        label(h.x + side * 18, y + 46, `${side === -1 ? "L" : "R"} ${b.effective.toFixed(1)} px · ×${b.squeeze.toFixed(2)}`, side === -1 ? "end" : "start");
+      }
+      this.svg.append(g);
+    }
   }
-  dispose() { this.svg.replaceChildren(); this.groups.clear(); this.ears.clear(); }
+  dispose() { this.svg.replaceChildren(); this.groups.clear(); this.ears.clear(); this.guides = null; }
 }

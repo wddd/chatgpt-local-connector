@@ -16,6 +16,7 @@ import {
   Select as S,
   RadioGroup,
   Switch as Sw,
+  Slider as RS,
   Checkbox as C,
   Tooltip as T,
   DropdownMenu as M,
@@ -115,6 +116,16 @@ export function Input({
   ...props
 }: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`input ${className}`} />;
+}
+export function Slider({ label, value, min, max, step, onChange, onCommit }: {
+  label: string; value: number; min: number; max: number; step: number;
+  onChange: (value: number) => void; onCommit: (value: number) => void;
+}) {
+  return <RS.Root className="slider" value={[value]} min={min} max={max} step={step}
+    onValueChange={values => onChange(values[0])} onValueCommit={values => onCommit(values[0])} onBlur={() => onCommit(value)}>
+    <RS.Track className="slider-track"><RS.Range className="slider-fill" /></RS.Track>
+    <RS.Thumb className="slider-thumb" aria-label={label} />
+  </RS.Root>;
 }
 export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...props} className={`input ${className}`} />;

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULTS, distribute, extentOf, solve, type Scene } from "../ui/topology/solve.ts";
+import { DEFAULTS, PARAMETERS, PARAMETER_GROUPS, distribute, extentOf, solve, type Scene } from "../ui/topology/solve.ts";
+import { clampParameter, emptyParameters, importParameters, loadParameters, parameterDiff } from "../ui/topology/parameters.ts";
 
 const entities = (prefix: string, counts: number[]) => counts.map((count, i) => ({ id: `${prefix}${i}`,
   tasks: Array.from({ length: count }, (_, j) => ({ id: `${prefix}${i}/task${j}` })) }));
@@ -63,4 +64,73 @@ test("ports fit the arc and drag is confined to its wing and item", () => {
   assert.equal(dragged.wings[0].tasks[0].y, 123);
   assert.deepEqual(dragged.wings[1], base.wings[1]);
   assert.equal(solve(sc, DEFAULTS, { kind: "node", side: 1, id: "agent0", y: 234 }).wings[1].nodes[0].y, 234);
+});
+
+
+test("topology parameters persist only deviations and round-trip through JSON", () => {
+  assert.equal(new Set(PARAMETERS.map(p => p.key)).size, PARAMETERS.length);
+  for (const spec of PARAMETERS) {
+    assert.ok(spec.default >= spec.min && spec.default <= spec.max);
+    assert.ok(spec.step > 0);
+    assert.ok(PARAMETER_GROUPS[spec.group].en && spec.label.en && spec.label["zh-CN"]);
+    assert.equal(DEFAULTS[spec.key], spec.default);
+  }
+  assert.deepEqual(parameterDiff(DEFAULTS), emptyParameters());
+  const custom = { ...DEFAULTS, margin: 62, damping: 35 };
+  const saved = parameterDiff(custom);
+  assert.deepEqual(saved, { schemaVersion: 1, overrides: { margin: 62, damping: 35 } });
+  const imported = importParameters(JSON.stringify(saved));
+  assert.ok(imported.ok);
+  assert.deepEqual(imported.clamped, []);
+  assert.deepEqual(loadParameters(imported.document), custom);
+  assert.deepEqual(parameterDiff(loadParameters(emptyParameters())), emptyParameters());
+});
+
+test("topology parameter ranges clamp at input, save and load boundaries", () => {
+  for (const spec of PARAMETERS) {
+    assert.equal(clampParameter(spec.key, spec.min - 1), spec.min);
+    assert.equal(clampParameter(spec.key, spec.max + 1), spec.max);
+    for (const invalid of [NaN, Infinity, -Infinity]) assert.equal(clampParameter(spec.key, invalid), spec.default);
+  }
+  const saved = parameterDiff({ ...DEFAULTS, margin: -200, damping: 999, flare: NaN });
+  assert.deepEqual(saved.overrides, { margin: 16, damping: 60 });
+  assert.equal(loadParameters({ schemaVersion: 1, overrides: { margin: 999 } }).margin, 120);
+  // Preserve the reference default, even when it falls between slider steps.
+  assert.equal(clampParameter("colDist", 1.85), 1.85);
+});
+
+test("topology imports validate the complete document before applying any values", () => {
+  for (const [json, error] of [
+    ["{", "json"], ["null", "schema"], ["[]", "schema"], ["{}", "schema"],
+    ['{"schemaVersion":2,"overrides":{}}', "schema"],
+    ['{"schemaVersion":1,"overrides":[]}', "schema"],
+    ['{"schemaVersion":1,"overrides":{},"extra":true}', "schema"],
+    ['{"schemaVersion":1,"overrides":{"unknown":4}}', "key"],
+    ['{"schemaVersion":1,"overrides":{"__proto__":4}}', "key"],
+    ['{"schemaVersion":1,"overrides":{"margin":"80"}}', "value"],
+    ['{"schemaVersion":1,"overrides":{"margin":null}}', "value"],
+    ['{"schemaVersion":1,"overrides":{"margin":true}}', "value"],
+    ['{"schemaVersion":1,"overrides":{"margin":1e999}}', "value"],
+  ]) assert.deepEqual(importParameters(json), { ok: false, error });
+  const defaults = Object.freeze({ ...DEFAULTS });
+  assert.equal(importParameters('{"schemaVersion":1,"overrides":{"margin":80,"flare":"bad"}}', defaults).ok, false);
+  assert.deepEqual(defaults, DEFAULTS);
+  const imported = importParameters('{"schemaVersion":1,"overrides":{"margin":999,"earFollow":-1,"colDist":1.85}}');
+  assert.ok(imported.ok);
+  assert.deepEqual(imported.clamped, ["margin", "earFollow"]);
+  assert.deepEqual(imported.document, { schemaVersion: 1, overrides: { margin: 120, earFollow: 0 } });
+});
+
+test("upgraded defaults apply to untouched parameters while manual overrides remain", () => {
+  const saved = parameterDiff({ ...DEFAULTS, damping: 38 });
+  const upgraded = { ...DEFAULTS, margin: 54, damping: 30, bubbleWeight: 0.9 };
+  const loaded = loadParameters(saved, upgraded);
+  assert.equal(loaded.margin, 54);
+  assert.equal(loaded.bubbleWeight, 0.9);
+  assert.equal(loaded.damping, 38);
+  assert.deepEqual(loadParameters(emptyParameters(), upgraded), upgraded);
+  const imported = importParameters(JSON.stringify(saved), upgraded);
+  assert.ok(imported.ok);
+  assert.deepEqual(loadParameters(imported.document, upgraded), loaded);
+  assert.deepEqual(parameterDiff({ ...loaded, damping: upgraded.damping }, upgraded), emptyParameters());
 });
