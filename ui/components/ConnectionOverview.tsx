@@ -1,7 +1,7 @@
 import { scenarioName } from "../scenarioMode";
 import { agentPanel, selectAgentPanel, ingressPanel, selectIngressPanel } from "../state/overviewPanels";
 import { PhaseTile, PhaseLabel } from "./activity";
-import { resetActivityHistory, useActivityTracking } from "../state/activity";
+import { resetActivityCore, useActivityTracking } from "../state/activity";
 import { orderActivity, visibleActivity } from "../state/activityModel";
 import { taskOrder, reorderTasks } from "../state/taskOrder";
 import { useInterval } from "../state/hooks";
@@ -54,7 +54,9 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const tuning = topologyTuningEnabled.use();
   const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use(), sourceSelection = ingressPanel.use();
   const flow = onboarding.use(), labels = sourceLabels.use();
-  const panelOpen = !!selection || !!sourceSelection || !!flow;
+  const detailOpen = !!selection || !!sourceSelection, panelOpen = detailOpen || !!flow;
+  const [panelExpanded, setPanelExpanded] = useState(false);
+  useEffect(() => { if (!detailOpen) setPanelExpanded(false); }, [detailOpen]);
   const { status, busy, loading, error } = connector.use();
   const inventory = agentStore.use();
   const max = maxVisibleAgents.use();
@@ -159,7 +161,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const core = useRef<HTMLElement>(null), topology = useRef<TopologyHandle>(null);
   const [now, setNow] = useState(Date.now);
   useInterval(() => setNow(Date.now()), visible && Object.values(tracked).some(s => s.length) ? 1000 : null);
-  useEffect(() => { if (status?.core.backendSession) resetActivityHistory(status.core.backendSession); }, [status?.core.backendSession]);
+  useEffect(() => { if (status?.core.backendSession) resetActivityCore(status.core.backendSession); }, [status?.core.backendSession]);
   const selectedAgent = selection && (orderedAgents().find(a => a.agent === selection.agent) ?? { agent: selection.agent });
   const panelFrame = useCallback((rect: SurfaceRect | null) => topology.current?.panelFrame(rect), []);
   const [switchOn, setSwitchOn] = useState<boolean>();
@@ -251,15 +253,16 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             </span>
           </button>
         </div>
-        <Topology ref={topology} boundary={core} left={sourceViews} right={agentViews}
+        <Topology ref={topology} boundary={core} left={sourceViews} right={agentViews} panelExpanded={panelExpanded}
           onReorderNodes={(side, ids) => side === -1 ? reorderSources([...new Set(ids.filter(id => !id.startsWith("pending:")).map(id => id.split(":")[0]))]) : reorderAgents(ids)}
           onReorderTasks={(_side, agent, ids) => reorderTasks(agent, ids.map(id => JSON.parse(id)[1] as string), tracked[agent] ?? [])}
           brand={<Hub sourceEmpty={!sourceViews.length} agentEmpty={!agents.length}
             onAddSource={() => openOnboarding(sources.length ? "sources" : "welcome")}
             onManageAgents={() => setAgentsOpen(true)} />} />
-        {selectedAgent && visible && <AgentPanel agent={selectedAgent} state={agentState(selectedAgent)} sessions={tracked[selectedAgent.agent] ?? []} now={now}
+        {selectedAgent && visible && <AgentPanel agent={selectedAgent} state={agentState(selectedAgent)}
+          expanded={panelExpanded} onToggleWidth={() => setPanelExpanded(value => !value)}
           onSettings={() => { setSettingsAgent(selectedAgent); setAgentsOpen(true); }} onPanelFrame={panelFrame} />}
-        {sourceSelection && visible && <IngressPanel onPanelFrame={panelFrame} />}
+        {sourceSelection && visible && <IngressPanel expanded={panelExpanded} onToggleWidth={() => setPanelExpanded(value => !value)} onPanelFrame={panelFrame} />}
         <div className="activity-edge-fade" aria-hidden="true" />
 
         {error && (
@@ -278,7 +281,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       </section>
       {visible && tuning && <TuningPanel />}
       {flow && visible && <Onboarding onPanelFrame={panelFrame} onAdvanced={() => {
-        onboarding.set(undefined); navigation.set(old => ({ ...old, page: "settings", remoteAdvanced: true }));
+        onboarding.set(undefined); navigation.set(old => ({ ...old, page: "remote", remoteAdvanced: true }));
       }} />}
       {agentsOpen && <AgentsSettings initialAgent={settingsAgent} onClose={() => { setAgentsOpen(false); setSettingsAgent(undefined); }} />}
     </>

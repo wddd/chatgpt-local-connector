@@ -21,7 +21,7 @@ Claude on the web, mobile, and desktop can use the remote connector. Start with 
 
 Enable a remote link in ARC by creating your relay or joining a trusted shared relay. Add Claude, copy the link, and paste it into **Settings → Connectors → Add custom connector** in Claude. Return to ARC, compare the four-character pairing codes, and approve. The browser returns automatically.
 
-For use on this computer only, choose local mode to add Claude Code or Claude Desktop. See [Getting started](../getting-started.md) for instructions and shared-relay trust boundaries. Existing own-address configurations remain under **Settings → Remote link → Advanced**.
+For use on this computer only, choose local mode to add Claude Code or Claude Desktop. See [Getting started](../getting-started.md) for instructions and shared-relay trust boundaries. Existing own-address configurations remain under **Remote link → Advanced**.
 
 ## Start with current facts
 

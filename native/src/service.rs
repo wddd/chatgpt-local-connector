@@ -468,6 +468,8 @@ impl Service {
             && ![
                 "runtime/lease",
                 "logs/query",
+                "agents/conversations",
+                "agents/conversations/timeline",
                 "state/wait",
                 "setup/next",
                 "setup/wait",
@@ -613,6 +615,14 @@ impl Service {
         }
         if route == "agents/activity" && method == "GET" {
             return Ok(self.agents.activity(&self.control).await);
+        }
+        if route == "agents/conversations" && method == "POST" {
+            crate::management::resolve("agents.conversations", &json!({"body":body}))?;
+            return self.agents.conversations(&self.control, &body).await;
+        }
+        if route == "agents/conversations/timeline" && method == "POST" {
+            crate::management::resolve("agents.conversations.timeline", &json!({"body":body}))?;
+            return self.agents.conversation_timeline(&self.control, &body).await;
         }
         if let Some(session) = route
             .strip_prefix("agents/timeline/")

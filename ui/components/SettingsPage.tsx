@@ -10,7 +10,6 @@ import { connector, run, notify, refreshConnector } from "../state/connector";
 import { useInterval } from "../state/hooks";
 import type { Service } from "../state/types";
 import { Button, Group, Row, Switch, SingleChoice, Input, Field } from "./ui";
-import RemoteLinkSettings from "./RemoteLinkSettings";
 import { AppUpdate } from "./AppUpdate";
 export default function SettingsPage() {
   const { status, busy } = connector.use();
@@ -89,7 +88,6 @@ export default function SettingsPage() {
   }
   return (
     <div className="settings-page">
-      <RemoteLinkSettings />
       <Group title={t("behavior")}>
         <Row title={t("controlSourceNotifications")} description={t("controlSourceNotificationsDescription")}>
           <Switch label={t("controlSourceNotifications")} checked={status?.notificationsEnabled !== false}
@@ -259,18 +257,6 @@ export default function SettingsPage() {
           <Switch label={t("topology.tuning")} checked={tuning} onChange={topologyTuningEnabled.set} />
         </Row>
       </Group>
-      {status && <Group title={t("resourceDiagnostics")}>
-        {[{ name: "Core", resources: status.core.resources }, { name: "Codex app-server", resources: status.core.appServer.resources }].map(({ name, resources }) => resources && (
-          <Row key={name} title={name} description={t(`resourceState.${resources.state}`)}>
-            <span>{t("resourceLimits")}: {resources.nofile.soft ?? t("unknown")} / {resources.nofile.hard ?? t("unknown")}{resources.fd && ` · fd: ${resources.fd.count ?? t("unknown")}`}</span>
-          </Row>
-        ))}
-        {status.diagnostics?.findings.filter(f => f.scope.kind === "resources").map(f => <p key={f.code}>{f.code}: {t(`resourceFinding.${f.code}`)}</p>)}
-        <details>
-          <summary>{t("details")}</summary>
-          <pre>{JSON.stringify({ core: status.core.resources, appServer: status.core.appServer }, null, 2)}</pre>
-        </details>
-      </Group>}
       <AppUpdate />
     </div>
   );

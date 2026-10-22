@@ -1,12 +1,10 @@
 import { useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowUpRight, ChevronRight } from "lucide-react";
 import { t } from "../i18n";
 import { PhaseTile, PhaseLabel, StepTrail } from "./activity";
 import { selectAgentPanel } from "../state/overviewPanels";
 import { activityHeadline, type TrackedActivity } from "../state/activityModel";
 import { useInterval } from "../state/hooks";
-import { Icon, Tooltip } from "./ui";
 import FilePath from "./FilePath";
 
 export function elapsed(since: string | null | undefined, now: number) {
@@ -31,15 +29,14 @@ function Headline({ session }: { session: TrackedActivity }) {
     </AnimatePresence>
   </span>;
 }
-export function ActivityBubble({ agent, session, now, onMove, listRow = false }: { agent: string; session: TrackedActivity; now: number; onMove?: (by: number) => void; listRow?: boolean }) {
+export function ActivityBubble({ agent, session, now, onMove }: { agent: string; session: TrackedActivity; now: number; onMove?: (by: number) => void }) {
   const completed = session.endedAt !== undefined, external = session.source === "transcript";
   const running = !completed && !external && !session.interaction && session.phase !== "idle";
   const unread = completed && session.readAt === undefined;
   const phase = session.interaction ? "interaction" : session.phase;
   const phaseLabel = completed ? "activity.completed" : session.interaction?.kind === "question" ? "activity.question" : `activity.phase.${phase}`;
-  const hint = t("timeline.open"), headline = activityHeadline(session, t("timeline.title"));
-  return <Tooltip text={`${hint} · ${session.origin?.controlSource === "local-cli" ? t("localCli") + " · " : ""}${headline.fullText}`}>
-    <button type="button" className={`${listRow ? "activity-task-row" : "activity-bubble"} ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
+  const hint = t("timeline.open");
+  return <button type="button" className={`activity-bubble ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
       data-external={external || undefined}
       data-timeline-anchor
       data-unread={unread || undefined}
@@ -53,18 +50,14 @@ export function ActivityBubble({ agent, session, now, onMove, listRow = false }:
       }}>
       <PhaseTile phase={phase} running={running} completed={completed} animated={!external} />
       <span className="activity-copy">
-        {listRow && <span className="activity-row-title"><strong>{session.title || t("timeline.title")}</strong><time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}</time></span>}
         <span className="activity-phase">
           <PhaseLabel phase={phase} running={running} completed={completed}>{t(phaseLabel)}</PhaseLabel>
           {session.origin?.controlSource === "local-cli" && <span>{t("localCli")}</span>}
           <StepTrail steps={session.recentSteps} running={running} />
           {unread && <span className="activity-unread" role="img" aria-label={t("activity.unread")} />}
-          {listRow ? session.interaction && <span className="activity-pending-tag">{t("agentPanel.pending")}</span>
-            : <time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}{external && <Icon icon={ArrowUpRight} />}</time>}
+          <time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}</time>
         </span>
         <Headline session={session} />
       </span>
-      {listRow && <Icon icon={external ? ArrowUpRight : ChevronRight} />}
-    </button>
-  </Tooltip>;
+    </button>;
 }

@@ -11,7 +11,7 @@ import type { Ingress } from "../state/types";
 import IngressDialog from "./IngressDialog";
 import SetupDialog from "./SetupDialog";
 import RelayProgress from "./RelayProgress";
-import { Button, CopyField, Dialog, Group, Notice, Row, Status } from "./ui";
+import { Button, CopyField, Dialog, Notice, Row, Status } from "./ui";
 
 type Member = { id: string; name: string; joinedAt: string; lastOnline: string | null; online: boolean };
 function RelaySettings({ relay, version, refresh }: { relay: Relay; version: string; refresh: () => Promise<unknown> }) {
@@ -71,7 +71,7 @@ function RelaySettings({ relay, version, refresh }: { relay: Relay; version: str
     {confirm && <Dialog title={t(typeof confirm === "string" ? `connect.confirm.${confirm}` : "connect.confirm.remove")} width={420} onClose={() => setConfirm(undefined)} busy={!!busy} footer={<><Button disabled={!!busy} onClick={() => setConfirm(undefined)}>{t("cancel")}</Button><Button variant="danger" busy={!!busy} onClick={() => void action(typeof confirm === "string" ? confirm : "remove", typeof confirm === "object" ? { instanceId: confirm.id } : {})}>{t("confirm")}</Button></>}><p>{t(confirm === "delete" ? "connect.deleteHint" : "connect.removeHint")}</p>{error && <Notice>{error}</Notice>}</Dialog>}
   </section>;
 }
-export default function RemoteLinkSettings() {
+export default function RemoteLinkPage() {
   const relays = useRelays(), { status } = connector.use(), nav = navigation.use();
   const [advanced, setAdvanced] = useState(!!nav.remoteAdvanced);
   const [editing, setEditing] = useState<Ingress | "new">();
@@ -81,7 +81,7 @@ export default function RemoteLinkSettings() {
   useEffect(() => { if (nav.remoteAdvanced) { setAdvanced(true); navigation.set(old => ({ ...old, remoteAdvanced: undefined })); } }, [nav.remoteAdvanced]);
   const entries = status?.ingresses ?? [];
   function launch(step: "remote" | "local" | "sources") { navigation.set(old => ({ ...old, page: "overview" })); openOnboarding(step); }
-  return <Group title={t("connect.remoteLink")}>
+  return <div className="remote-link-page">
     {relays.relays.map(relay => <RelaySettings key={relay.id} relay={relay} version={relays.version} refresh={relays.refresh} />)}
     {entries.filter(i => i.transport !== "relay" && i.transport !== "local" && i.url).map(i => <Row key={i.id} title={i.name}><Status tone={i.state === "ready" ? "success" : "neutral"}>{t(i.state === "ready" ? "connect.online" : "connect.offline")}</Status><Button onClick={() => void copyText(i.url).catch(() => setError(t("connect.actionFailed")))}>{t("connect.copyLink")}</Button></Row>)}
     <div className="actions"><Button variant="primary" onClick={() => launch(relays.relays.length || entries.some(i => i.url) ? "sources" : "remote")}>{t(relays.relays.length || entries.some(i => i.url) ? "addControlSource" : "connect.title.remote")}</Button><Button onClick={() => launch("local")}>{t("connect.localTitle")}</Button></div>
@@ -96,5 +96,5 @@ export default function RemoteLinkSettings() {
     </details>
     {editing && <IngressDialog ingress={editing === "new" ? undefined : editing} onClose={() => setEditing(undefined)} onRemoved={() => setEditing(undefined)} onSaved={entry => { setEditing(undefined); void api(`ingress/${entry.id}/start`, "POST").then(refreshConnector).catch(() => setError(t("connect.actionFailed"))); }} />}
     {agentMode && <SetupDialog mode={agentMode} setMode={setAgentMode} snapshot={setup.snapshot} error={setup.error} refresh={setup.refresh} onClose={() => setAgentMode(null)} onManual={() => { setAgentMode(null); setEditing("new"); }} />}
-  </Group>;
+  </div>;
 }

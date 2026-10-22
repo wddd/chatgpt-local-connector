@@ -3,6 +3,7 @@ use crate::*;
 use std::collections::{HashMap, HashSet};
 mod activity;
 mod adapter;
+mod conversations;
 mod dispatch;
 pub(crate) mod driver;
 mod manifest;
@@ -29,6 +30,7 @@ use process::Process;
 
 pub struct AgentHost {
     activity: Mutex<activity::Monitor>,
+    conversations: Mutex<conversations::Cache>,
     drivers: HashMap<String, AgentDriver>,
     adapter_job: Mutex<Option<tokio::task::JoinHandle<()>>>,
     adapter_error: Mutex<Option<String>>,
@@ -100,6 +102,7 @@ impl AgentHost {
         };
         Ok(Arc::new(Self {
             activity: Default::default(),
+            conversations: Default::default(),
             disabled: Mutex::new(disabled),
             drivers,
             adapter_job: Default::default(),

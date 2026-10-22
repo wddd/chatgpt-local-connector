@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useId } from "react";
-import { ArrowUpRight, ArrowLeft, X } from "lucide-react";
+import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { AgentTimeline } from "../types";
@@ -14,8 +14,8 @@ import { activityHeadline, interactionKey, type TrackedActivity } from "../state
 
 import { name, orderedAgents } from "../state/agents";
 
-export default function ActivityTimeline({ agent, session, onClose, onBack }: {
-  agent: string; session: TrackedActivity; onClose: () => void; onBack: () => void;
+export default function ActivityTimeline({ agent, session, expanded, onToggleWidth, onBack }: {
+  agent: string; session: TrackedActivity; expanded: boolean; onToggleWidth: () => void; onBack: () => void;
 }) {
   const { snapshot } = agentActivity.use();
   const submissions = activityApprovals.use(), cardId = useId();
@@ -28,7 +28,8 @@ export default function ActivityTimeline({ agent, session, onClose, onBack }: {
   const live = snapshot?.agents[agent]?.sessions.find(s => s.id === session.id);
   const external = session.source === "transcript";
   // Completed history entries do not override a session in the live snapshot.
-  const running = !!live || session.endedAt === undefined && !external && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? "");
+  const running = !!live || session.endedAt === undefined && !external && !timeline?.readOnly && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? "");
+  const statusUnknown = session.conversation && !running && !["completed", "idle", "cancelled", "failed"].includes(timeline?.status ?? "");
   const completedAt = useRef(session.endedAt);
   if (running) completedAt.current = undefined;
   else completedAt.current ??= session.endedAt ?? now;
@@ -40,16 +41,18 @@ export default function ActivityTimeline({ agent, session, onClose, onBack }: {
     let stopped = false, timer: ReturnType<typeof setTimeout>, current: AgentTimeline | undefined;
     async function read() {
       try {
-        const read = (after?: number) => api<AgentTimeline>(`agents/timeline/${encodeURIComponent(session.id)}${after === undefined ? "" : `?after=${after}`}`);
-        const next = external ? await read() : await refreshTimeline(current, read);
+        const read = (after?: number) => session.conversation
+          ? api<AgentTimeline>("agents/conversations/timeline", "POST", { agent, id: session.id, ...(after === undefined ? {} : { after }) })
+          : api<AgentTimeline>(`agents/timeline/${encodeURIComponent(session.id)}${after === undefined ? "" : `?after=${after}`}`);
+        const next = external || current?.readOnly ? await read() : await refreshTimeline(current, read);
         if (stopped) return;
         current = next; setTimeline(next); setError("");
       } catch (error) { if (!stopped) setError(String(error)); }
-      if (!stopped) timer = setTimeout(read, external ? 5000 : 1000);
+      if (!stopped) timer = setTimeout(read, external || current?.readOnly ? 5000 : 1000);
     }
     void read();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [session.id, session.timeline, external]);
+  }, [agent, session.id, session.timeline, session.conversation, external]);
   useLayoutEffect(() => {
     const node = viewport.current;
     if (!node || !timeline) return;
@@ -70,7 +73,7 @@ export default function ActivityTimeline({ agent, session, onClose, onBack }: {
   const submission = pendingSession ? submissions[interactionKey(agent, pendingSession)] : undefined;
   const showCard = !!pendingSession && submission?.status !== "submitted";
   const agentName = name(orderedAgents().find(a => a.agent === agent) ?? { agent });
-  const startedAt = nativeSession.turnStartedAt ?? nativeSession.startedAt;
+  const startedAt = nativeSession.turnStartedAt ?? (session.conversation ? undefined : nativeSession.startedAt);
   const duration = startedAt ? Math.max(0, Math.floor(((completedAt.current ?? now) - Date.parse(startedAt)) / 1000)) : undefined;
   useEffect(() => {
     if (showCard) document.getElementById(cardId)?.focus({ preventScroll: true });
@@ -97,11 +100,12 @@ export default function ActivityTimeline({ agent, session, onClose, onBack }: {
         {nativeSession.open && <Tooltip text={t("activity.open")}><IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
           setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));
         }} /></Tooltip>}
-        <IconButton icon={X} label={t("close")} onClick={onClose} />
+        <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
+          aria-pressed={expanded} onClick={onToggleWidth} />
       </div>
       <div className="activity-panel-subline">
-        <span className="activity-status" data-state={showCard ? "attention" : running ? "running" : "completed"}>
-          {t(showCard ? pendingSession.interaction?.kind === "question" ? "activity.question" : "activity.phase.interaction" : running ? "timeline.status.running" : "activity.completed")}
+        <span className="activity-status" data-state={showCard ? "attention" : running ? "running" : statusUnknown ? "unknown" : "completed"}>
+          {t(showCard ? pendingSession.interaction?.kind === "question" ? "activity.question" : "activity.phase.interaction" : running ? "timeline.status.running" : statusUnknown ? "unknown" : "activity.completed")}
         </span><span className="activity-panel-meta" title={subtitle}>{subtitle}</span>
       </div>
     </header>

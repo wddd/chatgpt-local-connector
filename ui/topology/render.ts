@@ -60,13 +60,14 @@ export class TopologyPainter {
       const shape = grownWire(start, c1, c2, port, scale, p.flare, false, n.state === "connecting");
       if (n.state !== "inactive") controls(start, c1, c2, port);
       attr(b.group, { class: `topology-branch primary ${n.side === 1 ? "right" : "left"}`, "data-state": n.state,
+        "data-selected": String(n.selected),
         opacity: 1 });
       attr(b.gradient, { x1: port.x, y1: port.y, x2: start.x, y2: start.y });
       attr(b.solid, { offset: Math.min(0.29, 10 * scale / Math.max(1, D)) });
       attr(b.fade, { offset: n.state === "connecting" ? Math.min(1, 26 * scale / Math.max(1, D)) : 0.3,
         "stop-opacity": n.state === "connecting" ? 0 : 0.7 });
       attr(b.end, { "stop-opacity": n.state === "connecting" ? 0 : n.side === 1 ? 0.42 : 0.32 });
-      attr(b.outline, { d: shape.outline, fill: `url(#${b.gradient.id})`, opacity: n.state === "inactive" ? 0 : v.scale < 1 ? 0.3 : 0.78 });
+      attr(b.outline, { d: shape.outline, fill: `url(#${b.gradient.id})`, opacity: n.state === "inactive" ? 0 : n.selected ? 1 : v.scale < 1 ? 0.3 : 0.78 });
       attr(b.flow, { class: "connecting-wire", d: n.state === "connecting" ? shape.centerline : "", "stroke-width": 3 * scale });
       attr(b.gap, { class: "wire-break", d: n.state === "error" ? shape.gap : "", "stroke-width": 18 * scale });
       attr(b.arc, { class: `topology-outer-arc ${n.attention ? "needs-attention" : ""}`,
@@ -93,8 +94,8 @@ export class TopologyPainter {
       controls(end, c1, c2, port);
       attr(b.group, { class: `topology-branch secondary ${bridge ? "panel-link" : ""} ${t.side === 1 ? "right" : "left"}`, "data-state": t.state,
         opacity: v.op });
-      attr(b.outline, { d: t.state === "external" ? "" : shape.outline, class: "task-body" });
-      attr(b.flow, { d: ["running", "external"].includes(t.state) ? shape.centerline : "", class: t.state === "running" ? "activity-flow" : "external-wire" });
+      attr(b.outline, { d: t.state === "external" ? shape.centerline : shape.outline, class: t.state === "external" ? "external-wire" : "task-body" });
+      attr(b.flow, { d: ["running", "external"].includes(t.state) ? shape.centerline : "", class: "activity-flow" });
     }
     for (const [key, b] of this.groups) if (!keep.has(key)) { b.group.remove(); this.groups.delete(key); }
     for (const side of [-1, 1] as const) {

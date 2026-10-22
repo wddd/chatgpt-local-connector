@@ -167,10 +167,6 @@ export function solve(sc: Scene, p: Params = DEFAULTS, drag: Drag | null = null)
   // Horizontal: squeeze column distances only when the whole scene cannot fit.
   const panelWing = (wing: Wing) => {
     if (sc.panel?.side !== wing.side) return wing;
-    for (const n of wing.nodes) {
-      if (n.id === sc.panel.selected) { n.scale = Math.max(n.scale, 1.18); n.opacity = 1; }
-      n.arc = null;
-    }
     for (const t of wing.tasks) { t.hidden = true; t.x -= wing.side * 12; }
     return wing;
   };

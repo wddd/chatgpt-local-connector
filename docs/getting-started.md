@@ -16,7 +16,7 @@ ARC adds a connection to an installed Claude Code automatically. For Claude Desk
 
 Choose **Create my relay** and sign in to a free Cloudflare account. ARC signs in, deploys, and connects this computer, then displays your remote link. With an existing shared link, choose **Use a shared relay** and paste it.
 
-The deployer only sees a computer list in ARC, but can technically inspect relayed traffic in the Cloudflare dashboard. Only join someone you trust. Owners can copy or reset the shared link and remove computers in **Settings → Remote link**; members can leave.
+The deployer only sees a computer list in ARC, but can technically inspect relayed traffic in the Cloudflare dashboard. Only join someone you trust. Owners can copy or reset the shared link and remove computers in **Remote link**; members can leave.
 
 ### Add a control source
 
@@ -24,7 +24,7 @@ The deployer only sees a computer list in ARC, but can technically inspect relay
 2. Follow the panel’s path to add it in the control source’s settings.
 3. Return to ARC, compare the four-character pairing codes, and approve. The browser returns automatically. Copy the suggested prompt once connected.
 
-ChatGPT uses the same remote-link flow by default. Existing addresses, OpenAI Secure Tunnel, and Agent-assisted setup are under **Settings → Remote link → Advanced**.
+ChatGPT uses the same remote-link flow by default. Existing addresses, OpenAI Secure Tunnel, and Agent-assisted setup are under **Remote link → Advanced**.
 
 ### 3. Dispatch and receive a notification
 

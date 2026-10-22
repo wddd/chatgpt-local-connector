@@ -95,6 +95,20 @@ export interface AgentActivitySnapshot {
   activeAgents: string[];
   agents: Record<string, { sessions: AgentActivitySession[] }>;
 }
+export interface AgentConversation {
+  id: string;
+  source: "arc-task" | "codex-thread";
+  title?: string | null;
+  project?: string | null;
+  createdAt: string | null;
+  nativeSessionId?: string | null;
+  open?: AgentActivitySession["open"];
+}
+export interface AgentConversationPage {
+  data: AgentConversation[];
+  nextCursor: string | null;
+  scope: "native-unarchived" | "arc-tasks";
+}
 export interface AgentTimelineEntry {
   id: string;
   type: "user" | "text" | "thinking" | "command" | "file" | "tool" | "plan" | "interaction" | "error";

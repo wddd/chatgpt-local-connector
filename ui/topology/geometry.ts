@@ -20,7 +20,7 @@ export function grownWire(a: Point, b: Point, c: Point, d: Point, scale: number,
     const q = pts[Math.min(N, i + 1)], o = pts[Math.max(0, i - 1)];
     const dx = q.x - o.x, dy = q.y - o.y, m = Math.hypot(dx, dy) || 1;
     const u = p.l / L, s = L - p.l;
-    const body = connecting ? 0 : (thin ? 1.2 + 1.6 * u ** 1.6 : 3 + 3 * u ** 1.6);
+    const body = connecting ? 0 : (thin ? 2 + 2 * u ** 1.6 : 3 + 3 * u ** 1.6);
     const half = scale * (body + (thin ? 7 : 12) * flare * Math.max(0, 1 - s / ((thin ? 16 : 26) * scale)) ** 2) / 2;
     const l = { x: p.x - dy / m * half, y: p.y + dx / m * half };
     const r = { x: p.x + dy / m * half, y: p.y - dx / m * half };

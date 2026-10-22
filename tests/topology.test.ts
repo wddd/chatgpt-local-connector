@@ -171,9 +171,9 @@ test("Agent dock reserves its width and label clearance without reordering or mo
       const node = docked.wings[1].nodes.find(n => n.id === selected)!;
       assert.ok(node.x + LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 <= edge - 40 + 1e-6);
       assert.ok(node.x - node.size * node.scale / 2 >= 0);
-      assert.ok(node.scale >= 1.18);
+      assert.ok(node.scale <= Math.max(1, DEFAULTS.activeScale));
       assert.ok(docked.hub.x < base.hub.x);
-      assert.ok(docked.wings[1].nodes.every(n => n.arc === null));
+      assert.ok(docked.wings[1].nodes.every(n => n.active ? n.arc !== null : n.arc === null));
       assert.ok(docked.wings[1].tasks.every(t => t.hidden));
       assert.ok(docked.balance.every(w => w.squeeze >= DEFAULTS.squeezeMin));
     }

@@ -146,7 +146,7 @@ export default function Onboarding({ onAdvanced, onPanelFrame }: { onAdvanced: (
       </>}
       {flow.step === "sources" && <>
         <div className="source-grid">{["claude", "chatgpt", "gemini", "grok", "microsoft-copilot", "custom"].map(id => <Button className={id === "custom" ? "source-card custom" : "source-card"} key={id} data-source={id} onClick={() => void selectSource(id)}><SourceIcon platform={id} /><strong>{controlSource(id)?.shortName ?? t("connect.other")}</strong>{id === "claude" && <small>{t("connect.recommended")}</small>}</Button>)}</div>
-        <div className="remote-footer"><Status tone={remoteIngress(status?.ingresses) ? "success" : "neutral"}>{t(remoteIngress(status?.ingresses) ? "connect.remoteOnline" : "connect.remoteOffline")}</Status><Button variant="ghost" onClick={() => { onboarding.set(undefined); navigation.set(old => ({ ...old, page: "settings" })); }}>{t("connect.manage")}</Button></div>
+        <div className="remote-footer"><Status tone={remoteIngress(status?.ingresses) ? "success" : "neutral"}>{t(remoteIngress(status?.ingresses) ? "connect.remoteOnline" : "connect.remoteOffline")}</Status><Button variant="ghost" onClick={() => { onboarding.set(undefined); navigation.set(old => ({ ...old, page: "remote" })); }}>{t("connect.manage")}</Button></div>
       </>}
       {flow.step === "connect" && current && <ol className="connection-steps">
         <li><strong>{t("connect.copyLink")}</strong><CopyField value={current.url} label={t("connect.remoteLink")} />{copied && <small>{t("connect.copied")}</small>}</li>

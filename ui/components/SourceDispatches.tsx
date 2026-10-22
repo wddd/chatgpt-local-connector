@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
@@ -10,10 +10,21 @@ import { sourceDispatches, dispatchState, isLatestDispatch } from "../state/sour
 import { PhaseTile } from "./activity";
 import { Icon, Notice } from "./ui";
 
-export default function SourceDispatches({ ingressId, limit }: { ingressId: string; limit?: number }) {
+export default function SourceDispatches({ ingressId }: { ingressId: string }) {
   const { records, error } = tasks.use(), { snapshot } = agentActivity.use();
   const [runtimes, setRuntimes] = useState<Record<string, TaskRuntime>>({});
-  const rows = sourceDispatches(records, ingressId).slice(0, limit);
+  const [visible, setVisible] = useState(8);
+  const more = useRef<HTMLDivElement>(null);
+  const dispatches = sourceDispatches(records, ingressId), rows = dispatches.slice(0, visible);
+  useEffect(() => {
+    const marker = more.current;
+    if (!marker || visible >= dispatches.length) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) setVisible(count => count + 8);
+    }, { root: marker.closest(".side-panel-scroll, .workspace"), rootMargin: "0px 0px 120px 0px" });
+    observer.observe(marker);
+    return () => observer.disconnect();
+  }, [visible, dispatches.length]);
   const ids = [...new Set(rows.filter(r => isLatestDispatch(r, records)).map(r => r.threadId || r.task.threadId).filter((id): id is string => !!id))];
   useEffect(() => {
     let stopped = false, reading = false;
@@ -35,7 +46,6 @@ export default function SourceDispatches({ ingressId, limit }: { ingressId: stri
     return () => { stopped = true; clearInterval(timer); };
   }, [ingressId, ids.join(",")]);
   return <div className="source-dispatch-list">
-    <p className="timeline-meta">{t("sourcePanel.recordsScope")}</p>
     {error && <Notice>{error}</Notice>}
     {rows.map(record => {
       const id = record.threadId || record.task.threadId;
@@ -60,5 +70,6 @@ export default function SourceDispatches({ ingressId, limit }: { ingressId: stri
       </button>;
     })}
     {!rows.length && <p className="timeline-meta">{t("sourcePanel.noRecords")}</p>}
+    {visible < dispatches.length && <div ref={more} className="source-dispatch-more" aria-hidden="true" />}
   </div>;
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergeActivity, trackActivity, agentPanelSelection, endedActivity, activityLayout, visibleActivity, beginApproval, finishApproval, permissionResponse, interactionKey } from "../ui/state/activityModel.ts";
+import { mergeActivity, trackActivity, agentPanelSelection, activityLayout, visibleActivity, beginApproval, finishApproval, permissionResponse, interactionKey } from "../ui/state/activityModel.ts";
 import type { AgentActivitySession, AgentActivitySnapshot, AgentInteraction } from "../ui/types.ts";
 const permission: AgentInteraction = { kind: "permission", summary: "Run example command", respond: { via: "act", op: "agent_respond", args: { agent: "claude", taskId: "task-example", interactionId: 1 } }, options: [{ kind: "allow_once", optionId: "yes" }, { kind: "reject_once", optionId: "no" }] };
 function session(id: string, interaction?: AgentInteraction): AgentActivitySession {
@@ -279,14 +279,6 @@ test("Agent panel toggles the current node, switches peers in place, and returns
   view = agentPanelSelection(undefined, { type: "task", agent: "claude", session: first });
   assert.deepEqual(agentPanelSelection(view, { type: "back" }), { agent: "claude" });
   assert.equal(agentPanelSelection(view, { type: "dismiss" })?.session, first);
-});
-test("ended history retains ARC snapshot data, excludes external sessions and removes resumed tasks", () => {
-  const task = session("one", permission), external = { ...session("outside"), source: "transcript" as const };
-  const ended = endedActivity([], [task, external], [], 500);
-  assert.deepEqual(ended.map(s => [s.id, s.endedAt, s.interaction]), [["one", 500, undefined]]);
-  assert.equal(ended[0].headline, task.headline);
-  assert.equal(endedActivity(ended, [], [], 5000)[0].endedAt, 500);
-  assert.equal(endedActivity(ended, [], [task], 6000).length, 0);
 });
 
 test("source dispatches filter ownership and never equate a dispatch receipt with task completion", async () => {

@@ -129,6 +129,7 @@ test("mounted topology paints paths, observes its parent viewport and reacts to 
 });
 
 test("Agent panel keeps a nonmodal shell across task/back/peer navigation and restores focus on Escape", async () => {
+  const beforeFetch = globalThis.fetch;
   const window = new Window({ url: "http://localhost" });
   const frames = new Map<number, FrameRequestCallback>();
   let sequence = 0;
@@ -160,6 +161,15 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
     const { panelLayers } = await server.ssrLoadModule("/ui/state/panels.ts");
     const { capturePanelOrigin } = await server.ssrLoadModule("/ui/components/panelMorph.ts");
     const session = { id: "example", source: "transcript", title: "External example", phase: "thinking", phaseSince: null, headline: "Summary", timeline: false, orderAt: 1 };
+    globalThis.fetch = async (input, init) => {
+      const path = String(input).replace("/api/", "");
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      const result = path === "agents/conversations" ? {
+        data: body.agent === "claude" ? [{ id: "example", source: "arc-task", title: "External example", createdAt: "2026-01-01" }] : [],
+        nextCursor: null, scope: "arc-tasks",
+      } : { sessionId: "example", readOnly: true, status: "completed", entries: [], cursor: 0, coverage: { state: "complete" } };
+      return new Response(JSON.stringify(result), { status: 200 });
+    };
     agentActivity.set({ error: "", snapshot: { observedAt: "2026-01-01", agents: { claude: { sessions: [session] } }, activeAgents: ["claude"] } });
     function Harness() {
       const view = agentPanel.use();
@@ -168,7 +178,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
         h("main", { inert: layers.some((layer: HTMLElement) => !layer.dataset.panelDock) },
           ...["claude", "codex"].map(agent => h("div", { key: agent, "data-agent-node": agent },
             h("button", { className: "graph-node", "data-panel-anchor": true, onClick: () => selectAgentPanel({ type: "toggle", agent }) }, agent)))),
-        view && h(AgentPanel, { agent: { agent: view.agent }, state: "connected", sessions: view.agent === "claude" ? [session] : [], now: 10,
+        view && h(AgentPanel, { agent: { agent: view.agent }, state: "connected", expanded: false, onToggleWidth() {},
           onSettings() {}, onPanelFrame() {} }));
     }
     const flush = async () => {
@@ -228,6 +238,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
     } finally { globalThis.fetch = originalFetch; }
 
   } finally {
+    globalThis.fetch = beforeFetch;
     await act(() => root.unmount());
     await server.close(); await window.happyDOM.close();
   }
@@ -290,6 +301,7 @@ test("control source dock preserves editing, new onboarding, field navigation an
       else if (path === "relay/progress") value = { phase: "idle" };
       else if (path === "tool-catalog") value = { tools: [], groups: [], required: [] };
       else if (path === "codex/login") value = { state: "authenticated" };
+      else if (path === "agents/conversations") value = { data: [], nextCursor: null, scope: "arc-tasks" };
       else if (path.endsWith("/oauth")) value = { grants: [] };
       else if (path.startsWith("tasks/runtime/")) value = { runtimeStatus: "active", observedAt: "2026-01-01" };
       else if (path.startsWith("agents/timeline/")) value = { sessionId: "thread", status: "running", entries: [], cursor: 0, coverage: { state: "complete" } };
@@ -313,7 +325,7 @@ test("control source dock preserves editing, new onboarding, field navigation an
     let shell = document.querySelector(".elastic-panel")!;
     assert.equal(shell.getAttribute("data-panel-dock"), "left");
     assert.equal(document.querySelector(".elastic-backdrop"), null);
-    assert.ok([...document.querySelectorAll<HTMLInputElement>(".source-connection-card input")].some(input => input.value === t("connect.tryPrompt")));
+    assert.equal(document.querySelector(".source-connection-card"), null);
     assert.ok(mount.querySelector('.activity-slot:not([inert])'), "right bubbles remain available");
     assert.equal(mount.querySelector('[data-source-node="one"]')?.getAttribute("data-reorderable"), null);
     await click(document.querySelector('[role="switch"]'));
@@ -365,8 +377,8 @@ test("control source dock preserves editing, new onboarding, field navigation an
     assert.equal(agentShell.hasAttribute("data-recessed"), false);
     assert.equal(agentShell.hasAttribute("inert"), false);
     await click(first()); assert.equal(agentPanel.get(), undefined); assert.ok(ingressPanel.get());
-    await click(button(t("sourcePanel.allRecords")));
-    assert.equal(navigation.get().page, "logs"); assert.equal(navigation.get().recordsSource, "one");
+    await click(button(t("connect.manage")));
+    assert.equal(navigation.get().page, "remote"); assert.equal(ingressPanel.get(), undefined);
     await act(() => navigation.set({}));
     // New source selection stays in the left dock; ChatGPT uses the same link flow.
     for (const id of ["claude", "chatgpt", "custom"]) {

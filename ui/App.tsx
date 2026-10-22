@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   RefreshCw,
+  Network,
 } from "lucide-react";
 import { animate } from "motion";
 import { reducedMotion } from "./motion/surface";
@@ -46,6 +47,7 @@ import ConnectionOverview from "./components/ConnectionOverview";
 import TasksPage from "./components/TasksPage";
 import RecordsPage from "./components/RecordsPage";
 import SettingsPage from "./components/SettingsPage";
+import RemoteLinkPage from "./components/RemoteLinkPage";
 import { AppUpdateDialogs } from "./components/AppUpdate";
 import { Button, Icon, IconButton, Notice, HoverScope } from "./components/ui";
 import { api } from "./api";
@@ -66,7 +68,7 @@ export default function App() {
 
   const [page, setPage] = useState<Page>(() => {
     const saved = localStorage.getItem("arc-page");
-    return ["overview", "settings", "logs", "tasks", "permissions"].includes(saved ?? "") ? saved as Page : "overview";
+    return ["overview", "settings", "logs", "tasks", "remote", "permissions"].includes(saved ?? "") ? saved as Page : "overview";
   });
   const [sheetWide, setSheetWide] = useState(false);
   const sheet = useRef<HTMLElement>(null),
@@ -157,7 +159,7 @@ export default function App() {
           void checkUpdate();
         }),
         listen<string>("navigate", (e) => {
-          if (["overview", "settings", "logs", "tasks", "permissions"].includes(e.payload))
+          if (["overview", "settings", "logs", "tasks", "remote", "permissions"].includes(e.payload))
             navigate(e.payload as Page);
         }),
         listen<string>("subscriptions:open", (e) => {
@@ -186,6 +188,7 @@ export default function App() {
         navigate("overview");
       } else if (url.hostname === "oauth") setOauthRequest({ id: url.searchParams.get("request") ?? "" });
       else if (url.hostname === "permissions") navigate("permissions");
+      else if (url.hostname === "remote") navigate("remote");
       else if (url.hostname === "settings") navigate("settings");
       else if (url.hostname === "setup" && ["claude-login", "cloudflare-login"].includes(url.searchParams.get("target") ?? "")) {
         void api("setup/apply", "POST", {stepId: url.searchParams.get("target") === "claude-login" ? "claude-code-ready" : "cloudflare-login", input:{}}).catch((e: Error) => notify(e.message, true));
@@ -203,6 +206,7 @@ export default function App() {
   const pages = [
     { id: "tasks" as const, label: t("tasks"), icon: LayoutDashboard },
     { id: "logs" as const, label: t("records"), icon: Logs },
+    { id: "remote" as const, label: t("connect.remoteLink"), icon: Network },
     { id: "permissions" as const, label: t("permissionsTitle"), icon: ready ? ShieldCheck : ShieldAlert },
     { id: "settings" as const, label: t("settings"), icon: Settings },
   ];
@@ -317,6 +321,8 @@ export default function App() {
                 <RecordsPage />
               ) : page === "permissions" ? (
                 <PermissionsPage />
+              ) : page === "remote" ? (
+                <RemoteLinkPage />
               ) : (
                 <SettingsPage />
               )}

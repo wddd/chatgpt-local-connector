@@ -20,7 +20,7 @@ import {
   takePanelOrigin, readOrigin, hideOrigin, animateOriginContent, surfaceOf,
   type PanelOrigin,
 } from "./panelMorph";
-const frameAt = (rect: DOMRect, opacity: number, borderRadius: string): Surface => ({
+const frameAt = (rect: SurfaceRect, opacity: number, borderRadius: string): Surface => ({
   transform: `translate(calc(-50% + ${rect.x + rect.width / 2 - innerWidth / 2}px),calc(-50% + ${rect.y + rect.height / 2 - innerHeight / 2}px))`,
   width: `${rect.width}px`,
   height: `${rect.height}px`,
@@ -45,6 +45,7 @@ export default function ElasticPanel({
   depthOffset = 0,
   initialFocus,
   dock,
+  expanded = false,
   closeRequested = false,
   originKey,
   returnFocus,
@@ -68,6 +69,7 @@ export default function ElasticPanel({
   depthOffset?: number;
   initialFocus?: string;
   dock?: "left" | "right";
+  expanded?: boolean;
   closeRequested?: boolean;
   originKey?: string;
   returnFocus?: string;
@@ -81,7 +83,7 @@ export default function ElasticPanel({
     panelRef.current = el;
     setNode(el);
   }, []);
-  const dockPosition = () => ({ x: (dock === "left" ? -1 : 1) * ((innerWidth - Math.min(width ?? 400, innerWidth - 32)) / 2 - 16), y: 0 });
+  const dockPosition = () => ({ x: expanded ? 0 : (dock === "left" ? -1 : 1) * ((innerWidth - Math.min(width ?? 400, innerWidth - 32)) / 2 - 16), y: 0 });
   const positionRef = useRef(position);
   positionRef.current = dock ? dockPosition() : position;
   const visualOrigin = useRef<PanelOrigin | undefined>(undefined);
@@ -100,6 +102,7 @@ export default function ElasticPanel({
   const layers = panelLayers.use(),
     recessed = !!node && layers.includes(node) && layers.at(-1) !== node;
   const previousView = useRef({ recessed, depthOffset });
+  const previousExpanded = useRef(expanded), dockFrame = useRef<SurfaceRect | null>(null);
   const latest = useRef({ onClose, onDismiss, busy, depthOffset });
   latest.current = { onClose, onDismiss, busy, depthOffset };
   const moveTo = (x: number, y: number) => {
@@ -146,7 +149,8 @@ export default function ElasticPanel({
     }
     const surface = surfaceMotion(node, () => ({
       transform: `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
-    }), frame => { onMotion?.(); onPanelFrame?.(frame); });
+    }), frame => { dockFrame.current = frame; onMotion?.(); onPanelFrame?.(frame); });
+    dockFrame.current = rect;
     onPanelFrame?.(rect);
     motion.current = surface;
     const fades: AnimationPlaybackControlsWithThen[] = [];
@@ -184,10 +188,21 @@ export default function ElasticPanel({
     const resize = () => moveTo(positionRef.current.x, positionRef.current.y);
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
-  }, [node]);
+  }, [node, expanded]);
   useLayoutEffect(() => {
-    if (node && dock && !motion.current?.running) onPanelFrame?.(node.getBoundingClientRect());
-  }, [node, position, dock, onPanelFrame]);
+    if (!node || !dock) return;
+    const rect = node.getBoundingClientRect(), from = dockFrame.current;
+    if (previousExpanded.current !== expanded) {
+      previousExpanded.current = expanded;
+      if (from && motion.current && !closing.current) {
+        const panelWidth = Math.min(expanded ? innerWidth - 32 : width ?? 400, innerWidth - 32);
+        const target = { x: dock === "left" ? 16 : innerWidth - panelWidth - 16, y: 16, width: panelWidth, height: innerHeight - 32 };
+        void motion.current.to(frameAt(target, 1, "20px"), { from: frameAt(from, 1, "20px"), duration: 0.18 });
+        return;
+      }
+    }
+    if (!motion.current?.running) { dockFrame.current = rect; onPanelFrame?.(rect); }
+  }, [node, position, dock, expanded, onPanelFrame]);
   useLayoutEffect(() => {
     const returned = previousView.current.recessed && !recessed;
     const stepped = previousView.current.depthOffset !== depthOffset;
@@ -291,7 +306,7 @@ export default function ElasticPanel({
           aria-describedby={undefined}
           style={
             {
-              "--preferred-width": `${width ?? (wide ? 880 : 800)}px`,
+              "--preferred-width": dock && expanded ? "calc(100vw - 32px)" : `${width ?? (wide ? 880 : 800)}px`,
               transform: `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
               zIndex: (dock ? 102 : 101) + Math.max(0, layers.indexOf(node!)) * 2,
             } as CSSProperties
@@ -314,6 +329,12 @@ export default function ElasticPanel({
           onEscapeKeyDown={(e) => {
             e.preventDefault();
             void close();
+          }}
+          onPointerDownOutside={(e) => {
+            if (!dock || panelLayers.get().at(-1) !== node || e.detail.originalEvent.button !== 0) return;
+            const target = e.detail.originalEvent.target;
+            if (target instanceof Element && target.closest(".graph-node, .hub-entry")) return;
+            void close(undefined, true);
           }}
           onInteractOutside={(e) => e.preventDefault()}
         >

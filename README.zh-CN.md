@@ -41,7 +41,7 @@ GPT-6 Astra Pro 在 ChatGPT Chat 模式里可用，Codex 里没有。ARC 把两�
 2. 按面板内的路径，在控制源设置里添加该链接。
 3. 回到 ARC，核对浏览器与批准卡片上的四位配对码，再批准。
 
-连接完成后，复制试用提示，让 Codex 回复「连接成功」。[逐步上手](docs/zh-CN/getting-started.md)。自有地址和 OpenAI Secure Tunnel 位于**设置 → 远程链接 → 高级**。
+连接完成后，复制试用提示，让 Codex 回复「连接成功」。[逐步上手](docs/zh-CN/getting-started.md)。自有地址和 OpenAI Secure Tunnel 位于**远程链接 → 高级**。
 
 需要本机 Agent 协助安装或配置：
 

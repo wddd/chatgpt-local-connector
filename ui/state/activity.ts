@@ -4,26 +4,21 @@ import { createStore } from "./store";
 import { api } from "../api";
 import { isDesktop, openUrl } from "../platform";
 import type { AgentActivitySession, AgentActivitySnapshot } from "../types";
-import { trackActivity, activityLayout, type TrackedActivity, beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission, endedActivity } from "./activityModel";
+import { trackActivity, activityLayout, type TrackedActivity, beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission } from "./activityModel";
 
 export const agentActivity = createStore<{ snapshot?: AgentActivitySnapshot; error: string }>({ error: "" });
 
-export const activityHistory = createStore<Record<string, TrackedActivity[]>>({});
-let historyCore: string | undefined;
-export function resetActivityHistory(core: string) {
-  if (historyCore && historyCore !== core) {
-    activityHistory.set({});
+let activityCore: string | undefined;
+export function resetActivityCore(core: string) {
+  if (activityCore && activityCore !== core) {
     agentActivity.set({ error: "" });
   }
-  historyCore = core;
+  activityCore = core;
 }
 export const activityApprovals = createStore<Record<string, ApprovalSubmission>>({});
 export function acceptActivity(snapshot: AgentActivitySnapshot) {
   const next = mergeActivity(agentActivity.get().snapshot, snapshot);
   if (next !== snapshot) return;
-  const previous = agentActivity.get().snapshot;
-  activityHistory.set(old => Object.fromEntries([...new Set([...Object.keys(old), ...Object.keys(previous?.agents ?? {})])]
-    .map(agent => [agent, endedActivity(old[agent] ?? [], previous?.agents[agent]?.sessions ?? [], next.agents[agent]?.sessions ?? [], Date.now())])));
   agentActivity.set({ snapshot: next, error: "" });
   const keys = new Set(Object.entries(next.agents).flatMap(([agent, value]) => value.sessions
     .filter(session => session.interaction).map(session => interactionKey(agent, session))));
@@ -107,11 +102,11 @@ export function useActivityTracking() {
   const { snapshot } = agentActivity.use();
   const selected = agentPanel.use(), previousSelection = useRef(selected);
   const [tracked, setTracked] = useState<Record<string, TrackedActivity[]>>({});
-  const trackingCore = useRef(historyCore);
+  const trackingCore = useRef(activityCore);
   useEffect(() => {
     if (!snapshot) return;
-    const changedCore = trackingCore.current !== historyCore;
-    trackingCore.current = historyCore;
+    const changedCore = trackingCore.current !== activityCore;
+    trackingCore.current = activityCore;
     setTracked(old => {
       if (changedCore) old = {};
       return Object.fromEntries([...new Set([...Object.keys(old), ...Object.keys(snapshot.agents)])]

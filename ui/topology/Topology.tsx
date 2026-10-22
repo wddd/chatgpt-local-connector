@@ -13,8 +13,9 @@ export interface NodeView extends Omit<PaintNode, "side"> { content: ReactNode; 
 type PositionedTask = TaskView & { parent: string; side: Side };
 export interface TopologyHandle { panelFrame: (rect: SurfaceRect | null) => void }
 
-export default function Topology({ left, right, brand, boundary, onReorderNodes, onReorderTasks, ref }: {
+export default function Topology({ left, right, brand, boundary, panelExpanded = false, onReorderNodes, onReorderTasks, ref }: {
   left: NodeView[]; right: NodeView[]; brand: ReactNode;
+  panelExpanded?: boolean;
   onReorderNodes: (side: Side, ids: string[]) => void;
   onReorderTasks: (side: Side, parent: string, ids: string[]) => void;
   boundary: RefObject<HTMLElement | null>; ref: Ref<TopologyHandle>;
@@ -35,8 +36,8 @@ export default function Topology({ left, right, brand, boundary, onReorderNodes,
   // Retain departing HTML until its primitive has collapsed into the port.
   const [retained, setRetained] = useState<PositionedTask[]>([]);
   const allTasks = [...new Map([...retained, ...tasks].map(t => [taskKey(t.side, t.id), t])).values()];
-  const latest = useRef({ nodes, tasks, allTasks, left, right, reduced, params, guides, slow, onReorderNodes, onReorderTasks });
-  latest.current = { nodes, tasks, allTasks, left, right, reduced, params, guides, slow, onReorderNodes, onReorderTasks };
+  const latest = useRef({ nodes, tasks, allTasks, left, right, panelExpanded, reduced, params, guides, slow, onReorderNodes, onReorderTasks });
+  latest.current = { nodes, tasks, allTasks, left, right, panelExpanded, reduced, params, guides, slow, onReorderNodes, onReorderTasks };
   useEffect(() => observeTopology(() => ({
     origin: origin.current, size: size.current, panel: panel.current,
     nodes: latest.current.nodes.map(({ content: _content, tasks: _tasks, ...node }) => ({ ...node, position: animator.current.values(nodeKey(node.side, node.id)) })),
@@ -93,9 +94,10 @@ export default function Topology({ left, right, brand, boundary, onReorderNodes,
   const scene = useCallback((): Scene => {
     const sc: Scene = { ...size.current!, left: latest.current.left, right: latest.current.right }, d = drag.current;
     const selected = latest.current.nodes.find(n => n.selected);
+    const panelWidth = latest.current.panelExpanded ? innerWidth - 32 : Math.min(400, innerWidth - 32);
     if (selected) sc.panel = { side: selected.side, selected: selected.id,
-      edge: selected.side === 1 ? innerWidth - Math.min(400, innerWidth - 32) - 16 - origin.current.x : 16 + Math.min(400, innerWidth - 32) - origin.current.x,
-      narrow: innerWidth < 760 };
+      edge: selected.side === 1 ? innerWidth - panelWidth - 16 - origin.current.x : 16 + panelWidth - origin.current.x,
+      narrow: innerWidth < 760 || latest.current.panelExpanded };
     if (!d?.active) return sc;
     const wing = d.side === -1 ? "left" : "right";
     if (d.kind === "node") sc[wing] = orderedSubset(sc[wing], d.order);

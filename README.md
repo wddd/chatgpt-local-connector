@@ -41,7 +41,7 @@ GPT-6 Astra Pro is available in ChatGPT Chat mode, but not in Codex. ARC connect
 2. Follow the panel’s path to add the link in that control source’s settings.
 3. Return to ARC, compare the four-character pairing codes in your browser and approval card, and approve.
 
-Copy the suggested prompt to have Codex reply “Connected.” [Step-by-step guide](docs/getting-started.md). Own addresses and OpenAI Secure Tunnel are under **Settings → Remote link → Advanced**.
+Copy the suggested prompt to have Codex reply “Connected.” [Step-by-step guide](docs/getting-started.md). Own addresses and OpenAI Secure Tunnel are under **Remote link → Advanced**.
 
 For help from a local Agent with installation or setup:
 
