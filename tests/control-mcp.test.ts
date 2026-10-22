@@ -7,7 +7,7 @@ import { after, before, test } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { identifyPolicy, normalizeSelection, presetPolicy, type ToolCatalog, type ToolPolicy } from '../ui/toolPolicy.ts';
 import { buildVersion } from '../tooling/version.mjs';
@@ -225,7 +225,7 @@ test('MCP lists frozen tools and guide exposes existing ops and native domains w
   const status = await call('notify_status');
   assert.equal(status.response.isError, false);
   assert.equal(status.result.arcInbox, undefined);
-  const existing = ['context_resolve', 'context_search', 'context_read', 'context_check', 'context_amend', 'codex_review', 'dispatch_policy', 'codex_queue', 'codex_queue_control', 'notify_status', 'notify_control', 'notification_ack', 'guide', 'edit', 'write', 'codex_changes', 'logs', 'connector_verify', 'projects', 'overview', 'tree', 'search', 'read', 'screen', 'git', 'git_write', 'codex_tasks', 'codex_read', 'codex_wait', 'codex_create', 'codex_send', 'codex_interrupt', 'codex_capabilities', 'receipt', 'codex_items', 'codex_schema', 'codex_query', 'codex_call', 'codex_pending', 'codex_respond', 'codex_events', 'control_output'];
+  const existing = ['context_resolve', 'context_search', 'context_read', 'context_check', 'context_amend', 'codex_review', 'dispatch_policy', 'codex_queue', 'codex_queue_control', 'notify_status', 'notify_control', 'notification_ack', 'inbox_wait', 'guide', 'edit', 'write', 'codex_changes', 'logs', 'connector_verify', 'projects', 'overview', 'tree', 'search', 'read', 'screen', 'git', 'git_write', 'codex_tasks', 'codex_read', 'codex_wait', 'codex_create', 'codex_send', 'codex_interrupt', 'codex_capabilities', 'receipt', 'codex_items', 'codex_schema', 'codex_query', 'codex_call', 'codex_pending', 'codex_respond', 'codex_events', 'control_output'];
   assert.deepEqual(operations.map(tool => tool.name).sort(), [...existing, 'agents', 'agent_capabilities', 'agent_tasks', 'agent_create', 'agent_read', 'agent_context', 'agent_wait', 'agent_send', 'agent_review', 'agent_interrupt', 'agent_events', 'agent_pending', 'agent_respond', 'fs', 'command', 'process', 'mcp', 'file_search', 'codex_thread', 'codex_account'].filter(name => !name.startsWith('agent') || operations.some(tool => tool.name === 'agents')).sort());
   for (const row of (await call('guide', {topic:'review'})).result.ops) assert.match(row.signature, new RegExp('^'+row.op+'\\('));
   for (const tool of operations) {
@@ -233,18 +233,22 @@ test('MCP lists frozen tools and guide exposes existing ops and native domains w
     new AjvJsonSchemaValidator().getValidator(tool.inputSchema);
   }
   const waitSchema = operations.find(tool => tool.name === 'codex_wait')!.inputSchema;
-  assert.equal((waitSchema.properties!.timeoutMs as { maximum: number }).maximum, 300000);
+  assert.equal((waitSchema.properties!.timeoutMs as { maximum: number }).maximum, 1800000);
   const validateWait = new AjvJsonSchemaValidator().getValidator(waitSchema);
-  assert.equal(validateWait({ threadId: 'fixture', timeoutMs: 300000 }).valid, true);
-  for (const timeoutMs of [300001, 330000]) {
+  assert.equal(validateWait({ threadId: 'fixture', timeoutMs: 1800000 }).valid, true);
+  for (const timeoutMs of [1800001, 1830000]) {
     assert.equal(validateWait({ threadId: 'fixture', timeoutMs }).valid, false);
     const rejected = await call('codex_wait', { threadId: 'fixture', timeoutMs });
     assert.equal(rejected.response.isError, true);
   }
+  const inboxSchema = operations.find(tool => tool.name === 'inbox_wait')!.inputSchema;
+  const validateInbox = new AjvJsonSchemaValidator().getValidator(inboxSchema);
+  assert.equal(validateInbox({timeoutMs:1800000}).valid,true);
+  for(const timeoutMs of [0,1800001])assert.equal(validateInbox({timeoutMs}).valid,false);
   const agentWaitSchema = operations.find(tool => tool.name === 'agent_wait')!.inputSchema;
   const validateAgentWait = new AjvJsonSchemaValidator().getValidator(agentWaitSchema);
-  assert.equal(validateAgentWait({agent:'tracking-example',taskId:'fixture',timeoutMs:300000}).valid,true);
-  assert.equal(validateAgentWait({agent:'tracking-example',taskId:'fixture',timeoutMs:300001}).valid,false);
+  assert.equal(validateAgentWait({agent:'tracking-example',taskId:'fixture',timeoutMs:1800000}).valid,true);
+  assert.equal(validateAgentWait({agent:'tracking-example',taskId:'fixture',timeoutMs:1800001}).valid,false);
   for (const name of ['read', 'codex_read', 'codex_items']) {
     const exposed = operations.find(tool => tool.name === name)!;
     const source = catalog.ops.find((tool: {name: string}) => tool.name === name);
@@ -436,6 +440,7 @@ test('setup rejects a short runtime key without saving or clearing; HTTPS fallba
 const fs = require('node:fs');
 if (process.argv[2] === '--version') { console.log('tunnel-client v0.0.16'); process.exit(0); }
 if (process.argv[2] === 'init') process.exit(0);
+if (process.argv[process.argv.indexOf('--mcp.connection-max-ttl') + 1] !== '31m') process.exit(42);
 const server = require('node:http').createServer((req, res) => {
   if (req.url === '/readyz') return res.end('ready');
   const code = JSON.parse(fs.readFileSync(${JSON.stringify(poll)}, 'utf8'));
@@ -545,9 +550,9 @@ test('real HTTP ingresses isolate discovery and direct execution; policy PUT pre
     await management(`ingress/${b.id}/start`, 'POST');
     const list = async (i: any) => (await ingressRpc(i, 'tools/call', {name:'guide',arguments:{}})).result.structuredContent.result.ops.map((op: any) => op.op);
     assert.deepEqual(await list(a), config.tools.filter(tool => tool.available !== false).map(tool => tool.name));
-    assert.deepEqual(await list(b), config.tools.filter(tool => (b.toolPolicy.allowlist.includes(tool.name) || ['notification_ack', 'notify_status'].includes(tool.name)) && tool.available !== false).map(tool => tool.name));
+    assert.deepEqual(await list(b), config.tools.filter(tool => (b.toolPolicy.allowlist.includes(tool.name) || ['notification_ack', 'notify_status', 'inbox_wait'].includes(tool.name)) && tool.available !== false).map(tool => tool.name));
     assert.deepEqual((await management('tool-catalog')).tools, config.tools, 'management inventory remains unfiltered');
-    for (const name of config.tools.filter(tool => !b.toolPolicy.allowlist.includes(tool.name) && !['notification_ack', 'notify_status'].includes(tool.name)).map(tool => tool.name)) {
+    for (const name of config.tools.filter(tool => !b.toolPolicy.allowlist.includes(tool.name) && !['notification_ack', 'notify_status', 'inbox_wait'].includes(tool.name)).map(tool => tool.name)) {
       assert.equal((await ingressRpc(b, 'tools/call', { name, arguments: { action: 'approve', requestId: randomUUID() } })).result.structuredContent.result.error.code, 'OP_UNAVAILABLE', name);
     }
     const args = { requestId: randomUUID(), method: 'fixture/counts', params: {} };
@@ -580,13 +585,13 @@ test('real HTTP ingresses isolate discovery and direct execution; policy PUT pre
       assert.deepEqual((await management(`ingress/${b.id}`)).toolPolicy, policy);
       await management(`ingress/${b.id}/start`, 'POST');
       assert.equal(await readFile(verifyFile, 'utf8'), identity);
-      assert.deepEqual(await list(b), config.tools.filter(tool => (policy === 'all' || policy.allowlist.includes(tool.name) || ['notification_ack', 'notify_status'].includes(tool.name)) && tool.available !== false).map(tool => tool.name));
+      assert.deepEqual(await list(b), config.tools.filter(tool => (policy === 'all' || policy.allowlist.includes(tool.name) || ['notification_ack', 'notify_status', 'inbox_wait'].includes(tool.name)) && tool.available !== false).map(tool => tool.name));
       assert.deepEqual(await list(a), config.tools.filter(tool => tool.available !== false).map(tool => tool.name), 'other ingress stays online and unchanged');
     }
     await management(`ingress/${b.id}/stop`, 'POST');
     await management(`ingress/${b.id}`, 'PUT', { toolPolicy: { allowlist: [] } });
     await management(`ingress/${b.id}/start`, 'POST');
-    assert.deepEqual(await list(b), ['guide', 'notification_ack', 'notify_status']);
+    assert.deepEqual(await list(b), ['guide', 'inbox_wait', 'notification_ack', 'notify_status']);
     for (const name of ['connector_verify', 'codex_wait', 'agent_wait']) assert.equal((await ingressRpc(b, 'tools/call', { name, arguments: {} })).result.structuredContent.result.error.code, 'OP_UNAVAILABLE');
   } finally {
     await management(`ingress/${a.id}`, 'DELETE');
@@ -945,6 +950,92 @@ test('wait omits repeated nonterminal text and retains complete terminal replies
   assert.equal(repeated.changed,false);assert.equal(repeated.finalResponse.text,'pong');assert.equal(repeated.finalResponseUnchanged,undefined);
 });
 
+test('inbox_wait filters unread events before limiting, isolates ingress and cooperates with ack', async () => {
+  const inboxDir=path.join(directory,'notifications/inboxes');await mkdir(inboxDir,{recursive:true});
+  const inboxFile=path.join(inboxDir,createHash('sha256').update('default').digest('hex')+'.json');
+  const original=await readFile(inboxFile,'utf8').catch(()=>null);
+  const event=(eventId:string,threadId:string,kind='completed')=>({eventId,threadId,taskId:null,turnId:'turn',kind,channel:'inbox',target:null,finalResponse:'self-test reply'});
+  try {
+    await writeFile(inboxFile,JSON.stringify([...Array.from({length:5},(_,i)=>event('irrelevant-'+i,'irrelevant')),event('wanted','self-test','failed'),{...event('agent-event','', 'needs-input'),threadId:null,taskId:'agent-self-test'}]));
+    const args={timeoutMs:100,threadIds:['self-test'],eventTypes:['failed']};
+    const first=(await call('inbox_wait',args)).result;
+    assert.equal(first.state,'events');assert.deepEqual(first.events,[event('wanted','self-test','failed')]);
+    assert.equal(first.arcInbox,undefined);assert.equal(first.unread,1);
+    const repeated=(await call('inbox_wait',args)).result;assert.deepEqual(repeated.events,first.events);
+    const agent=(await call('inbox_wait',{timeoutMs:100,taskIds:['agent-self-test'],eventTypes:['needs-input']})).result;
+    assert.equal(agent.events[0].eventId,'agent-event');
+    const ack=await completed('notification_ack',{eventIds:['wanted']});assert.equal(ack.markedRead,1);
+    const timeout=(await call('inbox_wait',args)).result;
+    assert.equal(timeout.state,'timeout');assert.deepEqual(timeout.events,[]);assert.deepEqual(timeout.next.args,args);
+    const wrong=(await call('inbox_wait',{timeoutMs:1,threadIds:['irrelevant'],eventTypes:['interrupted']})).result;assert.equal(wrong.state,'timeout');
+    const other=await management('ingress','POST',{id:'inbox-isolation',name:'Inbox isolation',toolPolicy:'all',controlSource:'custom',transport:'https',auth:'bearer',bearerToken:'test-inbox-isolation'.padEnd(40,'x'),config:{httpsProvider:'custom',httpsUrl:'https://inbox-isolation.example/mcp'}});
+    try {
+      await management(`ingress/${other.id}/start`,'POST');
+      const isolated=await ingressRpc(other,'tools/call',{name:'inbox_wait',arguments:{timeoutMs:1}});
+      assert.deepEqual(isolated.result.structuredContent.result.events,[]);
+      const foreign=await ingressRpc(other,'tools/call',{name:'notification_ack',arguments:{eventIds:['agent-event']}});
+      assert.notEqual(foreign.result.isError,true);
+      assert.equal((await call('inbox_wait',{timeoutMs:1,taskIds:['agent-self-test']})).result.events[0].eventId,'agent-event');
+    } finally {await management(`ingress/${other.id}/stop`,'POST');await management(`ingress/${other.id}`,'DELETE');}
+    // Direct fixture writes exercise the one-second missed-wakeup fallback.
+    const late=call('inbox_wait',{timeoutMs:3000,threadIds:['late-self-test']});
+    await new Promise(r=>setTimeout(r,30));
+    const rows=JSON.parse(await readFile(inboxFile,'utf8'));rows.push(event('late','late-self-test'));
+    await writeFile(inboxFile,JSON.stringify(rows));
+    assert.equal((await late).result.events[0].eventId,'late');
+  } finally {if(original===null)await rm(inboxFile,{force:true});else await writeFile(inboxFile,original);}
+});
+
+test('HTTP and HTTPS ingress wait streaming keeps final result intact and releases request IDs on disconnect', async () => {
+  const endpoint=JSON.parse(await readFile(path.join(directory,'app/native.json'),'utf8'));
+  const ingress=await management('ingress','POST',{id:'wait-stream',name:'Wait stream',toolPolicy:'all',controlSource:'custom',transport:'https',auth:'bearer',bearerToken:'test-wait-stream'.padEnd(40,'x'),config:{httpsProvider:'custom',httpsUrl:'https://wait-stream.example/mcp'}});
+  await management('ingress/wait-stream/start','POST');
+  try { for(const [url,token] of [[`http://127.0.0.1:${endpoint.port}/mcp/default`,endpoint.token],[`http://127.0.0.1:${ingress.config.httpsPort}/mcp`,'test-wait-stream'.padEnd(40,'x')]]) {
+  const request={jsonrpc:'2.0',id:'disconnect-self-test',method:'tools/call',params:{name:'query',arguments:{op:'inbox_wait',args:{timeoutMs:1800000,threadIds:['never-self-test']}}}};
+  for(const accept of ['application/json','application/json, text/event-stream']){
+    const abort=new AbortController();
+    const response=await fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Accept:accept},body:JSON.stringify(request),signal:abort.signal});
+    const chunk=await response.body!.getReader().read();assert.ok(chunk.value!.length>0);
+    const text=new TextDecoder().decode(chunk.value);assert.equal(text.includes('notifications/progress'),false);
+    abort.abort();
+    const retry=await eventually(async()=>{
+      const r=await fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({...request,params:{...request.params,arguments:{op:'inbox_wait',args:{timeoutMs:1,threadIds:['never-self-test']}}}})});
+      return r.json();
+    },v=>!v.error);
+    assert.equal(retry.result.structuredContent.result.state,'timeout');
+  }
+  const progress=await fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({...request,id:'progress-self-test',params:{...request.params,_meta:{progressToken:'progress-token'},arguments:{op:'inbox_wait',args:{timeoutMs:100,threadIds:['never-self-test']}}}})});
+  const frames=(await progress.text()).split('\n').filter(l=>l.startsWith('data: ')).map(l=>JSON.parse(l.slice(6)));
+  assert.equal(frames[0].method,'notifications/progress');assert.equal(frames[0].params.progressToken,'progress-token');
+  assert.equal(frames.at(-1).result.structuredContent.result.state,'timeout');
+  }} finally {await management('ingress/wait-stream','DELETE');}
+});
+
+test('stdio bridge forwards negotiated progress, preserves final replies and cancels on EOF', async () => {
+  const endpoint=JSON.parse(await readFile(path.join(directory,'app/native.json'),'utf8'));
+  const child=spawn(fixtureCommand,['stdio'],{env:{...fixtureEnv,ARC_NATIVE_PORT:String(endpoint.port),ARC_NATIVE_TOKEN:endpoint.token,ARC_INGRESS_ID:'default'},stdio:['pipe','pipe','pipe']});
+  const messages:any[]=[];let pending='';
+  child.stdout.on('data',chunk=>{pending+=String(chunk);let i;while((i=pending.indexOf('\n'))>=0){messages.push(JSON.parse(pending.slice(0,i)));pending=pending.slice(i+1);}});
+  try {
+    const request=(id:string,timeoutMs:number,progress=false)=>({jsonrpc:'2.0',id,method:'tools/call',params:{name:'query',arguments:{op:'inbox_wait',args:{timeoutMs,threadIds:['stdio-self-test']}},...(progress?{_meta:{progressToken:'stdio-token'}}:{})}});
+    child.stdin.write(JSON.stringify(request('stdio-progress',100,true))+'\n');
+    await eventually(async()=>messages,v=>v.some(r=>r.id==='stdio-progress'));
+    assert.equal(messages.find(r=>r.method==='notifications/progress').params.progressToken,'stdio-token');
+    assert.equal(messages.find(r=>r.id==='stdio-progress').result.structuredContent.result.state,'timeout');
+    const before=messages.length;
+    child.stdin.write(JSON.stringify(request('stdio-quiet',100))+'\n');
+    await eventually(async()=>messages,v=>v.some(r=>r.id==='stdio-quiet'));
+    assert.equal(messages.slice(before).filter(r=>r.method==='notifications/progress').length,0);
+    child.stdin.write(JSON.stringify(request('stdio-disconnect',1800000,true))+'\n');
+    await eventually(async()=>messages.length,v=>v>before+1);
+    child.stdin.end();await new Promise<void>(r=>child.once('exit',()=>r()));
+    const retry=await eventually(async()=>{
+      const r=await fetch(`http://127.0.0.1:${endpoint.port}/mcp/default`,{method:'POST',headers:{Authorization:`Bearer ${endpoint.token}`,'Content-Type':'application/json'},body:JSON.stringify(request('stdio-disconnect',1))});return r.json();
+    },v=>!v.error);
+    assert.equal(retry.result.structuredContent.result.state,'timeout');
+  } finally {child.kill();}
+});
+
 test('argument errors are short, field-specific and leave unread inbox untouched', async () => {
   const inboxDir=path.join(directory,'notifications/inboxes');await mkdir(inboxDir,{recursive:true});
   const inboxFile=path.join(inboxDir,createHash('sha256').update('default').digest('hex')+'.json');
@@ -955,7 +1046,7 @@ test('argument errors are short, field-specific and leave unread inbox untouched
     for(const [name,args,field,reason] of [
       ['read',{path:'fixture',linCount:2},'/linCount',/lineCount/],
       ['codex_items',{threadId:'fixture',order:'desc'},'/order',/latest/],
-      ['codex_wait',{threadId:'fixture',timeoutMs:300001},'/timeoutMs',/300000/],
+      ['codex_wait',{threadId:'fixture',timeoutMs:1800001},'/timeoutMs',/1800000/],
       ['read',{path:'fixture',lineCount:'private-input'},'/lineCount',/integer/],
       ['command',{cmd:'private-command'},'/cwd',/Required/],
       ['command',{cmd:'private-command',cwd:directory,action:'exec'},'/action',/combine/],

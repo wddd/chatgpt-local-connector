@@ -1488,6 +1488,7 @@ impl Control {
             }
             "notify_status" => crate::claude_notify::notify_status(&args).await,
             "notify_control" => crate::claude_notify::notify_control(&args).await,
+            "inbox_wait" => crate::claude_notify::inbox_wait(self, &args).await,
             "notification_ack" => crate::claude_notify::acknowledge(&args).await,
             "codex_pending" => {
                 if let Some(thread) = args["threadId"].as_str() {

@@ -599,18 +599,18 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn wait_deadline_during_read_does_not_invent_read_failure() {
-        let reads = (0..99)
+        let reads = (0..599)
             .map(|_| (1000, Ok(snapshot("running", "partial"))))
             .chain(std::iter::once((9000, Ok(snapshot("running", "late")))))
             .collect();
-        let result = run(reads, 300000).await;
+        let result = run(reads, 1800000).await;
         assert_eq!(result["state"], "timeout");
         assert_eq!(result["reason"], "deadline");
-        assert_eq!(result["elapsedMs"], 300000);
-        let result = run(vec![(0, Ok(snapshot("running", "partial")))], 300000).await;
+        assert_eq!(result["elapsedMs"], 1800000);
+        let result = run(vec![(0, Ok(snapshot("running", "partial")))], 1800000).await;
         assert_eq!(result["state"], "unconfirmed");
         assert_eq!(result["reason"], "native-read-timeout");
-        assert_eq!(result["elapsedMs"], 300000);
+        assert_eq!(result["elapsedMs"], 1800000);
     }
 
     #[test]

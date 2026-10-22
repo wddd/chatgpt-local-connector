@@ -365,3 +365,5 @@ pub fn init_crypto() {
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
 }
+
+pub(crate) mod wait_transport;

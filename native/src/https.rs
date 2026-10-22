@@ -54,9 +54,14 @@ pub async fn listen(
                         if connections.len() >= 128 { continue; }
                         let local_host = stream.local_addr().map(|addr|addr.to_string()).unwrap_or_default();
                         let Some(service) = service.upgrade() else { break };
+                        let Ok(socket) = stream.into_std() else { continue };
+                        let Ok(copy) = socket.try_clone() else { continue };
+                        let Ok(disconnect) = tokio::net::TcpStream::from_std(copy) else { continue };
+                        let disconnect = Arc::new(disconnect);
+                        let Ok(stream) = tokio::net::TcpStream::from_std(socket) else { continue };
                         connections.spawn(async move {
                             let handler = hyper::service::service_fn(move |request| {
-                                handle(request, service.clone(), local_host.clone())
+                                handle(request, service.clone(), local_host.clone(), disconnect.clone())
                             });
                             let _ = hyper::server::conn::http1::Builder::new()
                                 .timer(TokioTimer::new())
@@ -72,7 +77,7 @@ pub async fn listen(
         address,
     ))
 }
-fn reply(code: u16, value: Option<Value>) -> Response<Full<Bytes>> {
+fn reply(code: u16, value: Option<Value>) -> Response<crate::wait_transport::Body> {
     let mut response = Response::builder()
         .status(code)
         .header("Cache-Control", "no-store");
@@ -83,16 +88,20 @@ fn reply(code: u16, value: Option<Value>) -> Response<Full<Bytes>> {
         response = response.header("Allow", "POST");
     }
     response
-        .body(Full::new(Bytes::from(
-            value.map(|v| v.to_string()).unwrap_or_default(),
-        )))
+        .body(
+            Full::new(Bytes::from(
+                value.map(|v| v.to_string()).unwrap_or_default(),
+            ))
+            .boxed(),
+        )
         .unwrap()
 }
 async fn handle(
     request: Request<Incoming>,
     service: Arc<Ingress>,
     local_host: String,
-) -> std::result::Result<Response<Full<Bytes>>, Infallible> {
+    disconnect: Arc<tokio::net::TcpStream>,
+) -> std::result::Result<Response<crate::wait_transport::Body>, Infallible> {
     let error = |code, message| Ok(reply(code, Some(json!({"error":message}))));
     let url = service.mcp_url.lock().await.clone();
     let Ok(url) = reqwest::Url::parse(&url) else {
@@ -116,7 +125,9 @@ async fn handle(
         if !service.connected.load(std::sync::atomic::Ordering::SeqCst) {
             return error(503, "connector stopped");
         }
-        return Ok(crate::oauth::handle(request, &service, url.as_str()).await);
+        return Ok(crate::oauth::handle(request, &service, url.as_str())
+            .await
+            .map(|b| b.boxed()));
     }
     if request.uri().path() != "/mcp" || request.uri().query().is_some() {
         return error(404, "not found");
@@ -155,6 +166,7 @@ async fn handle(
     if !service.connected.load(std::sync::atomic::Ordering::SeqCst) {
         return error(503, "connector stopped");
     }
+    let sse = crate::wait_transport::accepts_sse(request.headers());
     let accept = request
         .headers()
         .get("accept")
@@ -237,6 +249,18 @@ async fn handle(
             let _ = crate::transport::mcp_ingress(&service, value).await;
         }
         return Ok(reply(202, None));
+    }
+    if crate::transport::is_wait(&value) {
+        let request = value.clone();
+        return Ok(crate::wait_transport::stream(
+            &value,
+            sse,
+            async move {
+                crate::transport::mcp_ingress_authenticated(&service, request, Some(&event_header))
+                    .await
+            },
+            async move { crate::transport::wait_disconnect(&disconnect).await },
+        ));
     }
     match crate::transport::mcp_ingress_authenticated(&service, value, Some(&event_header)).await {
         Ok(value) => Ok(reply(200, Some(value))),

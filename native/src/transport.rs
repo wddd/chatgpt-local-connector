@@ -203,7 +203,7 @@ async fn handle(
 }
 // Starts only after the complete request body is consumed. This endpoint serves
 // one request per connection, so any remaining incoming bytes are not another request.
-async fn wait_disconnect(stream: &TcpStream) {
+pub(crate) async fn wait_disconnect(stream: &TcpStream) {
     let mut bytes = [0; 1024];
     loop {
         if stream.readable().await.is_err() {
@@ -234,6 +234,7 @@ async fn local_request(
     {
         return local_reply(403, json!({"error":"unauthorized"}));
     }
+    let sse = crate::wait_transport::accepts_sse(request.headers());
     let method = request.method().to_string();
     let path = request.uri().path().to_owned();
     let timeline_after = if path.starts_with("/api/agents/timeline/") {
@@ -321,10 +322,24 @@ async fn local_request(
             .body(EventBody(rx).boxed())
             .unwrap();
     }
-    let waiting = method == "POST"
-        && (path == "/mcp" || path.starts_with("/mcp/"))
-        && body["method"] == "tools/call"
-        && is_wait(&body);
+    if method == "POST" && (path == "/mcp" || path.starts_with("/mcp/")) && is_wait(&body) {
+        let ingress = if let Some(id) = path.strip_prefix("/mcp/") {
+            s.ingress(id).await
+        } else {
+            s.primary().await
+        };
+        let ingress = match ingress {
+            Ok(v) => v,
+            Err(e) => return local_reply(400, json!({"error":e})),
+        };
+        let request = body.clone();
+        return crate::wait_transport::stream(
+            &body,
+            sse,
+            async move { mcp_ingress(&ingress, request).await },
+            async move { wait_disconnect(&disconnect).await },
+        );
+    }
     let operation = async {
         if (path == "/mcp" || path.starts_with("/mcp/")) && method == "POST" {
             let ingress = if let Some(id) = path.strip_prefix("/mcp/") {
@@ -369,25 +384,18 @@ async fn local_request(
             Err("not found".into())
         }
     };
-    let result = if waiting {
-        tokio::select! {
-            biased;
-            _ = wait_disconnect(&disconnect) => Err("wait disconnected".into()),
-            result = operation => result,
-        }
-    } else {
-        operation.await
-    };
+    let result = operation.await;
     match result {
         Ok(v) => local_reply(200, v),
         Err(e) => local_reply(400, json!({"error":e})),
     }
 }
-fn is_wait(request: &Value) -> bool {
-    request["params"]["name"] == "query"
+pub(crate) fn is_wait(request: &Value) -> bool {
+    request["method"] == "tools/call"
+        && request["params"]["name"] == "query"
         && matches!(
             string(&request["params"]["arguments"], "op"),
-            "codex_wait" | "agent_wait"
+            "codex_wait" | "agent_wait" | "inbox_wait"
         )
 }
 async fn enabled_ops(s: &Arc<crate::ingress::Ingress>) -> Vec<Value> {
@@ -446,23 +454,7 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, tool: &str, envelope: Value
         if let Some(request_id) = envelope.get("requestId") {
             args["requestId"] = request_id.clone();
         }
-        let mut execution_args = args.clone();
-        if matches!(name, "codex_wait" | "agent_wait") {
-            let spec = catalog()["ops"].as_array().unwrap().iter().find(|op| op["name"] == name).unwrap();
-            crate::egress::validate_op(spec, &args)?;
-            // Cloudflare's buffered HTTP response has a 125-second read deadline.
-            // Keep the caller's args intact for next; other transports allow 300s.
-            let cloudflare = {
-                let meta = s.meta.lock().await;
-                meta["transport"] == "https" && meta["config"]["httpsProvider"] == "cloudflare"
-            };
-            if cloudflare
-                && args["timeoutMs"].as_u64().is_some_and(|ms| ms > 120000)
-            {
-                execution_args["timeoutMs"] = json!(120000);
-            }
-        }
-        s.call(name, execution_args).await
+        s.call(name, args.clone()).await
     }.await;
     let mut images = Vec::new();
     let mut reads = Vec::new();
@@ -528,18 +520,22 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, tool: &str, envelope: Value
     if error {
         return Ok(crate::egress::tool(value, true));
     }
-    let inbox = match crate::claude_notify::inbox(
-        &s.id,
-        &reads,
-        s.origin().await["controlSource"] == "claude",
-        args["notify"]["target"].as_str(),
-    )
-    .await
-    {
-        Ok(inbox) => inbox,
-        Err(error) => {
-            crate::logs::record("WARN", &format!("Inbox unavailable: {error}"), None);
-            Value::Null
+    let inbox = if name == "inbox_wait" {
+        Value::Null
+    } else {
+        match crate::claude_notify::inbox(
+            &s.id,
+            &reads,
+            s.origin().await["controlSource"] == "claude",
+            args["notify"]["target"].as_str(),
+        )
+        .await
+        {
+            Ok(inbox) => inbox,
+            Err(error) => {
+                crate::logs::record("WARN", &format!("Inbox unavailable: {error}"), None);
+                Value::Null
+            }
         }
     };
     if !inbox.is_null() {
@@ -651,6 +647,9 @@ async fn dispatch(s: &Arc<crate::ingress::Ingress>, request: Value) -> Result<Va
                 result = call_tool(s, string(&request["params"], "name"), args.clone()) => result,
                 _ = cancel.changed() => {
                     let mut value = json!({"state":"unconfirmed","reason":"wait-cancelled","threadId":op_args["threadId"],"turnId":op_args["turnId"],"runtimeStatus":"unknown","recordedStatus":null,"finalResponse":null,"interaction":[],"changed":false,"conditionMet":false,"observedAt":null,"returnedAt":now(),"elapsedMs":started.elapsed().as_millis() as u64});
+                    if args["op"] == "inbox_wait" {
+                        value = json!({"state":"unconfirmed","reason":"wait-cancelled","events":[],"unread":0});
+                    }
                     if args["op"] == "agent_wait" {
                         value["agent"] = op_args["agent"].clone();
                         value["taskId"] = op_args["taskId"].clone();
@@ -719,8 +718,9 @@ pub async fn stdio() -> Result<()> {
             let response = client
                 .post(format!("http://127.0.0.1:{port}/mcp/{ingress}"))
                 .bearer_auth(token)
+                .header("Accept", "application/json, text/event-stream")
                 .timeout(Duration::from_secs(if is_wait(&request) {
-                    330
+                    1830
                 } else if matches!(
                     request["params"]["arguments"]["op"].as_str(),
                     Some("context_amend" | "context_check")
@@ -734,6 +734,13 @@ pub async fn stdio() -> Result<()> {
                 .send()
                 .await;
             let value = match response {
+                Ok(r)
+                    if r.headers()
+                        .get("content-type")
+                        .is_some_and(|v| v == "text/event-stream") =>
+                {
+                    crate::wait_transport::forward_sse(r, &out).await
+                }
                 Ok(r) => r.json::<Value>().await.map_err(|e| e.to_string()),
                 Err(e) => Err(e.to_string()),
             };

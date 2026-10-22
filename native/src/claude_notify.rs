@@ -972,6 +972,8 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
 fn inbox_path(dir: &Path, ingress: &str) -> PathBuf {
     dir.join("inboxes").join(format!("{}.json", hash(ingress)))
 }
+static INBOX_CHANGED: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
 fn inbox_append(dir: &Path, ingress: &str, event: Value) -> Result<()> {
     if ingress.is_empty() {
         return Ok(());
@@ -989,6 +991,7 @@ fn inbox_append(dir: &Path, ingress: &str, event: Value) -> Result<()> {
             rows.drain(..rows.len() - 50);
         }
         save(&path, &json!(rows))?;
+        INBOX_CHANGED.notify_waiters();
     }
     Ok(())
 }
@@ -1007,6 +1010,10 @@ pub(crate) async fn inbox(
         claude,
         caller_target.as_deref(),
     )?;
+    binding_notices(&mut result, caller_target.as_deref());
+    Ok(result)
+}
+fn binding_notices(result: &mut Value, caller_target: Option<&str>) {
     for event in result
         .get_mut("events")
         .and_then(Value::as_array_mut)
@@ -1014,7 +1021,7 @@ pub(crate) async fn inbox(
         .flatten()
     {
         if let Some(target) = event["target"].as_str() {
-            let notice = match caller_target.as_deref() {
+            let notice = match caller_target {
                 Some(caller) if caller != target => "绑定其他会话",
                 Some(_) => "绑定当前会话",
                 None => "会话归属待核对：仅 target 对应会话处理",
@@ -1022,14 +1029,24 @@ pub(crate) async fn inbox(
             event["bindingNotice"] = json!(notice);
         }
     }
-    Ok(result)
 }
+
 fn inbox_in(
     dir: &Path,
     ingress: &str,
     reads: &[(String, String)],
     claude: bool,
     caller_target: Option<&str>,
+) -> Result<Value> {
+    inbox_select(dir, ingress, reads, claude, caller_target, None)
+}
+fn inbox_select(
+    dir: &Path,
+    ingress: &str,
+    reads: &[(String, String)],
+    claude: bool,
+    caller_target: Option<&str>,
+    filters: Option<&Value>,
 ) -> Result<Value> {
     let path = inbox_path(dir, ingress);
     if !path.exists() {
@@ -1085,6 +1102,22 @@ fn inbox_in(
         {
             continue;
         }
+        if let Some(filters) = filters {
+            let threads = filters["threadIds"].as_array();
+            let tasks = filters["taskIds"].as_array();
+            if (threads.is_some() || tasks.is_some())
+                && !threads.is_some_and(|ids| ids.contains(&row["threadId"]))
+                && !tasks.is_some_and(|ids| ids.contains(&row["taskId"]))
+            {
+                continue;
+            }
+            if filters["eventTypes"]
+                .as_array()
+                .is_some_and(|types| !types.contains(&row["kind"]))
+            {
+                continue;
+            }
+        }
         // Only Claude-owned ingress events with an actual session binding change behavior.
         // Looking up existing records also suppresses pre-upgrade delivered events.
         let delivery = bindings
@@ -1096,7 +1129,8 @@ fn inbox_in(
                     && d.channel == Channel::ClaudeSession
                     && !d.target.is_empty()
             });
-        let incremental = claude && (delivery.is_some() || row["attached"] == true);
+        let incremental =
+            filters.is_none() && claude && (delivery.is_some() || row["attached"] == true);
         if incremental
             && (row["attached"] == true
                 || delivery.is_some_and(|d| matches!(d.status.as_str(), "delivered" | "resolved")))
@@ -1114,7 +1148,9 @@ fn inbox_in(
             events.push(event);
         }
     }
-    save(&path, &rows)?;
+    if filters.is_none() {
+        save(&path, &rows)?;
+    }
     if acknowledged {
         state.save(dir)?;
     }
@@ -1124,6 +1160,55 @@ fn inbox_in(
         json!({"unread":unread,"events":events})
     })
 }
+/// Explicit inbox polling never attaches or acknowledges an event. Existing
+/// ingress/session/subscription visibility remains shared with arcInbox.
+pub(crate) async fn inbox_wait(
+    control: &Arc<crate::control::Control>,
+    args: &Value,
+) -> Result<Value> {
+    let origin = crate::kernel::origin::current_origin();
+    let ingress = string(&origin, "ingressId");
+    if ingress.is_empty() {
+        return Err("INGRESS_REQUIRED".into());
+    }
+    let target = args["target"].as_str().map(session_id).transpose()?;
+    let mut shutdown = control.shutdown.subscribe();
+    let started = tokio::time::Instant::now();
+    let deadline = started + Duration::from_millis(args["timeoutMs"].as_u64().unwrap_or(30000));
+    loop {
+        let changed = INBOX_CHANGED.notified();
+        tokio::pin!(changed);
+        changed.as_mut().enable();
+        let mut inbox = {
+            let _guard = LOCK.lock().await;
+            inbox_select(
+                &directory(),
+                ingress,
+                &[],
+                origin["controlSource"] == "claude",
+                target.as_deref(),
+                Some(args),
+            )?
+        };
+        binding_notices(&mut inbox, target.as_deref());
+        if !inbox.is_null() {
+            return Ok(
+                json!({"state":"events","events":inbox["events"],"unread":inbox["unread"],"elapsedMs":started.elapsed().as_millis() as u64}),
+            );
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Ok(
+                json!({"state":"timeout","events":[],"unread":0,"elapsedMs":started.elapsed().as_millis() as u64,"next":{"via":"query","op":"inbox_wait","args":args,"hint":"Continue waiting with the same filters; read a task or use notification_ack after handling its events."}}),
+            );
+        }
+        tokio::select! {
+            _ = shutdown.changed() => return Ok(json!({"state":"unconfirmed","reason":"connector-shutdown","events":[],"unread":0})),
+            _ = changed => {},
+            _ = tokio::time::sleep_until(deadline.min(tokio::time::Instant::now()+Duration::from_secs(1))) => {},
+        }
+    }
+}
+
 pub(crate) async fn acknowledge(args: &Value) -> Result<Value> {
     let ingress = string(&crate::kernel::origin::current_origin(), "ingressId").to_owned();
     if ingress.is_empty() {
@@ -2759,6 +2844,86 @@ mod tests {
             inbox_in(&dir.0, "chatgpt", &[], false, None).unwrap()["unread"],
             1
         );
+    }
+
+    #[tokio::test]
+    async fn explicit_inbox_poll_preserves_session_visibility_and_ack_state() {
+        let dir = Sandbox::new();
+        let first = enqueue(
+            &dir.0,
+            "first",
+            json!({"state":"completed","finalResponse":"done"}),
+            100,
+        )
+        .await;
+        let mut other = enqueue(
+            &dir.0,
+            "other",
+            json!({"state":"failed","finalResponse":"failed"}),
+            100,
+        )
+        .await;
+        other.target = Some("session_other".into());
+        other.deliveries[0].target = "session_other".into();
+        persist(&dir.0, &other).unwrap();
+        let filters = json!({"threadIds":["first"],"eventTypes":["completed"]});
+        assert!(
+            inbox_select(&dir.0, "claude", &[], true, None, Some(&filters))
+                .unwrap()
+                .is_null()
+        );
+        assert!(inbox_select(
+            &dir.0,
+            "different-ingress",
+            &[],
+            false,
+            None,
+            Some(&filters)
+        )
+        .unwrap()
+        .is_null());
+        let path = inbox_path(&dir.0, "claude");
+        let before = load(&path).unwrap();
+        for _ in 0..2 {
+            let result = inbox_select(
+                &dir.0,
+                "claude",
+                &[],
+                true,
+                Some("session_test"),
+                Some(&filters),
+            )
+            .unwrap();
+            assert_eq!(result["events"][0]["threadId"], "first");
+            assert_eq!(result["unread"], 1);
+            assert_eq!(load(&path).unwrap(), before);
+        }
+        acknowledge_in(
+            &dir.0,
+            "claude",
+            &json!({"eventIds":[first.deliveries[0].event_id]}),
+        )
+        .unwrap();
+        assert!(inbox_select(
+            &dir.0,
+            "claude",
+            &[],
+            true,
+            Some("session_test"),
+            Some(&filters)
+        )
+        .unwrap()
+        .is_null());
+        let result = inbox_select(
+            &dir.0,
+            "claude",
+            &[],
+            true,
+            Some("session_other"),
+            Some(&json!({})),
+        )
+        .unwrap();
+        assert_eq!(result["events"][0]["threadId"], "other");
     }
 
     #[tokio::test]

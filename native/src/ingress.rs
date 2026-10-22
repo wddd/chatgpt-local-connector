@@ -598,6 +598,9 @@ impl Ingress {
                 dir.to_str().unwrap(),
                 "--health.url-file",
                 dir.join("health.url").to_str().unwrap(),
+                // Per-request forwarding TTL; progress does not extend it.
+                "--mcp.connection-max-ttl",
+                "31m",
             ])
             // The official Tunnel admin bridge otherwise resolves the npm Codex launcher.
             .env(
