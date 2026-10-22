@@ -1,19 +1,19 @@
 {
-  "description": "控制源与 Agent 品牌资产；运行时按各自语义映射复用。",
+  "description": "Control-source and Agent brand assets. Runtime mappings reuse them according to their respective semantics.",
   "lobeIconsVersion": "1.95.1",
   "files": [
     {
       "file": "control-sources/chatgpt/mono.svg",
       "source": "https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/openai.svg",
       "license": "MIT; brand trademarks reserved",
-      "note": "OpenAI 通用标志，用于 ChatGPT；不是独立 ChatGPT 专属设计。",
+      "note": "General OpenAI mark used for ChatGPT. Not a separate ChatGPT-specific design.",
       "sha256": "a595df6b423920c67a7f8f73c063e4bfb72d415948097b6cac063a2366bb5186"
     },
     {
       "file": "control-sources/chatgpt/wordmark.svg",
       "source": "https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/openai-text.svg",
       "license": "MIT; brand trademarks reserved",
-      "note": "OpenAI 通用标志，用于 ChatGPT；不是独立 ChatGPT 专属设计。",
+      "note": "General OpenAI mark used for ChatGPT. Not a separate ChatGPT-specific design.",
       "sha256": "fd61627c78d160b6391aaf72f29cf51547327d05ed19366c511d07578fc0099e"
     },
     {
@@ -349,35 +349,35 @@
       "file": "control-sources/chatgpt/app.png",
       "source": "ui/assets/chatgpt.png",
       "license": "OpenAI proprietary brand asset; not MIT",
-      "note": "原文件拷贝，来源说明见 ui/assets/README.md。",
+      "note": "Original file copy. See ui/assets/README.md for provenance.",
       "sha256": "3453947a9ce2709b7ec51c0559c7eb976e4ac53b232b607d1d81b0d1d1048b61"
     },
     {
       "file": "agents/codex/app.png",
       "source": "ui/assets/codex.png",
       "license": "OpenAI proprietary brand asset; not MIT",
-      "note": "原文件拷贝，来源说明见 ui/assets/README.md。",
+      "note": "Original file copy. See ui/assets/README.md for provenance.",
       "sha256": "de7d43f3386105ab20952958c2c25beb0d903e2aeb6e1aef57c49a648c0d1c07"
     },
     {
       "file": "agents/hermes/logo.png",
       "source": "https://raw.githubusercontent.com/NousResearch/hermes-agent/ea0c2b820bd30bace020a3791d8aef0b44002e0d/website/static/img/logo.png",
       "license": "Upstream brand asset; trademark rights reserved",
-      "note": "上游网站原始资源；favicon 不等同于原生桌面应用图标。",
+      "note": "Original upstream website asset. A favicon is distinct from a native desktop app icon.",
       "sha256": "2eaff911b9da9b1f1fcc81adb02f4992bb9ea6b781f4dd048cd79349927ddb7a"
     },
     {
       "file": "agents/hermes/favicon.svg",
       "source": "https://raw.githubusercontent.com/NousResearch/hermes-agent/ea0c2b820bd30bace020a3791d8aef0b44002e0d/website/static/img/favicon.svg",
       "license": "Upstream brand asset; trademark rights reserved",
-      "note": "上游网站原始资源；favicon 不等同于原生桌面应用图标。",
+      "note": "Original upstream website asset. A favicon is distinct from a native desktop app icon.",
       "sha256": "3b69843e19b42602b2a2723e7dd058c4b391cceef1caa1f46c19bb80ca88b260"
     },
     {
       "file": "agents/hermes/favicon.ico",
       "source": "https://raw.githubusercontent.com/NousResearch/hermes-agent/ea0c2b820bd30bace020a3791d8aef0b44002e0d/website/static/img/favicon.ico",
       "license": "Upstream brand asset; trademark rights reserved",
-      "note": "上游网站原始资源；favicon 不等同于原生桌面应用图标。",
+      "note": "Original upstream website asset. A favicon is distinct from a native desktop app icon.",
       "sha256": "f438d1c5e4e68c68523dfea9323f42607a038443beb44c3ea6edac2ba80619e1"
     },
     {
@@ -412,7 +412,7 @@
       "file": "agents/dsh/mono.svg",
       "source": "https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/deepseek.svg",
       "license": "MIT; brand trademarks reserved",
-      "note": "DeepSeek 通用标志，用于 DeepSeek Harness。",
+      "note": "General DeepSeek mark used for DeepSeek Harness.",
       "sha256": "8f9443e351b6dacce71871790201b799d92e8bf96a45ef79aeb5e9bf4db423e2"
     }
   ],

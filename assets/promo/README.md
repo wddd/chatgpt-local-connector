@@ -1,38 +1,38 @@
-# ARC 宣传视频
+# ARC promotional video maintenance
 
-成片在 `docs/media/arc-promo.mp4`（30 秒，1080p，带音轨）。中英文 README 顶部使用 GitHub 视频附件，直接显示播放器。`docs/media/arc-loop.gif` 是另外导出的无声短预览。
+The finished video is `docs/media/arc-promo.mp4` (30 seconds, 1080p, with audio). The English and Chinese READMEs use a GitHub video attachment at the top for inline playback. `docs/media/arc-loop.gif` is a separate silent preview.
 
-## 文件
+## Files
 
-| 文件 | 用途 |
-|---|---|
-| `promo.html` | 全部画面。`render(t)` 按时间确定性绘制每一帧；文案在 `CAPS`、`BL`/`BR`，Loop 圈数与每圈时长在 `buildLoop(...)` 的参数里 |
-| `synth.py` | 程序合成的音乐与音效，读取页面导出的事件时间线（`SFX`、`MARKS`），与画面同步 |
-| `render.py` | 逐帧截图 → ffmpeg 编码 → 合成音轨 → 响度标准化到 -14 LUFS → 导出无声短预览 GIF |
+| File | Purpose |
+| --- | --- |
+| `promo.html` | All visuals. `render(t)` deterministically draws each frame by time. Copy lives in `CAPS` and `BL`/`BR`. `buildLoop(...)` parameters set the loop count and duration. |
+| `synth.py` | Synthesizes music and effects from the page's exported event timeline (`SFX`, `MARKS`), synchronized with visuals. |
+| `render.py` | Captures frames, encodes with ffmpeg, mixes audio, normalizes to -14 LUFS, and exports a silent preview GIF. |
 
-## 预览
+## Preview
 
-浏览器打开 `promo.html#play` 实时循环播放；`promo.html#19.4` 定格在 19.4 秒。
+Open `promo.html#play` in a browser for continuous playback. `promo.html#19.4` freezes at 19.4 seconds.
 
-## 重新渲染
+## Re-render
 
-依赖 python3、playwright（chromium）、numpy、scipy、ffmpeg。字体用 Geist，不入库：
+Dependencies: python3, playwright (chromium), numpy, scipy, and ffmpeg. Geist fonts are not committed:
 
 ```sh
 cd assets/promo
 npm pack geist && tar xzf geist-*.tgz && mkdir -p fonts
 cp package/dist/fonts/geist-sans/Geist-{Regular,Medium,SemiBold,Bold}.woff2 package/dist/fonts/geist-mono/GeistMono-{Regular,Medium}.woff2 fonts/
 rm -rf package geist-*.tgz && cd ../..
-python3 assets/promo/render.py            # 覆盖 docs/media 下的视频与 GIF
-python3 assets/promo/render.py --still 19.4  # 只出单帧到 assets/promo/out/
+python3 assets/promo/render.py              # Replace the video and GIF under docs/media.
+python3 assets/promo/render.py --still 19.4  # Export one frame to assets/promo/out/.
 ```
 
-整片约 3 分钟渲染完。改了 Loop 时间后音效会自动跟随，不需要手动对时间。
+The full video takes about 3 minutes to render. Sound effects follow loop timing changes automatically without manual synchronization.
 
-更新 README 视频时，在 GitHub 的 Markdown 编辑器中通过附件按钮上传新的 `docs/media/arc-promo.mp4`，将生成的 `https://github.com/user-attachments/assets/...` 地址单独放在一行，并同步替换中英文 README 中的地址。仓库内的 MP4 相对路径仅用于链接，不能替代附件播放器。
+To update the README video, upload `docs/media/arc-promo.mp4` using the attachment button in GitHub's Markdown editor. Put the resulting `https://github.com/user-attachments/assets/...` URL on its own line. Update both READMEs. A repository-relative MP4 path is only a link and cannot replace the attachment player.
 
-## 约定
+## Conventions
 
-- 第三方产品用字母圆标，不用官方 logo。
-- 演示中的任务、测试数和轮次是示意数据。
-- 标识与配色遵循 `assets/brand/README.md`，使用 primary 套装。
+- Represent third-party products with letter circles rather than official logos.
+- Demo tasks, test counts, and turns are illustrative data.
+- Follow `assets/brand/README.md` for marks and colors. Use the primary set.

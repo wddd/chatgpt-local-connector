@@ -53,7 +53,7 @@ def stroke_paint(role, pal):
     return f'stroke="{color}"{op}'
 
 def alternate(pal, template=False):
-    # 备选：渐粗弧线；彩色版本左橙右蓝紫，模板保持原样。
+    # Alternative: tapered arcs. Color variants use orange on the left and blue-violet on the right. Templates remain unchanged.
     thin, thick, node, gap = (8, 14, 12, 3) if template else (6, 13, 10.5, 3.5)
     tk = theta(node + gap + thick / 2)
     tn = theta(node + gap + thin / 2)
@@ -64,7 +64,7 @@ def alternate(pal, template=False):
     return top + bottom + nodes
 
 def primary(pal, template=False):
-    # 定稿：等粗圆头弧线；左点和上弧为来源色。
+    # Final: uniform round-ended arcs. The left dot and upper arc use the control-source color.
     w, node, gap = (11, 12, 3) if template else (9, 10, 4)
     t = theta(node + gap + w / 2)
     top = uniform(180 + t, 360 - t, w, stroke_paint("ink", pal))

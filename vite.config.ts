@@ -28,7 +28,7 @@ export default defineConfig({
             if (response.ok && (await response.json()).instance === info.instance) return info;
           }
         } catch { /* The selected owner may still be starting or restarting. */ }
-        throw new Error('后台尚未就绪，请启动安装版应用；指定 ARC_STATE_DIR 时请启动对应实例。');
+        throw new Error('The backend is not ready. Start the installed app. When ARC_STATE_DIR is set, start the corresponding instance.');
       }
       server.middlewares.use((request, response, next) => {
         if (!request.url?.startsWith('/api/')) return next();
