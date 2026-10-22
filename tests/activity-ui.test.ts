@@ -305,3 +305,52 @@ test("source dispatches filter ownership and never equate a dispatch receipt wit
   assert.equal(dispatchState({ ...latest, state: "failed" }, undefined, undefined), "failed");
   assert.deepEqual(sourceDispatches([{ ...latest, origin: undefined, task: { ...latest.task, origin: { ingressId: "left" } } }], "left").length, 1);
 });
+
+test("timeline tool groups stop at every non-tool and turn boundary; singles retain their anchor", async () => {
+  const { timelineGroups } = await import("../ui/state/timelineGroups.ts");
+  const command = { ...entry("cmd", 1, "", 1), type: "command" as const };
+  const file = { ...entry("file", 2, "", 2), type: "file" as const };
+  const tool = { ...entry("tool", 3, "", 3), type: "tool" as const };
+  assert.deepEqual(timelineGroups([command]).map(g => [g.id, g.entries.length]), [["tools:cmd", 1]]);
+  assert.deepEqual(timelineGroups([command, file, tool]).map(g => g.entries.length), [3]);
+  for (const type of ["text", "user", "interaction", "error", "plan", "thinking"] as const) {
+    const groups = timelineGroups([command, { ...entry("break", 2, "", 2), type }, file]);
+    assert.deepEqual(groups.map(g => g.entries.length), [1, 1, 1]);
+  }
+  assert.equal(timelineGroups([command, { ...file, turnId: "next" }]).length, 2);
+});
+
+test("timeline group state auto-expands running tools, preserves manual choices and counts failures", async () => {
+  const { toolGroupState, toolGroupOpen, currentTimelineTool, entryDuration } = await import("../ui/state/timelineGroups.ts");
+  const base = { ...entry("cmd", 1, "", 1), type: "command" as const, durationMs: 2000 };
+  const running = { ...base, id: "running", status: "running" as const, durationMs: undefined, startedAt: "2026-01-01T00:00:00Z" };
+  const now = Date.parse("2026-01-01T00:00:03Z");
+  const state = toolGroupState([base, running, { ...base, id: "failed", status: "failed" }, { ...base, id: "file", type: "file", operation: "read" }], now);
+  assert.equal(state.running, true); assert.equal(state.failed, 1); assert.equal(state.duration, 9000);
+  assert.deepEqual(state.kinds, ["command", "file"]); assert.equal(state.counts.command, 3); assert.equal(state.counts.read, 1);
+  assert.equal(toolGroupOpen(true), true); assert.equal(toolGroupOpen(false), false);
+  assert.equal(toolGroupOpen(false, true), true); assert.equal(toolGroupOpen(true, false), false);
+  assert.equal(currentTimelineTool([running, base, { ...running, id: "last" }])?.id, "last");
+  assert.equal(currentTimelineTool([base]), undefined);
+  assert.equal(entryDuration({ ...base, durationMs: undefined }, now), undefined);
+  assert.equal(entryDuration({ ...base, durationMs: -2 }, now), 0);
+  assert.equal(toolGroupState([base, { ...base, durationMs: undefined }], now).duration, undefined);
+});
+
+test("incremental timeline merge retains tool group ids through updates and appends", async () => {
+  const { mergeTimeline } = await import("../ui/state/timelineModel.ts");
+  const { timelineGroups } = await import("../ui/state/timelineGroups.ts");
+  const first = { ...entry("first", 1, "", 1), type: "command" as const, status: "running" as const };
+  const initial = timeline([first]);
+  const merged = mergeTimeline(initial, timeline([{ ...first, cursor: 2, status: "completed" }, { ...entry("second", 3, "", 2), type: "file" }]));
+  assert.equal(timelineGroups(initial.entries)[0].id, timelineGroups(merged.entries)[0].id);
+  const previous = timelineGroups(merged.entries);
+  const backfilled = mergeTimeline(merged, timeline([{ ...entry("older", 4, "", 0), type: "tool" }]));
+  const groups = timelineGroups(backfilled.entries, previous);
+  assert.equal(groups[0].id, previous[0].id, "backfilled earlier tools keep the existing anchor");
+  const split = timelineGroups([backfilled.entries[0], entry("separator", 5, "", 0.5), ...merged.entries], groups);
+  assert.equal(new Set(split.map(g => g.id)).size, split.length, "splitting a group never duplicates ids");
+  assert.equal(split[2].id, previous[0].id);
+  const withText = mergeTimeline(merged, timeline([entry("text", 4, "Answer", 3), { ...entry("next", 5, "", 4), type: "tool" }]));
+  assert.deepEqual(timelineGroups(withText.entries).map(g => g.id), ["tools:first", "entry:text", "tools:next"]);
+});

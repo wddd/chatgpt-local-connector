@@ -393,3 +393,86 @@ test("control source dock preserves editing, guided creation, field navigation a
     await server.close(); await window.happyDOM.close();
   }
 });
+
+test("timeline disclosures preserve choices through incremental grouping and render GFM and interaction receipts", async () => {
+  const window = new Window({ url: "http://localhost" });
+  const media = Object.assign(new window.EventTarget(), { matches: true });
+  window.matchMedia = () => media as unknown as MediaQueryList;
+  Object.assign(globalThis, {
+    window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
+    Node: window.Node, DocumentFragment: window.DocumentFragment, localStorage: window.localStorage,
+    getComputedStyle: window.getComputedStyle.bind(window), matchMedia: window.matchMedia,
+    requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0),
+    cancelAnimationFrame: clearTimeout, IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  const server = await createServer({ configFile: false, server: { middlewareMode: true, watch: null, ws: false } });
+  const { createRoot } = await import("react-dom/client");
+  const mount = document.createElement("div"); document.body.append(mount);
+  const root = createRoot(mount);
+  try {
+    const { default: TimelineEntries } = await server.ssrLoadModule("/ui/components/TimelineEntries.tsx");
+    const { activityApprovals } = await server.ssrLoadModule("/ui/state/activity.ts");
+    const { interactionKey } = await server.ssrLoadModule("/ui/state/activityModel.ts");
+    const { locale } = await server.ssrLoadModule("/ui/i18n.ts"); locale.set("en");
+    const base = { cursor: 1, position: 1, turnId: "turn", startedAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:01Z" };
+    const first = { ...base, id: "first", type: "command", status: "running", command: "npm test", cwd: "/project", output: { text: "example output" } };
+    const second = { ...base, id: "second", type: "file", operation: "read", status: "completed", path: "/project/src/file.ts", durationMs: 1000, changes: [{ path: "/project/src/file.ts", operation: "edit" }] };
+    const session = { id: "example", source: "arc-task", phase: "command", phaseSince: null, headline: "npm test", timeline: true, project: "/project" };
+    const render = async (entries: unknown[], now = Date.parse("2026-01-01T00:00:03Z")) => {
+      await act(async () => { root.render(h(TimelineEntries, { entries, session, agent: "claude", now })); });
+    };
+    const click = async (element: Element) => { await act(async () => { (element as HTMLElement).click(); }); };
+    const expanded = (element: Element) => element.getAttribute("aria-expanded");
+    await render([first]);
+    assert.equal(mount.querySelector(".timeline-tool-group"), null, "a single tool is not grouped");
+    await click(mount.querySelector(".timeline-tool button")!);
+    assert.equal(expanded(mount.querySelector(".timeline-tool button")!), "true");
+    await render([first, second]);
+    const group = mount.querySelector(".timeline-tool-group > button")!;
+    assert.equal(expanded(group), "true");
+    assert.equal(expanded(mount.querySelector(".timeline-tool button")!), "true", "single-to-group keeps tool disclosure");
+    assert.match(group.textContent!, /Read 1 file, Run 1 command/);
+    assert.equal(mount.querySelectorAll(".timeline-current").length, 1);
+    assert.match(mount.querySelector(".timeline-current")!.textContent!, /3s/);
+    await click(group);
+    assert.equal(expanded(group), "false");
+    assert.ok(mount.querySelector(".timeline-current"), "current execution survives group collapse");
+    await click(group);
+    await render([{ ...first, status: "failed", durationMs: 4000, exitCode: 1 }, second]);
+    assert.equal(expanded(mount.querySelector(".timeline-tool-group > button")!), "true", "manual expansion survives completion");
+    assert.equal(mount.querySelector(".timeline-current"), null);
+    assert.match(mount.querySelector(".timeline-tool-group > button")!.textContent!, /1 failed/);
+    assert.match(mount.querySelector(".timeline-output")!.textContent!, /Exit code: 1/);
+    await render([{ ...first, id: "automatic" }, { ...second, id: "automatic-file" }]);
+    assert.equal(expanded(mount.querySelector(".timeline-tool-group > button")!), "true");
+    await render([{ ...first, id: "automatic", status: "completed" }, { ...second, id: "automatic-file" }]);
+    assert.equal(expanded(mount.querySelector(".timeline-tool-group > button")!), "false", "automatic expansion closes when finished");
+    const thinking = { ...base, id: "thinking", type: "thinking", status: "completed", durationMs: 2000, text: "Reasoning detail" };
+    const interaction = { kind: "question", summary: "Choose an option", respond: { op: "agent_respond", args: { agent: "claude", taskId: "example", interactionId: 1 } } };
+    const pending = { ...base, id: "interaction", type: "interaction", status: "pending", interaction };
+    const text = { ...base, id: "text", type: "text", status: "completed", text: '| Name | Value |\n| --- | --- |\n| A | B |\n\n- [x] Done\n\n[Docs](https://example.com/docs)\n\n```js\nconst value = 1;\n```\n\n<script>window.bad = true</script>' };
+    await render([thinking, text, { ...text, id: "user", type: "user", text: "Request" }, pending]);
+    assert.match(mount.querySelector(".timeline-thinking button")!.textContent!, /Thought for 2s/);
+    assert.equal(expanded(mount.querySelector(".timeline-thinking button")!), "false");
+    await click(mount.querySelector(".timeline-thinking button")!);
+    await render([{ ...thinking, text: "Updated reasoning" }, text, pending]);
+    assert.equal(expanded(mount.querySelector(".timeline-thinking button")!), "true");
+    assert.match(mount.querySelector(".timeline-thought-text")!.textContent!, /Updated reasoning/);
+    assert.ok(mount.querySelector("table td")); assert.ok(mount.querySelector('input[type="checkbox"][disabled]'));
+    assert.ok(mount.querySelector("pre code")); assert.equal(mount.querySelector("script"), null);
+    let opened = ""; window.open = ((url: string) => { opened = url; return null; }) as typeof window.open;
+    await click(mount.querySelector('a[href="https://example.com/docs"]')!);
+    assert.equal(opened, "https://example.com/docs");
+    assert.match(mount.querySelector(".timeline-interaction")!.textContent!, /Waiting for approval/);
+    const key = interactionKey("claude", { ...session, phaseSince: base.startedAt, interaction });
+    await act(() => activityApprovals.set({ [key]: { status: "submitted", decision: "answer", requestId: "fixture" } }));
+    assert.match(mount.querySelector(".timeline-interaction")!.textContent!, /Answered/);
+    await act(() => activityApprovals.set({ [key]: { status: "submitted", decision: "deny", requestId: "fixture" } }));
+    assert.match(mount.querySelector(".timeline-interaction")!.textContent!, /Denied/);
+    await act(() => activityApprovals.set({}));
+    await render([{ ...pending, status: "completed" }]);
+    assert.match(mount.querySelector(".timeline-interaction")!.textContent!, /Resolved/);
+  } finally {
+    await act(() => root.unmount()); await server.close(); window.happyDOM.abort(); mount.remove();
+  }
+});

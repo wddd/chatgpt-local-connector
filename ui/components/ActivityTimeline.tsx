@@ -1,85 +1,24 @@
 import { useEffect, useLayoutEffect, useRef, useState, useId } from "react";
-import { AlertCircle, ArrowUpRight, ChevronRight, ShieldAlert, X, ArrowLeft, Brain, Check, FileText, ListChecks, MessageSquare, Terminal, Wrench } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { ArrowUpRight, ArrowLeft, X } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
-import type { AgentActivitySession, AgentTimeline, AgentTimelineEntry } from "../types";
+import type { AgentTimeline } from "../types";
 import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
-import { expandableTimelineEntry, interactionTool, permissionRequestLabel, visibleTimelineEntries, followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
+import { interactionTool, permissionRequestLabel, followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
 import { useInterval } from "../state/hooks";
-import { Button, Icon, IconButton, Tooltip } from "./ui";
-import { Markdown } from "./ui/Markdown";
+import { Button, IconButton, Tooltip } from "./ui";
+import TimelineEntries from "./TimelineEntries";
 import ActivityInteraction from "./ActivityInteraction";
 import FilePath from "./FilePath";
-import { activityHeadline, filePathParts, interactionKey, type TrackedActivity } from "../state/activityModel";
+import { activityHeadline, interactionKey, type TrackedActivity } from "../state/activityModel";
 
 import { name, orderedAgents } from "../state/agents";
 
-const icons = { thinking: Brain, command: Terminal, file: FileText, tool: Wrench };
-function TimelineEntry({ entry, agent, session, now }: {
-  entry: AgentTimelineEntry; agent: string; session: AgentActivitySession; now: number;
-}) {
-  const submissions = activityApprovals.use();
-  const duration = entry.durationMs ?? (entry.startedAt && (entry.endedAt || entry.status === "running")
-    ? (entry.endedAt ? Date.parse(entry.endedAt) : now) - Date.parse(entry.startedAt) : NaN);
-  const time = Number.isFinite(duration) ? t("activity.seconds", { count: Math.max(0, Math.floor(duration / 1000)) }) : "—";
-  if (entry.type === "text" || entry.type === "user") return <article className={`timeline-text ${entry.type === "user" ? "timeline-user" : ""}`}>
-    {entry.type === "user" && <span className="timeline-meta"><Icon icon={MessageSquare} />{t("timeline.user")}</span>}
-    <Markdown>{entry.text ?? ""}</Markdown>
-  </article>;
-  if (entry.type === "error") return <p className="timeline-error" role="alert" title={entry.text}><Icon icon={AlertCircle} /><span>{entry.text}</span></p>;
-  if (entry.type === "plan") return <div className="timeline-plan"><span className="timeline-meta"><Icon icon={ListChecks} />{t("timeline.plan")}</span>
-    <ul>{entry.plan?.map((step, index) => <li key={index} data-completed={step.status === "completed"}>
-      <span className="timeline-check" aria-label={t(`timeline.status.${step.status === "completed" ? "completed" : "pending"}`)}>{step.status === "completed" && <Icon icon={Check} />}</span>
-      <span>{step.content.text}</span>
-    </li>)}</ul>
-  </div>;
-  if (entry.type === "interaction") {
-    const interactionSession = { ...session, phase: "interaction" as const, headline: entry.interaction?.summary ?? "", phaseSince: entry.startedAt, interaction: entry.interaction };
-    const headline = activityHeadline(interactionSession);
-    const receipt = submissions[interactionKey(agent, interactionSession)];
-    const resolved = receipt?.status === "submitted";
-    const denied = resolved && ["deny", "cancel"].includes(receipt.decision);
-    const pending = !resolved && entry.status === "pending";
-    const label = resolved ? denied ? "timeline.denied" : "timeline.allowed"
-      : pending ? entry.interaction?.kind === "permission" ? "activity.phase.interaction" : "activity.question" : `timeline.status.${entry.status}`;
-    return <div className="timeline-interaction" data-pending={pending || undefined} data-resolved={resolved || undefined}>
-      <Icon icon={pending ? ShieldAlert : denied ? X : Check} />
-      <span className="timeline-interaction-state">{t(label)} ·</span>
-      <span className="timeline-entry-title" title={headline.fullText}>{headline.path ? <FilePath path={headline.path} project={session.project} /> : headline.text}</span>
-    </div>;
-  }
-  const kind = entry.type as keyof typeof icons;
-  const title = kind === "thinking" ? entry.text?.trim().split("\n").at(-1) || t("activity.phase.thinking")
-    : entry.command || entry.path || entry.title || t(`activity.phase.${kind}`);
-  const expandable = expandableTimelineEntry(entry);
-  const summary = <>
-    {expandable && <Icon icon={ChevronRight} className="timeline-chevron" />}
-    <Icon icon={icons[kind]} /><span className="timeline-entry-title" title={title}>{kind === "file" && entry.path ? <FilePath path={entry.path} project={session.project || entry.cwd} /> : title}</span>
-    <span className={`timeline-status ${entry.status === "failed" ? "activity-error" : ""}`}>{t(`timeline.status.${entry.status}`)}</span>
-    {Number.isFinite(duration) && <time>{time}</time>}
-  </>;
-  if (!expandable) return <div className="timeline-detail"><div className="timeline-summary">{summary}</div></div>;
-  return <details className="timeline-detail">
-    <summary className="timeline-summary">{summary}</summary>
-    <div className="timeline-output">
-      {kind === "thinking" ? <Markdown>{entry.text ?? ""}</Markdown> : <>
-        {entry.cwd && <div className="timeline-meta">{entry.cwd}</div>}
-        {entry.path && <div>{filePathParts(entry.path, session.project || entry.cwd).fullPath}</div>}
-        {entry.changes?.filter(change => change.path !== entry.path).map(change => <div key={change.path}>{filePathParts(change.path, session.project || entry.cwd).fullPath}</div>)}
-        {entry.input?.text && <pre>{entry.input.text}</pre>}
-        {entry.output?.text && <pre>{entry.output.text}</pre>}
-        {entry.exitCode !== undefined && <div className="timeline-meta">{t("timeline.exitCode", { code: entry.exitCode })}</div>}
-      </>}
-      {(entry.truncated || entry.input?.truncated || entry.output?.truncated) && <span className="timeline-meta">{t("timeline.truncated")}</span>}
-    </div>
-  </details>;
-}
 export default function ActivityTimeline({ agent, session, onClose, onBack }: {
   agent: string; session: TrackedActivity; onClose: () => void; onBack: () => void;
 }) {
   const { snapshot } = agentActivity.use();
-  const submissions = activityApprovals.use(), cardId = useId(), reduced = useReducedMotion();
+  const submissions = activityApprovals.use(), cardId = useId();
   const [atLatest, setAtLatest] = useState(true);
   const [timeline, setTimeline] = useState<AgentTimeline>();
   const [error, setError] = useState(""), [openError, setOpenError] = useState("");
@@ -186,10 +125,7 @@ export default function ActivityTimeline({ agent, session, onClose, onBack }: {
               .map((text, index) => <p key={index}>{text}</p>)}
           </section>}
           {!external && timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
-          {visibleTimelineEntries(timeline?.entries ?? []).map(entry => <motion.div key={entry.id} className="timeline-item" data-status={entry.status}
-            initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.24 }}>
-            <TimelineEntry entry={entry} agent={agent} session={nativeSession} now={now} />
-          </motion.div>)}
+          <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} />
         </div>
       </div>
       {!atLatest && <Button variant="ghost" className="timeline-latest" onClick={() => {
