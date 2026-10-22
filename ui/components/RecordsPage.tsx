@@ -152,7 +152,7 @@ export default function RecordsPage() {
           ].map((value) => ({ value, label: t(value) }))}
         />
       </div>
-      {recordsSource && <section><h3>{t("sourcePanel.dispatches")}</h3><SourceDispatches key={recordsSource} ingressId={recordsSource} /></section>}
+      {recordsSource && <section><h3>{t("sourcePanel.dispatches")}</h3>{status?.ingresses.find(i => i.id === recordsSource)?.sources?.map(source => <div key={source.id}><h4>{source.label}</h4><SourceDispatches sourceId={source.id} /></div>)}</section>}
       <div className="log-table-scroll">
         <table className="log-table">
           <caption className="sr-only">{t("connectionLogContents")}</caption>

@@ -843,5 +843,8 @@
   "native.theMenuBarIconIsNotReady": "The menu bar icon is not ready",
   "native.invalidDisplaySettings": "Invalid display settings",
   "native.unsupportedDisplaySettingsOperation": "Unsupported display settings operation",
-  "native.timedOutWaitingForCoreAfterThe": "Timed out waiting for Core after the update: {last_error}"
+  "native.timedOutWaitingForCoreAfterThe": "Timed out waiting for Core after the update: {last_error}",
+  "source.new": "New source",
+  "source.reauthorize": "Reauthorize {name}",
+  "source.authorization": "Authorization"
 }

@@ -1,9 +1,8 @@
-import { createStore, preference } from "./store";
+import { createStore } from "./store";
 import type { Ingress } from "./types";
 import { agentPanel, ingressPanel } from "./overviewPanels";
 export type OnboardingStep = "welcome" | "local" | "remote" | "progress" | "ready" | "sources" | "connect";
 export const onboarding = createStore<{ step: OnboardingStep; method?: "create" | "join"; source?: string; ingressId?: string; requestId?: string; baseline?: string[] } | undefined>(undefined);
-export const sourceLabels = preference<Record<string, string>>("arc.approved-source-labels", {});
 export function openOnboarding(step: OnboardingStep = "sources", method?: "create" | "join") {
   agentPanel.set(undefined); ingressPanel.set(undefined); onboarding.set({ step, method });
 }

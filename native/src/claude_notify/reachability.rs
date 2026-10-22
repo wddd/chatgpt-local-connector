@@ -7,7 +7,7 @@ pub(super) struct Reachability {
     pub state: String,
     pub reason: String,
     challenge_hash: String,
-    ingress: String,
+    source_id: String,
     expires_at: i64,
 }
 impl Default for Reachability {
@@ -16,7 +16,7 @@ impl Default for Reachability {
             state: "unverified".into(),
             reason: "handshake-required".into(),
             challenge_hash: String::new(),
-            ingress: String::new(),
+            source_id: String::new(),
             expires_at: 0,
         }
     }
@@ -35,7 +35,7 @@ impl Reachability {
     }
 }
 
-pub(super) async fn verify(ingress: &str, args: &Value) -> Result<Value> {
+pub(super) async fn verify(source_id: &str, args: &Value) -> Result<Value> {
     let target = session_id(string(args, "target"))?;
     let dir = directory();
     let code = id();
@@ -46,17 +46,17 @@ pub(super) async fn verify(ingress: &str, args: &Value) -> Result<Value> {
         let b = records(&dir)?
             .into_iter()
             .find(|b| {
-                b.ingress == ingress
+                b.source_id == source_id
                     && b.channel == Channel::ClaudeSession
                     && b.target.as_deref() == Some(&target)
             })
-            .ok_or("NOTIFICATION_TARGET_NOT_BOUND_TO_INGRESS")?;
+            .ok_or("NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE")?;
         let settings = settings()?;
         if settings["notificationsEnabled"] == false {
             return Err("NOTIFICATIONS_DISABLED".into());
         }
         let mut state = State::load(&dir)?;
-        let t = state.target(Channel::ClaudeSession, &target, now, &settings);
+        let t = state.target(source_id, Channel::ClaudeSession, &target, now, &settings);
         if t.breaker {
             return Err("NOTIFICATION_BREAKER_ACTIVE".into());
         }
@@ -70,7 +70,7 @@ pub(super) async fn verify(ingress: &str, args: &Value) -> Result<Value> {
         t.reachability = Reachability {
             reason: "handshake-pending".into(),
             challenge_hash: digest.clone(),
-            ingress: ingress.into(),
+            source_id: source_id.into(),
             expires_at: now + 300,
             ..Default::default()
         };
@@ -90,6 +90,7 @@ pub(super) async fn verify(ingress: &str, args: &Value) -> Result<Value> {
     let _guard = LOCK.lock().await;
     let mut state = State::load(&dir)?;
     let t = state.target(
+        source_id,
         Channel::ClaudeSession,
         &target,
         chrono::Utc::now().timestamp(),
@@ -103,17 +104,19 @@ pub(super) async fn verify(ingress: &str, args: &Value) -> Result<Value> {
     Ok(result)
 }
 
-pub(super) fn acknowledge(dir: &Path, ingress: &str, args: &Value) -> Result<Value> {
+pub(super) fn acknowledge(dir: &Path, source_id: &str, args: &Value) -> Result<Value> {
     let target = session_id(string(args, "target"))?;
     let mut state = State::load(dir)?;
     let t = state
         .targets
         .iter_mut()
-        .find(|t| t.channel == Channel::ClaudeSession && t.target == target)
+        .find(|t| {
+            t.source_id == source_id && t.channel == Channel::ClaudeSession && t.target == target
+        })
         .ok_or("HANDSHAKE_NOT_FOUND")?;
     t.reachability.expire(chrono::Utc::now().timestamp());
     let r = &mut t.reachability;
-    if r.ingress != ingress
+    if r.source_id != source_id
         || r.challenge_hash.is_empty()
         || r.challenge_hash != hash(string(args, "code"))
     {

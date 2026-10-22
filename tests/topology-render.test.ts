@@ -283,13 +283,13 @@ test("control source dock preserves editing, new onboarding, field navigation an
     const { agents } = await server.ssrLoadModule("/ui/state/agents.ts");
     const { t } = await server.ssrLoadModule("/ui/i18n.ts");
     const config = { configured: true, httpsProvider: "cloudflare", cloudflareMode: "quick", httpsUrl: "", tunnelId: "tunnel_fixture", hasApiKey: true };
-    const source = (id: string) => ({ id, name: `Source ${id}`, controlSource: "claude", enabled: true, running: true, state: "ready", auth: "oauth", transport: "https", error: "", config, url: "https://example.com/mcp" });
+    const source = (id: string) => ({ id, sources: [{ id, ingressId: id, credential: { type: "oauth-grant", grantId: `grant-${id}`, clientId: `client-${id}` }, product: "claude", platform: "anthropic", label: `Source ${id}`, createdAt: "2026-01-01", connectedAt: 1, lastSeenAt: 1, state: "connected" }], name: `Source ${id}`, controlSource: "claude", enabled: true, running: true, state: "ready", auth: "oauth", transport: "https", error: "", config, url: "https://example.com/mcp" });
     const status = { ingresses: [source("one"), source("two")], core: { backendSession: "fixture", appServer: { state: "ready" } }, platform: "darwin", logs: [], autoOpenCodex: false };
     connector.set({ status, loading: false, busy: "", error: "", feedback: { text: "", error: false } });
     agents.set({ items: [{ agent: "codex", installed: true, enabled: true, available: true, status: "ready" }], loading: false, error: "" });
     const session = { id: "thread", source: "codex-thread", title: "Dispatch fixture", phase: "command", headline: "Fixture", phaseSince: null, timeline: true };
     agentActivity.set({ snapshot: { observedAt: "2026-01-01", activeAgents: ["codex"], agents: { codex: { sessions: [session] } } }, error: "" });
-    tasks.set({ records: [{ requestId: "dispatch", origin: { ingressId: "one" }, state: "completed", createdAt: "2026-01-01", task: { kind: "create", threadId: "thread", title: "Dispatch fixture", prompt: "Fixture" } }], error: "", loading: false });
+    tasks.set({ records: [{ requestId: "dispatch", origin: { ingressId: "one", sourceId: "one" }, state: "completed", createdAt: "2026-01-01", task: { kind: "create", threadId: "thread", title: "Dispatch fixture", prompt: "Fixture" } }], error: "", loading: false });
     const calls: { path: string; method: string; body: any }[] = [];
     globalThis.fetch = async (input, init) => {
       const path = String(input).replace("/api/", ""), method = init?.method || "GET", body = init?.body ? JSON.parse(String(init.body)) : {};
@@ -302,6 +302,7 @@ test("control source dock preserves editing, new onboarding, field navigation an
       else if (path === "tool-catalog") value = { tools: [], groups: [], required: [] };
       else if (path === "codex/login") value = { state: "authenticated" };
       else if (path === "agents/conversations") value = { data: [], nextCursor: null, scope: "arc-tasks" };
+      else if (path === "source") value = { sources: status.ingresses.flatMap(i => i.sources) };
       else if (path.endsWith("/oauth")) value = { grants: [] };
       else if (path.startsWith("tasks/runtime/")) value = { runtimeStatus: "active", observedAt: "2026-01-01" };
       else if (path.startsWith("agents/timeline/")) value = { sessionId: "thread", status: "running", entries: [], cursor: 0, coverage: { state: "complete" } };

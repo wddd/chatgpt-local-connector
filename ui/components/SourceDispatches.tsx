@@ -10,12 +10,12 @@ import { sourceDispatches, dispatchState, isLatestDispatch } from "../state/sour
 import { PhaseTile } from "./activity";
 import { Icon, Notice } from "./ui";
 
-export default function SourceDispatches({ ingressId }: { ingressId: string }) {
+export default function SourceDispatches({ sourceId }: { sourceId: string }) {
   const { records, error } = tasks.use(), { snapshot } = agentActivity.use();
   const [runtimes, setRuntimes] = useState<Record<string, TaskRuntime>>({});
   const [visible, setVisible] = useState(8);
   const more = useRef<HTMLDivElement>(null);
-  const dispatches = sourceDispatches(records, ingressId), rows = dispatches.slice(0, visible);
+  const dispatches = sourceDispatches(records, sourceId), rows = dispatches.slice(0, visible);
   useEffect(() => {
     const marker = more.current;
     if (!marker || visible >= dispatches.length) return;
@@ -44,7 +44,7 @@ export default function SourceDispatches({ ingressId }: { ingressId: string }) {
     };
     void read(); const timer = setInterval(() => void read(), 10000);
     return () => { stopped = true; clearInterval(timer); };
-  }, [ingressId, ids.join(",")]);
+  }, [sourceId, ids.join(",")]);
   return <div className="source-dispatch-list">
     {error && <Notice>{error}</Notice>}
     {rows.map(record => {

@@ -22,7 +22,7 @@ Tauri registers the scheme in an installed/bundled app. A browser-only developme
 - HTTPS callbacks and HTTP IP-loopback callbacks are accepted; custom schemes and wildcard callbacks are rejected.
 - DCR or local preregistration supplies the client identity. Stored tokens/client secrets are hashes; pending approvals/codes are memory-only.
 
-Changing the ingress identity, tool policy, or resource URL invalidates grants while preserving registered clients. Reconnecting at the same identity/resource preserves grants. A client that performs DCR again creates a new identity and needs consent; a matching name is not an existing registration.
+Changing the ingress identity, tool policy, or resource URL invalidates grants while preserving registered clients. Reconnecting at the same identity/resource preserves grants. A client that performs DCR again creates a new client identity and a pending source reservation and needs consent; a matching name is never an identity anchor. Consent may create a new source or reauthorize an existing source of the same product on the same connection. Reauthorization moves the credential anchor after successful code exchange and revokes the old grant, preserving the source ID and history. Refresh rotation keeps the grant and source. Revocation, refresh reuse and code reuse retain the source as revoked.
 
 ## Public routes
 
@@ -49,13 +49,15 @@ Use the executable from [CLI](cli.md#executables), with cli followed by:
 | --- | --- |
 | ingress oauth list `<id>` | Pending requests and grants |
 | ingress oauth request `<id> <request-id>` | pending, approved, denied, completed, or expired |
-| ingress oauth decision `<id>` --stdin | `{"id":"<request-id>","allow":true}`; false denies |
+| ingress oauth decision `<id>` --stdin | `{"id":"<request-id>","allow":true,"sourceId":"new"}`; use an existing source ID to reauthorize; false denies |
 | ingress oauth register `<id>` --stdin | client_name, redirect_uris, token_endpoint_auth_method |
 | ingress oauth revoke `<id>` --stdin | `{"id":"<grant-id>"}` |
 
-Read the request's client, callback, and resource before deciding. Repeating a valid identical decision is idempotent; a conflicting decision fails. completed means the client exchanged the code. Verify a real MCP call afterwards.
+Read the request's client, callback, and resource before deciding. Local OAuth list responses include `sourceId`, `product` and `sourceCandidates` for pending requests. An existing same-product source requires an explicit `sourceId` choice; omission returns `SOURCE_CHOICE_REQUIRED`. If needed, correct the pending source's product before choosing. `cli source claim <pending-source-id> --stdin` accepts `{"sourceId":"new"}` or an existing source ID and approves that request. This is the same local consent boundary, not a public claim route. Repeating a valid identical decision is idempotent; a conflicting decision fails. completed means the client exchanged the code. Verify a real MCP call afterwards.
 
 For public preregistered clients, use token_endpoint_auth_method none; the default is client_secret_basic. A registration response can contain its secret: keep stdout private. Grants report connectedAt from the first successful code exchange and registeredAt separately; refresh preserves connectedAt. Missing historical times remain null.
+
+Source management is available without a running OAuth listener: `cli source list`, `cli source update <id> --stdin` with `label` and/or `product`, and `cli source disconnect <id>`. Disconnection revokes the grant and retains the source record and label. Source product and platform come from the bundled product registry and can be corrected independently of client names. New pending reservations have state `disconnected` and `connectedAt:null`; local OAuth pending requests identify which reservation is awaiting consent. Abandoned reservations are revoked after restart. Historical missing connection timestamps remain null.
 
 ## Limits
 
@@ -67,5 +69,5 @@ Each pending authorization has a stable four-character `pairingCode`, shown both
 `/oauth/status` and local request/list responses. It excludes ambiguous characters and
 is only a visual comparison aid; request identity, PKCE, consent, expiry and token
 validation continue to authorize the connection. A retry of the same pending request
-keeps its code. Existing grants are unchanged. ARC displays consent inline during
+keeps its code. Pairing codes do not select or merge source identity. ARC displays consent inline during
 control-source setup, or in a dialog for other requests, and notifies in the background.

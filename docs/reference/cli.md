@@ -23,6 +23,21 @@ Commands return a JSON envelope: `schemaVersion: 1`, `ok: true`, and `result`; e
 
 Choose the operation name from capabilities; command names and catalog operation names are not interchangeable. `cli call <operation> --stdin` sends JSON input. `cli mcp` exposes the local management catalog over stdio, separate from remote execution tools.
 
+## Control-source management
+
+These commands use authenticated local management only. They do not change the remote `guide`, `query`, `act`, or `notification` schemas.
+
+| Command | Local API | Input / result |
+| --- | --- | --- |
+| `cli source list` | `GET source` | `{sources:[...]}`, including disconnected and revoked records |
+| `cli source update <id> --stdin` | `PUT source/{id}` | `{"label":"Work account","product":"claude"}`; either field may be omitted |
+| `cli source disconnect <id>` | `POST source/{id}/disconnect` | Revoke source access and keep the record; also stop a non-OAuth connection |
+| `cli source claim <pending-source-id> --stdin` | `POST source/{id}/claim` | `{"sourceId":"new"}` or `{"sourceId":"<existing-source-id>"}`; approve pending consent |
+
+A source contains `id`, `ingressId`, `credential`, `product`, `platform`, `label`, `createdAt`, `connectedAt`, `lastSeenAt`, and `state`. Credentials have `type` `oauth-grant` (plus `grantId` and `clientId`), `ingress`, or `local`. State is `connected`, `disconnected`, or `revoked`. `createdAt` is RFC3339; connection and last-seen times are Unix seconds or null. Connected state means the connection is available or the source has made an authenticated request, not an independently verified client presence.
+
+`ingress oauth list <id>` identifies pending source reservations and reauthorization candidates. Claim targets must be on the same connection and have the same product. The source anchor changes only after successful code exchange; rejecting or abandoning consent preserves the existing source. Refresh rotation preserves identity. Receipt and task origins expose `sourceId` and the current source label. Ingress IDs describe connection provenance and never determine source isolation.
+
 ## Local control and condition waits
 
 `cli control <op> [--stdin]` acts as the built-in `local-cli` control source.
@@ -42,8 +57,8 @@ printf '%s' '{"timeoutMs":1000}' | arc cli control inbox_wait --stdin
 
 Dispatch defaults to `purpose:"self-test"` and `notify:null`. Explicit stdin
 values override these defaults. Receipts, task records and live activity use
-`origin.ingressId` / `origin.controlSource` = `local-cli`; the UI labels this
-source Local CLI. It has no ingress configuration or listener. This command uses
+`origin.ingressId` / `origin.controlSource` = `local-cli`, plus a stable
+`origin.sourceId` and the current `origin.sourceLabel`. It has no ingress configuration or listener. This command uses
 the existing authenticated local Core channel; neither a network ingress nor
 `cli mcp` can select it. The remote guide/query/act and notification schemas are
 unchanged. `cli capabilities` lists CLI-only descriptors under `cliOnly`;

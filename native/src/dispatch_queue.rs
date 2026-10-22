@@ -22,7 +22,8 @@ fn records() -> Result<Vec<Value>> {
     Ok(rows)
 }
 fn visible(row: &Value) -> bool {
-    row["origin"]["ingressId"] == crate::kernel::origin::current_origin()["ingressId"]
+    !string(&row["origin"], "sourceId").is_empty()
+        && row["origin"]["sourceId"] == crate::kernel::origin::current_origin()["sourceId"]
 }
 fn public(row: &Value) -> Value {
     let mut out = json!({});

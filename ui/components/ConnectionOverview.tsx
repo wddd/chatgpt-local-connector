@@ -38,7 +38,7 @@ import { topologyTuningEnabled } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
 import type { WireState } from "../topology/render";
 import Onboarding from "./Onboarding";
-import { onboarding, openOnboarding, sourceForClient, sourceLabels } from "../state/onboarding";
+import { onboarding, openOnboarding } from "../state/onboarding";
 import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
 import { Button, Icon, Notice } from "./ui";
@@ -53,7 +53,7 @@ function wireState(state: string): WireState {
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
   const tuning = topologyTuningEnabled.use();
   const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use(), sourceSelection = ingressPanel.use();
-  const flow = onboarding.use(), labels = sourceLabels.use();
+  const flow = onboarding.use();
   const detailOpen = !!selection || !!sourceSelection, panelOpen = detailOpen || !!flow;
   const [panelExpanded, setPanelExpanded] = useState(false);
   useEffect(() => { if (!detailOpen) setPanelExpanded(false); }, [detailOpen]);
@@ -66,7 +66,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   useEffect(() => {
     if (scenarioName || !visible || initialSetupShown.current || !status || loading || error) return;
     initialSetupShown.current = true;
-    if (!status.ingresses.some(i => i.transport !== "relay" || i.oauth?.grants.length)) openOnboarding("welcome");
+    if (!status.ingresses.some(i => i.sources?.some(s => s.state !== "revoked" && !i.oauth?.pending.some(p => p.id === s.credential.grantId)))) openOnboarding("welcome");
   }, [visible, status, loading, error]);
   const sources = orderedSources();
   const agents = orderedAgents()
@@ -181,18 +181,15 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     if (index >= 0 && target) moveAgent(id, target.agent);
   }
   const sourceViews: NodeView[] = sources.flatMap(source => {
-    const grants = source.transport === "relay" ? source.oauth?.grants ?? [] : [];
-    if (source.transport === "relay" && !grants.length) return [];
-    return (source.transport === "relay" ? grants.map(grant => ({
-      id: `${source.id}:${grant.id}`, name: grant.clientName,
-      platform: labels[grant.id] ?? sourceForClient(grant.clientName), grantId: grant.id,
-    })) : [{ id: source.id, name: source.name, platform: source.controlSource, grantId: undefined }]).map(view => ({
+    return (source.sources ?? []).filter(s => s.state !== "revoked" && !source.oauth?.pending.some(p => p.id === s.credential.grantId)).map(s => ({
+      id: s.id, name: s.label, platform: s.product, sourceId: s.id,
+    })).map(view => ({
       id: view.id, state: wireState(sourceState(source)), attention: false,
-      selected: sourceSelection?.ingress.id === source.id && sourceSelection?.client?.id === view.grantId, tasks: [], reorderable: !panelOpen && !view.grantId,
+      selected: sourceSelection?.ingress.id === source.id && sourceSelection?.client?.id === view.sourceId, tasks: [], reorderable: !panelOpen && source.sources?.length === 1,
       content: <GraphNode label={`${view.name}: ${t(sourceState(source))}`} state={wireState(sourceState(source))}
-        highlighted={sourceSelection?.ingress.id === source.id && sourceSelection?.client?.id === view.grantId}
-        onMove={panelOpen || view.grantId ? undefined : by => moveSource(source.id, by)}
-        onOpen={() => selectIngressPanel(source, { toggle: true, client: view.grantId ? { id: view.grantId, name: view.name, source: view.platform } : undefined })}>
+        highlighted={sourceSelection?.ingress.id === source.id && sourceSelection?.client?.id === view.sourceId}
+        onMove={panelOpen || source.sources?.length !== 1 ? undefined : by => moveSource(source.id, by)}
+        onOpen={() => selectIngressPanel(source, { toggle: true, client: { id: view.sourceId, name: view.name, source: view.platform } })}>
         <SourceIcon platform={view.platform} panelVisual /><span className="graph-node-name">{view.name}</span>
       </GraphNode>,
     }));

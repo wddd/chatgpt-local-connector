@@ -1,8 +1,8 @@
 import type { AgentActivitySession } from "../types";
 import type { TaskRecord, TaskRuntime } from "./tasks";
 
-export function sourceDispatches(records: TaskRecord[], ingressId: string) {
-  return records.filter(r => (r.origin?.ingressId ?? r.task.origin?.ingressId) === ingressId && ["create", "send"].includes(r.task.kind))
+export function sourceDispatches(records: TaskRecord[], sourceId: string) {
+  return records.filter(r => (r.origin?.sourceId ?? r.task.origin?.sourceId) === sourceId && ["create", "send"].includes(r.task.kind))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 // A newer dispatch (including one from another source) owns the thread's live state.

@@ -16,7 +16,7 @@ pub(super) struct Webhook {
 #[serde(rename_all = "camelCase")]
 pub(super) struct Subscription {
     pub id: String,
-    pub ingress: String,
+    pub source_id: String,
     pub channel: Channel,
     pub target: String,
     pub op: String,
@@ -33,7 +33,8 @@ pub(super) struct Subscription {
 impl Subscription {
     pub fn matches(&self, b: &Binding, d: &Delivery) -> bool {
         let event = event(b, d);
-        self.ingress == b.ingress
+        !self.source_id.is_empty()
+            && self.source_id == b.source_id
             && self.op == "task_status"
             && self.turn.as_ref().is_none_or(|t| *t == b.turn_id)
             && ["threadId", "taskId"]
@@ -54,12 +55,21 @@ impl Subscription {
 pub(super) fn claude_id(b: &Binding) -> String {
     format!(
         "sub_{}",
-        hash(json!(["claude-session", b.ingress, b.agent, b.thread_id, b.turn_id]).to_string())
+        hash(
+            json!([
+                "claude-session",
+                b.source_id,
+                b.agent,
+                b.thread_id,
+                b.turn_id
+            ])
+            .to_string()
+        )
     )
 }
 
 pub(crate) fn guide() -> Value {
-    json!({"event":"notification","inputSchema":{"type":"object","properties":{"op":{"type":"string"},"args":{"type":"object"}},"required":["op","args"],"additionalProperties":false},"ops":[{"op":"task_status","description":"Task completed, failed, interrupted or needs input; only tasks dispatched through this ingress. Empty args watches all such tasks; both filters must match when supplied.","inputSchema":task_schema(),"example":{"name":"notification","arguments":{"op":"task_status","args":{}}}}]})
+    json!({"event":"notification","inputSchema":{"type":"object","properties":{"op":{"type":"string"},"args":{"type":"object"}},"required":["op","args"],"additionalProperties":false},"ops":[{"op":"task_status","description":"Task completed, failed, interrupted or needs input; only tasks dispatched through this source. Empty args watches all such tasks; both filters must match when supplied.","inputSchema":task_schema(),"example":{"name":"notification","arguments":{"op":"task_status","args":{}}}}]})
 }
 fn task_schema() -> Value {
     json!({"type":"object","properties":{"threadId":{"type":"string","minLength":1},"taskId":{"type":"string","minLength":1}},"additionalProperties":false})
@@ -102,7 +112,7 @@ pub(super) fn sync(state: &mut State, bindings: &[Binding]) {
         } else {
             state.subscriptions.push(Subscription {
                 id,
-                ingress: b.ingress.clone(),
+                source_id: b.source_id.clone(),
                 channel: Channel::ClaudeSession,
                 target: target.clone(),
                 op: "task_status".into(),

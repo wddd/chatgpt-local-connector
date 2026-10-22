@@ -89,7 +89,7 @@ async fn post(s: &Subscription, id: &str, body: &[u8]) -> Result<(u16, Vec<u8>)>
             crate::logs::record(
                 "WARN",
                 &format!("MCP callback DNS rejected: host={host}; addresses={addresses:?}"),
-                Some(&s.ingress),
+                None,
             );
             return Err("non_public_address".to_owned());
         }
@@ -173,6 +173,11 @@ async fn authorized(s: &crate::ingress::Ingress, principal: &str) -> bool {
     let oauth = meta["auth"] == "oauth";
     drop(meta);
     if oauth {
+        if !crate::sources::for_grant(&s.id, principal)
+            .is_ok_and(|source| source["state"] != "revoked")
+        {
+            return false;
+        }
         let resource = s.mcp_url.lock().await.clone();
         s.oauth
             .lock()
@@ -183,7 +188,7 @@ async fn authorized(s: &crate::ingress::Ingress, principal: &str) -> bool {
     }
 }
 pub(crate) fn list() -> Value {
-    json!({"events":[{"name":NAME,"description":"ARC notifications. Read guide({topic:notify}) for supported op and args contracts. Currently task_status reports completed, failed, interrupted or needs-input for tasks from this ingress. Work wakeups may take minutes; read full results with query.","delivery":["webhook"],
+    json!({"events":[{"name":NAME,"description":"ARC notifications. Read guide({topic:notify}) for supported op and args contracts. Currently task_status reports completed, failed, interrupted or needs-input for tasks from this source. Work wakeups may take minutes; read full results with query.","delivery":["webhook"],
         "inputSchema":subscriptions::guide()["inputSchema"],
         "payloadSchema":{"type":"object","properties":{"op":{"type":"string"},"kind":{"type":"string"},"summary":{"type":"string"},"threadId":{"type":["string","null"]},"taskId":{"type":["string","null"]},"turnId":{"type":"string"},"agent":{"type":"string"},"project":{"type":"string"},"title":{"type":"string"},"query":{"type":"object"}},"required":["op","kind","summary","threadId","taskId","turnId","agent","project","title","query"],"additionalProperties":false}}]})
 }
@@ -192,6 +197,7 @@ pub(crate) async fn request(
     method: &str,
     params: &Value,
 ) -> Result<Value> {
+    let source_id = string(&crate::kernel::origin::current_origin(), "sourceId").to_owned();
     let principal = crate::kernel::origin::current_origin()["eventPrincipal"]
         .as_str()
         .map(str::to_owned)
@@ -219,7 +225,7 @@ pub(crate) async fn request(
     let url = callback_url(string(&params["delivery"], "url"))?.to_string();
     let sub_id = format!(
         "sub_{}",
-        hash(json!([s.id, principal, NAME, args, url]).to_string())
+        hash(json!([source_id, principal, NAME, args, url]).to_string())
     );
     let _operation = OPERATION.lock().await;
     let _guard = LOCK.lock().await;
@@ -281,7 +287,7 @@ pub(crate) async fn request(
         .iter()
         .filter_map(|v| {
             v.webhook.as_ref().filter(|w| {
-                v.ingress == s.id
+                v.source_id == source_id
                     && w.principal == principal
                     && w.url == webhook.url
                     && w.secret == webhook.secret
@@ -292,7 +298,7 @@ pub(crate) async fn request(
         .unwrap_or(0);
     let mut sub = Subscription {
         id: sub_id.clone(),
-        ingress: s.id.clone(),
+        source_id: source_id.clone(),
         channel: Channel::McpEvents,
         target: sub_id.clone(),
         op: "task_status".into(),
@@ -357,7 +363,13 @@ pub(super) async fn send(
     let Some(w) = &sub.webhook else {
         return SendOutcome::failed("missing_webhook", false);
     };
-    let Ok(ingress) = service.ingress(&sub.ingress).await else {
+    let Ok(source) = crate::sources::get(&sub.source_id) else {
+        return SendOutcome::failed("access_revoked", false);
+    };
+    if source["state"] == "revoked" {
+        return SendOutcome::failed("access_revoked", false);
+    }
+    let Ok(ingress) = service.ingress(string(&source, "ingressId")).await else {
         return SendOutcome::failed("access_revoked", false);
     };
     if !sub.active(chrono::Utc::now().timestamp_millis())

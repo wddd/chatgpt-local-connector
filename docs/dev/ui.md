@@ -1,6 +1,6 @@
 # UI conventions
 
-[Development](development.md) · [Architecture](architecture.md)
+[Remote link design and phases](remote-link.md) · [Development](development.md) · [Architecture](architecture.md)
 
 React renders. Tauri/Rust owns configuration, connections, tasks, authentication, native windows, and updates. The main window shares semantic tokens, preferences, and controls.
 

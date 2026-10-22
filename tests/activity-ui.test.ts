@@ -283,7 +283,7 @@ test("Agent panel toggles the current node, switches peers in place, and returns
 
 test("source dispatches filter ownership and never equate a dispatch receipt with task completion", async () => {
   const { sourceDispatches, dispatchState, isLatestDispatch } = await import("../ui/state/sourceDispatch.ts");
-  const row = (id: string, source: string, date: string) => ({ requestId: id, origin: { ingressId: source }, state: "completed", createdAt: date,
+  const row = (id: string, source: string, date: string) => ({ requestId: id, origin: { sourceId: source }, state: "completed", createdAt: date,
     updatedAt: date, approval: { decision: "allowed", source: "local", at: date }, task: { kind: "create", threadId: "thread", prompt: "Fixture", input: {}, settings: {} } });
   const older = row("older", "left", "2026-01-01"), latest = row("latest", "left", "2026-01-02"), other = row("other", "right", "2026-01-03");
   assert.deepEqual(sourceDispatches([older, other, latest], "left").map(r => r.requestId), ["latest", "older"]);
@@ -295,7 +295,7 @@ test("source dispatches filter ownership and never equate a dispatch receipt wit
   assert.equal(dispatchState(latest, { runtimeStatus: "active", observedAt: "" }, undefined), "running");
   assert.equal(dispatchState(latest, undefined, session("thread", permission)), "pending");
   assert.equal(dispatchState({ ...latest, state: "failed" }, undefined, undefined), "failed");
-  assert.deepEqual(sourceDispatches([{ ...latest, origin: undefined, task: { ...latest.task, origin: { ingressId: "left" } } }], "left").length, 1);
+  assert.deepEqual(sourceDispatches([{ ...latest, origin: undefined, task: { ...latest.task, origin: { sourceId: "left" } } }], "left").length, 1);
 });
 
 test("timeline tool groups stop at every non-tool and turn boundary; singles retain their anchor", async () => {

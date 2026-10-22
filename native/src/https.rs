@@ -138,23 +138,15 @@ async fn handle(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_owned();
-    if !service
-        .authenticate(
-            request
-                .headers()
-                .get("authorization")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or(""),
-        )
-        .await
-    {
+    let principal = service.authenticate(&event_header).await;
+    let Some(principal) = principal else {
         let mut response = reply(401, Some(json!({"error":"unauthorized"})));
         response.headers_mut().insert(
             "www-authenticate",
             hyper::header::HeaderValue::from_str(&if oauth { format!("Bearer resource_metadata=\"{origin}/.well-known/oauth-protected-resource{}\", scope=\"mcp\"", url.path()) } else { "Bearer".to_owned() }).unwrap(),
         );
         return Ok(response);
-    }
+    };
     if let Some(value) = request.headers().get("origin") {
         if value.to_str().ok() != Some(origin.as_str()) {
             return error(403, "invalid origin");
@@ -246,7 +238,13 @@ async fn handle(
             string(&value, "method"),
             "notifications/cancelled" | "notifications/initialized"
         ) {
-            let _ = crate::transport::mcp_ingress(&service, value).await;
+            let _ = crate::transport::mcp_ingress_authenticated(
+                &service,
+                value,
+                &principal,
+                Some(&event_header),
+            )
+            .await;
         }
         return Ok(reply(202, None));
     }
@@ -256,13 +254,25 @@ async fn handle(
             &value,
             sse,
             async move {
-                crate::transport::mcp_ingress_authenticated(&service, request, Some(&event_header))
-                    .await
+                crate::transport::mcp_ingress_authenticated(
+                    &service,
+                    request,
+                    &principal,
+                    Some(&event_header),
+                )
+                .await
             },
             async move { crate::transport::wait_disconnect(&disconnect).await },
         ));
     }
-    match crate::transport::mcp_ingress_authenticated(&service, value, Some(&event_header)).await {
+    match crate::transport::mcp_ingress_authenticated(
+        &service,
+        value,
+        &principal,
+        Some(&event_header),
+    )
+    .await
+    {
         Ok(value) => Ok(reply(200, Some(value))),
         Err(_) => error(400, "invalid MCP request"),
     }

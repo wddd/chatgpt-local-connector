@@ -118,7 +118,7 @@ struct Binding {
     #[serde(default)]
     channel: Channel,
     #[serde(default)]
-    ingress: String,
+    source_id: String,
     #[serde(default)]
     agent: String,
     #[serde(default)]
@@ -166,12 +166,19 @@ fn bind_in(dir: &Path, session: Option<&str>, thread: &str, turn: &str, cwd: &st
         return Ok(());
     };
     let previous = binding(dir, thread, turn)?;
+    let origin = crate::kernel::origin::current_origin();
+    if previous
+        .as_ref()
+        .is_some_and(|b| !origin.is_null() && b.source_id != string(&origin, "sourceId"))
+    {
+        return Err("NOTIFICATION_SOURCE_MISMATCH".into());
+    }
     let mut b = previous.unwrap_or_else(|| Binding {
         thread_id: thread.into(),
         turn_id: turn.into(),
         target: None,
         channel: Channel::ClaudeSession,
-        ingress: String::new(),
+        source_id: string(&origin, "sourceId").into(),
         agent: String::new(),
         title: String::new(),
         explicit: false,
@@ -247,8 +254,12 @@ pub(crate) async fn bind(
                 serde_json::from_value(notify["channel"].clone()).map_err(|e| e.to_string())?;
         }
     }
-    if b.ingress.is_empty() {
-        b.ingress = string(&crate::kernel::origin::current_origin(), "ingressId").into();
+    let caller = crate::kernel::origin::current_origin();
+    if !b.source_id.is_empty() && b.source_id != string(&caller, "sourceId") {
+        return Err("NOTIFICATION_SOURCE_MISMATCH".into());
+    }
+    if b.source_id.is_empty() {
+        b.source_id = string(&crate::kernel::origin::current_origin(), "sourceId").into();
     }
     if b.agent.is_empty() {
         b.agent = args["agent"].as_str().unwrap_or("codex").into();
@@ -272,6 +283,7 @@ pub(crate) async fn bind(
     }
     if let Some(target) = &b.target {
         state.target(
+            &b.source_id,
             b.channel,
             target,
             chrono::Utc::now().timestamp(),
@@ -290,7 +302,7 @@ pub(crate) async fn inherit(thread: &str, previous: &str, turn: &str) -> Result<
         if !next.explicit && !old.continuation_bound {
             next.target = old.target.clone();
             next.channel = old.channel;
-            next.ingress = old.ingress.clone();
+            next.source_id = old.source_id.clone();
             next.title = old.title.clone();
             next.project = old.project.clone();
             for d in &mut next.deliveries {
@@ -333,7 +345,7 @@ fn remove_expired(dir: &Path, b: &Binding, now: i64) -> Result<bool> {
 }
 fn notification(b: Option<Binding>) -> Value {
     b.filter(|b| b.target.is_some()).map(|b| json!({
-        "channel": b.channel, "target": b.target,
+        "sourceId": b.source_id, "channel": b.channel, "target": b.target,
         "deliveries": b.deliveries.iter().filter(|d| d.channel == b.channel && Some(d.target.as_str()) == b.target.as_deref()).map(|d| json!({"eventId":d.event_id,"kind":event(&b,d)["kind"],"level":if b.channel==Channel::ClaudeSession {"L1"}else{"L2"},"state":d.status,"error":d.error,"timing":d.timing})).collect::<Vec<_>>()
     })).unwrap_or(Value::Null)
 }
@@ -341,14 +353,18 @@ pub(crate) fn read(thread: &str, turn: &str) -> Result<Value> {
     read_since(thread, turn, None)
 }
 pub(crate) fn read_since(thread: &str, turn: &str, since: Option<&str>) -> Result<Value> {
-    let mut result = notification_since(binding(&directory(), thread, turn)?, since);
+    let origin = crate::kernel::origin::current_origin();
+    let b = binding(&directory(), thread, turn)?
+        .filter(|b| origin.is_null() || b.source_id == string(&origin, "sourceId"));
+    let mut result = notification_since(b, since);
     if result.is_object() {
         let state = State::load(&directory())?;
         let reachability = state
             .targets
             .iter()
             .find(|t| {
-                result["channel"] == serde_json::to_value(t.channel).unwrap()
+                result["sourceId"] == t.source_id
+                    && result["channel"] == serde_json::to_value(t.channel).unwrap()
                     && result["target"] == t.target
             })
             .map(|t| t.reachability.clone())
@@ -962,10 +978,10 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     }
     // Append first: a crash between writes is reconciled by deterministic event IDs.
     for d in &b.deliveries[first..] {
-        inbox_append(dir, &b.ingress, event(b, d))?;
+        inbox_append(dir, &b.source_id, event(b, d))?;
     }
-    if resolved && !b.ingress.is_empty() {
-        let path = inbox_path(dir, &b.ingress);
+    if resolved && !b.source_id.is_empty() {
+        let path = inbox_path(dir, &b.source_id);
         if path.exists() {
             let mut rows = load(&path)?;
             for row in rows.as_array_mut().into_iter().flatten() {
@@ -993,16 +1009,17 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     Ok(())
 }
 
-fn inbox_path(dir: &Path, ingress: &str) -> PathBuf {
-    dir.join("inboxes").join(format!("{}.json", hash(ingress)))
+fn inbox_path(dir: &Path, source_id: &str) -> PathBuf {
+    dir.join("inboxes")
+        .join(format!("{}.json", hash(source_id)))
 }
 static INBOX_CHANGED: tokio::sync::Notify = tokio::sync::Notify::const_new();
 
-fn inbox_append(dir: &Path, ingress: &str, event: Value) -> Result<()> {
-    if ingress.is_empty() {
+fn inbox_append(dir: &Path, source_id: &str, event: Value) -> Result<()> {
+    if source_id.is_empty() {
         return Ok(());
     }
-    let path = inbox_path(dir, ingress);
+    let path = inbox_path(dir, source_id);
     let mut rows = if path.exists() {
         load(&path)?
     } else {
@@ -1020,7 +1037,7 @@ fn inbox_append(dir: &Path, ingress: &str, event: Value) -> Result<()> {
     Ok(())
 }
 pub(crate) async fn inbox(
-    ingress: &str,
+    source_id: &str,
     reads: &[(String, String)],
     claude: bool,
     caller_target: Option<&str>,
@@ -1029,7 +1046,7 @@ pub(crate) async fn inbox(
     let caller_target = caller_target.and_then(|target| session_id(target).ok());
     let mut result = inbox_in(
         &directory(),
-        ingress,
+        source_id,
         reads,
         claude,
         caller_target.as_deref(),
@@ -1057,22 +1074,22 @@ fn binding_notices(result: &mut Value, caller_target: Option<&str>) {
 
 fn inbox_in(
     dir: &Path,
-    ingress: &str,
+    source_id: &str,
     reads: &[(String, String)],
     claude: bool,
     caller_target: Option<&str>,
 ) -> Result<Value> {
-    inbox_select(dir, ingress, reads, claude, caller_target, None)
+    inbox_select(dir, source_id, reads, claude, caller_target, None)
 }
 fn inbox_select(
     dir: &Path,
-    ingress: &str,
+    source_id: &str,
     reads: &[(String, String)],
     claude: bool,
     caller_target: Option<&str>,
     filters: Option<&Value>,
 ) -> Result<Value> {
-    let path = inbox_path(dir, ingress);
+    let path = inbox_path(dir, source_id);
     if !path.exists() {
         return Ok(Value::Null);
     }
@@ -1084,7 +1101,7 @@ fn inbox_select(
     // exact callbacks; do not also leak these events through a shared inbox.
     let origin = crate::kernel::origin::current_origin();
     let subscribed = state.subscriptions.iter().any(|s| {
-        s.ingress == ingress
+        s.source_id == source_id
             && s.channel == Channel::McpEvents
             && s.active(now.saturating_mul(1000))
             && s.webhook
@@ -1096,7 +1113,7 @@ fn inbox_select(
     let mut unread = 0;
     for row in rows.as_array_mut().ok_or("INVALID_INBOX")? {
         let bound = bindings.iter().find(|b| {
-            b.ingress == ingress
+            b.source_id == source_id
                 && b.turn_id == string(row, "turnId")
                 && (row["threadId"] == b.thread_id || row["taskId"] == b.thread_id)
         });
@@ -1142,11 +1159,11 @@ fn inbox_select(
                 continue;
             }
         }
-        // Only Claude-owned ingress events with an actual session binding change behavior.
+        // Only Claude-owned source events with an actual session binding change behavior.
         // Looking up existing records also suppresses pre-upgrade delivered events.
         let delivery = bindings
             .iter()
-            .filter(|b| b.ingress == ingress)
+            .filter(|b| b.source_id == source_id)
             .flat_map(|b| &b.deliveries)
             .find(|d| {
                 row["eventId"] == d.event_id
@@ -1185,15 +1202,15 @@ fn inbox_select(
     })
 }
 /// Explicit inbox polling never attaches or acknowledges an event. Existing
-/// ingress/session/subscription visibility remains shared with arcInbox.
+/// source/session/subscription visibility remains shared with arcInbox.
 pub(crate) async fn inbox_wait(
     control: &Arc<crate::control::Control>,
     args: &Value,
 ) -> Result<Value> {
     let origin = crate::kernel::origin::current_origin();
-    let ingress = string(&origin, "ingressId");
-    if ingress.is_empty() {
-        return Err("INGRESS_REQUIRED".into());
+    let source_id = string(&origin, "sourceId");
+    if source_id.is_empty() {
+        return Err("SOURCE_REQUIRED".into());
     }
     let target = args["target"].as_str().map(session_id).transpose()?;
     let mut shutdown = control.shutdown.subscribe();
@@ -1207,7 +1224,7 @@ pub(crate) async fn inbox_wait(
             let _guard = LOCK.lock().await;
             inbox_select(
                 &directory(),
-                ingress,
+                source_id,
                 &[],
                 origin["controlSource"] == "claude",
                 target.as_deref(),
@@ -1234,18 +1251,18 @@ pub(crate) async fn inbox_wait(
 }
 
 pub(crate) async fn acknowledge(args: &Value) -> Result<Value> {
-    let ingress = string(&crate::kernel::origin::current_origin(), "ingressId").to_owned();
-    if ingress.is_empty() {
-        return Err("INGRESS_REQUIRED".into());
+    let source_id = string(&crate::kernel::origin::current_origin(), "sourceId").to_owned();
+    if source_id.is_empty() {
+        return Err("SOURCE_REQUIRED".into());
     }
     let _guard = LOCK.lock().await;
-    acknowledge_in(&directory(), &ingress, args)
+    acknowledge_in(&directory(), &source_id, args)
 }
-fn acknowledge_in(dir: &Path, ingress: &str, args: &Value) -> Result<Value> {
+fn acknowledge_in(dir: &Path, source_id: &str, args: &Value) -> Result<Value> {
     if args.get("code").is_some() {
-        return reachability::acknowledge(dir, ingress, args);
+        return reachability::acknowledge(dir, source_id, args);
     }
-    let path = inbox_path(dir, ingress);
+    let path = inbox_path(dir, source_id);
     let mut rows = if path.exists() {
         load(&path)?
     } else {
@@ -1273,7 +1290,7 @@ fn acknowledge_in(dir: &Path, ingress: &str, args: &Value) -> Result<Value> {
     for id in ids {
         let bound = bindings
             .iter()
-            .filter(|b| b.ingress == ingress)
+            .filter(|b| b.source_id == source_id)
             .find_map(|b| {
                 b.deliveries
                     .iter()
@@ -1316,17 +1333,17 @@ fn acknowledge_in(dir: &Path, ingress: &str, args: &Value) -> Result<Value> {
     )
 }
 
-// An old Desktop callback is eligible only if this ingress was actually given it.
+// An old Desktop callback is eligible only if this source was actually given it.
 // The Desktop owner still freshly verifies the request before applying any answer.
 pub(crate) fn recoverable_response(key: &str, session: &str) -> Result<bool> {
     let origin = crate::kernel::origin::current_origin();
-    recoverable_response_in(&directory(), string(&origin, "ingressId"), key, session)
+    recoverable_response_in(&directory(), string(&origin, "sourceId"), key, session)
 }
-fn recoverable_response_in(dir: &Path, ingress: &str, key: &str, session: &str) -> Result<bool> {
-    Ok(!ingress.is_empty()
+fn recoverable_response_in(dir: &Path, source_id: &str, key: &str, session: &str) -> Result<bool> {
+    Ok(!source_id.is_empty()
         && records(dir)?
             .iter()
-            .filter(|b| b.ingress == ingress)
+            .filter(|b| b.source_id == source_id)
             .any(|b| {
                 b.deliveries.iter().any(|d| {
                     d.interaction["owner"] == "desktop"
@@ -1473,25 +1490,36 @@ async fn flush(
             governance::apply_rebind(b, rule);
         }
         for d in &b.deliveries {
-            if d.status == "pending" && !targets.contains(&(d.channel, d.target.clone())) {
-                targets.push((d.channel, d.target.clone()));
+            if d.status == "pending"
+                && !targets.contains(&(b.source_id.clone(), d.channel, d.target.clone()))
+            {
+                targets.push((b.source_id.clone(), d.channel, d.target.clone()));
             }
         }
     }
     for t in &state.targets {
-        if !targets.contains(&(t.channel, t.target.clone())) {
-            targets.push((t.channel, t.target.clone()));
+        if !targets.contains(&(t.source_id.clone(), t.channel, t.target.clone())) {
+            targets.push((t.source_id.clone(), t.channel, t.target.clone()));
         }
     }
     let mut batches = Vec::new();
     let mut alerts = Vec::new();
-    for (channel, target) in targets {
+    for (source_id, channel, target) in targets {
+        if source_id.is_empty() {
+            continue;
+        }
+        if crate::sources::get(&source_id).is_ok_and(|s| s["state"] == "revoked") {
+            continue;
+        }
         let (breaker, tokens) = {
-            let t = state.target(channel, &target, now, settings);
+            let t = state.target(&source_id, channel, &target, now, settings);
             (t.breaker, t.tokens)
         };
         let mut eligible = Vec::new();
         for (bi, b) in all.iter_mut().enumerate() {
+            if b.source_id != source_id {
+                continue;
+            }
             let rule = state.rule(b);
             let mode = rule.map(|r| r.mode(now)).unwrap_or("normal");
             let digest_due = rule.is_some_and(|r| now.saturating_sub(r.digest_at) >= 3600);
@@ -1559,19 +1587,24 @@ async fn flush(
                 .any(|(bi, di, _)| !all[*bi].deliveries[*di].token_charged)
             && tokens == 0;
         if settings["notificationsEnabled"] != false {
-            let t = state.target(channel, &target, now, settings);
+            let t = state.target(&source_id, channel, &target, now, settings);
             if let Some(reason) = t.anomaly(now, waiting, settings) {
                 let threads = all
                     .iter()
-                    .filter(|b| b.channel == channel && b.target.as_deref() == Some(&target))
+                    .filter(|b| {
+                        b.source_id == source_id
+                            && b.channel == channel
+                            && b.target.as_deref() == Some(&target)
+                    })
                     .map(|b| b.thread_id.clone())
                     .collect::<std::collections::BTreeSet<_>>();
                 let pending = all
                     .iter()
+                    .filter(|b| b.source_id == source_id)
                     .flat_map(|b| &b.deliveries)
                     .filter(|d| d.channel == channel && d.target == target && d.status == "pending")
                     .count();
-                alerts.push((channel,target.clone(),format!("Target {target}. Reason: {reason}. Pending deliveries: {pending}. Threads: {}. Read ARC notify_status.",threads.into_iter().collect::<Vec<_>>().join(", "))));
+                alerts.push((source_id.clone(),channel,target.clone(),format!("Target {target}. Reason: {reason}. Pending deliveries: {pending}. Threads: {}. Read ARC notify_status.",threads.into_iter().collect::<Vec<_>>().join(", "))));
             }
         }
         let mut selected = Vec::new();
@@ -1613,7 +1646,7 @@ async fn flush(
             thread_ids.insert(b.thread_id.clone());
         }
         let (remaining, wakes) = {
-            let t = state.target(channel, &target, now, settings);
+            let t = state.target(&source_id, channel, &target, now, settings);
             if charged {
                 t.tokens -= 1;
             }
@@ -1723,12 +1756,12 @@ async fn flush(
         }
     }
     drop(guard);
-    for (channel, target, body) in alerts {
+    for (source_id, channel, target, body) in alerts {
         if let Err(error) = executor.escalate(body).await {
             let _guard = lock.lock().await;
             let mut state = State::load(dir)?;
             state
-                .target(channel, &target, now, settings)
+                .target(&source_id, channel, &target, now, settings)
                 .escalation_error = Some(error.clone());
             state.save(dir)?;
             #[cfg(not(test))]
@@ -1745,7 +1778,8 @@ async fn flush(
             let _guard = lock.lock().await;
             let mut state = State::load(dir)?;
             let breaker = state.targets.iter().any(|t| {
-                t.channel == batch[0].channel
+                t.source_id == batch[0].source_id
+                    && t.channel == batch[0].channel
                     && Some(t.target.as_str()) == batch[0].target.as_deref()
                     && t.breaker
             });
@@ -1852,7 +1886,9 @@ async fn flush(
                 .retain(|s| s.id != batch[0].deliveries[0].subscription);
         }
         if let Some(t) = state.targets.iter_mut().find(|t| {
-            t.channel == batch[0].channel && Some(t.target.as_str()) == batch[0].target.as_deref()
+            t.source_id == batch[0].source_id
+                && t.channel == batch[0].channel
+                && Some(t.target.as_str()) == batch[0].target.as_deref()
         }) {
             if status == "failed" {
                 t.reachability.fail("delivery-failed");
@@ -2014,6 +2050,7 @@ pub(crate) async fn migrate() -> Result<()> {
         for d in &b.deliveries {
             if !d.target.is_empty() && d.failures > 0 {
                 let t = state.target(
+                    &b.source_id,
                     d.channel,
                     &d.target,
                     chrono::Utc::now().timestamp(),
@@ -2128,7 +2165,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                                 if b.agent.is_empty() || b.agent == "codex" {
                                     crate::kernel::origin::ORIGIN
                                         .scope(
-                                            json!({"ingressId":b.ingress}),
+                                            json!({"sourceId":b.source_id}),
                                             crate::waiter::codex_observe(&c, &args),
                                         )
                                         .await
@@ -2157,7 +2194,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                     let mut b = old;
                     let mut observed = observed;
                     for request in observed["interaction"].as_array_mut().into_iter().flatten() {
-                        crate::respond_tokens::issue(&b.ingress, request)?;
+                        crate::respond_tokens::issue(&b.source_id, request)?;
                     }
                     match retry::handle(&control, &mut b, &observed).await {
                         Ok(true) => continue,
@@ -2270,7 +2307,10 @@ mod tests {
             "/projects/sample",
         )
         .unwrap();
-        binding(dir, "thread-1", "turn-1").unwrap().unwrap()
+        let mut b = binding(dir, "thread-1", "turn-1").unwrap().unwrap();
+        b.source_id = "claude".into();
+        persist(dir, &b).unwrap();
+        b
     }
     fn interaction(id: Value) -> Value {
         json!({"state":"interaction-required", "interaction":[{"id":id,"method":"item/commandExecution/requestApproval","params":{"command":"SECRET_COMMAND"}}],"activeFlags":["waitingOnApproval"],"finalResponse":"SECRET_OUTPUT","error":"SECRET_ERROR"})
@@ -2285,7 +2325,7 @@ mod tests {
         )
         .unwrap();
         let mut b = binding(dir, thread, "turn-1").unwrap().unwrap();
-        b.ingress = "claude".into();
+        b.source_id = "claude".into();
         b.created_at = at;
         b.caused_by =
             json!({"op":"codex_send","at":"2026-10-01T00:00:00Z","requestId":"request-test"});
@@ -2592,7 +2632,13 @@ mod tests {
             }
             .into();
             d.attempted_at = 100;
-            let target = state.target(b.channel, b.target.as_ref().unwrap(), now, &settings);
+            let target = state.target(
+                &b.source_id,
+                b.channel,
+                b.target.as_ref().unwrap(),
+                now,
+                &settings,
+            );
             match name {
                 "breaker" => target.breaker = true,
                 "empty" => target.empty_since = Some(now - 60),
@@ -2680,7 +2726,7 @@ mod tests {
         )
         .await
         .unwrap();
-        b.ingress = "caller".into();
+        b.source_id = "caller".into();
         persist(&dir.0, &b).unwrap();
         assert!(
             recoverable_response_in(&dir.0, "caller", string(&request, "id"), "old-session")
@@ -2735,7 +2781,7 @@ mod tests {
     async fn quiet_receipts_health_and_ack_distinguish_consumed_events() {
         let dir = Sandbox::new();
         let mut b = fixture(&dir.0);
-        b.ingress = "claude".into();
+        b.source_id = "claude".into();
         persist(&dir.0, &b).unwrap();
         let fake = Fake::success();
         super::process(
@@ -2798,7 +2844,7 @@ mod tests {
     async fn inbox_session_dedup_and_scoped_ack() {
         let dir = Sandbox::new();
         let mut b = fixture(&dir.0);
-        b.ingress = "claude".into();
+        b.source_id = "claude".into();
         persist(&dir.0, &b).unwrap();
         let fake = Fake::success();
         process(
@@ -2885,7 +2931,7 @@ mod tests {
         let mut state = State::load(&dir.0).unwrap();
         state.subscriptions.push(subscriptions::Subscription {
             id: "mcp-test".into(),
-            ingress: "chatgpt".into(),
+            source_id: "chatgpt".into(),
             channel: Channel::McpEvents,
             target: "callback".into(),
             op: "task_status".into(),
@@ -2941,16 +2987,11 @@ mod tests {
                 .unwrap()
                 .is_null()
         );
-        assert!(inbox_select(
-            &dir.0,
-            "different-ingress",
-            &[],
-            false,
-            None,
-            Some(&filters)
-        )
-        .unwrap()
-        .is_null());
+        assert!(
+            inbox_select(&dir.0, "different-source", &[], false, None, Some(&filters))
+                .unwrap()
+                .is_null()
+        );
         let path = inbox_path(&dir.0, "claude");
         let before = load(&path).unwrap();
         for _ in 0..2 {

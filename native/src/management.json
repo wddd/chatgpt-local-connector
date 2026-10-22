@@ -1093,6 +1093,10 @@
               },
               "allow": {
                 "type": "boolean"
+              },
+              "sourceId": {
+                "type": "string",
+                "description": "new or an existing source ID on this connection with the same product."
               }
             },
             "additionalProperties": false,
@@ -2493,6 +2497,107 @@
         },
         "additionalProperties": false
       }
+    },
+    {
+      "name": "source.list",
+      "method": "GET",
+      "route": "source",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "List persistent control sources, including revoked and pending sources.",
+      "localOnly": true
+    },
+    {
+      "name": "source.update",
+      "method": "PUT",
+      "route": "source/{id}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "product": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "body"
+        ]
+      },
+      "description": "Update a source label or registry product.",
+      "localOnly": true
+    },
+    {
+      "name": "source.disconnect",
+      "method": "POST",
+      "route": "source/{id}/disconnect",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "Revoke source access and retain history.",
+      "localOnly": true
+    },
+    {
+      "name": "source.claim",
+      "method": "POST",
+      "route": "source/{id}/claim",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "sourceId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "sourceId"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "body"
+        ]
+      },
+      "description": "Approve a pending source: sourceId=new or an existing source ID on the same connection and product. The anchor moves after token exchange.",
+      "localOnly": true
     }
   ]
 }

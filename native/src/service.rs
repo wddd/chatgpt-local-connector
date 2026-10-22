@@ -480,7 +480,10 @@ impl Service {
                 json!({"time":now(),"level":"INFO","msg":format!("{method} {route}: started"),"operationId":operation,"ingressId":ingress_id,"phase":"started"}),
             )?;
         }
-        let result = self.request_inner(route, method, body).await;
+        let mut result = self.request_inner(route, method, body).await;
+        if let Ok(value) = &mut result {
+            crate::sources::decorate(value);
+        }
         if audit || (route == "runtime/lease" && result.is_err()) {
             let outcome = if result.is_ok() {
                 "succeeded"
@@ -503,6 +506,48 @@ impl Service {
     ) -> Result<Value> {
         if self.closing.load(Ordering::SeqCst) {
             return Err("core shutting down".into());
+        }
+        if route == "source" && method == "GET" {
+            return Ok(json!({"sources":crate::sources::list()?}));
+        }
+        if let Some(path) = route.strip_prefix("source/") {
+            let (id, action) = path.split_once('/').unwrap_or((path, ""));
+            let source = crate::sources::get(id)?;
+            if action.is_empty() && method == "PUT" {
+                return crate::sources::update(id, &body);
+            }
+            if action == "disconnect" && method == "POST" {
+                if source["credential"]["type"] == "oauth-grant" {
+                    if let Ok(i) = self.ingress(string(&source, "ingressId")).await {
+                        let _runtime = i.operation.lock().await;
+                        let mut oauth = i.oauth.lock().await;
+                        let current = crate::sources::get(id)?;
+                        oauth.revoke(string(&current["credential"], "grantId"))?;
+                    }
+                } else if let Ok(i) = self.ingress(string(&source, "ingressId")).await {
+                    i.stop().await?;
+                }
+                return crate::sources::disconnect(id);
+            }
+            if action == "claim" && method == "POST" {
+                let i = self.ingress(string(&source, "ingressId")).await?;
+                let _runtime = i.operation.lock().await;
+                if i.retired.load(Ordering::SeqCst) || i.meta.lock().await["auth"] != "oauth" {
+                    return Err("Connection configuration changed; retry".into());
+                }
+                let mut oauth = i.oauth.lock().await;
+                oauth.decide(
+                    string(&source["credential"], "grantId"),
+                    true,
+                    Some(
+                        body["sourceId"]
+                            .as_str()
+                            .ok_or("sourceId must be new or an existing source ID")?,
+                    ),
+                )?;
+                return Ok(json!({"approved":true,"sourceId":body["sourceId"]}));
+            }
+            return Err("UNKNOWN_ROUTE".into());
         }
         if route.starts_with("local-access/") {
             return crate::local_access::request(self, route, method, body).await;
@@ -622,7 +667,10 @@ impl Service {
         }
         if route == "agents/conversations/timeline" && method == "POST" {
             crate::management::resolve("agents.conversations.timeline", &json!({"body":body}))?;
-            return self.agents.conversation_timeline(&self.control, &body).await;
+            return self
+                .agents
+                .conversation_timeline(&self.control, &body)
+                .await;
         }
         if let Some(session) = route
             .strip_prefix("agents/timeline/")
@@ -926,6 +974,7 @@ impl Service {
                     oauth.decide(
                         string(&body, "id"),
                         body["allow"].as_bool().ok_or("allow must be boolean")?,
+                        body["sourceId"].as_str(),
                     )?;
                     return oauth.status(string(&body, "id"), &resource);
                 }
@@ -955,6 +1004,13 @@ impl Service {
                 let _runtime = i.operation.lock().await;
                 i.stop().await?;
                 i.retired.store(true, Ordering::SeqCst);
+                i.oauth.lock().await.reset()?;
+                for source in crate::sources::list()?
+                    .iter()
+                    .filter(|s| s["ingressId"] == id)
+                {
+                    crate::sources::disconnect(string(source, "id"))?;
+                }
                 let mut entries = self.ingresses.lock().await;
                 let ids: Vec<_> = entries.keys().filter(|k| *k != id).cloned().collect();
                 save(&root().join("ingresses/index.json"), &json!(ids))?;

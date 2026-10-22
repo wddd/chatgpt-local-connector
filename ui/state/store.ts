@@ -30,6 +30,7 @@ let applyingPreferences = false;
 let preferencesReady: Promise<void> | undefined;
 export function preparePreferences(): Promise<void> {
   return preferencesReady ??= import("../api").then(async ({api}) => {
+    localStorage.removeItem("arc.approved-source-labels");
     const defaults = await api<Record<string,string>>("preferences");
     const values: Record<string,string> = {};
     for (const key of [...Object.keys(defaults),...preferenceListeners.keys(),"update-announcement"]) {

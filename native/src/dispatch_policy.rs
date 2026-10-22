@@ -508,6 +508,7 @@ pub(crate) fn record(receipt: &Value) -> Result<()> {
     for key in ["requestId", "threadId", "turnId", "dispatchMode"] {
         row[key] = receipt[key].clone();
     }
+    row["origin"] = receipt["origin"].clone();
     row["agent"] = receipt["agent"]
         .as_str()
         .map_or(json!("codex"), |v| json!(v));
@@ -575,7 +576,7 @@ pub(crate) fn record_native_retry(thread: &str, previous: &str, retry: &Value) -
     let config = &retry["configuration"];
     let row = json!({
         "agent":"codex","taskId":thread,"options":{},"requestId":turn,"threadId":thread,"turnId":turn,"dispatchMode":"new-turn",
-        "dispatchSource":"native-retry","retryOf":previous,"nativeTrigger":retry["trigger"],
+        "origin":parent["origin"],"dispatchSource":"native-retry","retryOf":previous,"nativeTrigger":retry["trigger"],
         "model":config["model"],"effort":config["effort"],"serviceTier":config["serviceTier"],
         "source":{"model":"native-persisted-turn-context","effort":"native-persisted-turn-context","serviceTier":"native-persisted-turn-context"},
         "configurationEvidence":"native-persisted-turn-context","effectiveConfiguration":config,
@@ -697,7 +698,7 @@ fn save_review(thread: &str, turn: &str, args: &Value) -> Result<Value> {
 /// Snapshot at submission; later session changes never rewrite this turn's choices.
 pub(crate) fn agent_record(task: &Value, args: &Value) -> Result<()> {
     record(
-        &json!({"agent":task["agent"],"taskId":task["taskId"],"threadId":task["taskId"],
+        &json!({"origin":crate::kernel::origin::current_origin(),"agent":task["agent"],"taskId":task["taskId"],"threadId":task["taskId"],
         "turnId":task["turnId"],"requestId":args["requestId"],"dispatchMode":"new-turn",
         "arguments":args,"task":{"dispatch":task["dispatch"]}}),
     )

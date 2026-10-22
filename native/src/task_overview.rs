@@ -128,6 +128,7 @@ fn compact(
     };
     out["title"] = title.cloned().unwrap_or(Value::Null);
     out["threadId"] = row["id"].clone();
+    out["origin"] = crate::sources::task_origin(string(row, "id"), None);
     out["project"] = t["cwd"].clone();
     out["status"] = json!(status);
     out["updatedAt"] = t.get("updatedAt").unwrap_or(&row["updatedAt"]).clone();

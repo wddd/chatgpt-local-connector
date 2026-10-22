@@ -4190,7 +4190,7 @@
               "type": "string",
               "minLength": 1
             },
-            "description": "Match together with taskIds. Omitting both matches all visible tasks in the current ingress."
+            "description": "Match together with taskIds. Omitting both matches all visible tasks in the current source."
           },
           "taskIds": {
             "type": "array",
@@ -4259,7 +4259,7 @@
     },
     {
       "name": "notification_ack",
-      "description": "Confirm receipt of a one-time code in the target conversation with target + code. Only success marks reachability verified. Expired or replayed codes are rejected. Other arguments retain event-read semantics. Mark current-ingress events read. Returns markedRead (new), alreadyRead (read/delivered), notFound, and notFoundEventIds. Does not respond to or cancel tasks. Claude arcInbox attaches only events matching the current notify.target. No target means no attachment. Each matching event is attached once. Successfully pushed/resolved events are not attached again. Attachment does not mean read. MCP subscriptions use callbacks. Other ingresses retain unread reminders. Reading the corresponding turn also marks existing events read. delivered/digested/resolved count as alreadyRead. Duplicate IDs count once. Always available within the current ingress only.",
+      "description": "Confirm receipt of a one-time code in the target conversation with target + code. Only success marks reachability verified. Expired or replayed codes are rejected. Other arguments retain event-read semantics. Mark current-source events read. Returns markedRead (new), alreadyRead (read/delivered), notFound, and notFoundEventIds. Does not respond to or cancel tasks. Claude arcInbox attaches only events matching the current notify.target. No target means no attachment. Each matching event is attached once. Successfully pushed/resolved events are not attached again. Attachment does not mean read. MCP subscriptions use callbacks. Other sources retain unread reminders. Reading the corresponding turn also marks existing events read. delivered/digested/resolved count as alreadyRead. Duplicate IDs count once. Always available within the current source only.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4383,7 +4383,7 @@
     },
     {
       "name": "notify_status",
-      "description": "Return persistent reachability:verified|unverified|failed and reason per target. Only a conversation code acknowledgement verifies reachability. No handshake is unverified. Delivery failure or handshake timeout is failed. Ordinary send success does not promote reachability. Unverified/failed targets appear by default. Inspect the current ingress's Claude/MCP subscriptions, token buckets, deliveries, thread controls, and latest delivery/read times. Filter by target or threadId. Default scope includes targets/threads with deliveries/batches in the last hour, pending, breaker, emptySince, escalated, or non-normal controls. Only the latest turn per thread is included. all:true or target/threadId filters return complete in-scope history. summary reports totals and omissions. subscriptions/deliveries unify both channels without exposing webhook credentials. timing.queuedAt/startedAt/finishedAt are Unix milliseconds. queueMs accumulates waiting through the latest attempt. sendMs is the latest send duration. queueReason is the latest blocking reason. These do not prove receiver display. callback-accepted only confirms callback receipt.",
+      "description": "Return persistent reachability:verified|unverified|failed and reason per target. Only a conversation code acknowledgement verifies reachability. No handshake is unverified. Delivery failure or handshake timeout is failed. Ordinary send success does not promote reachability. Unverified/failed targets appear by default. Inspect the current source's Claude/MCP subscriptions, token buckets, deliveries, thread controls, and latest delivery/read times. Filter by target or threadId. Default scope includes targets/threads with deliveries/batches in the last hour, pending, breaker, emptySince, escalated, or non-normal controls. Only the latest turn per thread is included. all:true or target/threadId filters return complete in-scope history. summary reports totals and omissions. subscriptions/deliveries unify both channels without exposing webhook credentials. timing.queuedAt/startedAt/finishedAt are Unix milliseconds. queueMs accumulates waiting through the latest attempt. sendMs is the latest send duration. queueReason is the latest blocking reason. These do not prove receiver display. callback-accepted only confirms callback receipt.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4734,7 +4734,7 @@
     },
     {
       "name": "codex_queue",
-      "description": "Inspect the current ingress's persistent send queue. Returns status, summary, queueId, and submission results in FIFO position order. Filter by thread or queue item. The queue persists across restarts with per-thread FIFO order. Active turns and pending interactions keep it waiting. Failed/interrupted turns pause subsequent messages. Capacity recovery takes precedence. Successful recovery resumes the queue. Native writes are revalidated serially. Thread advancement or uncertain submission leaves failed entries without automatic resend or steering. Read the corresponding receipt first.",
+      "description": "Inspect the current source's persistent send queue. Returns status, summary, queueId, and submission results in FIFO position order. Filter by thread or queue item. The queue persists across restarts with per-thread FIFO order. Active turns and pending interactions keep it waiting. Failed/interrupted turns pause subsequent messages. Capacity recovery takes precedence. Successful recovery resumes the queue. Native writes are revalidated serially. Thread advancement or uncertain submission leaves failed entries without automatic resend or steering. Read the corresponding receipt first.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4776,7 +4776,7 @@
     },
     {
       "name": "codex_queue_control",
-      "description": "Cancel or resume undispatched messages for a thread in the current ingress. Omitted queueId applies to all queued/paused items in that thread. Submitted messages cannot be recalled.",
+      "description": "Cancel or resume undispatched messages for a thread in the current source. Omitted queueId applies to all queued/paused items in that thread. Submitted messages cannot be recalled.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -6002,7 +6002,7 @@
       "notify": {
         "claude": "notify_status reports target reachability and reason.\nunverified means no handshake.\nfailed means delivery failure or handshake timeout.\nAn active or full bucket does not prove receipt.\nA successful send does not prove receipt.\nnotify_control({action:\"verify\",target}) sends a code.\nYou MUST acknowledge it in the target conversation within five minutes via notification_ack({target,code}).\nStatus and receipts never reveal the code.\nInspect delivery records on failure.\nSee notify_control for mute/rebind/breaker.\nOrdinary notification_ack only marks events read.\nIt never responds to or cancels tasks.\narcInbox/inbox_wait require your target.\nReading a turn acknowledges its events.",
         "chatgpt": "MCP Events use a verified webhook.\ncallback-accepted confirms callback receipt, not model processing.\nTarget reachability remains unverified.\nUse notify_status for subscriptions/deliveries.\nUse notify_control for mute/unmute/breaker.\nResubscribe to change the webhook.\nActive subscriptions do not duplicate events in arcInbox.\nnotification_ack marks events read.\nReading a turn also acknowledges its events.\nNeither operation responds to or cancels tasks.",
-        "other": "inbox_wait waits for events visible to this ingress without marking them read.\nRead the turn or use notification_ack to acknowledge events.\nNeither operation responds to or cancels tasks.\nUse notify_status for this ingress.\nUse notify_control for mute/breaker controls."
+        "other": "inbox_wait waits for events visible to this source without marking them read.\nRead the turn or use notification_ack to acknowledge events.\nNeither operation responds to or cancels tasks.\nUse notify_status for this source.\nUse notify_control for mute/breaker controls."
       },
       "review": "You MUST review the notification's final message against the user's acceptance criteria.\nFetch codex_read/items/changes or agent_read/events when evidence is missing.\nA completed dispatch operation is not a completed task.\nConfirm task status with codex_wait/agent_wait.\nReport unresolved evidence.\nContinue only within authorization.\nBind the next Claude turn explicitly.",
       "approvals": "For needs-input, add the user's result to the supplied respond.args.\nInvoke respond.op via act.\nYou MUST NOT resend the task.\nIf respond is absent or stale, query codex_pending/agent_pending.\nRead guide({op:\"codex_respond\"}) or guide({op:\"agent_respond\"}) for the current response schema.\nYou MUST supply the user's decision.\nYou MUST NOT auto-approve.\ncanRespond=false requires the native client.\nIf the response is unconfirmed, read back before retrying.\nYou MUST NOT answer a resolved request again.\nFor ARC awaiting-approval, use act receipt with the original requestId and the user's approve/bypass/reject decision.",

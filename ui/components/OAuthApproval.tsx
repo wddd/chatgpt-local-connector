@@ -4,13 +4,17 @@ import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
 import { onboarding, sourceForClient } from "../state/onboarding";
 import type { Ingress, OAuthRequest } from "../state/types";
-import { Button, Dialog, Notice } from "./ui";
+import { Button, Dialog, Notice, SingleChoice } from "./ui";
 
 export function ApprovalCard({ request, ingress, inline = false }: { request: OAuthRequest; ingress: Ingress; inline?: boolean }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [sourceId, setSourceId] = useState("new");
+  const flow = onboarding.use();
   async function decide(allow: boolean) {
     setBusy(true); setError("");
-    try { await api(`ingress/${ingress.id}/oauth/decision`, "POST", { id: request.id, allow }); await refreshConnector(); }
+    try {
+      if (allow && request.sourceId && flow?.requestId === request.id && flow.source) await api(`source/${request.sourceId}`, "PUT", { product: flow.source });
+      await api(`ingress/${ingress.id}/oauth/decision`, "POST", { id: request.id, allow, sourceId }); await refreshConnector(); }
     catch { setError(t("connect.approvalFailed")); }
     finally { setBusy(false); }
   }
@@ -20,6 +24,7 @@ export function ApprovalCard({ request, ingress, inline = false }: { request: OA
       <strong className="pairing-code">{request.pairingCode ?? "—"}</strong>
       <p>{t("connect.client", { name: request.clientName })}</p>
       <p>{t("connect.scope", { scope: ingress.toolPolicy === "all" ? t("connect.allPermissions") : t("connect.selectedPermissions") })}</p>
+      <SingleChoice label={t("source.authorization")} value={sourceId} onChange={setSourceId} disabled={busy} options={[{ value: "new", label: t("source.new") }, ...(ingress.sources ?? []).filter(s => s.id !== request.sourceId && s.credential.type === "oauth-grant" && !ingress.oauth?.pending.some(p => p.id === s.credential.grantId) && s.product === (flow?.requestId === request.id ? flow.source : request.product)).map(s => ({ value: s.id, label: t("source.reauthorize", { name: s.label }) }))]} />
       <div className="actions"><Button disabled={busy} onClick={() => void decide(false)}>{t("oauthDeny")}</Button><Button variant="primary" busy={busy} onClick={() => void decide(true)}>{t("oauthAllow")}</Button></div>
     </> : <p>{t(request.status === "approved" ? "connect.returning" : request.status === "denied" ? "oauthDenied" : "oauthFinished")}</p>}
     <details><summary>{t("connect.details")}</summary><p className="muted small">{request.resource}</p><p className="muted small">{request.redirectUri}</p></details>

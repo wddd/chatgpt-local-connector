@@ -27,9 +27,11 @@ export interface Config {
   autoStart: boolean;
   hasApiKey: boolean;
 }
-export type OAuthRequest = { id: string; status: string; clientName: string; redirectUri: string; resource: string; pairingCode?: string; expiresAt?: number };
+export type ControlSource = { id: string; ingressId: string; credential: { type: "oauth-grant" | "ingress" | "local"; grantId?: string; clientId?: string }; product: string; platform: string; label: string; createdAt: string; connectedAt: number | null; lastSeenAt: number | null; state: "connected" | "disconnected" | "revoked" };
+export type OAuthRequest = { sourceId?: string; product?: string; sourceCandidates?: ControlSource[]; id: string; status: string; clientName: string; redirectUri: string; resource: string; pairingCode?: string; expiresAt?: number };
 export type OAuthGrant = { id: string; clientName: string; clientId: string; connectedAt: number | null; registeredAt: number | null };
 export interface Ingress {
+  sources?: ControlSource[];
   oauth?: { pending: OAuthRequest[]; grants: OAuthGrant[] };
   toolPolicy?: ToolPolicy;
   discoveredUrls?: string[];

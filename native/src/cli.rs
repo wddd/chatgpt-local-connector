@@ -49,6 +49,10 @@ const COMMANDS: &[&str] = &[
     "disconnect",
     "verify",
     "verify --fresh",
+    "source list",
+    "source update <id> --stdin",
+    "source disconnect <id>",
+    "source claim <pending-source-id> --stdin",
     "ingress list",
     "ingress presets",
     "ingress add --stdin",
@@ -108,7 +112,7 @@ pub(crate) fn onboarding(ingress: &Value) -> Value {
         "preset":crate::control_sources::preset(string(ingress,"controlSource")),
         "verificationPrompt":format!("Call act with {}. Verify the connection only. Do not create a task.",json!({"op":"connector_verify","args":{"code":ingress["verification"]["code"]}})),
         "executionPrompt":"Call guide first. Follow its examples to create a harmless Agent task through act codex_create or agent_create with purpose:\"self-test\" and notify:null. The task MUST NOT call tools or read or modify files. It MUST reply only ARC_ONBOARDING_OK. Use a unique UUID requestId in the act envelope. Read the receipt, taskId, and turnId through act({op:receipt,args:{requestId}}). Use query agent_wait or codex_wait with those task identifiers and the default 30-second wait. On timeout, keep the original IDs and previous snapshotHash as expectedHash. Continue until a terminal state or interaction. Read final output with query agent_read or codex_read. Timeout does not terminate the task. Do not create it again. For unknown state, read the original requestId without duplicate creation.",
-        "identityNote":"controlSource is a configured label, not an authenticated user identity. Bearer proves possession only.",
+        "identityNote":"Ingress controlSource is an initial product default. Authenticated calls resolve a credential-anchored sourceId; origin.controlSource is that source product. Bearer clients sharing one connection share one source.",
         "clientSetup":"Read preset.status, supportedAuth and caveat before connecting. Conditional paths require client verification; auth-limited paths must not silently fall back to none. A preset is not an installed integration.",
         "secretDelivery":"Supply credentials using stdin or a protected local file. Never paste tokens into chat or use command-line arguments."})
 }
@@ -564,6 +568,10 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         ["call", name] => crate::management::call(name, json!({})).await,
         ["call", name, "--stdin"] => crate::management::call(name, stdin_json()?).await,
 
+        ["source", "list"] => forward_request("source", "GET", json!({})).await,
+        ["source", "update", id, "--stdin"] => forward_request(&format!("source/{id}"), "PUT", stdin_json()?).await,
+        ["source", "disconnect", id] => forward_request(&format!("source/{id}/disconnect"), "POST", json!({})).await,
+        ["source", "claim", id, "--stdin"] => forward_request(&format!("source/{id}/claim"), "POST", stdin_json()?).await,
         ["storage", "compact"] => {
             // Refuse mixed old/new writers before changing the archive layout.
             let owner = crate::runtime::Client::connect(crate::runtime::binary()?, "cli").await?;
@@ -581,6 +589,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
                 {"commands":"app snapshot [--out <directory>] [--stdin]; install-shim","description":"Export the live UI and a macOS WebView PNG; install the macOS CLI symlink."},
                 {"commands":"setup next|apply|wait|playbook|reset; skill install --target codex|claude-code","description":"Configure ARC with an Agent; follow the returned step and nextAction."},
                 {"commands":"status; doctor; onboarding; context --stdin","description":"Read current state, diagnostics and onboarding evidence."},
+                {"commands":"source list; source update <id> --stdin; source disconnect <id>; source claim <pending-source-id> --stdin","description":"Manage source identity; claim accepts sourceId=new or an existing source ID."},
                 {"commands":"ingress list|presets|add|update|remove|start|stop|restart|probe|doctor|verify","description":"Manage and diagnose a selected connection; add/update accept JSON on stdin."},
                 {"commands":"ingress oauth list|request|decision|register|revoke; ingress token rotate","description":"Manage this connection's OAuth access and bearer token."},
                 {"commands":"app start|status|quit|restart; uninstall [--purge]","description":"Control the installed application; uninstall to Trash, or permanently with --purge."},

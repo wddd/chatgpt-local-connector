@@ -5,7 +5,7 @@ import { t } from "../i18n";
 export interface TaskRecord {
   agent?: string;
   taskId?: string;
-  origin?: { ingressId?: string };
+  origin?: { ingressId?: string; sourceId?: string; sourceLabel?: string };
   requestId: string;
   executionOwner?: "desktop" | "connector";
   threadId?: string;
@@ -17,7 +17,7 @@ export interface TaskRecord {
   approval: { decision: string; source: string; at: string };
   error?: { message?: string };
   task: {
-    origin?: { ingressId?: string };
+    origin?: { ingressId?: string; sourceId?: string; sourceLabel?: string };
     detailsRecorded?: boolean;
     kind: string;
     title?: string;

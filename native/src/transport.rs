@@ -407,12 +407,6 @@ enum ControlSource<'a> {
     Local(&'a Arc<crate::execution::Execution>),
 }
 impl ControlSource<'_> {
-    fn id(&self) -> &str {
-        match self {
-            Self::Ingress(s) => &s.id,
-            Self::Local(_) => "local-cli",
-        }
-    }
     fn execution(&self) -> &Arc<crate::execution::Execution> {
         match self {
             Self::Ingress(s) => &s.execution,
@@ -428,9 +422,7 @@ impl ControlSource<'_> {
     async fn origin(&self) -> Value {
         match self {
             Self::Ingress(s) => s.origin().await,
-            Self::Local(_) => {
-                json!({"ingressId":"local-cli","controlSource":"local-cli","authType":"local"})
-            }
+            Self::Local(_) => crate::kernel::origin::current_origin(),
         }
     }
     async fn allows(&self, name: &str) -> bool {
@@ -494,7 +486,10 @@ async fn local_control(s: &Arc<Service>, body: Value) -> Result<Value> {
         envelope
     };
     crate::kernel::origin::ORIGIN
-        .scope(source.origin().await, call_tool(&source, tool, envelope))
+        .scope(
+            crate::sources::local_origin()?,
+            call_tool(&source, tool, envelope),
+        )
         .await
 }
 async fn enabled_ops(s: &ControlSource<'_>) -> Vec<Value> {
@@ -595,6 +590,7 @@ async fn call_tool(s: &ControlSource<'_>, tool: &str, envelope: Value) -> Result
         }
         Err(error) => (json!({"error":crate::egress::failure(&error)}), true),
     };
+    crate::sources::decorate(&mut value);
     if !error {
         let task = value["threadId"]
             .as_str()
@@ -638,7 +634,7 @@ async fn call_tool(s: &ControlSource<'_>, tool: &str, envelope: Value) -> Result
         Value::Null
     } else {
         match crate::claude_notify::inbox(
-            s.id(),
+            string(&s.origin().await, "sourceId"),
             &reads,
             s.origin().await["controlSource"] == "claude",
             args["notify"]["target"].as_str(),
@@ -666,11 +662,14 @@ pub async fn mcp(s: &Arc<Service>, request: Value) -> Result<Value> {
     mcp_ingress(&s.primary().await?, request).await
 }
 pub async fn mcp_ingress(s: &Arc<crate::ingress::Ingress>, request: Value) -> Result<Value> {
-    mcp_ingress_authenticated(s, request, None).await
+    // This entry point is behind authenticated local management / native IPC.
+    let principal = json!({"type":"ingress","ingressId":s.id});
+    mcp_ingress_authenticated(s, request, &principal, None).await
 }
 pub(crate) async fn mcp_ingress_authenticated(
     s: &Arc<crate::ingress::Ingress>,
     request: Value,
+    principal: &Value,
     header: Option<&str>,
 ) -> Result<Value> {
     let (local, enabled) = {
@@ -680,7 +679,7 @@ pub(crate) async fn mcp_ingress_authenticated(
     if local && (!s.connected.load(std::sync::atomic::Ordering::SeqCst) || !enabled) {
         return Err("Local connection disabled".into());
     }
-    let mut origin = s.origin().await;
+    let mut origin = s.principal_origin(principal).await?;
     if let Ok(principal) = crate::claude_notify::mcp_events::principal(s, header).await {
         origin["eventPrincipal"] = json!(principal);
     }

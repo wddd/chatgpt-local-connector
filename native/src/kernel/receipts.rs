@@ -31,6 +31,7 @@ impl ReceiptStore {
             receipt["previousState"] = receipt["state"].clone();
             receipt["state"] = json!("unconfirmed");
         }
+        crate::sources::decorate(&mut receipt);
         Ok(receipt)
     }
     // Callers serialize replay/reserve/launch per request ID. create_new also
@@ -48,7 +49,9 @@ impl ReceiptStore {
             return Ok(None);
         }
         let mut receipt = self.read(request, session)?;
-        if receipt["digest"] != digest {
+        if receipt["origin"]["sourceId"] != crate::kernel::origin::current_origin()["sourceId"]
+            || receipt["digest"] != digest
+        {
             return Err("REQUEST_ID_CONFLICT".into());
         }
         receipt["replayed"] = json!(true);

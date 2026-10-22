@@ -42,7 +42,8 @@
         "zh-CN": "设置 › 应用 › 创建"
       },
       "url": "https://chatgpt.com/#settings/Connectors"
-    }
+    },
+    "platform": "openai"
   },
   {
     "id": "claude",
@@ -88,7 +89,8 @@
         "zh-CN": "设置 › 连接器 › 添加自定义连接器"
       },
       "url": "https://claude.ai/settings/connectors"
-    }
+    },
+    "platform": "anthropic"
   },
   {
     "id": "gemini",
@@ -127,7 +129,8 @@
         "zh-CN": "设置 › 关联的应用 › 自定义应用"
       },
       "url": "https://gemini.google.com/"
-    }
+    },
+    "platform": "google"
   },
   {
     "id": "grok",
@@ -149,8 +152,8 @@
     "customHeaders": "Grok web Custom Connector has no static Authorization header field.",
     "capability": "Remote MCP over Streamable HTTP",
     "caveat": {
-      "en": "In Grok, open Plugins → New Connector → Custom and enter the MCP URL. Use OAuth with local app consent. The public endpoint must also forward OAuth discovery and authorization routes. Grok Bot remains a custom control source.",
-      "zh-CN": "在 Grok 中打开 Plugins → New Connector → Custom，填写 MCP URL，通过本机应用确认 OAuth。公网入口还需转发 OAuth 发现与授权路由。Grok Bot 继续使用自定义控制源。"
+      "en": "In Grok, open Plugins → New Connector → Custom and enter the MCP URL. Use OAuth with local app consent. The public endpoint must also forward OAuth discovery and authorization routes.",
+      "zh-CN": "在 Grok 中打开 Plugins → New Connector → Custom，填写 MCP URL，通过本机应用确认 OAuth。公网入口还需转发 OAuth 发现与授权路由。"
     },
     "badge": {
       "en": "OAuth · Local consent",
@@ -166,7 +169,8 @@
         "zh-CN": "插件 › 新建连接器 › 自定义"
       },
       "url": "https://grok.com/connectors"
-    }
+    },
+    "platform": "xai"
   },
   {
     "id": "microsoft-copilot",
@@ -212,7 +216,8 @@
         "zh-CN": "Copilot Studio › 工具 › 添加工具"
       },
       "url": "https://copilotstudio.microsoft.com/"
-    }
+    },
+    "platform": "microsoft"
   },
   {
     "id": "notion",
@@ -247,7 +252,8 @@
     "homeUrl": "https://www.notion.so/",
     "docs": [
       "https://www.notion.com/help/mcp-connections-for-custom-agents"
-    ]
+    ],
+    "platform": "notion"
   },
   {
     "id": "slack",
@@ -283,7 +289,8 @@
     "homeUrl": "https://app.slack.com/",
     "docs": [
       "https://docs.slack.dev/ai/slackbot-mcp-client/"
-    ]
+    ],
+    "platform": "slack"
   },
   {
     "id": "cursor",
@@ -320,7 +327,8 @@
     "docs": [
       "https://cursor.com/docs/context/mcp",
       "https://prod.cursor.com/help/customization/mcp"
-    ]
+    ],
+    "platform": "cursor"
   },
   {
     "id": "github-copilot",
@@ -357,7 +365,8 @@
     "docs": [
       "https://docs.github.com/en/copilot/how-tos/provide-context/use-mcp-in-your-ide/extend-copilot-chat-with-mcp",
       "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers"
-    ]
+    ],
+    "platform": "github"
   },
   {
     "id": "raycast",
@@ -393,6 +402,97 @@
     "homeUrl": "https://www.raycast.com/",
     "docs": [
       "https://manual.raycast.com/ai/model-context-protocol"
-    ]
+    ],
+    "platform": "raycast"
+  },
+  {
+    "id": "grok-bot",
+    "displayName": "Grok Bot",
+    "shortName": "Grok Bot",
+    "platform": "xai",
+    "icon": "grok",
+    "curated": false,
+    "recommendedTransport": "https",
+    "recommendedAuth": "bearer",
+    "httpsAuth": "bearer",
+    "supportedAuth": [
+      "bearer",
+      "oauth",
+      "none"
+    ],
+    "status": "conditional",
+    "remoteMcp": "unknown",
+    "clientAuth": [],
+    "customHeaders": "",
+    "capability": "Client-configured MCP",
+    "caveat": {
+      "en": "Configure the client transport and authentication.",
+      "zh-CN": "配置客户端传输与认证。"
+    },
+    "badge": {
+      "en": "",
+      "zh-CN": ""
+    },
+    "docs": []
+  },
+  {
+    "id": "custom",
+    "displayName": "Custom",
+    "shortName": "Custom",
+    "platform": "custom",
+    "icon": "custom",
+    "curated": false,
+    "recommendedTransport": "https",
+    "recommendedAuth": "bearer",
+    "httpsAuth": "bearer",
+    "supportedAuth": [
+      "bearer",
+      "oauth",
+      "none"
+    ],
+    "status": "conditional",
+    "remoteMcp": "unknown",
+    "clientAuth": [],
+    "customHeaders": "",
+    "capability": "Client-configured MCP",
+    "caveat": {
+      "en": "Configure the client transport and authentication.",
+      "zh-CN": "配置客户端传输与认证。"
+    },
+    "badge": {
+      "en": "",
+      "zh-CN": ""
+    },
+    "docs": []
+  },
+  {
+    "id": "local-cli",
+    "displayName": "Local CLI",
+    "shortName": "Local CLI",
+    "platform": "local",
+    "icon": "custom",
+    "curated": false,
+    "recommendedTransport": "https",
+    "recommendedAuth": "bearer",
+    "httpsAuth": "bearer",
+    "supportedAuth": [
+      "bearer",
+      "oauth",
+      "none"
+    ],
+    "status": "conditional",
+    "remoteMcp": "unknown",
+    "clientAuth": [],
+    "customHeaders": "",
+    "capability": "Client-configured MCP",
+    "caveat": {
+      "en": "Configure the client transport and authentication.",
+      "zh-CN": "配置客户端传输与认证。"
+    },
+    "badge": {
+      "en": "",
+      "zh-CN": ""
+    },
+    "docs": []
   }
 ]

@@ -3,13 +3,7 @@ import { api } from "../api";
 import { locale, t } from "../i18n";
 import { useInterval } from "../state/hooks";
 import { Button, Empty, Notice } from "./ui";
-type Grant = {
-  id: string;
-  clientName: string;
-  clientId: string;
-  connectedAt: number | null;
-  registeredAt: number | null;
-};
+import type { ControlSource } from "../state/types";
 export default function OAuthGrants({
   ingressId,
   running,
@@ -21,7 +15,7 @@ export default function OAuthGrants({
   disabled?: boolean;
   onBusy: (value: boolean) => void;
 }) {
-  const [grants, setGrants] = useState<Grant[]>([]),
+  const [grants, setGrants] = useState<ControlSource[]>([]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const revision = useRef(0);
@@ -42,11 +36,11 @@ export default function OAuthGrants({
     }
     const version = revision.current;
     try {
-      const result = await api<{ grants: Grant[] }>(
-        `ingress/${ingressId}/oauth`,
+      const result = await api<{ sources: ControlSource[] }>(
+        `source`,
       );
       if (alive.current && version === revision.current) {
-        setGrants(result.grants);
+        setGrants(result.sources.filter(s => s.ingressId === ingressId));
         setError("");
       }
     } catch (e) {
@@ -57,14 +51,14 @@ export default function OAuthGrants({
   useEffect(() => {
     void refresh();
   }, [running]);
-  async function action(route: string, body: object) {
+  async function action(id: string) {
     if (busy || disabled || !running) return;
     revision.current++;
     setBusy(true);
     onBusy(true);
     setError("");
     try {
-      await api(`ingress/${ingressId}/oauth/${route}`, "POST", body);
+      await api(`source/${id}/disconnect`, "POST");
       await refresh(true);
     } catch (e) {
       setError(String(e));
@@ -77,11 +71,11 @@ export default function OAuthGrants({
     <section className="oauth-grants">
       <h3>OAuth</h3>
       {grants.map((grant) => {
-        const timestamp = grant.connectedAt ?? grant.registeredAt;
+        const timestamp = grant.connectedAt;
         const date = timestamp == null ? null : new Date(timestamp * 1000);
         return (
           <div className="oauth-grant-row" key={grant.id}>
-            <strong className="oauth-grant-name" title={grant.clientName}>{grant.clientName}</strong>
+            <strong className="oauth-grant-name" title={grant.label}>{grant.label}</strong>
             <span className="muted small oauth-grant-time" title={t(grant.connectedAt == null ? "oauthRegisteredAt" : "oauthConnectedAt")}>
               {date ? (
                 <time dateTime={date.toISOString()}>
@@ -90,8 +84,8 @@ export default function OAuthGrants({
               ) : t("oauthTimeUnknown")}
             </span>
             <Button
-              disabled={busy || disabled || !running}
-              onClick={() => void action("revoke", { id: grant.id })}
+              disabled={busy || disabled || !running || grant.state === "revoked"}
+              onClick={() => void action(grant.id)}
             >
               {t("oauthRevoke")}
             </Button>

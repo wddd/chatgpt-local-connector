@@ -14,6 +14,8 @@ pub(super) struct Batch {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Target {
+    #[serde(default)]
+    pub source_id: String,
     pub channel: Channel,
     pub target: String,
     pub tokens: u64,
@@ -80,7 +82,7 @@ pub(super) struct Rebind {
 #[serde(rename_all = "camelCase")]
 pub(super) struct Thread {
     pub thread_id: String,
-    pub ingress: String,
+    pub source_id: String,
     pub mode: String,
     pub until: Option<i64>,
     pub digest_at: i64,
@@ -120,6 +122,7 @@ impl State {
     }
     pub fn target(
         &mut self,
+        source_id: &str,
         channel: Channel,
         target: &str,
         now: i64,
@@ -128,9 +131,10 @@ impl State {
         let index = self
             .targets
             .iter()
-            .position(|t| t.channel == channel && t.target == target)
+            .position(|t| t.source_id == source_id && t.channel == channel && t.target == target)
             .unwrap_or_else(|| {
                 self.targets.push(Target {
+                    source_id: source_id.into(),
                     channel,
                     target: target.into(),
                     tokens: capacity(settings),
@@ -152,11 +156,11 @@ impl State {
         let index = self
             .threads
             .iter()
-            .position(|t| t.thread_id == b.thread_id && t.ingress == b.ingress)
+            .position(|t| t.thread_id == b.thread_id && t.source_id == b.source_id)
             .unwrap_or_else(|| {
                 self.threads.push(Thread {
                     thread_id: b.thread_id.clone(),
-                    ingress: b.ingress.clone(),
+                    source_id: b.source_id.clone(),
                     mode: "normal".into(),
                     until: None,
                     digest_at: now,
@@ -171,7 +175,7 @@ impl State {
     pub fn rule(&self, b: &Binding) -> Option<&Thread> {
         self.threads
             .iter()
-            .find(|t| t.thread_id == b.thread_id && t.ingress == b.ingress)
+            .find(|t| t.thread_id == b.thread_id && t.source_id == b.source_id)
     }
 }
 pub(super) fn capacity(s: &Value) -> u64 {
@@ -199,15 +203,15 @@ pub(super) fn retry_seconds(failures: u32) -> i64 {
 }
 fn scope() -> Result<String> {
     let origin = crate::kernel::origin::current_origin();
-    let ingress = string(&origin, "ingressId");
-    if ingress.is_empty() {
-        Err("INGRESS_REQUIRED".into())
+    let source_id = string(&origin, "sourceId");
+    if source_id.is_empty() {
+        Err("SOURCE_REQUIRED".into())
     } else {
-        Ok(ingress.into())
+        Ok(source_id.into())
     }
 }
 pub(crate) async fn notify_status(args: &Value) -> Result<Value> {
-    let ingress = scope()?;
+    let source_id = scope()?;
     let mut args = args.clone();
     if let Some(target) = args["target"].as_str() {
         args["target"] = json!(session_id(target).unwrap_or_else(|_| target.into()));
@@ -215,7 +219,7 @@ pub(crate) async fn notify_status(args: &Value) -> Result<Value> {
     let _guard = LOCK.lock().await;
     status_in(
         &directory(),
-        &ingress,
+        &source_id,
         &args,
         chrono::Utc::now().timestamp(),
         &settings()?,
@@ -223,7 +227,7 @@ pub(crate) async fn notify_status(args: &Value) -> Result<Value> {
 }
 pub(super) fn status_in(
     dir: &Path,
-    ingress: &str,
+    source_id: &str,
     args: &Value,
     now: i64,
     settings: &Value,
@@ -235,7 +239,7 @@ pub(super) fn status_in(
         .iter()
         .cloned()
         .filter(|b| {
-            b.ingress == ingress
+            b.source_id == source_id
                 && args["threadId"].as_str().is_none_or(|id| id == b.thread_id)
                 && args["target"].as_str().is_none_or(|target| {
                     b.target.as_deref() == Some(target)
@@ -270,7 +274,7 @@ pub(super) fn status_in(
             }) {
                 continue;
             }
-            let t = state.target(channel, &target, now, settings);
+            let t = state.target(source_id, channel, &target, now, settings);
             let batches = t
                 .batches
                 .iter()
@@ -318,7 +322,7 @@ pub(super) fn status_in(
         .subscriptions
         .iter()
         .filter(|s| {
-            s.ingress == ingress
+            s.source_id == source_id
                 && args["target"]
                     .as_str()
                     .is_none_or(|t| t == s.target || t == s.id)
@@ -335,7 +339,7 @@ pub(super) fn status_in(
         if !targets.iter().any(|t| {
             t["target"] == s.target && t["channel"] == serde_json::to_value(s.channel).unwrap()
         }) {
-            let t = state.target(s.channel, &s.target, now, settings);
+            let t = state.target(source_id, s.channel, &s.target, now, settings);
             targets.push(json!({"channel":s.channel,"target":s.target,"reachability":t.reachability.state,"reason":t.reachability.reason,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"breaker":t.breaker,"pending":[],"recentBatches":t.batches,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error}));
         }
     }
@@ -397,14 +401,14 @@ pub(super) fn status_in(
     )
 }
 pub(crate) async fn notify_control(args: &Value) -> Result<Value> {
-    let ingress = scope()?;
+    let source_id = scope()?;
     if args["action"] == "verify" {
-        return super::reachability::verify(&ingress, args).await;
+        return super::reachability::verify(&source_id, args).await;
     }
     let _guard = LOCK.lock().await;
     control_in(
         &directory(),
-        &ingress,
+        &source_id,
         args,
         chrono::Utc::now().timestamp(),
         &settings()?,
@@ -412,7 +416,7 @@ pub(crate) async fn notify_control(args: &Value) -> Result<Value> {
 }
 pub(super) fn control_in(
     dir: &Path,
-    ingress: &str,
+    source_id: &str,
     args: &Value,
     now: i64,
     settings: &Value,
@@ -425,8 +429,8 @@ pub(super) fn control_in(
         let index = state
             .subscriptions
             .iter()
-            .position(|s| s.ingress == ingress && s.id == id)
-            .ok_or("NOTIFICATION_SUBSCRIPTION_NOT_OWNED_BY_INGRESS")?;
+            .position(|s| s.source_id == source_id && s.id == id)
+            .ok_or("NOTIFICATION_SUBSCRIPTION_NOT_OWNED_BY_SOURCE")?;
         let sub = &mut state.subscriptions[index];
         let previous = sub.public(now);
         match action {
@@ -449,10 +453,10 @@ pub(super) fn control_in(
         let channel = state
             .subscriptions
             .iter()
-            .find(|s| s.ingress == ingress && s.target == target)
+            .find(|s| s.source_id == source_id && s.target == target)
             .map(|s| s.channel)
-            .ok_or("NOTIFICATION_TARGET_NOT_BOUND_TO_INGRESS")?;
-        let t = state.target(channel, &target, now, settings);
+            .ok_or("NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE")?;
+        let t = state.target(source_id, channel, &target, now, settings);
         let previous = t.breaker;
         t.breaker = args["enabled"].as_bool().ok_or("enabled is required")?;
         if previous && !t.breaker {
@@ -468,8 +472,8 @@ pub(super) fn control_in(
     let thread = string(args, "threadId");
     let b = all
         .iter()
-        .find(|b| b.ingress == ingress && b.thread_id == thread)
-        .ok_or("NOTIFICATION_THREAD_NOT_BOUND_TO_INGRESS")?
+        .find(|b| b.source_id == source_id && b.thread_id == thread)
+        .ok_or("NOTIFICATION_THREAD_NOT_BOUND_TO_SOURCE")?
         .clone();
     let previous_target = b.target.clone();
     let rule = state.thread(&b, now);
@@ -514,7 +518,7 @@ pub(super) fn control_in(
             state.save(dir)?;
             for b in all
                 .iter_mut()
-                .filter(|b| b.thread_id == thread && b.ingress == ingress)
+                .filter(|b| b.thread_id == thread && b.source_id == source_id)
             {
                 apply_rebind(b, state.rule(b).unwrap());
                 persist(dir, b)?;

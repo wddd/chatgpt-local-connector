@@ -843,5 +843,8 @@
   "native.theMenuBarIconIsNotReady": "菜单栏图标尚未就绪",
   "native.invalidDisplaySettings": "显示设置无效",
   "native.unsupportedDisplaySettingsOperation": "不支持的显示设置操作",
-  "native.timedOutWaitingForCoreAfterThe": "更新后等待 Core 就绪超时：{last_error}"
+  "native.timedOutWaitingForCoreAfterThe": "更新后等待 Core 就绪超时：{last_error}",
+  "source.new": "新来源",
+  "source.reauthorize": "重新授权 {name}",
+  "source.authorization": "授权方式"
 }

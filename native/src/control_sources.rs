@@ -14,7 +14,7 @@ pub fn preset(source: &str) -> Value {
         .iter()
         .find(|p| p["id"] == source)
         .cloned()
-        .unwrap_or_else(|| json!({"id":source,"displayName":source,"curated":false,"status":"custom","recommendedTransport":"https","recommendedAuth":"bearer","caveat":{"en":"Check the client's transport and auth support; unknown sources remain valid."}}))
+        .unwrap_or_else(|| json!({"id":source,"platform":"custom","displayName":source,"curated":false,"status":"custom","recommendedTransport":"https","recommendedAuth":"bearer","caveat":{"en":"Check the client's transport and auth support; unknown sources remain valid."}}))
 }
 pub fn default_name(source: &str, names: &[String]) -> String {
     let p = preset(source);
@@ -28,7 +28,7 @@ pub fn default_name(source: &str, names: &[String]) -> String {
     candidate
 }
 
-/// Bound task waits by the configured ingress identity, not caller-supplied arguments.
+/// Bound task waits by the authenticated source product, not caller-supplied arguments.
 pub(crate) fn limit_wait(origin: &Value, args: &mut Value) -> Option<Value> {
     let source = string(origin, "controlSource");
     let metadata = preset(source);

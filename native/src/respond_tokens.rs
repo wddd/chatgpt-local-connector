@@ -1,14 +1,14 @@
-//! Durable, ingress-scoped aliases for one native interaction, not credentials.
+//! Durable, source-scoped aliases for one native interaction, not credentials.
 use crate::*;
 const TTL: i64 = 24 * 60 * 60;
 static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 fn directory() -> PathBuf {
     root().join("respond-tokens")
 }
-fn identity(ingress: &str, request: &Value) -> String {
+fn identity(source_id: &str, request: &Value) -> String {
     hash(
         json!([
-            ingress,
+            source_id,
             request["owner"],
             request["id"],
             if request["owner"] == "desktop" {
@@ -20,18 +20,18 @@ fn identity(ingress: &str, request: &Value) -> String {
         .to_string(),
     )
 }
-fn issue_in(dir: &Path, ingress: &str, request: &mut Value, at: i64) -> Result<()> {
+fn issue_in(dir: &Path, source_id: &str, request: &mut Value, at: i64) -> Result<()> {
     if request["canRespond"] == false
         || request["backendSession"].is_null()
         || request["id"].is_null()
     {
         return Ok(());
     }
-    let path = dir.join(format!("{}.json", identity(ingress, request)));
+    let path = dir.join(format!("{}.json", identity(source_id, request)));
     let mut record = load(&path).unwrap_or(Value::Null);
     if record["expiresAt"].as_i64().unwrap_or(0) <= at {
         use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-        record = json!({"token":URL_SAFE_NO_PAD.encode(uuid::Uuid::new_v4().as_bytes()),"expiresAt":at+TTL,"ingress":ingress,"request":request});
+        record = json!({"token":URL_SAFE_NO_PAD.encode(uuid::Uuid::new_v4().as_bytes()),"expiresAt":at+TTL,"sourceId":source_id,"request":request});
         save(&path, &record)?;
     }
     if record["used"] != true {
@@ -40,22 +40,25 @@ fn issue_in(dir: &Path, ingress: &str, request: &mut Value, at: i64) -> Result<(
     }
     Ok(())
 }
-pub(crate) fn issue(ingress: &str, request: &mut Value) -> Result<()> {
+pub(crate) fn issue(source_id: &str, request: &mut Value) -> Result<()> {
     let _guard = LOCK.lock().map_err(|e| e.to_string())?;
     issue_in(
         &directory(),
-        ingress,
+        source_id,
         request,
         chrono::Utc::now().timestamp(),
     )
 }
 fn resolve_in(
     dir: &Path,
-    ingress: &str,
+    source_id: &str,
     token: &str,
     thread: Option<&str>,
     at: i64,
 ) -> Result<(PathBuf, Value)> {
+    if source_id.is_empty() {
+        return Err("SOURCE_REQUIRED".into());
+    }
     if token.len() != 22
         || !token
             .bytes()
@@ -68,7 +71,7 @@ fn resolve_in(
         if record["token"] != token {
             continue;
         }
-        if record["ingress"] != ingress {
+        if record["sourceId"] != source_id {
             return Err("RESPOND_TOKEN_SCOPE_MISMATCH".into());
         }
         if record["used"] == true || record["expiresAt"].as_i64().unwrap_or(0) <= at {
@@ -87,7 +90,7 @@ pub(crate) fn resolve(args: &Value) -> Result<Value> {
     let origin = crate::kernel::origin::current_origin();
     let (_, record) = resolve_in(
         &directory(),
-        string(&origin, "ingressId"),
+        string(&origin, "sourceId"),
         string(args, "respondToken"),
         args["threadId"].as_str(),
         chrono::Utc::now().timestamp(),
@@ -102,7 +105,7 @@ pub(crate) fn consume(args: &Value) -> Result<()> {
     let origin = crate::kernel::origin::current_origin();
     let (path, mut record) = resolve_in(
         &directory(),
-        string(&origin, "ingressId"),
+        string(&origin, "sourceId"),
         string(args, "respondToken"),
         args["threadId"].as_str(),
         0,
@@ -117,20 +120,20 @@ mod tests {
     fn tokens_survive_session_changes_but_reject_wrong_scope_expiry_and_reuse() {
         let dir = std::env::temp_dir().join(format!("arc-token-test-{}", id()));
         let mut request = json!({"owner":"desktop","id":"[desktop,thread,turn,question]","backendSession":"old","params":{"threadId":"thread","turnId":"turn"}});
-        issue_in(&dir, "ingress", &mut request, 100).unwrap();
+        issue_in(&dir, "sourceId", &mut request, 100).unwrap();
         let token = string(&request, "respondToken").to_owned();
         assert_eq!(token.len(), 22);
         request["backendSession"] = json!("new");
-        issue_in(&dir, "ingress", &mut request, 101).unwrap();
+        issue_in(&dir, "sourceId", &mut request, 101).unwrap();
         assert_eq!(request["respondToken"], token);
         assert!(resolve_in(&dir, "other", &token, None, 101).is_err());
-        assert!(resolve_in(&dir, "ingress", &token, Some("other-thread"), 101).is_err());
-        let (path, mut r) = resolve_in(&dir, "ingress", &token, Some("thread"), 101).unwrap();
+        assert!(resolve_in(&dir, "sourceId", &token, Some("other-thread"), 101).is_err());
+        let (path, mut r) = resolve_in(&dir, "sourceId", &token, Some("thread"), 101).unwrap();
         assert_eq!(r["request"]["backendSession"], "old");
-        assert!(resolve_in(&dir, "ingress", &token, None, 100 + TTL).is_err());
+        assert!(resolve_in(&dir, "sourceId", &token, None, 100 + TTL).is_err());
         r["used"] = json!(true);
         save(&path, &r).unwrap();
-        assert!(resolve_in(&dir, "ingress", &token, None, 101).is_err());
+        assert!(resolve_in(&dir, "sourceId", &token, None, 101).is_err());
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

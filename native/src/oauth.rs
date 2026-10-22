@@ -37,6 +37,7 @@ struct Grant {
 #[derive(Clone)]
 struct Pending {
     pairing_code: String,
+    source_choice: Option<String>,
     client: String,
     redirect: String,
     state: String,
@@ -142,7 +143,25 @@ impl OAuth {
             &serde_json::to_value(&self.stored).map_err(|e| e.to_string())?,
         )
     }
+    fn ingress_id(&self) -> &str {
+        self.path
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|v| v.to_str())
+            .unwrap_or("")
+    }
+    fn revoke_sources(&self, grants: Vec<String>) -> Result<()> {
+        crate::sources::revoke_grants(self.ingress_id(), &grants)
+    }
     pub fn reset(&mut self) -> Result<()> {
+        self.revoke_sources(
+            self.stored
+                .grants
+                .iter()
+                .map(|g| g.id.clone())
+                .chain(self.pending.keys().cloned())
+                .collect(),
+        )?;
         self.stored.grants.clear();
         self.pending.clear();
         self.persist()
@@ -154,6 +173,15 @@ impl OAuth {
             self.persist()?;
         }
         let now = clock();
+        self.revoke_sources(
+            self.pending
+                .iter()
+                .filter(|(key, p)| {
+                    p.expires <= now && !self.stored.grants.iter().any(|g| g.id == **key)
+                })
+                .map(|(key, _)| key.clone())
+                .collect(),
+        )?;
         self.pending
             .retain(|_, p| p.expires + if p.decision == Some(true) { 300 } else { 0 } > now);
         // Unused dynamic registrations expire; active grants retain their client metadata.
@@ -163,18 +191,14 @@ impl OAuth {
         self.registrations.retain(|t| *t + 3600 > now);
         Ok(())
     }
-    pub fn authenticate(&mut self, header: &str, resource: &str) -> bool {
-        if self.prepare(resource).is_err() {
-            return false;
-        }
-        let Some(token) = header.strip_prefix("Bearer ") else {
-            return false;
-        };
-        let digest = hash(token);
+    pub fn authenticate(&mut self, header: &str, resource: &str) -> Option<Value> {
+        self.prepare(resource).ok()?;
+        let digest = hash(header.strip_prefix("Bearer ")?);
         self.stored
             .grants
             .iter()
-            .any(|g| g.resource == resource && g.access == digest && g.access_expires > clock())
+            .find(|g| g.resource == resource && g.access == digest && g.access_expires > clock())
+            .map(|g| json!({"type":"oauth-grant","grantId":g.id,"clientId":g.client}))
     }
     pub(crate) fn event_principal(&self, header: &str) -> Option<String> {
         let digest = hash(header.strip_prefix("Bearer ")?);
@@ -357,10 +381,19 @@ impl OAuth {
                 break candidate;
             }
         };
+        let entry = load(
+            &self
+                .path
+                .parent()
+                .ok_or("Invalid OAuth directory")?
+                .join("config.json"),
+        )?;
+        crate::sources::pending(&entry, &key, get("client_id"), &client.name)?;
         self.pending.insert(
             key.clone(),
             Pending {
                 pairing_code,
+                source_choice: None,
                 client: get("client_id").to_owned(),
                 redirect: get("redirect_uri").to_owned(),
                 state: get("state").to_owned(),
@@ -386,7 +419,15 @@ impl OAuth {
         let pending: Vec<_> = self
             .pending
             .keys()
-            .map(|key| self.status(key, resource))
+            .map(|key| {
+                let mut status = self.status(key, resource)?;
+                if let Ok(source) = crate::sources::for_grant(self.ingress_id(), key) {
+                    status["sourceId"] = source["id"].clone();
+                    status["product"] = source["product"].clone();
+                    status["sourceCandidates"] = json!(crate::sources::candidates(&source)?);
+                }
+                Ok(status)
+            })
             .collect::<Result<_>>()?;
         let mut grants: Vec<_> = self.stored.grants.iter().collect();
         grants.sort_by_key(|g| {
@@ -424,7 +465,22 @@ impl OAuth {
         }
         Ok(json!({"id":key,"status":"expired"}))
     }
-    pub fn decide(&mut self, key: &str, allow: bool) -> Result<()> {
+    pub fn decide(&mut self, key: &str, allow: bool, choice: Option<&str>) -> Result<()> {
+        let source = crate::sources::for_grant(self.ingress_id(), key)?;
+        let choice = if allow {
+            let choice = choice
+                .map(str::to_owned)
+                .or_else(|| self.pending.get(key).and_then(|p| p.source_choice.clone()));
+            let choice = match choice {
+                Some(c) => c,
+                None if crate::sources::candidates(&source)?.is_empty() => "new".into(),
+                None => return Err("SOURCE_CHOICE_REQUIRED: choose sourceId=new or an existing source ID; use source claim".into()),
+            };
+            crate::sources::validate_claim(&source, &choice)?;
+            Some(choice)
+        } else {
+            None
+        };
         let p = self
             .pending
             .get_mut(key)
@@ -433,18 +489,22 @@ impl OAuth {
             return Err("Authorization request expired".into());
         }
         if let Some(decision) = p.decision {
-            return if decision == allow {
+            return if decision == allow && p.source_choice == choice {
                 Ok(())
             } else {
                 Err("Authorization request already decided".into())
             };
         }
+        p.source_choice = choice;
         p.decision = Some(allow);
         if allow {
             let code = secret();
             p.code_hash = hash(&code);
             p.code = Some(code);
             p.expires = clock() + 60;
+        }
+        if !allow {
+            crate::sources::disconnect(string(&source, "id"))?;
         }
         Ok(())
     }
@@ -537,6 +597,14 @@ impl OAuth {
                     .iter()
                     .any(|g| g.client == client && g.authorization_code == code_hash)
                 {
+                    self.revoke_sources(
+                        self.stored
+                            .grants
+                            .iter()
+                            .filter(|g| g.client == client && g.authorization_code == code_hash)
+                            .map(|g| g.id.clone())
+                            .collect(),
+                    )?;
                     self.stored
                         .grants
                         .retain(|g| !(g.client == client && g.authorization_code == code_hash));
@@ -566,6 +634,13 @@ impl OAuth {
                 if self.stored.grants.len() >= 128 {
                     return Err("temporarily_unavailable".into());
                 }
+                if let Some(old) = crate::sources::connect(
+                    self.ingress_id(),
+                    &key,
+                    p.source_choice.as_deref().ok_or("invalid_grant")?,
+                )? {
+                    self.stored.grants.retain(|g| g.id != old);
+                }
                 self.pending.remove(&key);
                 self.stored.grants.push(Grant {
                     id: key,
@@ -587,6 +662,7 @@ impl OAuth {
                     .iter()
                     .position(|g| g.client == client && g.used_refresh.contains(&digest))
                 {
+                    self.revoke_sources(vec![self.stored.grants[index].id.clone()])?;
                     self.stored.grants.remove(index);
                     self.persist()?;
                     return Err("invalid_grant".into());
@@ -617,12 +693,28 @@ impl OAuth {
         )
     }
     pub fn remove_client(&mut self, client: &str) -> Result<()> {
+        self.revoke_sources(
+            self.stored
+                .grants
+                .iter()
+                .filter(|g| g.client == client)
+                .map(|g| g.id.clone())
+                .chain(
+                    self.pending
+                        .iter()
+                        .filter(|(_, p)| p.client == client)
+                        .map(|(k, _)| k.clone()),
+                )
+                .collect(),
+        )?;
         self.stored.clients.remove(client);
         self.stored.grants.retain(|g| g.client != client);
         self.pending.retain(|_, p| p.client != client);
         self.persist()
     }
     pub fn revoke(&mut self, grant: &str) -> Result<()> {
+        self.revoke_sources(vec![grant.into()])?;
+        self.pending.remove(grant);
         self.stored.grants.retain(|g| g.id != grant);
         self.persist()
     }
@@ -635,6 +727,19 @@ impl OAuth {
         self.prepare(resource)?;
         let client = self.client(q, basic)?;
         let digest = hash(q.get("token").ok_or("invalid_request")?);
+        self.revoke_sources(
+            self.stored
+                .grants
+                .iter()
+                .filter(|g| {
+                    g.client == client
+                        && (g.refresh == digest
+                            || g.access == digest
+                            || g.used_refresh.contains(&digest))
+                })
+                .map(|g| g.id.clone())
+                .collect(),
+        )?;
         self.stored.grants.retain(|g| {
             !(g.client == client
                 && (g.refresh == digest || g.access == digest || g.used_refresh.contains(&digest)))

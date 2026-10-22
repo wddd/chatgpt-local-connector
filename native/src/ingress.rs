@@ -133,8 +133,19 @@ impl Ingress {
         Ok(())
     }
     pub async fn origin(&self) -> Value {
+        crate::kernel::origin::current_origin()
+    }
+    pub async fn principal_origin(&self, principal: &Value) -> Result<Value> {
         let meta = self.meta.lock().await;
-        json!({"ingressId":self.id,"controlSource":meta["controlSource"],"authType":meta["auth"]})
+        let source = if principal["type"] == "oauth-grant" {
+            crate::sources::for_grant(&self.id, string(principal, "grantId"))?
+        } else {
+            if meta["auth"] == "oauth" {
+                return Err("OAuth principal required".into());
+            }
+            crate::sources::ensure_ingress(&meta)?
+        };
+        crate::sources::touch(&source, string(&meta, "auth"))
     }
     pub async fn allows(&self, name: &str) -> bool {
         let meta = self.meta.lock().await;
@@ -142,28 +153,23 @@ impl Ingress {
         drop(meta);
         allowed && self.execution.available(name).await
     }
-    pub async fn authenticate(&self, header: &str) -> bool {
+    pub async fn authenticate(&self, header: &str) -> Option<Value> {
         let meta = self.meta.lock().await;
-        if meta["auth"] == "none" {
-            return true;
-        }
         if meta["auth"] == "oauth" {
             drop(meta);
             let resource = self.mcp_url.lock().await.clone();
-            let Ok(resource) = reqwest::Url::parse(&resource) else {
-                return false;
-            };
+            let resource = reqwest::Url::parse(&resource).ok()?;
             return self
                 .oauth
                 .lock()
                 .await
                 .authenticate(header, resource.as_str());
         }
-        if meta["auth"] != "bearer" {
-            return false;
-        }
-        let token = string(&meta, "bearerToken");
-        !token.is_empty() && hash(header) == hash(format!("Bearer {token}"))
+        let allowed = meta["auth"] == "none"
+            || meta["auth"] == "bearer"
+                && !string(&meta, "bearerToken").is_empty()
+                && hash(header) == hash(format!("Bearer {}", string(&meta, "bearerToken")));
+        allowed.then(|| json!({"type":"ingress","ingressId":self.id}))
     }
     pub(crate) async fn observe_request(&self, field: &str) -> Result<()> {
         let mut verification = self.verification.lock().await;
@@ -186,6 +192,14 @@ impl Ingress {
         if meta["auth"] == "oauth" {
             result["oauth"] = self.oauth.lock().await.snapshot()?;
         }
+        if meta["auth"] != "oauth" && self.dir.join("config.json").exists() {
+            crate::sources::ensure_ingress(&meta)?;
+        }
+        crate::sources::connection_state(&self.id, result["running"] == true)?;
+        result["sources"] = json!(crate::sources::list()?
+            .into_iter()
+            .filter(|s| s["ingressId"] == self.id)
+            .collect::<Vec<_>>());
         result["diagnostics"] = crate::diagnostics::ingress(&result);
         Ok(result)
     }
@@ -436,6 +450,7 @@ impl Ingress {
         crate::relay::transport::Runtime::ready(status).await
     }
     pub async fn stop(&self) -> Result<()> {
+        crate::sources::connection_state(&self.id, false)?;
         self.stopping
             .store(true, std::sync::atomic::Ordering::SeqCst);
         self.ready_logged

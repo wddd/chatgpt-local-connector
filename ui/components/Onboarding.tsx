@@ -5,7 +5,7 @@ import { locale, t } from "../i18n";
 import { copyText, openUrl } from "../platform";
 import { controlSource } from "../controlSources";
 import { connector, notify, refreshConnector } from "../state/connector";
-import { onboarding, openOnboarding, remoteIngress, sourceForClient, sourceLabels } from "../state/onboarding";
+import { onboarding, openOnboarding, remoteIngress, sourceForClient } from "../state/onboarding";
 import { permissions, permissionsReady } from "../state/permissions";
 import { navigation } from "../state/navigation";
 import { useRelayProgress, useRelays } from "../state/relay";
@@ -100,7 +100,7 @@ export default function Onboarding({ onAdvanced, onPanelFrame }: { onAdvanced: (
   useEffect(() => {
     if (flow.step !== "connect" || !flow.requestId || completed.current || !current?.oauth?.grants.some(g => g.id === flow.requestId)) return;
     completed.current = true;
-    sourceLabels.set(old => ({ ...old, [flow.requestId!]: flow.source! }));
+
     notify(t("connect.connected", { name }) + " " + t("connect.tryPrompt"), false, t("connect.tryPrompt"));
     onboarding.set(undefined);
   }, [current?.oauth, flow.requestId, flow.step]);

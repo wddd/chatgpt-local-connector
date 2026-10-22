@@ -45,7 +45,7 @@ export default function IngressPanel({ onPanelFrame, expanded, onToggleWidth }: 
   }
   return <Dialog width={400} dock="left" expanded={expanded} headerless title={selected.client?.name ?? entry.name} busy={busy || toggling}
     originKey={entry.id} closeRequested={selected.closing} onClose={() => { if (ingressPanel.get()?.ingress.id === entry.id) ingressPanel.set(undefined); }}
-    returnFocus={`[data-source-node="${CSS.escape(selected.client ? `${entry.id}:${selected.client.id}` : entry.id)}"] button`} onPanelFrame={onPanelFrame}>
+    returnFocus={`[data-source-node="${CSS.escape(selected.client ? selected.client.id : entry.id)}"] button`} onPanelFrame={onPanelFrame}>
     <motion.div className="side-panel-layer" key={`${entry.id}:${selected.editing ? "edit" : "view"}`}
       initial={{ opacity: reduced ? 1 : 0, x: reduced ? 0 : selected.editing ? -12 : 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>
       {selected.editing ? <IngressDialog embedded ingress={entry} focusField={selected.field} onBusy={setBusy}
@@ -53,13 +53,13 @@ export default function IngressPanel({ onPanelFrame, expanded, onToggleWidth }: 
         onSaved={ingress => { if (ingressPanel.get()?.ingress.id === entry.id) selectIngressPanel(ingress, { autoConnect: true }); }} /> : <>
         <header className="dialog-header">
           <SourceIcon platform={selected.client?.source ?? entry.controlSource} /><h2 className="activity-panel-title">{selected.client?.name ?? entry.name}</h2>
-          <div className="actions">{!selected.client && <Switch label={t("sourcePanel.enabled")} checked={entry.enabled} disabled={busy || toggling} onChange={value => void toggle(value)} />}
+          <div className="actions">{(!selected.client || entry.sources?.length === 1) && <Switch label={t("sourcePanel.enabled")} checked={entry.enabled} disabled={busy || toggling} onChange={value => void toggle(value)} />}
             <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
               aria-pressed={expanded} onClick={onToggleWidth} /></div>
         </header>
         <div className="side-panel-scroll">
           {error && <Notice>{error}</Notice>}
-          <section><h3>{t("sourcePanel.dispatches")}</h3><SourceDispatches key={entry.id} ingressId={entry.id} /></section>
+          <section><h3>{t("sourcePanel.dispatches")}</h3><SourceDispatches key={selected.client?.id} sourceId={selected.client?.id ?? ""} /></section>
         </div>
         <footer className="dialog-footer"><Button data-ingress-edit onClick={() => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: "remote" })); }}>{t("connect.manage")}</Button></footer>
       </>}

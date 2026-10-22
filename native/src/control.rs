@@ -1515,7 +1515,7 @@ impl Control {
                     .collect();
                 let origin = crate::kernel::origin::current_origin();
                 for request in &mut requests {
-                    crate::respond_tokens::issue(string(&origin, "ingressId"), request)?;
+                    crate::respond_tokens::issue(string(&origin, "sourceId"), request)?;
                 }
                 Ok(json!({"backendSession":self.session,"requests":requests}))
             }
@@ -1559,6 +1559,7 @@ impl Control {
                 } else {
                     json!({"threadId":id,"title":t["name"],"runtimeStatus":t["status"]["type"],"observedAt":now()})
                 };
+                result["origin"] = crate::sources::task_origin(id, None);
                 if !full
                     && t["status"]["activeFlags"]
                         .as_array()
@@ -1610,7 +1611,7 @@ impl Control {
                     result["turns"] = json!(page["data"].as_array().into_iter().flatten().map(|turn| {
                         let items: Vec<_> = turn["items"].as_array().into_iter().flatten()
                             .filter_map(|i| if full {Some(item(i,0,600))} else {compact_item(i,600)}).collect();
-                        let mut row = json!({"turnId":turn["id"],"recordedStatus":turn["status"],
+                        let mut row = json!({"origin":crate::sources::task_origin(id,turn["id"].as_str()),"turnId":turn["id"],"recordedStatus":turn["status"],
                             "items":items.iter().skip(items.len().saturating_sub(15)).collect::<Vec<_>>(),
                             "externalUserInputs":crate::external_inputs::inputs(id, turn["id"].as_str()).unwrap_or(json!([]))});
                         if items.len()>15 {row["itemsTruncated"]=json!(true);}
