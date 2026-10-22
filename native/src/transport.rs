@@ -419,6 +419,7 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, tool: &str, envelope: Value
     } else {
         envelope["args"].clone()
     };
+    let mut wait_limit = None;
     let result = async {
         if !s.connected.load(std::sync::atomic::Ordering::SeqCst) {
             return Err("Connection closed".into());
@@ -454,12 +455,20 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, tool: &str, envelope: Value
         if let Some(request_id) = envelope.get("requestId") {
             args["requestId"] = request_id.clone();
         }
+        if matches!(name, "codex_wait" | "agent_wait") {
+            let op = catalog()["ops"].as_array().unwrap().iter().find(|op| op["name"] == name).unwrap();
+            crate::egress::validate_op(op, &args)?;
+            wait_limit = crate::control_sources::limit_wait(&s.origin().await, &mut args);
+        }
         s.call(name, args.clone()).await
     }.await;
     let mut images = Vec::new();
     let mut reads = Vec::new();
     let (mut value, error) = match result {
         Ok(mut value) => {
+            if let Some(limit) = wait_limit {
+                value["waitLimit"] = limit;
+            }
             match crate::claude_notify::read_turns(&s.execution.control, name, &args, &value).await
             {
                 Ok(turns) => reads = turns,

@@ -92,8 +92,9 @@ for await (const line of createInterface({ input: process.stdin })) {
       if (method === 'turn/start') {
         if (row.model === 'fixture-dispatch-reject') return emit({id,error:{code:-32602,message:'invalid turn configuration'}});
         const overload=row.model.includes('overload') && (row.model.includes('exhausted') || row.model.includes('side-effect') || row.turns.length<2);
-        row.turns.push({id:randomUUID(),status:overload?'failed':(row.model.includes('queue')||(row.model.includes('question')&&row.turns.length===0))?'inProgress':'completed',error:overload?{codexErrorInfo:'serverOverloaded',message:'Selected model is at capacity'}:null,items:overload?(row.model.includes('side-effect')?[{type:'commandExecution',status:'completed'}]:[]):[{id:randomUUID(),type:'agentMessage',text:'pong'}],input:params.input,model:params.model||row.model});
+        row.turns.push({id:randomUUID(),status:overload?'failed':(row.model.includes('queue')||(row.model.includes('question')&&row.turns.length===0))?'inProgress':'completed',error:overload?{codexErrorInfo:'serverOverloaded',message:'Selected model is at capacity'}:null,items:overload?(row.model.includes('side-effect')?[{type:'commandExecution',status:'completed'}]:[]):[{id:randomUUID(),type:'agentMessage',status:'completed',text:'pong'}],input:params.input,model:params.model||row.model});
         saveFixture(saved);
+        if(row.model.includes('queue'))emit({method:'item/completed',params:{threadId:params.threadId,turnId:row.turns.at(-1).id,item:row.turns.at(-1).items[0]}});
         if(row.model.includes('question')&&row.turns.length===1) {row.pendingId='question:'+params.threadId;saveFixture(saved);emit({id:row.pendingId,method:'item/tool/requestUserInput',params:{threadId:params.threadId,turnId:row.turns.at(-1).id,questions:[{id:'q',question:'2+2?',options:[]}]}});}
         if (row.model === 'fixture-dispatch-uncertain') return process.exit(0);
         return emit({id,result:{turn:row.turns.at(-1)}});
@@ -182,7 +183,7 @@ for await (const line of createInterface({input:process.stdin})) {
 `);
   await mkdir(path.join(directory,'agents'),{recursive:true});
   await writeFile(path.join(directory,'agents/manifests.json'),JSON.stringify([{id:'tracking-example',command:process.execPath,args:[acpFixture],versionArgs:[],protocol:'acp-v1'}]));
-  const target = fileURLToPath(new URL('../target', import.meta.url));
+  const target = process.env.CARGO_TARGET_DIR || fileURLToPath(new URL('../target', import.meta.url));
   execFileSync('cargo', ['build', '--locked', '--quiet', '-p', 'contract-fixture', '--target-dir', target], {
     cwd: fileURLToPath(new URL('../', import.meta.url)), stdio: 'inherit',
   });
@@ -931,17 +932,22 @@ test('wait omits repeated nonterminal text and retains complete terminal replies
   rows[threadId].turns[0].status='inProgress';
   await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(rows));
   const args={threadId,turnId,timeoutMs:200,until:'terminal'};
+  delete rows[threadId].turns[0].items[0].status;
+  rows[threadId].turns[0].items.push({id:'streaming',type:'agentMessage',status:'inProgress',text:'unfinished sentence'});
+  await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(rows));
   const first=(await call('codex_wait',args)).result;
   assert.equal(first.state,'timeout');assert.equal(first.finalResponse.text,'pong');
   const second=(await call('codex_wait',{...args,expectedHash:first.snapshotHash})).result;
   assert.equal(second.changed,false);assert.equal(second.finalResponse.text,undefined);
   assert.equal(second.finalResponseUnchanged,true);assert.equal(second.finalResponse.textHash,first.finalResponse.textHash);
-  assert.equal(second.next.args.expectedHash,second.snapshotHash);assert.equal(second.next.args.timeoutMs,200);
+  assert.equal(second.next.args.expectedHash,second.snapshotHash);assert.equal(second.next.args.timeoutMs,200);assert.equal(second.next.args.until,'terminal');
   const full=(await call('codex_wait',args)).result;assert.equal(full.finalResponse.text,'pong');
   const updated=await fixtureRows();updated[threadId].turns[0].items[0].id='different-message';
+  updated[threadId].turns[0].items[0].status='completed';
   await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(updated));
   const metadata=(await call('codex_wait',{...args,expectedHash:second.snapshotHash})).result;
   assert.equal(metadata.changed,true);assert.equal(metadata.finalResponseUnchanged,true);assert.equal(metadata.finalResponse.text,undefined);
+  updated[threadId].turns[0].items.pop();
   updated[threadId].turns[0].status='completed';
   await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(updated));
   const terminal=(await call('codex_wait',{...args,timeoutMs:300000,expectedHash:metadata.snapshotHash})).result;
@@ -1009,6 +1015,20 @@ test('HTTP and HTTPS ingress wait streaming keeps final result intact and releas
   assert.equal(frames[0].method,'notifications/progress');assert.equal(frames[0].params.progressToken,'progress-token');
   assert.equal(frames.at(-1).result.structuredContent.result.state,'timeout');
   }} finally {await management('ingress/wait-stream','DELETE');}
+});
+
+test('Claude task waits expose the source cap without delaying terminal results', async () => {
+  const created=await dispatchFixture('fixture-dispatch-completed');
+  await management('ingress','POST',{id:'wait-cap',name:'Wait cap',toolPolicy:'all',controlSource:'claude',transport:'https',auth:'bearer',bearerToken:'test-wait-cap'.padEnd(40,'x'),config:{httpsProvider:'custom',httpsUrl:'https://wait-cap.example/mcp'}});
+  await management('ingress/wait-cap/start','POST');
+  const endpoint=JSON.parse(await readFile(path.join(directory,'app/native.json'),'utf8'));
+  try {
+    const response=await fetch(`http://127.0.0.1:${endpoint.port}/mcp/wait-cap`,{method:'POST',headers:{Authorization:`Bearer ${endpoint.token}`,'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:'cap-self-test',method:'tools/call',params:{name:'query',arguments:{op:'codex_wait',args:{threadId:created.threadId,turnId:created.turnId,timeoutMs:1800000,until:'terminal'}}}})});
+    const result=(await response.json()).result.structuredContent.result;
+    assert.equal(result.state,'completed');assert.equal(result.finalResponse.text,'pong');
+    assert.equal(result.waitLimit.capped,true);assert.equal(result.waitLimit.timeoutMs,170000);
+    assert.equal(result.waitLimit.requestedTimeoutMs,1800000);assert.equal(result.waitLimit.controlSource,'claude');
+  } finally {await management('ingress/wait-cap','DELETE');}
 });
 
 test('stdio bridge forwards negotiated progress, preserves final replies and cancels on EOF', async () => {

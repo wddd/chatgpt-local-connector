@@ -118,7 +118,7 @@ impl WaitSource for AgentSource {
             "sessionId":t["sessionId"],"threadId":null,"turnId":selected,
             "recordedStatus":t["status"],"runtimeStatus":if state=="unconfirmed"{"unknown"}else{status},
             "runtimeSource":self.host.drivers[&self.agent].protocol(),"processSession":t["processSession"],
-            "finalResponse":if state=="completed" || state=="failed" || state=="cancelled" {t["output"].clone()}else{Value::Null},
+            "finalResponse":final_response(t, state, self.host.drivers[&self.agent].protocol()),
             "outputTruncated":t["outputTruncated"],"contextUsage":t["contextUsage"],
             "error":if t["error"].is_null(){&t["lastMessage"]["errorMessage"]}else{&t["error"]},
             "stopReason":if t["stopReason"].is_null(){&t["lastMessage"]["stopReason"]}else{&t["stopReason"]},
@@ -170,4 +170,39 @@ pub(super) async fn observe(
     };
     let observation = source.observe().await?;
     Ok(source.classify(&observation, &mut Some(turn.into())))
+}
+
+fn final_response(task: &Value, state: &str, protocol: &str) -> Value {
+    if matches!(
+        state,
+        "completed" | "failed" | "cancelled" | "interaction-required"
+    ) || (protocol == "pi-rpc" && task["lastMessage"]["role"] == "assistant")
+    {
+        task["output"].clone()
+    } else {
+        Value::Null
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_completed_pi_messages_are_available_before_terminal_or_interaction() {
+        let mut task = json!({"output":"partial"});
+        for protocol in ["pi-rpc", "acp-v1"] {
+            assert!(final_response(&task, "running", protocol).is_null());
+            for state in ["completed", "failed", "cancelled", "interaction-required"] {
+                assert_eq!(final_response(&task, state, protocol), "partial");
+            }
+        }
+        task["lastMessage"] = json!({"role":"assistant"});
+        task["output"] = json!("completed message");
+        assert_eq!(
+            final_response(&task, "running", "pi-rpc"),
+            "completed message"
+        );
+        assert!(final_response(&task, "running", "acp-v1").is_null());
+    }
 }

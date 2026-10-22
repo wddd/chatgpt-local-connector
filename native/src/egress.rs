@@ -493,6 +493,9 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
         if value["snapshotHash"].is_string() {
             arguments["expectedHash"] = value["snapshotHash"].clone();
         }
+        if let Some(until) = args.get("until") {
+            arguments["until"] = until.clone();
+        }
         if let Some(timeout) = args.get("timeoutMs") {
             arguments["timeoutMs"] = timeout.clone();
         }

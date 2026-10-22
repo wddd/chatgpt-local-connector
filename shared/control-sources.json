@@ -46,6 +46,8 @@
   },
   {
     "id": "claude",
+    "waitTimeoutMs": 170000,
+    "waitTimeoutReason": "Claude MCP calls have a 180-second hard deadline; reserve 10 seconds for response delivery. Transport heartbeats do not extend it.",
     "displayName": "Claude",
     "shortName": "Claude",
     "icon": "claude",

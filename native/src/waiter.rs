@@ -266,7 +266,15 @@ fn classify(observation: &Value, selected: &mut Option<String>) -> Value {
         .into_iter()
         .flatten()
         .rev()
-        .find(|i| i["type"] == "agentMessage")
+        .find(|i| {
+            i["type"] == "agentMessage"
+                && (matches!(
+                    state,
+                    "completed" | "failed" | "cancelled" | "interaction-required"
+                ) || i["status"] == "completed"
+                    || turn["completedItemIds"][string(i, "id")] == true
+                    || turn["agentMessageCompletedAtMsById"][string(i, "id")].is_number())
+        })
         .map(|i| crate::control::item(i, 0, 6000));
     json!({"state":state,"reason":reason,"title":t["name"],"threadId":t["id"],"turnId":selected,"recordedStatus":turn["status"],"runtimeStatus":runtime,
         "runtimeSource":t["runtimeSource"],"externalUserInputs":observation["externalUserInputs"].as_array().into_iter().flatten().filter(|r| r["turnId"].as_str()==selected.as_deref() || (r["answeredTurnId"].is_string() && r["answeredTurnId"].as_str()==selected.as_deref())).collect::<Vec<_>>(),"finalResponse":assistant,"error":turn["error"],"interaction":interactions,
@@ -371,6 +379,30 @@ impl WaitSource for CodexSource {
             return Err("native-thread-id-mismatch".into());
         }
         let events = self.events.lock().await;
+        // App-server agent messages may omit status. Only an explicit completion
+        // event for this exact turn/item/text can confirm such a message.
+        for turn in value["thread"]["turns"]
+            .as_array_mut()
+            .into_iter()
+            .flatten()
+        {
+            let turn_id = turn["id"].clone();
+            for item in turn["items"].as_array_mut().into_iter().flatten() {
+                if item["type"] == "agentMessage"
+                    && item["status"].is_null()
+                    && events.rows.iter().rev().any(|event| {
+                        let params = &event["params"];
+                        event["method"] == "item/completed"
+                            && params["threadId"] == self.thread
+                            && params["turnId"] == turn_id
+                            && params["item"]["id"] == item["id"]
+                            && params["item"]["text"] == item["text"]
+                    })
+                {
+                    item["status"] = json!("completed");
+                }
+            }
+        }
         let mut pending = events
             .pending
             .values()
@@ -583,6 +615,53 @@ mod tests {
             assert_eq!(result["finalResponse"], "new reply");
             assert!(result.get("finalResponseUnchanged").is_none());
         }
+    }
+
+    #[test]
+    fn nonterminal_messages_require_completion_but_terminal_and_interaction_keep_body() {
+        let mut observation = json!({"thread":{"id":"thread","status":{"type":"active"},"turns":[{"id":"turn","status":"inProgress","items":[
+            {"id":"done","type":"agentMessage","status":"completed","text":"complete"},
+            {"id":"stream","type":"agentMessage","status":"inProgress","text":"half sentence"}
+        ]}]}});
+        let selected = &mut Some("turn".into());
+        let first = classify(&observation, selected);
+        assert_eq!(first["finalResponse"]["text"], "complete");
+        observation["thread"]["turns"][0]["items"][1]["text"] = json!("more streaming");
+        assert_eq!(
+            snapshot_hash(&first),
+            snapshot_hash(&classify(&observation, selected))
+        );
+        observation["thread"]["turns"][0]["items"][0]["status"] = Value::Null;
+        assert!(classify(&observation, selected)["finalResponse"].is_null());
+        for (field, marker) in [
+            ("completedItemIds", json!(true)),
+            ("agentMessageCompletedAtMsById", json!(1234)),
+        ] {
+            observation["thread"]["turns"][0][field] = json!({"done":marker});
+            assert_eq!(
+                classify(&observation, selected)["finalResponse"]["text"],
+                "complete"
+            );
+            observation["thread"]["turns"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+        }
+        for status in ["completed", "failed", "interrupted"] {
+            observation["thread"]["turns"][0]["status"] = json!(status);
+            observation["thread"]["status"]["type"] = json!("idle");
+            assert_eq!(
+                classify(&observation, selected)["finalResponse"]["text"],
+                "more streaming"
+            );
+        }
+        observation["thread"]["turns"][0]["status"] = json!("inProgress");
+        observation["thread"]["status"] =
+            json!({"type":"active","activeFlags":["waitingOnApproval"]});
+        assert_eq!(
+            classify(&observation, selected)["finalResponse"]["text"],
+            "more streaming"
+        );
     }
 
     #[tokio::test(start_paused = true)]
