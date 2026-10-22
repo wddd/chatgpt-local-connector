@@ -51,3 +51,9 @@ export function toolGroupOpen(running: boolean, manual?: boolean) { return manua
 export function currentTimelineTool(entries: readonly AgentTimelineEntry[]) {
   return entries.filter(entry => isTimelineTool(entry) && entry.status === "running").at(-1);
 }
+
+export function currentToolPresentation(group: TimelineGroup, currentId: string | undefined, open: boolean): "none" | "inline" | "card" {
+  if (!group.tools || !currentId || !group.entries.some(entry => entry.id === currentId)) return "none";
+  if (group.entries.length === 1) return "inline";
+  return open ? "none" : "card";
+}

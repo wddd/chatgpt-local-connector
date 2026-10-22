@@ -14,7 +14,11 @@ export async function refreshTimeline(current: AgentTimeline | undefined, read: 
   }
 }
 export function followsTimeline(scrollTop: number, clientHeight: number, scrollHeight: number, previousTop = scrollTop) {
-  return scrollTop >= previousTop && scrollHeight - scrollTop - clientHeight <= 24;
+  const bottom = Math.max(0, scrollHeight - clientHeight);
+  // Removing the latest button or collapsing content can clamp scrollTop upward.
+  // Compare with the previous position clamped to the same layout, not a stale limit.
+  const clamped = previousTop > bottom;
+  return scrollTop >= Math.min(previousTop, bottom) - (clamped ? 1 : 0) && bottom - scrollTop <= 24;
 }
 export function timelineScrollTarget(following: boolean, running: boolean, initial: boolean, scrollHeight: number) {
   return following && (running || initial) ? scrollHeight : undefined;

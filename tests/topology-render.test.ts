@@ -450,6 +450,8 @@ test("timeline disclosures preserve choices through incremental grouping and ren
     const expanded = (element: Element) => element.getAttribute("aria-expanded");
     await render([first]);
     assert.equal(mount.querySelector(".timeline-tool-group"), null, "a single tool is not grouped");
+    assert.equal(mount.querySelectorAll(".timeline-current").length, 1);
+    assert.ok(mount.querySelector(".timeline-tool.timeline-current"), "a single running tool is itself the current card");
     await click(mount.querySelector(".timeline-tool button")!);
     assert.equal(expanded(mount.querySelector(".timeline-tool button")!), "true");
     await render([first, second]);
@@ -457,8 +459,8 @@ test("timeline disclosures preserve choices through incremental grouping and ren
     assert.equal(expanded(group), "true");
     assert.equal(expanded(mount.querySelector(".timeline-tool button")!), "true", "single-to-group keeps tool disclosure");
     assert.match(group.textContent!, /Read 1 file, Run 1 command/);
-    assert.equal(mount.querySelectorAll(".timeline-current").length, 1);
-    assert.match(mount.querySelector(".timeline-current")!.textContent!, /3s/);
+    assert.equal(mount.querySelectorAll(".timeline-current").length, 0, "expanded groups do not duplicate the current tool");
+    assert.match(mount.querySelector(".timeline-tool time")!.textContent!, /3s/);
     await click(group);
     assert.equal(expanded(group), "false");
     assert.ok(mount.querySelector(".timeline-current"), "current execution survives group collapse");
@@ -497,7 +499,70 @@ test("timeline disclosures preserve choices through incremental grouping and ren
     await act(() => activityApprovals.set({}));
     await render([{ ...pending, status: "completed" }]);
     assert.match(mount.querySelector(".timeline-interaction")!.textContent!, /Resolved/);
+    locale.set("zh-CN");
+    await render([{ ...thinking, durationMs: undefined, startedAt: null }]);
+    assert.equal(mount.querySelector(".timeline-thinking .phase-label")!.textContent, "思考");
+    assert.equal(mount.querySelector(".timeline-thinking .phase-shimmer"), null);
+    await render([{ ...thinking, durationMs: undefined, startedAt: null, status: "running" }]);
+    assert.match(mount.querySelector(".timeline-thinking .phase-label")!.textContent!, /思考中/);
+    assert.ok(mount.querySelector(".timeline-thinking .phase-shimmer"));
+    if (mount.querySelector(".timeline-thinking button")!.getAttribute("aria-expanded") === "true") await click(mount.querySelector(".timeline-thinking button")!);
+    await act(() => { media.matches = false; media.dispatchEvent(new window.Event("change")); });
+    await click(mount.querySelector(".timeline-thinking button")!);
+    assert.notEqual((mount.querySelector(".timeline-fold-content") as HTMLElement).style.opacity, "", "normal preference uses an animated disclosure");
+    await act(() => { media.matches = true; media.dispatchEvent(new window.Event("change")); });
+    assert.equal((mount.querySelector(".timeline-fold-content") as HTMLElement).style.opacity, "", "hot enabling reduced motion replaces active animation immediately");
+    await click(mount.querySelector(".timeline-thinking button")!);
+    await click(mount.querySelector(".timeline-thinking button")!);
+    assert.equal((mount.querySelector(".timeline-fold-content") as HTMLElement).style.height, "", "later expansion remains static without remounting the timeline");
+    await act(() => { media.matches = false; media.dispatchEvent(new window.Event("change")); });
+    assert.notEqual((mount.querySelector(".timeline-fold-content") as HTMLElement).style.opacity, "", "motion can be re-enabled on the same timeline");
   } finally {
     await act(() => root.unmount()); await server.close(); window.happyDOM.abort(); mount.remove();
+  }
+});
+
+test("mounted timeline follows the next poll after scrolling up and returning within 24px", async () => {
+  const window = new Window({ url: "http://localhost" });
+  let top = 0, height = 3482;
+  const media = Object.assign(new window.EventTarget(), { matches: true });
+  window.matchMedia = () => media as unknown as MediaQueryList;
+  class Observer { observe() {} disconnect() {} }
+  Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
+    Node: window.Node, localStorage: window.localStorage, ResizeObserver: Observer, matchMedia: window.matchMedia,
+    getComputedStyle: window.getComputedStyle.bind(window), IS_REACT_ACT_ENVIRONMENT: true });
+  Object.defineProperties(window.HTMLElement.prototype, {
+    clientHeight: { configurable: true, get() { return this.className === "timeline-scroll" ? (document.querySelector('.timeline-latest') ? 710 : 754) : 0; } },
+    scrollHeight: { configurable: true, get() { return this.className === "timeline-scroll" ? height : 0; } },
+    scrollTop: { configurable: true, get() { return Math.min(top, Math.max(0, height - this.clientHeight)); }, set(value: number) { top = Math.min(value, Math.max(0, height - this.clientHeight)); } },
+  });
+  const server = await createServer({ configFile: false, server: { middlewareMode: true, watch: null, ws: false } });
+  const { createRoot } = await import("react-dom/client");
+  const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
+  const originalFetch = globalThis.fetch;
+  let revision = 1, reads = 0;
+  globalThis.fetch = async () => { reads++; return new Response(JSON.stringify({ sessionId: 'follow', status: 'running', cursor: revision, coverage: { state: 'complete' }, entries: [{ id: 'answer', type: 'text', status: 'running', startedAt: null, updatedAt: '', turnId: 'turn', position: 1, cursor: revision, text: 'Increment '+revision }] })); };
+  try {
+    const { default: ActivityTimeline } = await server.ssrLoadModule('/ui/components/ActivityTimeline.tsx');
+    const { agentActivity } = await server.ssrLoadModule('/ui/state/activity.ts');
+    const session = { id: 'follow', source: 'arc-task', phase: 'text', headline: 'Response', phaseSince: null, timeline: true, orderAt: 0 };
+    agentActivity.set({ error: '', snapshot: { observedAt: '', activeAgents: ['claude'], agents: { claude: { sessions: [session] } } } });
+    await act(async () => { root.render(h(ActivityTimeline, { agent: 'claude', session, onClose() {}, onBack() {} })); });
+    const viewport = mount.querySelector<HTMLElement>('.timeline-scroll')!;
+    assert.equal(viewport.scrollTop, 2728, 'initial read follows to bottom');
+    await act(() => { viewport.scrollTop = 100; viewport.dispatchEvent(new window.Event('scroll')); });
+    assert.ok(mount.querySelector('.timeline-latest'));
+    await act(() => { viewport.scrollTop = 2748; viewport.dispatchEvent(new window.Event('scroll')); });
+    assert.equal(mount.querySelector('.timeline-latest'), null);
+    assert.equal(viewport.scrollTop, 2728, 'removing the button clamps the scroll position upward');
+    await act(() => viewport.dispatchEvent(new window.Event('scroll')));
+    revision++; height = 3750;
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
+    assert.ok(reads >= 2); assert.match(mount.textContent!, /Increment 2/);
+    assert.equal(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop, 0, 'the next increment remains pinned to bottom');
+    assert.equal(mount.querySelector('.timeline-latest'), null);
+  } finally {
+    await act(() => root.unmount()); globalThis.fetch = originalFetch;
+    await server.close(); await window.happyDOM.close();
   }
 });

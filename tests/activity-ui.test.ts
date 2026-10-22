@@ -354,3 +354,31 @@ test("incremental timeline merge retains tool group ids through updates and appe
   const withText = mergeTimeline(merged, timeline([entry("text", 4, "Answer", 3), { ...entry("next", 5, "", 4), type: "tool" }]));
   assert.deepEqual(timelineGroups(withText.entries).map(g => g.id), ["tools:first", "entry:text", "tools:next"]);
 });
+
+
+test("timeline resumes at the bottom threshold despite layout clamping and follows the next increment", async () => {
+  const { followsTimeline, timelineScrollTarget } = await import("../ui/state/timelineModel.ts");
+  let following = followsTimeline(100, 710, 3482, 2772); // User scrolls upward.
+  assert.equal(following, false);
+  following = followsTimeline(2748, 710, 3482, 100); // Return within 24px.
+  assert.equal(following, true);
+  following = followsTimeline(2728, 754, 3482, 2748); // Latest button disappears; browser clamps top.
+  assert.equal(following, true);
+  assert.equal(timelineScrollTarget(following, true, false, 3750), 3750);
+  assert.equal(followsTimeline(2727, 754, 3482, 2748), true, "fractional rounding at the clamped bottom is tolerated");
+  assert.equal(followsTimeline(2718, 754, 3482, 2728), false, "real upward movement within the threshold still pauses");
+  assert.equal(followsTimeline(599, 400, 1000, 600), false, "even small upward movement is not treated as layout rounding");
+  assert.equal(timelineScrollTarget(true, false, false, 4000), undefined, "finished history still does not jump");
+});
+
+test("current tools render inline when single and only repeat below a collapsed group", async () => {
+  const { timelineGroups, currentToolPresentation } = await import("../ui/state/timelineGroups.ts");
+  const first = { ...entry("first", 1, "", 1), type: "command" as const, status: "running" as const };
+  const single = timelineGroups([first])[0];
+  assert.equal(currentToolPresentation(single, "first", false), "inline");
+  const group = timelineGroups([first, { ...first, id: "second", status: "completed" }])[0];
+  assert.equal(currentToolPresentation(group, "first", true), "none");
+  assert.equal(currentToolPresentation(group, "first", false), "card");
+  assert.equal(currentToolPresentation(group, undefined, false), "none");
+  assert.equal(currentToolPresentation(group, "elsewhere", false), "none");
+});

@@ -552,6 +552,7 @@
   "activity.questionTimeline": "Open timeline to answer",
   "timeline.open": "Open execution timeline",
   "timeline.external": "This session was not dispatched by ARC. View the full record in the Agent.",
+  "timeline.thinking": "Reasoning",
   "timeline.thought": "Thought for {count}s",
   "timeline.cwd": "Working directory",
   "timeline.path": "Path",
