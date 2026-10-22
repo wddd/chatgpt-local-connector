@@ -951,6 +951,7 @@
 .dialog.activity-panel { --panel-layout-width: min(400px, calc(100vw - 32px)); height: calc(100dvh - 32px); max-height: calc(100dvh - 32px); border-radius: 20px; }
 .activity-panel .elastic-panel-content { height: calc(100dvh - 34px); max-height: calc(100dvh - 34px); }
 .activity-panel .dialog-header { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; padding: 16px 14px; gap: 10px; cursor: default; }
+.activity-panel .dialog-header[data-leading="false"] { grid-template-columns: minmax(0, 1fr) auto; }
 .activity-panel .dialog-header h2 { min-width: 0; margin: 0; }
 .activity-panel-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 14px; line-height: 20px; font-weight: 600; }
 .activity-panel-agent, .activity-panel-agent svg { width: 32px; height: 32px; }

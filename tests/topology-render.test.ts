@@ -389,6 +389,17 @@ test("control source dock preserves editing, new onboarding, field navigation an
     await act(() => { status.ingresses = []; connector.set({ ...connector.get(), status: { ...status } }); });
     await click(mount.querySelector('.hub-source'));
     assert.ok(document.querySelector(".welcome-choices"), "empty source wing opens the welcome choices");
+    const { locale } = await server.ssrLoadModule("/ui/i18n.ts");
+    const { onboarding } = await server.ssrLoadModule("/ui/state/onboarding.ts");
+    await act(() => locale.set("en"));
+    for (const step of ["welcome", "local", "remote", "progress", "ready", "sources", "connect"]) {
+      await act(() => onboarding.set({ step, source: "claude" })); await flush();
+      const header = document.querySelector<HTMLElement>(".elastic-panel-content > .dialog-header")!;
+      assert.ok(header.querySelector("h2")?.textContent, `English ${step} title`);
+      assert.equal(getComputedStyle(header).gridTemplateColumns,
+        step === "welcome" ? "32px minmax(0, 1fr) auto" : "minmax(0, 1fr) auto",
+        `${step} title must use the flexible column, including transitions from the welcome icon`);
+    }
     await escape();
     const { default: RecordsPage } = await server.ssrLoadModule("/ui/components/RecordsPage.tsx");
     await act(() => {

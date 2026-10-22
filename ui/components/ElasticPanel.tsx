@@ -323,6 +323,7 @@ export default function ElasticPanel({
             ) : (
               <header
                 className="dialog-header"
+                data-leading={leading ? "true" : "false"}
                 onPointerDown={(e) => {
                   if (
                     dock || e.button !== 0 ||

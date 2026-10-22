@@ -23,6 +23,17 @@ pub struct State {
     pub daemon: std::sync::atomic::AtomicBool,
 }
 impl State {
+    fn close_if_idle(&self) -> bool {
+        let leases = self.active();
+        if !leases.is_empty() {
+            return false;
+        }
+        // Serialize the final idle check with lease acquisition. A new Desktop
+        // must retry instead of attaching to a Core that has begun teardown.
+        self.closing
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        true
+    }
     fn active(&self) -> std::sync::MutexGuard<'_, HashMap<String, Lease>> {
         let mut leases = self.leases.lock().unwrap();
         leases.retain(|_, lease| lease.seen.elapsed() < LEASE_TTL);
@@ -300,7 +311,11 @@ impl Client {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }
-        crate::transport::forward_request("runtime/lease", "POST", json!({"id":self.id,"kind":self.kind,"pid":std::process::id(),"desktop":self.desktop.lock().await.clone()})).await?;
+        if let Err(error) = crate::transport::forward_request("runtime/lease", "POST", json!({"id":self.id,"kind":self.kind,"pid":std::process::id(),"desktop":self.desktop.lock().await.clone()})).await {
+            // The listener may disappear between the health check and lease.
+            // Only startup retries this idempotent handshake, never user writes.
+            return Err(if owner(&self.build).await?.is_none() { "core shutting down".into() } else { error });
+        }
         Ok(())
     }
     pub async fn attach_desktop(&self, endpoint: Value) -> Result<()> {
@@ -456,7 +471,8 @@ pub async fn serve_mode(daemon: bool) -> Result<()> {
             _ = tokio::time::sleep(Duration::from_millis(500)) => {
                 if !daemon && service.runtime.active().is_empty() {
                     let empty = empty_since.get_or_insert_with(Instant::now);
-                    if started.elapsed() > Duration::from_secs(15) && empty.elapsed() > Duration::from_secs(2) { break; }
+                    if started.elapsed() > Duration::from_secs(15) && empty.elapsed() > Duration::from_secs(2)
+                        && service.runtime.close_if_idle() { break; }
                 } else { empty_since = None; }
             }
         }
@@ -472,4 +488,28 @@ pub async fn serve_mode(daemon: bool) -> Result<()> {
     }
     drop(lock);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn restart_handoff_never_attaches_to_a_core_already_tearing_down() {
+        let state = State::default();
+        let old = id();
+        let new = id();
+        state
+            .request("runtime/lease", json!({"id":old,"kind":"desktop","pid":1}))
+            .unwrap();
+        assert!(!state.close_if_idle());
+        state.request("runtime/release", json!({"id":old})).unwrap();
+        assert!(state.close_if_idle());
+        assert_eq!(
+            state
+                .request("runtime/lease", json!({"id":new,"kind":"desktop","pid":2}))
+                .unwrap_err(),
+            "core shutting down"
+        );
+        assert!(state.clients().as_array().unwrap().is_empty());
+    }
 }

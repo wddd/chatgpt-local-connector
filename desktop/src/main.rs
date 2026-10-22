@@ -295,8 +295,8 @@ fn main() {
                 api.prevent_exit();
             }
             if let tauri::RunEvent::Exit = event {
-                // The updater already drained the service before replacing the
-                // app. Do not block the event loop on a second async shutdown.
+                // Updates and explicit quit/restart already drained the client
+                // while the event loop was available.
                 if !app
                     .state::<updates::UpdateState>()
                     .restarting

@@ -70,6 +70,12 @@ pub async fn request(app: &tauri::AppHandle, operation: DesktopRequest) -> Resul
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                    // Drain while the event loop can still serve in-flight desktop
+                    // requests. Waiting for them from RunEvent::Exit can deadlock.
+                    service.close().await;
+                    app.state::<crate::updates::UpdateState>()
+                        .restarting
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
                     if restart {
                         app.request_restart();
                     } else {

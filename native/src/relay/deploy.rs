@@ -34,10 +34,26 @@ async fn proxy() -> Result<crate::proxy::NetworkProxy> {
     .await
 }
 async fn run_command(
+    command: tokio::process::Command,
+    status: &Mutex<Value>,
+    login: bool,
+    open_browser: bool,
+) -> Result<String> {
+    run_command_until(
+        command,
+        status,
+        login,
+        open_browser,
+        Duration::from_secs(300),
+    )
+    .await
+}
+async fn run_command_until(
     mut command: tokio::process::Command,
     status: &Mutex<Value>,
     login: bool,
     open_browser: bool,
+    timeout: Duration,
 ) -> Result<String> {
     command
         .stdin(Stdio::null())
@@ -48,20 +64,32 @@ async fn run_command(
     let mut child = command.spawn().map_err(|_| {
         "Cannot start the managed deployment tool; check filesystem permissions and system tar availability."
     })?;
-    let tree = ProcessTree(child.id().ok_or("Deployment process not running")?);
+    let mut tree = Some(ProcessTree(
+        child.id().ok_or("Deployment process not running")?,
+    ));
     let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
     let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
     let mut out_done = false;
     let mut err_done = false;
     let mut output = String::new();
-    let deadline = tokio::time::sleep(Duration::from_secs(if login { 600 } else { 300 }));
+    let mut exit = None;
+    let deadline = tokio::time::sleep(timeout);
+    let link_deadline = tokio::time::sleep(Duration::from_secs(30).min(timeout));
     tokio::pin!(deadline);
-    loop {
+    tokio::pin!(link_deadline);
+    let mut link_received = false;
+    while exit.is_none() || !out_done || !err_done {
         let line = tokio::select! {
-            _ = &mut deadline => return Err("Deployment step timed out; cancel/retry after checking network and Cloudflare account access".into()),
-            line = stdout.next_line(), if !out_done => { match line { Ok(Some(line)) => Some(line), _ => {out_done=true;None} } },
-            line = stderr.next_line(), if !err_done => { match line { Ok(Some(line)) => Some(line), _ => {err_done=true;None} } },
-            else => break,
+            _ = &mut deadline => return Err(if login { "Cloudflare login timed out after 5 minutes; retry and complete authorization in the browser" } else { "Deployment step timed out; check network and Cloudflare account access" }.into()),
+            _ = &mut link_deadline, if login && !link_received && exit.is_none() => return Err("Wrangler did not provide a Cloudflare login link within 30 seconds; check proxy and retry".into()),
+            result = child.wait(), if exit.is_none() => {
+                exit = Some(result.map_err(|_| "Cannot read deployment process status")?);
+                // Reap promptly, even when a descendant inherited an output pipe.
+                drop(tree.take());
+                None
+            },
+            line = stdout.next_line(), if !out_done => match line.map_err(|_| "Cannot read deployment stdout")? { Some(line) => Some(line), None => {out_done=true;None} },
+            line = stderr.next_line(), if !err_done => match line.map_err(|_| "Cannot read deployment stderr")? { Some(line) => Some(line), None => {err_done=true;None} },
         };
         if let Some(line) = line {
             if login {
@@ -69,22 +97,20 @@ async fn run_command(
                     let mut state = status.lock().await;
                     let first = state["loginUrl"].is_null();
                     state["loginUrl"] = json!(url);
+                    link_received = true;
                     drop(state);
                     if first && open_browser {
                         open(&url).await;
                     }
                 }
-            } else if output.len() < 256 * 1024 {
+            }
+            if output.len() < 256 * 1024 {
                 output.push_str(&line);
                 output.push('\n');
             }
         }
     }
-    let exit = tokio::select! {
-        result = child.wait() => result.map_err(|_| "Cannot read deployment process status")?,
-        _ = &mut deadline => return Err("Deployment process timed out".into()),
-    };
-    drop(tree);
+    let exit = exit.ok_or("Deployment process status missing")?;
     if !exit.success() {
         if serde_json::from_str::<Value>(output.trim())
             .ok()
@@ -92,7 +118,9 @@ async fn run_command(
         {
             return Err("WRANGLER_LOGIN_REQUIRED".into());
         }
-        let reason = if output.contains("account") {
+        let reason = if output.contains("EADDRINUSE") {
+            "Cloudflare login callback port is already in use; close the other Wrangler login and retry"
+        } else if output.contains("account") {
             "Check Cloudflare account selection and Workers permissions"
         } else if output.contains("ENOTFOUND")
             || output.contains("fetch failed")
@@ -475,6 +503,74 @@ pub(super) async fn delete(config: &Value, status: &Mutex<Value>) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    fn script(source: &str) -> tokio::process::Command {
+        let mut cmd = command("/bin/sh");
+        cmd.args(["-c", source]);
+        cmd
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn exited_children_are_reaped_without_waiting_for_the_deadline() {
+        let state = Mutex::new(json!({}));
+        let output = tokio::time::timeout(
+            Duration::from_secs(2),
+            run_command(
+                script("printf stdout; printf stderr >&2"),
+                &state,
+                false,
+                false,
+            ),
+        )
+        .await
+        .expect("EOF must end the output loop")
+        .unwrap();
+        assert!(output.contains("stdout") && output.contains("stderr"));
+        let error = run_command(
+            script("printf '{\"loggedIn\":false}'; exit 1"),
+            &state,
+            false,
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error, "WRANGLER_LOGIN_REQUIRED");
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn non_tty_login_exposes_link_and_reports_abnormal_exit() {
+        let state = Mutex::new(json!({"loginUrl":null}));
+        let error = tokio::time::timeout(Duration::from_secs(2), run_command(
+            script("test ! -t 0 && test ! -t 1 || exit 1; printf 'Visit this link to authenticate: https://dash.cloudflare.com/oauth2/auth?state=test'; exit 7"),
+            &state, true, false,
+        )).await.unwrap().unwrap_err();
+        assert!(error.contains("7"), "{error}");
+        assert_eq!(
+            state.lock().await["loginUrl"],
+            "https://dash.cloudflare.com/oauth2/auth?state=test"
+        );
+    }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn silent_login_is_bounded_and_descendant_pipes_do_not_stall_exit() {
+        let state = Mutex::new(json!({}));
+        assert!(run_command_until(
+            script("sleep 10"),
+            &state,
+            true,
+            false,
+            Duration::from_millis(30)
+        )
+        .await
+        .is_err());
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            run_command(script("sleep 10 & exit 3"), &state, false, false),
+        )
+        .await
+        .expect("inherited pipes must close")
+        .unwrap_err();
+    }
     #[test]
     fn extracts_only_cloudflare_login_and_exact_worker_address() {
         assert!(login_url("Visit https://dash.cloudflare.com/oauth2/auth?state=test").is_some());

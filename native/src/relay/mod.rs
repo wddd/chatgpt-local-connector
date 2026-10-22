@@ -147,29 +147,19 @@ async fn execute(
         return connect(&service, &mut config, &status).await;
     }
     let mut config = if action == "create" {
-        let relay_id = id();
-        let worker = body["workerName"]
-            .as_str()
-            .map(str::to_owned)
-            .unwrap_or_else(|| format!("arc-relay-{}", &relay_id[..8]));
-        if worker.len() > 63
-            || worker.is_empty()
-            || !worker
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        {
-            return Err(
-                "Worker name must contain lowercase letters, digits or hyphens (1-63)".into(),
-            );
+        let existing = records()?.into_iter().find(undeployed);
+        let config = draft(existing, &body)?;
+        let relay_id = string(&config, "id");
+        let secrets = directory(relay_id)?.join("secrets.json");
+        if !secrets.exists() {
+            let key = Identity::generate()?;
+            use base64::Engine;
+            save(
+                &secrets,
+                &json!({"managementPrivateKey":base64::engine::general_purpose::STANDARD.encode(key)}),
+            )?;
         }
-        let key = Identity::generate()?;
-        use base64::Engine;
-        let config = json!({"id":relay_id,"url":"","name":label(&body)?,"owner":true,"workerName":worker,"ingressId":"","workerVersion":null});
-        save(
-            &directory(&relay_id)?.join("secrets.json"),
-            &json!({"managementPrivateKey":base64::engine::general_purpose::STANDARD.encode(key)}),
-        )?;
-        save(&directory(&relay_id)?.join("config.json"), &config)?;
+        save(&directory(relay_id)?.join("config.json"), &config)?;
         config
     } else {
         read(string(&body, "id"))?
@@ -232,6 +222,8 @@ async fn execute(
     )?;
     let instance = Identity::instance()?;
     let client = client().await?;
+    step(&status, "connecting").await;
+    transport::wait_deployed(&client, &url).await?;
     transport::control(
         &client,
         &url,
@@ -247,6 +239,34 @@ async fn execute(
         save(&secrets_path, &secrets)?;
     }
     connect(&service, &mut config, &status).await
+}
+// Never discard a record once a remote deployment may have started.
+fn undeployed(config: &Value) -> bool {
+    config["owner"] == true
+        && config["deleted"] != true
+        && config["deploymentStarted"] != true
+        && string(config, "url").is_empty()
+        && string(config, "ingressId").is_empty()
+}
+fn draft(existing: Option<Value>, body: &Value) -> Result<Value> {
+    let mut config = existing.unwrap_or_else(|| {
+        let id = id();
+        json!({"id":id,"url":"","owner":true,"workerName":format!("arc-relay-{}", &id[..8]),"ingressId":"","workerVersion":null})
+    });
+    config["name"] = json!(label(body)?);
+    if let Some(worker) = body.get("workerName") {
+        config["workerName"] = worker.clone();
+    }
+    let worker = string(&config, "workerName");
+    if worker.is_empty()
+        || worker.len() > 63
+        || !worker
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err("Worker name must contain lowercase letters, digits or hyphens (1-63)".into());
+    }
+    Ok(config)
 }
 fn label(body: &Value) -> Result<String> {
     let name = body["name"].as_str().unwrap_or("共享中继").trim();
@@ -390,6 +410,26 @@ pub(crate) fn request<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cancelled_creation_reuses_only_an_undeployed_draft() {
+        let first = draft(None, &json!({"name":"First"})).unwrap();
+        assert!(undeployed(&first));
+        let retry = draft(Some(first.clone()), &json!({"name":"Retry"})).unwrap();
+        assert_eq!(retry["id"], first["id"]);
+        assert_eq!(retry["workerName"], first["workerName"]);
+        assert_eq!(retry["name"], "Retry");
+        for (key, value) in [
+            ("deploymentStarted", json!(true)),
+            ("owner", json!(false)),
+            ("deleted", json!(true)),
+            ("url", json!("https://relay.example")),
+            ("ingressId", json!("existing")),
+        ] {
+            let mut existing = first.clone();
+            existing[key] = value;
+            assert!(!undeployed(&existing), "must preserve {key}");
+        }
+    }
     #[tokio::test]
     async fn cancellation_waits_for_job_drop_and_keeps_recovery_information() {
         let state = Arc::new(Mutex::new(

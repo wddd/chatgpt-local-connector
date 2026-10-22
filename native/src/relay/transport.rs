@@ -96,7 +96,7 @@ pub(super) async fn envelope(
         .timeout(Duration::from_secs(20))
         .send()
         .await
-        .map_err(|_| "Cannot reach relay challenge endpoint")?;
+        .map_err(|e| format!("Cannot reach relay challenge endpoint: {}", e.without_url()))?;
     if !response.status().is_success() {
         return Err(format!("Relay challenge HTTP {}", response.status()));
     }
@@ -105,6 +105,24 @@ pub(super) async fn envelope(
         .await
         .map_err(|_| "Invalid relay challenge")?;
     Ok(identity.envelope(origin, string(&challenge, "challenge"), payload))
+}
+pub(super) async fn wait_deployed(client: &reqwest::Client, origin: &str) -> Result<()> {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut delay = 1;
+        loop {
+            // A fresh workers.dev route can return 404 briefly after Wrangler
+            // succeeds. Only retry this challenge, not signed management writes.
+            if let Ok(response) = client.post(format!("{origin}/challenge")).timeout(Duration::from_secs(10)).send().await {
+                if response.status().is_success() {
+                    if let Ok(value) = response.json::<Value>().await {
+                        if value["version"] == env!("ARC_BUILD_VERSION") && value["challenge"].is_string() { return; }
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(delay)).await;
+            delay = (delay * 2).min(8);
+        }
+    }).await.map_err(|_| "Worker deployed, but workers.dev is not ready after 60 seconds; check proxy and retry relay.redeploy".into())
 }
 pub(super) async fn control(
     client: &reqwest::Client,
@@ -377,6 +395,43 @@ mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+    #[tokio::test]
+    async fn deployment_waits_for_the_current_worker_version_after_route_propagation() {
+        crate::init_crypto();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for (status, body) in [
+                (404, "{}".to_owned()),
+                (
+                    200,
+                    json!({"version":env!("ARC_BUILD_VERSION"),"challenge":"ready"}).to_string(),
+                ),
+            ] {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = Vec::new();
+                loop {
+                    let mut byte = [0];
+                    stream.read_exact(&mut byte).await.unwrap();
+                    request.push(byte[0]);
+                    if request.ends_with(b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                assert!(String::from_utf8(request)
+                    .unwrap()
+                    .starts_with("POST /challenge "));
+                stream.write_all(format!("HTTP/1.1 {status} Result\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            }
+        });
+        wait_deployed(
+            &reqwest::Client::builder().no_proxy().build().unwrap(),
+            &format!("http://{address}"),
+        )
+        .await
+        .unwrap();
+        server.await.unwrap();
+    }
     #[tokio::test]
     async fn forwards_binary_upload_and_sse_with_credit() {
         crate::init_crypto();
