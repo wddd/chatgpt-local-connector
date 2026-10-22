@@ -8,7 +8,7 @@ import { orderedSubset, moveToY } from "./order";
 import { topologyValues, topologyDebug } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
 
-export interface TaskView extends Omit<PaintTask, "parent" | "side"> { content: ReactNode; reorderable?: boolean }
+export interface TaskView extends Omit<PaintTask, "parent" | "side"> { content: ReactNode; reorderable?: boolean; taskId?: string; threadId?: string; origin?: { ingressId?: string; controlSource?: string } }
 export interface NodeView extends Omit<PaintNode, "side"> { content: ReactNode; tasks: TaskView[]; reorderable?: boolean }
 type PositionedTask = TaskView & { parent: string; side: Side };
 export interface TopologyHandle { panelFrame: (rect: SurfaceRect | null) => void }

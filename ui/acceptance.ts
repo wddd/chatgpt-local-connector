@@ -14,9 +14,9 @@ export function observeTopology(read: () => unknown) {
   topology = read;
   return () => { if (topology === read) topology = undefined; };
 }
-export function viewModel() {
+export function viewModel(layoutSettled = false) {
   return {
-    schemaVersion: 1, capturedAt: new Date().toISOString(),
+    schemaVersion: 1, layoutSettled, capturedAt: new Date().toISOString(),
     window: { width: innerWidth, height: innerHeight, devicePixelRatio },
     theme: document.documentElement.dataset.theme, language: locale.get(),
     topology: topology?.() ?? null,
@@ -47,7 +47,7 @@ export async function settledViewModel() {
     await new Promise(requestAnimationFrame);
     const current = JSON.stringify(topology?.());
     if (current && current === previous) stable++; else stable = 0;
-    if (stable >= 3) return viewModel();
+    if (stable >= 3) return viewModel(true);
     previous = current ?? '';
   }
   return { ...viewModel(), layoutSettled: false };

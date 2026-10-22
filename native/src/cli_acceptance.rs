@@ -114,12 +114,29 @@ fn parse(args: &[&str]) -> Result<Options> {
     Ok(result)
 }
 
+pub(crate) fn control_hint(op: &str) -> String {
+    if !op.is_empty() && op.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') {
+        format!("arc cli control guide {op}")
+    } else {
+        "arc cli control guide".into()
+    }
+}
+
 pub(crate) async fn control(op: &str, args: Value) -> Result<Value> {
     let response =
-        transport::forward_request("cli/control", "POST", json!({"op":op,"args":args})).await?;
+        transport::forward_request("cli/control", "POST", json!({"op":op,"args":&args})).await?;
     let value = response["structuredContent"]["result"].clone();
     if response["isError"] == true {
-        return Err(value["error"].to_string());
+        let mut error = value["error"].clone();
+        if error.is_object() {
+            let guide_op = if op == "guide" {
+                args["op"].as_str().unwrap_or("")
+            } else {
+                op
+            };
+            error["cliHint"] = json!(control_hint(guide_op));
+        }
+        return Err(error.to_string());
     }
     Ok(value)
 }

@@ -48,7 +48,9 @@ the existing authenticated local Core channel; neither a network ingress nor
 `cli mcp` can select it. The remote guide/query/act and notification schemas are
 unchanged. `cli capabilities` lists CLI-only descriptors under `cliOnly`;
 `cli schema control`, `cli schema wait` and `cli schema install-shim` describe
-those commands separately from management operations.
+those commands separately from management operations. Control operation errors add
+`error.cliHint`, for example `arc cli control guide codex_create`, to the existing
+error object. This executable hint is CLI-only; remote MCP errors are unchanged.
 
 ```sh
 arc cli wait --op status --until '/core/desktop/state=="ready"' --timeout 20
@@ -98,7 +100,9 @@ The result includes `directory`, `viewModel` and `png`. `view-model.json` record
 the current renderer's animated node/task positions, primitive geometry, SVG
 paths (outer arcs and tentacles), task states/text, panel selection, viewport,
 theme and language. The UI refreshes its stores and waits for geometry to settle;
-`layoutSettled:false` indicates the bounded settling period expired. Capture is
+`layoutSettled` is always boolean: `true` when geometry settled, `false` when
+the bounded settling period expired. Task bubbles include `taskId`, optional
+`threadId`, and their activity `origin` for matching dispatched work. Capture is
 sequential, so live activity can advance between model export and PNG capture.
 On macOS `snapshot.png` comes from WKWebView `takeSnapshot`, without screen
 recording permission and independently of SSH's TCC identity. Other desktop
@@ -110,8 +114,20 @@ Headless Linux has no WebView and cannot export a rendered UI model.
 creates `~/.local/bin/arc` pointing to that App's `Contents/Resources/bin/arc`.
 An identical link succeeds without changes; any other existing file/link fails
 with `SHIM_EXISTS`. Uninstall removes the link only when this instance recorded
-creating it and its target is unchanged. Add `~/.local/bin` to PATH in your shell
-if needed.
+creating it and its target is unchanged. The result always includes `pathHint`:
+`shell`, `inPath` (boolean, or null if the probe failed), `baselinePath`, `message`,
+and `command` (null when unnecessary or the shell has no known correction).
+The probe runs `$SHELL -c` (default `/bin/zsh`) with a minimal system PATH,
+without interactive/login startup or inherited interactive PATH additions, and
+has a three-second deadline. This checks shell startup, not SSH server-specific
+PATH overrides. For zsh, a missing path returns a copyable command:
+
+```sh
+printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >> "${ZDOTDIR:-$HOME}/.zshenv"
+```
+
+Shell configuration is never modified automatically. Other shells report the
+probe result; configure their non-interactive startup explicitly.
 
 ## Resource diagnostics
 

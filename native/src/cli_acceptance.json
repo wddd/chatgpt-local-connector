@@ -55,7 +55,7 @@
     }
   },
   "install-shim": {
-    "description": "macOS only. Symlink ~/.local/bin/arc to this App bin/arc. Refuse other existing files. Uninstall removes only a recorded unchanged symlink for this instance.",
+    "description": "macOS only. Symlink ~/.local/bin/arc to this App bin/arc. Refuse other existing files. Result pathHint reports non-interactive shell PATH and a copyable zsh correction without editing shell configuration. Uninstall removes only a recorded unchanged symlink for this instance.",
     "inputSchema": {
       "type": "object",
       "properties": {},

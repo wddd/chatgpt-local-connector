@@ -451,6 +451,16 @@ fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
     }
     message.push_str(&format!("；正确用法：{usage}"));
     let mut error = json!({"code":code,"message":message,"usage":usage});
+    if args.first() == Some(&"control") {
+        let op = if args.get(1) == Some(&"guide") {
+            args.get(2)
+        } else {
+            args.get(1)
+        };
+        error["cliHint"] = json!(crate::cli_acceptance::control_hint(
+            op.copied().unwrap_or("")
+        ));
+    }
     if args.starts_with(&["ingress", "update"]) {
         error["message"] = json!(format!(
             "{}；stdin 最小合法示例：{{\"enabled\":false}}",
@@ -527,7 +537,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         ["control", op, "--stdin"] => crate::cli_acceptance::control(op, stdin_json()?).await,
         ["wait", ..] => crate::cli_acceptance::wait(&args).await,
         ["app", "snapshot", ..] => crate::cli_acceptance::snapshot(&args).await,
-        ["install-shim"] => crate::cli_shim::install(),
+        ["install-shim"] => crate::cli_shim::install().await,
         ["schema", name] if crate::cli_acceptance::schemas().get(*name).is_some() => Ok(crate::cli_acceptance::schemas()[*name].clone()),
         ["setup"] | ["setup", "next"] => crate::management::call("setup.next",setup_body(json!({}))).await,
         ["setup", "--goal", goal] | ["setup", "next", "--goal", goal] => crate::management::call("setup.next",setup_body(json!({"goal":goal}))).await,

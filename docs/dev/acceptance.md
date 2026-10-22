@@ -38,9 +38,9 @@ arc cli app snapshot --out ./output/acceptance/manual
 printf '%s' '{"width":1280,"height":800,"panel":{"kind":"agent","id":"codex"}}' | arc cli app snapshot --out ./output/acceptance/agent --stdin
 ```
 
-未安装 shim 时使用 App 内 CLI 的完整路径。macOS 可运行 `cli install-shim` 建立 `~/.local/bin/arc`，重复运行幂等；遇到已有其他文件会停止，不覆盖。
+未安装 shim 时使用 App 内 CLI 的完整路径。macOS 可运行 `cli install-shim` 建立 `~/.local/bin/arc`，重复运行幂等；遇到已有其他文件会停止，不覆盖。返回 `pathHint` 检查非交互 shell 的 PATH；缺少路径时可复制其中的 zsh 命令，不会自动修改 shell 配置。检查使用最小系统 PATH 启动 `$SHELL -c`，避免继承交互 shell 已添加的路径；不代表 SSH 服务端的自定义环境。
 
-macOS App 自截图使用 WKWebView，不需要屏幕录制权限。输出包含 `snapshot.png`、`view-model.json`；返回值给出绝对路径。省略 `--out` 时保存在目标机状态目录的 `acceptance/<唯一编号>/`。Windows/Linux 桌面可导出渲染状态，PNG 返回 `NOT_SUPPORTED`；Linux 无界面核心没有可导出的 WebView。检查 `png.ok` 和 `layoutSettled`，不要仅凭命令成功认定图片完整。
+macOS App 自截图使用 WKWebView，不需要屏幕录制权限。输出包含 `snapshot.png`、`view-model.json`；返回值给出绝对路径。省略 `--out` 时保存在目标机状态目录的 `acceptance/<唯一编号>/`。Windows/Linux 桌面可导出渲染状态，PNG 返回 `NOT_SUPPORTED`；Linux 无界面核心没有可导出的 WebView。`layoutSettled` 始终为布尔值。检查 `png.ok` 和 `layoutSettled`，不要仅凭命令成功认定图片完整。
 
 指定 `panel.kind` 为 `agent`、`source` 或 `none`；前两者需要节点 `id`。窗口尺寸与面板选择保留在 App 中。状态和截图依次采集，活动任务可能在两者之间更新。
 
@@ -55,7 +55,7 @@ node tooling/acceptance/remote.mjs --host <host> --project /path/to/project --ou
 
 脚本通过 `app start` 启动 App 管理的 Core，读取 doctor，以 `local-cli` 派发只回复 `ARC_ACCEPTANCE_OK` 的只读任务，等待创建回执和任务终态，核对任务记录、来源与 activity，再收集 App 截图。不会启动独立 headless daemon，不执行宿主侧循环 SSH 轮询；等待由目标机 `cli wait` 完成，每段有明确期限。审批使用请求中的 `approval:bypass`，不修改目标机全局设置。
 
-默认输出位于 `output/acceptance/remote/<时间戳>/`。每一步的 CLI JSON、`report.json`、`view-model.json` 与 `snapshot.png` 放在同一目录。报告将实际断言失败记为 `defects`；CLI 版本缺能力、无法连接或任务过快导致活动样本缺失等记为 `evidenceGaps`。退出码 0 表示已取得完整证据，1 表示发现缺陷，2 表示只有证据缺口。任务失败时仍尝试采集截图。任务与目标机原始截图保留，可按报告中的 ID 和路径查看。
+默认输出位于 `output/acceptance/remote/<时间戳>/`。每一步的 CLI JSON、`report.json`、`view-model.json` 与 `snapshot.png` 放在同一目录。报告将实际断言失败记为 `defects`；CLI 版本缺能力、无法连接或任务过快导致活动样本缺失等记为 `evidenceGaps`。退出码 0 表示已取得完整证据，1 表示发现缺陷，2 表示只有证据缺口。报告的 `assertions` 逐项记录：实际渲染任务按 `threadId` / `taskId` 匹配本轮派发、其来源为 `local-cli`、`layoutSettled:true`，以及 PNG 合成白底后的亮度像素方差大于 1。明确不匹配记为缺陷；缺少可判断数据或 PNG 无法解码记为证据缺口。任务失败时仍尝试采集截图。任务与目标机原始截图保留，可按报告中的 ID 和路径查看。
 
 ## 控制源与等待
 

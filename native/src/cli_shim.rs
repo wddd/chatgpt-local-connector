@@ -1,6 +1,6 @@
 //! Install only an owned symlink; never replace a user's launcher.
 use crate::*;
-pub(crate) fn install() -> Result<Value> {
+pub(crate) async fn install() -> Result<Value> {
     #[cfg(not(target_os = "macos"))]
     {
         Err("NOT_SUPPORTED: install-shim is macOS only".into())
@@ -22,10 +22,13 @@ pub(crate) fn install() -> Result<Value> {
         let path = dirs::home_dir()
             .ok_or("home unavailable")?
             .join(".local/bin/arc");
+        let path_hint = path_hint(path.parent().unwrap()).await;
         let marker = root().join("app/cli-shim.json");
         if std::fs::symlink_metadata(&path).is_ok() {
             if std::fs::read_link(&path).is_ok_and(|p| p == target) {
-                return Ok(json!({"path":path,"target":target,"created":false}));
+                return Ok(
+                    json!({"path":path,"target":target,"created":false,"pathHint":path_hint}),
+                );
             }
             return Err("SHIM_EXISTS: ~/.local/bin/arc already exists; nothing overwritten".into());
         }
@@ -35,7 +38,7 @@ pub(crate) fn install() -> Result<Value> {
             let _ = std::fs::remove_file(&path);
             return Err(error);
         }
-        Ok(json!({"path":path,"target":target,"created":true}))
+        Ok(json!({"path":path,"target":target,"created":true,"pathHint":path_hint}))
     }
 }
 pub(crate) fn owned(executable: &Path) -> Option<PathBuf> {
@@ -49,4 +52,34 @@ pub(crate) fn owned(executable: &Path) -> Option<PathBuf> {
         .ancestors()
         .find(|p| p.extension().is_some_and(|e| e == "app"))?;
     (target == Path::new(record["target"].as_str()?) && target.starts_with(app)).then_some(path)
+}
+
+#[cfg(target_os = "macos")]
+async fn path_hint(directory: &Path) -> Value {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    let mut command = tokio::process::Command::new(&shell);
+    // Probe SSH-style non-interactive startup without an interactive parent's PATH additions.
+    command
+        .args(["-c", "printf '\\036%s' \"$PATH\""])
+        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(3), command.output()).await;
+    let in_path = output
+        .ok()
+        .and_then(|r| r.ok())
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|s| {
+            s.rsplit_once('\u{1e}')
+                .map(|(_, path)| std::env::split_paths(path).any(|p| p == directory))
+        });
+    let fix = match Path::new(&shell).file_name().and_then(|s| s.to_str()) {
+        Some("zsh") => Some(
+            r#"printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >> "${ZDOTDIR:-$HOME}/.zshenv""#,
+        ),
+        _ => None,
+    };
+    json!({"shell":shell,"inPath":in_path,"baselinePath":"/usr/bin:/bin:/usr/sbin:/sbin",
+        "command":if in_path == Some(true) { None } else { fix },
+        "message":match in_path { Some(true) => "Available in non-interactive shell PATH", Some(false) => "Add ~/.local/bin to non-interactive shell startup; shell configuration was not changed", None => "Could not inspect non-interactive shell PATH; shell configuration was not changed" }})
 }

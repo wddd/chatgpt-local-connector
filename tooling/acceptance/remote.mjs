@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { PNG } from 'pngjs';
 const options = {};
 for (let i = 2; i < process.argv.length; i += 2) {
   const flag = process.argv[i], value = process.argv[i + 1];
@@ -14,7 +15,7 @@ if (!host || !/^[a-zA-Z0-9_][a-zA-Z0-9_.@-]*$/.test(host)) throw new Error('--ho
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const out = path.resolve(options['--out'] ?? path.join(root, 'output/acceptance/remote', new Date().toISOString().replaceAll(':', '-')));
 await mkdir(out, { recursive: true });
-const report = { schemaVersion: 1, host, startedAt: new Date().toISOString(), steps: [], defects: [], evidenceGaps: [] };
+const report = { schemaVersion: 1, host, startedAt: new Date().toISOString(), steps: [], assertions: [], defects: [], evidenceGaps: [] };
 const quote = value => `'${String(value).replaceAll("'", "'\"'\"'")}'`;
 async function ssh(command, input = '', timeout = 45000, binary = false) {
   return new Promise((resolve, reject) => {
@@ -40,6 +41,36 @@ async function call(name, args, body, timeout = 45000) {
   return envelope.result;
 }
 function containsSession(activity, id) { return Object.values(activity?.agents ?? {}).some(a => a.sessions?.some(s => s.id === id || s.nativeSessionId === id)); }
+function assertion(name, passed, evidence) {
+  const status = passed === null ? 'unknown' : passed ? 'passed' : 'failed';
+  report.assertions.push({ name, status, evidence });
+  if (status !== 'passed') report[status === 'failed' ? 'defects' : 'evidenceGaps'].push(`${name}: ${evidence}`);
+}
+const snapshotArtifacts = new Map();
+function assertSnapshot() {
+  let model;
+  try { model = JSON.parse(snapshotArtifacts.get('view-model.json')?.toString('utf8') ?? 'unavailable'); }
+  catch (error) { assertion('rendered-task', null, `View model unavailable: ${error.message}`); }
+  const ids = [report.threadId, report.taskId].filter(Boolean);
+  const tasks = model?.topology?.tasks;
+  const matched = Array.isArray(tasks) && ids.length ? tasks.filter(t => ids.includes(t.taskId) || ids.includes(t.threadId)) : null;
+  if (model) assertion('rendered-task', matched ? matched.length > 0 : null, matched ? `${matched.length} rendered tasks match dispatched IDs ${ids.join(', ')}` : 'Missing dispatched ID or topology tasks');
+  const origins = matched?.map(t => t.origin);
+  assertion('rendered-source', origins?.length && origins.every(o => o && (o.ingressId || o.controlSource)) ? origins.every(o => (o.ingressId ?? o.controlSource) === 'local-cli' && (!o.controlSource || o.controlSource === 'local-cli')) : null, JSON.stringify(origins ?? 'No matched task origin'));
+  assertion('layout-settled', typeof model?.layoutSettled === 'boolean' ? model.layoutSettled : null, `layoutSettled=${model?.layoutSettled}`);
+  try {
+    const png = PNG.sync.read(snapshotArtifacts.get('snapshot.png'));
+    let sum = 0, squares = 0;
+    const count = png.width * png.height;
+    for (let i = 0; i < png.data.length; i += 4) {
+      const alpha = png.data[i + 3] / 255;
+      const luminance = (0.2126 * png.data[i] + 0.7152 * png.data[i + 1] + 0.0722 * png.data[i + 2]) * alpha + 255 * (1 - alpha);
+      sum += luminance; squares += luminance * luminance;
+    }
+    const variance = count ? Math.max(0, squares / count - (sum / count) ** 2) : 0;
+    assertion('png-nonblank', variance > 1, `${png.width}x${png.height}; luminance variance=${variance.toFixed(4)} (required >1)`);
+  } catch (error) { assertion('png-nonblank', null, `Cannot decode PNG: ${error.message}`); }
+}
 try {
   const platform = (await ssh('uname -s')).trim();
   if (platform !== 'Darwin') throw new Error('Evidence gap: this SSH launcher requires macOS; it never starts a headless daemon');
@@ -60,6 +91,7 @@ try {
   report.requestId = requestId;
   const resolved = receipt.threadId && receipt.turnId ? receipt : (await call('dispatch-wait', ['wait', '--control', '--op', 'receipt', '--stdin', '--until', '/threadId exists', '--until', '/turnId exists', '--timeout', '60'], { requestId }, 70000)).lastResult;
   const id = resolved.threadId;
+  report.taskId = resolved.taskId;
   report.threadId = id; report.turnId = resolved.turnId;
   const activityBefore = await call('activity-before', ['call', 'agents.activity']);
   const terminal = await call('task-wait', ['wait', '--control', '--op', 'codex_wait', '--stdin', '--until', '/conditionMet==true', '--timeout', '60'], { threadId: id, turnId: resolved.turnId, until: 'terminal' }, 70000);
@@ -86,13 +118,18 @@ if (cli) {
   try {
     const snapshot = await call('snapshot', ['app', 'snapshot', '--stdin'], { width: 1280, height: 800, panel: { kind: 'none' } }, 50000);
     for (const [remote, local] of [[snapshot.viewModel, 'view-model.json'], [snapshot.png?.path, 'snapshot.png']]) {
-      if (remote) await writeFile(path.join(out, local), await ssh(`cat -- ${quote(remote)}`, '', 30000, true));
+      if (remote) {
+        const data = await ssh(`cat -- ${quote(remote)}`, '', 30000, true);
+        snapshotArtifacts.set(local, data);
+        await writeFile(path.join(out, local), data);
+      }
     }
     if (!snapshot.png?.ok) report.evidenceGaps.push(`PNG unavailable: ${snapshot.png?.code ?? 'unknown'}`);
   } catch (error) { report.evidenceGaps.push(`Snapshot unavailable: ${error.message}`); }
 }
+assertSnapshot();
 report.finishedAt = new Date().toISOString();
 report.ok = report.defects.length === 0 && report.evidenceGaps.length === 0;
 await writeFile(path.join(out, 'report.json'), JSON.stringify(report, null, 2));
-console.log(JSON.stringify({ ok: report.ok, directory: out, defects: report.defects, evidenceGaps: report.evidenceGaps }));
+console.log(JSON.stringify({ ok: report.ok, directory: out, assertions: report.assertions, defects: report.defects, evidenceGaps: report.evidenceGaps }));
 process.exitCode = report.defects.length ? 1 : report.evidenceGaps.length ? 2 : 0;

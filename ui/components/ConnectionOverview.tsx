@@ -212,7 +212,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         <span className="graph-node-name">{name(agent)}</span>
       </GraphNode>,
       tasks: [
-        ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]),
+        ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]), taskId: session.id, threadId: session.nativeSessionId, origin: session.origin,
           state: (session.endedAt !== undefined ? "completed" : session.interaction ? "attention" : session.source === "transcript" ? "external" : "running") as import("../topology/render").TaskState,
           selected: selected && selection.session?.id === session.id, reorderable: !panelOpen,
           content: <ActivityBubble agent={agent.agent} session={session} now={now} onMove={panelOpen ? undefined : by => {
