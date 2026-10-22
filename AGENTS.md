@@ -1,32 +1,40 @@
-# 开发约定
+# Development conventions
 
-- 采用 MIT 许可证。公开源码与桌面产物在 GitHub 维护。本项目不发布公共 npm 包。
-- 根据任务性质自行评估提交和推送的必要性，无需另行请求用户授权；需要推送才能完成的任务，应直接提交并推送。用户明确要求不提交、不推送或等待审查时遵从该限制。打发布标签、上传与公开 Release 必须获得用户授权。
-- 使用 macOS 与 Windows 桌面及 Linux x86_64 / aarch64 无界面核心；业务代码不依赖其他项目或个人环境。采用 Tauri + Rust 原生桌面，Node/npm 仅用于开发构建；本机 Tunnel Client 的安装、配置与生命周期由产品管理，Tunnel 身份申请和服务端仍使用官方方案。
-- 不使用 Git worktree。允许有明确目的的一次性状态迁移，迁移完成后删除旧文件，不长期保留旧实现的 alias、shim 或兼容层。
-- 面向控制源的 MCP 工具面冻结为 `guide`、`query`、`act`：不得改名、删除或修改参数结构（包括新增可选参数）；缓存 schema 的会话通过 query 的 guide op 获取最新契约。能力变化只通过现有 catalog 中的 op 与 guide 披露，不新增 MCP 工具或旧工具别名；op 名可直接替换或删除，使用错误自愈提示当前契约。
-- MCP 事件面冻结为唯一事件 `notification`，订阅参数固定 `{op, args}`，不得改名或修改外层结构（包括新增可选参数）。事件 op 及其 args 契约通过 guide 披露；服务端按 op 校验、授权和过滤。op 可替换或删除，错误须提示当前契约，不保留旧事件名或兼容别名。
-- 外部数据读取以当前原生登录和上游响应为准，不额外核验账号、凭据有效期或内容敏感性，不以本地推断拒绝读取或改写结果。保留 MCP OAuth、入口授权、任务关联及资源边界等自身功能必需的校验。
-- 允许新增验收场景与验收脚本；单元测试仍不新增（待后续讨论）。迁移已有测试不扩大覆盖，运行已有检查和真实验收。
-- 直接调用 cargo 构建或测试后，运行 `npm run cache:prune` 检查编译缓存预算。
-- 提交信息使用 Conventional Commits：`type(scope): 中文说明`，单行不写 body。
-- 私人路径、账号、密钥、Tunnel 身份及真实任务内容不进入版本库。
-- 文档只描述当前功能、架构、限制和操作方法，不保留过程记录、验收结果、决策日志或个人环境信息。
+MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.
 
-## UI 组件约定
+- Use the MIT license. Maintain public source and desktop artifacts on GitHub. Do not publish a public npm package.
+- Assess whether commits and pushes are necessary for the task. No separate authorization is required. Commit and push directly when needed to complete the task. Respect explicit restrictions against committing or pushing, or requests to wait for review. Release tags, uploads, and public Releases require user authorization.
+- Support macOS and Windows desktops and headless Linux x86_64/aarch64. Business code MUST NOT depend on other projects or personal environments. Use Tauri and Rust for the native desktop. Node/npm are build tools only. The product owns local Tunnel Client installation, configuration, and lifecycle. Use official Tunnel identity registration and servers.
+- Never use Git worktree. Purposeful one-time state migrations are allowed. Delete old files after migration. Do not retain obsolete aliases, shims, or compatibility layers.
+- The control-source MCP tools are frozen as `guide`, `query`, and `act`. Do not rename, remove, or change their parameter structures, including optional additions. Sessions with cached schemas use the query guide op for current contracts. Expose capability changes through catalog ops and guide. Do not add MCP tools or old-tool aliases. Ops may be replaced or removed directly. Errors MUST guide clients to the current contract.
+- The MCP event surface is frozen as the single `notification` event with subscription parameters `{op, args}`. Do not rename it or change the outer structure, including optional additions. Disclose event ops and args through guide. The server validates, authorizes, and filters by op. Ops may be replaced or removed. Errors MUST identify the current contract. Do not retain old event names or compatibility aliases.
+- Read external data using current native login and upstream responses. Do not add account, credential-expiry, or content-sensitivity checks. Do not reject reads or rewrite results based on local inference. Retain checks required for ARC's own MCP OAuth, ingress authorization, task association, and resource boundaries.
+- Acceptance scenarios and scripts may be added. Do not add unit tests pending further discussion. Migrate existing tests without expanding their coverage. Run existing checks and real acceptance.
+- After direct Cargo builds or tests, run `npm run cache:prune` to check the compilation-cache budget.
+- Commit messages MUST use Conventional Commits with an English single-line subject: `type(scope): description`. Allowed types are feat, fix, docs, refactor, test, build, ci, chore, perf, and revert. Do not write a body or rewrite history. A required Git trailer may follow one blank line.
+- Keep personal paths, project names, accounts, secrets, Tunnel identities, quota details, and real task content out of the repository. Personal dispatch criteria belong in local state configuration.
+- Documentation describes current features, architecture, limits, and procedures. Do not store process records, acceptance results, decision logs, or personal environment details.
 
-- 所有单选控件统一使用 `SingleChoice`：选项数 ≤ 5 且宽度足够时使用胶囊选项卡；> 5 或宽度不足时使用下拉选择。禁止在业务页面直接新增 独立 Select、原生 `select` 或重复实现单选样式；主题统一配置，保留键盘导航、禁用状态与表单校验。
+## Language and terminology
 
-- 渲染层使用 React；通用控件复用 `ui/components/ui/index.tsx`，复杂交互使用 Radix；不在业务页面重新手写同类控件。
-- 语义 token 统一在 `ui/tokens.css` 配置，深浅色状态使用 `ui/theme.ts`，默认跟随系统；功能图标统一使用共享 `Icon` 包装的 Lucide 16/20px、1.75px 描边。品牌图形保留各自资源。
-- 编辑弹窗复用 `Dialog`，表单使用原生 `form` 和共享 `Field` / `Input`，默认单列、标签在上，仅短且相关的字段可并排。校验错误归属字段并关联输入，提交失败聚焦首个错误；浮层关闭后恢复触发点焦点。
-- 首页固定使用 ARC 标识与耳罩连线。保留拓扑、节点展开面板的空间形变和简化的触感开关；功能页采用安静、紧凑、一致的布局。工作区面板标题栏在顶部，打开关闭仅使用不超过 180ms 的淡入淡出与轻微位移；面板内部及嵌套视图只切换内容，不形变整个面板。同组 tooltip 保持连续显示并平滑移动、调整尺寸，悬停高亮使用共享弹簧跟随层，保留 reduced-motion、键盘导航、逐层 Escape 和焦点恢复。Radix 负责通用交互基础；布局组件只管排列，不复制标准输入框和按钮样式。详细规范见 `docs/dev/ui.md`。
+- Model-facing text and AI-maintainer text MUST be English only. Keep no Chinese copies. This includes every control-source guide and topic, catalog descriptions and signatures, schema descriptions, receipt hints, errors and correction examples, notification/event text, `docs/dev/**`, and this file.
+- Product UI, promotional documentation, and end-user onboarding documentation remain localized. Preserve Chinese user input and original upstream evidence.
+- Use the fixed vocabulary in [terminology](docs/dev/terminology.md). Define MUST, SHOULD, and MAY once at the top of each guide response. Use one rule per sentence.
 
-## 文档分层
+## UI components
 
-- 门面层：README.md 与 README.zh-CN.md，围绕 Claude + Codex Loop 和 ChatGPT Chat + Codex，保持简短。
-- 上手与指南层：docs/getting-started.md、concepts.md、guides/、auto-setup.md、faq.md、installation.md、story.md 使用英文主文件，并在 docs/zh-CN/ 保留路径对应的完整中文版；内容同步。
-- 参考层：docs/reference/ 只用英文，集中维护工具、Agents、CLI、OAuth、Linux 与 subscriptions（订阅额度）的精确契约。
-- 维护层：docs/dev/ 只用中文，描述开发、发布、架构和 UI；内部生命周期归入架构。
-- 用户指南按任务组织，短句、先操作；真实限制集中在篇末 Limits / 限制，不反复防御性说明。
-- 事实以当前源码、cli help 与 cli guide 为准。更新路径时同步内部链接、应用/CLI URL 和 README 的 Agent 提示词；cli guide 内嵌 docs/reference/cli.md。
+- Use `SingleChoice` for every single-choice control. Use pill tabs with at most five options when width permits. Otherwise use a dropdown. Do not add standalone Select, native `select`, or duplicate single-choice styling in business pages. Configure themes centrally. Preserve keyboard navigation, disabled states, and validation.
+- Use React for rendering. Reuse `ui/components/ui/index.tsx` for shared controls and Radix for complex interactions. Do not reimplement equivalent controls in business pages.
+- Define semantic tokens in `ui/tokens.css`. Manage light/dark state in `ui/theme.ts`, following the system by default. Use the shared `Icon` wrapper with Lucide at 16/20px and 1.75px strokes. Retain brand-specific assets.
+- Reuse `Dialog` for editing. Use native `form` with shared `Field`/`Input`. Default to one column with labels above inputs. Only short, related fields may share a row. Associate validation errors with their fields. Focus the first error after failed submission. Restore trigger focus after closing an overlay.
+- The homepage uses the ARC mark and earcup connections. Preserve topology, spatial transitions for expanded node panels, and simplified tactile toggles. Functional pages use quiet, compact, consistent layouts. Keep workspace-panel title bars at the top. Opening and closing use only fades and slight movement of at most 180ms. Nested views switch content without morphing the whole panel. Related tooltips remain visible while smoothly moving and resizing. Hover highlights use the shared spring-following layer. Preserve reduced motion, keyboard navigation, layered Escape, and focus restoration. Radix owns common interaction foundations. Layout components only arrange content and do not duplicate input/button styles. See [UI](docs/dev/ui.md).
+- Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.
+
+## Documentation layers
+
+- Promotional: keep README.md and README.zh-CN.md short and centered on Claude + Codex Loop and ChatGPT Chat + Codex.
+- Onboarding and guides: docs/getting-started.md, concepts.md, guides/, auto-setup.md, faq.md, installation.md, and story.md have English primary files and complete matching Chinese versions under docs/zh-CN/. Keep them synchronized.
+- Reference: docs/reference/ is English only. It owns precise contracts for tools, Agents, CLI, OAuth, Linux, and subscriptions.
+- Maintainer: docs/dev/ is English only. It describes development, releases, architecture, and UI. Internal lifecycle belongs in architecture.
+- Organize user guides by task. Use short sentences and lead with actions. Collect real limitations at the end under Limits or the localized equivalent. Avoid repeated defensive explanations.
+- Current source, cli help, and cli guide are authoritative. Path changes MUST update internal links, application/CLI URLs, and README Agent prompts. cli guide embeds docs/reference/cli.md.

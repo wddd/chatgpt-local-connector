@@ -88,39 +88,39 @@ pub(crate) fn binding(s: &Value) -> String {
     }
 }
 pub(crate) fn validate_config(s: &Value) -> Result<()> {
-    let o = s.as_object().ok_or("配置格式错误")?;
+    let o = s.as_object().ok_or("Invalid configuration format")?;
     crate::proxy::validate(
-        s["proxyMode"].as_str().ok_or("代理模式无效")?,
-        s["proxyUrl"].as_str().ok_or("代理地址无效")?,
+        s["proxyMode"].as_str().ok_or("Invalid proxy mode")?,
+        s["proxyUrl"].as_str().ok_or("Invalid proxy address")?,
     )?;
     if o.len() != descriptor()["fields"].as_object().unwrap().len() || !s["autoStart"].is_boolean()
     {
-        return Err("配置字段错误".into());
+        return Err("Invalid configuration field".into());
     }
     for (key, field) in descriptor()["fields"].as_object().unwrap() {
         if let Some(max) = field["maxBytes"].as_u64() {
-            let value = s[key].as_str().ok_or("配置类型错误")?;
+            let value = s[key].as_str().ok_or("Invalid configuration type")?;
             if value.len() > max as usize || value.contains('\0') {
-                return Err("配置内容无效".into());
+                return Err("Invalid configuration value".into());
             }
         }
     }
     if !["tunnel", "https", "relay", "local"].contains(&string(s, "connectionMode")) {
-        return Err("连接方式无效".into());
+        return Err("Invalid connection method".into());
     }
     if s["connectionMode"] == "relay" {
         crate::relay::validate_config(s)?;
     }
     let providers = descriptor()["providers"].as_object().unwrap();
     if !["token", "login"].contains(&string(s, "cloudflareAuth")) {
-        return Err("Cloudflare 登录方式无效".into());
+        return Err("Invalid Cloudflare login method".into());
     }
     if !string(s, "cloudflareTunnelId").is_empty() {
         uuid::Uuid::parse_str(string(s, "cloudflareTunnelId"))
-            .map_err(|_| "Cloudflare Tunnel ID 无效")?;
+            .map_err(|_| "Invalid Cloudflare Tunnel ID")?;
     }
     if !providers.contains_key(string(s, "httpsProvider")) {
-        return Err("HTTPS 服务商无效".into());
+        return Err("Invalid HTTPS provider".into());
     }
     for (id, provider) in providers {
         if let Some(mode) = provider["mode"].as_str() {
@@ -129,13 +129,13 @@ pub(crate) fn validate_config(s: &Value) -> Result<()> {
             if !valid
                 && !(id == "localxpose" && s[mode] == "quick" && s["httpsProvider"] != id.as_str())
             {
-                return Err(format!("{} 模式无效", string(provider, "label")));
+                return Err(format!("Invalid {} mode", string(provider, "label")));
             }
         }
         if let Some(key) = provider["credential"].as_str() {
             if string(s, key).chars().any(char::is_whitespace) {
                 return Err(format!(
-                    "{} Token 不能包含空白字符",
+                    "{} Token cannot contain whitespace",
                     string(provider, "label")
                 ));
             }
@@ -148,20 +148,20 @@ pub(crate) fn validate_config(s: &Value) -> Result<()> {
         crate::https_tunnel::ngrok_endpoint(string(s, "ngrokEndpoint"))?;
     }
     if !["us", "eu", "ap"].contains(&string(s, "localxposeRegion")) {
-        return Err("LocalXpose 区域无效".into());
+        return Err("Invalid LocalXpose region".into());
     }
     string(s, "httpsHost")
         .parse::<std::net::IpAddr>()
-        .map_err(|_| "监听地址必须是 IP 地址")?;
+        .map_err(|_| "Listener address must be an IP address")?;
     if !s["httpsPort"]
         .as_u64()
         .is_some_and(|p| (1..=65535).contains(&p))
     {
-        return Err("监听端口无效".into());
+        return Err("Invalid listener port".into());
     }
     let url = string(s, "httpsUrl");
     if !url.is_empty() {
-        let u = reqwest::Url::parse(url).map_err(|_| "HTTPS URL 无效")?;
+        let u = reqwest::Url::parse(url).map_err(|_| "Invalid HTTPS URL")?;
         if u.scheme() != "https"
             || u.host_str().is_none()
             || u.path() != "/mcp"
@@ -170,7 +170,9 @@ pub(crate) fn validate_config(s: &Value) -> Result<()> {
             || !u.username().is_empty()
             || u.password().is_some()
         {
-            return Err("请填写以 https:// 开头、以 /mcp 结尾且不含凭据或查询参数的地址".into());
+            return Err(
+                "Enter an HTTPS URL ending in /mcp without credentials or query parameters.".into(),
+            );
         }
     }
     let id = string(s, "tunnelId");
@@ -180,7 +182,7 @@ pub(crate) fn validate_config(s: &Value) -> Result<()> {
                 .bytes()
                 .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-'))
     {
-        return Err("Tunnel ID 格式错误".into());
+        return Err("Invalid Tunnel ID format".into());
     }
     Ok(())
 }

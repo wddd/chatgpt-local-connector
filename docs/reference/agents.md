@@ -62,7 +62,7 @@ agent_context produces a read-only review/handoff of an existing task and curren
 
 ## Dispatch policy and acceptance
 
-Query dispatch_policy with an optional agent and taskId for native choices, shared quota readings, policy and history. The top-level criteria guides Agent selection; each Agent policy has its own criteria. Missing model/options inherit native session values. Existing policy files are not rewritten.
+Query dispatch_policy with an optional agent and taskId for native choices, shared quota readings, policy and history. The default decision view summarizes availability, quota, defaults, criteria and history. Use `view:"full"` for detailed native facts. The top-level criteria guide agent selection. Each agent has its own criteria. Use `knownCriteriaHash` to reuse unchanged criteria. See [the dispatch contract](tools.md) for hash placement and history grouping. Missing model/options inherit native session values. Existing policy files are not rewritten.
 
 agent_create and agent_send accept model, options (native option IDs to string values), reason and purpose (task or self-test). Explicit choices override Agent policy defaults, then native current values. Deny rules win. The model is set first; ARC reads the updated option catalog, sets other choices and confirms the session before sending text. Unsupported or forbidden choices fail before prompt submission. Partial configuration failure returns a failed receipt with promptSubmitted:false and sessionConfirmation; already applied native settings are not rolled back. A timed-out setter closes the process and marks configuration unconfirmed so it cannot race a later prompt. Empty-prompt creation only bootstraps the catalog and ignores selection parameters.
 

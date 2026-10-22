@@ -1,245 +1,172 @@
-# Agent 驱动的安装与配置（设计）
+# Agent-driven installation and setup
 
-状态：P0 已完成；P1 bootstrap、登录配置与 ChatGPT 回退已实现 · 版本线：0.9.x patch
+## Responsibility and boundaries
 
-## 目标
+Users should not need to understand public URLs, tunnels, OAuth, or OpenAI Platform to reach the first loop. A local Codex/Claude Code Agent executes and explains. The user chooses the route. Delegated signed-in page operations belong to the Agent. Assistance is needed only for missing login, challenges, passwords/2FA, payment, or the Agent's own safety policy.
 
-从安装到第一次闭环，用户不需要理解公网地址、tunnel、OAuth、OpenAI Platform 等概念。本机 Agent（Codex / Claude Code）负责执行和解释，用户做路线选择；Agent 操作已登录页面，仅在登录、人机验证、密码/2FA、付款或自身安全策略要求时请求协助。
+ARC owns the flow, the Agent execution, and the user decisions. CLI output owns workflow knowledge rather than prompts or duplicated documentation. Agents loop over setup without reconstructing paths from GitHub docs. User steps require observable ARC completion signals. Wait for those signals rather than repeatedly asking whether the user finished.
 
-分工原则：**流程归 ARC，执行归 Agent，决策归用户，已委托的页面操作归 Agent。**
+setup is a thin onboarding/diagnostics layer, not a workflow engine. Add no DSL, plugin step registry, or rollback framework. Derive state from ingress/onboarding/verification/OAuth/permissions/login/task records. Persist only otherwise unavailable goal/choices/startedAt/dispatch receipt/thread link in one small state JSON. Keep exactly five step kinds. Reuse ingress validation. Secrets MUST NOT pass through chat or command-line arguments.
 
-- 流程知识放在 ARC 里（CLI 输出），不放在 prompt 和文档里，避免版本漂移。
-- Agent 不需要读 GitHub 文档拼路径，只需循环调用 `setup`。
-- 用户步骤必须有 ARC 可观测的完成信号，Agent 等信号而不是问"你弄好了吗"。
+## Goals and step model
 
-## 约束（实现时必须遵守）
-
-- `setup` 是 onboarding / diagnostics 之上的薄层，**不是通用工作流引擎**。不做 DSL、不做插件化 step 注册、不做回滚框架。
-- 状态尽量**从现有数据推导**（ingress 列表、onboarding stage/findings、verification、OAuth grants、permissions、codex login、任务记录）。只有无法推导的少量信息（当前 goal、用户在 decide 步骤的选择、用于判断新验证的 startedAt、派发回执与 Codex 线程链接）才落盘，放在 state dir 的一个小 JSON 里。
-- Step 类型只有五种，不新增。
-- 不新增防御性校验层：输入校验沿用 ingress add/update 已有逻辑。
-- 秘钥永远不经过聊天和命令行参数。
-
-## Goal
-
-| goal | 含义 | 默认推荐 |
+| Goal | Meaning | Recommendation |
 | --- | --- | --- |
-| `claude-loop` | Claude（custom connector, HTTPS + OAuth）+ Codex，含 Claude Code 云端会话完成通知 | 是 |
-| `chatgpt-chat` | ChatGPT Chat（默认 OpenAI Secure Tunnel，支持 HTTPS + OAuth 回退）+ Codex | 否；直接尝试，实际权限失败时提供回退，ChatGPT 仍需允许自定义 MCP |
+| claude-loop | Claude custom connector over HTTPS/OAuth plus Codex, including Claude Code cloud-session notifications. | Default recommendation. |
+| chatgpt-chat | ChatGPT Chat using Secure Tunnel by default with HTTPS/OAuth fallback plus Codex. | Try directly. Offer fallback on actual permission failure. Custom MCP permission is still required. |
 
-`setup next` 未指定 goal 且尚未选择时，返回一个 `decide` 步骤让用户选 goal，`explain` 由 `setup.option.<goal>.explain` 两条共享文案组合，说明两条路的差异和门槛；App 只显示当前选中目标的说明。
-
-## Step 模型
+Without a chosen goal, setup next returns decide. Shared setup.option.<goal>.explain UI messages describe both routes and requirements. The App shows only the selected goal's explanation.
 
 ```json
 {
-  "schemaVersion": 1,
-  "goal": "claude-loop",
-  "progress": {"done": 3, "total": 8},
-  "complete": false,
-  "step": {
-    "id": "choose-address",
-    "kind": "decide",
-    "title": "选择连接地址",
-    "explain": "Claude 需要一个公网地址才能连到这台电脑。临时地址零配置，但 ARC 重启后会变，需要在 Claude 里重新添加连接器；固定地址一次配好长期可用。",
-    "options": [
-      {"id": "cf-quick", "label": "先用临时地址试试", "recommended": true},
-      {"id": "fixed", "label": "使用固定地址（需要 provider 账号）"}
-    ],
-    "apply": "setup apply choose-address --stdin  {\"option\":\"cf-quick\"}",
-    "openUrl": null,
-    "doneWhen": "已保存地址方式",
-    "playbook": "choose-address"
-  }
+  "schemaVersion":1,"goal":"claude-loop","progress":{"done":3,"total":8},"complete":false,
+  "step":{"id":"choose-address","kind":"decide","title":"Choose a connection address",
+    "explain":"Claude needs a public address to reach this computer. A temporary address needs no configuration but changes after ARC restarts and requires adding the connector again. A fixed address requires one-time setup.",
+    "options":[{"id":"cf-quick","label":"Try a temporary address","recommended":true},{"id":"fixed","label":"Use a fixed address with a provider account"}],
+    "apply":"setup apply choose-address --stdin {\"option\":\"cf-quick\"}",
+    "openUrl":null,"doneWhen":"Address method saved","playbook":"choose-address"}
 }
 ```
 
-字段说明：
+steps:[{id,title,kind,done}] is the full derived progress sequence, empty before goal selection. cliPath/stateDir identify the current instance for prompts. dispatch contains saved receipt/thread link or is empty before dispatch. next/apply/wait accept one --locale zh-CN|en, or body.locale, for user-facing explain/title/label/doneWhen without changing App preferences. These strings are localized for verbatim relay to the user. Model instructions and generated setup prompts are English only, with the user's locale retained as a parameter. No Chinese model-prompt copy is kept.
 
-- `steps: [{id, title, kind, done}]`：当前目标的完整推导序列，供 App 展示进度；未选择目标时为空。
-- `cliPath`、`stateDir`：当前实例的 CLI 绝对路径和状态目录，供复制提示词；`dispatch`：已保存的派发回执及线程链接，未派发时为空。
-- next / apply / wait 支持单次 `--locale zh-CN|en`（catalog 为 `body.locale`），覆盖本次 explain/title/label/doneWhen，不修改 App 偏好；Agent 跟随用户请求语言传入。
-- `explain`、`title`、`label` 按 ARC 当前语言（zh-CN / en）输出，供 Agent 原样转述，保证不同 Agent 的解释一致。
-- `apply`：需要 Agent 执行的命令（auto / decide 用）。
-- `openUrl`：需要打开的页面（authorize / remote-ui / secret 用），可以是 https 链接或 `agent-remote-control://` deep link。
-- `doneWhen`：完成信号的人类可读描述。
-- `playbook`：skill 中对应章节的 id，同时可用 `cli setup playbook <id>` 打印。
+apply is the Agent command for auto/decide. openUrl is an HTTPS/deep link for authorize/remote-ui/secret. doneWhen describes the signal. playbook selects the shared skill section, also readable through cli setup playbook <id>.
 
-五种 kind：
-
-| kind | 谁做 | Agent 行为 |
-| --- | --- | --- |
-| `auto` | Agent | 直接执行 `apply`，再 `setup next` |
-| `decide` | 用户选 | 原样转述 `explain` + `options`，标出推荐项，拿到选择后执行 `apply` |
-| `authorize` | Agent 按已委托范围操作 | 打开 `openUrl`，继续已登录页面；仅在协议列出的例外下请求协助，然后 `setup wait` |
-| `secret` | Core 从剪贴板直收 | Agent 点击官方复制按钮，再 apply clipboard；无复制按钮时用户手动复制，表单为兜底；不读取凭据或剪贴板，完成后 `setup wait` |
-| `remote-ui` | Agent 驱动浏览器，否则指引用户 | 按 playbook 用浏览器 / computer use 操作远端页面；遵守同一登录与安全策略例外；然后 `setup wait` |
+| Kind | Owner and behavior |
+| --- | --- |
+| auto | Agent executes apply, then next. |
+| decide | Relay explanation/options faithfully with recommendation. Apply after user selection. |
+| authorize | Agent opens the URL and completes delegated signed-in operations, requesting help only for defined exceptions, then waits. |
+| secret | Core receives clipboard data. Agent clicks the official Copy button and applies clipboard. Without Copy, the user copies manually. Existing forms are fallback. Agent never reads credentials/clipboard and then waits. |
+| remote-ui | Agent follows the playbook with browser/computer use, or gives user guidance without tools. Same login/policy exceptions apply. Then wait. |
 
 ## CLI
 
 ```text
-arc cli setup [next] [--goal claude-loop|chatgpt-chat]   # 只读，返回当前 step
-arc cli setup apply <stepId> --stdin                     # 提交选择或执行 auto 步骤
-arc cli setup wait [--timeout <sec>]                     # 阻塞到当前 step 完成或超时（默认 60s），返回新的 next
-arc cli setup playbook <id>                              # 打印对应 playbook markdown
-arc cli setup reset                                      # 清除 goal 和选择（不动 ingress）
-arc cli skill install --target codex|claude-code         # 安装 arc-setup skill
+arc cli setup [next] [--goal claude-loop|chatgpt-chat]   # Read current step
+arc cli setup apply <stepId> --stdin                   # Save choice or execute auto step
+arc cli setup wait [--timeout <sec>]                   # Wait for completion or timeout, default 60s
+arc cli setup playbook <id>                            # Print playbook
+arc cli setup reset                                    # Clear goal/choices, retain ingresses
+arc cli skill install --target codex|claude-code       # Install arc-setup skill
 ```
 
-- 同时注册 catalog operation：`setup.next`、`setup.apply`、`setup.wait`、`setup.dispatch`，`cli mcp` 自然暴露。
-- 输出沿用现有 JSON envelope。
-- `next --goal` 只预览指定目标；`setup apply choose-goal --stdin` 的 `{"option":"claude-loop"}` / `{"option":"chatgpt-chat"}` 才保存目标和首次选择的 `startedAt`。重复选择同一目标不更新时间，切换目标清除旧选择。
-- 地址选择及 ChatGPT 凭据步骤先复用或创建未启动的 ingress，供后续 secret 表单编辑；`create-ingress` 负责启动及 probe。固定地址先选择 Cloudflare 登录配置或其他 provider；后者沿用现有表单。
-- readiness 步骤的跳过也作为选择保存。跳过 Claude Code 后，loop-test 只检查任务完成和 `ARC_ONBOARDING_OK` 回复，并返回通知不可用 finding。
-- `verification.firstOAuthRequestAt` 记录此入口成功接受的 DCR/authorize 请求；`firstMcpRequestAt` 记录认证后到达 MCP 分发层的请求；`lastProbe` 记录 probe 的时间、URL 和是否通过。它们随现有 verification 绑定重置，不形成事件历史。
-- deep link 契约：`agent-remote-control://ingress?id=<ingressId>&field=<credentialField>` 打开指定连接的编辑弹窗；并聚焦指定字段。权限入口为 `agent-remote-control://permissions`。
-- `setup wait` 超时不是错误，返回当前 step 原样，Agent 继续 wait。
-- `apply` 幂等：同一 step 重复 apply 不重复创建 ingress（已存在则复用）。
+Catalog operations setup.next/apply/wait/dispatch also appear through cli mcp with existing JSON envelopes. next --goal previews only. choose-goal apply with option saves the goal and first startedAt. Repeating the same goal preserves time. Switching clears old choices.
 
-## Step 序列
+Address selection and ChatGPT credential steps reuse/create a stopped ingress for the secret form. create-ingress starts/probes it. Fixed addresses choose Cloudflare login or another provider with existing forms. Readiness skips persist as choices. Skipping Claude Code makes loop-test check completion/ARC_ONBOARDING_OK and report unavailable notification capability.
+
+verification.firstOAuthRequestAt records accepted DCR/authorize requests. firstMcpRequestAt records authenticated requests reaching MCP dispatch. lastProbe records time/URL/success. They reset with verification binding without an event history. `agent-remote-control://ingress?id=<ingressId>&field=<credentialField>` opens/focuses the connection editor. Permissions uses agent-remote-control://permissions. wait timeout is not an error and returns the same current step. Repeated apply reuses existing ingress without duplicate creation.
+
+## Step sequences
 
 ### claude-loop
 
-| id | kind | 完成信号（从现有数据推导） |
+| ID | Kind | Derived completion signal |
 | --- | --- | --- |
-| `codex-ready` | auto / authorize | `codex.login.status` 已登录；未登录时变为 authorize，`apply` = `codex.login.open` |
-| `claude-code-ready` | auto / authorize | 缺失时返回官方 installCommand，Agent 安装后 apply；已安装未登录时 ARC 打开终端运行登录。空输入不报错；沿用 doctor 登录检测，允许跳过但通知不可用 |
-| `permissions` | authorize | doctor `permissions.items` 中 full-disk-access 和适用时的 command-full-disk-access 为 granted；辅助功能、屏幕录制、通知可选；`openUrl` 指向 ARC Permissions & readiness；允许跳过 |
-| `choose-address` | decide | 选择已保存 |
-| `choose-provider` | decide | fixed 时出现；Cloudflare（推荐，需要托管域名）或其他 provider |
-| `cloudflare-login` | authorize | Cloudflare 路径；ARC 状态目录下 origin cert 就绪 |
-| `cloudflare-tunnel` | auto | Cloudflare 路径；已绑定主机名、保存 tunnel ID 与本地凭据文件 |
-| `address-secret` | secret | 其他 provider 路径；对应 ingress 的 `hasXxxToken` 为真，自定义反向代理则检查地址配置 |
-| `create-ingress` | auto | ingress 存在、运行、probe 通过 |
-| `add-connector` | remote-ui | 该 ingress 收到 DCR 或 authorize 请求（OAuth pending request 出现） |
-| `consent` | authorize | 该 ingress 存在有效 OAuth grant |
-| `verify-connector` | remote-ui | `verification.challengeVerifiedAt` 晚于本次 setup 开始 |
-| `loop-test` | remote-ui | 出现带 `notify` 的任务完成并且通知已送达（或任务完成、通知失败时给出 finding） |
+| codex-ready | auto/authorize | codex.login.status authenticated. Otherwise authorize with codex.login.open. |
+| claude-code-ready | auto/authorize | Missing CLI returns official installCommand. Agent installs then applies. Installed but logged-out opens terminal login. Empty input is accepted. Existing doctor checks apply. Skipping disables notifications. |
+| permissions | authorize | full-disk-access and applicable command-full-disk-access granted. Accessibility/Screen Recording/notifications are optional. Opens ARC Permissions & readiness. May skip. |
+| choose-address | decide | Choice saved. |
+| choose-provider | decide | Fixed route: Cloudflare recommended with a managed domain, or another provider. |
+| cloudflare-login | authorize | Origin certificate ready in ARC state. |
+| cloudflare-tunnel | auto | Hostname bound, tunnel ID/local credentials saved. |
+| address-secret | secret | Other provider has required hasXxxToken. Custom reverse proxy checks address configuration. |
+| create-ingress | auto | Ingress exists, runs, and passes probe. |
+| add-connector | remote-ui | Ingress receives DCR/authorize and pending OAuth request. |
+| consent | authorize | Valid ingress OAuth grant. |
+| verify-connector | remote-ui | challengeVerifiedAt after setup start. |
+| loop-test | remote-ui | Bound task completes and notification delivers, or completion plus notification failure finding. |
 
 ### chatgpt-chat
 
-| id | kind | 完成信号 |
+| ID | Kind | Completion signal |
 | --- | --- | --- |
-| `codex-ready` | auto / authorize | 同上 |
-| `permissions` | authorize | 同上 |
-| `tunnel-credentials` | remote-ui + secret | Agent 引导到 Platform 创建 Tunnel；Tunnel ID 不是秘钥，可由 Agent 读取填入；runtime key 走 secret；完成信号为 ingress 存在 `tunnelId` 与 `hasApiKey` |
-| `create-ingress` | auto | ingress 运行，且控制面已成功轮询 |
-| `enable-in-chatgpt` | remote-ui | 收到来自该 ingress 的任意 MCP 请求 |
-| `verify-connector` | remote-ui | 同上 |
-| `loop-test` | remote-ui | 任务回复 `ARC_ONBOARDING_OK` 并完成 |
+| codex-ready | auto/authorize | As above. |
+| permissions | authorize | As above. |
+| tunnel-credentials | remote-ui + secret | Platform Tunnel created. Agent may read/fill nonsecret Tunnel ID. Runtime key uses secret flow. Ingress has tunnelId/hasApiKey. |
+| create-ingress | auto | Running ingress with successful control-plane polling. |
+| enable-in-chatgpt | remote-ui | Any authenticated MCP request from that ingress. |
+| verify-connector | remote-ui | As above. |
+| loop-test | remote-ui | Completed task replies ARC_ONBOARDING_OK. |
 
-缺失的完成信号（例如"收到 DCR/authorize 请求""收到任意 MCP 请求"若尚无可查询字段），只补最小的可观测字段，不新建事件系统。
+Missing signals require only minimal observable fields, never another event system.
 
-## 凭据输入
+## Credentials
 
-`setup apply address-secret --stdin` 和 `setup apply tunnel-credentials --stdin` 接受 `{"source":"clipboard"}`。Core 读取系统剪贴板，从原始凭据、常见安装命令或 JSON 提取凭据，沿用 ingress update 保存成功后才清空剪贴板；返回只包含 `hasXxx` 标志，不返回 next 或凭据。空剪贴板且已有凭据时重复 apply 成功；提取或保存失败保留剪贴板，返回原错误且不回显内容。随后 Agent 调用 next / wait。
+address-secret/tunnel-credentials apply accepts {"source":"clipboard"}. Core reads and extracts from raw credentials, common install commands, or JSON. Existing ingress update saves them before clipboard clearing. Results contain only hasXxx flags, never credentials or next. Empty clipboard with existing credentials is idempotently successful. Extraction/save failures retain clipboard and original errors without echoing contents. Agents then call next/wait.
 
-Agent 只点击官方复制按钮，不读剪贴板、不检查含秘钥的 DOM 或截图；没有复制按钮时请用户手动复制。现有凭据表单和聚焦 deep link 保留为兜底，不新增独立秘钥面板。编辑弹窗订阅入口更新，只同步尚未由用户编辑的字段，避免外部写入域名后表单仍为空。
+Agents click official Copy without reading clipboard or secret-bearing DOM/screenshots. Without Copy, ask the user to copy. Existing forms/focus deep links remain fallback without a separate secret panel. Editors subscribe to ingress changes but update only unedited fields, so external domain updates appear without overwriting user input.
 
 ## arc-setup skill
 
-- 源文件：`skills/arc-setup/SKILL.md`（英文），随 App 打包到 Resources；`cli skill install` 复制到 `~/.codex/skills/arc-setup/` 或 `~/.claude/skills/arc-setup/`。
-- skill 只写三类内容：
-  1. 循环协议：`setup next` → 按 kind 行动 → `setup next`，直到 `complete`。
-  2. 规则：秘钥不进聊天；已登录页面直接操作创建、授权及同意；仅在未登录、人机验证、密码/2FA、付款或 Agent 自身安全策略要求时停下；完成与否以 `setup wait` 为准，不靠截图判断；decide 步骤原样转述 explain，不自行发挥。
-  3. remote-ui playbook：按工具分三档——有浏览器工具（Claude in Chrome / Codex 浏览器 / IAB）则直接操作；只有 computer use / ARC screen 则截图导航；都没有则给链接和一句话指引。
-- 流程本身不写进 skill（以 `setup next` 为准）；playbook 文本与 `cli setup playbook` 共用同一份源文件。
+skills/arc-setup/SKILL.md is English and ships in Resources. cli skill install copies it to ~/.codex/skills/arc-setup or ~/.claude/skills/arc-setup. It contains only the next → act by kind → next loop, authorization/secret/wait rules, and remote-page playbooks. Browser tools such as IAB operate directly. Computer use/ARC screen can navigate screenshots. Without either, provide a link and one-sentence guidance.
 
-安装资源布局：macOS 为 `Contents/Resources/skills/arc-setup/`，Windows 为安装目录下的 `skills/arc-setup/`，Linux tarball 与已安装的 Core 旁为 `skills/arc-setup/`。开发构建在没有安装资源时从仓库读取。安装会替换目标 skill 目录，清除旧版本文件。
+The flow stays in setup next. CLI playbooks and the skill share sources. macOS resources live in Contents/Resources/skills/arc-setup. Windows uses installed skills/arc-setup. Linux uses skills/arc-setup beside Core/tarball. Development falls back to repository resources when installed resources are absent. Installation replaces the target skill directory and removes old files.
 
-通知 delivery 的 `taskState` 保存原始任务状态（如 `completed`），setup 不匹配本地化的显示文案。旧记录缺少该字段时不作为新的完成证据。permissions 只要求磁盘访问；其他权限由用户选择。闭环测试必须通过远端会话发起；本机 Agent 可以在已登录远端页面发送 prompt，不能直接创建本机任务充当闭环。
+Notification delivery.taskState stores native states such as completed. Setup never matches localized labels. Older records without taskState do not prove new completion. Permissions require disk access only. Other grants are user choices. Loop tests MUST originate in the remote conversation. The local Agent may send a prompt on the signed-in remote page but cannot substitute a directly created local task. Self-test dispatches MUST use purpose:self-test.
 
-## App：默认"交给 Agent"
+## App delegation
 
-- 添加控制源第一屏：选择 Claude / ChatGPT（Claude 标推荐）。
-- 主按钮（默认）：**发送给 Codex**。由 Core 直接创建一个 Codex 任务，prompt 为下方生成的短 prompt；工作目录使用 ARC state dir 下的 `setup-workspace/`（自动创建）；模型和推理强度不硬编码，沿用 Codex 默认配置。
-- 次按钮：**复制给其他 Agent**（Claude Code 等）。
-- 次按钮复制的提示词额外包含 `cli skill install --target claude-code`，用于 Claude Code；所有提示词都指定当前 `ARC_STATE_DIR`，保持实例隔离。
-- 文字链接：**手动配置** → 现有表单。
-- 发送后切换到进度视图：轮询 `setup.next`，展示步骤列表、当前步骤和"正在等你"的提示；authorize 步骤直接放操作按钮（例如打开 OAuth 批准、打开权限页）；提供"打开 Codex 任务"入口。决策在 Agent 对话里做，App 不重复展示选项。
-- Codex 已安装但未登录时，主按钮为“登录 Codex”，复用 `codex.login.open`；次按钮仍为“复制给其他 Agent”。未安装时只保留一个主按钮“复制配置提示词”，提示中提供官方下载入口。
-- 进度可见时每 2 秒读取 `setup.next`，页面隐藏时暂停；decide / remote-ui 只提示在 Agent 对话继续，secret 打开并聚焦现有凭据字段。完成态提供“返回首页”按钮。
-- 步骤列表单列竖排；添加 Claude 连接器时直接展示连接地址和复制按钮。步骤的用户文案不暴露内部字段名、命令或 JSON 键。
-- 全新状态目录不再预建默认 ChatGPT 入口。App 启动时，无入口且无 `setup.json` 自动打开配置入口；有 `setup.json` 且尚未完成时直接显示进度。`setup.next.hasState` 提供文件是否存在的事实；同一窗口关闭面板后不反复自动打开。
-- 有未完成目标时，首页提供“继续配置”；已派发任务提供“打开 Codex 任务”。
-- `setup.dispatch` 输入 goal：保存目标、安装 Codex skill、创建 `setup-workspace/`，复用现有 Codex create 和持久回执。显式发送表示该任务已获用户批准；模型、推理强度及执行所有者沿用已有默认设置。`setup.json` 中保存 `dispatch.requestId/threadId/desktopUrl`，重复派发读取同一回执，不重复创建线程。创建未确认或失败时保留回执并返回错误。
+The first Add Source screen selects Claude/ChatGPT with Claude recommended. The primary action sends to Codex through Core using a generated English prompt and an automatically created setup-workspace in state. Native model/effort/owner defaults apply. Copy to another Agent is secondary and includes Claude Code skill installation when relevant. Every prompt pins current ARC_STATE_DIR. Manual configuration opens existing forms.
 
-生成的短 prompt（按 App 语言，示例为中文）：
+After sending, show progress, current step, and user-wait state with direct authorization buttons and native Codex task navigation. Decisions stay in the Agent conversation rather than duplicated App options. Installed/logged-out Codex shows login with the existing login.open flow and copy fallback. Missing Codex shows one copy-prompt primary action with official download guidance. Visible progress polls next every two seconds and pauses while hidden. decide/remote-ui directs conversation continuation. secret opens/focuses existing credential fields. Completion offers return-home.
 
-```text
-帮我配置 Agent Remote Control，目标：claude-loop。
-ARC CLI：<绝对路径>。执行命令时将 ARC_STATE_DIR 设为 <当前状态目录>。先运行 `"<cli>" cli setup playbook protocol` 了解协议，然后循环 `"<cli>" cli setup next` 推进。
-选定目标后，按协议一次说明资源和本机工具访问范围并取得确认；已有明确确认时复用。随后完成已登录页面上的配置。decide 步骤原样转述说明和选项；仅在未登录、人机验证、密码/2FA、付款或你的安全策略要求时停下。以 setup wait 为完成依据；通过官方复制按钮和 ARC 剪贴板接收传递秘钥，不读取、不输出值。
-```
+Steps are one vertical list. Claude connector addition shows URL/copy directly. User-facing step text does not expose internal fields/commands/JSON. Fresh state no longer precreates a ChatGPT ingress. No ingresses/setup.json opens setup automatically. Incomplete setup.json opens progress. hasState reports file existence. Closing a panel prevents repeated auto-opening in the same window. Incomplete goals offer resume setup. Dispatched goals offer native task navigation.
 
-## 文档
+setup.dispatch saves goal, installs Codex skill, creates workspace, and reuses native creation/persistent receipts. Explicit send authorizes the setup task. setup.json stores dispatch.requestId/threadId/desktopUrl. Repeat clicks read the same receipt without another thread. Failed/unconfirmed creation retains the receipt and returns error.
 
-- README / README.zh-CN 顶部提供安装后的“发送给 Codex”入口，以及指向公开 `skills/arc-setup/SKILL.md` 的一句本机 Agent 提示词。
-- `docs/auto-setup.md`（及 zh-CN）：一段通用提示词、App 一键入口，以及选择、登录授权、凭据复制与 ARC 内填写兜底、远端会话测试四类用户参与步骤。
-- `docs/reference/cli.md`：维护 setup / skill 命令及 `setup.dispatch` 契约（英文）。
-- getting-started 保留手动路径，但把 Agent 路径放在前面。
+Generated prompts use native/src/model-prompts.json in English. They identify goal/CLI/state, read protocol, and loop setup next with the user's locale. They require one resource/local-tool scope confirmation unless already given, then complete delegated signed-in operations without per-item reconfirmation. They faithfully relay localized decide options, respect login/challenge/password/2FA/payment/policy exceptions, use wait as completion evidence, and transfer secrets only through official Copy/Core clipboard.
 
-## P0 实现与原设计的差异
+## Documentation and delivery scope
 
-- 权限必需项收窄为完全磁盘访问及适用时的命令磁盘访问；辅助功能、屏幕录制和通知为可选，避免与基本连接无关的权限阻塞配置。
-- `setup.next` 增加完整推导序列 `steps`，供 App 直接展示进度，不另存工作流状态；`cliPath/stateDir` 用于生成指向当前实例的提示词。
-- 新增 `setup.dispatch`，复用现有 Codex 任务创建和持久回执；小型状态文件同时保存派发标识与线程链接，用于重复点击复用和重入。
-- 本机 Agent 负责配置和生成测试提示词，闭环验证在 Claude Code 云端会话或 ChatGPT 对话中发起，避免把本机任务误认为远端闭环。
-- 未登录和未安装采用不同入口；完成态保留“返回首页”按钮，供用户确认结果后回到拓扑。
+README variants offer App delegation and a local-Agent prompt linking the public skill. Localized auto-setup guides explain App entry and user choices/login/credentials/remote testing. English reference/cli owns setup/skill/dispatch contracts. Getting Started leads with Agent setup while retaining manual paths.
 
-## 分期
+Integrated scope includes setup commands/catalog, skill/install, App delegation/progress, macOS/Linux bootstrap, fixed-address login, direct clipboard receipt, Claude Code installation/login, and ChatGPT fallback. Temporary-address self-healing and Windows bootstrap remain future work. Keep required permissions limited to applicable disk access. The derived steps/CLI paths and dispatch metadata do not constitute another workflow state engine.
 
-- **P0（本次）**：`cli setup next/apply/wait/playbook/reset` 与 catalog operation；arc-setup skill 与 `cli skill install`；App 默认"发送给 Codex"入口与进度视图；文档调整。
-- **P1**：macOS bootstrap、固定地址登录配置、剪贴板直收和 Claude Code 安装登录。
-- **P2**：临时地址变化后的自愈（Agent 自动更新连接器 URL 并重新授权）；Windows / Linux bootstrap。
+## Bootstrap
 
-## P1：新机器 bootstrap
+The skill is the single Agent entry point. Detect local App/CLI first. If absent, download/run the stable release install-agent-remote-control.sh, then install the current Agent's skill and enter setup. Do not maintain a separate installation prompt or mount a DMG.
 
-唯一的 Agent 入口指向仓库的 `skills/arc-setup/SKILL.md`。skill 先检测本机 App / CLI，缺失时下载并运行稳定 release 地址的 `install-agent-remote-control.sh`；随后给当前 Codex 或 Claude Code 安装 skill，并进入 `cli setup`。不另维护一套安装 prompt，不挂载 DMG。
+macOS resolves the version through releases/latest redirect or ARC_VERSION without jq. Download agent-remote-control_<version>_<architecture>.app.tar.gz and verify SHA256SUMS.txt with system shasum. Missing Intel assets fail explicitly. Default location is /Applications/Agent Remote Control.app, with ARC_INSTALL_DIR selecting the parent. Same version skips download/replacement. Other versions quit the target App before replacing, remove quarantine, and open it. App/CLI share ARC_STATE_DIR.
 
-同一脚本覆盖 macOS 与 Linux：
+New Agent installs create setup.json with empty choices, not a chosen goal, so App waits for the Agent. Existing setup is preserved. After Core is queryable, the final line returns version/cliPath/stateDir JSON for subsequent commands. Linux retains headless tarball/checksum/user-directory installation. Complete bootstrap requires matching installer script, setup CLI, skill resources, and first-launch UI in the release.
 
-- macOS 通过 `releases/latest` 重定向确定版本，或使用 `ARC_VERSION` 指定 tag；不依赖 jq。下载 `agent-remote-control_<版本>_<架构>.app.tar.gz`，用系统 `shasum` 对照 `SHA256SUMS.txt` 校验。缺少 Intel Mac 资产时明确报错。
-- 默认安装到 `/Applications/Agent Remote Control.app`；`ARC_INSTALL_DIR` 指定父目录。相同版本跳过下载和替换，其他版本先退出目标 App 再替换，移除 quarantine 并打开 App。`ARC_STATE_DIR` 指向本次实例，CLI 与 App 使用同一目录。
-- 新的 Agent 安装会预建只有空选择的 `setup.json`，不替用户决定目标；App 因此进入进度视图，等待 Agent 继续。已有配置不覆盖。
-- 等到 App 可通过 Core 查询后，最后一行输出 `{"version":"<版本>","cliPath":"<绝对路径>","stateDir":"<绝对路径>"}`。后续命令沿用这些路径。
-- Linux 保持现有 headless tarball、checksum 与用户目录安装流程。完整 bootstrap 依赖 release 同时包含更新后的安装脚本、setup CLI、skill 资源和首次启动界面。
+## Fixed-address login
 
-## P1：固定地址只需登录
+Fixed addresses choose a provider. Cloudflare needs a hosted domain. Managed cloudflared login captures an authorization URL for delegated signed-in browser operation. Missing login requires user help. The URL stays in memory, not setup.json.
 
-0.9.11 新机器体验暴露的缺口是：fixed 未引导选择服务商、安装命令中的 token 需要手工截取、已打开的编辑表单没有接收 CLI 写入的域名，以及缺少 Claude Code 时只能跳过。此阶段替代原计划的独立秘钥面板，目标是用户只提供登录，Agent 和 ARC 完成配置。
+cloudflared login does not use origincert as output path. Give only that child isolated HOME/USERPROFILE, producing <stateDir>/cloudflare/.cloudflared/cert.pem. Later commands use TUNNEL_ORIGIN_CERT without changing the user's default cloudflared directory. ARC reads zone/account from the certificate, queries domains, and lists tunnels. Prefer an ingress-associated or arc-<short-hostname> locally managed tunnel. An already-routed default hostname may be reused only with ARC-owned credentials. Otherwise create and route DNS to arc-<short-hostname>.<zone> and explain the result.
 
-- 固定地址增加服务商选择；Cloudflare 需要一个已托管域名。ARC 使用托管的 cloudflared 执行登录，捕获授权 URL；Agent 操作已登录页面选择域名及授权，未登录时请用户登录。登录 URL 只保存在当前进程，不写入 setup.json。
-- cloudflared login 不采用 origincert 参数作为输出路径，因此仅为该子进程设置独立 HOME / USERPROFILE，证书位于 `<stateDir>/cloudflare/.cloudflared/cert.pem`。后续命令通过 `TUNNEL_ORIGIN_CERT` 使用它，不改用户的默认 cloudflared 目录。
-- ARC 从授权证书取得 zone / account，查询域名，列出现有 tunnel。优先复用入口已关联或名称符合 `arc-<本机名简写>` 的本地管理 tunnel；也可复用该默认主机名已路由且本 ARC 持有凭据文件的 tunnel。否则创建并路由 DNS，默认地址为 `arc-<本机名简写>.<zone>`，结果写入 explain。
-- 已由控制台管理的同名 tunnel 保持原有路由；使用带 `-local` 后缀的本地管理 tunnel。DNS 不覆盖其他服务的记录。配置新增 `cloudflareAuth: token | login`（默认 token）和 `cloudflareTunnelId`；login 通过状态目录内凭据 JSON 和本地 ingress 配置运行，现有 token 模式保留。
-- Claude Code 缺失时按 Anthropic 官方安装命令安装；登录由 ARC 打开交互终端运行 `claude auth login`，Agent 继续已登录浏览器中的配置；未登录或要求输入授权码时请用户操作。无桌面的 Linux 由用户在自己的终端登录。显式跳过仍保留。
-- setup 仍只推导现有数据；五种 step kind 和 ingress 校验路径不变。新增的持久文件仅为 Cloudflare 自身证书、凭据和运行配置。
+Dashboard-managed same-name tunnels keep their routes. Use a -local suffix for local management. Never overwrite another service's DNS. cloudflareAuth is token/login, default token, plus cloudflareTunnelId. Login uses state-directory credentials/local ingress configuration. Token mode remains supported.
 
-## P1：ChatGPT 权限失败与就绪边界
+Missing Claude Code uses official Anthropic installation. ARC opens an interactive terminal for claude auth login. The Agent continues signed-in browser work. Missing login or authorization-code entry requires user help. Headless Linux uses the user's terminal. Explicit skip remains available. Only Cloudflare-native certificate/credentials/runtime config add persistent files. Five step kinds and ingress validation remain unchanged.
 
-新机器上的 ChatGPT 配置必须覆盖三个故障边界：窗口释放后的 deep link 重建、复制了无关文本、客户端本地就绪但控制面拒绝凭据。前两者分别由回调调度及字段形态检查处理，后者依赖真实控制面证据。
+## ChatGPT permission failures and readiness
 
-不再询问是否具备权限，也不读取本机 Codex/ChatGPT 凭据探测内部 API。默认进入 Tunnel 配置。Agent 在实际页面观察到 Platform 拒绝或缺少自定义 MCP 入口后，向 `chatgpt-fallback` apply 提交 `reason`（`platform-denied` / `chatgpt-denied` / `runtime-key-rejected`），保存到 choices 的 `chatgpt-blocked`。next 显示原因和 decide：`https-oauth` 或 `retry`。前者保持 chatgpt-chat，复用地址、Cloudflare 登录、probe、添加连接和 OAuth 同意；后者清除阻塞报告后重试当前路线。HTTPS 不需要 Platform Tunnel 权限，但不能绕过 ChatGPT 工作区限制。Tunnel 路径的 `fallback` 字段同时提供这个 decide，便于凭据被拒绝时转入。
+Setup handles released-window deep-link recreation, irrelevant clipboard text, and locally ready clients rejected by the control plane. Callback scheduling and field-shape checks handle the first two. Actual control-plane evidence handles rejection.
 
-OpenAI runtime key 来自 Platform 的 Runtime API keys，使用受限 key，最小权限为 Tunnels Read + Use；创建 Tunnel 需要组织的 Read + Manage。剪贴板按字段做最小形态检查：OpenAI 为 sk- 开头且至少 32 字符，Cloudflare 为 eyJ 开头且至少 64 字符，ngrok/LocalXpose 至少 20，Pinggy 至少 16；不做远端凭据探测。提取或保存失败不清空剪贴板。
+Do not ask speculative permission questions or probe internal APIs with local Codex/ChatGPT credentials. Default to Tunnel setup. Actual Platform rejection or missing custom MCP causes chatgpt-fallback apply with platform-denied/chatgpt-denied/runtime-key-rejected, saved as choices.chatgpt-blocked. next explains and offers https-oauth/retry. HTTPS keeps chatgpt-chat and reuses address/Cloudflare/probe/connector/consent. Retry clears the report. HTTPS avoids Platform Tunnel permission but not ChatGPT workspace restrictions. Tunnel fallback also exposes the decision for rejected keys.
 
-Tunnel Client 的 `/readyz` 只是启动探测，可能在控制面认证前成功。Core 读取本机 `/health/control-plane` 的成功轮询和 HTTP 状态，投影为 ingress `controlPlane`，不新建事件系统；401/403 也从客户端明确的控制面错误日志识别，产生 `RUNTIME_KEY_REJECTED`。此时 setup 回到 tunnel-credentials 并说明原因；更换 key 后重新等待认证。健康状态未知不算就绪，不支持详细健康报告的旧客户端需更新。
+Runtime API keys use restricted Tunnels Read + Use. Creating a Tunnel needs organization Read + Manage. Clipboard shape checks require OpenAI sk- and at least 32 characters, Cloudflare eyJ and at least 64, ngrok/LocalXpose at least 20, Pinggy at least 16. No remote credential probe is added. Failed extraction/save preserves clipboard.
 
-## Desktop deep link 与窗口生命周期
+/readyz proves startup only and may precede authentication. Core reads successful polling/HTTP status from local /health/control-plane into ingress.controlPlane. Explicit 401/403 client logs also produce RUNTIME_KEY_REJECTED. Setup returns to credentials with the reason and waits for authentication after replacement. Unknown health is not ready. Old clients lacking detailed health need updates.
 
-Tauri 的插件事件分发持有插件列表锁。deep link 回调不得同步重建已释放的 WebView，否则初始化 WebView 再取同一把锁。回调只投递 blocking worker，让 Apple Event 返回后再执行窗口操作；不能用可能在主线程内联执行的 run_on_main_thread 代替。
+## Desktop deep links
 
-最小复现：用独立 App 身份和隔离状态目录启动旧版，关闭配置面板、关闭主窗口并等待超过 30 秒使 WebView 释放，再向该 App 发送 `agent-remote-control://ingress?id=setup-chatgpt-chat&field=apiKey`。旧实现会在 open-URL Apple Event 中等待插件互斥锁；修复后窗口可重建，编辑框能响应。窗口仍存在时也应验证同一路由。不要用正在使用的正式实例执行复现。
+Tauri plugin event dispatch holds the plugin-list lock. Deep-link callbacks MUST NOT synchronously recreate a released WebView, which reacquires that lock. Queue a blocking worker so Apple Event returns before window work. run_on_main_thread may execute inline and is not a replacement.
 
-## 0.9.14：新机器配置与清理
+An isolated reproduction closes setup and the main window, waits over 30 seconds for WebView release, then sends agent-remote-control://ingress?id=setup-chatgpt-chat&field=apiKey to that isolated App. Verify recreation and responsive editing, plus the route with an existing window. Do not use active production state.
 
-本轮保持 onboarding 薄层及五种 step kind，不增加授权状态文件；一次范围确认由 Agent 在当前对话中复用。
+## Client readiness and cleanup
 
-- OpenAI ingress 启动先检查所选 tunnel-client，最低版本为 0.0.16；缺失或过旧时使用原有官方 release 下载、校验和与状态目录安装路径。必要时停止该 ingress，切换受管路径后再启动，不覆盖用户外部程序。对运行中的入口重复 start 也先检查版本。显式依赖安装自行 stop/start，支持按 ingress 定位。
-- 无法识别版本及升级失败分别产生 `TUNNEL_VERSION_UNKNOWN`、`TUNNEL_UPGRADE_FAILED`，保留具体原因、已知版本和最低版本。`ingress doctor` 与 `setup next` 共用 findings；客户端关键错误经既有凭据脱敏后截取摘要，并附可执行下一步命令。依赖故障优先于运行时 key 判断。
-- `cli help` 只返回命令分组及一句话说明；完整输入契约继续归 `capabilities` / `schema`，操作说明归 `guide`。setup 的 apply 和 nextAction 包含当前 CLI、状态目录；自动步骤的 nextAction 包含标准输入 JSON，决策步骤仍由用户选择。
-- 创建或复用 Platform Tunnel 时关联目标 ChatGPT 工作区；启用插件前在相同工作区检查关联。当前客户端健康信息没有工作区关联字段，因此不推断“未关联”，也不增加预检 API；以远端已认证 MCP 请求作为启用完成证据。
-- skill、protocol 和 App 生成提示词统一要求选定目标后一次说明并确认资源与访问范围。ChatGPT 包括 tunnel、受限 API key、工作区关联及本机工具访问；Claude 包括 Cloudflare tunnel/DNS、连接器、ARC OAuth 同意和 Claude Code 安装。后续复用明确确认，仍遵守 Agent 自身策略及登录、验证码、密码和付款等例外。
-- 新建 runtime key 使用 `arc-<tunnel-id>-runtime-<timestamp>` 名称，只记录名称。替换后等待新 key 控制面认证成功，再撤销本次能明确识别为 ARC 创建的被替换 key；不动来源不明或无关 key。
-- `cli uninstall [--purge]` 是本机命令，不加入远端 MCP。默认移入系统废纸篓，purge 永久删除；停止 App/Core 与登录项，清理当前实例状态及受管依赖、平台缓存、安装资源与两个 Agent 的 arc-setup。macOS 在删除 App 前对其 App/Core/screen 标识执行 tccutil，失败明确报告。历史 `~/.local/bin/tunnel-client` 仅在该实例配置或升级记录能归属时清理；不卸载独立安装的 Codex/Claude Code，不清理云端资源。Windows 延后到 CLI 退出后清理并给出结果文件。
+OpenAI ingress startup checks the selected tunnel-client, minimum 0.0.16. Missing/old clients use existing official download/checksum/managed-state installation. Stop only the relevant ingress when necessary, switch the managed path, and restart without overwriting external user binaries. Repeated start checks versions even for running ingresses. Explicit dependency installation owns stop/start and supports ingress targeting.
+
+Unknown versions and upgrade failure yield TUNNEL_VERSION_UNKNOWN/TUNNEL_UPGRADE_FAILED with reason/known/minimum versions. doctor and next share findings. Existing redaction protects client error summaries and next commands. Dependency failures take precedence over key diagnosis. cli help is a compact grouped index. capabilities/schema owns contracts. guide owns procedures. Setup apply/nextAction pins CLI/state. Auto steps include stdin JSON. Decisions remain user-owned.
+
+Platform Tunnels associate with the target ChatGPT workspace. Verify the association in that workspace before enabling. Current health has no workspace-association field, so do not infer absence or add preflight APIs. Authenticated remote MCP requests prove enablement.
+
+Skill/protocol/prompts require one scope explanation/confirmation after goal choice, reusing existing explicit authorization. ChatGPT scope includes Tunnel, restricted key, workspace association, and local tools. Claude scope includes Cloudflare tunnel/DNS, connector, ARC OAuth, and Claude Code installation. Later actions reuse that authorization subject to Agent policy and login/challenge/password/payment exceptions.
+
+New runtime keys use arc-<tunnel-id>-runtime-<timestamp>, recording only names. After replacement, wait for new-key control-plane success before revoking an identifiable replaced ARC-created key. Leave unrelated/unknown-origin keys alone.
+
+cli uninstall [--purge] remains local, outside remote MCP. Default moves to Trash. purge permanently deletes. Stop App/Core/login startup and remove current-instance state/managed dependencies/platform caches/install resources and both Agents' arc-setup. macOS runs tccutil for App/Core/screen identifiers before removal and reports failures. Remove historical ~/.local/bin/tunnel-client only with instance configuration/upgrade ownership evidence. Never uninstall independent Codex/Claude Code or remove cloud resources. Windows cleanup runs after CLI exit and returns a result file.

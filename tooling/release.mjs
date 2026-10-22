@@ -127,7 +127,7 @@ if (mode === 'release') {
   const ciPlatforms = platforms.filter(value => value !== 'mac');
   const dryRun = flags.includes('--dry-run');
   if (dryRun && !mac) throw new Error('--dry-run requires mac; CI platforms are only built during release');
-  if (mac && (process.platform !== 'darwin' || process.arch !== 'arm64')) throw new Error('macOS 发布需要在 Apple Silicon Mac 上本地构建和签名');
+  if (mac && (process.platform !== 'darwin' || process.arch !== 'arm64')) throw new Error('macOS releases require a local build and signing on an Apple Silicon Mac');
   // Fail before compilation, and pass credentials only in the environment.
   const env = mac ? releaseSigningEnv(true) : { ...process.env };
   let sourceSha;
@@ -176,7 +176,7 @@ if (mode === 'release') {
         if (build) break;
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
-      if (!build) throw new Error('CI 已触发但未取得对应 run；请检查工作流，不要重复发版');
+      if (!build) throw new Error('CI started but its run could not be found. Check the workflow. Do not start another release.');
       const runId = String(build.databaseId);
       console.log(`Waiting for ${ciPlatforms.join('/')} CI: ${runId}`);
       execFileSync('gh', ['run', 'watch', runId, '--exit-status', '--interval', '15'], { stdio: 'inherit' });
@@ -208,7 +208,7 @@ if (mode === 'release') {
   const [target, input, output] = args;
   if (!['darwin-aarch64','windows-x86_64'].includes(target) || !input || !output) throw new Error('stage <darwin-aarch64|windows-x86_64> <bundle-dir> <output-dir>');
   if (target === 'darwin-aarch64') {
-    if (process.platform !== 'darwin') throw new Error('macOS 产物必须在 Mac 上验签后整理');
+    if (process.platform !== 'darwin') throw new Error('macOS artifacts must have their signatures verified on a Mac before staging');
     const app = path.join(input, 'macos/Agent Remote Control.app');
     verifyMacosReleaseSignature(app, 'com.whzxc.agent-remote-control');
     execFileSync(process.execPath, ['tooling/check-package.mjs', app], { stdio: 'inherit' });

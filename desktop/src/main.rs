@@ -39,7 +39,7 @@ async fn request(
         .await;
     }
     app.try_state::<Arc<Service>>()
-        .ok_or("Core 尚未就绪")?
+        .ok_or("Core is not ready")?
         .inner()
         .clone()
         .request(route, method, body)
@@ -76,7 +76,7 @@ async fn connect_service(app: &tauri::AppHandle) -> Result<Arc<Service>, String>
             }
         })
         .await
-        .map_err(|_| format!("更新后等待 Core 就绪超时：{last_error}"))?
+        .map_err(|_| format!("Timed out waiting for Core after the update: {last_error}"))?
     } else {
         Service::connect(binary, "desktop").await?
     };
@@ -178,7 +178,11 @@ fn main() {
             let service = match tauri::async_runtime::block_on(connect_service(app.handle())) {
                 Ok(service) => service,
                 Err(error) => {
-                    arc_core::logs::record("ERROR", &format!("Desktop 启动失败：{error}"), None);
+                    arc_core::logs::record(
+                        "ERROR",
+                        &format!("Desktop startup failed: {error}"),
+                        None,
+                    );
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.hide();
                     }
@@ -187,7 +191,7 @@ fn main() {
                         .message(format!(
                             "{error}\n\n请处理后重新打开 Agent Remote Control。"
                         ))
-                        .title("Agent Remote Control 启动失败")
+                        .title("Agent Remote Control failed to start")
                         .kind(tauri_plugin_dialog::MessageDialogKind::Error)
                         .show(move |_| handle.exit(1));
                     return Ok(());
@@ -289,7 +293,7 @@ fn main() {
             }
         })
         .build(tauri::generate_context!())
-        .expect("Agent Remote Control 启动失败")
+        .expect("Agent Remote Control failed to start")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested {
                 code: None, api, ..

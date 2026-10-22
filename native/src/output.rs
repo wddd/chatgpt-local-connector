@@ -6,7 +6,7 @@ fn check(result: std::io::Result<()>) -> crate::Result<()> {
         Ok(()) => Ok(()),
         // The consumer has finished reading, including for long-running streams.
         Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => std::process::exit(0),
-        Err(error) => Err(format!("无法写入标准输出：{error}")),
+        Err(error) => Err(format!("Cannot write standard output: {error}")),
     }
 }
 

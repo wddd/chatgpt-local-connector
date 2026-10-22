@@ -40,7 +40,7 @@ pub async fn listen(
     };
     let listener = TcpListener::bind(addr)
         .await
-        .map_err(|e| format!("无法监听 MCP 地址 {addr}: {e}"))?;
+        .map_err(|e| format!("Cannot listen on MCP address {addr}: {e}"))?;
     let address = listener.local_addr().map_err(|e| e.to_string())?;
     let service = Arc::downgrade(&service);
     Ok((

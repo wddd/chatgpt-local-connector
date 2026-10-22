@@ -1,18 +1,18 @@
-# 派发策略
+# Dispatch policy
 
-[控制循环](control-loop.md) · [架构](architecture.md)
+[Control loop](control-loop.md) · [Architecture](architecture.md) · [Terminology](terminology.md)
 
-多 Agent 扩展的能力来源、目标契约与分阶段边界见[多 Agent 派发策略](dispatch-agents.md)。本文描述已经接入的 Codex 派发行为。
+[Multi-Agent dispatch](dispatch-agents.md) describes capability sources and Agent boundaries. This document describes the integrated Codex path and shared decision view.
 
-## 定位
+## Responsibility
 
-决策放在控制源，事实与约束放在 ARC。控制源持有任务上下文，按用户准则选择模型和推理等级；ARC 提供设备原生模型目录、额度摘要、策略默认值及派发记录。额度只供决策参考，不自动降级或拒绝任务。
+The control source owns decisions. ARC owns facts and constraints. The control source uses task context and user criteria to choose models and effort. ARC provides native catalogs, quota summaries, defaults, and dispatch records. Quota is advisory and never automatically downgrades or rejects work.
 
-派发策略由控制源结合任务质量要求、耗时与成本选择，不预设任务数量、价值或升降档偏好。ARC 不引入独立路由模型；档位、耗时和验收结果供控制源比较质量与成本。
+Selection balances task quality, duration, and cost without preset task-count, value, or upgrade/downgrade preferences. ARC adds no routing model. Effort, duration, and review outcomes support comparison.
 
-## 配置与查询
+## Configuration and queries
 
-状态目录下的 `dispatch-policy.json` 首次使用时生成，两空格缩进并以换行结束；备份恢复也保留格式化 JSON。手工编辑后下一次读取生效。按 Agent 保存策略，顶层 criteria 为跨 Agent 准则；以下为 Codex 出厂部分：
+On first use, state-directory dispatch-policy.json is created with two-space indentation and a final newline. Backups MUST preserve formatted JSON. Manual edits apply on the next read. Top-level criteria guides Agent selection. Each Agent section owns its criteria. The factory Codex section is:
 
 ```json
 {
@@ -31,54 +31,60 @@
 }
 ```
 
-`serviceTier` 是可空的全局默认值，`serviceTiers` 是模型 ID 到 tier 的覆盖表。出厂为 null / 空表，不表达速度偏好，交给原生继承；例如 `"serviceTiers":{"some-model":"priority"}`。Fast 使用原生目录 ID `priority`，标准速度使用 `default`；`additionalSpeedTiers` 中的 `fast` 是速度标签，不作为派发参数。官方说明直接保留，不推算用量倍率。
+serviceTier is a nullable global default. serviceTiers maps model IDs to overrides. Factory null/empty values express no speed preference and defer to native inheritance. Example: `"serviceTiers":{"some-model":"priority"}`. Fast uses native priority and standard speed uses default. additionalSpeedTiers.fast is a label, not a dispatch parameter. Native descriptions are preserved without inferred usage multipliers.
 
-显式 tier 优先于模型覆盖，再取全局默认；按最终选定模型查表，每次新轮重新选择，包括同线程换模型。原生 turn.serviceTierForTurn 优先于 turn.serviceTier、顶层 serviceTier 和 thread.serviceTier；单轮覆盖不修改线程默认。字段来源为 explicit / policy-default / native-default（未填充）。
+Explicit tier precedes the final model's override, then the global default. Selection repeats for every new turn, including model changes in one thread. Native turn.serviceTierForTurn precedes turn.serviceTier, top-level serviceTier, and thread.serviceTier. A one-turn override does not change thread defaults. Sources are explicit, policy-default, or native-default when unfilled.
 
-允许列表为空表示不限；禁用列表优先。约束作用于最终选择，包括策略默认值。模型与推理等级是否受原生端支持由上游校验，不复制原生校验规则。配置格式错误明确报错，不静默回退到桌面默认值。
+Empty allowlists are unrestricted. Denylists win. Constraints apply to final values, including policy defaults. Upstream validates native model/effort support. ARC does not duplicate that validation. Malformed policy fails explicitly without falling back to desktop defaults.
 
-`query({op:"dispatch_policy",args:{}})` 返回 `observedAt` 与 `agents` 数组；可用 `args:{agent:"codex"}` 只查 Codex。Codex 元素包含模型 ID、支持的推理等级及 serviceTiers 的原生 ID、名称、说明和 defaultServiceTier、上述策略，以及 `codex_account` 同源的额度池与窗口摘要和近 30 天的 `history`。省略账号身份、无关模型说明和完整原生配置；各事实读取失败时标记不可用，保留其余结果，不把未知额度当作零。
+`query({op:"dispatch_policy",args:{}})` returns the decision view. By default, only installed and enabled Agents appear. all:true includes uninstalled and disabled Agents without changing view. agent filters by ID. A non-Codex agent plus taskId selects an existing session. Reads never start or resume sessions.
 
-其他 Agent 元素返回安装、可用与启用状态，同 subscriptions 服务的额度快照，以及已有会话公开的模型和选项；可同时传非 Codex agent 与 taskId 指定会话。缺省取该 Agent 最近的非空会话快照，保留来源、观察时间与会话作用域，不宣称推理生效。全量查询每个非 Codex Agent 最多预览 8 个模型，omittedModels 披露省略数量；按 agent 筛选取得完整目录。无快照时明确不可用，读取不启动或恢复进程；禁用 Pi 不发送 RPC。旧快照缺少配置观察时间时保留 null。
+Decision rows include availability, used-quota summaries, policy defaults, criteria, compact native model choices, and 30-day history. Missing defaults inherit native configuration. criteriaHash accompanies nonempty criteria. knownCriteriaHash maps Agent IDs to prior hashes, with global for top-level criteria. Matching text is omitted with criteriaUnchanged:true. The same mechanism applies to view:full, where Agent criteria remain under policy. Hashes cover the exact UTF-8 criteria text.
 
-原生认证与推理可用性不能从额度环或安装状态推断：authentication.inference 为 unknown，quotaAccess 仅描述额度入口。provider 未接入和模型到额度池的关联未知均显式披露。非 Codex 的策略分节、原生模型/选项选择、记录、agent_review 与历史已接入，见[多 Agent 派发策略](dispatch-agents.md)。
+Model entries retain native IDs and supported effort ranges. A range abbreviates only contiguous known effort levels. Fast labels retain native tier IDs. Policy allow/deny constraints remain visible. Agents with neither criteria nor history collapse to an availability/no-policy row with their quota reference. Shared provider/pool quotas are shown once and referenced from subsequent Agents. Quota percentages are used percentages, never remaining percentages.
 
-Loop guide 引导所有控制源派发前查询此 op，选择 Agent 及其原生档位并传一句 `reason`。动态目录与额度不内嵌到每次 guide，避免重复大段输出。使用旧显式 allowlist 的入口需启用 dispatch_policy；默认预设包含此只读 op。
+view:full retains native capability details, quota pools/windows, policy, and individual history groups. Nulls, empty strings/arrays/objects, and unknown values are omitted from both views. observedAt is omitted for fresh data. Stale provider readings and persisted catalog snapshots retain observation timestamps. Missing facts are omitted rather than converted to zero. Read failures remain explicit.
 
-## 派发与记录
+Codex models and quotas come from model/list and the same account/rateLimits/read API used by codex_account. Other Agents use SubscriptionService and native/session catalog snapshots. General queries preview at most eight non-Codex models with omittedModels. Filtering by agent returns the full catalog. Session facts retain scope and source in full view. Without a snapshot, needs-session explains how to create a session without a prompt. Disabled Pi never receives RPC. A snapshot without an observation time cannot supply one.
 
-`codex_create`、`codex_send` 增加可选 `reason`，MCP 的 `guide/query/act` 外层不变。新轮次缺省的 model、effort 分别取 ARC 策略默认值，null/未配置时继承原生当前值；已有策略文件不会被重写，单独传 effort 可用于同线程升级。原生 `turn`、协作模式及创建线程参数中的显式选择同样受约束；实际发送给线程与轮次的配置保持一致。
+Installation or quota access does not prove inference authentication. Provider integration and model-to-quota association remain separate facts. Full view retains known authentication evidence. See [Multi-Agent dispatch](dispatch-agents.md) for non-Codex selection, records, and reviews.
 
-请求先按原始参数做幂等判定，再固定选择；相同 requestId 回读原回执，不因策略修改再次派发。队列在实际执行时选择默认值；自动容量重试沿用原轮次已选配置。运行中的 steer 不改变当前轮次配置；显式要求不同档位时返回错误，提示等待终态或排队续轮。
+All control-source loop guides require this query before dispatch and a reason for Agent/model/effort selection. Dynamic catalogs and quota are not embedded in guide. Existing explicit ingress allowlists must enable dispatch_policy. Default policy includes it.
 
-每次成功派发按线程保存 requestId、turnId、model、effort、serviceTier、reason、各字段来源（explicit / policy-default；steer 为 active-turn）、派发方式与时间，并关联到任务回执。`codex_tasks` 的 full 视图展示派发历史；完成、失败及中断通知附带本轮记录。原生持久化轮次配置可用时补充实际配置证据；不可用时仅说明 ARC 提交的配置。
+## Dispatch and records
 
-失败/中断后符合[原生重试继承条件](control-loop.md#72-原生重试续轮)的紧接续轮，补记 `dispatchSource:"native-retry"`、`dispatchMode:"new-turn"`、`retryOf`（前轮 turnId）与 `nativeTrigger`。model / effort / serviceTier 直接来自该续轮的原生 turn_context，不应用当前策略默认值；字段来源及 configurationEvidence 为 native-persisted-turn-context。submittedAt 使用原生开始时间，observedAt 使用纳入时间，purpose 沿用前轮。以原生 turnId 作为稳定记录 requestId 幂等落盘，不伪造 ARC 派发回执；该 ID 不代表可重放的写入请求。续轮与普通派发共用终态、codex_review 和历史汇总路径。新用户内容、无法确认重试或超出十分钟窗口的轮次不纳入。
+codex_create/codex_send accept optional reason without changing guide/query/act envelopes. Omitted model/effort use policy defaults. Null/unconfigured defaults inherit native current values. Existing policy files are not rewritten. Effort alone can increase effort for a new turn in the same thread. Explicit native turn, collaborationMode, and thread creation settings also obey constraints. Thread/turn configuration stays consistent.
 
-原生 turn_context 缺少 service_tier 时，effectiveConfiguration.serviceTier 保持 unknown。threadServiceTier 单独展示持久化 thread_settings_applied 在该轮 task_started 前的最后值，仅证明线程配置，不能证明单轮 serviceTierForTurn 覆盖；不使用轮次结束后的最新设置回填旧轮。统计优先使用轮次原生 tier，否则用提交值，均缺失时归 unknown。
+Idempotency checks original arguments before fixing selection. The same requestId reads the original receipt despite policy edits. Queues resolve defaults at execution. Automatic capacity retry reuses the original selection. Steering cannot change the active turn's configuration. A different explicit setting returns an error directing the caller to terminal waiting or a queued new turn.
 
-终态记录派发至首次观察到终态的耗时，明确这是观察耗时，包含调度与观察延迟。
+Each successful dispatch records requestId, turnId, model, effort, serviceTier, reason, sources, dispatch mode, and time by thread and links the receipt. Sources are explicit/policy-default or active-turn for steer. codex_tasks view:full exposes dispatch history. Completion/failure/interruption notifications include the turn record. Persisted native configuration adds effective evidence when available. Otherwise records describe only ARC's submitted configuration.
 
-## 验收与返工
+A directly following turn satisfying [native retry rules](control-loop.md#72-native-retry) records dispatchSource:native-retry, dispatchMode:new-turn, retryOf, and nativeTrigger. Configuration comes directly from native turn_context without applying current policy defaults. Field sources and configurationEvidence are native-persisted-turn-context. submittedAt is native start time. observedAt is ingestion time. purpose inherits the predecessor. Native turnId is the stable idempotent record requestId without a fabricated ARC submission receipt. It is not a replayable write ID. Retry turns share completion, codex_review, and history paths. New user content, uncertain retries, and turns outside ten minutes are excluded.
 
-`act({op:"codex_review",args:{threadId,turnId?,verdict:"pass"|"rework",note?},requestId?})` 写入控制源的验收结论。省略 turnId 时，读取原生线程最近一个终态轮次（可越过仍运行的最新轮次）；目标必须有 ARC 派发记录，包括已纳入的 native-retry。非终态或没有派发记录时明确报错，不替其他轮次作判断。
+Without native service_tier, effectiveConfiguration.serviceTier remains unknown in records. threadServiceTier separately reports the last persisted thread_settings_applied value before task_started. It proves thread configuration, not serviceTierForTurn. Later settings never backfill an earlier turn. History prefers native tier, then submitted tier, otherwise unknown internally.
 
-每轮的 `review` 保存 verdict、note、reviewedAt 和 requestId。同轮改判覆盖旧结论，统计以最后一次为准；安全重试沿用 requestId，改判使用新 requestId。验收写入与派发共用线程锁，完成观察补写元数据不会覆盖验收结论。
+Terminal records measure submission to first terminal observation. This observed duration includes scheduling and observation delay.
 
-rework 后同线程的下一次新轮派发保存 `reworkOf:<原轮次 ID>`，steer 不消耗返工关联；多次改判以派发当时最新的有效 rework 为准。关联创建后保留，不因对旧轮次的后续改判重写历史。队列在实际派发时建立关联。`codex_tasks view:full` 的 dispatches 可回读最新结论和返工关系；已产生的完成通知仍是产生时的快照。
+## Review and rework
 
-## 历史汇总与用量边界
+`act({op:"codex_review",args:{threadId,turnId?,verdict:"pass"|"rework",note?},requestId?})` records the control source's review. Omitted turnId chooses the latest native terminal turn, even if a newer turn runs. The target MUST have an ARC dispatch record, including recognized native retry. Nonterminal or unrecorded targets fail explicitly without judging another turn.
 
-`dispatch_policy.agents` 中 Codex 的 `history` 按 submittedAt 统计最近 30 天的新轮次，按 agent + model + 原生 options（Codex 保留 effort + serviceTier）分组；优先采用原生有效配置，不可用时采用 ARC 提交配置。同轮重复记录去重，steer 不另算一轮。每组包含 dispatches、pass、rework、failed、interrupted、unreviewed；失败与中断优先单独计数，不计入验收或未评定。未评定包含尚在运行及成功终态未评定的轮次。只有成功终态的轮次参与 medianObservedDurationMs，并以 durationSamples 标明样本数。
+review stores verdict, note, reviewedAt, and requestId. The latest verdict replaces previous judgments. Safe retries reuse requestId. Changed verdicts use a new ID. Review and dispatch share the thread lock. Completion metadata cannot overwrite reviews.
 
-`purpose:"self-test"` 不进入真实统计，续轮省略 purpose 时沿用该线程最近派发标记，显式 purpose 可覆盖。验收结论不能改变此标记。无数据组不输出；最多显示派发次数最多的 12 组，其余以 omittedGroups 披露，保持响应在几 KB 量级。查询实时读取记录，改判立即反映在汇总中。
+After rework, the next new-turn dispatch records reworkOf. Steering does not consume the association. Dispatch uses the latest effective rework verdict. Once created, the link persists despite later verdict changes. Queues link at execution. codex_tasks view:full returns current reviews and links. Existing completion notifications remain creation-time snapshots.
 
-当前 app-server 的 Turn / turn/completed / thread/turns/list 不提供单轮 token 总量。thread/tokenUsage/updated 虽含 turnId，其 last 对应最近一次模型响应，total 对应线程累计用量；account/usage/read 的 threadUsage 是线程级估算。它们都不满足可靠单轮总量的要求，因此目前不保存单轮 token，也不输出平均单轮 token；不差分、不估算，不将缺省写成零。原生提供可直接关联终态轮次的完整用量后再接入。字段语义参见[原生协议](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/protocol.rs)。
+## History and usage boundaries
 
-## 分期与限制
+History uses submittedAt for the last 30 days of new turns, grouped by Agent, model, and native options, including Codex effort/serviceTier. Native effective configuration takes precedence over submitted values. Same-turn duplicates are deduplicated. Steering is not another dispatch. Counts include dispatches, pass, rework, failed, interrupted, and unreviewed. Failure/interruption counts take precedence over verdicts. Unreviewed includes active turns and successful terminal turns without review. Only successful terminal durations contribute to the median and durationSamples.
 
-- P0：配置文件、紧凑查询、guide 引导、默认值与约束、同线程升级、逐次记录及通知。无策略编辑 UI，无自动质量判断。
-- P1：控制源验收结论、同线程返工关联、近 30 天档位汇总及自测排除。单轮 token 受上述原生契约限制保持缺省。
-- 后续：原生单轮用量可用后再补平均值；有足够验收样本后评估选择准则与路由收益。策略 UI 按实际需求增加。
+The decision view merges every group with fewer than three dispatches into other before calculating its median from original duration samples. It displays observed minutes and compact pass/rework/unreviewed counts, retaining nonzero failures and interruptions. Full view keeps individual groups and millisecond medians. Both retain the 12-group limit and omittedGroups when needed. Exact-configuration revisit estimates continue using unmerged history.
 
-策略约束覆盖上述派发 op，不是底层原生 API 或用户直接操作 Codex 的安全边界。ARC 不替控制源判断任务复杂度、自动提档或宣称验收通过。
+purpose:"self-test" is excluded. A send without purpose inherits the previous dispatch's purpose. Explicit purpose overrides it. Reviews cannot change it. Empty groups are omitted. Reads use fresh records, so changed verdicts appear immediately.
+
+Current app-server Turn, turn/completed, and thread/turns/list lack reliable per-turn token totals. thread/tokenUsage/updated has turnId, but last is the latest model response and total is cumulative thread usage. account/usage/read threadUsage is a thread estimate. ARC therefore stores no per-turn token totals or averages. It does not difference, estimate, or replace missing usage with zero. Add usage only when upstream provides complete terminal-turn-associated data. See [native protocol](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/protocol.rs).
+
+## Scope and limits
+
+Configuration, queries, guide, defaults/constraints, same-thread effort changes, records, notifications, reviews, rework links, and 30-day summaries are integrated. There is no policy editor or automatic quality judgment. Reliable native per-turn usage remains unavailable. Future routing evaluation requires adequate review samples. Add policy UI only for actual requirements.
+
+Constraints cover these dispatch ops. They are not a security boundary around raw native APIs or direct Codex use. ARC never judges task complexity, automatically raises effort, or claims review passed.

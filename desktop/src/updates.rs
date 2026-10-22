@@ -54,11 +54,11 @@ pub fn take_resume() -> Option<Vec<String>> {
 }
 async fn updater(app: &tauri::AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
     if cfg!(debug_assertions) {
-        return Err("当前应用不支持自动更新，请从下载页获取安装包。".into());
+        return Err("This app does not support automatic updates. Get the installer from the download page.".into());
     }
     let service = app
         .try_state::<std::sync::Arc<arc_core::runtime::Client>>()
-        .ok_or("Core 尚未就绪")?;
+        .ok_or("Core is not ready")?;
     let proxy = service.network_proxy().await?;
     app.updater_builder()
         .configure_client(move |builder| proxy.client(builder))
@@ -78,7 +78,10 @@ async fn check(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_updater::Up
 }
 pub async fn check_update(app: tauri::AppHandle) -> Result<Value, String> {
     let state = app.state::<UpdateState>();
-    let _guard = state.install.try_lock().map_err(|_| "已有更新正在进行")?;
+    let _guard = state
+        .install
+        .try_lock()
+        .map_err(|_| "An update is already in progress")?;
     progress(&app, json!({"phase":"checking","error":null}));
     if let Some(service) = app.try_state::<std::sync::Arc<arc_core::runtime::Client>>() {
         let _ = service
@@ -139,7 +142,7 @@ async fn download(
                 return Ok(None);
             };
             if update.version != version {
-                return Err("可用版本已变化，请重新检查更新。".to_owned());
+                return Err("The available version changed. Check for updates again.".to_owned());
             }
             let mut downloaded = 0usize;
             let bytes = update.download(|chunk, total| {
@@ -156,7 +159,10 @@ async fn download(
 }
 pub async fn download_update(app: tauri::AppHandle, version: String) -> Result<Value, String> {
     let state = app.state::<UpdateState>();
-    let _guard = state.install.try_lock().map_err(|_| "已有更新正在进行")?;
+    let _guard = state
+        .install
+        .try_lock()
+        .map_err(|_| "An update is already in progress")?;
     let result = download(&app, &version).await?;
     let response = match &result {
         Some((u, _)) => json!({"available":true,"version":u.version,"notes":u.body,"ready":true}),
@@ -168,7 +174,10 @@ pub async fn download_update(app: tauri::AppHandle, version: String) -> Result<V
 }
 pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Value, String> {
     let state = app.state::<UpdateState>();
-    let _guard = state.install.try_lock().map_err(|_| "已有更新正在进行")?;
+    let _guard = state
+        .install
+        .try_lock()
+        .map_err(|_| "An update is already in progress")?;
     let Some((update, bytes)) = download(&app, &version).await? else {
         return Ok(json!({"available":false}));
     };
@@ -219,8 +228,10 @@ pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Va
         }
         .await;
         return Err(match restored {
-            Ok(_) => format!("更新失败：{error}。可重试或手动下载。"),
-            Err(restore) => format!("更新失败：{error}；恢复连接失败：{restore}"),
+            Ok(_) => format!("Update failed: {error}. Retry or download manually."),
+            Err(restore) => {
+                format!("Update failed: {error}. Connection recovery failed: {restore}")
+            }
         });
     }
     // restart() never returns on a runtime worker. Let this command finish and

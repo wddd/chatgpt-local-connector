@@ -579,7 +579,11 @@ fn presentation(mut next: Value, state: &Value) -> Result<Value> {
     Ok(next)
 }
 fn agent_prompt(goal: &str, cli: &Path, locale: &str) -> String {
-    crate::i18n::text(locale, "setup.agentPrompt")
+    serde_json::from_str::<Value>(include_str!("model-prompts.json")).expect("model prompts")
+        ["setup"]
+        .as_str()
+        .expect("setup prompt")
+        .replace("{locale}", locale)
         .replace("{goal}", goal)
         .replace("{cli}", &cli.to_string_lossy())
         .replace("{stateDir}", &root().to_string_lossy())

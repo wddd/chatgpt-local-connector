@@ -240,7 +240,7 @@ impl Ingress {
             self.connected
                 .store(false, std::sync::atomic::Ordering::SeqCst);
 
-            *self.failure.lock().await = "连接进程已退出，请重新连接".into();
+            *self.failure.lock().await = "The connection process exited. Reconnect.".into();
         }
         let tunnel_running = child.is_some();
         drop(child);
@@ -250,7 +250,7 @@ impl Ingress {
             self.connected
                 .store(false, std::sync::atomic::Ordering::SeqCst);
 
-            *self.failure.lock().await = "MCP 监听已退出，请重新连接".into();
+            *self.failure.lock().await = "The MCP listener exited. Reconnect.".into();
         }
         let https_running = https.is_some();
         drop(https);
@@ -524,7 +524,7 @@ impl Ingress {
         }
         self.stop().await?;
         if !configured(&settings) {
-            return Err("请先填写连接信息".into());
+            return Err("Complete connection settings first".into());
         }
         if settings["connectionMode"] == "local" {
             self.connected
@@ -581,7 +581,7 @@ impl Ingress {
                 .as_ref()
                 .is_none_or(|task| task.is_finished())
             {
-                return Err("MCP 监听未能保持运行，请重新连接".into());
+                return Err("The MCP listener did not remain running. Reconnect.".into());
             }
             *self.mcp_url.lock().await = url.clone();
             if settings["httpsProvider"] != "custom" {
@@ -618,7 +618,7 @@ impl Ingress {
         let key_ref = format!("file:{}", key.display());
         let port = self.port.load(std::sync::atomic::Ordering::SeqCst);
         if port == 0 {
-            return Err("本机通信尚未启动".into());
+            return Err("Local communication has not started".into());
         }
         let result = async {
             let mut init = tunnel_command(&binary);
@@ -642,7 +642,7 @@ impl Ingress {
             ]);
             let o = tokio::time::timeout(Duration::from_secs(30), init.output())
                 .await
-                .map_err(|_| "Tunnel 配置超时")?
+                .map_err(|_| "Tunnel configuration timed out")?
                 .map_err(|e| e.to_string())?;
             if !o.status.success() {
                 let detail = format!(
@@ -848,8 +848,11 @@ impl Ingress {
                 Ok(credentials)
             }
             ("PUT", "network") => {
-                let mode = body["proxyMode"].as_str().ok_or("代理模式无效")?;
-                let address = body["proxyUrl"].as_str().ok_or("代理地址无效")?.trim();
+                let mode = body["proxyMode"].as_str().ok_or("Invalid proxy mode")?;
+                let address = body["proxyUrl"]
+                    .as_str()
+                    .ok_or("Invalid proxy address")?
+                    .trim();
                 crate::proxy::validate(mode, address)?;
                 let mut settings = self.settings.lock().await;
                 let mut next = settings.clone();
@@ -861,15 +864,15 @@ impl Ingress {
             }
             ("PUT", "config") | ("PATCH", "config/tunnel") => {
                 if self.connected.load(std::sync::atomic::Ordering::SeqCst) {
-                    return Err("请先关闭连接".into());
+                    return Err("Disconnect first".into());
                 }
                 let mut body = if method == "PATCH" {
-                    let fields = body.as_object().ok_or("配置格式错误")?;
+                    let fields = body.as_object().ok_or("Invalid configuration format")?;
                     if fields
                         .keys()
                         .any(|k| !["tunnelId", "apiKey"].contains(&k.as_str()))
                     {
-                        return Err("仅接受 tunnelId 和 apiKey".into());
+                        return Err("Only tunnelId and apiKey are accepted".into());
                     }
                     let mut next = self.settings.lock().await.clone();
                     next["connectionMode"] = json!("tunnel");
@@ -884,7 +887,9 @@ impl Ingress {
                     .map(|(_, flag)| flag)
                     .chain(std::iter::once("configured"))
                 {
-                    body.as_object_mut().ok_or("配置格式错误")?.remove(field);
+                    body.as_object_mut()
+                        .ok_or("Invalid configuration format")?
+                        .remove(field);
                 }
                 validate_config(&body)?;
                 let settings = self.settings.lock().await;
@@ -895,7 +900,7 @@ impl Ingress {
                 }
                 drop(settings);
                 if !configured(&body) {
-                    return Err("请补齐所选连接方式的信息".into());
+                    return Err("Complete the selected connection method's settings".into());
                 }
                 self.persist(&body).await?;
                 let binding = binding(&body);
@@ -929,7 +934,7 @@ impl Ingress {
             }
             ("POST", "install") => {
                 if body["component"] != "tunnel" {
-                    return Err("请安装官方 Codex Desktop".into());
+                    return Err("Install the official Codex Desktop".into());
                 }
                 let running = self.connected.load(std::sync::atomic::Ordering::SeqCst);
                 self.prepare_tunnel(true).await?;
@@ -955,7 +960,7 @@ impl Ingress {
             crate::egress::validate_op(spec, &args)?;
             let mut v = self.verification.lock().await;
             if args["code"] != v["code"] {
-                return Err("验证码不匹配".into());
+                return Err("Verification code does not match".into());
             }
             let mut next = v.clone();
             next["challengeVerifiedAt"] = json!(now());
@@ -1112,7 +1117,7 @@ async fn install_tunnel(proxy: &crate::proxy::NetworkProxy) -> Result<PathBuf> {
     } else if cfg!(target_os = "linux") {
         "linux"
     } else {
-        return Err("不支持的平台".into());
+        return Err("Unsupported platform".into());
     };
     let arch = if cfg!(target_arch = "aarch64") {
         "arm64"
@@ -1136,7 +1141,7 @@ async fn install_tunnel(proxy: &crate::proxy::NetworkProxy) -> Result<PathBuf> {
             let a: Vec<_> = l.split_whitespace().collect();
             (a.len() == 2 && a[1].trim_start_matches('*') == name).then(|| a[0].to_owned())
         })
-        .ok_or("官方校验和缺失")?;
+        .ok_or("Official checksum is missing")?;
     let bytes = client
         .get(format!("{base}/{name}"))
         .send()
@@ -1148,7 +1153,7 @@ async fn install_tunnel(proxy: &crate::proxy::NetworkProxy) -> Result<PathBuf> {
         .await
         .map_err(|e| e.to_string())?;
     if hash(&bytes) != expected.to_lowercase() {
-        return Err("SHA256 校验失败".into());
+        return Err("SHA256 verification failed".into());
     }
     let dir = root().join("dependencies/tunnel").join(tag);
     private_dir(&dir)?;
@@ -1195,7 +1200,7 @@ async fn install_tunnel(proxy: &crate::proxy::NetworkProxy) -> Result<PathBuf> {
     ] {
         let p = dir.join(name);
         if !p.is_file() {
-            return Err("组件不完整".into());
+            return Err("Component is incomplete".into());
         }
         #[cfg(unix)]
         {

@@ -1,90 +1,91 @@
-# 架构与生命周期
+# Architecture and lifecycle
 
-[开发](development.md) · [工具参考](../reference/tools.md) · [Agent 参考](../reference/agents.md)
+[Development](development.md) · [Tools](../reference/tools.md) · [Agents](../reference/agents.md)
 
-## 进程与职责
+## Processes and responsibilities
 
 ```text
-React / Tauri Desktop ── 本机认证管理 API ── Core
-                                              ├─ Ingress A ─ HTTPS / OAuth
-CLI / 管理 MCP ──────── 本机认证管理 API ───────┤─ Ingress B ─ OpenAI Tunnel
-                                              └─ Execution
-                                                  ├─ Control → Codex owner
-                                                  └─ AgentHost → Pi / ACP
+React / Tauri Desktop ── authenticated local management API ── Core
+                                                               ├─ Ingress A ─ HTTPS / OAuth
+CLI / management MCP ── authenticated local management API ─────┤─ Ingress B ─ OpenAI Tunnel
+                                                               └─ Execution
+                                                                   ├─ Control → Codex owner
+                                                                   └─ AgentHost → Pi / ACP
 ```
 
-React 在系统 WebView 中渲染。Desktop 管理主窗口、托盘、原生面板、权限与更新。arc-core 提供共享业务与运行时能力。runtime 为每个状态目录维护一个文件锁保护的 Core；Desktop、CLI 等本机入口持有租约。不同构建不能共享同一个活动 owner。最后一个租约释放后 Core 退出；daemon 模式可独立常驻。
+React renders in the system WebView. Desktop owns the main window, tray, native panels, permissions, and updates. arc-core provides shared business and runtime capabilities. runtime maintains one file-locked Core per state directory. Local entry points such as Desktop and CLI hold leases. Different builds cannot share an active owner. Core exits after the final lease is released. Daemon mode can remain resident independently.
 
-service::Service 拥有唯一的 Control、AgentHost、execution::Execution 和入口集合。Execution 负责业务组合；kernel 保存与提供商无关的来源、工具策略、回执、结果和事件存储。传输层处理请求与结果封装，egress 统一投影错误和输出。
+service::Service owns one Control, AgentHost, execution::Execution, and ingress collection. Execution composes business capabilities. kernel stores provider-independent origin, tool policy, receipts, results, and events. Transports package requests and results. egress projects errors and output consistently.
 
-Core 的 `resources` 模块统一负责进程资源策略。runtime 启动及 Service 初始化时执行一次，在每次 Rpc 创建 app-server 前再次检查；桌面、登录启动与 Linux daemon 共用此路径，登录项不维护限制值。macOS/Linux 将 `RLIMIT_NOFILE` 软限制尽力提高到 8192，保留更高软限制及原硬限制。macOS 的设置值还受 `OPEN_MAX` 和只读的 `kern.maxfilesperproc` 约束；不改系统全局限制。每次记录原值、目标、尝试值、设置后实测值及失败原因，失败或未达标不阻止 Core 运行。
+Core's `resources` module owns process resource policy. It runs at runtime startup and Service initialization, and checks again before each Rpc creates app-server. Desktop, login startup, and Linux daemon share this path. Login items do not maintain separate limits. macOS/Linux attempt to raise the `RLIMIT_NOFILE` soft limit to 8192 while preserving higher soft limits and the original hard limit. macOS also respects `OPEN_MAX` and the read-only `kern.maxfilesperproc`. Global system limits remain unchanged. Each attempt records the original, target, attempted, and measured values and failure reason. Failure or a below-target limit does not stop Core.
 
-状态请求按需读取资源，不新增监控任务。Core 软/硬限制来自本进程实测；Rpc 保存子进程 PID、创建时间及启动时继承记录。Linux 用只读 prlimit 和 `/proc/<pid>/fd` 取得子进程限制与 fd 数量；macOS 用 `proc_pidinfo(PROC_PIDLISTFDS)` 枚举实际 fd，限制标注为启动继承记录。采样前后检查所持 Child 的退出状态，退出或读取失败时数量为 null、状态为 unknown，不向子进程发送命令。Windows 标注不适用。通信 ready 与资源状态分开，已知 fd 占用达到软上限 90% 时诊断给出 `APP_SERVER_FD_PRESSURE`；限制降级分别给出 `CORE_NOFILE_DEGRADED` / `APP_SERVER_NOFILE_DEGRADED`，不据此退订线程或重启进程。
+Status requests read resources on demand without a monitoring task. Core limits are measured in-process. Rpc records the child PID, creation time, and inherited startup limits. Linux reads child limits through read-only prlimit and counts `/proc/<pid>/fd`. macOS enumerates descriptors with `proc_pidinfo(PROC_PIDLISTFDS)` and labels limits as inherited startup records. Child exit status is checked before and after sampling. Exit or read failure yields null counts and unknown status without sending child commands. Windows reports not applicable. Communication readiness is separate from resource health. Known descriptor use at 90% of the soft limit produces `APP_SERVER_FD_PRESSURE`. Degraded limits produce `CORE_NOFILE_DEGRADED` or `APP_SERVER_NOFILE_DEGRADED`. These diagnostics neither unsubscribe threads nor restart processes.
 
-Service 状态、CLI status/doctor 和设置页共用资源快照及诊断规则。doctor 通过 `permissions/passive` 读取权限，Codex 登录与 command 权限保留 unknown；显式权限页仍使用原主动探测。读取资源诊断不会启动 app-server；字段及来源见 [CLI 参考](../reference/cli.md#resource-diagnostics)。
+Service status, CLI status/doctor, and Settings share resource snapshots and diagnostics. doctor uses `permissions/passive`. Codex login and command permissions remain unknown in passive reads. The explicit permission page retains active probing. Resource diagnostics never start app-server. See [CLI resource diagnostics](../reference/cli.md#resource-diagnostics).
 
-## 入口与认证
+## Ingress and authentication
 
-每条 Ingress 独立拥有生命周期锁、监听器、提供商进程、临时目录、URL、验证挑战、日志和错误。停止或故障只影响当前入口。Core 关闭时先停止入口，再关闭自身 AgentHost/Control。所有入口共享项目和任务空间，入口名称不是认证用户。
+Each ingress owns its lifecycle lock, listener, provider process, temporary directory, URL, verification challenge, logs, and errors. Stop/failure affects only that ingress. Core shuts down ingresses before its AgentHost/Control. All ingresses share project and task space. Ingress names are not authenticated users.
 
-OpenAI Tunnel 使用官方身份和客户端，其 stdio adapter 携带 ARC_NATIVE_PORT、ARC_NATIVE_TOKEN、ARC_INGRESS_ID 转发到本机管理端点。HTTPS 在每条入口自己的监听器暴露 MCP 与 OAuth 路由，TLS 由隧道或反向代理终结。监听器创建时固定入口，请求不能通过参数或头选择别的入口。
+OpenAI Tunnel uses official identities and clients. Its stdio adapter forwards to local management using ARC_NATIVE_PORT, ARC_NATIVE_TOKEN, and ARC_INGRESS_ID. Each HTTPS ingress exposes MCP and OAuth routes on its own listener. A tunnel or reverse proxy terminates TLS. Listener creation fixes the ingress. Requests cannot select another ingress through headers or parameters.
 
-管理 API 绑定随机 loopback 端口，校验 Host、Origin 和私有令牌；认证信息存于受保护状态目录。远程 HTTPS 不暴露管理 API。OAuth、Bearer、None 与 OpenAI 认证按入口配置，协议细节只在 [OAuth](../reference/oauth.md)维护。
+The management API binds a random loopback port and validates Host, Origin, and a private token. Authentication data lives in the protected state directory. Remote HTTPS does not expose management. OAuth, Bearer, None, and OpenAI authentication follow ingress configuration. [OAuth](../reference/oauth.md) owns protocol details.
 
-控制源 MCP 工具固定为 guide / query / act；catalog.tools 保存冻结定义，catalog.ops 保存操作 schema、示例与原说明，toolExposure 保留 op 的分组、预设、依赖与高级标记。op allowlist 同时约束 guide 发现与调用；本机管理目录保留完整 op 集合。传输层解包后沿现有执行链校验、执行 op，egress 为所有工具结果附带目录短哈希 arcVersion。来源上下文记录 ingressId、controlSource、authType，随回执和后台操作传递，不改变原任务 owner。
+Control-source MCP tools are fixed as guide/query/act. catalog.tools stores frozen definitions. catalog.ops stores operation schemas, examples, and descriptions. toolExposure stores groups, presets, dependencies, and advanced flags. Op allowlists constrain both discovery and execution. Local management retains the full op set. The transport unwraps requests into the existing validation/execution chain. egress attaches the catalog hash arcVersion to all results. Origin carries ingressId, controlSource, and authType through receipts and background work without changing task ownership.
 
-## 任务归属与执行
+## Task ownership and execution
 
-默认新 Codex 任务由 Desktop 执行。关闭自动打开后，新任务交给 ARC App Server；切换设置不迁移历史任务。Linux 始终使用后台 App Server。Desktop 未加载的线程在显式发送/resume 时先导航加载并等待 owner；等待后仍明确无 owner 才由 ARC App Server 恢复同一线程，不新建替代线程。断连、超时和提交不确定不触发二次派发。后台发送仅在 notLoaded 时以 excludeTurns 恢复，在活跃轮次上追加输入。创建种子通过设置标题触发原生持久化，未提供标题时取提示词首个非空行的前 120 个字符，无文本时使用 ARC task；独立 App Server 读到元数据后再交给 Desktop，不依赖 rollout 路径或文件大小。种子失败在创建进程退出前归档；后续明确创建失败且确认没有轮次时归档。清理结果、失败阶段及 seed 各步耗时保留在回执中。
+New Codex tasks execute in Desktop by default. Disabling auto-open sends new tasks to ARC App Server without migrating historical tasks. Linux always uses background App Server. Explicit send/resume first navigates to unloaded Desktop threads and waits for an owner. Only confirmed absence of an owner after waiting permits ARC App Server to resume the same thread. It never creates a replacement thread. Disconnection, timeout, or uncertain submission never causes a second dispatch. Background sends resume only notLoaded threads with excludeTurns and append input to active turns.
 
-Control 共享 Desktop IPC 连接，使用 macOS Unix socket 或 Windows named pipe，并检查用户、owner 和响应来源。断线后按需重连，owner 变化或断线清空快照。快照最长复用四秒；发送先轻量读取，选择 steer/start 并复用实际任务配置。Windows 从当前用户的 Store Codex 安装发现 CLI，按内容哈希缓存运行所需文件。
+Seed creation persists native state by setting a title. Without a title, it uses the first 120 characters of the prompt's first nonempty line, or ARC task without text. An independent App Server reads metadata before handing off to Desktop. This does not depend on rollout paths or file size. Seed failures are archived before the creating process exits. Later confirmed creation failures are archived only when no turn exists. Receipts retain cleanup results, failure phase, and each seed step's duration.
 
-Pi/ACP 每个任务拥有独立进程，AgentHost 保存 ARC taskId 与上游 sessionId。通用驱动按 descriptor 发现、启动和协商，Codex 不走 agent_* 协议适配。上游恢复能力决定 session/load 是否可用；不重放结果不明的写入。
+Control shares Desktop IPC using macOS Unix sockets or Windows named pipes, checking user, owner, and response origin. It reconnects on demand. Owner changes or disconnects clear snapshots. Snapshots last at most four seconds. Sending performs a lightweight read, chooses steer/start, and reuses actual task configuration. Windows discovers the current user's Store Codex CLI and caches runtime files by content hash.
 
-## 回执、观察与通知
+Each Pi/ACP task owns a process. AgentHost maps ARC taskId to upstream sessionId. Generic drivers discover, start, and negotiate using descriptors. Codex does not use agent_* adapters. Upstream resume capability determines session/load support. Uncertain writes are not replayed.
 
-写入先按 UUID 保留幂等回执，再派发。重复 ID 与相同参数回读原操作，冲突参数拒绝。请求等待超时返回 pending，提交后失联返回 unconfirmed；两者都保留原标识供回读。
+## Receipts, observation, and notifications
 
-waiter 通过事件唤醒和真实状态复核判断轮次，默认 30 秒切片，取消等待只释放等待，不取消任务。Codex 保持原 owner，Pi/ACP 使用其存活进程状态。等待不持有全局锁，也不恢复已停止的执行进程。ARC app-server 的等待器读取元数据和分页轮次，按需读到指定轮次，不使用旧的完整历史读取接口。
+Writes reserve an idempotent UUID receipt before dispatch. Repeated IDs with identical arguments read the original operation. Conflicting arguments are rejected. Request timeout returns pending. Connection loss after submission returns unconfirmed. Both retain original identifiers for readback.
 
-claude_notify 按 thread/turn 持久化绑定、实际派发来源与投递记录。governance 保存每目标令牌桶、近期批次、可达性握手状态和可撤销的线程/目标通知控制；不判断任务是否循环。所有事件统一调度，needs-input 与审批只跳过 30 秒合并窗口，仍扣令牌；观察与发送独立，网络期间释放记录锁。重试按 10 秒至 5 分钟指数退避并保留扣费资格与 eventId。静音、小时摘要、改绑、熔断只影响通知；按入口隔离查询与管理。熔断或持续缺令牌触发单次本机系统升级，恢复后重置。投递 timing 记录排队原因及起止耗时，CLI 确认不代表接收端显示。已回答交互取消未发送通知，未完成绑定与待投递记录保留。成功要求 Claude CLI JSON 的 ok=true 与同一 session_id。行为与参数见[工具参考](../reference/tools.md#control-source-notifications)。
+waiter combines event wakeups with real state checks in default 30-second segments. Cancelling a wait only releases the wait, not the task. Codex retains its owner. Pi/ACP use live process state. Waiting holds no global lock and never resumes stopped execution processes. ARC App Server waiters read metadata and paginated turns through the selected turn without the old full-history interface.
 
-## 数据与观察
+claude_notify persists per-thread/turn bindings, actual dispatch origin, and delivery records. governance stores per-target token buckets, recent batches, reachability handshakes, and reversible thread/target notification controls. It does not classify task loops. One scheduler handles all events. needs-input and approvals skip only the 30-second coalescing window and still consume tokens. Observation and sending are separate. Record locks are released during network requests. Retries back off exponentially from 10 seconds to 5 minutes, retaining token eligibility and eventId. Mute, hourly digest, rebind, and breaker affect only notifications. Queries and controls are ingress-isolated. Breaker or sustained token starvation produces one local system escalation, reset after recovery. Delivery timing records queue reasons and elapsed times. CLI acknowledgement does not prove receiver display. Answered interactions cancel unsent notifications. Unfinished bindings and pending deliveries remain. Success requires Claude CLI JSON ok=true and the same session_id. See [notification contracts](../reference/tools.md#control-source-notifications).
 
-项目来自原生 project/list，ID/名称解析缓存 30 秒。路径按工作区与文件系统规则解析，Review 视图执行资源边界。Git 基线记录提交前的 HEAD 和 dirty；轮次比较反映当前工作区，已有修改仍在比较范围内。
+## Data and observation
 
-大结果由 kernel::results 保存不可变快照，按 UTF-16 分页。Pi/ACP 原生事件使用活跃 JSONL 尾和校验过的 gzip 分段；Codex 历史保持上游所有权。用户日志与事件档案分离。具体预算与保留期见[工具参考](../reference/tools.md#output-events-and-logs)，不在多处复制。
+Projects come from native project/list. ID/name resolution caches for 30 seconds. Workspace and filesystem rules resolve paths. Review views enforce resource boundaries. Git baselines capture pre-submission HEAD and dirty status. Turn comparisons describe the current workspace, including pre-existing changes.
 
+kernel::results stores immutable large-result snapshots with UTF-16 pagination. Pi/ACP native events use an active JSONL tail and verified gzip segments. Codex owns its native history. User logs and event archives are separate. [Tools](../reference/tools.md#output-events-and-logs) owns budgets and retention periods.
 
-## Desktop 生命周期
+## Desktop lifecycle
 
-- 连接：启动选中入口及提供商；Agent 执行连接按需初始化。
-- 断开：停止入口进程和转发，后台任务保持原生命周期。
-- 关窗口：隐藏主窗口，菜单栏/托盘和连接继续运行。
-- 退出：保存运行连接集合并释放 Desktop 租约；其他租约可维持 Core。
-- 再打开：恢复之前运行的连接；原本断开的保持断开。
-- 更新：验签后要求其他入口退出，排空请求，暂停自动启动，等待 Core 文件锁释放再安装。失败时恢复客户端与连接。
+- Connect starts the selected ingress and provider. Agent execution connections initialize on demand.
+- Disconnect stops ingress processes and forwarding. Background task lifecycle is unchanged.
+- Closing the window hides it. Tray and connections continue.
+- Quit saves the running ingress set and releases the Desktop lease. Other leases may keep Core alive.
+- Reopening restores previously running ingresses. Previously disconnected ones remain disconnected.
+- Update verifies signatures, requires other entry points to exit, drains requests, suspends auto-start, and waits for the Core file lock before installation. Failure restores clients and connections.
 
-托盘左键打开主窗口，右键打开原生菜单；不额外创建托盘 WebView。屏幕捕获和原生窗口由平台实现管理，Linux 返回明确 unsupported。
+Tray left-click opens the main window. Right-click opens a native menu without another WebView. Platform implementations own screen capture and native windows. Linux returns explicit unsupported results.
 
-## 状态与构建边界
+## State and build boundaries
 
-状态目录名统一 agent-remote-control；开发使用 -dev，隔离预览显式使用 -preview。身份、环境变量和 deep link 不保留旧名 alias 或自动迁移。app/ 保存 preferences.json 等应用设置和 native.json 运行时元数据。Core 在取得状态目录文件锁后、读取元数据前，将旧 web/ 整体重命名为 app/；两者都存在时保留 app/ 并删除 web/。正式、-dev 与 -preview 使用同一启动路径。应用包只包含原生程序与静态资源，Node/npm 属于构建工具。CLI guide 与工具目录在构建时嵌入，改动后需要重新构建才能进入新产物。
+The state directory is agent-remote-control. Development uses -dev. Isolated previews explicitly use -preview. Identities, environment variables, and deep links retain no old aliases or automatic identity migration. app/ stores preferences.json and native.json runtime metadata. After acquiring the state lock and before reading metadata, Core renames legacy web/ to app/. If both exist, it retains app/ and removes web/. Production, -dev, and -preview share this startup path. Packages contain native executables and static resources only. Node/npm are build tools. CLI guide and catalogs are embedded at build time and require rebuilding after edits.
 
-## 权限与就绪
+## Permissions and readiness
 
-Core 汇总只读 permissions 状态，CLI doctor 与现有 overview 复用该结果。辅助功能及屏幕录制由 arc-screen 的 status 检测，工具只 preflight，缺失返回结构化 PERMISSION_REQUIRED。显式请求仅从 Desktop 权限页进入 helper request。Core 打开受 FDA 保护的 TCC 数据库做启发式探测，不读取内容；command 通过 Codex app-server 的 command/exec 单独执行零字节读取。未知状态不作已授权处理。
+Core aggregates read-only permissions status for CLI doctor and overview. arc-screen status checks Accessibility and Screen Recording. Tools only preflight and return structured PERMISSION_REQUIRED when missing. Explicit requests originate from Desktop's permission page through helper request. Core heuristically opens the FDA-protected TCC database without reading content. command separately performs a zero-byte read through Codex app-server command/exec. Unknown never means granted.
 
-通知由 Desktop 查询 UserNotifications，主动授权仅由用户点击触发。Core 闭环兜底通过已有认证本地 Desktop 通道请求 permissions/notify；Desktop 不在线或缺授权时仅记日志，不调用 osascript。登录启动检查 LaunchAgent 与 launchctl print-disabled。入口验证复用 diagnostics，Claude 复用 CLI 定位并查询 auth status，Codex 登录复用 account/read。
+Desktop queries UserNotifications. Only a user click requests authorization. Core's notification fallback uses the existing authenticated Desktop channel to request permissions/notify. Offline Desktop or missing permission only logs the failure and never invokes osascript. Login startup checks LaunchAgent and launchctl print-disabled. Ingress verification reuses diagnostics. Claude reuses CLI discovery and auth status. Codex login reuses account/read.
 
-权限页监听窗口焦点并支持手动刷新，系统设置跳转固定在本地 Desktop，不暴露新的 MCP 工具。
+The permission page refreshes on window focus and manually. System Settings navigation remains local to Desktop without new MCP tools.
 
-打包 Desktop 的启动链中，完全磁盘访问授权对象为 ARC App：Core 及其启动的 Codex app-server 子进程继承该应用身份。终端单独启动 Core 可能继承终端身份，不能用它的探测结果证明 App 已就绪。
+Packaged Desktop's startup chain attributes Full Disk Access to ARC App. Core and its Codex app-server child inherit that identity. A terminal-launched Core may inherit terminal identity and cannot prove App readiness.
 
-Core 的 SubscriptionService 统一调度各 provider 额度，保存启用与刷新间隔，额度来源随 Agent 自动参与，不保存来源选择或固定窗口；首页圆环固定使用上游周额度，详情保留其他额度窗口。原生凭据读取和上游响应归各 provider；成功读数缓存到 subscriptions/readings，恢复后标记 stale，失败退避，过期窗口隐藏。桌面 subscriptions:changed 与浏览器 /api/subscriptions/events 共用快照。旧缓存里的 history 字段读取时移除，不再采集本地用量、汇总 Token 或读取价格。
+SubscriptionService schedules provider quota reads and stores enabled state and refresh intervals. Agent participation determines sources automatically without saved source selection or fixed windows. Homepage rings use upstream weekly quota. Details retain other windows. Providers own native credentials and upstream responses. Successful readings cache under subscriptions/readings and restore as stale. Failures back off. Expired windows hide. Desktop subscriptions:changed and browser /api/subscriptions/events share snapshots. Legacy cache history is removed on read. Local usage, token aggregation, and prices are no longer collected.
 
-Desktop 交互复用线程 IPC 快照和变化广播，观察器以两秒刷新兜底；异步 questions 按原始 questionItemId 关联已接受的 question-reply 消息。代答复用 codex_respond：异步问题发送 Desktop 原生回复文本，审批、输入和 elicitation 通过对应 follower 响应接口交给原执行者，再回读确认请求消失。用户身份验证和未公开响应路径的交互仅通知并提示回 Desktop；不接管线程，不自动批准。
+Desktop interactions reuse thread IPC snapshots and change broadcasts with a two-second observation fallback. Asynchronous questions match accepted question-reply messages by original questionItemId. codex_respond sends native Desktop reply text for asynchronous questions. Approval, input, and elicitation responses use the corresponding follower interface with the original execution owner, then confirm disappearance. Identity verification and unpublished response paths only notify and direct the user to Desktop. ARC neither takes ownership nor auto-approves.
 
-线程队列由 `dispatch_queue` 保存待发送参数与独立派发回执，线程级写锁保护检查与提交；通知观察器内的容量恢复只对无工具活动的 serverOverloaded 失败续轮。两者使用持久 requestId 消除 Core 重启后的盲目重发。`respond_tokens` 仅为原交互提供有期限的入口隔离别名，不替代原 owner 的回复校验。
+`dispatch_queue` persists pending parameters and separate dispatch receipts. Per-thread write locks protect checks and submission. Notification-observer capacity recovery starts another turn only for serverOverloaded failures without tool activity. Both use durable requestId to avoid blind resubmission after Core restarts. `respond_tokens` supplies expiring ingress-isolated aliases for original interactions without replacing owner validation.
 
-Desktop 原生重试由 `claude_notify/continuation` 在同一观察链中识别：前轮失败/中断、快照与落盘历史相邻、已知重试触发标记、无新增用户消息及原生轮次配置齐全，并受前轮终态后十分钟窗口限制。先幂等补记 dispatch_policy 的 native-retry / retryOf 记录，再继承原入口与通知绑定；续轮共用终态通知、审查与汇总。新内容与证据不足时不纳入，不增加独立轮询器。具体边界见[控制循环](control-loop.md#72-原生重试续轮)。
+`claude_notify/continuation` recognizes Desktop native retries in the same observation chain. It requires a failed/interrupted predecessor, adjacency in snapshot and persisted history, a known retry trigger, no new user message, complete native turn configuration, and a ten-minute window after predecessor termination. It first idempotently records native-retry/retryOf in dispatch_policy, then inherits ingress and notification binding. The new turn shares terminal notification, review, and history paths. New content or insufficient evidence prevents inclusion. No independent poller is added. See [native retry](control-loop.md#72-native-retry).

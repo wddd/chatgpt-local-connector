@@ -101,10 +101,12 @@ impl Tunnel {
                             if let Some(owner) = self.owner.upgrade() {
                                 owner.log("WARN","Cloudflare remained unavailable; restarting provider to refresh edge discovery").await;
                             }
-                            self.health_error = "Cloudflare 正在恢复连接并重新解析边缘地址".into();
+                            self.health_error =
+                                "Cloudflare is reconnecting and resolving edge addresses again"
+                                    .into();
                         }
                         Err(error) => {
-                            self.health_error = format!("Cloudflare 恢复失败：{error}");
+                            self.health_error = format!("Cloudflare recovery failed: {error}");
                             self.unhealthy_since = Some(Instant::now());
                             self.restart_attempts += 1;
                         }
@@ -133,7 +135,7 @@ impl Tunnel {
         let message = match &result {
             Ok(true) => String::new(),
             Ok(false) if !self.health_error.is_empty() => self.health_error.clone(),
-            Ok(false) => format!("{} 隧道尚未就绪", self.provider),
+            Ok(false) => format!("{} tunnel is not ready", self.provider),
             Err(error) => error.clone(),
         };
         self.health_error = message.clone();
@@ -175,15 +177,15 @@ impl Tunnel {
             }
             if let Some(code) = code {
                 if code == "ERR_NGROK_334" {
-                    return Err("ngrok 固定域名已被其他连接占用，请关闭占用该域名的连接，或使用其他域名（ERR_NGROK_334）".into());
+                    return Err("The fixed ngrok domain is in use. Close the connection using it or use another domain (ERR_NGROK_334).".into());
                 }
                 return Err(format!(
-                    "ngrok 隧道启动失败（{code}），请查看 https://ngrok.com/docs/errors/{}",
+                    "ngrok tunnel startup failed ({code}). See https://ngrok.com/docs/errors/{}",
                     code.to_lowercase()
                 ));
             }
             return Err(format!(
-                "{} 隧道进程已退出，请检查凭据、网络、账号并发会话和端点额度后重试",
+                "{} tunnel process exited. Check credentials, network, concurrent account sessions, and endpoint quotas before retrying.",
                 self.provider
             ));
         }
@@ -195,13 +197,18 @@ impl Tunnel {
             let url = if self.fixed {
                 urls.iter()
                     .find(|url| *url == &self.selected_url)
-                    .ok_or_else(|| format!("{} 公网域名与配置不匹配", self.provider))?
+                    .ok_or_else(|| {
+                        format!(
+                            "{} public hostname does not match configuration",
+                            self.provider
+                        )
+                    })?
             } else {
-                urls.first().ok_or("未发现公网 HTTPS 地址")?
+                urls.first().ok_or("No public HTTPS URL found")?
             }
             .clone();
             if !self.url.is_empty() && self.url != url {
-                return Err(format!("{} 公网地址已变化，请重新连接", self.provider));
+                return Err(format!("{} public URL changed. Reconnect.", self.provider));
             }
             self.url = url;
             return Ok(true);
@@ -216,14 +223,15 @@ impl Tunnel {
         let response = match client.get(&self.health_url).send().await {
             Ok(response) => response,
             Err(error) => {
-                self.health_error = format!("{} 隧道健康检查失败：{error}", self.provider);
+                self.health_error =
+                    format!("{} tunnel health check failed: {error}", self.provider);
                 return Ok(false);
             }
         };
         self.health["httpStatus"] = json!(response.status().as_u16());
         if !response.status().is_success() {
             self.health_error = format!(
-                "{} 隧道未就绪（HTTP {}）",
+                "{} tunnel is not ready (HTTP {})",
                 self.provider,
                 response.status().as_u16()
             );
@@ -232,7 +240,7 @@ impl Tunnel {
                     if let Some(count) = value["readyConnections"].as_u64() {
                         self.health["readyConnections"] = json!(count);
                         self.health_error
-                            .push_str(&format!("，可用边缘连接数：{count}"));
+                            .push_str(&format!(". Available edge connections: {count}"));
                     }
                 }
             }
@@ -431,17 +439,17 @@ async fn spawn(
             ]);
             if settings["localxposeMode"] == "named" {
                 let url = reqwest::Url::parse(string(settings, "httpsUrl"))
-                    .map_err(|_| "LocalXpose 固定域名无效")?;
+                    .map_err(|_| "Invalid fixed LocalXpose domain")?;
                 cmd.args([
                     "--reserved-domain",
-                    url.host_str().ok_or("LocalXpose 固定域名无效")?,
+                    url.host_str().ok_or("Invalid fixed LocalXpose domain")?,
                 ]);
             } else {
                 cmd.args(["--region", string(settings, "localxposeRegion")]);
             }
             health = String::new();
         }
-        _ => return Err("HTTPS 服务商无效".into()),
+        _ => return Err("Invalid HTTPS provider".into()),
     }
     // Provider diagnostics are consumed continuously; Cloudflare uses the ingress redaction path.
     cmd.stdin(Stdio::null())
@@ -450,7 +458,7 @@ async fn spawn(
     drop(reservation);
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("无法启动 {provider}: {e}"))?;
+        .map_err(|e| format!("Cannot start {provider}: {e}"))?;
     let mut error_readers = Vec::new();
     let (discovery, discovered) = tokio::sync::watch::channel(None);
     if let Some(stdout) = child.stdout.take() {
@@ -509,10 +517,10 @@ async fn spawn(
         }
         if Instant::now() >= deadline {
             break Err(format!(
-                "{provider} 连接超时，请检查网络{}",
+                "{provider} connection timed out. Check the network{}",
                 match provider {
-                    "cloudflare" => "；Cloudflare 需允许出站连接到 7844 端口",
-                    "ngrok" => "、Authtoken 和账号的隧道额度",
+                    "cloudflare" => ". Cloudflare requires outbound access to port 7844",
+                    "ngrok" => ", Authtoken, and the account's tunnel quota",
                     _ => "",
                 }
             ));
@@ -601,7 +609,7 @@ async fn discover_output(
                 if provider == "pinggy"
                     && (text.contains("Disconnected:") || text.contains("Tunnel stopped."))
                 {
-                    sender.send_replace(Some(Err("Pinggy 隧道已断开，请重新连接".into())));
+                    sender.send_replace(Some(Err("Pinggy tunnel disconnected. Reconnect.".into())));
                 }
                 line.clear();
             } else if line.len() < 16384 {
@@ -622,21 +630,21 @@ pub(crate) async fn install(provider: &str, proxy: &crate::proxy::NetworkProxy) 
     } else if cfg!(target_os = "linux") {
         "linux"
     } else {
-        return Err("不支持的平台".into());
+        return Err("Unsupported platform".into());
     };
     let arch = if cfg!(target_arch = "aarch64") {
         "arm64"
     } else if cfg!(target_arch = "x86_64") {
         "amd64"
     } else {
-        return Err("不支持此 CPU 架构".into());
+        return Err("Unsupported CPU architecture".into());
     };
     let name = match provider {
         "cloudflare" => "cloudflared",
         "ngrok" => "ngrok",
         "pinggy" => "pinggy",
         "localxpose" => "loclx",
-        _ => return Err("HTTPS 服务商无效".into()),
+        _ => return Err("Invalid HTTPS provider".into()),
     };
     let executable = format!("{name}{}", if cfg!(windows) { ".exe" } else { "" });
     let dir = root()
@@ -713,14 +721,14 @@ pub(crate) async fn install(provider: &str, proxy: &crate::proxy::NetworkProxy) 
                 .into_iter()
                 .flatten()
                 .find(|a| a["name"] == asset_name)
-                .ok_or_else(|| format!("{provider} 未提供此平台的下载"))?;
+                .ok_or_else(|| format!("{provider} has no download for this platform"))?;
             let url = string(asset, "browser_download_url");
             if !url.starts_with(&format!("https://github.com/{repo}/releases/download/")) {
-                return Err(format!("无效的 {provider} 下载地址"));
+                return Err(format!("Invalid {provider} download URL"));
             }
             let digest = string(asset, "digest")
                 .strip_prefix("sha256:")
-                .ok_or_else(|| format!("{provider} 官方校验和缺失"))?;
+                .ok_or_else(|| format!("Official {provider} checksum is missing"))?;
             (url.to_owned(), Some(digest.to_owned()), extension)
         }
         "ngrok" => {
@@ -733,7 +741,7 @@ pub(crate) async fn install(provider: &str, proxy: &crate::proxy::NetworkProxy) 
         }
         "localxpose" => {
             if cfg!(windows) && arch != "amd64" {
-                return Err("LocalXpose 未提供此平台的下载".into());
+                return Err("LocalXpose has no download for this platform".into());
             }
             (
                 format!("https://api.localxpose.io/api/v2/downloads/loclx-{platform}-{arch}.zip"),
@@ -741,7 +749,7 @@ pub(crate) async fn install(provider: &str, proxy: &crate::proxy::NetworkProxy) 
                 "zip",
             )
         }
-        _ => return Err("HTTPS 服务商无效".into()),
+        _ => return Err("Invalid HTTPS provider".into()),
     };
     let mut response = client
         .get(&url)
@@ -753,12 +761,14 @@ pub(crate) async fn install(provider: &str, proxy: &crate::proxy::NetworkProxy) 
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
         if bytes.len() + chunk.len() > 128 * 1024 * 1024 {
-            return Err("隧道组件下载过大".into());
+            return Err("Tunnel component download is too large".into());
         }
         bytes.extend_from_slice(&chunk);
     }
     if digest.is_some_and(|digest| hash(&bytes) != digest) {
-        return Err(format!("{provider} 隧道组件 SHA256 校验失败"));
+        return Err(format!(
+            "{provider} tunnel component SHA256 verification failed"
+        ));
     }
     let staging = dir.join(id());
     private_dir(&staging)?;
@@ -821,7 +831,7 @@ pub(crate) async fn install(provider: &str, proxy: &crate::proxy::NetworkProxy) 
 pub(crate) fn ngrok_endpoint(endpoint: &str) -> Result<String> {
     let endpoint = endpoint.trim();
     if endpoint.is_empty() {
-        return Err("请填写 ngrok 固定域名".into());
+        return Err("Enter the fixed ngrok domain".into());
     }
     let address = if endpoint.contains("://") {
         endpoint.to_owned()
@@ -829,7 +839,7 @@ pub(crate) fn ngrok_endpoint(endpoint: &str) -> Result<String> {
         format!("https://{endpoint}")
     };
     let url = reqwest::Url::parse(&address)
-        .map_err(|_| "ngrok 固定域名无效，请填写域名或 HTTPS 地址（不含路径）")?;
+        .map_err(|_| "Invalid fixed ngrok domain. Enter a hostname or HTTPS URL without a path.")?;
     if url.scheme() != "https"
         || url.host_str().is_none()
         || !url.username().is_empty()
@@ -841,7 +851,9 @@ pub(crate) fn ngrok_endpoint(endpoint: &str) -> Result<String> {
         || endpoint.contains('*')
         || endpoint.chars().any(char::is_whitespace)
     {
-        return Err("ngrok 固定域名无效，请填写域名或 HTTPS 地址（不含路径）".into());
+        return Err(
+            "Invalid fixed ngrok domain. Enter a hostname or HTTPS URL without a path.".into(),
+        );
     }
     Ok(url.origin().ascii_serialization())
 }

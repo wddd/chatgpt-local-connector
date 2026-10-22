@@ -125,7 +125,7 @@ pub fn private_dir(path: &Path) -> Result<()> {
                 .unwrap_or("")
                 .trim_matches('"');
             if !who.status.success() || !sid.starts_with("S-1-") {
-                return Err("无法确认本机账户".into());
+                return Err("Cannot determine the local account".into());
             }
             let status = std::process::Command::new("icacls.exe")
                 .arg(path)
@@ -134,7 +134,7 @@ pub fn private_dir(path: &Path) -> Result<()> {
                 .output()
                 .map_err(|e| e.to_string())?;
             if !status.status.success() {
-                return Err("无法保护私有目录".into());
+                return Err("Cannot protect the private directory".into());
             }
             protected.insert(path.into());
         }

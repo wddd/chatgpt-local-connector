@@ -67,7 +67,7 @@ impl State {
                         .iter()
                         .any(|(id, lease)| id != key && lease.kind == kind)
                 {
-                    return Err("这份数据已有 Desktop 入口运行，请使用另一数据目录。".into());
+                    return Err("A Desktop entry point is already using this data. Use another state directory.".into());
                 }
                 let desktop = body.get("desktop").filter(|v| v.is_object()).cloned();
                 if let Some(endpoint) = &desktop {
@@ -97,7 +97,7 @@ impl State {
             "runtime/shutdown" => {
                 if !leases.contains_key(key) || leases.keys().any(|id| id != key) {
                     return Err(
-                        "其他本地入口仍在使用 Core；请先关闭这些 CLI 或 Desktop，再安装更新。"
+                        "Other local entry points still use Core. Close those CLI or Desktop clients before installing the update."
                             .into(),
                     );
                 }
@@ -125,7 +125,7 @@ impl State {
             .active()
             .values()
             .find_map(|lease| lease.desktop.clone())
-            .ok_or("Desktop 未运行；该操作需要 Desktop 入口。")?;
+            .ok_or("Desktop is not running. This operation requires the Desktop entry point.")?;
         if let crate::transport::DesktopRequest::Route(route, method, body) = operation {
             return crate::transport::forward_to(&endpoint, &route, &method, body).await;
         }
@@ -156,7 +156,7 @@ pub fn binary() -> Result<PathBuf> {
             return Ok(path);
         }
     }
-    Err("安装包缺少独立 Core 可执行文件。".into())
+    Err("The installation is missing the standalone Core executable.".into())
 }
 
 pub fn build_id(binary: &Path) -> Result<String> {
@@ -193,7 +193,7 @@ pub(crate) async fn owner(build: &str) -> Result<Option<Value>> {
         || health["build"] != build
     {
         return Err(
-            "CORE_BUILD_MISMATCH：请关闭其他本地入口，再重新加载同一构建的 Desktop 与 CLI。".into(),
+            "CORE_BUILD_MISMATCH: Close other local entry points. Reload Desktop and CLI from the same build.".into(),
         );
     }
     Ok(Some(info))
@@ -268,7 +268,7 @@ impl Client {
     async fn ensure(&self) -> Result<RwLockReadGuard<'_, bool>> {
         let active = self.active.read().await;
         if !*active {
-            return Err("Core 已暂停，正在关闭或安装更新。".into());
+            return Err("Core is paused for shutdown or update installation.".into());
         }
         self.ensure_core().await?;
         Ok(active)
@@ -309,7 +309,9 @@ impl Client {
             let deadline = Instant::now() + Duration::from_secs(15);
             while owner(&self.build).await?.is_none() {
                 if Instant::now() >= deadline {
-                    return Err("Core 启动超时；请检查状态目录中的 core.log。".into());
+                    return Err(
+                        "Core startup timed out. Check core.log in the state directory.".into(),
+                    );
                 }
                 tokio::select! {
                     result = &mut exit => {
@@ -367,7 +369,7 @@ impl Client {
         // exclude all ensure/spawn paths until shutdown has been accepted.
         let mut active = self.active.write().await;
         if !*active {
-            return Err("Core 已暂停，正在关闭或安装更新。".into());
+            return Err("Core is paused for shutdown or update installation.".into());
         }
         self.ensure_core().await?;
         let lock = File::options()

@@ -106,8 +106,8 @@ pub(crate) fn onboarding(ingress: &Value) -> Value {
         "transport":ingress["transport"],"authentication":ingress["auth"],"url":ingress["url"],"tunnelId":ingress["config"]["tunnelId"],
         "verification":ingress["verification"],"diagnostics":crate::diagnostics::ingress(ingress),
         "preset":crate::control_sources::preset(string(ingress,"controlSource")),
-        "verificationPrompt":format!("调用 act，参数为 {}。只验证连接，不创建任务。",json!({"op":"connector_verify","args":{"code":ingress["verification"]["code"]}})),
-        "executionPrompt":"先调用 guide，按其中示例通过 act 的 codex_create 或 agent_create op 创建一个无害 Agent 任务：不调用工具，不读取或修改文件，只回复 ARC_ONBOARDING_OK。在 act 外层使用唯一 UUID requestId，通过 act({op:receipt,args:{requestId}}) 读取回执、taskId、turnId，再用 query({op:agent_wait 或 codex_wait,args:{任务标识}}) 默认 30 秒等待；timeout 后沿用原 ID 和上一轮 snapshotHash 作为 expectedHash 继续 wait 至终态或交互，通过 query 的 agent_read 或 codex_read op 读取最终输出。timeout 不终止任务，不重新创建。未知状态回读原 requestId，不重复创建。",
+        "verificationPrompt":format!("Call act with {}. Verify the connection only. Do not create a task.",json!({"op":"connector_verify","args":{"code":ingress["verification"]["code"]}})),
+        "executionPrompt":"Call guide first. Follow its examples to create a harmless Agent task through act codex_create or agent_create with purpose:\"self-test\" and notify:null. The task MUST NOT call tools or read or modify files. It MUST reply only ARC_ONBOARDING_OK. Use a unique UUID requestId in the act envelope. Read the receipt, taskId, and turnId through act({op:receipt,args:{requestId}}). Use query agent_wait or codex_wait with those task identifiers and the default 30-second wait. On timeout, keep the original IDs and previous snapshotHash as expectedHash. Continue until a terminal state or interaction. Read final output with query agent_read or codex_read. Timeout does not terminate the task. Do not create it again. For unknown state, read the original requestId without duplicate creation.",
         "identityNote":"controlSource is a configured label, not an authenticated user identity. Bearer proves possession only.",
         "clientSetup":"Read preset.status, supportedAuth and caveat before connecting. Conditional paths require client verification; auth-limited paths must not silently fall back to none. A preset is not an installed integration.",
         "secretDelivery":"Supply credentials using stdin or a protected local file. Never paste tokens into chat or use command-line arguments."})
@@ -173,17 +173,17 @@ fn command_usage(args: &[&str]) -> Result<String, (String, String)> {
             .collect::<Vec<_>>()
             .join(" ");
         let usage = format!(
-            "{prefix} <子命令>；可用子命令：{}；完整用法见 cli help",
+            "{prefix} <subcommand>. Available subcommands: {}. See cli help for full usage.",
             branches.join("、")
         );
         let Some(word) = args.get(depth) else {
-            return Err(("缺少子命令".into(), usage));
+            return Err(("Missing subcommand".into(), usage));
         };
         if !branches.contains(word) {
             let message = if word.starts_with('-') {
                 flag_error(word)
             } else {
-                format!("未知子命令 {word:?}")
+                format!("Unknown subcommand {word:?}")
             };
             return Err((message, usage));
         }
@@ -195,7 +195,7 @@ fn command_usage(args: &[&str]) -> Result<String, (String, String)> {
         .map(|s| format!("cli {s}"))
         .collect::<Vec<_>>()
         .join("；");
-    let mut best_error = (0, "参数不匹配".to_owned());
+    let mut best_error = (0, "Arguments do not match".to_owned());
     let mut best_usage = usage.clone();
     for command in candidates {
         let slots: Vec<_> = command.split_whitespace().collect();
@@ -207,7 +207,7 @@ fn command_usage(args: &[&str]) -> Result<String, (String, String)> {
             let expected = slot.map(|s| s.trim_matches(['[', ']']));
             let message = match (expected, arg) {
                 (Some(_), None) if optional => continue,
-                (Some(expected), None) => format!("缺少参数 {expected}"),
+                (Some(expected), None) => format!("Missing argument {expected}"),
                 (Some(expected), Some(arg)) if expected == arg => continue,
                 (Some(expected), Some(arg))
                     if !arg.starts_with('-')
@@ -218,18 +218,21 @@ fn command_usage(args: &[&str]) -> Result<String, (String, String)> {
                 }
                 (_, Some(arg)) if arg.starts_with('-') => {
                     if slot.is_some_and(|s| s.starts_with('<')) && slots.contains(&arg) {
-                        format!("缺少参数 {}（应放在 {arg} 之前）", slot.unwrap())
+                        format!("Missing argument {} (required before {arg})", slot.unwrap())
                     } else if slots.contains(&arg) {
-                        format!("多余或重复的选项 {arg}")
+                        format!("Unexpected or duplicate option {arg}")
                     } else {
                         flag_error(arg)
                     }
                 }
                 (Some(expected), Some(_)) => format!(
-                    "cli 后第 {} 个参数应为 {expected}，实际为多余的位置参数",
+                    "Argument {} after cli must be {expected}, not an extra positional argument",
                     index + 1
                 ),
-                (None, Some(_)) => format!("多余的位置参数（cli 后第 {} 个参数）", index + 1),
+                (None, Some(_)) => format!(
+                    "Unexpected positional argument (argument {} after cli)",
+                    index + 1
+                ),
                 (None, None) => continue,
             };
             error = Some((index, message));
@@ -251,7 +254,7 @@ fn command_usage(args: &[&str]) -> Result<String, (String, String)> {
     if args.starts_with(&["ingress", "update"])
         && args.get(2).is_none_or(|arg| arg.starts_with('-'))
     {
-        best_error.1.push_str("；id 必须放在 update 后的命令参数里；若 stdin 含 id，请移到参数里，stdin 只传需要修改的补丁字段");
+        best_error.1.push_str(". id MUST be a command argument after update. Move id from stdin to the command arguments. stdin accepts only patch fields to change.");
     }
     Err((best_error.1, best_usage))
 }
@@ -293,7 +296,7 @@ fn stdin_id_hint(args: &[&str]) -> Option<(String, String)> {
         .join(" ");
     Some((
         format!(
-            "检测到 stdin 中的 id={}，请把它移到命令参数，stdin 只传需要修改的补丁字段",
+            "Found id={} in stdin. Move it to the command arguments. stdin accepts only patch fields to change.",
             json!(id)
         ),
         usage,
@@ -320,27 +323,27 @@ fn flag_error(arg: &str) -> String {
         || normalized == "clientsecret"
         || crate::ingress::config::secrets().any(|(key, _)| key.to_ascii_lowercase() == normalized)
     {
-        format!("不接受命令行密钥选项 {flag}：密钥可能泄露到 shell 历史或进程列表；请使用 --stdin 传入 JSON")
+        format!("Command-line secret option {flag} is not accepted. Secrets could appear in shell history or process lists. Supply JSON through --stdin.")
     } else {
-        format!("未知选项 {flag}；请使用用法中列出的选项")
+        format!("Unknown option {flag}. Use the listed options.")
     }
 }
 
 fn json_type(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
-        Value::Bool(_) => "布尔值（boolean）",
-        Value::Number(_) => "数字（number）",
-        Value::String(_) => "字符串（string）",
-        Value::Array(_) => "数组（array）",
-        Value::Object(_) => "对象（object）",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
     }
 }
 
 fn expect_type(field: &str, value: &Value, expected: &Value) -> crate::Result<()> {
     if json_type(value) != json_type(expected) {
         return Err(format!(
-            "字段 {field} 类型错误：期望 {}，实际为 {}",
+            "Invalid type for {field}: expected {}, got {}",
             json_type(expected),
             json_type(value)
         ));
@@ -358,7 +361,7 @@ fn known_fields(value: &Value, allowed: &[&str], prefix: &str) -> crate::Result<
         .collect();
     if !unknown.is_empty() {
         return Err(format!(
-            "未知字段：{}；允许字段：{}",
+            "Unknown fields: {}. Allowed fields: {}",
             unknown.join("、"),
             allowed
                 .iter()
@@ -383,7 +386,7 @@ pub(crate) fn validate_ingress_input(body: &Value, update: bool) -> crate::Resul
     ];
     if update && body.get("id").is_some() {
         return Err(
-            "补丁中不能包含 id：请将 id 放在 update 后的命令参数里，stdin 只传需要修改的补丁字段"
+            "A patch cannot contain id. Put id in the command arguments after update. stdin accepts only patch fields to change."
                 .into(),
         );
     }
@@ -412,7 +415,7 @@ pub(crate) fn validate_ingress_input(body: &Value, update: bool) -> crate::Resul
             "toolPolicy" => {
                 if !value.is_object() {
                     return Err(format!(
-                        "字段 toolPolicy 期望字符串 \"all\" 或对象（object），实际为 {}",
+                        "toolPolicy must be the string \"all\" or an object, got {}",
                         json_type(value)
                     ));
                 }
@@ -442,14 +445,14 @@ fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
         let id = id
             .map(|id| format!(" id={}", json!(id)))
             .unwrap_or_default();
-        message = format!("未找到入口{id}；请运行 cli ingress list 查看可用入口");
+        message = format!("Ingress{id} not found. Run cli ingress list for available ingresses.");
     } else if message == "UNKNOWN_OPERATION" {
         message = format!(
-            "未知操作 {}；请运行 cli capabilities 查看可用操作",
+            "Unknown operation {}. Run cli capabilities for available operations.",
             json!(args.get(1))
         );
     }
-    message.push_str(&format!("；正确用法：{usage}"));
+    message.push_str(&format!(". Correct usage: {usage}"));
     let mut error = json!({"code":code,"message":message,"usage":usage});
     if args.first() == Some(&"control") {
         let op = if args.get(1) == Some(&"guide") {
@@ -463,7 +466,7 @@ fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
     }
     if args.starts_with(&["ingress", "update"]) {
         error["message"] = json!(format!(
-            "{}；stdin 最小合法示例：{{\"enabled\":false}}",
+            "{}. Minimal valid stdin example: {{\"enabled\":false}}",
             error["message"].as_str().unwrap()
         ));
         error["example"] = json!({"enabled":false});
@@ -477,21 +480,21 @@ pub(crate) fn stdin_json() -> crate::Result<Value> {
     std::io::stdin()
         .take(16385)
         .read_to_string(&mut input)
-        .map_err(|_| "无法读取标准输入".to_string())?;
+        .map_err(|_| "Cannot read standard input".to_string())?;
     if input.len() > 16384 {
-        return Err("输入超过 16 KiB".into());
+        return Err("Input exceeds 16 KiB".into());
     }
     // Never echo malformed input: it may contain a credential.
     let value: Value = serde_json::from_str(&input).map_err(|error| {
         format!(
-            "标准输入 JSON 语法错误：第 {} 行，第 {} 列；请检查 JSON 语法",
+            "Invalid stdin JSON at line {}, column {}. Check JSON syntax.",
             error.line(),
             error.column()
         )
     })?;
     if !value.is_object() {
         return Err(format!(
-            "标准输入必须是 JSON 对象，实际为 {}",
+            "Standard input must be a JSON object, got {}",
             json_type(&value)
         ));
     }
@@ -729,7 +732,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
             }
             Ok(ingresses().await?)
         }
-        _ => Err("命令参数不匹配，请检查用法".into()),
+        _ => Err("Command arguments do not match. Check usage.".into()),
     }
 }
 

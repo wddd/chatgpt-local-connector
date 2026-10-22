@@ -1,0 +1,4 @@
+{
+  "setup": "Help me configure Agent Remote Control for {goal}.\nARC CLI: {cli}. Run commands with ARC_STATE_DIR set to {stateDir} for this instance. First run `\"{cli}\" cli setup playbook protocol`, then loop over `\"{cli}\" cli setup next --locale {locale}`.\nAfter selecting the goal, explain the resources and local-tool access described in the protocol and obtain one scope confirmation unless already explicitly given. Then complete that scope on signed-in pages without per-item confirmation. Relay decide explanations and options. Pause for missing login, challenges, passwords/2FA, payment, or your safety policy. Use setup wait as evidence. Never read or output secrets. Transfer them through the official Copy button and ARC clipboard apply.",
+  "otherAgent": "For Claude Code, first run `\"{cli}\" cli skill install --target claude-code` to install the current skill."
+}

@@ -1,96 +1,98 @@
-# UI 规范
+# UI conventions
 
-[开发](development.md) · [架构](architecture.md)
+[Development](development.md) · [Architecture](architecture.md)
 
-React 负责渲染，Tauri/Rust 负责配置、连接、任务、认证、原生窗口与更新。主窗口使用共享语义 token、偏好与控件。
+React renders. Tauri/Rust owns configuration, connections, tasks, authentication, native windows, and updates. The main window shares semantic tokens, preferences, and controls.
 
-## 首页与布局
+## Homepage and layout
 
-首页固定使用 ARC 标识和两侧圆弧耳罩连线，适配深浅主题。主题色固定为 ARC、青蓝、粉紫、红橙、黄绿五组双色组合；ARC 保留橙色与蓝紫渐变，其余组合分别用于控制源侧和 Agent 侧。
+The homepage uses the ARC mark and arc-shaped earcup connections in both themes. Five two-color palettes are ARC, cyan/blue, pink/purple, red/orange, and yellow/green. ARC retains orange and blue-purple gradients. Other palettes apply to the control-source and Agent sides.
 
-首页几何由 `ui/topology/solve.ts` 纯函数统一求解，左右翼共用算法并镜像。容器 ref 提交后初始化 SVG 和 ResizeObserver；取得非零真实视口前不求解，窗口或容器缩放后重新求解并由弹簧过渡。端口按目标方向分配并保持角度间隔，耳罩和外弧随端口范围伸缩；一级、二级触手按弧长向根部展宽。连接中显示根部渐隐和流动虚线，错误使用语义错误色和背景断点；断开、禁用项没有一级连线，图标与名称变淡。中心圆点入口不参与连线，一级触手仍终止于耳罩，保留与圆点的间距。
+ui/topology/solve.ts is the pure geometry owner. Wings share a mirrored algorithm. Initialize SVG and ResizeObserver after container refs commit. Solve only after a nonzero real viewport exists. Resizing recomputes geometry with spring transitions. Ports follow target direction with angular spacing. Earcups/outer arcs fit port ranges. Primary/secondary tentacles widen toward the root by arc length. Connecting shows root fade and moving dashes. Errors use semantic error color and background breaks. Disconnected/disabled nodes have no primary line and faded icons/names. Center-dot entry points do not participate in connections. Primary tentacles end at earcups with space before the dots.
 
-默认情况下，动画器按稳定 key 对中心位置与半径、耳罩范围、节点位置/缩放/透明度/端口、外弧和任务原语做弹簧积分（刚度 210、阻尼 26，约 8ms 子步）。触手和弧每帧从这些数值重算，一个 SVG 绘制全部连线，HTML 节点和固定尺寸气泡通过 ref 写入同帧 transform。拓扑动画不触发逐帧 React 渲染，也不读取节点 DOM 坐标或使用布局投影；全部静止后停止 rAF。reduced-motion 直接切换位置并停止流动，监听媒体查询 change，系统偏好在运行中切换时立即生效。
+The animator integrates stable-key center/radius, earcup extent, node position/scale/opacity/ports, outer arcs, and task primitives with stiffness 210, damping 26, and roughly 8ms substeps. Each frame recomputes tentacles/arcs. One SVG draws connections. HTML nodes and fixed-size bubbles receive same-frame transforms through refs. Topology animation neither renders React each frame nor reads node DOM coordinates or uses layout projection. rAF stops when stationary. reduced-motion switches positions directly and stops flow. Runtime media-query changes apply immediately.
 
-默认参数下，全场无任务时两翼都使用常规节点样式和 78px 行高、56px 压缩下限，不缩小、淡化或缩进 Agent。两侧节点大小默认 44px，可在 32–60px 调整；节点整体缩放时，图标、额度环、连线端点与外弧同步适配，默认无额度环的品牌图标为 38px。有任务时，Agent 翼使用 78px 基础行高、44px 压缩下限，以左侧常规节点大小为 1，有任务的节点放大至 1.1；无任务的 Agent 才使用空闲样式：空间充足时缩放为 1、行高与控制源一致、不缩进；仅在本翼纵向行高或横向列距不足时逐渐缩小，默认最低 0.6，缩放下限允许调整至 0.4，同时向中心缩进最多 22px；透明度 0.62。活跃节点保持 1.1，不参与缩小，外弧随节点半径调整。两翼各自压缩纵向行高；活动行高为 `max(本翼基础行高, n × 64 + 10)`，行间距 12px，场景高为 `max(视口高, 两翼较大列高 + 140)`。节点列距默认 2.6，调参范围 2.0–3.2。列围绕场景中线居中；横向先压缩左列距，再压缩右列距，然后按气泡权重 0.8 平衡中心，由窗口留白 40px 限制中心位置。仍放不下时保留左翼并截断右缘，整体纵向滚动。中心继续使用 ARC 品牌资源及既有耳罩间距。
+Without tasks, both wings use normal nodes, 78px rows, and a 56px compression minimum without shrinking, fading, or indenting Agents. Default node size is 44px, adjustable 32-60px. Icons, quota rings, endpoints, and outer arcs scale together. Brand icons without quota rings default to 38px. With tasks, Agent rows use 78px base/44px minimum. Active nodes scale to 1.1 relative to normal left nodes. Idle Agents remain scale 1 with normal rows and no indent when space permits. Only insufficient vertical row height or horizontal spacing shrinks them, default minimum 0.6 adjustable down to 0.4, with up to 22px centerward indent and opacity 0.62. Active nodes stay at 1.1. Outer arcs follow radius.
 
-节点名称始终在下方，超长省略；添加与管理入口位于 ARC 标识的两个端点圆点，不参与排序；列末不保留辅助按钮、坐标或空列占位。两翼节点及任务气泡通过 Pointer Events 直接更新求解器的 drag 输入：被拖项横纵向自由跟手，仅纵坐标变化触发排序，其他项通过弹簧让位；拖动不改变中心平衡和列距，松手后保存顺序并弹回布局列位；不使用 Motion Reorder 或布局投影。任务只能在所属节点内、同一待处理优先级分组中排序，汇总槽不参与。节点与任务都支持上下方向键，拖动后抑制点击，Escape 或指针取消恢复原顺序。控制源顺序持久化，启用 Agent 与管理页共享顺序，未显示项保留相对顺序；任务顺序仅保存在本地前端偏好，待处理始终优先。顶部开关保留简化触感与状态变化，不添加文字、外光或星形装饰。
+Wings independently compress rows. Active row height is max(wing base row height, n × 64 + 10), with 12px gaps. Scene height is max(viewport height, larger wing height + 140). Column spacing defaults to 2.6, adjustable 2.0-3.2. Columns center vertically. Horizontal fitting compresses left spacing, then right spacing, then balances the center with bubble weight 0.8 and a 40px viewport margin. Remaining overflow preserves the left wing and clips the right, with vertical scrolling. The center retains brand assets and earcup spacing.
 
-首页控制源、添加入口、Agent 与管理节点可以形变为面板。任务追踪使用 Agent 外弧与二级触手，每任务连接一个固定 232 × 54px 的气泡，最多五槽，超限使用第五槽汇总。窄窗口直接截断右侧并保留 32px 渐隐。所有任务气泡（含 Codex 与外部会话）均点击打开详情，跳转 Agent 应用通过 Agent 视图或任务详情的头部图标；外部会话保留虚线触手与 ↗，提供只读时间线或摘要态，禁用审批。气泡第二行优先展示当前内容，空内容回退最近可读文本/命令/文件，再取标题或用户消息，回退使用 text-tertiary。ARC 任务的审批和问题仅在详情底部处理，不显示叠放、展开或数量角标。
+Node names stay below and ellipsize. Add/manage controls occupy the ARC endpoint dots outside sorting. Do not add trailing helper buttons, coordinates, or empty-column placeholders. Pointer Events update solver drag inputs directly. Items follow both axes, but only vertical changes reorder. Other items yield through springs. Dragging does not change center balance/column spacing. Release saves order and springs back to the column. Homepage dragging uses no Motion Reorder or layout projection. Tasks reorder only within their node and pending-priority group. Aggregate slots cannot reorder. Nodes/tasks support up/down keys. Suppress click after drag. Escape/pointer cancellation restores order. Source order persists. Enabled Agent order is shared with management. Hidden items keep relative order. Task order is frontend-local. Pending tasks remain first. Top toggles keep simple tactile state changes without text, outer glow, or star decoration.
 
-首页遵循“点节点向外侧展开节点视图，点中心圆点向中心展开全局入口”。Agent 节点和“+N 查看全部”打开右侧 Agent 视图；气泡直接进入该 Agent 的任务详情层，返回按钮回到 Agent 视图。共用 ElasticPanel / panelMorph 的左右镜像外壳，右侧宽 400px、右/上/下各留 16px，打开约 250ms、关闭约 160ms，内容淡入。层内前进/返回用 160ms 轻微水平滑入，外壳不形变。首页不再从 Agent 节点打开居中 AgentDetails，设置中的详情保持独立。
+Source, add, Agent, and management nodes can expand into panels. Agent outer arcs and secondary tentacles connect fixed 232 × 54px task bubbles, up to five slots with overflow summarized in the fifth. Narrow windows clip the right with a 32px fade. Every bubble opens details, including external sessions. Native-app navigation uses header icons in Agent/task views. External sessions retain dashed tentacles and an arrow indicator, read-only timelines or summaries, and no approvals. The second line prefers current content, then readable text/command/file, then title/user message. Fallback text uses text-tertiary. ARC questions/approvals appear only at the bottom of details without stacked/expanded/count badges.
 
-Agent 面板没有遮罩、场景滚动锁定或背景 inert。同侧另一个 Agent 直接切换内容，再点当前节点关闭；Escape 关闭并恢复触发点焦点，触发点已移除时回到所属节点。左侧控制源使用镜像视图面板，中心入口保持原有行为。求解器按面板保留区压缩列距、平移场景，纵向槽位和排序不变，选中节点连同名称与面板左缘至少留 40px；宽度不足 760px 时改为覆盖模式，选中节点只露出约 18px 边缘。面板打开期间暂停节点和气泡拖拽及键盘排序，关闭恢复。
+Node clicks expand outward. Center dots expand global entry points inward. Agent nodes and overflow open the right Agent view. Bubbles enter that Agent's task-details layer. Back returns to Agent view. Shared ElasticPanel/panelMorph shells mirror left/right. Right panels are 400px with 16px right/top/bottom margins, roughly 250ms open and 160ms close, and content fade. Internal forward/back uses 160ms slight horizontal movement without shell morphing. Homepage Agent nodes no longer open centered AgentDetails. Settings details remain independent.
 
-所有 Agent 气泡和二级触手在打开时淡出并向节点轻移，非选中且有进行中任务的节点显示数量角标，待处理时用 warning；选中节点放大、带光环，复用二级触手绘制通路连接面板左缘。关闭恢复气泡。Agent 视图复用额度卡，按待处理优先与本地顺序列出进行中任务；已结束列表保留当前页面在本次 Core 活动快照中观察到的 ARC 任务，并经既有时间线接口确认可读，不列出外部会话历史。Core 会话变化清空此历史，不新增原生历史接口，也不回填页面打开前未观察到的任务。
+Agent panels have no scrim, scene scroll lock, or background inert. Another Agent on the same side switches content. Clicking the selected node closes. Escape closes and restores trigger focus, falling back to the owning node if the trigger disappeared. Source views mirror the panel. Center entry points retain their behavior. Reserved panel space compresses columns and shifts the scene without changing vertical slots/order. Selected nodes and names keep at least 40px from the panel edge. Below 760px, overlay mode leaves roughly an 18px selected-node edge. Either panel pauses dragging and keyboard sorting until closed.
 
-控制源节点打开左侧 400px 视图，左/上/下各留 16px。复用同一 ElasticPanel / panelMorph 外壳，从节点展开；同侧切换只换内容，重复点击选中节点或 Escape 关闭并恢复焦点。左右侧视图互斥，跨侧直接切换。左侧保留区推动场景向右平移、压缩列距，选中节点及名称与面板右缘至少间隔 40px；右侧气泡保持显示，超出右缘按既有 32px 渐隐截断。选中控制源使用光环和流动连线接到面板右缘，窄窗覆盖及 reduced-motion 与 Agent 视图一致，任一侧面板打开时暂停拖拽和键盘排序。
+Opening an Agent panel fades all task bubbles/secondary tentacles slightly toward nodes. Nonselected nodes with running tasks show counts, using warning for pending work. The selected node enlarges with a halo and a secondary-tentacle path to the panel's left edge. Closing restores bubbles. Agent views reuse quota cards and list active tasks by pending priority/local order. Ended lists retain ARC tasks observed by the current page in this Core activity snapshot and confirmed readable through existing timelines. External historical sessions are excluded. Core-session changes clear this history. No new native history endpoint or pre-page backfill is added.
 
-控制源视图第一层显示图标、名称、连接状态与 Loop / Chat 模式、独立启用开关；连接卡复用地址/凭据复制、重新获取地址、令牌更新、操作档位、OAuth 会话和连接错误处理。编辑配置在同一外壳第二层呈现 IngressDialog 表单，返回或取消回到第一层；保存回到连接卡并执行原有 autoConnect，删除关闭面板。`navigation.ingressEdit` 打开对应控制源的编辑层并聚焦指定字段。权限与就绪页面仍使用工作区详情弹窗，连接卡逻辑共用。
+Source panels are 400px with 16px left/top/bottom margins and the same shell/focus behavior. Left/right views are mutually exclusive and switch directly across sides. Left reservation shifts the scene right and compresses spacing. Selected source/name stays 40px from the panel's right edge. Right bubbles remain visible with existing clipping/fade. The selected source uses a halo and flowing connection to the right panel edge. Narrow/reduced-motion behavior matches Agent views.
 
-最近派发复用 `tasks` 回执的 `origin.ingressId`（旧记录可取 `task.origin.ingressId`），按时间列出 create/send 派发，首页最多八条；既有接口目前仅返回 Codex 派发。每个会话仅最新派发关联当前状态（包括其他控制源的较新派发），活动快照优先于 `tasks/runtime/{id}`，派发回执的 completed 不等于任务完成；缺少新鲜运行状态时显示“状态待确认”。运行中或可读取的待审批行跨侧进入 Agent 任务详情。查看全部记录跳到记录页，保留该控制源过滤，展示全部可取得的派发和该源日志。无来源标识的历史回执不猜测归属，不新增原生接口。
+Source layer one shows icon, name, connection status, Loop/Chat mode, and enable switch. Its connection card reuses address/credential copy, address refresh, token rotation, policy, OAuth sessions, and error handling. Layer two embeds IngressDialog. Back/cancel returns to layer one. Save returns to the card and runs existing autoConnect. Delete closes the panel. navigation.ingressEdit opens that source's editor and focuses the requested field. Permissions/readiness keeps its workspace detail dialog with shared connection-card logic.
 
-新建控制源继续从中心左圆点向中心展开 IngressDialog / SetupDialog。新建表单选择 Claude / ChatGPT 可转引导，其他类型留在手动表单；引导里的手动配置按对应目标预选来源，返回来源选择后继续手动配置，不再次跳回引导。新建保存后打开左侧视图并自动连接。内部步骤不改变侧面板尺寸。
+Recent dispatches use tasks receipts' origin.ingressId, with task.origin.ingressId for older records. Homepage lists at most eight create/send receipts chronologically. Existing APIs currently expose Codex dispatches only. Only the latest dispatch per conversation links current status, including newer dispatches from another source. Activity snapshots precede tasks/runtime/{id}. A completed receipt is not task completion. Missing fresh runtime evidence shows unconfirmed status. Running/readable pending rows enter Agent task details across sides. All records opens Records with the source filter and available dispatches/logs. Never infer origin for receipts lacking it or add native APIs.
 
-活动阶段不改变排序。任务完成后未读气泡持续保留，查看详情即视为已读，离开详情后停留约 2s 再淡出；详情已打开时完成则直接视为已读。详情保留已取得结果直到离开该层。未读状态不跨页面重载持久化，也不同步 Agent 原生应用角标。reduced-motion 直接切换并停用流动。参数、状态样式和交互边界见[任务追踪](task-tracking.md#首页-ui)。
+New sources expand IngressDialog/SetupDialog inward from the left center dot. Claude/ChatGPT can enter guided setup. Other types stay manual. Manual setup from the guide preselects the target. Returning to source choice continues manually rather than looping into guidance. Saving opens the left source view and auto-connects. Internal steps do not resize the side panel.
 
-任务、记录、设置等工作区面板的标题栏位于顶部，标题靠左，宽度与关闭控制靠右；打开关闭使用不超过 180ms 的淡入淡出和轻微位移。内部步骤、嵌套弹窗只切换内容，不让整个面板改变形状。
+Activity phases never change ordering. Completed unread bubbles remain until details are viewed. After leaving details, they remain about 2s then fade. Completion while details are open counts as read immediately. Details retain acquired results until that layer is left. Unread state neither persists across reload nor synchronizes native-app badges. reduced-motion switches directly and stops flow. See [Task tracking](task-tracking.md#homepage-ui).
 
-左下角胶囊依次提供任务、记录、权限与就绪、设置入口。权限与就绪使用独立工作区页面，检测结果与入口图标共用状态：适用权限及环境就绪时显示 ShieldCheck，缺失、未知或读取失败时显示 ShieldAlert。刷新及返回应用时重新检测，不主动申请授权；授权只由页面内对应按钮发起。
+Workspace panels for tasks, records, and settings have top title bars with title left and width/close controls right. Opening/closing uses at most 180ms fades and slight movement. Internal steps and nested dialogs switch content without morphing the whole panel.
 
-中心左圆点添加控制源：无控制源时打开欢迎页，否则打开两列控制源网格；右圆点打开 Agent 管理。两点均为可 Tab 聚焦的独立按钮，点击区域至少 28px，面板从被点圆点向中心展开并在关闭后恢复焦点。标识的两条弧保留为装饰，圆点沿用控制源色与 Agent 渐变。悬停整个标识或任一圆点键盘聚焦时，两点同时显示 SVG mask 镂空符号（左侧加号，右侧省略号；无 Agent 时右侧为加号），约 300ms 从缩小与旋转状态轻微回弹。悬停标识或圆点获得键盘焦点时，两点放大 1.1 倍；悬停或键盘聚焦的单点放大 1.25 倍并出现同色柔光。空侧常驻符号，每 2s 外扩波纹，耳罩外侧淡入「添加控制源」或「添加 Agent」提示；提示使用三级文字色、12px，并随语言切换。reduced-motion 下停止波纹、缩放与旋转过渡，符号直接显隐。
+The bottom-left capsule contains Tasks, Records, Permissions & readiness, and Settings. The permission workspace shares status with its icon: ShieldCheck only when applicable permissions/environment are ready, ShieldAlert for missing/unknown/read failures. Refresh and refocus recheck without requesting grants. Only corresponding page buttons request authorization.
 
-## 实验性拓扑调参
+The left center dot adds sources, opening Welcome without sources or a two-column source grid otherwise. The right dot opens Agent management. Both are Tab-focusable buttons with at least 28px hit targets and restore focus after inward panel expansion. Brand arcs are decorative. Dots use source color/Agent gradient. Hovering the mark or keyboard-focusing either dot shows both SVG-mask symbols: plus left, ellipsis right, or plus right without Agents. Symbols spring from slight rotation/scale over about 300ms. Mark hover or dot keyboard focus scales both dots to 1.1. The individually hovered/focused dot scales to 1.25 with same-color soft glow. Empty sides keep symbols visible with 2s expanding ripples and localized 12px tertiary add-source/add-Agent hints outside earcups. reduced-motion disables ripple/scale/rotation transitions and switches symbols directly.
 
-设置的「实验性 → 首页拓扑调参」开启首页浮动面板，默认收起在角落。面板位置和展开状态使用应用偏好保存，拖动手柄可移动；聚焦手柄后方向键移动 8px，Shift + 方向键移动 32px。窗口缩小时将面板限制在可见区域，参数列表内部滚动。
+## Experimental topology controls
 
-`ui/topology/solve.ts` 的 `PARAMETERS` 是参数 key、分组、中英标签、范围、步长和默认值的单一来源。面板按六组展示滑块与数值输入，分组和 JSON 导入使用右侧线形箭头展开收起，内容高度与透明度过渡为 160ms，reduced-motion 下直接切换；圆点标记偏离默认的值，支持单项和全部恢复。滑块支持方向键、Home/End；调整即时预览，松手、键盘调整或结束输入时保存。位置与形状系数通过现有弹簧过渡，连线仍从同帧几何重算；reduced-motion 优先于慢放。
+Settings → Experimental → Homepage topology controls opens a floating panel, initially collapsed in a corner. Position/expanded state persist in preferences. Drag the handle or use arrows for 8px movement and Shift+arrows for 32px. Resizing confines it to the viewport. The parameter list scrolls internally.
 
-参数与主题、语言共用应用偏好机制，保存格式为 `{ "schemaVersion": 1, "overrides": {} }`，仅记录偏离默认的项。默认值升级时，未改动项自动采用新默认。关闭设置开关只隐藏面板，已保存参数继续生效。辅助线、慢放仅保留在当前会话。
+solve.ts PARAMETERS owns keys, groups, localized labels, ranges, steps, and defaults. Six groups show sliders and number inputs. Right-side line arrows expand groups/JSON import with 160ms height/opacity transitions, direct under reduced-motion. Dots mark overrides. Reset works per item or globally. Sliders support arrows/Home/End. Preview immediately and save on release, keyboard change, or input completion. Position/shape changes use existing springs with same-frame connection geometry. reduced-motion takes precedence over slow motion.
 
-「复制 JSON」导出差异；「导入 JSON」接受粘贴内容并整体替换差异，未指定项恢复默认。导入拒绝非法 JSON、未知版本、未知字段及非有限数值，不部分应用。有限越界值按参数范围钳制并提示；数值输入同样钳制，空白或非数值恢复该项默认并提示。步长控制滑块增量，不将合法输入强制吸附到步点，以保留精确值。
+Preferences store `{ "schemaVersion": 1, "overrides": {} }`, only for nondefault values. Untouched values follow upgraded defaults. Disabling the panel hides it without disabling saved parameters. Guides and slow motion are session-only.
 
-辅助线在同一 SVG 中标出当前曲线控制点、切线、窗口中线与中心偏移；L/R 显示求解目标的两翼等效宽度及列距比例。「慢放 ×0.25」同时放慢几何弹簧和连接流动，拖动项仍跟手。辅助线不参与命中测试，静止后不保留 rAF 循环。
+Copy JSON exports overrides. Import replaces the entire override set, restoring omitted defaults. Reject invalid JSON, unknown versions/fields, and nonfinite values without partial application. Clamp finite out-of-range values and explain. Number inputs also clamp. Empty/nonnumeric input restores that default with feedback. Slider step controls increments without snapping valid typed values.
 
-## 控件与表单
+SVG guides show current control points, tangents, viewport center, and center offset. L/R shows target equivalent wing widths and column-spacing ratios. Slow motion ×0.25 slows geometry springs and line flow while dragged items follow the pointer normally. Guides ignore hit testing. Stationary scenes stop rAF.
 
-复用 ui/components/ui/index.tsx 的 Button、Input、Slider、Field、SingleChoice、Switch、Dialog、Tooltip、Popover、菜单、表格与反馈。Radix 负责选择、键盘、焦点、关闭层级、Portal 和模态交互。布局组件只排列内容，不重写标准输入框或按钮样式。
+## Controls and forms
 
-- 单选统一 SingleChoice：选项不超过五个且空间足够时用胶囊，否则下拉；远程链接路线使用同组件的卡片样式与 Radix 键盘导航。
-- 表单使用原生 form，标签在上，默认单列；仅短且相关字段并排。
-- 校验错误关联字段，提交失败聚焦首个错误并保留输入。
-- Dialog 有可访问标题、滚动内容和独立操作区；返回只退一层并保留表单与滚动位置。
-- Escape 逐层关闭，关闭后恢复触发点焦点。异步操作可暂时禁止关闭。
-- 图标按钮有可访问名称，禁用、加载、空、过期、失败、成功状态来自真实响应。
+Reuse Button, Input, Slider, Field, SingleChoice, Switch, Dialog, Tooltip, Popover, menus, tables, and feedback from ui/components/ui/index.tsx. Radix owns selection, keyboard, focus, dismissal layers, Portal, and modal interaction. Layout components only arrange content.
 
-## 主题与动效
+- SingleChoice uses pills for at most five options when space permits, otherwise dropdowns. Remote-link routes use its card style and Radix navigation.
+- Native forms default to one column with labels above. Only short related fields share rows.
+- Field errors remain associated with inputs. Failed submission focuses the first error and preserves input.
+- Dialog has an accessible title, scrolling content, and separate actions. Back removes one layer while retaining form/scroll state.
+- Escape closes one layer and restores trigger focus. Async work may temporarily disable closing.
+- Icon buttons have accessible names. Disabled/loading/empty/expired/failure/success states reflect real responses.
 
-ui/tokens.css 定义语义颜色、字号、间距、圆角、尺寸与阴影；ui/theme.ts 管理深浅状态，默认跟随系统。显式浅色/深色覆盖系统值，主画布为不透明白/黑。使用系统字体栈：正文 13–14px，元信息 12px，阅读内容 14px。ID 与凭据使用共享等宽样式。
+## Theme and motion
 
-功能图标使用共享 Icon 包装的 Lucide，尺寸 16/20px、描边 1.75px。品牌图形保留自己的资源。ui/style.css 管共享控件，ui/product.css 管产品布局。
+ui/tokens.css owns semantic colors, type, spacing, radii, dimensions, and shadows. ui/theme.ts follows the system by default. Explicit light/dark overrides use opaque white/black canvases. System fonts use 13-14px body, 12px metadata, and 14px reading text. IDs/credentials use shared monospace styling.
 
-同组 tooltip 保持挂载，在触发点间连续移动并调整尺寸。HoverScope 使用共享弹簧高亮，跟随鼠标、键盘和 Radix 状态。reduced-motion 移除非必要过渡。
+Functional icons use shared Icon with Lucide at 16/20px and 1.75px strokes. Brands retain their assets. ui/style.css owns controls. ui/product.css owns product layout.
 
-## 功能页
+Related tooltips remain mounted and move/resize continuously between triggers. HoverScope uses shared spring highlights following pointer, keyboard, and Radix state. reduced-motion removes unnecessary transitions.
 
-任务使用紧凑行，展示标题、项目、时间、纯文本预览和必要的运行/错误状态；模型与推理强度放在详情。详情通过 React 节点显示标题、代码、列表，不执行原始 HTML。
+## Functional pages
 
-记录展示时间、可用的来源名称、工具/操作和结果。同入口、同操作的连续成功记录可合并计数；缺少来源不能推断。近期计数来自有界原始日志，不推算请求耗时。
+Tasks use compact rows with title, project, time, plain-text preview, and necessary runtime/error states. Model/effort belong in details. React renders titles, code, and lists without executing raw HTML.
 
-连接先详情再编辑；提供商、域名、凭据与认证在编辑表单中维护。已有连接的操作档位在详情中即时保存，自定义列表确认后生效；名称、操作档位和自动启动偏好原地更新，保留 OAuth 授权和运行链路。工具面固定为 guide / query / act，档位与列表针对 op，列表显示 query/act 归属和本机可用状态。域名字段省略协议、端口和路径，由服务组装 MCP URL。已有秘密留空时保留原值。OAuth 同意、拒绝与撤销是明确操作。
+Records show time, available source name, tool/op, and result. Consecutive successes for one ingress/op may merge counts. Missing origins are not inferred. Recent counts use bounded raw logs without estimated request durations.
 
-Agents 区分已安装卡片与紧凑未安装行。详情展示版本、发现错误与订阅额度。首页遵循 Agent 排序，不按额度提供商重排。已安装启用项使用 Motion Reorder 在多列布局中拖拽排序，拖动时卡片跟手、相邻项平滑让位。只在卡片的非点击交互区启动拖动，图标、链接和开关保留点击行为；聚焦卡片后也可使用方向键排序。列表与首页共用持久化顺序。版本单行省略并可悬停查看。未安装项提供官方安装信息。显示设置只控制首页 Agent 数量。
+Connections open details before editing. Forms own provider/domain/credentials/authentication. Existing policy changes save immediately, except custom lists apply after confirmation. Name/policy/auto-start edits preserve OAuth grants and live connections. Fixed tools remain guide/query/act. Lists target ops, showing query/act ownership and local availability. Domain fields omit scheme/port/path. Service assembles MCP URLs. Blank existing-secret fields retain values. OAuth consent, denial, and revocation are explicit actions.
 
-## 订阅额度
+Agents distinguish installed cards from compact uninstalled rows. Details show versions, discovery errors, and quota. Homepage follows Agent order rather than provider order. Installed enabled cards use Motion Reorder in the management multi-column layout, following the pointer while neighbors yield. Drag starts only outside clickable controls. Icons/links/switches retain clicks. Focused cards also support arrow sorting. Management/homepage share persisted order. Versions ellipsize with hover disclosure. Uninstalled entries link official installation. Display settings only control homepage Agent count.
 
-首页节点和 Agents 设置页使用 QuotaRing 中的 AgentQuotaIcon；Agent 面板使用 QuotaBubble。保留套餐链接、窗口读数、重置时间、pace 提示、时间刻度、credits 到期详情和 product usage 明细。UsageHistory 负责悬停/focus 详情的弹簧跟随、碰撞定位与逐层 Escape；面板内 tooltip 使用紧凑留白、内容自适应尺寸与无尖角样式，默认在触发项上方居中弹出，空间不足时避让；不绘制历史图表。额度总览复用同一卡片。
+## Subscription quota
 
-Agent 显示设置保留首页个数、剩余/已用、倒计时/日期、启用与刷新间隔。额度来源随 Agent 自动参与，有额度数据时默认展示；首页圆环固定使用周额度，没有周额度时不绘制额度环，详情保留其他上游窗口。不提供本地用量周期、Token 或金额展示。
+Homepage and Agent settings use AgentQuotaIcon in QuotaRing. Agent panels use QuotaBubble. Retain plan links, window readings, reset times, pace, time ticks, credit-expiry details, and product usage. UsageHistory owns hover/focus spring following, collision placement, and layered Escape. Panel tooltips use compact padding, content sizing, no arrow tip, and top-center placement with collision avoidance. No historical charts are drawn. Quota overview reuses the same cards.
 
-## 更新通知
+Settings retain homepage count, remaining/used, countdown/date, enablement, and refresh interval. Sources participate automatically by Agent. Quota data appears by default when available. Homepage rings use weekly quota only and disappear without it. Details retain other upstream windows. No local usage periods, tokens, or money display.
 
-更新弹窗只在主按钮内显示下载大小与进度，不在正文另设进度区。下载完成后按钮切换为“下载完成，安装更新”，再次点击才安装。
+## Update notification
 
-## 验证
+Only the primary button shows download size/progress. Do not add a body progress area. Completion changes the button to the localized install-update action. Installation requires another click.
 
-检查浅色/深色、窄窗口、长中文/英文文案、键盘遍历、逐层 Escape、焦点恢复与表单错误。运行已有检查，不新增测试用例。浏览器验证渲染行为；安装版 WebView、托盘和生命周期另做真实验收。
+## Verification
+
+Check light/dark, narrow windows, long Chinese/English text, keyboard traversal, layered Escape, focus restoration, and field errors. Run existing checks without adding unit tests. Browsers verify rendering. Installed WebView, tray, and lifecycle require separate real acceptance.

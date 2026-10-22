@@ -12,8 +12,8 @@ if (signing.TAURI_SIGNING_PRIVATE_KEY) args.push('--config', JSON.stringify({ bu
 const buildArgs = process.argv.slice(2).filter(a => a !== '--release');
 const targetAt = buildArgs.findIndex(a => a === '--target' || a.startsWith('--target='));
 let target = targetAt < 0 ? undefined : buildArgs[targetAt] === '--target' ? buildArgs[targetAt + 1] : buildArgs[targetAt].slice('--target='.length);
-if (targetAt >= 0 && !target) throw new Error('--target 需要目标三元组');
-if (process.platform === 'darwin' && target && target !== 'aarch64-apple-darwin') throw new Error('macOS 安装包仅支持 aarch64-apple-darwin');
+if (targetAt >= 0 && !target) throw new Error('--target requires a target triple');
+if (process.platform === 'darwin' && target && target !== 'aarch64-apple-darwin') throw new Error('macOS packages support only aarch64-apple-darwin');
 if (!target) {
   target = process.platform === 'darwin' ? 'aarch64-apple-darwin' : process.platform === 'win32' ? 'x86_64-pc-windows-msvc' : undefined;
   if (target) buildArgs.push('--target', target);

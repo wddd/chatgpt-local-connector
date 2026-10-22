@@ -82,7 +82,7 @@ pub fn ingress(i: &Value) -> Value {
             "info",
             "ingress",
             id,
-            "入口已停止；读取诊断不会启动入口。",
+            "The ingress is stopped. Reading diagnostics does not start it.",
             "inspect-ingress",
         ));
     } else if !string(i, "error").is_empty() || state == "error" {
@@ -100,7 +100,7 @@ pub fn ingress(i: &Value) -> Value {
             "info",
             "ingress",
             id,
-            "入口配置尚未完成。",
+            "Ingress configuration is incomplete.",
             "configure-ingress",
         ));
     }
@@ -115,7 +115,7 @@ pub fn ingress(i: &Value) -> Value {
             "warning",
             "ingress",
             id,
-            "入口已就绪，但当前配置尚无 challenge 入站验证证据。",
+            "The ingress is ready. The current configuration has no inbound challenge verification evidence.",
             "verify-inbound",
         ));
     }
@@ -125,7 +125,7 @@ pub fn ingress(i: &Value) -> Value {
             "warning",
             "ingress",
             id,
-            "此入口未启用身份认证。",
+            "Authentication is disabled for this ingress.",
             "inspect-authentication",
         ));
     }
@@ -173,9 +173,9 @@ pub fn status(s: &Value) -> Value {
                 "resources",
                 &json!(key),
                 if code == "APP_SERVER_FD_PRESSURE" {
-                    "app-server fd 占用已达到软上限的 90%；RPC ready 仅表示通信通道存活。"
+                    "App-server file descriptors have reached 90% of the soft limit. RPC ready only confirms a live communication channel."
                 } else {
-                    "文件描述符限制未达到启动目标；Core 继续运行，查看限制来源、启动记录及失败原因。"
+                    "The file descriptor limit is below the startup target. Core continues running. Inspect the limit source, startup record, and failure reason."
                 },
                 "inspect-resource-limits",
             );
@@ -195,7 +195,7 @@ pub fn status(s: &Value) -> Value {
                 "warning",
                 "execution-endpoint",
                 &json!(key),
-                "执行端当前不可用；历史证据可用性需单独读取。",
+                "The execution host is unavailable. Read historical evidence availability separately.",
                 "inspect-execution-endpoint",
             ));
         }
@@ -218,7 +218,7 @@ pub fn receipts(diagnostics: &mut Value, records: Result<Vec<Value>>) {
                     "warning",
                     "request",
                     &r["requestId"],
-                    "写操作结果未确认；回读原 requestId 和原生任务，不重放。",
+                    "The write result is unconfirmed. Read the original requestId and native task without replaying the request.",
                     "read-original-request",
                 );
                 f["scope"]["ingressId"] = r["origin"]["ingressId"].clone();

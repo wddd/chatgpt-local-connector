@@ -71,12 +71,12 @@ for await(const line of createInterface({input:process.stdin})){
  execFileSync('cargo',['build','--locked','--quiet','-p','contract-fixture'],{cwd:repo,stdio:'inherit'});
  await connect();
  const g=await call('guide');await save('claude-guide',g);
- check('Claude loop omits foreign source text and limits',!JSON.stringify(g).match(/ChatGPT|Work|540000|1800000|600 秒|180 秒/));
+ check('Claude loop omits foreign source text and limits',!JSON.stringify(g).match(/ChatGPT|Work|540000|1800000|600 seconds|180 seconds/));
  for(const [op,choices] of [['tree','raw|review'],['read','raw|review'],['search','raw|review|full']])check(op+' view schema signature',g.ops.find(o=>o.op===op).signature.includes('view?:'+choices));
  check('nonempty query schema signature',g.ops.find(o=>o.op==='search').signature.includes('query(≥1 char)'));
  for(const op of ['codex_wait','agent_wait','inbox_wait'])check(op+' guide cap',(await call('guide',{op})).inputSchema.properties.timeoutMs.maximum===170000);
  const all=await call('dispatch_policy',{all:true}),compact=await call('dispatch_policy');
- check('default agents installed and enabled',compact.agents.every(a=>a.availability.installed&&a.availability.enabled));
+ check('default agents installed and enabled',compact.agents.every(a=>a.availability.startsWith('available')));
  check('all includes disabled or absent agents',all.agents.length>compact.agents.length);
  report.policyCharacters={all:JSON.stringify(all).length,default:JSON.stringify(compact).length};
  let r=await dispatch();await save('unverified-receipt',r);

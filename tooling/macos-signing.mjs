@@ -13,11 +13,11 @@ export function macosSigningIdentity(env, { release = false } = {}) {
   if (process.platform === 'darwin' && release) {
     const requested = env.APPLE_SIGNING_IDENTITY?.trim();
     if (requested && requested !== releaseCertificateName && requested.toUpperCase() !== releaseCertificate) {
-      throw new Error('正式 macOS 构建必须使用固定的个人自签名证书；不允许 ad-hoc 或其他 Team。详见 docs/dev/release.md。');
+      throw new Error('Production macOS builds must use the fixed personal self-signed certificate. Ad-hoc signatures and other Teams are not allowed. See docs/dev/release.md.');
     }
     const identities = execFileSync('security', ['find-identity', '-p', 'codesigning'], { encoding: 'utf8' });
     if (!identities.includes(releaseCertificate)) {
-      throw new Error('钥匙串缺少正式签名证书及私钥 Local Connector Self Signed；请导入原证书，不要重新生成或回退 ad-hoc。');
+      throw new Error('The keychain lacks the production certificate and private key Local Connector Self Signed. Import the original certificate. Do not generate a replacement or fall back to ad-hoc signing.');
     }
     for (const key of Object.keys(env)) if (key.startsWith('APPLE_')) delete env[key];
     env.APPLE_SIGNING_IDENTITY = releaseCertificate;

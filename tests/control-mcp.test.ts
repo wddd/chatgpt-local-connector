@@ -201,6 +201,7 @@ after(async () => { await client?.close(); if (directory) await rm(directory, { 
 
 function opCall(name: string, args: Record<string, unknown> = {}) {
   if (name === 'guide') return { name, arguments: args };
+  if (['codex_create','codex_send','agent_create','agent_send'].includes(name)) args = {purpose:'self-test', ...args};
   const spec = catalog.ops.find((op: any) => op.name === name);
   const via = spec.annotations.readOnlyHint ? 'query' : 'act';
   const {requestId, ...rest} = args;
@@ -275,7 +276,7 @@ test('MCP lists frozen tools and guide exposes existing ops and native domains w
   assert.deepEqual(catalog.toolExposure.tools.git_write.requires, ['control_output', 'receipt']);
   const command = operations.find(tool => tool.name === 'command')!;
   assert.match(command.description!, /sandbox\/permission/);
-  assert.match(operations.find(tool => tool.name === 'process')!.description!, /非 Codex sandbox/);
+  assert.match(operations.find(tool => tool.name === 'process')!.description!, /outside the Codex sandbox/);
   assert.ok(!command.inputSchema.required?.includes('requestId'));
   assert.equal(operations.find(tool => tool.name === 'codex_account')!.annotations?.readOnlyHint, true);
   assert.equal((await call('fs', { action: 'writeFile', params: {} })).result.state, 'completed');
@@ -872,7 +873,7 @@ test('capacity failures retry same model without replaying input, suppress inter
   const created=await dispatchFixture('fixture-dispatch-overload');
   await eventually(fixtureRows,v=>v[created.threadId].turns.length===3);
   let rows=await fixtureRows();assert.equal(rows[created.threadId].turns[2].status,'completed');
-  assert.ok(rows[created.threadId].turns.slice(1).every((t:any)=>t.model==='fixture-dispatch-overload'&&t.input[0].text.includes('从中断处继续')&&!t.input[0].text.includes('harmless fixture')));
+  assert.ok(rows[created.threadId].turns.slice(1).every((t:any)=>t.model==='fixture-dispatch-overload'&&t.input[0].text.includes('Continue from the interruption')&&!t.input[0].text.includes('harmless fixture')));
   const bindings=async(thread:string)=>{const {readdir}=await import('node:fs/promises');return Promise.all((await readdir(path.join(directory,'notifications','tasks'))).filter(f=>f.endsWith('.json')).map(async f=>JSON.parse(await readFile(path.join(directory,'notifications','tasks',f),'utf8')))).then(bs=>bs.filter(b=>b.threadId===thread));};
   let bs=await bindings(created.threadId);assert.ok(bs.every(b=>b.target===null));assert.ok(bs.every(b=>b.deliveries.every((d:any)=>d.taskState!=='failed')));
   const exhausted=await dispatchFixture('fixture-dispatch-overload-exhausted');

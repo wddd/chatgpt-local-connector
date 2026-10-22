@@ -1,6 +1,6 @@
 //! Capacity-only continuation. Never replay the failed turn's original input or tools.
 use super::*;
-const CONTINUE: &str = "ARC 自动恢复：上一轮因模型容量暂时不足而结束。请在同一任务历史中从中断处继续；先核对已有结果、文件、提交和外部操作，跳过已经完成的步骤，不要重新执行已成功或结果不确定的副作用。不要重做原始任务；若无法确认某一步是否完成，先报告不确定性。";
+const CONTINUE: &str = "ARC automatic recovery: the previous turn ended because model capacity was temporarily unavailable. Continue from the interruption in the same task history. Check existing results, files, commits, and external operations first. Skip completed steps. Do not repeat side effects that succeeded or have uncertain outcomes. Do not redo the original task. If a step's completion is uncertain, report the uncertainty first.";
 fn safe_turn(turn: &Value) -> bool {
     turn["status"] == "failed"
         && turn["error"]["codexErrorInfo"] == "serverOverloaded"

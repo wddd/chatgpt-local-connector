@@ -13,13 +13,13 @@ export function releaseSigningEnv(required = false) {
       env.TAURI_SIGNING_PRIVATE_KEY = readFileSync(file, 'utf8').trim();
     } catch (error) {
       if (keyIsPath || env.TAURI_SIGNING_PRIVATE_KEY_FILE || error.code !== 'ENOENT') {
-        throw new Error('无法读取签名文件；请检查 TAURI_SIGNING_PRIVATE_KEY_FILE 的路径与权限。');
+        throw new Error('Cannot read the signing file. Check the path and permissions of TAURI_SIGNING_PRIVATE_KEY_FILE.');
       }
     }
   }
   env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ??= '';
   if (required && !env.TAURI_SIGNING_PRIVATE_KEY) {
-    throw new Error('缺少 updater 签名私钥。请设置 TAURI_SIGNING_PRIVATE_KEY，或设置 TAURI_SIGNING_PRIVATE_KEY_FILE 指向已有私钥，或自行配置 ~/.tauri/agent-remote-control.key；加密密钥另设 TAURI_SIGNING_PRIVATE_KEY_PASSWORD。详见 docs/dev/release.md。');
+    throw new Error('Updater signing key missing. Set TAURI_SIGNING_PRIVATE_KEY, set TAURI_SIGNING_PRIVATE_KEY_FILE to an existing key, or configure ~/.tauri/agent-remote-control.key. For encrypted keys, also set TAURI_SIGNING_PRIVATE_KEY_PASSWORD. See docs/dev/release.md.');
   }
   return env;
 }

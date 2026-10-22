@@ -10,7 +10,7 @@ pub fn check_write(app: &tauri::AppHandle) -> Result<(), String> {
         .installing
         .load(std::sync::atomic::Ordering::SeqCst)
     {
-        return Err("正在安装更新，请等待应用重启。".into());
+        return Err("Installing an update. Wait for the app to restart.".into());
     }
     Ok(())
 }

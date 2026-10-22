@@ -1,33 +1,32 @@
-# 开发
+# Development
 
-[项目首页](../../README.zh-CN.md) · [架构](architecture.md) · [UI](ui.md) · [发布](release.md)
+[Architecture](architecture.md) · [UI](ui.md) · [Release](release.md) · [Acceptance](acceptance.md)
 
-## 环境与启动
+## Local development
 
-安装 Node.js 24.12+、仓库指定的 Rust 工具链和平台构建依赖。macOS 原生图标与安装包需要完整 Xcode 26+，DMG 布局构建使用 uv。Windows 使用 MSVC 工具链和 WebView2。运行产物不依赖 Node/npm。
+Use Node.js 24.12+ and Rust. Install dependencies with npm ci.
 
 ```sh
-npm ci
 npm run dev
 ```
 
-开发入口启动 Tauri、Vite 和当前源码构建的 Core，支持前端与 Rust 热更新。macOS 使用独立的 Agent Remote Control Dev.app、图标与 bundle identifier。状态默认位于平台状态目录下的 agent-remote-control-dev；ARC_STATE_DIR 可显式覆盖。Vite 与开发桌面使用同一目录和同一 Core owner。
+The development desktop uses an isolated agent-remote-control-dev state directory. ARC_STATE_DIR explicitly overrides it. Vite and the development desktop share the same directory and Core owner.
 
 ```sh
 npm run dev:ui
 ```
 
-单独运行 Dev Web 时，Vite 默认连接安装版状态目录中的已有 Core，与安装版共享数据，页面操作直接作用于安装版后台。请先启动安装版应用；没有 owner 时显示后端不可用，不自动启动另一套 Core。
+Standalone Dev Web connects to the existing installed-state Core by default. It shares installed data and directly operates the installed backend. Start the installed App first. Without an owner it reports backend unavailable rather than starting another Core.
 
-Dev Web 只有在显式设置 ARC_STATE_DIR 时才连接独立数据目录。例如，在 macOS 上连接由 npm run dev 启动的开发后台：
+Dev Web uses isolated data only with an explicit ARC_STATE_DIR. For the macOS development backend started by npm run dev:
 
 ```sh
 ARC_STATE_DIR="$HOME/.local/state/agent-remote-control-dev" npm run dev:ui
 ```
 
-自定义隔离预览时，为 Core 与 Dev Web 显式设置相同的 ARC_STATE_DIR。npm run dev 仍默认使用独立开发目录，并将该目录传给它启动的 Vite。不要把开发桌面或另一个 Core 指向正在使用的正式状态目录。
+Custom isolated previews MUST give Core and Dev Web the same ARC_STATE_DIR. npm run dev still defaults to the development directory and passes it to Vite. Do not point development Desktop or another Core at active production state.
 
-## 已有检查
+## Existing checks
 
 ```sh
 npm run check
@@ -37,41 +36,43 @@ npm run build
 npm run desktop:check
 ```
 
-check 检查 React/TypeScript；check:format 检查 Rust 格式。test 执行已有 Rust 单元测试和 MCP fixture 合同测试，fixture 使用独立临时状态。build 编译前端、Core 和适用的屏幕 helper；desktop:check 检查桌面 crate。允许新增验收场景与验收脚本；单元测试仍不新增（待后续讨论）。迁移已有测试不扩大覆盖。场景、跨设备验收与产物查看见[验收](acceptance.md)。
+check validates React/TypeScript. check:format validates Rust formatting. test runs existing Rust unit tests and MCP fixture contract tests with isolated temporary state. build compiles the frontend, Core, and applicable screen helper. desktop:check checks the desktop crate. Acceptance scenarios and scripts may be added. Do not add unit tests pending further discussion. Migrate existing tests without expanding coverage. See [Acceptance](acceptance.md) for scenarios, cross-device checks, and artifact inspection.
 
-直接运行 Cargo 构建或测试后执行：
+After direct Cargo builds or tests:
 
 ```sh
 npm run cache:prune
 ```
 
-工作区共享根 Cargo.lock 和 target。编译缓存预算为 30 GiB，清理非活跃 profile 组，保留运行中、受保护的产物以及唯一数据。`npm run cache:prune -- --dry-run` 预览操作；预算不是整个 target 目录的总大小上限。
+The workspace shares root Cargo.lock and target. The compilation-cache budget is 30 GiB. Pruning removes inactive profile groups while retaining running/protected artifacts and unique data. Preview with npm run cache:prune -- --dry-run. The budget is not a total-size cap for target.
 
-## 桌面产物
+## Desktop artifacts
 
 ```sh
 npm run desktop:build
 npm run check:package
 ```
 
-构建会重新编译前端，再生成原生包，不安装或替换本机应用。macOS 产物位于 target/aarch64-apple-darwin/release/bundle，Windows 使用 x64 NSIS。check:package 检查版本、原生签名和图标资产，并拒绝 Node/npm 等旧运行时资源。完整发布与签名见[发布](release.md)。
+Build recompiles the frontend and creates native packages without installing or replacing the local App. macOS artifacts live under target/aarch64-apple-darwin/release/bundle. Windows uses x64 NSIS. check:package validates versions, native signatures, and icon assets, rejecting legacy Node/npm runtime resources. See [Release](release.md) for signing and publication.
 
-应用包包含 Desktop、独立 Core、静态前端、图标和必要许可。Tunnel Client 按需从官方来源准备。外部 Agent 使用其原生安装；Claude ACP 适配器在显式启用后单独准备。构建脚本重映射 Rust 源码路径，避免把维护者路径写入产物。
+Packages contain Desktop, standalone Core, static frontend, icons, and licenses. Tunnel Client is prepared on demand from official sources. External Agents use native installations. The Claude ACP adapter is prepared separately after explicit enablement. Build scripts remap Rust source paths to avoid embedding maintainer paths.
 
-版本统一从 ARC_BUILD_VERSION、最近可达 v-tag、0.0.0 依次解析。package.json、Cargo 和 Tauri 的 0.0.0 是内部占位值。正式产物在已有功能提交上注入版本，不生成升版提交。
+Version precedence is ARC_BUILD_VERSION, nearest reachable v-tag, then 0.0.0. package.json, Cargo, and Tauri use 0.0.0 as an internal placeholder. Formal artifacts inject versions into existing feature commits without version-bump commits.
 
-## 原生图标与品牌
+## Native icons and branding
 
-`assets/brand` 保存品牌源图。`npm run brand -- primary` 生成当前等粗圆头圆弧品牌，alternate 生成收尖备选。所有平台图标统一从这里派生。
+assets/brand owns brand source artwork. npm run brand -- primary generates uniform-stroke round-ended arcs. alternate generates the tapered alternative. All platform icons derive from these sources.
 
-macOS 使用 Icon Composer 文档、actool 生成的 Assets.car 和静态 ICNS 回退。CFBundleIconName 与 CFBundleIconFile 保持同一个无扩展名名称。DEVELOPER_DIR 可选择完整 Xcode；脚本也支持标准 Xcode 安装。开发图标从同一分层源图派生，不复制独立设计。
+macOS uses an Icon Composer document, actool Assets.car, and a static ICNS fallback. CFBundleIconName and CFBundleIconFile share one extensionless name. DEVELOPER_DIR may select full Xcode. Standard Xcode installation is also supported. Development icons derive from the same layered source rather than a separate design.
 
-## 订阅额度开发
+## Subscription quota development
 
-Core 负责订阅额度读取、刷新调度和当前读数缓存；React 共享 QuotaBubble、QuotaRing 和悬停详情。桌面通过 subscriptions:changed 收到更新；浏览器通过 Vite 转发的已认证 /api/subscriptions/events 接收快照。流断开后重新跟随当前 owner，轮询仅作回退。
+Core owns quota reads, refresh scheduling, and reading caches. React shares QuotaBubble, QuotaRing, and hover details. Desktop receives subscriptions:changed. Browsers receive snapshots through authenticated /api/subscriptions/events forwarded by Vite. Disconnected streams follow the current owner again. Polling is a fallback only.
 
-额度来源、缓存与节奏规则见[订阅参考](../reference/subscriptions.md)。原生登录、桌面事件与浏览器事件流分别验证。不采集本地用量日志，不维护 Token 统计或价格数据。
+[Subscriptions](../reference/subscriptions.md) owns source, cache, and cadence rules. Verify native login, desktop events, and browser streams separately. Do not collect local usage logs, token statistics, or pricing data.
 
-## 文档维护
+## Documentation maintenance
 
-README 和上手/指南保留英文主文件与完整中文对照；参考层 docs/reference 只用英文，维护层 docs/dev 只用中文。cli guide 内嵌 docs/reference/cli.md，改路径后需重编译 Core。文档描述当前行为、限制和操作，不保存验收过程或个人环境。修改后检查所有内部链接、CLI 输出和语言对应关系。
+README and end-user onboarding/guides retain English primary files with complete Chinese counterparts. docs/reference and docs/dev are English only. Model-facing guides, catalog text, hints, errors, and generated notification text are English only. Original user input and upstream evidence retain their language. Use [terminology](terminology.md).
+
+cli guide embeds docs/reference/cli.md. Path changes require a Core rebuild. Documentation describes current behavior, limitations, and procedures without acceptance records or personal environments. Check internal links, CLI output, and localized counterparts after edits. Commits use a single-line English Conventional Commit subject without rewriting history.

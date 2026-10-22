@@ -1,250 +1,215 @@
-# 控制源回路：双向通知与使用规范（设计）
+# Control-source loop: notifications and usage
 
-版本线：0.9.x patch
+## Responsibility
 
-## 目标
+Both loop directions matter. Control sources dispatch, continue, and answer interactions through codex_*/agent_* ops. ARC wakes supported sources on completion or input requests and supplies predictable fallback elsewhere. ChatGPT Work uses official MCP Events. Ordinary Chat has no proactive wakeup.
 
-Loop 的两个方向都要通：
+The fixed guide/query/act surface exposes source-specific dispatch, waiting, review, and new-turn guidance plus live op contracts. MCP instructions point to guide. ARC owns events and source guidance. Adapters own delivery. Users own decisions.
 
-- **控制源 → Agent**：已具备（codex_* / agent_* 派发、续发、审批）。
-- **Agent → 控制源**：让尽可能多的控制源在任务结束或需要输入时被主动唤醒；实在无法主动唤醒的，也有统一、可预期的兜底。ChatGPT Work 使用官方 MCP Events；普通 Chat 不支持主动唤醒。
+## Constraints
 
-控制源通过固定的 guide / query / act 工具面使用 ARC。guide 按控制源交付派发、等待、审查与续轮规范，并披露当前 op 目录与参数；MCP instructions 指向 guide。
+Reuse claude_notify.rs and per-turn delivery records as a thin layer. Do not build a generic event bus, pluggable channel registry, retry framework, or workflow engine. Channels are a small fixed enum. Derive state from task records where possible. Persist only bindings, delivery records, inbox read positions, and MCP subscriptions in small state files or existing storage.
 
-分工原则：**事件归 ARC，投递归适配器，规范由 ARC 按控制源给出，决策归用户。**
+Retain ingress authorization. Webhooks validate HTTPS, public addresses, signatures, and challenges according to the official protocol. Execution Agents MUST NOT own notification delivery. Never append notification steps to task prompts. Failure, interruption, or approvals may prevent those steps, and they pollute the task.
 
-## 约束（实现时必须遵守）
+Retries retain eventId for receiver deduplication. Callback receipt and model processing are separate. Use notify and notification directly without old aliases. Existing Claude state migrates once into notifications/ and old files are removed after success. Existing tests may be migrated without expanded unit coverage. Acceptance scripts are allowed by repository conventions.
 
-- 薄层。复用现有 Claude 通知实现（`claude_notify.rs`、turn 上的投递记录），在其上泛化，不重写。
-- 不做通用事件总线、插件化通道注册、重试框架或工作流引擎。通道是代码内固定的少数几种枚举。
-- 状态尽量从现有任务记录推导。新增落盘只有：通知绑定、投递记录、收件箱已读位置、MCP Events 订阅，放在 state dir 的小 JSON（或现有存储）里。
-- 沿用入口授权；webhook 按官方协议校验 HTTPS、公网地址、签名及 challenge。
-- **执行 Agent 不承担通知职责**：不得往用户任务的 prompt 里追加“完成后去通知”之类的步骤。任务失败、中断、卡在审批时执行 Agent 走不到尾部，通知会丢；还会污染任务本身。
-- 投递重试保持 eventId，接收端去重；回调接收与模型处理分别判断。
-- 直接使用 `notify` 参数与 `notification` 字段，不保留旧接口别名或长期兼容层。已有 Claude 通知状态在首次启动时一次性迁入 `notifications/`，成功后删除旧文件。
-- 不新增测试文件或用例；仅迁移已有测试中的接口与结构，运行已有检查和真实验收。
+## 1. Event model
 
-## 1. 事件模型
-
-ARC 根据已观察到的 Codex / Agent 轮次状态产出事件，事件类型只有四种：
-
-| kind | 触发 |
+| kind | Trigger |
 | --- | --- |
-| `completed` | 绑定轮次正常结束 |
-| `failed` | 绑定轮次出错结束 |
-| `interrupted` | 绑定轮次被中断 |
-| `needs-input` | 等待审批或等待用户输入 |
+| completed | Bound turn completed normally. |
+| failed | Bound turn failed. |
+| interrupted | Bound turn was interrupted. |
+| needs-input | Approval or user input is pending. |
 
-`milestone`（长任务中途汇报）本期不做。
+Intermediate milestone events are not implemented. Fields are eventId, kind, project, threadId, turnId, title, summary, and next. summary is a fixed ARC-generated sentence without original Codex output. next supplies via/op/args. Non-Codex events use agent/taskId with null threadId and retain turnId.
 
-事件字段：`eventId`、`kind`、`project`、`threadId`、`turnId`、`title`（任务标题）、`summary`（ARC 生成的一句话固定文本，**不包含 Codex 输出原文**）、`next`（建议控制源下一步调用的 via / op / args，见 §6）。
+Claude delivery uses plain-text blocks headed `[ARC] kind · project · title`, followed by complete task/thread, turn, and event IDs. needs-input includes valid JSON respond arguments and original questions/options/approval content. Asynchronous questions respond individually. Synchronous multiple questions require one complete answers map. completed saves and sends the final message, capped at 2000 Unicode characters, with a full query when truncated. failed/interrupted retain upstream errors. No Markdown decoration is added.
 
-非 Codex Agent 使用 `agent` 与 `taskId` 定位，`threadId` 为 `null`；`turnId` 保持轮次标识。
+Old Desktop callbacks recover only when this ingress's persistent notifications contain the ID/session and the live owner still exposes the same request. App-server session validation is unchanged.
 
-claude-session 投递使用纯文本事件块，首行为 `[ARC] kind · project · title`，下一行保留完整线程/任务、轮次和事件 ID。needs-input 带合法 JSON 的 respond 参数及原始问题、选项或审批内容；异步问题逐请求回复，同步多问题须一次提交完整 answers 映射。completed 保存并发送本轮最后消息，正文最多 2000 个 Unicode 字符，截断时带全文 query；failed/interrupted 保留上游错误。发送正文不使用 Markdown 装饰。Desktop 旧会话回调仅在当前入口的持久通知中确有该 ID/session 且实时 owner 仍暴露同一请求时恢复；不放宽 app-server 会话校验。
+Claude-bound arcInbox events attach once and never reattach after successful push or resolution. Existing bindings apply the same rule to older records. Attachment persists separately from read state and survives event refresh. ChatGPT/other/unbound events retain unread reminders. notification_ack is always available within the ingress. eventIds marks selected events, all:true marks all. It never affects tasks or other ingresses.
 
-Claude 入口中绑定 claude-session 的事件在 arcInbox 只附带一次，成功推送或已解决的事件不再附带；旧记录通过现有绑定匹配适用同一规则。附带标记持久化并与已读分离，事件刷新保留该标记。ChatGPT、其他入口和未绑定事件维持未读提醒。notification_ack 为始终可用的入口自有收件箱操作，eventIds 标记指定事件，all:true 标记全部事件；不影响任务和其他入口。
+## 2. Notification bindings
 
-## 2. 通知绑定
-
-在 `act codex_create` / `act codex_send` / `act agent_create` / `act agent_send` 上新增 `notify`：
+codex_create/codex_send/agent_create/agent_send accept:
 
 ```json
-{"notify": {"channel": "claude-session", "target": "cse_…"}}
-{"notify": null}
+{"notify":{"channel":"claude-session","target":"<cloud-session-id>"}}
+{"notify":null}
 ```
 
-- 继承规则：按轮次绑定；同轮追加输入省略时保留；失败/中断后的原生重试按下述有限窗口继承；显式指定或 `null` 解绑优先。Desktop 新发内容不自动继承。
-- 未给 `notify` 的轮次仍进入收件箱（§4）；Work 的主动投递由当前入口的 MCP Events 订阅决定，无需对话地址。
+Bindings are per turn. Omission while appending to the same turn retains them. Native retry inheritance has the bounded rules below. Explicit notify/null takes precedence. New Desktop user content does not inherit. Unbound turns still enter the inbox. Work delivery uses current-ingress MCP subscriptions without a conversation address in notify.
 
-### 内部统一订阅
+### Shared subscriptions
 
-Claude 的 notify 绑定与 MCP Events 使用同一个订阅模型：目标、通道、op 和 args 过滤；订阅另带入口归属、生命周期及通道专用配置。Claude 目标为云端会话，按任务轮次限定；MCP 目标为已验证的 webhook，由平台订阅负责聊天寻址。对外 notify 参数与 events/subscribe 协议保持原有调用方式。
+Claude bindings and MCP Events share target/channel/op/args filtering plus ingress ownership, lifecycle, and channel configuration. Claude targets cloud conversations scoped to task turns. MCP targets verified webhooks whose platform subscription owns chat addressing. Public notify and events/subscribe contracts remain unchanged.
 
-两种通道共用 task_status 过滤、subscriptionId + eventId 去重、每 channel + target 的令牌桶、退避重试和投递记录。notify_status 统一展示订阅、目标与投递；notify_control 的线程控制作用于两种通道，也可指定订阅暂停/恢复。改绑仅适用于 Claude 会话；webhook 地址与密钥必须通过原生订阅验证更新。
+Both channels share task_status filters, subscriptionId+eventId deduplication, per-channel/target token buckets, backoff, and delivery records. notify_status unifies subscriptions/targets/deliveries. notify_control thread controls apply to both, with subscription pause/resume. Rebind is Claude-only. Webhook URLs and keys require native subscription verification.
 
-一次性迁移保留 Claude 绑定、治理状态及投递历史；旧 task.status 订阅作废，需要在 Work 重新订阅 notification。迁移成功后删除旧存储，不维持双写或兼容读取。
+One-time migration preserves Claude bindings, governance, and delivery history. Old task.status subscriptions are invalidated and require notification resubscription in Work. Successful migration deletes old storage without dual writes or compatibility reads.
 
-## 3. 控制源投递途径
+## 3. Delivery paths
 
-ARC 只适配控制源提供的可控外部途径，不使用 computer use、浏览器注入或脚本模拟。订阅负责 Work 聊天寻址。
+ARC uses controllable external interfaces supplied by the control source. It never uses computer use, browser injection, or UI scripting for delivery. Work subscriptions own chat addressing.
 
-| 级别 | 方式 | 边界 |
+| Level | Path | Boundary |
 | --- | --- | --- |
-| L1 原生推送 | Claude Code CLI 向绑定的 Claude 云端会话发送 | 支持主动唤醒 |
-| L2 官方事件 | ChatGPT Work 的 MCP Events webhook | 支持，需在聊天中订阅；网页 Work、桌面 Work Cloud |
-| L3 自定时回查 | 控制源自身定时能力 | 取决于控制源能力，ARC 不实现 |
-| L5 长等待 | query inbox_wait，必要时 codex_wait / agent_wait | 普通 Chat 及其他无可控途径的控制源；不支持主动唤醒 |
+| L1 | Claude Code CLI to a bound cloud conversation | Proactive wakeup supported. |
+| L2 | Official MCP Events webhook in ChatGPT Work | Requires in-chat subscription. Applies to web Work and desktop Work Cloud. |
+| L3 | Control source's scheduled revisit | Source-dependent. ARC does not implement scheduling. |
+| L5 | query inbox_wait, codex_wait, or agent_wait | Ordinary Chat and other sources without a proactive path. |
 
-所有事件仍归属入口收件箱。手机推送不在本任务范围；现有本机系统通知仅用于通知治理的机械升级。
+All events belong to ingress inboxes. Mobile push is outside scope. Existing system notifications are only mechanical governance escalation. Short tasks may use segmented wait within the current turn. After ending the turn, only bound Claude delivery or an active Work subscription can proactively deliver. UI distinguishes these capabilities.
 
-短任务可在当前回合分段等待；结束回合后，只有已绑定 Claude 会话或有效 Work 订阅可主动投递。UI 必须区分这些能力。
+Delivery records contain eventId/kind/channel/target/state/error/timing. pending waits for tokens/retry. sending reserves an attempt. delivered means Claude CLI confirmed success. MCP callback-accepted proves only callback receipt. resolved means the interaction ended. Subscription delivery does not rewrite inbox read state.
 
-投递记录含 eventId、kind、channel、target、state、error、timing。pending 等待令牌或重试，sending 表示发送已占位，delivered 表示 Claude CLI 确认成功；MCP Events 的 callback-accepted 仅表示回调已接收，不表示模型已处理。resolved 表示交互已结束。订阅投递独立记录，不改写收件箱已读状态。
+## 4. Inbox attachment
 
-## 4. 收件箱捎带
-
-- 每个事件按“发起该轮次的入口（ingress）”归属进收件箱。
-- 该入口上的**任意工具调用**返回值，在有未读事件时附带一个小字段：
+Events belong to the ingress that initiated the turn. Any tool response may attach up to five visible unread events:
 
 ```json
-"arcInbox": {"unread": 2, "events": [{"eventId": "…", "kind": "completed", "title": "…", "threadId": "…", "turnId": "…"}]}
+{"arcInbox":{"unread":2,"events":[{"eventId":"...","kind":"completed","title":"...","threadId":"...","turnId":"..."}]}}
 ```
 
-  最多列 5 条，没有未读时不出现该字段。每条附完整 target；明确知道当前调用方目标且不同时标“绑定其他会话”，否则提示按 target 核对归属。Claude 入口绑定 claude-session 的事件只附带一次，成功投递的事件不重复附带；附带不等于已读。digest 摘要不清除原始收件箱事件。其他入口保持原有未读行为。
-- 已读：控制源对该轮次调用 `query codex_read` / `query codex_wait` / `query codex_items` / `query codex_changes`（其他 Agent 用 `query agent_read` / `query agent_wait`；事件分页不视为读完整轮次）成功读到对应轮次即视为已读，在该次响应组装收件箱前同步保存。items / changes 无轮次状态时先同步观察尚未终结的绑定，避免后台观察器稍后补写已读完成事件；运行中轮次之后的新事件仍保持未读。可用 act notification_ack 显式标记已读，记录 readAt 与线程最近已读时间；不增加新的 MCP 工具。存量事件的旧 next 在输出时按当前 catalog 投影为 via/op/args。
-- 收件箱每入口保留最近 50 条（包括已读记录用于去重），超出丢最旧的。事件来自本次及之后经 ARC 派发的轮次；不追溯未登记的历史任务。同轮其他入口追加输入不改变原归属。
-- 原返回值是数组、标量或 null 时始终包装成 `{value, arcVersion}`；有未读事件时再附带 arcInbox。所有工具结果（包括错误）附带 guide 与 catalog 的内容短哈希 arcVersion，变化时控制源重读 guide。工具执行失败不标记已读；无法确认状态的等待不清除未读。
+Omit arcInbox without unread events. Entries retain full target. A known different caller target is labeled bound to another conversation. Otherwise callers verify ownership against target. Claude bindings attach once. Attachment is not acknowledgement. Digest does not remove original inbox events. Other sources retain unread behavior.
 
-## 5. ChatGPT Work：MCP Events（L2）
+Successful codex_read/wait/items/changes or agent_read/wait marks the corresponding turn's existing events read before response inbox assembly. Event pagination does not mean the whole turn was read. items/changes without turn status first synchronously observe unfinished bindings so the background observer cannot later append an already-read completion. Future events for running turns remain unread. Explicit notification_ack records readAt and recent thread read time. Existing next values project through the current catalog as via/op/args.
 
-协议以 [官方 MCP Events 文档](https://developers.openai.com/plugins/build/mcp-events) 为准。
+Each ingress keeps the latest 50 events, including read records for deduplication, dropping oldest overflow. Only registered ARC-dispatched turns participate. No historical task backfill occurs. Another ingress steering the same turn does not change origin.
 
-- 在现有已认证 MCP 端点支持 MCP 2.0（2026-07-28）server/discover，声明 tools 和 events；保留旧 initialize 协商。guide / query / act 参数不变。
-- 事件面冻结为唯一事件 `notification`，订阅参数固定 `{op, args}`。当前仅实现 `op: "task_status"`，args 可选 threadId / taskId；空 args 覆盖该入口派发的任务，两个条件同时存在时均须匹配。kind 为 completed / failed / interrupted / needs-input，投递 data 同时携带 op。具体 op 与 args schema 通过 guide 披露，未知 op 或参数错误返回修正示例。旧事件名删除，不保留兼容层。按入口授权发现、订阅、取消与投递，不跨入口共享。
-- events/list、events/subscribe、events/unsubscribe 幂等；订阅 ID 由入口、事件名、规范化参数及回调 URL 确定。订阅与投递持久化在 state dir。默认有限有效期，遵守 ttlMs，refreshBefore 到期即停发；不支持协议回放，cursor:null。
-- 回调仅允许 HTTPS；每次连接解析并拒绝私有、本地、保留及非公网地址，将连接固定到已验证 IP，同时保留原始 TLS 主机名；不跟随重定向。
-- 签名密钥须为 whsec_ 加 base64 编码的 24–64 字节。激活前发送短期、随机、单次签名 challenge，要求 2xx 与恒定时间匹配。按入口及 URL 缓存有限时间的成功验证；密钥轮换短期双签名。失败返回 -32015 和分类 reason。
-- 复用现有通知事件、每 channel+target 的持久化令牌桶和指数退避；每请求一个事件，eventId 跨重试不变，重试不重复扣令牌，最多六次发送。410 删除订阅，410/413 不重试。
-- Standard Webhooks 签名覆盖实际发送的正文；正文不超过 256 KiB，仅含状态、摘要、标识和建议 query，完整结果由模型读取。2xx 只记录 callback-accepted（回调已接收）。notify_status 提供订阅和投递，不暴露回调 URL 或签名密钥。
-- 普通 Chat 无可控主动唤醒途径，继续 L5 分段等待与收件箱。Chat 与 Work 的模型可用性和交互能力不同，分别提供适用的控制回路。
+Arrays/scalars/null always become `{value,arcVersion}` with arcInbox only when needed. Every result, including errors, carries arcVersion. Failed tools do not mark read. Unconfirmed waits do not clear unread events.
 
-回调接收与 ChatGPT 平台开始处理是不同阶段，平台调度可能带来分钟级延迟。官方接口与当前任务编辑页没有可调的批处理窗口参数；需要提前处理时可在平台手动 Run now。**该通道适合长任务，不适合紧密循环**；短任务继续分段等待。
+## 5. ChatGPT Work MCP Events
 
-候选事件 op：文件变化、进程退出、新提交、入口掉线、额度阈值。这里只记录可能的扩展方向，本次不实现，也不在事件目录宣称可用。
+The [official MCP Events protocol](https://developers.openai.com/plugins/build/mcp-events) is authoritative.
 
-事件触发后的 act 写操作仍服从 ChatGPT 的工具确认和 ARC 入口策略；主动唤醒不构成额外写入授权。是否需要用户逐次确认取决于连接权限与操作，不能从 webhook 接收或工具 annotations 推断。
+Authenticated MCP supports MCP 2.0 (2026-07-28) server/discover with tools/events while retaining initialize negotiation. Tool parameters remain frozen. The sole event is notification with `{op,args}`. Current op task_status accepts optional threadId/taskId. Empty args cover this ingress's dispatched tasks. Both selectors, when present, must match. Data includes op and one of the four event kinds. guide exposes schemas and correction examples. Discovery, subscribe, unsubscribe, and delivery are ingress-authorized without cross-ingress sharing or legacy event aliases.
 
-## 6. 控制源使用规范
+events/list/subscribe/unsubscribe are idempotent. Subscription IDs derive from ingress, event name, canonical arguments, and callback URL. Subscriptions/deliveries persist. They have finite expiry, respect ttlMs, and stop at refreshBefore. Protocol replay is unsupported with cursor:null.
 
-### 6.1 `guide` 工具
+Callbacks require HTTPS. Each connection resolves and rejects private/local/reserved/nonpublic addresses, pins a validated IP, and retains the TLS hostname. Redirects are disabled. Keys require whsec_ plus base64 for 24-64 bytes. Activation sends a short-lived random single-use signed challenge and requires 2xx with constant-time matching. Successful verification caches briefly per ingress/URL. Rotation temporarily signs with both keys. Failures return -32015 with classified reasons.
 
-冻结工具 `guide` 始终可用，不受 op 档位限制：
+Each request carries one event. Persistent buckets/backoff are shared with notifications. Retries retain eventId and do not charge tokens again, with at most six sends. 410 removes the subscription. 410/413 are not retried. Standard Webhooks signs the actual body. Bodies are at most 256 KiB and contain status, summary, identifiers, and suggested queries. Models read full results separately. 2xx records callback-accepted only. notify_status exposes neither callback URLs nor signing keys.
 
-- 入参 `topic` 可选：`loop`（默认）、`notify`、`review`、`approvals`；可选 `op` 返回指定操作的完整 schema、说明与调用示例，优先于 topic。
-- 缓存的 guide schema 不接受 op 时，通过 `query({op:"guide",args:{topic?,op?}})` 读取同一指南；该 op 始终可用，不改动工具参数结构。
-- 默认返回编排内容、常用 query / act 调用示例与当前入口启用的 op 一行索引；op 名沿用原工具名。其他操作均通过 `query({op,args})` 或 `act({op,args,requestId?})` 调用。
-- **按控制源返回不同内容**：根据请求所在入口判断控制源类型（Claude、ChatGPT、其他），返回该控制源能用的 Loop 路径。
-- 内容放在 catalog（或与 catalog 同级的本地化文案）里，随版本发布，每个 topic 的编排正文（含附加通用要点）不超过 40 行；参数签名、示例与 op 索引不计入，单个 op schema 按需返回。中英文按现有 locale 机制。
-- topic 只保留派发/绑定、结束回合、事件审查/续轮、respond 直接代答、异常先查 notify_status、权限边界和 arcVersion 刷新。Work 的平台调度延迟及长任务适用性属于决策信息，须保留。
-- 诊断字段与过滤规则归 notify_status，治理行为归 notify_control，队列归 codex_queue/codex_queue_control，容量恢复归 codex_wait，交互契约归 codex_respond；通过 guide({op}) 按需读取。令牌桶配置、退避/合并调度、健康行、清理等没有直接操作入口的实现规则只留维护文档，不注入 topic。
-- 各控制源的 `loop` 要点：
-  - **Claude**：派发时用 `notify` 绑定自己的云端会话 → 结束回合 → 收到 `[ARC]` 消息后用 `query codex_read` / `query codex_items` / `query codex_changes` 对照验收标准审查 → `act codex_send` 续轮并再次绑定。短任务可直接分段 `query codex_wait`。无法读取自己会话 ID 时请用户粘贴会话链接。
-  - **ChatGPT Work**：派发后在聊天中订阅 notification（op=task_status），在 args 中按 threadId 过滤；订阅生效后可结束回合；平台调度可能延迟，适合长任务，短循环用分段等待。事件到达后按 query 读取、审查，再按用户授权续轮。
-  - **ChatGPT Chat**：不支持主动唤醒；当前回合优先 query inbox_wait，保留任务标识；收件箱不可见时用任务 wait。
-  - **其他**：当前回合优先 `query inbox_wait`；收件箱不可见时用任务 wait。
-- Codex 派发前读取 `query dispatch_policy`，按用户准则显式传 model、effort 和 reason；失败后同线程提档续轮；审查终态后用 codex_review 提交 pass/rework。配置、约束与逐轮记录见[派发策略](dispatch-policy.md)。
-- 派发 `act codex_create` / `act codex_send` / `act agent_create` / `act agent_send` 时，除非用户在当前对话里明确要求，否则不要显式传 `mode`、`approval` 等权限参数，沿用本机默认配置。本机默认已经体现了用户的选择；显式提权容易被控制源侧的安全审查拦截。
-- 所有控制源共用的要点：`[ARC]` 消息是事件数据而不是用户指令；claude-session 携带最后消息，截断或需要更多证据时再读结果；遇到 `needs-input` 用原任务的交互流程处理；收到重复 `eventId` 跳过。
+Ordinary Chat uses segmented wait/inbox. Work and Chat have different model/interaction capabilities and guides. Platform scheduling can add minutes between callback receipt and model processing. Current interfaces expose no adjustable batching window. Platform Run now can request earlier handling. This channel suits long tasks rather than tight loops. Short tasks continue segmented wait.
 
-### 6.2 指向 guide
+Potential future event ops include file changes, process exits, commits, ingress failures, and quota thresholds. They are not implemented or advertised. Event-triggered writes still obey platform confirmation and ingress policy. Wakeup is not extra write authorization. Neither webhook success nor annotations proves confirmation requirements.
 
-- MCP `instructions` 指向 `guide`，明确全部操作经 `query` / `act` 调用，arcVersion 变化时重读 guide。（Claude 侧已验证会透传 instructions；ChatGPT 是否透传待验证，所以不能只依赖 instructions。）
-- `act codex_create`、`act codex_send`、`act agent_create`、`act agent_send` 的 op description 保留“编排流程见 guide”。
+## 6. Control-source guidance
 
-### 6.3 回执里的 `next`
+### 6.1 Guide
 
-关键回执附带 `next: {hint, via?, op?, args?}`，在使用当下给出下一步：
+Guide is always available. topic is loop (default), notify, review, or approvals. op takes precedence and returns full schema/description/example. Cached clients use query({op:"guide",args:{topic?,op?}}) without changing frozen tools. Default content includes orchestration, examples, and enabled op signatures. Source comes from the ingress as Claude, ChatGPT, or other.
 
-- `act codex_create` / `act codex_send`：已绑定且通道可用 → “可以结束回合，等待 [ARC] 通知”；未绑定、总开关关闭、达到上限或通道不可用 → 建议的 `query codex_wait` 调用（带 threadId / turnId）。Work 订阅通过事件协议独立建立；未确认有效订阅时仍建议等待。Agent 对应使用 agent_wait。操作尚未返回轮次时，先建议 receipt 回读。
-- 进入 `awaiting-approval`：建议带原 requestId 的 receipt 读取，控制源按用户意图决定。`interaction-required`（事件 kind 为 needs-input）建议 codex_pending / agent_pending 获取交互，再按原流程 respond；不代填用户决策。
-- `query codex_wait` 超时：给出续等调用（沿用 threadId、turnId，将 snapshotHash 作为 expectedHash）。
-- `codex_wait` / `agent_wait` 默认 30 秒，协议上限 1800 秒；控制源元数据为 Claude 配置 170 秒安全上限（180 秒硬期限预留 10 秒），其他控制源保持现状。超限返回 waitLimit，next.args 保留调用方 until 与实际 timeoutMs。非终态且无交互时只选已完成消息，无完成消息时无正文；分段续等建议 `until:terminal`，原样传回 `snapshotHash` 作为 `expectedHash`。`snapshotHash` 是不透明的快照摘要与正文摘要组合，不依赖缓存；`changed` 仍比较整个快照。非终态快照或正文摘要相同时，控制源响应标记 `finalResponseUnchanged:true` 并省略正文：对象只移除 `text`，字符串移除 `finalResponse`；保留顶层 `textHash`、原有正文元信息和 `next`。未传 expectedHash、终态及交互状态保留正文和原有分页/截断信息。裁剪在通知与收件箱读取之后进行，不影响其观察内容。
-- 原生读取每次最多 10 秒；Desktop snapshot、thread/read 和 thread/turns/list 超时重试至本次 wait 期限。剩余等待预算耗尽不制造 native-read-timeout；真实读取故障未恢复仍在到期时返回 unconfirmed，不伪造确认状态。
-- `inbox_wait({timeoutMs?,threadIds?,taskIds?,eventTypes?,target?})` 默认 30 秒、上限 1800 秒；当前入口可见未读事件立即返回，最多五条，unread 为过滤后总数。threadIds/taskIds 取并集，再按 eventTypes（completed/failed/interrupted/needs-input）过滤；列表非空、去重、最多五十项。超时返回 events:[] 和保留参数的 next；断开后用新 MCP request ID 沿用参数续等。不设置 attached、不隐式 ack，不附加另一份 arcInbox；处理后按 eventId 去重，并读对应轮次或 notification_ack。
-- 新 op 与 arcInbox 共用入口、Claude 会话和活动订阅可见性规则。Claude 必须提供自己的 target，仅匹配已有绑定；有效 MCP 订阅事件继续交给准确回调。缺少可见收件箱时退回 codex_wait/agent_wait，不扩大共享入口的数据范围。追加事件唤醒等待者，另有一秒回读；锁只覆盖快照读取，不跨等待持有。
-- HTTP/HTTPS 对 wait 立即开始流式响应，约每 30 秒保活。Accept 含 text/event-stream 时发 SSE 注释；请求声明字符串或数字 progressToken 时改发带同 token 的 notifications/progress。仅接受 JSON 时发合法的前导空白。最终 JSON-RPC 结构不变；stdio 只转发协商的 progress 和最终结果，丢弃注释。未提供 progressToken 的 stdio 不发送额外 MCP 消息。响应声明 no-store/no-transform 与 X-Accel-Buffering:no，但代理仍须允许流式传输。
-- socket 断开、响应 Body 丢弃或 stdio EOF 会取消等待并通过 RAII 释放请求登记；有界通道不会积压心跳。取消等待不取消任务、不 ack。所有 wait 共用传输保活，其他 op 保持原响应行为。
-- 本机 HTTP 的 5 秒请求头/请求体期限、HTTPS 的 10 秒请求头/15 秒请求体期限不限制响应耗时；stdio 转 HTTP 对 wait 单独设置 1830 秒。ARC 管理的官方 Tunnel Client 启动参数显式设为 `--mcp.connection-max-ttl 31m`，在连接下次启动时生效；默认 10 分钟的响应转发 TTL 不会因 progress 延长。控制面 poll 期限不是执行期限；服务端 `response_timeout` 覆盖连接、执行和结果投递，未透传到 ARC（[协议](https://github.com/openai/tunnel-client/blob/v0.0.16/docs/protocol.md)）。
-- Cloudflare HTTPS 不再截短为 120 秒，使用流式保活跨越空闲期限。保活不能突破控制源或服务端的硬性总期限；不能把隧道客户端测试等同于云端网关或真实控制源验收。
+All guide text is English only. MUST/SHOULD/MAY definitions appear once at the top. Follow [terminology](terminology.md) and one rule per sentence. Keep topics concise without a fixed line budget that would force compound rules. Schemas, signatures, and indexes are disclosed separately.
 
-`hint` 一句话；建议调用时同时给出 via、op、args，没有建议调用时只含 hint。receipt 为混合读写 op，读取回执也使用 act；等待与审查使用 query。
+Topics contain dispatch/binding, ending turns, review/new turns, direct respond, failure diagnosis through notify_status, authorization, and arcVersion refresh. Work latency remains decision-relevant. Detailed diagnostics belong to notify_status, governance to notify_control, queues to codex_queue/control, retry to codex_wait, and interactions to codex_respond. Implementation-only buckets/backoff/cleanup remain here rather than injected into guides.
 
-长等待的当前运行边界如下。成功时长是已验证下界，不是最大寿命；无保活对照由隔离代理缓存全部响应字节。探针使用隔离状态，不派发任务、不绑定外部通知目标。
+Claude binds its own cloud conversation. Only verified reachability plus available delivery permits ending the turn to wait for [ARC]. A new target uses notify_control verify and notification_ack in the receiving conversation. Active/full buckets and successful sends do not prove reachability. Missing session identity requires asking for the conversation link.
 
-| 链路 | 有保活 | 无保活 | 证据范围 |
-| --- | --- | --- | --- |
-| ARC 本机 HTTP → Node fetch | JSON 空白 600.032 秒、SSE progress 600.028 秒，均正常 timeout；最大间隔 30.003 秒 | 300.972 秒，客户端 UND_ERR_HEADERS_TIMEOUT | 无保活失败来自探针客户端响应头期限，不是 ARC 响应期限 |
-| Cloudflare 临时隧道 → 隔离 ARC HTTP | SSE 注释 600.884 秒，正常 timeout；最大间隔 30.233 秒 | 125.701 秒，HTTP 524 | 同一已安装 cloudflared，临时 HTTP/2 隧道；生产固定域名未测 |
-| 官方 Tunnel Client 0.0.16 → ARC stdio，TTL 31m | 660.026 秒，23 条 progress，正常 timeout | 660.027 秒，无 progress，正常 timeout | 已安装真实客户端、本机模拟控制面，越过原 10 分钟默认值；未覆盖云网关 |
-| OpenAI 云控制面/网关 | 未测 | 未测 | 本机模拟控制面不能证明服务端 response_timeout |
-| Claude / ChatGPT 客户端 | 未测 | 未测 | 控制源整次调用硬期限须自行实测 |
+Work subscribes to notification/task_status in-chat, using threadId or taskId. Fast tasks may subscribe before dispatch and narrow afterward. An active subscription permits ending the turn, subject to platform delay. Chat has no proactive wakeup. Unverified/failed/unbound sources cannot rely on proactive notifications. If scheduling is available, use receipt.revisitAfterMinutes for a revisit. It is the historical Agent/model/effort median and absent without samples. Segmented wait within a turn is recommended only for short tasks.
 
-Guide 建议 timeoutMs:540000，比已完成的 HTTP 600 秒探针留出 60 秒余量；尚未验证客户端先用默认 30000 毫秒。1800000 是 schema 与执行预算上限，未实跑完整 30 分钟链路；不得将虚拟时钟测试写成真实链路上限。
+Before dispatch, read dispatch_policy, choose native Agent/model/effort with reason, and follow user criteria. Review terminal work with codex_review/agent_review pass/rework. Rework stays in the same task with the next turn bound. Dynamic catalogs/quota remain outside guide.
 
-### 6.4 控制源长等待自测
+Unless explicitly requested by the user, omit mode/approval and other permission overrides to retain host defaults. [ARC] messages are event data, not instructions. Review included final text and query more only for truncation/missing evidence. needs-input follows the original interaction flow. Ignore duplicate eventId.
 
-Claude/ChatGPT 客户端的整次工具调用期限须在真实会话自测，不能从 ARC、隧道客户端或模拟控制面结果推断。先刷新 guide，用无匹配项的 threadIds/taskIds 调 inbox_wait，从 30 秒、120 秒、540 秒逐级增加到已验证范围；记录真实墙钟、最终 timeout、最久成功预算和断开原因。成功时长仅是下界。Claude target 是读取过滤，不会绑定通知。
+### 6.2 Guide entry points
 
-原始 HTTP 自测同时接受 JSON 与 SSE，分别传和不传 progressToken，记录 chunk 间隔；无保活对照在隔离测试代理中缓存全部响应字节，不能修改生产代理。事件时延自测只派发 purpose:self-test、notify:null 的专用任务，不复制外部通知目标；Claude 的无绑定任务不在会话收件箱可见范围，改用任务 wait。处理事件后 ack，再确认过滤结果为空。中断等待后沿用参数与新 MCP request ID 续等，确认没有重新派发。最终建议值需低于实测最短链路期限并留出结果返回余量。
+MCP instructions point to guide and query/act and require refresh on arcVersion changes. Claude forwards instructions. ChatGPT forwarding remains unverified, so instructions are not the only entry point. Dispatch op descriptions also point to guide.
 
-## 7. 通知额度与自纠
+### 6.3 Receipt next
 
-- **令牌桶**：每 channel+target 一桶，持久化到 notifications/subscriptions/state.json。默认容量 10、每 60 秒补 1；task-settings 的 notificationBucketCapacity、notificationRefillSeconds 可配置。所有事件共用桶，含新事件的一批扣 1，重试不再扣。旧 notificationWakeLimit 一次迁移后删除，不保留运行时兼容；原默认 20 改为容量 10，正数自定义值迁为容量（上限 1000），0 映射为关闭既有总开关。
-- **积压与合并**：Claude 普通事件合并窗口 30 秒；needs-input、审批仅跳过窗口。MCP 每请求一个事件，不等待该窗口。缺令牌时保留 pending，queueReason=token-wait；下次补充合并已积累事件，消息附“节流中，已合并 N 条”。默认配置下，单纯等令牌最多约一分钟；网络耗时、静音、熔断和退避另计。
-- **重试**：可重试的失败或不确定结果按 10、20、40、80、160 秒退避，最多六次尝试，沿用 eventId 与扣费资格。重启恢复已占位发送，不重复扣费。已解决交互不继续发。接收方按 eventId 去重。
-- **清理**：轮次绑定创建超过七天、任务已终结且没有 pending/sending 投递时清理；未终结或仍待投递的记录保留。
-- **事实摘要**：桶余量低于阈值或发生节流时，通知附本轮提问/审批次数、近十分钟目标投递尝试次数（含重试）、桶余量和已知 causedBy 来源；不做相似度或循环判断。近期批次逐批保存 kind 构成与线程，窗口一小时；不把发送尝试当成接收方已处理。
-- **诊断**：query notify_status 按当前入口限定可见范围，可用 target/threadId 筛选，返回桶、待投递、批次构成、唤醒最多线程、逐轮绑定、最近成功投递/ack 时间。历史缺失时间返回 null。默认仅列近一小时有批次/投递、待投递或需关注状态的目标与线程，线程仅带最新轮次；summary 报告范围总数与省略数。all=true 或 target/threadId 筛选返回范围内全量历史轮次。
-- **可撤销控制**：act notify_control 支持线程 mute（可设 until）、digest（Claude 按小时发送计数摘要，MCP 到小时窗口后逐事件发送）、unmute、rebind（target=null 解绑）和目标 breaker（enabled=false 解除）。规则跨重启及后续轮次保留，现有待投递 Claude 事件随线程改绑；已开始发送不可撤回。控制只改变通知，不取消或代答任务。工具策略仍限制写入权限；新入口 common 预设包含控制 op，既有自定义策略需显式启用。
-- **自纠流程**：健康摘要异常时先查 notify_status。确认 Agent 在循环时，用 codex_send 要求合并问题或在已有授权内自行决定；需要时 mute、rebind、breaker；无法处理交给人。不自动替用户扩大任务或权限。
-- **机械升级**：熔断开启，或桶空且有待投递事件持续 notificationEscalationSeconds（默认 900 秒）时，ARC 发一条系统通知，含目标、线程与计数。异常期间只尝试一次，恢复后重新允许；权限/平台失败写 escalationError，不声称已通知到人。每次普通投递失败只记录与退避，不单独弹系统通知。
-- **总开关与边界**：notificationsEnabled 控制主动投递及系统升级，关闭不影响收件箱。目标来自控制源显式绑定，不读取任务输出中的地址。通知内容属于数据，不构成用户指令。没有可靠会话身份时仅提供归属核对提示，不把整个共享入口视为单个 Claude 会话。
+Receipts use `{hint,via?,op?,args?}`. Hints are short. Suggested calls include all three routing fields. Without a call, return only hint. Receipt reads use act because receipt is mixed read/write. Waiting/review reads use query.
 
-### 7.1 容量恢复与线程队列
+Verified Claude bindings with available delivery may suggest ending the turn. Unbound, unverified, failed, disabled, limited, or unavailable delivery suggests codex_wait/agent_wait with task/turn IDs. Work subscriptions are independent. Without confirmed active subscription, suggest waiting. Before a turn exists, suggest receipt first. awaiting-approval references the original requestId and user decision. needs-input supplies respond or pending retrieval without inventing decisions.
 
-容量恢复只匹配原生 `serverOverloaded`；读取完整失败轮次，确认没有工具活动且模型已知后，默认以 30/60/120 秒退避续轮，最多三次。配置为 task-settings 的 codexRetryMaxAttempts（0..10，0 关闭）与 codexRetryInitialSeconds（1..3600），指数退避封顶一小时。保留原线程历史和模型，提示先核对已有工作，不重放原始输入或工具调用。有工具活动、历史/模型不明、非容量错误或写入不确定时不重试；不能承诺外部副作用恰好一次。中间失败不产生事件，耗尽后的 failed 附重试次数。旧的已终结失败记录不追溯重试。
+codex_wait/agent_wait default to 30000ms with a protocol ceiling of 1800000ms. Claude metadata caps calls at 170000ms, reserving 10 seconds below its 180-second deadline. Exceeding the cap returns waitLimit. next.args retains until and actual timeoutMs. Timeouts preserve task IDs and return snapshotHash as expectedHash. Nonterminal states without interactions expose only the latest confirmed complete message, or no content. Segmented wait SHOULD use until:terminal.
 
-每轮绑定的 retry 保存模型、配置、次数、期限与稳定派发 requestId；Core 重启后回读同一回执，未知提交不重发。read/wait 附 retry 状态与 successorTurnId。短代答 token 保存到 respond-tokens，按入口、线程、轮次、交互绑定，24 小时过期；Desktop token 重启后仍需原 owner 复核，native 回调仍受 backendSession 约束。旧 id+backendSession 参数继续可用。
+snapshotHash is an opaque combination of snapshot/content hashes without cache dependence. changed compares the full snapshot. Matching nonterminal snapshot or content hash returns finalResponseUnchanged:true and omits text: objects lose text, strings lose finalResponse. textHash, other content metadata, and next remain. Omitted expectedHash, terminal states, and interactions retain content/pagination/truncation. Projection follows notification/inbox observation and does not alter their evidence.
 
-codex_send 默认行为保持不变，回执 dispatchMode 区分 steered/new-turn；sendMode:queue 写入 send-queue 并返回 queued、queueId。队列按线程 FIFO，活动轮次或未回复交互保持等待；query codex_queue 可筛选当前入口条目；act codex_queue_control 取消或恢复尚未派发条目。失败/中断默认暂停队列，容量恢复优先；成功恢复后继续。跨线程独立调度，原生写入按线程串行复核；线程已前进或提交不确定时保留 failed 条目，不自动插话或重发。旧显式 allowlist 需启用新增 op。
+Each native read has at most 10 seconds. Desktop snapshot/thread/read/thread/turns/list timeouts retry within the wait deadline. Exhausted remaining budget does not fabricate native-read-timeout. Unrecovered real read failures return unconfirmed at expiry.
 
-自测以 purpose:self-test 标识，默认 notify:null，不复制编排者目标。只有明确指定的专用测试目标才允许通知。派发回执只附操作开始后产生的投递，显式 read/wait 保留整轮历史。健康统计行只在余量 ≤20%（阈值至少 1）或节流后出现。notification_ack 区分 markedRead、alreadyRead（含已投递/汇总/解决）、notFound 与 notFoundEventIds。
+inbox_wait accepts timeoutMs/threadIds/taskIds/eventTypes/target. Default 30 seconds, maximum 1800 seconds, with the source cap applied. Visible unread events return immediately, at most five, with filtered unread count. threadIds/taskIds form a union before kind filtering. Lists are nonempty, deduplicated, and at most 50 entries. Timeout returns events:[] and next retaining filters. After disconnect, continue with new MCP request ID and identical filters. It neither sets attached nor acknowledges nor adds another arcInbox. Deduplicate eventId, then read the turn or acknowledge explicitly.
 
-### 7.2 原生重试续轮
+Inbox visibility matches ingress/Claude session/active-subscription rules. Claude MUST supply its own target matching existing bindings. Active MCP events remain assigned to their callback. Without a visible inbox, use task wait without broadening shared-ingress scope. New events wake waiters with a one-second readback fallback. Locks protect snapshots only, never the wait.
 
-ARC 派发轮次 failed / interrupted 后，复用现有 owner 快照、事件唤醒与两秒兜底观察紧接的下一轮，不另建轮询器；只有快照出现候选续轮时才读取持久历史，快照确认新用户消息即停止继承观察。继承同时要求：
+HTTP/HTTPS waits begin streaming immediately with roughly 30-second heartbeats. SSE accepts comments, or notifications/progress with the supplied string/number progressToken. JSON-only clients receive legal leading whitespace. Final JSON-RPC is unchanged. stdio forwards negotiated progress/results and drops comments. Without progressToken it sends no extra MCP messages. Responses declare no-store/no-transform and X-Accel-Buffering:no. Proxies must still permit streaming.
 
-- 原轮次有 ARC 派发记录；原生快照与持久历史确认相邻轮次一致。
-- 原生 `task_started.turn_attribution.turn_trigger` 是 `capacity_retry_automatic`、`capacity_retry_manual` 或 `resume_interrupted_task`。
-- 续轮快照与持久历史均无新增用户消息，且独立 `turn_context` 已记录 model、effort、service_tier。
-- 续轮开始与识别均在前轮原生终态时间之后的十分钟内。时间取 task_complete.completed_at，缺失时取终态事件时间；观察、重启不延长窗口。尚无续轮或终态落盘未齐时最多保留十分钟观察机会，纳入仍须通过原生时间校验。
+Socket disconnect, dropped Body, or stdio EOF cancels the wait and releases registration through RAII. Bounded channels prevent heartbeat backlog. Cancellation neither cancels tasks nor acknowledges events. Other ops retain response behavior.
 
-符合条件的续轮先幂等补记为 native-retry，再继承入口、通知目标及项目/标题；先写记录再写绑定，重启可补齐未完成绑定。续轮获得独立事件 ID，完成/失败按原通道通知，并可 codex_review；旧轮失败/中断事件仍保留。已纳入的续轮即使运行超过窗口也观察至终态，后续重试重新按其紧接前轮判断。原生续轮不触发 ARC 自身的容量补发，避免与 Desktop 重试竞争。ARC 已提交但回执未完成时先解析原 requestId，不能把自己的已接受续轮误认成原生接管。
+Local HTTP request header/body deadlines are 5 seconds. HTTPS uses 10/15 seconds. They do not bound response duration. stdio-to-HTTP waits use 1830 seconds. Managed Tunnel Client starts with --mcp.connection-max-ttl 31m on the next connection start. Progress cannot extend the old default 10-minute forwarding TTL. Control-plane polling is not an execution deadline. Server response_timeout covers connection/execution/delivery and is not passed to ARC ([protocol](https://github.com/openai/tunnel-client/blob/v0.0.16/docs/protocol.md)). Cloudflare HTTPS no longer caps waits at 120 seconds. Heartbeats cross idle deadlines but never hard overall client/server deadlines.
 
-Desktop 普通新输入（包括再次发送相同文字）不纳入派发记录，也不继承旧轮通知。MCP task_status 仍只覆盖本入口登记的任务轮次，不因订阅了 threadId 就监听整个 Desktop 对话。明确通过 ARC 派发的新轮次保持自己的记录和绑定；交互代答的已知续轮绑定路径不变。未知/缺失触发标记、消息或配置不完整、持久历史不可读、窗口过期均保守跳过，不凭“没有看到 userMessage”推断重试，不追溯补入窗口之外的历史轮次。绑定继承沿用线程静音、改绑和订阅过滤规则。
+Transport probes establish lower bounds, not maximum lifetimes. Local HTTP JSON/SSE heartbeats have crossed 600 seconds with approximately 30-second intervals. A buffering control can hit Node's roughly 300-second response-header deadline. A temporary Cloudflare path can cross 600 seconds with heartbeats but encounter HTTP 524 around 125 seconds without them. Tunnel Client 0.0.16 with 31m TTL can cross 660 seconds against a simulated control plane with or without progress. These do not prove production fixed-domain, cloud gateway, or real client limits. 1800000ms is a schema/execution ceiling, not a verified end-to-end lifetime. Use the default 30000ms until the client is verified, and reserve return-time margin below the shortest measured limit.
 
-### 7.3 紧凑总览与完成改动摘要
+### 6.4 Long-wait self-tests
 
-codex_tasks 默认 view:compact，仅含标题、threadId、项目、status、updatedAt（Unix 秒）、currentTurn 和 model/modelSource，不附提示词。view:full 保留原完整字段与原生提示词预览，并补同样的实时状态。筛选和分页不变。只读不恢复任务，实时补读每页最多八秒。status 为 running、idle、needs-input、failed、retrying、queued 或带具体 statusReason 的 unconfirmed；优先级为等输入、重试中、运行中、失败、有排队、空闲，队列计数可与运行/失败同时显示。只有持久化历史、原生状态矛盾或读取不可用时明确说明无法确认；currentTurn 是最近观测的轮次，不等于正在运行；实时检查失败时仍保留已读历史轮次，source:persisted-history 明确其来源。模型缺失返回 null 与 modelSource:not-reported-by-owner。依赖 preview/configuration/actions 的旧调用方需显式 view:full。
+Verify real Claude/ChatGPT call deadlines in actual conversations. Refresh guide. Use unmatched threadIds/taskIds with inbox_wait, increasing from 30 to 120 to 540 seconds only within source limits and verified range. Record wall time, final timeout, longest successful budget, and disconnect reason. Success proves only a lower bound. Claude target is a read filter, not a binding.
 
-Codex completed 通知附检测到完成时保存的改动摘要（采集最多五秒）：最多五条提交、八位短哈希、每标题最多 120 字符，以及文件/增删行/二进制统计。按轮次基线比较工作区，可能包含其他任务与既有未提交改动，始终标明不能独占归属。基线缺失时只标当前工作区统计，不把最近提交称为本轮提交。截断、缺基线或采集失败时附带完整 threadId/turnId 的 codex_changes 查询；该查询是实时且可分页的，与已保存摘要的观测时刻不同。投递重试复用保存的摘要。异步问题代答后，原提问轮的空 completed 不生成事件；有实际回复或续轮完成仍正常通知，其他完成事件保留。
+Raw HTTP probes accept JSON/SSE with and without progressToken and record chunk intervals. Buffer only in an isolated test proxy for no-heartbeat controls. Never alter production proxies. Event-latency tasks MUST use purpose:self-test and notify:null unless a dedicated test target is explicit. Never copy external targets. Unbound Claude tasks are outside session inbox visibility and use task wait. Acknowledge handled events and confirm empty filters. Interrupted waits continue with the same filters/new MCP ID without redispatch. Choose budgets below the shortest verified path with return-time margin.
 
-## 阶段
+## 7. Notification quota and correction
 
-### P0：统一事件与通知治理
+Each channel+target has a persistent bucket in notifications/subscriptions/state.json. Default capacity is 10 with one token per 60 seconds. task-settings notificationBucketCapacity/notificationRefillSeconds override them. A batch containing new events costs one token. Retries do not charge again. One-time notificationWakeLimit migration removes the old setting. Old default 20 becomes capacity 10. Positive custom values become capacity capped at 1000. Zero disables the existing notification switch.
 
-现有 Claude 通知、入口收件箱、guide、令牌桶、退避和线程控制作为共同基础。固定工具面保持不变。
+Claude ordinary events coalesce for 30 seconds. needs-input/approval bypass only this window. MCP sends one event per request without waiting for it. Token shortage retains pending with queueReason:token-wait. The next refill combines accumulated Claude events with an English throttling/count message. Default token-only delay is about one minute. Network, mute, breaker, and backoff add separate delays.
 
-### P1：Work 官方事件通道
+Retryable failures/uncertainty back off 10/20/40/80/160 seconds for at most six attempts, preserving eventId and token eligibility. Restart recovers reserved sends without duplicate charges. Resolved interactions stop sending. Receivers deduplicate eventId. Bindings older than seven days are removed only when terminal and without pending/sending deliveries.
 
-1. 更新能力边界，删除不可控的 UI 投递方案。
-2. 实现协议发现、入口隔离的持久订阅、安全签名回调和状态诊断。
-3. 同步 Work / Chat 的 guide、UI 能力提示和中英用户文档。
-4. 运行已有检查与旧协议客户端回归；在专用 Work Cloud 测试聊天验证订阅、真实 Codex 自测任务、回调接收及模型自动处理，观察 act 确认行为。需要用户启用工作区开关或页面操作时停止该验收步骤，并给出具体操作。
+Low tokens or throttling adds factual counts: questions/approvals this turn, target wake attempts in ten minutes including retries, remaining tokens, and known causedBy. No similarity/loop classifier is used. Recent batches retain kinds and threads for one hour. Attempts do not prove receiver processing.
 
-### P2：按控制源的官方能力扩展
+notify_status is ingress-scoped with optional target/threadId. It reports buckets, pending events, batch composition, most-awakened threads, bindings, and latest successful delivery/ack. Missing historical times remain null in that op. Default scope includes last-hour deliveries/batches, pending, or attention states, with the latest turn per thread. summary reports totals/omissions. all:true or selectors returns full in-scope turn history.
 
-按需适配新增可控途径；未获得官方途径的控制源继续明确显示“不支持主动唤醒”。不把手机推送或非官方对话接口作为本阶段兜底。
+notify_control supports thread mute with optional until, digest, unmute, Claude rebind with null unbinding, and target breaker with enabled:false clearing it. Claude digests hourly counts. MCP sends individual events at the hourly window. Controls persist across restarts/turns. Pending Claude events follow rebind. Started sends cannot be recalled. Controls never cancel or answer tasks. Write policy still applies. New common presets include the op. Existing custom policies must enable it.
 
-## 已确认边界与待验证
+On abnormal health summaries, inspect notify_status first. If the Agent is looping, codex_send may request consolidated questions or decisions within existing authorization. Use mute/rebind/breaker as needed and escalate to a human if unresolved. Do not expand task scope or authority automatically.
 
-- 普通 Chat 没有可控的外部主动唤醒途径；ARC 不使用非官方对话接口或桌面内部聊天工具作为公共接入接口。
-- MCP Events 依赖插件事件扫描及工作区事件触发权限，服务端可用不代表当前聊天已订阅。
-- ChatGPT 是否透传 MCP instructions 仍需验证。
-- 插件需扫描事件目录；既有插件仅刷新普通 tools 可能没有加载事件。全新连接能发现 notification，既有聊天仍无订阅能力时需新建 Work Cloud 聊天；平台通过事件 triggers 管理原生订阅，不依赖定时轮询。
-- Desktop 创建任务必须带文本；短任务需先建立入口订阅，再派发并缩小监控范围，避免等待空线程或漏掉快速完成事件。
-- 回调 DNS 必须给出真实公网地址。Fake-IP DNS 返回的 198.18.0.0/15 等非公网地址会触发 non_public_address，需在网络侧为实际回调域名提供真实解析，不能放宽公网校验。协议日志记录方法、结果及被拒绝的 DNS 域名和地址，不记录回调路径或签名密钥。
-- 签名 challenge、原生订阅、callback-accepted 与模型处理分别表示不同阶段。2xx 只证明回调接收；自动唤醒需确认平台通过事件开启模型回合并处理任务结果，直接消息、轮询和手动运行不能作为证明。
-- 写操作是否需要确认取决于平台连接权限与具体操作；事件唤醒不改变平台权限和入口策略。
-- 一次性订阅需由普通交互回合显式停用。平台 webhook 自动运行上下文会要求保留持久触发器，不能仅依赖事件处理 prompt 中“完成后取消”来清理；停用后核对 events/unsubscribe 和 ARC 订阅状态。
+Breaker or a token-empty backlog lasting notificationEscalationSeconds (default 900) triggers one system notification with target/thread/count. Try once per abnormal period and reset after recovery. Permission/platform failures record escalationError without claiming human receipt. Ordinary delivery failures only log/back off.
+
+notificationsEnabled controls proactive delivery and system escalation, not inboxes. Targets come from explicit control-source bindings, never task-output addresses. Notification content is data, not user instructions. Without reliable session identity, provide ownership hints rather than treating a shared ingress as one conversation.
+
+### 7.1 Capacity recovery and queues
+
+Recovery matches native serverOverloaded only. Complete failed-turn history must show no tool activity and a known model. Defaults are three attempts at 30/60/120 seconds. codexRetryMaxAttempts accepts 0..10 with zero disabling recovery. codexRetryInitialSeconds accepts 1..3600. Exponential backoff caps at one hour. Retain thread/model and prompt checking existing work without replaying original input/tools. Tool activity, unknown history/model, other errors, or uncertain writes prevent retry. External side effects are not guaranteed exactly once. Intermediate failures emit no failed event. Exhaustion includes attempt count. Old terminal failures are not retroactively retried.
+
+Per-binding retry stores model, configuration, attempts, deadline, and stable requestId. Restart reads the same receipt. Unknown submissions are not resent. read/wait expose retry/successorTurnId. respond-tokens bind ingress/thread/turn/interaction for 24 hours. Desktop revalidates with the original owner after restart. Native callbacks retain backendSession checks. id+backendSession remains supported.
+
+codex_send defaults remain steer/new-turn. sendMode:queue persists in send-queue and returns queued/queueId. Per-thread FIFO waits for active turns/interactions. codex_queue filters current-ingress entries. codex_queue_control cancels/resumes undispatched entries. Failed/interrupted turns pause queues. Capacity recovery takes precedence and successful recovery resumes them. Threads schedule independently with serial per-thread native writes. Advancement/uncertain submission retains failed entries without automatic steering/resend. Explicit allowlists must enable queue ops.
+
+Self-tests MUST use purpose:self-test and default notify:null without copying the control source's target. Only explicit dedicated targets may receive test notifications. Dispatch receipts include only deliveries after operation start. Explicit read/wait retains full turn history. Health lines appear only at remaining quota ≤20% (threshold at least 1) or after throttling. notification_ack distinguishes markedRead, alreadyRead (including delivered/digested/resolved), notFound, and notFoundEventIds.
+
+### 7.2 Native retry
+
+After an ARC turn fails/is interrupted, reuse owner snapshots, event wakeups, and the two-second fallback to observe the immediately following turn. Do not add a poller. Read persisted history only after a snapshot shows a candidate. Confirmed new user content stops inheritance observation.
+
+All conditions are required:
+
+- The predecessor has an ARC dispatch record. Snapshot and persisted history agree on adjacency.
+- Native task_started.turn_attribution.turn_trigger is capacity_retry_automatic, capacity_retry_manual, or resume_interrupted_task.
+- Both sources show no new user message. Independent turn_context includes model, effort, and service_tier.
+- Start and recognition occur within ten minutes after the predecessor's native terminal time, from task_complete.completed_at or terminal-event time. Observation/restart never extends it. Incomplete persistence may retain an observation opportunity for at most ten minutes, but inclusion still checks native timestamps.
+
+Record native-retry idempotently before inheriting ingress, target, project, and title. Restart can repair a missing binding after recording. The new turn gets independent event IDs, normal completion/failure delivery, and codex_review. Old failure/interruption events remain. Accepted retry turns are observed through termination even beyond the window. Further retries are checked against their immediate predecessor. Native retries do not trigger ARC capacity resubmission, avoiding competition with Desktop. An outstanding ARC submission is resolved through its original requestId before considering native takeover.
+
+Ordinary Desktop input, including identical resent text, neither enters dispatch history nor inherits notification binding. task_status covers registered ingress turns, not an entire Desktop conversation merely because threadId is subscribed. Explicit ARC turns keep their own records/bindings. Known interaction-response continuation paths remain unchanged. Missing/unknown triggers, incomplete messages/configuration, unreadable history, or expired windows are skipped. Absence of an observed userMessage alone is insufficient. Never backfill outside-window turns. Thread mute/rebind/subscription filters continue applying.
+
+### 7.3 Task overview and completion changes
+
+codex_tasks defaults to compact: title, threadId, project, status, updatedAt in Unix seconds, currentTurn, model/modelSource, without prompt preview. full retains all native fields/previews with the same live enrichment. Filters/pagination are unchanged. Reads never resume tasks. Live enrichment has an eight-second page budget.
+
+Statuses are running, idle, needs-input, failed, retrying, queued, and unconfirmed with a reason. Priority is needs-input, retrying, running, failed, queued, idle. Queue counts coexist with running/failed state. History-only, contradictory, or unavailable evidence is unconfirmed. currentTurn is the latest observation, not proof of activity. Failed live checks retain historical turns with source:persisted-history. Missing model is null/modelSource:not-reported-by-owner. Consumers needing preview/configuration/actions MUST request full.
+
+Codex completed notifications save changes within five seconds: at most five commits, eight-character hashes, titles up to 120 characters, and file/added/deleted/binary counts. Baselines compare the workspace and may include other tasks/pre-existing edits. Attribution is never exclusive. Missing baseline yields current-workspace statistics without claiming recent commits belong to the turn. Truncation, missing baseline, or collection failure adds codex_changes with complete IDs. That query is live/paginated and differs in observation time from the saved snapshot. Delivery retries reuse the snapshot. Empty completion of an asynchronously answered question's original turn emits no event. Actual reply/successor completion still notifies. Other completion events remain.
+
+## Capability and acceptance boundaries
+
+Shared Claude events, inboxes, guide, buckets, backoff, and controls underpin Work's official event channel. Extend only controllable official paths. Unsupported sources remain explicit about no proactive wakeup. Mobile push and unofficial conversation APIs are not fallbacks.
+
+Verify discovery, ingress-isolated persistence, signed callbacks, diagnostics, legacy clients, and localized UI/user guides. Real Work acceptance uses a dedicated Work Cloud chat and purpose:self-test Codex task. Distinguish subscription, callback receipt, automatic model processing, and act confirmation. Missing workspace switches or required user page actions are evidence gaps with concrete steps.
+
+MCP Events require plugin event scanning and workspace permission. Server support does not prove an active chat subscription. Refreshing only tools may omit events. Existing chats may require a new Work Cloud chat after the plugin detects notification. Platform event triggers own subscriptions without scheduled polling.
+
+Desktop task creation requires text. Subscribe before short-task dispatch and narrow afterward. Callback DNS MUST resolve to public addresses. Fake-IP ranges such as 198.18.0.0/15 correctly fail non_public_address. Fix actual-domain DNS rather than weakening validation. Protocol logs include method/result/rejected DNS host/IP, never callback paths or signing keys.
+
+Challenge, subscription, callback-accepted, and model handling are distinct stages. Direct messages, polling, and manual Run now do not prove automatic event wakeup. Writes retain platform/ingress authorization. One-time subscriptions require explicit cancellation in an ordinary interaction turn. Webhook contexts may require persistent triggers, so a completion prompt alone is insufficient cleanup. Verify events/unsubscribe and ARC state afterward.

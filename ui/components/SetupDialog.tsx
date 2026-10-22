@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Check, Circle, ExternalLink } from "lucide-react";
+import prompts from "../../native/src/model-prompts.json";
 import { api } from "../api";
-import { t } from "../i18n";
+import { t, locale } from "../i18n";
 import { copyText, openUrl } from "../platform";
 import { displayMessage } from "../messages";
 import { notify, refreshConnector } from "../state/connector";
@@ -42,8 +43,8 @@ export default function SetupDialog({ mode, setMode, snapshot, error: readError,
     try {
       if (copy) {
         await api("setup/apply", "POST", { stepId: "choose-goal", input: { option: goal } });
-        const params = { goal, cli: snapshot.cliPath, stateDir: snapshot.stateDir };
-        const prompt = t("setup.agentPrompt", params) + (other ? "\n" + t("setup.otherAgentPrompt", params) : "");
+        const params: Record<string, string> = { goal, cli: snapshot.cliPath, stateDir: snapshot.stateDir, locale: locale.get() };
+        const prompt = (prompts.setup + (other ? "\n" + prompts.otherAgent : "")).replace(/\{(\w+)\}/g, (_, key: string) => params[key] ?? "");
         await copyText(prompt);
         notify(t("setup.promptCopied"));
       } else await api("setup/dispatch", "POST", { goal });

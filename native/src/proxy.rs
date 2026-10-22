@@ -24,18 +24,18 @@ pub struct NetworkProxy {
 
 pub fn validate(mode: &str, address: &str) -> Result<()> {
     if !["system", "direct", "custom"].contains(&mode) {
-        return Err("代理模式无效".into());
+        return Err("Invalid proxy mode".into());
     }
     if mode == "custom" {
         parse_url(address)?;
     } else if !address.is_empty() {
-        return Err("仅自定义代理可设置地址".into());
+        return Err("Only a custom proxy accepts an address".into());
     }
     Ok(())
 }
 
 fn parse_url(address: &str) -> Result<Url> {
-    let error = "请输入 HTTP/HTTPS 代理地址，例如 http://127.0.0.1:7890；不支持地址内嵌账号密码";
+    let error = "Enter an HTTP/HTTPS proxy URL, such as http://127.0.0.1:7890. Embedded credentials are unsupported.";
     if address.len() > 2048 {
         return Err(error.into());
     }
@@ -203,10 +203,10 @@ impl NetworkProxy {
     async fn output(mut command: tokio::process::Command) -> Result<String> {
         let output = tokio::time::timeout(Duration::from_secs(3), command.output())
             .await
-            .map_err(|_| "读取系统代理超时，请选择自定义代理或不使用代理")?
-            .map_err(|_| "无法读取系统代理，请选择自定义代理或不使用代理")?;
+            .map_err(|_| "System proxy read timed out. Select a custom proxy or no proxy.")?
+            .map_err(|_| "Cannot read the system proxy. Select a custom proxy or no proxy.")?;
         if !output.status.success() {
-            return Err("无法读取系统代理，请选择自定义代理或不使用代理".into());
+            return Err("Cannot read the system proxy. Select a custom proxy or no proxy.".into());
         }
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
@@ -233,7 +233,9 @@ impl NetworkProxy {
             .iter()
             .any(|key| settings.get(key) == Some(&"1"))
         {
-            return Err("暂不支持系统 PAC/WPAD，请选择自定义代理或不使用代理".into());
+            return Err(
+                "System PAC/WPAD is unsupported. Select a custom proxy or no proxy.".into(),
+            );
         }
         for scheme in ["HTTP", "HTTPS"] {
             if settings.get(format!("{scheme}Enable").as_str()) != Some(&"1") {
@@ -241,19 +243,21 @@ impl NetworkProxy {
             }
             let host = settings
                 .get(format!("{scheme}Proxy").as_str())
-                .ok_or("系统代理缺少地址")?;
+                .ok_or("System proxy address is missing")?;
             let port = settings
                 .get(format!("{scheme}Port").as_str())
                 .and_then(|p| p.parse::<u16>().ok())
                 .filter(|p| *p > 0)
-                .ok_or("系统代理端口无效")?;
+                .ok_or("Invalid system proxy port")?;
             let mut url = Url::parse("http://localhost").unwrap();
             if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-                url.set_ip_host(ip).map_err(|_| "系统代理 IP 无效")?;
+                url.set_ip_host(ip).map_err(|_| "Invalid system proxy IP")?;
             } else {
-                url.set_host(Some(host)).map_err(|_| "系统代理地址无效")?;
+                url.set_host(Some(host))
+                    .map_err(|_| "Invalid system proxy address")?;
             }
-            url.set_port(Some(port)).map_err(|_| "系统代理端口无效")?;
+            url.set_port(Some(port))
+                .map_err(|_| "Invalid system proxy port")?;
             if scheme == "HTTP" {
                 self.http = Some(url);
             } else {
@@ -262,7 +266,9 @@ impl NetworkProxy {
         }
         if self.http.is_none() && self.https.is_none() && settings.get("SOCKSEnable") == Some(&"1")
         {
-            return Err("暂不支持仅 SOCKS 的系统代理，请指定 HTTP/HTTPS 代理".into());
+            return Err(
+                "SOCKS-only system proxies are unsupported. Specify an HTTP/HTTPS proxy.".into(),
+            );
         }
         Ok(())
     }
@@ -280,9 +286,11 @@ $f=$c.DefaultConnectionSettings
 "#]);
         let text = Self::output(command).await?;
         let settings: Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
-            .map_err(|_| "无法解析 Windows 系统代理")?;
+            .map_err(|_| "Cannot parse the Windows system proxy")?;
         if settings["auto"] == true {
-            return Err("暂不支持系统 PAC/WPAD，请选择自定义代理或不使用代理".into());
+            return Err(
+                "System PAC/WPAD is unsupported. Select a custom proxy or no proxy.".into(),
+            );
         }
         if settings["enabled"] != true {
             return Ok(());
@@ -307,7 +315,9 @@ $f=$c.DefaultConnectionSettings
             }
         }
         if self.http.is_none() && self.https.is_none() {
-            return Err("系统未提供可用的 HTTP/HTTPS 代理，请设置自定义代理".into());
+            return Err(
+                "No HTTP/HTTPS system proxy is available. Configure a custom proxy.".into(),
+            );
         }
         Ok(())
     }

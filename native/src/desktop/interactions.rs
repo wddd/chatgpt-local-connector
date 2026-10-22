@@ -120,7 +120,7 @@ pub(crate) fn pending(state: &Value, session: &str) -> Vec<Value> {
             json!({"via":"act","op":"codex_respond","args":{"id":r["id"],"backendSession":session},
                 "hint":if r["method"] == "request_user_input_async" {"Supply result: {answer: <chosen option or free text>}."} else {"Supply result using this native request's response schema; never invent approval."}})
         } else {
-            json!({"hint":"需在 Desktop 中处理 / Handle in Codex Desktop; no supported response path."})
+            json!({"hint":"Handle in Codex Desktop. No supported response path."})
         };
     }
     requests
@@ -156,7 +156,7 @@ impl Ipc {
             .find(|r| r["id"] == key)
             .ok_or("STALE_INTERACTION")?;
         if request["canRespond"] != true {
-            return Err("DESKTOP_RESPONSE_UNSUPPORTED: 需在 Desktop 中处理".into());
+            return Err("DESKTOP_RESPONSE_UNSUPPORTED: Handle in Codex Desktop".into());
         }
         let mut next_turn = Value::Null;
         if request["method"] == "request_user_input_async" {

@@ -1,8 +1,8 @@
-# 验收
+# Acceptance
 
-[开发](development.md) · [CLI 契约](../reference/cli.md)
+[Development](development.md) · [CLI contracts](../reference/cli.md)
 
-## UI 场景
+## UI scenarios
 
 ```sh
 npm ci
@@ -10,35 +10,43 @@ npx playwright install chromium
 npm run accept:ui
 ```
 
-脚本启动独立 Vite 页面，以 640 和 1280 像素两种宽度、800 像素高度截图。已有服务占用 5187 端口时先停止该开发服务。场景模式不连接真实 Core，脚本会拒绝所有实际管理 API 请求。需要 WebKit 对照时运行：
+The script starts an isolated Vite page and captures widths 640 and 1280 at height 800. Stop the existing development service first if it owns port 5187. Scenario mode never connects to real Core. The script rejects all actual management API requests. For WebKit comparison:
 
 ```sh
 npx playwright install webkit
 npm run accept:ui -- --webkit
 ```
 
-产物位于 `output/acceptance/ui/<时间戳>-<浏览器>/`：
+Artifacts live in `output/acceptance/ui/<timestamp>-<browser>/`:
 
-- `index.html`：全部场景的当前截图、上次截图和像素差异对照。
-- `report.json`：缺失基线、变化像素数、变化比例和渲染错误。
-- `<场景>-<宽度>.png` / `.json`：截图与实时派生状态。
-- `*-before.png` / `*-diff.png`：上次基线和像素差异。
+- index.html compares current, previous, and pixel-diff images for all scenarios.
+- report.json records missing baselines, changed pixels/ratios, and render errors.
+- `<scenario>-<width>.png` / `.json` contain screenshots and live derived state.
+- `*-before.png` / `*-diff.png` contain the prior baseline and pixel differences.
 
-首次运行只产生基线；后续运行与同一浏览器最近一次目录比较。变化标记供人工看图，不自动判为缺陷；渲染异常、意外真实 API 请求或场景节点缺失使脚本非零退出。基线和报告均被 Git 忽略。
+The first run creates a baseline. Later runs compare with the latest directory for the same browser. Changes require visual review and are not automatically defects. Render errors, unexpected real API requests, or missing scenario nodes cause nonzero exit. Git ignores baselines and reports.
 
-场景位于 `tooling/acceptance/scenarios/*.json`。当前包括 `idle`、`single-task`、`parallel-seven`、`approval`、`long-multilingual`、`narrow-tentacles`、`left-panel`、`right-panel`、`light`、`dark`。左右面板分别截图，遵循产品单面板选择规则。可复制 JSON 修改 Agent、任务阶段、文案、主题、语言和面板；不需要添加单元测试。
+Scenarios in tooling/acceptance/scenarios/*.json include idle, single-task, parallel-seven, approval, long-multilingual, narrow-tentacles, left-panel, right-panel, light, and dark. Left and right panels are captured separately under the product's single-panel rule. Copy scenario JSON to change Agents, phases, text, themes, language, and panels without unit tests.
 
-手动查看运行 `npm run dev:ui` 后打开 `http://127.0.0.1:5187/?scenario=<场景名>`。只有 Vite 开发模式加载场景；发布构建不包含 fixture 模块。截图固定时间、减少动画，便于比较布局；不代表真实 Agent 或原生窗口验收。
+For manual inspection, run npm run dev:ui and open `http://127.0.0.1:5187/?scenario=<scenario>`. Only Vite development loads scenarios. Release builds exclude fixture modules. Fixed time and reduced animation support layout comparison. These screenshots do not prove real Agent or native-window behavior.
 
-## 通知可达性与控制源 guide
+## Notification reachability and guides
 
 ```sh
 node tooling/acceptance/notifications.mjs
 ```
 
-通过独立临时状态、MCP fixture、原生 Agent 模拟进程及本地假 Claude CLI 验收；所有派发使用 `purpose:"self-test"`。覆盖新目标、发送成功但未确认、一次性确认/重放、重启持久化、握手超时、投递失败与恢复，以及四种派发回执的等待分支。历史中位耗时使用合成记录，超时边界只修改临时状态中的截止时间。验证来源裁剪、schema 索引与 dispatch_policy 默认筛选，输出至 `output/acceptance/notifications/`（可传一个输出目录参数）。不调用真实账号或通知目标；真实云端会话收到验证码并回调仍需独立确认。
+Acceptance uses temporary state, the MCP fixture, simulated native Agent processes, and a fake local Claude CLI. Every dispatch MUST use purpose:"self-test". It covers new targets, successful sends without acknowledgement, one-time acknowledgement/replay, restart persistence, handshake timeout, delivery failure/recovery, and wait branches for four dispatch receipts. Historical duration uses synthetic records. Timeout checks change only temporary-state deadlines. It checks source-specific schemas, guide indexes, and default dispatch_policy filtering. Output defaults to output/acceptance/notifications/ and accepts an output-directory argument. No real accounts or notification targets are used. Actual cloud receipt and acknowledgement need separate evidence.
 
-## 已安装 App 自截图
+## Dispatch decision view
+
+```sh
+node tooling/acceptance/dispatch-policy.mjs
+```
+
+This isolated MCP scenario checks decision/full views, criteria hash reuse and invalidation, grouped duration medians and outcomes, self-test exclusion, defaults and restrictions, shared quota references, stale timestamps, and inventory filtering. It seeds synthetic history and native responses without dispatching real work. Output defaults to output/acceptance/dispatch-policy/. An optional argument selects another output directory.
+
+## Installed App snapshots
 
 ```sh
 arc cli app start
@@ -46,33 +54,35 @@ arc cli app snapshot --out ./output/acceptance/manual
 printf '%s' '{"width":1280,"height":800,"panel":{"kind":"agent","id":"codex"}}' | arc cli app snapshot --out ./output/acceptance/agent --stdin
 ```
 
-未安装 shim 时使用 App 内 CLI 的完整路径。macOS 可运行 `cli install-shim` 建立 `~/.local/bin/arc`，重复运行幂等；遇到已有其他文件会停止，不覆盖。返回 `pathHint` 检查非交互 shell 的 PATH；缺少路径时可复制其中的 zsh 命令，不会自动修改 shell 配置。检查使用最小系统 PATH 启动 `$SHELL -c`，避免继承交互 shell 已添加的路径；不代表 SSH 服务端的自定义环境。
+Without a shim, use the bundled CLI's absolute path. macOS cli install-shim idempotently creates ~/.local/bin/arc and stops rather than overwriting another file. Inspect pathHint for noninteractive-shell PATH. Its zsh command may be copied when needed. Shell configuration is never changed automatically. The check starts `$SHELL -c` with a minimal system PATH to avoid inherited interactive additions. It does not prove a customized SSH environment.
 
-macOS App 自截图使用 WKWebView，不需要屏幕录制权限。输出包含 `snapshot.png`、`view-model.json`；返回值给出绝对路径。省略 `--out` 时保存在目标机状态目录的 `acceptance/<唯一编号>/`。Windows/Linux 桌面可导出渲染状态，PNG 返回 `NOT_SUPPORTED`；Linux 无界面核心没有可导出的 WebView。`layoutSettled` 始终为布尔值。检查 `png.ok` 和 `layoutSettled`，不要仅凭命令成功认定图片完整。
+macOS snapshots use WKWebView without Screen Recording permission. Output includes snapshot.png and view-model.json with absolute paths in the result. Omitted --out uses the target state directory's acceptance/<unique-id>/. Windows/Linux desktops can export rendered state but return NOT_SUPPORTED for PNG. Headless Linux has no WebView. layoutSettled is always boolean. Check png.ok and layoutSettled rather than assuming command success proves a complete image.
 
-指定 `panel.kind` 为 `agent`、`source` 或 `none`；前两者需要节点 `id`。窗口尺寸与面板选择保留在 App 中。状态和截图依次采集，活动任务可能在两者之间更新。
+panel.kind is agent, source, or none. The first two require node id. Window size and panel selection persist in the App. State and screenshots are captured sequentially, so active tasks may change between them.
 
-## 跨设备
+## Cross-device acceptance
 
-目标机需安装包含验收命令的 macOS App、配置可执行的 Codex 登录，并允许 SSH 别名免交互连接。脚本优先找 PATH 中的 `arc`，然后找标准 App 安装位置。
+The target needs a macOS App with acceptance commands, working Codex login, and noninteractive SSH access through the selected alias. The script first finds arc in PATH, then checks standard App locations.
 
 ```sh
 node tooling/acceptance/remote.mjs --host <host>
 node tooling/acceptance/remote.mjs --host <host> --project /path/to/project --out ./output/acceptance/remote-manual
 ```
 
-脚本通过 `app start` 启动 App 管理的 Core，读取 doctor，以 `local-cli` 派发只回复 `ARC_ACCEPTANCE_OK` 的只读任务，等待创建回执和任务终态，核对任务记录、来源与 activity，再收集 App 截图。不会启动独立 headless daemon，不执行宿主侧循环 SSH 轮询；等待由目标机 `cli wait` 完成，每段有明确期限。审批使用请求中的 `approval:bypass`，不修改目标机全局设置。
+The script starts App-managed Core through app start, reads doctor, dispatches a local-cli read-only self-test that replies only ARC_ACCEPTANCE_OK, waits for creation and terminal receipts, checks records/origin/activity, and captures the App. It starts no independent headless daemon. Target-side cli wait performs bounded waiting without host-side SSH polling loops. Per-request approval:bypass does not change global target settings.
 
-默认输出位于 `output/acceptance/remote/<时间戳>/`。每一步的 CLI JSON、`report.json`、`view-model.json` 与 `snapshot.png` 放在同一目录。报告将实际断言失败记为 `defects`；CLI 版本缺能力、无法连接或任务过快导致活动样本缺失等记为 `evidenceGaps`。退出码 0 表示已取得完整证据，1 表示发现缺陷，2 表示只有证据缺口。报告的 `assertions` 逐项记录：实际渲染任务按 `threadId` / `taskId` 匹配本轮派发、其来源为 `local-cli`、`layoutSettled:true`，以及 PNG 合成白底后的亮度像素方差大于 1。明确不匹配记为缺陷；缺少可判断数据或 PNG 无法解码记为证据缺口。任务失败时仍尝试采集截图。任务与目标机原始截图保留，可按报告中的 ID 和路径查看。
+Default output is output/acceptance/remote/<timestamp>/. Each step's CLI JSON, report.json, view-model.json, and snapshot.png share that directory. Failed assertions are defects. Missing CLI capability, connection failures, or tasks too fast to capture activity are evidenceGaps. Exit 0 means complete evidence, 1 means defects, and 2 means evidence gaps only.
 
-## 控制源与等待
+Assertions match rendered tasks to the dispatch by threadId/taskId, confirm local-cli origin and layoutSettled:true, and require PNG luminance variance above 1 after compositing on white. Explicit mismatches are defects. Missing data or undecodable PNGs are evidence gaps. Task failure still triggers a screenshot attempt. Tasks and original target screenshots remain available through report IDs and paths.
+
+## Control source and waiting
 
 ```sh
 arc cli control guide
 arc cli control guide codex_create
-printf '%s' '{"prompt":"Do not call tools. Reply ARC_ACCEPTANCE_OK.","mode":"read-only"}' | arc cli control codex_create --stdin
+printf '%s' '{"prompt":"Do not call tools. Reply ARC_ACCEPTANCE_OK.","mode":"read-only","purpose":"self-test","notify":null}' | arc cli control codex_create --stdin
 printf '%s' '{"threadId":"<thread-id>","turnId":"<turn-id>","until":"terminal"}' | arc cli wait --control --op codex_wait --stdin --until '/conditionMet==true' --timeout 60
 arc cli wait --op status --until '/core/desktop/state=="ready"' --timeout 20
 ```
 
-多个 `--until` 为 AND；支持 JSON Pointer 的 `==`、`!=` 和 `exists`。字符串比较值需要 JSON 双引号。超时读取 `error.lastResult`；不会取消或重复派发任务。完整参数从 `cli schema` 和 `cli control guide <op>` 获取。
+Multiple --until conditions are ANDed. JSON Pointer supports ==, !=, and exists. String comparison values need JSON double quotes. On timeout, read error.lastResult. Waiting never cancels or redispatches tasks. Read full parameters through cli schema and cli control guide <op>.

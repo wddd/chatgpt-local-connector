@@ -22,7 +22,7 @@ pub fn install(app: &mut tauri::App) -> Result<(), String> {
     validate(&settings)?;
     app.set_dock_visibility(settings["showDock"].as_bool().unwrap());
     app.tray_by_id("main-tray")
-        .ok_or("菜单栏图标尚未就绪")?
+        .ok_or("The menu bar icon is not ready")?
         .set_visible(settings["showMenuBar"].as_bool().unwrap())
         .map_err(|e| e.to_string())?;
     app.manage(Preferences(Mutex::new(settings)));
@@ -34,13 +34,13 @@ fn validate(settings: &Value) -> Result<(), String> {
         || !settings["showDock"].is_boolean()
         || (settings["showMenuBar"] == false && settings["showDock"] == false)
     {
-        return Err("显示设置无效".into());
+        return Err("Invalid display settings".into());
     }
     Ok(())
 }
 fn apply(app: &tauri::AppHandle, settings: &Value) -> Result<(), String> {
     app.tray_by_id("main-tray")
-        .ok_or("菜单栏图标尚未就绪")?
+        .ok_or("The menu bar icon is not ready")?
         .set_visible(settings["showMenuBar"].as_bool().unwrap())
         .map_err(|e| e.to_string())?;
     app.set_dock_visibility(settings["showDock"].as_bool().unwrap())
@@ -53,7 +53,7 @@ pub async fn request(app: &tauri::AppHandle, method: &str, body: Value) -> Resul
         return Ok(current.clone());
     }
     if method != "PUT" {
-        return Err("不支持的显示设置操作".into());
+        return Err("Unsupported display settings operation".into());
     }
     validate(&body)?;
     if let Err(error) = apply(app, &body) {

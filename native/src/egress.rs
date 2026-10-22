@@ -431,7 +431,7 @@ pub(crate) fn unknown_op(name: &str, ops: &[Value]) -> String {
     json!({"code":"UNKNOWN_OP","op":name,"message":"Call guide for the enabled op index, then query({op: \"guide\", args: {op: \"<name>\"}}) for its schema (also works with a cached guide schema).","candidates":candidates}).to_string()
 }
 
-pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -> Value {
+pub(crate) fn guide(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> Value {
     let ops = ops
         .iter()
         .map(|op| source_spec(op, origin))
@@ -453,7 +453,7 @@ pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -
         "chatgpt" => "chatgpt",
         _ => "other",
     };
-    let guides = &catalog()["guides"][if locale == "zh-CN" { "zh-CN" } else { "en" }];
+    let guides = &catalog()["guides"]["en"];
     let body = if guides[topic].is_object() {
         &guides[topic][source]
     } else {
@@ -479,7 +479,7 @@ pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -
                 entry["description"] = json!(op["description"]
                     .as_str()
                     .unwrap_or("")
-                    .split(['。', '\n'])
+                    .split(". ")
                     .next()
                     .unwrap_or(""));
             }
@@ -491,7 +491,7 @@ pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -
     } else {
         ""
     };
-    let mut result = json!({"topic":topic,"controlSource":source,"content":format!("{}\n{}{}",body.as_str().unwrap_or(""),if topic == "loop" {guides["common"].as_str().unwrap_or("")} else {""},context),"examples":examples,"ops":index});
+    let mut result = json!({"topic":topic,"controlSource":source,"content":format!("MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.\n\n{}\n{}{}",body.as_str().unwrap_or(""),if topic == "loop" {guides["common"].as_str().unwrap_or("")} else {""},context),"examples":examples,"ops":index});
     if source == "chatgpt" {
         result["events"] = crate::claude_notify::subscriptions::guide();
     }
@@ -508,10 +508,10 @@ fn source_spec(op: &Value, origin: &Value) -> Value {
             ["waitTimeoutMs"]
             .as_u64()
             .unwrap_or(1800000);
-        op["inputSchema"]["properties"]["timeoutMs"]["description"] = json!(format!("Wait up to {limit}ms per call; on timeout follow next.args with the same IDs and expectedHash. Transport heartbeats do not extend the client deadline."));
+        op["inputSchema"]["properties"]["timeoutMs"]["description"] = json!(format!("Wait up to {limit}ms per call. On timeout follow next.args with the same IDs and expectedHash. Transport heartbeats do not extend the client deadline."));
         if let Some(description) = op["description"].as_str() {
             op["description"] = json!(
-                description.replace("Claude 单轮封顶 170000 毫秒，超出时返回 waitLimit；", "")
+                description.replace("Claude waits are capped at 170000 milliseconds and return waitLimit when exceeded. ", "")
             );
         }
         if let Some(limit) = crate::control_sources::preset(string(origin, "controlSource"))

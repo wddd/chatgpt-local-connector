@@ -12,7 +12,7 @@ let bytes = 0;
 async function inspect(dir) {
   for (const item of await readdir(dir, { withFileTypes: true })) {
     const file = path.join(dir, item.name);
-    if (['node_modules', 'runtime', 'node', 'node.exe', 'npm', 'npx', 'desktop-launch.mjs'].includes(item.name)) throw new Error(`产物仍包含旧运行环境：${file}`);
+    if (['node_modules', 'runtime', 'node', 'node.exe', 'npm', 'npx', 'desktop-launch.mjs'].includes(item.name)) throw new Error(`The artifact still contains the old runtime: ${file}`);
     if (item.isDirectory()) await inspect(file);
     else bytes += (await stat(file)).size;
   }
@@ -22,11 +22,11 @@ const skill = path.join(root, ...(root.endsWith('.app') ? ['Contents', 'Resource
 for (const file of ['SKILL.md', ...(await readdir(new URL('../skills/arc-setup/playbooks/', import.meta.url))).map(name => `playbooks/${name}`)]) {
   const actual = await readFile(path.join(skill, file), 'utf8');
   const expected = await readFile(new URL(`../skills/arc-setup/${file}`, import.meta.url), 'utf8');
-  if (actual !== expected) throw new Error(`安装包 skill 资源与源码不一致：${file}`);
+  if (actual !== expected) throw new Error(`Packaged skill resource differs from source: ${file}`);
 }
 if (process.platform === 'darwin' && root.endsWith('.app')) {
   const identifier = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', path.join(root, 'Contents', 'Info.plist')], { encoding: 'utf8' }).trim();
-  if (!['com.whzxc.agent-remote-control', 'com.whzxc.agent-remote-control.dev'].includes(identifier)) throw new Error('安装包 bundle identifier 不正确。');
+  if (!['com.whzxc.agent-remote-control', 'com.whzxc.agent-remote-control.dev'].includes(identifier)) throw new Error('Incorrect package bundle identifier.');
   if (identifier === 'com.whzxc.agent-remote-control') {
     verifyMacosReleaseSignature(root, identifier);
     verifyMacosReleaseSignature(path.join(root, 'Contents/Resources/bin/arc'), `${identifier}.core`);
@@ -36,22 +36,22 @@ if (process.platform === 'darwin' && root.endsWith('.app')) {
   const native = path.join(resources,'bin/arc');
   const version = buildVersion();
   const appVersion = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', path.join(root, 'Contents', 'Info.plist')], { encoding: 'utf8' }).trim();
-  if (appVersion !== version) throw new Error('安装包版本与构建版本不一致。');
-  if (execFileSync(native,['--version'],{encoding:'utf8'}).trim() !== version) throw new Error('安装包缺少同版本独立 Core。');
+  if (appVersion !== version) throw new Error('Package version differs from build version.');
+  if (execFileSync(native,['--version'],{encoding:'utf8'}).trim() !== version) throw new Error('The package lacks a standalone Core of the same version.');
   execFileSync('codesign',['--verify','--strict',native],{stdio:'inherit'});
   execFileSync('codesign',['--verify','--strict',path.join(resources, 'bin/arc-screen')],{stdio:'inherit'});
   const assets = JSON.parse(execFileSync('xcrun', ['assetutil', '--info', path.join(resources, 'Assets.car')], { encoding: 'utf8' }));
   const name = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIconName', path.join(root, 'Contents', 'Info.plist')], { encoding: 'utf8' }).trim();
   const file = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIconFile', path.join(root, 'Contents', 'Info.plist')], { encoding: 'utf8' }).trim();
-  if (file !== name) throw new Error('CFBundleIconFile 与 CFBundleIconName 必须使用同一个原生图标名称。');
+  if (file !== name) throw new Error('CFBundleIconFile and CFBundleIconName must use the same native icon name.');
   await stat(path.join(resources, `${file}.icns`));
   if (!assets.some(asset => asset.AssetType === 'Icon Image' && asset.Name === name)) {
-    throw new Error('安装包缺少与 CFBundleIconName 对应的原生分层图标。');
+    throw new Error('The package lacks the native layered icon specified by CFBundleIconName.');
   }
   for (const appearance of ['NSAppearanceNameAqua', 'NSAppearanceNameDarkAqua']) {
     if (!assets.some(asset => asset.AssetType === 'IconImageStack' && asset.Name === name && asset.Appearance === appearance)) {
-      throw new Error(`安装包缺少原生图标外观：${appearance}`);
+      throw new Error(`The package lacks native icon appearance: ${appearance}`);
     }
   }
 }
-console.log(`原生发行产物检查通过：${(bytes / 1024 / 1024).toFixed(2)} MiB，无 Node/npm 运行环境。`);
+console.log(`Native distribution check passed: ${(bytes / 1024 / 1024).toFixed(2)} MiB. No Node/npm runtime.`);

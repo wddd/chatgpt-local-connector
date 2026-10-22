@@ -100,8 +100,11 @@ pub fn protected_path(path: &Path) -> bool {
 
 pub fn check_path(path: &Path) -> Result<()> {
     if protected_path(path) && full_disk_access() != "granted" {
-        return Err(json!({"code":"PERMISSION_REQUIRED","permissionId":"full-disk-access",
-            "message":"Open ARC Permissions & readiness to grant Full Disk Access. / 打开 ARC 权限与就绪开启完全磁盘访问。"}).to_string());
+        return Err(
+            json!({"code":"PERMISSION_REQUIRED","permissionId":"full-disk-access",
+            "message":"Open ARC Permissions & readiness to grant Full Disk Access."})
+            .to_string(),
+        );
     }
     Ok(())
 }
@@ -136,7 +139,7 @@ pub fn require_command_access(state: &str) -> Result<()> {
     if matches!(state, "granted" | "not-applicable") {
         return Ok(());
     }
-    Err(json!({"code":"PERMISSION_REQUIRED","permissionId":"command-full-disk-access","message":"Grant Full Disk Access to ARC App (the bundled Codex execution host); see ARC Permissions & readiness. / 请在 ARC 权限与就绪查看指引，为 ARC App（内置 Codex 执行宿主）开启完全磁盘访问。"}).to_string())
+    Err(json!({"code":"PERMISSION_REQUIRED","permissionId":"command-full-disk-access","message":"Grant Full Disk Access to ARC App (the bundled Codex execution host). See ARC Permissions & readiness."}).to_string())
 }
 
 pub fn grant_target() -> Option<PathBuf> {

@@ -10,7 +10,7 @@ import { buildEnv } from './build-env.mjs';
 
 // One development process owns the core and all desktop windows.
 const root = new URL('../', import.meta.url);
-if (process.argv.includes('--release')) throw new Error('dev 仅运行开发模式；发行构建请用 desktop:build。');
+if (process.argv.includes('--release')) throw new Error('dev runs development mode only. Use desktop:build for distribution builds.');
 const env = { ...buildEnv(), ARC_STATE_DIR: devStateDir };
 let owner;
 try {
@@ -23,16 +23,16 @@ try {
   }
 } catch { /* Stale metadata does not prevent starting a new development owner. */ }
 if (owner) {
-  if (owner.owner !== 'core' || owner.version !== env.ARC_BUILD_VERSION) throw new Error('这份数据已有旧版本后台运行，请先退出旧应用，或使用另一 ARC_STATE_DIR。');
+  if (owner.owner !== 'core' || owner.version !== env.ARC_BUILD_VERSION) throw new Error('An older background process owns this state directory. Quit the old app or use another ARC_STATE_DIR.');
 }
 if (spawnSync('cargo', ['--version'], { env, stdio: 'ignore' }).status !== 0) {
   const cargo = spawnSync('rustup', ['which', 'cargo'], { env, encoding: 'utf8' });
-  if (cargo.status !== 0) throw new Error('请先安装 Rust stable 工具链，并确保 cargo 或 rustup 在 PATH 中。');
+  if (cargo.status !== 0) throw new Error('Install the Rust stable toolchain first. Ensure cargo or rustup is on PATH.');
   env.PATH = path.dirname(cargo.stdout.trim()) + path.delimiter + (env.PATH || '');
 }
 const prune = spawnSync(process.execPath, [fileURLToPath(new URL('tooling/prune-build-cache.mjs', root))],
   { cwd: fileURLToPath(root), env, stdio: 'inherit' });
-if (prune.status !== 0) throw new Error('无法检查 Rust 构建缓存');
+if (prune.status !== 0) throw new Error('Cannot check the Rust build cache');
 await buildNative();
 if (process.platform === 'win32') {
   cpSync(fileURLToPath(new URL('dist/native/', root)), fileURLToPath(new URL('target/debug/bin/', root)), { recursive: true });

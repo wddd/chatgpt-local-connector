@@ -219,7 +219,8 @@ pub fn desktop_route(route: &str) -> bool {
 }
 
 pub fn error_code(message: &str) -> &str {
-    if message.contains("无法连接本机 Core") || message.contains("请先打开 Agent Remote Control")
+    if message.contains("Cannot connect to local Core")
+        || message.contains("Open Agent Remote Control first")
     {
         return "APP_UNAVAILABLE";
     }

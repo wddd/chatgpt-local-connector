@@ -1,6 +1,7 @@
 //! User-owned dispatch choices; native capability and quota facts stay upstream.
 use crate::*;
 use serde::{Deserialize, Serialize};
+mod decision;
 static RECORDS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[derive(Default, Deserialize, Serialize)]
@@ -225,7 +226,7 @@ async fn models(c: &control::Control) -> Result<Value> {
     }
     Ok(json!(rows))
 }
-async fn codex_facts(c: &control::Control) -> Result<Value> {
+async fn codex_facts(c: &control::Control, compact: bool) -> Result<Value> {
     let policy = read()?;
     let (models, quota) = tokio::join!(
         models(c),
@@ -255,7 +256,7 @@ async fn codex_facts(c: &control::Control) -> Result<Value> {
         "models":models.unwrap_or_else(|error| json!({"unavailable":error})),
         "policy":policy,
         "quota":quota.unwrap_or_else(|error| json!({"unavailable":error})),
-        "history":history("codex").unwrap_or_else(|error| json!({"unavailable":error}))
+        "history":history_view("codex", compact).unwrap_or_else(|error| json!({"unavailable":error}))
     }))
 }
 
@@ -295,7 +296,7 @@ pub(crate) async fn query(
             })).collect::<Vec<_>>()
         });
         if agent == "codex" {
-            let facts = codex_facts(c).await?;
+            let facts = codex_facts(c, args["view"] != "full").await?;
             for key in ["models", "quota", "history"] {
                 row[key] = facts[key].clone();
             }
@@ -310,14 +311,22 @@ pub(crate) async fn query(
             row["policy"] =
                 serde_json::to_value(policies.agents.get(&agent).cloned().unwrap_or_default())
                     .map_err(|e| e.to_string())?;
-            row["history"] = history(&agent).unwrap_or_else(|error| json!({"unavailable":error}));
+            row["history"] = history_view(&agent, args["view"] != "full")
+                .unwrap_or_else(|error| json!({"unavailable":error}));
             row["selectionSupported"] = json!(true);
         }
     }
-    Ok(json!({"observedAt":now(),"criteria":policies.criteria,"agents":rows}))
+    Ok(decision::present(
+        json!({"observedAt":now(),"criteria":policies.criteria,"agents":rows}),
+        args,
+    ))
 }
 
 fn history(agent: &str) -> Result<Value> {
+    history_view(agent, false)
+}
+
+fn history_view(agent: &str, compact: bool) -> Result<Value> {
     #[derive(Default)]
     struct Group {
         dispatches: u64,
@@ -391,6 +400,27 @@ fn history(agent: &str) -> Result<Value> {
                     group.durations.push(ms);
                 }
             }
+        }
+    }
+    if compact {
+        let mut other = Group::default();
+        groups.retain(|_, group| {
+            if group.dispatches >= 3 {
+                return true;
+            }
+            other.dispatches += group.dispatches;
+            other.pass += group.pass;
+            other.rework += group.rework;
+            other.failed += group.failed;
+            other.interrupted += group.interrupted;
+            other.durations.append(&mut group.durations);
+            false
+        });
+        if other.dispatches > 0 {
+            groups.insert(
+                ("other".into(), String::new(), String::new(), "{}".into()),
+                other,
+            );
         }
     }
     let mut groups = groups

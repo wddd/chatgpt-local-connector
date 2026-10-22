@@ -337,7 +337,7 @@ impl Service {
         };
         let desktop = match self.control.ipc().await {
             Ok(_) => {
-                json!({"supported":true,"state":"ready","executionOwner":"desktop","message":"Codex Desktop 已就绪"})
+                json!({"supported":true,"state":"ready","executionOwner":"desktop","message":"Codex Desktop is ready"})
             }
             Err(e) => {
                 json!({"supported":crate::desktop::installation().is_some(),"state":if crate::desktop::installation().is_some(){"disconnected"}else{"unavailable"},"executionOwner":"desktop","message":e})
@@ -1152,7 +1152,7 @@ impl Service {
                 }
                 ("GET", "codex/login") => {
                     let binary = crate::agents::codex_binary()
-                        .ok_or(if cfg!(target_os = "linux") { "CODEX_NOT_FOUND: install Codex CLI and run codex login in your terminal." } else { "请先安装 Codex Desktop" })?;
+                        .ok_or(if cfg!(target_os = "linux") { "CODEX_NOT_FOUND: install Codex CLI and run codex login in your terminal." } else { "Install Codex Desktop first" })?;
                     let out = command(binary)
                         .args(["login", "status"])
                         .output()
@@ -1164,7 +1164,9 @@ impl Service {
                 }
                 ("POST", "codex/login") => {
                     crate::desktop::open_app().await?;
-                    Ok(json!({"state":"unauthenticated","message":"请在 Codex Desktop 中完成登录"}))
+                    Ok(
+                        json!({"state":"unauthenticated","message":"Complete login in Codex Desktop"}),
+                    )
                 }
                 _ => Err("UNKNOWN_ROUTE".into()),
             };

@@ -108,7 +108,9 @@ pub async fn set(enabled: bool) -> Result<()> {
             let command = login_command(&exe);
             // Windows Run values support command lines up to 260 characters.
             if command.encode_utf16().count() > 260 {
-                return Err("登录启动命令超过 Windows 的 260 字符限制".into());
+                return Err(
+                    "The login startup command exceeds the Windows limit of 260 characters".into(),
+                );
             }
             let (key, _) = user.create_subkey(RUN_KEY).map_err(|e| e.to_string())?;
             key.set_value(RUN_VALUE, &command)
@@ -126,7 +128,7 @@ pub async fn set(enabled: bool) -> Result<()> {
         return Ok(());
     }
     #[allow(unreachable_code)]
-    Err("不支持开机启动".into())
+    Err("Login startup is unsupported".into())
 }
 
 pub async fn readiness() -> serde_json::Value {

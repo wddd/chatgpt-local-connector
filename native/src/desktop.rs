@@ -48,7 +48,8 @@ pub fn installation() -> Option<Installation> {
     windows::installation()
 }
 pub fn require_installation() -> Result<Installation> {
-    installation().ok_or_else(|| "请先安装 Codex Desktop，并确认其捆绑的 Codex CLI 可用".into())
+    installation()
+        .ok_or_else(|| "Install Codex Desktop and ensure its bundled Codex CLI is available".into())
 }
 const SNAPSHOT_TTL: Duration = Duration::from_secs(4);
 struct Snapshot {

@@ -888,7 +888,8 @@ pub(crate) async fn stdio_connection(port: u16, token: String, ingress: String) 
 
 pub async fn forward_request(route: &str, method: &str, body: Value) -> Result<Value> {
     crate::init_crypto();
-    let unavailable = "无法连接本机 Core，请重新运行 CLI 或打开 Agent Remote Control。";
+    let unavailable =
+        "Cannot connect to local Core. Run the CLI again or open Agent Remote Control.";
     let info = load(&root().join("app/native.json")).map_err(|_| unavailable)?;
     let port = info["port"]
         .as_u64()

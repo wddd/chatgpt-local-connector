@@ -57,7 +57,7 @@ pub async fn resolve(c: &Control, id: &str) -> Result<Value> {
             catalog.iter().filter(|p| p["name"] == id).collect()
         };
         if candidates.len() != 1 {
-            return Err("项目不存在或名称不唯一".into());
+            return Err("Project does not exist or its name is not unique".into());
         }
         let p = candidates[0];
         let roots = p["roots"].as_array().ok_or("project has no directories")?;
@@ -92,7 +92,7 @@ pub async fn resolve(c: &Control, id: &str) -> Result<Value> {
             }
             if repositories.len() != 1 {
                 return Err(format!(
-                    "多目录项目请指定绝对目录：{}",
+                    "Specify an absolute directory for a multi-directory project: {}",
                     roots
                         .iter()
                         .map(|r| string(r, "path"))
@@ -523,7 +523,7 @@ fn walk(root: &Path, dir: &Path, out: &mut BTreeSet<String>) -> Result<()> {
             );
         }
         if out.len() > 100000 {
-            return Err("目录过大，请缩小范围".into());
+            return Err("Directory is too large. Narrow the scope.".into());
         }
     }
     Ok(())
@@ -850,7 +850,7 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
                 )
                 .await?;
                 if !entry.starts_with("100644 blob ") && !entry.starts_with("100755 blob ") {
-                    return Err("提交中没有可读普通文件".into());
+                    return Err("No readable regular files in this commit".into());
                 }
                 let oid = entry
                     .split_whitespace()
@@ -863,7 +863,7 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
                     .unwrap_or(u64::MAX)
                     > 16 * 1024 * 1024
                 {
-                    return Err("文件过大".into());
+                    return Err("File is too large".into());
                 }
                 git_bytes(root, strings(&["cat-file", "blob", oid]), false).await?
             } else {
@@ -876,7 +876,7 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
             } else {
                 let content = crate::images::text(bytes, file)?;
                 if content.contains('\0') {
-                    return Err("需要文本文件".into());
+                    return Err("A text file is required".into());
                 }
                 let lines: Vec<_> = content.split('\n').collect();
                 let start = num(args, "startLine", 1);
@@ -1010,7 +1010,7 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
                         }
                         v
                     }
-                    _ => return Err("未知 Git 查询".into()),
+                    _ => return Err("Unknown Git query".into()),
                 };
                 cmd.push("--".into());
                 if !file.is_empty() {
@@ -1080,7 +1080,7 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
                 data
             }
         }
-        _ => return Err("未知项目查询".into()),
+        _ => return Err("Unknown project query".into()),
     };
     if action == "read" && args["revision"].is_null() {
         data["metadata"] = metadata(&Path::new(root).join(file));

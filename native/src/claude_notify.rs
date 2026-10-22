@@ -178,7 +178,7 @@ fn bind_in(dir: &Path, session: Option<&str>, thread: &str, turn: &str, cwd: &st
         project: Path::new(cwd)
             .file_name()
             .and_then(|v| v.to_str())
-            .unwrap_or("未命名")
+            .unwrap_or("Untitled")
             .into(),
         terminal: false,
         created_at: chrono::Utc::now().timestamp(),
@@ -398,7 +398,7 @@ fn event(b: &Binding, d: &Delivery) -> Value {
         if agent {
             json!({"hint":"Read the pending interaction before responding.","via":"query","op":"agent_pending","args":{"agent":b.agent,"taskId":b.thread_id}})
         } else {
-            json!({"hint":"Read the pending interaction before responding; if no request is exposed, 需在 Desktop 中处理 / handle in Codex Desktop.","via":"query","op":"codex_pending","args":{"threadId":b.thread_id}})
+            json!({"hint":"Read the pending interaction before responding. If no request is exposed, handle it in Codex Desktop.","via":"query","op":"codex_pending","args":{"threadId":b.thread_id}})
         }
     } else if agent {
         json!({"hint":"Read the result and review it against the acceptance criteria.","via":"query","op":"agent_read","args":{"agent":b.agent,"taskId":b.thread_id}})
@@ -637,9 +637,9 @@ fn transitions(b: &mut Binding, observed: &Value) -> Vec<(String, String)> {
         return vec![];
     }
     let terminal = match string(observed, "state") {
-        "completed" => Some("完成"),
-        "failed" => Some("失败"),
-        "cancelled" => Some("中断"),
+        "completed" => Some("completed"),
+        "failed" => Some("failed"),
+        "cancelled" => Some("interrupted"),
         _ => None,
     };
     if let Some(state) = terminal {
@@ -661,13 +661,13 @@ fn transitions(b: &mut Binding, observed: &Value) -> Vec<(String, String)> {
             || method == "request_user_input_async"
             || method.contains("elicitation")
         {
-            "等待输入"
+            "waiting for input"
         } else if method.contains("Approval") || method.contains("approval") {
-            "等待审批"
+            "waiting for approval"
         } else if !b.agent.is_empty() && b.agent != "codex" {
-            "等待输入"
+            "waiting for input"
         } else {
-            "等待输入"
+            "waiting for input"
         };
         waiting.push(state.to_owned());
         if !request["id"].is_null() {
@@ -680,8 +680,8 @@ fn transitions(b: &mut Binding, observed: &Value) -> Vec<(String, String)> {
         }
     }
     for (flag, state) in [
-        ("waitingOnApproval", "等待审批"),
-        ("waitingOnUserInput", "等待输入"),
+        ("waitingOnApproval", "waiting for approval"),
+        ("waitingOnUserInput", "waiting for input"),
     ] {
         if observed["activeFlags"]
             .as_array()
@@ -1046,9 +1046,9 @@ fn binding_notices(result: &mut Value, caller_target: Option<&str>) {
     {
         if let Some(target) = event["target"].as_str() {
             let notice = match caller_target {
-                Some(caller) if caller != target => "绑定其他会话",
-                Some(_) => "绑定当前会话",
-                None => "会话归属待核对：仅 target 对应会话处理",
+                Some(caller) if caller != target => "bound to another conversation",
+                Some(_) => "bound to this conversation",
+                None => "Conversation ownership needs verification. Only the target conversation may handle this.",
             };
             event["bindingNotice"] = json!(notice);
         }
@@ -1414,24 +1414,26 @@ fn health(b: &Binding, d: &Delivery, wakes: usize, tokens: u64, capacity: u64) -
             .count()
             + 1;
         parts.push(format!(
-            "本轮第 {count} 次{}",
-            if d.state == "等待输入" {
-                "提问"
+            "{} number {count} in this turn",
+            if d.state == "waiting for input" {
+                "question"
             } else {
-                "审批"
+                "approval"
             }
         ));
     }
-    parts.push(format!("近 10 分钟尝试唤醒本目标 {wakes} 次（含重试）"));
+    parts.push(format!(
+        "{wakes} wakeup attempts for this target in the last 10 minutes, including retries"
+    ));
     if let (Some(op), Some(at)) = (b.caused_by["op"].as_str(), b.caused_by["at"].as_str()) {
         if let Ok(time) = chrono::DateTime::parse_from_rfc3339(at) {
             parts.push(format!(
-                "由 {} {op} 触发",
+                "Triggered by {} {op}",
                 time.with_timezone(&chrono::Local).format("%H:%M")
             ));
         }
     }
-    parts.push(format!("桶余量 {tokens}/{capacity}"));
+    parts.push(format!("Bucket remaining {tokens}/{capacity}"));
     parts.join(" · ")
 }
 
@@ -1569,7 +1571,7 @@ async fn flush(
                     .flat_map(|b| &b.deliveries)
                     .filter(|d| d.channel == channel && d.target == target && d.status == "pending")
                     .count();
-                alerts.push((channel,target.clone(),format!("目标 {target}；原因 {reason}；待投递 {pending} 条；线程 {}。请查看 ARC notify_status。",threads.into_iter().collect::<Vec<_>>().join(", "))));
+                alerts.push((channel,target.clone(),format!("Target {target}. Reason: {reason}. Pending deliveries: {pending}. Threads: {}. Read ARC notify_status.",threads.into_iter().collect::<Vec<_>>().join(", "))));
             }
         }
         let mut selected = Vec::new();
@@ -1708,7 +1710,7 @@ async fn flush(
             }
         }
         if throttled {
-            blocks.push(format!("节流中，已合并 {} 条", selected.len()));
+            blocks.push(format!("Throttled. Merged {} events", selected.len()));
         }
         batches.push((reserved, blocks.join("\n\n")));
     }
@@ -1984,6 +1986,25 @@ pub(crate) async fn migrate() -> Result<()> {
                     b.deliveries.push(d);
                 }
             }
+        }
+    }
+    // Convert owned display labels in persisted records. User payloads and stable
+    // delivery keys are deliberately untouched, including Chinese user input.
+    for b in &mut all {
+        for label in b
+            .waiting
+            .iter_mut()
+            .chain(b.deliveries.iter_mut().map(|d| &mut d.state))
+        {
+            let translated = match label.as_str() {
+                "完成" => "completed",
+                "失败" => "failed",
+                "中断" => "interrupted",
+                "等待输入" => "waiting for input",
+                "等待审批" => "waiting for approval",
+                _ => continue,
+            };
+            *label = translated.into();
         }
     }
     // Older targets have no handshake. Preserve known failures without treating a
@@ -2356,9 +2377,9 @@ mod tests {
         flush(&fake, &dir.0, &lock, 160, 30, &s).await.unwrap();
         let calls = fake.calls.lock().unwrap();
         assert_eq!(calls.len(), 2);
-        assert!(calls[1][1].contains("节流中，已合并 2 条"));
-        assert!(calls[1][1].contains("桶余量 0/1"));
-        assert!(calls[1][1].contains("codex_send 触发"));
+        assert!(calls[1][1].contains("Throttled. Merged 2 events"));
+        assert!(calls[1][1].contains("Bucket remaining 0/1"));
+        assert!(calls[1][1].contains("codex_send"));
         let state = State::load(&dir.0).unwrap();
         assert_eq!(state.targets[0].tokens, 0);
         assert_eq!(state.targets[0].batches[1].kinds["needs-input"], 1);
@@ -2708,7 +2729,7 @@ mod tests {
             terminal.deliveries[0].task_error = json!("原始错误\n详情");
             assert!(message(&terminal).ends_with("error: 原始错误\n详情"));
         }
-        assert!(!message(&b).contains("**任务**"));
+        assert!(!message(&b).contains("**Task**"));
     }
     #[tokio::test]
     async fn quiet_receipts_health_and_ack_distinguish_consumed_events() {
@@ -2736,8 +2757,8 @@ mod tests {
         .await
         .unwrap();
         let calls = fake.calls.lock().unwrap();
-        assert!(!calls[0][1].contains("桶余量"));
-        assert!(!calls[0][1].contains("近 10 分钟"));
+        assert!(!calls[0][1].contains("Bucket remaining"));
+        assert!(!calls[0][1].contains("last 10 minutes"));
         drop(calls);
         b = binding(&dir.0, &b.thread_id, &b.turn_id).unwrap().unwrap();
         let e = b.deliveries[0].event_id.clone();
@@ -3313,7 +3334,7 @@ mod tests {
             .unwrap();
         process(&fake, &dir.0, &mut b, &wait).await.unwrap();
         assert_eq!(fake.calls.lock().unwrap().len(), 2);
-        assert_eq!(b.deliveries[0].state, "等待输入");
+        assert_eq!(b.deliveries[0].state, "waiting for input");
     }
     #[tokio::test]
     async fn failures_remain_pending_during_retry_backoff() {
@@ -3340,7 +3361,7 @@ mod tests {
             assert_eq!(fake.calls.lock().unwrap().len(), 1);
             assert!(fake.fallbacks.lock().unwrap().is_empty());
             assert_eq!(b.deliveries[0].status, "pending");
-            assert_eq!(b.deliveries[0].state, "失败");
+            assert_eq!(b.deliveries[0].state, "failed");
         }
     }
     #[tokio::test]
@@ -3364,7 +3385,7 @@ mod tests {
             error: None,
             key: "request:17".into(),
             target: "session_test".into(),
-            state: "等待审批".into(),
+            state: "waiting for approval".into(),
             task_state: "interaction-required".into(),
             interaction: Value::Null,
             status: "sending".into(),
@@ -3387,7 +3408,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(fake.calls.lock().unwrap().len(), 2);
-        assert_eq!(b.deliveries[1].state, "中断");
+        assert_eq!(b.deliveries[1].state, "interrupted");
     }
 }
 

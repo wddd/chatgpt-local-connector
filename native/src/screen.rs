@@ -17,7 +17,7 @@ pub async fn call(args: Value) -> Result<Value> {
     #[cfg(not(target_os = "macos"))]
     {
         let _ = args;
-        Err("SCREEN_UNSUPPORTED: screen 仅支持 macOS。".into())
+        Err("SCREEN_UNSUPPORTED: screen supports macOS only.".into())
     }
 }
 

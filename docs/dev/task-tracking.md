@@ -1,200 +1,165 @@
-# Agent 任务追踪
+# Agent task tracking
 
-[UI 规范](ui.md) · [派发 Agent](dispatch-agents.md) · [架构](architecture.md)
+[UI](ui.md) · [Dispatch Agents](dispatch-agents.md) · [Architecture](architecture.md)
 
-首页沿用控制源、ARC 中心与 Agent 的一级连接；Agent 通过外弧和二级触手连接任务气泡，点击气泡打开当前任务的执行时间线。节点活动、任务摘要与时间线共用原生侧归一化，同一层也产出执行证据。
+The homepage retains control-source/ARC/Agent primary connections. Agent outer arcs and secondary tentacles connect task bubbles. Bubbles open execution timelines. Node activity, summaries, timelines, and execution evidence share native normalization.
 
-## 目标与边界
+## Scope
 
-- 统计范围是该 Agent 的**所有活动会话**：ARC 派发的 ACP/Pi 任务、经 Codex app-server 派发的线程，以及用户直接在 Codex Desktop、Claude Code 中开的会话（本地 transcript 扫描）。
-- 第三级在 ARC 内渲染**执行时间线**，覆盖 ARC 派发的任务（ARC 持有完整事件流）。非 ARC 会话只有第一、二级，点击跳转到 Agent 的原生入口（有则给，无则不可点）。
-- 时间线不是通用对话渲染器：前端只认归一化后的条目词表，不接触各 Agent 的原始消息格式；新增 Agent 只写原生侧适配器。
-- 不修改受控 Agent 的源码或私有存储（例如不写其 workspace 索引）。
-- 公开仓库：文档、测试与 fixture 使用通用示例，不出现个人项目名、路径或账号信息。
+Track all active Agent sessions: ARC ACP/Pi tasks, Codex app-server threads, and directly opened Codex Desktop/Claude Code sessions from local transcripts. Timelines use normalized vocabulary rather than raw Agent formats. New Agents require native adapters, not frontend protocol handling. ARC tasks have owned event streams. External sessions may offer read-only timelines or summary fallback with verified native navigation. Never modify controlled-Agent source or private indexes. Public docs/tests/fixtures use generic projects, paths, and accounts.
 
-## Native 当前接口
+## Native interfaces and normalization
 
-- 归一化在 Core 内维护；ACP/Pi 随 ARC 任务记录保存，Codex app-server 在首次时间线请求时读取线程历史，并与本次 Core 观察到的派发线程合并。实时条目的时间戳是 ARC 观察时间；只在历史中出现的条目开始/结束时间为 null，耗时优先使用上游 durationMs，不推断未观察到的时间。
-- `agents/activity` 返回会话快照与兼容字段 `activeAgents`。等待审批、问题或选择的会话仍计为活动。
-- `agent_context.evidence` 是所选回合的 command/file 条目，`executionEvidence` 按本会话观察返回 `true`、`false` 或 `"partial"`；有协议事件但没有工具调用时返回空证据，不报 unsupported。
-- 首页使用会话快照；Desktop 订阅 `agents:activity`，Web 订阅 SSE，首屏与订阅失败时用 GET。`activeAgents` 仅保留供旧调用方兼容。
+Core owns normalization. ACP/Pi save it with task records. Codex backfills history on the first timeline request and merges observed dispatch threads. Live timestamps are ARC observation times. History-only start/end times are null. Native durationMs takes precedence without inferred times.
 
-## 归一化层（native）
+agents/activity returns session snapshots plus activeAgents for existing callers. Approval/question/selection waits count as active. agent_context.evidence contains selected-turn command/file entries. executionEvidence is true, false, or partial according to observation. Protocol events without tools yield empty evidence, not unsupported. Desktop subscribes to agents:activity, Web to SSE, with GET for initial load/fallback.
 
-按来源写适配器，把原始事件投影成一套小词表：
+| Type | Meaning |
+| --- | --- |
+| user | User/control-source input, including thread additions. |
+| text | Agent text, with chunks merged natively. |
+| thinking | Reasoning content. |
+| command | Command, cwd, status, exitCode, output excerpt. |
+| file | Path, operation read/write/edit/create, status. |
+| tool | Other tool title/status/input/output excerpts. |
+| plan | Plan/todo updates. |
+| interaction | Approval/question/selection with respond arguments. |
+| error | Error. |
 
-| 类型 | 说明 |
-|---|---|
-| `user` | 用户/控制源消息（含线程内追加） |
-| `text` | Agent 回复文本，chunk 在原生侧合并为条目 |
-| `thinking` | 思考内容 |
-| `command` | 命令：command、cwd、status、exitCode、输出摘要 |
-| `file` | 文件操作：path、operation(read/write/edit/create)、status |
-| `tool` | 其他工具调用：title、status、输入/输出摘要 |
-| `plan` | 计划/待办更新 |
-| `interaction` | 待处理请求：审批、问题、选择；附 respond 参数 |
-| `error` | 错误 |
+Entries have stable id, startedAt, optional endedAt, and status. Tools use toolCallId/item ID. ACP consumes session/update agent_message_chunk, agent_thought_chunk, tool_call, tool_call_update, plan, and session/request_permission. Missing/other kind falls back to rawInput.command/file_path and tool names. toolCallId links calls/results. exitCode prefers rawOutput, then conservative text extraction, otherwise missing. Pi consumes message_end, tool events, extension_ui_request, and agent_settled. Codex consumes typed thread items including reasoning summaries and backfills history. External activity reads transcript tails for phase/headline without eagerly producing complete entries.
 
-每个条目带稳定 `id`（工具类用 `toolCallId`/item id）、`startedAt`、`endedAt?`、`status`，便于前端增量合并。
+Approval requests containing only toolCallId reuse matching tool command/path/title. Existing excerpt limits and common-secret redaction apply to input/output summaries. Truncated event windows report partial coverage. Execution evidence filters command/file entries. Only absence of protocol events yields STRUCTURED_COMMAND_EVIDENCE_UNSUPPORTED.
 
-来源：
-
-- **ACP**：`session/update` 的 `agent_message_chunk`、`agent_thought_chunk`、`tool_call`、`tool_call_update`、`plan`，以及 `session/request_permission`。工具 `kind` 缺失或为 `other` 时，按 `rawInput.command` / `rawInput.file_path` 与工具名回退判断；`toolCallId` 关联 call 与 result；`exitCode` 优先取 `rawOutput`，否则从输出文本保守提取，提取不到留空。
-- **Pi RPC**：`message_end`、工具事件、`extension_ui_request`、`agent_settled`。
-- **Codex**：app-server 的 thread item（已类型化，含 reasoning 摘要），首次读取用 app-server 线程历史回填。
-- **非 ARC 会话**（Codex/Claude Code 本地 transcript）：只读尾部，给出 phase 与 headline 即可，不产出完整条目。
-
-审批上下文回填：审批请求只带 `toolCallId` 时，用同 id 的 `tool_call` 补齐 command/path/title，供通知、气泡和时间线展示“在批准什么”。
-
-脱敏：`rawInput` 与输出摘要沿用现有截断上限，并对常见 secret 字段/形态做 redact。事件窗口被截断时标记 `coverage: partial`，不伪装完整。
-
-### 执行证据
-
-证据是归一化条目中 `command` 与 `file` 的过滤投影：`agent_context` 填 `evidence`，`executionEvidence` 改为按实际观察（有工具调用为 true，窗口截断为 partial），只在确实没有事件时报 `STRUCTURED_COMMAND_EVIDENCE_UNSUPPORTED`。
-
-### 活动快照
-
-替代 `agents/activity` 的 agent 集合，按会话粒度输出（保留 `activeAgents` 兼容字段直到前端切换完成）：
+### Activity snapshots
 
 ```json
 {
-  "observedAt": "…",
-  "agents": {
-    "<agent>": {
-      "sessions": [
-        {
-          "id": "…", "source": "arc-task|codex-thread|transcript",
-          "title": "…", "project": "…",
-          "phase": "thinking|command|file|tool|text|interaction|idle",
-          "headline": "一行摘要", "startedAt": "…", "turnStartedAt": "…", "phaseSince": "…",
-          "interaction": {"kind": "permission|question", "summary": "…", "respond": {…}},
-          "recentSteps": ["thinking", "command", "file"],
-          "timeline": true,
-          "open": {"kind": "…", "target": "…"}
-        }
-      ]
-    }
-  }
+  "observedAt":"...",
+  "agents":{"<agent>":{"sessions":[{
+    "id":"...","source":"arc-task|codex-thread|transcript",
+    "title":"...","project":"...","phase":"thinking|command|file|tool|text|interaction|idle",
+    "headline":"One-line summary","startedAt":"...","turnStartedAt":"...","phaseSince":"...",
+    "interaction":{"kind":"permission|question","summary":"...","respond":{}},
+    "recentSteps":["thinking","command","file"],"timeline":true,"open":{"kind":"...","target":"..."}
+  }]}}
 }
 ```
 
-- `phase`/`headline` 优先取自 pending/running 的非交互条目，其次才取最新结束条目；同优先级按更新顺序选择，迟到的完成事件不抢占进行中的阶段。pending 交互优先覆盖；已解决交互不参与阶段与摘要选择，`phaseSince` 回到所选条目的开始时间。思考取末行，命令取命令行，文件取路径，文本取最近一句；文字摘要去除 Markdown 格式符号，命令和路径保持原文。
-- `recentSteps` 为已观察且按稳定条目 id 合并后的最近最多五条类型，按条目时间顺序排列；chunk、完成与结果更新不重复计数，也不把旧条目移到末尾。仅包含 thinking/command/file/tool/text/interaction，忽略 user/plan/error；transcript 可省略或返回空数组。
-- `turnStartedAt` 是当前回合的开始时间：ARC Agent 使用用户输入派发时间，Codex app-server 使用回合开始事件的观察时间；外部 Codex transcript 使用最近 `task_started` 的时间，Claude transcript 使用最近可读用户输入的时间。缺少可信开始记录时为 null，不使用阶段或会话开始时间代替。
-- 外部 transcript 的回合开始时间独立于 128 KiB 摘要尾部窗口：首次读取完整记录定位当前回合，此后按字节偏移增量读取，阶段切换和长回合不会丢失开始时间；文件截短时重新定位，未写完的末行留待下次读取。
-- 有待处理 interaction 的会话（含 `waiting-permission`）仍计为活动，并单独标记。
-- `timeline: true` 表示可请求时间线；是否完整以 coverage 为准，外部会话也可以提供只读时间线。
-- `fallbackHeadline` 为最近非空文本、思考、命令或文件摘要，无可读条目时取任务标题或最近用户消息；`recentContent` 提供最近三条可读摘要。两者供空 headline 和无时间线详情使用，不改变当前 phase/headline 的含义。
-- `open` 仅在已验证可用时给出；没有入口则省略。
-- 推送沿用 Tauri 事件（同 `subscriptions:changed` 模型），节流约 1s；Web 端用 SSE。保留一次性 GET 供首屏与降级。
+phase/headline prefer pending/running noninteraction entries over the latest ended entry, with update order breaking ties. Late completion never displaces active work. Pending interaction takes precedence. Resolved interactions no longer select phase/headline. phaseSince uses the selected entry's start. Thinking takes its last line, commands their command line, files their path, and text its latest sentence. Text strips Markdown. Commands/paths remain original.
 
-### 时间线接口
+recentSteps contains at most five observed types in stable-entry chronological order. Chunks/completion/results neither duplicate entries nor move old ones to the end. Include thinking/command/file/tool/text/interaction, excluding user/plan/error. Transcripts may omit it or return empty.
 
-本地管理接口（沿用本地 Core 认证）：
+turnStartedAt is dispatch time for ARC Agents and observed turn-start time for Codex app-server. External Codex uses latest task_started. Claude uses latest readable user input. Missing trustworthy starts remain null rather than using phase/session start. External start tracking is independent of the 128 KiB summary tail: first scan locates the current turn, subsequent reads use byte offsets, truncation resets scanning, and incomplete last lines wait for the next read.
 
-| 操作 | 接口 |
-|---|---|
-| 一次性活动快照 | `GET /api/agents/activity`；CLI `agents.activity` |
-| 本地交互响应 | `POST /api/agents/respond`，body 为快照的 `{op,args}` 并在 args 补入选项与稳定 `requestId`；CLI `agents.respond`，参数 `{"body":{"op":"agent_respond","args":{…}}}` |
-| Web 推送 | `GET /api/agents/activity/events`，SSE `event: snapshot` |
-| Desktop 推送 | Tauri `agents:activity`，payload 与 GET 一致 |
-| 会话时间线 | `GET /api/agents/timeline/{id}?after={cursor}`；CLI `agents.timeline`，参数 `{"id":"…","body":{"after":12}}` |
-| 已验证 CLI 会话入口 | `POST /api/agents/sessions/{id}/open`，body `{"agent":"claude"}`；CLI `agents.session.open` |
+Pending interactions, including waiting-permission, remain active and separately marked. timeline:true permits a request but does not guarantee complete coverage. fallbackHeadline uses latest readable text/thinking/command/file, then title/latest user message. recentContent provides three readable summaries. Neither changes phase/headline semantics. open is present only for verified navigation. Activity pushes throttle around one second through Tauri/SSE with GET fallback.
 
-`id` 使用活动快照的 `sessions[].id`：ACP/Pi 为 ARC taskId（另给 `nativeSessionId`），Codex 为 threadId。`after` 可省略，默认 0；它是条目更新序号，同一 id 的 chunk 合并、完成与审批解决也推进游标。客户端按 id 替换条目，保留未出现在增量响应中的条目，并按 `position` 排序（回填旧条目时也会更新已有条目的位置）；游标超过当前序号时报 `TIMELINE_CURSOR_EXPIRED`，重新全量读取。时间线不需要前端处理原始 chunk。
+### Timeline API
+
+| Operation | Interface |
+| --- | --- |
+| Activity snapshot | GET /api/agents/activity; CLI agents.activity. |
+| Respond locally | POST /api/agents/respond with snapshot `{op,args}` plus answer and stable requestId. CLI agents.respond uses `{"body":{"op":"agent_respond","args":{}}}`. |
+| Web stream | GET /api/agents/activity/events, SSE event:snapshot. |
+| Desktop stream | Tauri agents:activity with GET-equivalent payload. |
+| Timeline | GET /api/agents/timeline/{id}?after={cursor}; CLI agents.timeline with `{"id":"...","body":{"after":12}}`. |
+| Verified CLI session | POST /api/agents/sessions/{id}/open with `{"agent":"claude"}`; CLI agents.session.open. |
+
+Use sessions[].id: ARC taskId for ACP/Pi, with separate nativeSessionId, or Codex threadId. after defaults to 0 and is an entry-update sequence. Chunk merges, completion, and interaction resolution advance it. Replace entries by ID, retain absent entries, and sort by position. Backfill may update positions. Cursor beyond current sequence returns TIMELINE_CURSOR_EXPIRED and requires a full read. Frontends never process raw chunks.
 
 ```json
 {
-  "sessionId": "<activity-session-id>",
-  "status": "completed",
-  "entries": [
-    {
-      "id": "command-example", "type": "command", "status": "completed",
-      "startedAt": "2026-01-01T00:00:00.000Z", "endedAt": "2026-01-01T00:00:01.000Z",
-      "updatedAt": "2026-01-01T00:00:01.000Z", "cursor": 13, "position": 0, "turnId": "turn-example",
-      "command": "printf example", "exitCode": 0, "exitCodeSource": "rawOutput"
-    }
-  ],
-  "cursor": 13,
-  "coverage": {"state": "complete", "truncated": false},
-  "executionEvidence": true
+  "sessionId":"<activity-session-id>","status":"completed",
+  "entries":[{"id":"command-example","type":"command","status":"completed",
+    "startedAt":"2026-01-01T00:00:00.000Z","endedAt":"2026-01-01T00:00:01.000Z",
+    "updatedAt":"2026-01-01T00:00:01.000Z","cursor":13,"position":0,"turnId":"turn-example",
+    "command":"printf example","exitCode":0,"exitCodeSource":"rawOutput"}],
+  "cursor":13,"coverage":{"state":"complete","truncated":false},"executionEvidence":true
 }
 ```
 
-工具输入与输出摘要沿用 `agent_context` 的 1024 字节 excerpt 结构，含 `truncated`、摘要 hash；文本合并上限沿用 256 KiB，事件/条目窗口沿用 2000 条与 8 MiB。窗口丢失或合并文本截断后 `coverage.state` 为 `partial`，不宣称全历史完整。Codex 首次读取在当前 Core 内按线程串行回填一次：调用 app-server `thread/read`（`includeTurns: true`），将各 turn 的 items 投影为同一词表，按 item id 与实时条目去重。回填读期间更新过的实时条目优先，已有观察时间保留；历史顺序优先，实时独有条目保留。重启后根据 ARC 任务记录识别可回填的 threadId，并在活动快照中恢复该线程的时间线入口；Desktop 线程先恢复只读事件订阅，不恢复或重启后台任务。非 ARC transcript 仍不提供时间线。原生历史读取失败、缺少 turns/items 或超过内容/条目上限时返回 partial；成功投影的历史不因原始事件窗口淘汰而变成 partial。回填失败保留实时条目，本次 Core 不自动反复重试回填。
+Tool excerpts use agent_context's 1024-byte structure with truncated/hash. Merged text caps at 256 KiB. Event/entry windows retain 2000 entries/8 MiB. Window loss or text truncation marks partial. Codex backfill is serial once per thread/Core using thread/read includeTurns:true and deduplicating typed items by ID. Live updates during backfill win. Existing observation times remain. History order precedes live-only items. After restart, ARC task records identify backfillable threads and restore timeline entry points. Desktop restores read-only subscriptions without resuming/restarting work. External history is fetched only through the separate read-only detail path.
 
-响应 `status` 表示任务状态，`position` 为条目顺序键（不要求连续，窗口淘汰后不回退），`durationMs` 为可用的原生耗时。历史条目没有可信观察时间时 `startedAt` / `endedAt` 可为 null。Pi interaction 附 `method`（select / confirm / input / editor）；选择传 `value`，输入或编辑传字符串 `value`，取消传 `cancelled: true`，均沿用 `agent_respond`。
+Read failure, missing turns/items, or limits produce partial. Successfully projected history does not become partial solely because the raw event window expires. Failed backfill retains live entries and is not repeatedly retried in the same Core. status is task status. position need not be contiguous and does not reset after eviction. durationMs is native duration when available. Historical times may be null. Pi interaction.method is select/confirm/input/editor. Responses use value, string value for input/editor, or cancelled:true through agent_respond.
 
-活动推送约每秒检查一次，忽略 `observedAt` 的单独变化；本地 transcript 尾部约每两秒采样，不产生时间线。`phaseSince` 在同一条目的内容变化时保持其开始时间。待处理条目的 `interaction.respond` 复用原有 `agent_respond` / `codex_respond` 参数，调用时按既有契约补选项、答案与新的 requestId。`open.kind=url` 直接打开 target；`open.kind=agent-session` 将 target 交给上述 session open 接口。
+Activity checks around once per second ignore observedAt-only changes. Transcript tails sample around every two seconds without eager timelines. Same-entry content changes retain phaseSince. respond uses existing Agent/Codex contracts with answer/options and a new requestId. open.kind=url opens target. agent-session uses the session-open endpoint.
 
-## 首页 UI
+## Homepage UI
 
-### 布局与节点
+### Layout and nodes
 
-- 布局统一由 `solve(scene, params, drag)` 求解。左右翼使用同一算法，独立压缩纵向行距：控制源基础行高 78px、下限 56px；Agent 空闲行高 78px、下限 44px；有任务的行高为 `max(基础行高, n × 64 + 10)`，行间距 12px。每个 Agent 最多占五槽，超限汇总占一槽。
-- 场景高为 `max(视口高, 两翼较大列高 + 140)`，两翼与中心标识对齐场景中线。控制源不会因 Agent 忙碌而缩小或变淡。全场无任务时左右节点均为常规大小 1、使用控制源行高；有任务时，活跃节点为 1.1，空闲 Agent 在空间充足时默认为 1、行高与控制源一致、不缩进，仅在本翼纵向行高或横向列距不足时缩小，默认下限 0.6、可调至 0.4，向中心缩进最多 22px，透明度 0.62。节点基准尺寸默认 44px，可调范围 32–60px，名称始终在下方。
-- 放不下时先压左列距，再压右列距（最低为原距 0.72）；随后按气泡视觉权重 0.8 加权居中，并由窗口两缘的 40px 留白将中心推向空余侧。仍溢出时保留左翼，右侧截断；高度不足则整个场景纵向滚动。
-- 保留点击节点展开详情、配额环与 QuotaBubble、上下键排序。Agent 图标内不显示运行 loading，品牌图标随节点统一缩放；运行和待处理状态由任务气泡及触手展示，不显示数量角标。
+solve(scene,params,drag) owns both wings. Sources use 78px rows/56px minimum. Idle Agent rows use 78px/44px minimum when tasks exist. Active rows use max(base,n × 64 + 10), with 12px gaps and five slots maximum including overflow. Scene height is max(viewport,larger column + 140). Both wings align to scene center. Sources never shrink/fade because Agents are busy.
 
-### 外弧、触手与气泡
+Without tasks, both wings use normal size 1/source row spacing. Active Agents scale 1.1. Idle Agents stay 1 without indent when space permits, otherwise shrink to default 0.6 (adjustable 0.4), indent up to 22px, and use opacity 0.62. Base size is 44px, adjustable 32-60px. Names remain below. Horizontal fitting compresses left then right spacing, to minimum ratio 0.72, then centers with bubble weight 0.8 and 40px margins. Remaining overflow clips the right while preserving the left and vertically scrolling the scene.
 
-- 外弧半径为当前节点大小的一半乘节点缩放，再加间距 11px，线宽为 `4 × max(0.8, 中心半径 / 130)`，使用圆头。二级端口跟随目标方向的比例为 0.75，最小间隔 9°、最大半角 58°；外弧两端在端口外各留 9°，最小半角 14°。耳罩端口跟随比例 0.7、最小间隔 7°、最大半角 42°，两端余量 7°，最小半角 22°。
-- 气泡中心按 64px 间距排列，内缘距节点中心 104px。三次曲线控制点沿根部法线和气泡水平轴分配，张力分别为端点距离的 0.34 和 0.5；根部按弧长展宽。左翼也支持镜像外弧、任务和触手模型，目前控制源没有任务数据或展开入口。
-- 动画器按 key 对中心、耳罩、节点、外弧与任务的几何原语做弹簧（刚度 210、阻尼 26，约 8ms 子步）。一个 SVG 绘制所有线和弧，每帧根据动画后的原语重算；HTML 节点与气泡通过 ref 写入同帧 transform，不触发逐帧 React 渲染，不通过读取实际 DOM 位置补画连线，静止后停止 rAF。
-- 最多五条二级触手；超过五个任务时，前四个单独显示，第五槽为“还有 N 个任务 / 查看全部”。汇总触手用 border-strong，点击打开该 Agent 的完整活动任务列表，包含外部会话；列表使用无气泡阴影的平铺行。
-- 待处理交互排最前；同一优先级中先使用本地手动顺序，无手动顺序时按首次观察时固定的开始顺序。缺少开始时间时使用首次观察时间，同时间按会话 id 确定顺序。阶段、摘要、快照顺序与后续时间戳修订不触发重排。
-- 节点与气泡拖动都写入求解器 drag 输入：拖动项横纵向自由跟手，排序仅由纵坐标变化触发，其余弹簧让位；拖动不改变中心平衡和列距，松手后弹回布局列位；拖动完成后抑制点击，取消恢复原顺序。气泡只能在所属节点内的同一优先级分组排序，支持上下方向键，汇总槽不排序。控制源与 Agent 使用原有持久化偏好，Agent 与管理页共用；任务顺序仅存本地前端偏好。
-- 气泡所有状态固定为 232 × 54px，圆角 13px、内边距 8px 12px，使用 surface、内描边、阴影与圆体。整个气泡是按钮，没有内嵌审批按钮、叠放、悬停展开或数量角标。
-- 左侧为 30px、圆角 9px 的阶段方块；右侧第一行为 12px/500 阶段名、最近最多五步的彩色方块与右对齐的 11.5px 等宽计时；计时从 `turnStartedAt` 累计，切换阶段不重置，下一回合重新计时，未知开始时间显示破折号。第二行为 13px 单行 headline。命令与路径用 11.5px 等宽字，文件显示项目内相对路径并优先保留文件名；当前内容为空（包括无可读思考摘要）时，依次取最近非空文本/命令/文件、任务标题或最近用户消息；尚无任何内容时显示通用任务标题，第二行始终非空。回退文字使用 text-tertiary。摘要最多每秒刷新一次，使用 160ms、5px 上移交叉淡入。
-- 共享 PhaseTile / PhaseLabel / StepTrail 使用阶段 token；运行方块有 1.6s 光弧、阶段名有 2.4s 微光、最新步骤脉动。光弧使用固定圆角遮罩内的伪元素旋转，微光使用带静态渐变遮罩的覆盖层与文字反向平移；仅动画 transform，不逐帧改变渐变角度或背景位置。思考轻呼吸，终端下划线闪烁，编辑描线，交互盾牌每 2.4s 轻摆，完成对勾一次性描出且气泡透明度为 0.72。外部会话静止，计时后显示 ↗；reduced-motion 停止全部装饰动效。
-- 运行触手用 accent，叠加浅色 `1 14` 流动虚线，周期 1s；待处理用 warning 并静止，气泡 warning 内描边为 1.5px，外圈 6px、16% warning 光晕以 2.4s 呼吸，外弧同步 warning；刚结束用半透明 success 并静止。
-- 后端完整快照移除会话后，前端保留最后摘要与实际结束时间，气泡显示“已完成”；未读气泡带圆点并持续保留，仍计入五槽及汇总列表。此未读状态仅表示当前 ARC 页面是否查看了完成结果，不读取或同步 Agent 原生应用、Dock 的未读角标，不跨页面重载持久化。打开完成气泡的详情即视为已读；完成时详情已经打开的任务直接视为已读。详情打开期间保留任务数据，气泡与二级触手随 Agent 面板收起，离开详情后停留约 2s，再通过原语弹簧淡出、收回外弧端口并合拢槽位；显示的总耗时保持实际结束时间，不随阅读或关闭动作变化。同一会话再次运行时清除上一轮完成与未读状态。打开期间任务超出前五槽时保留选中槽，其余计入汇总。
-- 外部会话（source=transcript）使用 text-tertiary 的 `3 5` 虚线与 ↗；点击同样打开详情，↗ 只表示外部来源；任务的原生入口位于详情头部。
-- 气泡与二级触手在窄窗口右侧直接截断，右缘有 32px 渐隐；不缩窄、不隐藏整组、不产生横向滚动。可见的气泡部分仍可点击。新增任务从所属外弧端口长出并淡入。
+Keep node details, quota rings/QuotaBubble, and arrow sorting. Brand icons scale with nodes without loading spinners. Task bubbles/tentacles show activity. Counts appear only in the panel-open behavior below.
 
-### Agent 视图与任务详情
+### Arcs, tentacles, and bubbles
 
-- 点右侧 Agent 节点或“+N 查看全部”打开 Agent 视图第一层；任务气泡直接进入第二层。第一层头部显示带额度环的图标、名称、版本和连接状态，提供已有原生入口、该 Agent 的设置详情和关闭。额度卡复用 QuotaBubble 的窗口读数、重置时间、pace、credits 与刷新交互，无来源时显示说明。
-- 进行中任务按待处理优先、本地顺序排列，每行显示 PhaseTile、标题、计时，第二行 PhaseLabel / StepTrail，第三行 headline；待处理行用 warning 描边与“待审批”标签。外部会话带 ↗，只读。列表没有审批按钮，点行进入详情。
-- “已结束”使用当前页面在本次 Core 的 `agents/activity` 完整快照中观察到的 ARC 会话：会话移除时保留最后数据，排除 transcript，再通过既有 `agents/timeline/{id}` 确认可读。再次运行则移出已结束列表，Core backendSession 变化清空。它不跨页面重载保存，也不回填页面打开前未观察到的任务；不把派发回执完成误判为任务结束，不新增原生接口。
-- 共用 ElasticPanel / panelMorph 左右镜像外壳，从节点或气泡向右展开，宽 400px，距窗口右/上/下各 16px，圆角 20px；打开约 250ms、关闭约 160ms，内容淡入。没有遮罩、场景滚动锁定或背景 inert。点其他 Agent 在当前外壳内切换，重复点击当前 Agent 或 Escape 关闭并恢复触发点焦点；触发点已移除时回到所属 Agent。左侧控制源打开镜像视图并与 Agent 面板互斥，中心圆点保持全局入口。
-- 求解器将面板宽度作为保留区，按弹簧平移场景并压缩列距，节点纵向槽位和排序不变；选中节点及名称距面板边缘至少 40px。窗口小于 760px 时采用覆盖模式，只露出选中节点约 18px 边缘。面板打开期间暂停节点/气泡的拖拽与键盘排序，避免自由拖动与保留区冲突；关闭后恢复。
-- 打开时所有 Agent 气泡与二级触手淡出并向节点轻移，外弧收起；非选中有进行中任务的节点显示任务数，待处理时用 warning 底色。选中节点放大并带光环，使用现有触手绘制通路连接面板左缘并流动；关闭后恢复气泡与二级触手。reduced-motion 直接切换且无流动。
-- 第二层头部左侧返回 Agent 视图，标题为“Agent 名 / 任务标题”，保留原生入口、关闭、状态与项目/耗时。进入从右向左轻滑入，返回反向，160ms，外壳尺寸不变。状态区区分待处理、运行中与已完成；活动快照中的会话始终视为进行中，外部会话完成以快照移除为准，不使用历史条目的完成状态覆盖。
-- 时间线按下述条目规则渲染，条目在内部滚动，不改变外壳尺寸；支持回到最新。
-- ARC 任务首次全量读取，此后每次读取完成约 1s 后按 after 增量拉取，不重叠请求；游标过期时全量重拉。外部会话约 5s 全量刷新只读快照。离开详情层停止轮询。coverage 为 partial 时显示历史不完整提示，已取得的条目在后续读取失败时继续保留。
-- 外部 Codex 通过 app-server 的 thread/read（includeTurns）复用历史回填；不接管线程、不恢复任务、不登记审批。Claude 本地 transcript 使用相同词表投影文本、用户消息、思考、工具调用和结果，按工具 id 合并；读取最多末尾 8 MiB，截断时标记 partial。外部时间线响应附带 readOnly，使用全量快照而非 after 增量。
-- 所有来源的气泡均打开详情。外部会话没有时间线或读取失败时显示当前阶段、最近几条可读内容与“该会话不是由 ARC 派发，完整记录请在 Agent 中查看”；有 open 时在头部提供图标入口。外部会话不提供审批操作。
-- 首次定位底部；运行时自动跟随，上翻后暂停，回到底部 24px 范围内恢复；按钮收起或内容折叠导致浏览器向上夹紧滚动位置时，不将布局夹紧误判为用户上翻。结束时保留最后一次跟随，之后不自动跳动；任务结束不关闭详情。
-- 审批和 Pi 选择/输入问题仅放在底部固定卡片。卡片使用 warning-soft 背景与 warning 描边，展示请求者、对象、单次允许说明和拒绝/允许操作；待处理卡片出现时获得焦点。卡片占满底栏宽度，左右内边距 14px；单次允许说明位于按钮左侧，按钮右对齐。文件请求按已知路径显示；同回合关联工具明确给出 read/write/edit/create 操作时使用读取或写入，否则保留“访问文件”，不从路径或标题猜测权限。
-- 本地 respond 转发、提交锁、稳定 requestId 和回执状态沿用现有实现。提交中转圈并禁止重复；成功后收起卡片，时间线保留响应结果。ACP 允许只选择 allow_once，没有单次选项时不可允许。
-- 时间线交互使用无边框单行：等待审批与对象，提交后显示允许或拒绝结果。同回合、相同明确对象的关联工具仍待执行时不重复显示；并行同对象无法唯一关联时保留工具，避免误隐藏。工具实际执行后恢复正常条目。文件和命令无详情时不提供折叠控件；未知耗时不显示占位破折号。
-- 不提供额外消息输入框，问题回答字段除外。
+Outer radius is half current node size times scale plus 11px. Round stroke width is 4 × max(0.8,center radius/130). Secondary ports follow target direction at 0.75 with 9° minimum spacing/58° maximum half-angle. Arc ends extend 9° beyond ports with 14° minimum half-angle. Earcup follow is 0.7, spacing 7°, maximum half-angle 42°, end margin 7°, minimum half-angle 22°.
 
-### 条目渲染
+Bubble centers are 64px apart with inner edges 104px from node center. Cubic controls follow root normals/bubble horizontal axes with tension 0.34/0.5 of endpoint distance. Roots widen by arc length. The left solver supports mirrored tasks/arcs although sources currently have no task data/details. Stable-key springs use stiffness 210/damping 26/~8ms substeps. One SVG and same-frame ref transforms avoid per-frame React renders and DOM-coordinate correction. Stop rAF at rest.
 
-- 用户消息是右对齐浅底气泡，圆角为 14/14/4/14px。文本与思考正文使用 react-markdown / remark-gfm，支持表格、链接、任务列表和代码块；跳过原始 HTML，链接复用平台外部打开。代码块不引入高亮依赖。气泡的 plainMarkdown 与其他页面的 Markdown 保持原实现。
-- 思考默认折叠：有可靠耗时时显示“已思考 N 秒”，否则已完成显示“思考”、运行中显示“思考中”；只有运行时复用 PhaseLabel 微光。展开正文使用淡紫竖线与次级文字。
-- 同回合连续 command / file / tool 合为一组，任何其他条目或回合变化均断开；单条直接显示。组 ID 以首条工具 ID 为锚点，增量替换、末尾追加与前置历史回填保留已有锚点；插入分隔条目时只让包含锚点的一段继承该 ID。头部按类型去重显示最多三个叠放图标，按明确 operation 汇总读取、写入、文件访问、命令、工具数量，并显示失败数；仅在每条工具都有可靠计时时显示累计耗时。
-- 有运行中工具时分组默认展开，结束后默认折叠；用户手动选择优先，手动展开不会在结束后收起。条目和组的展开状态在当前详情层按稳定 ID 保存，包括单条变成分组；离开详情层后释放。
-- 工具行显示状态图标、等宽命令/路径与耗时，路径复用 FilePath 的目录省略。展开后分区显示工作目录、路径、输入、输出、退出码、截断说明和 changes 文件列表；长输出内部滚动。失败行带 danger 标签，取消使用灰色。
-- 最后一条仍在运行的工具仅在所属工具组折叠时，于组下方显示“当前执行”卡；展开组内已显示该工具时不重复。单条不分组的当前工具直接使用当前执行样式，保留详情展开，不再额外复制卡片。使用命令色浅底、旋转图标、阶段微光与实时计时；完成后恢复普通条目。
-- 计划使用勾选列表，当前进行项使用思考阶段色。待处理交互显示 warning 占位，处理按钮仍只在详情底部；已有提交回执时显示已允许、已拒绝或已回答。原生历史只标记完成、不携带决定时显示“已处理”，不推断允许结果。错误显示醒目单行，展开后可滚动阅读全文。
-- Radix Collapsible 处理键盘与展开语义，motion 负责约 180ms 高度动画。reduced-motion 通过媒体查询 change 实时更新，已挂载条目与正在播放的伸缩立即切换为静态；图标不旋转，沿用阶段组件的静态规则。伸缩只改变时间线内部内容高度，不改轮询、游标、跟随滚动或面板外壳。
+At most five secondary tentacles appear. Overflow uses four individual bubbles and a fifth aggregate slot in border-strong, opening all active tasks including external sessions as flat rows without bubble shadows. Pending interactions sort first. Within priority, manual local order precedes stable first-observed start order, falling back to first observation and session ID. Phase/headline/snapshot order/later timestamp corrections never reorder.
 
-所有颜色使用语义 token，支持深浅主题。reduced-motion 下流动与图标静止，伸缩和位移直接切换。
+Pointer drags feed the solver directly on both axes. Only vertical changes reorder. Others yield through springs. Center/spacing remain stable. Release returns items to columns and suppresses clicks. Cancellation restores original order. Tasks stay within node/priority group, support arrow sorting, and exclude aggregate slots. Source/Agent order persists and Agent order is shared with management. Task order is frontend-local.
 
-## 入口表
+All bubbles are 232 × 54px with 13px radius, 8px 12px padding, surface/inset border/shadow, and rounded typography. The whole bubble is a button without embedded approvals, stacking, hover expansion, or count badges. Left phase tile is 30px with 9px radius. First line has 12px/500 phase, up to five colored steps, and right-aligned 11.5px monospace elapsed time from turnStartedAt. Phase changes do not reset it. New turns do. Unknown start shows a dash. Second line is 13px headline, or 11.5px monospace command/path. Paths are project-relative and preserve filenames. Empty content falls back to latest readable text/command/file, title/user message, then generic title. The second line is always nonempty. Fallback uses text-tertiary. Update at most once per second with 160ms/5px upward crossfade.
 
-下表针对 macOS 已安装版本的会话入口；不由命令存在或帮助参数推断可用，不修改 Agent 私有索引。Windows/Linux 不新增未经验证的 CLI 入口。
+Shared PhaseTile/PhaseLabel/StepTrail use phase tokens. Running tiles have 1.6s light arcs, labels 2.4s shimmer, latest steps pulse. Arc pseudo-elements rotate inside fixed rounded masks. Shimmer uses static gradient masks with opposing text/overlay transforms. Animate transform only, not gradient angles/background positions each frame. Thinking breathes, terminal underline blinks, editing outlines trace, interaction shields sway every 2.4s, and completion checks trace once at opacity 0.72. External sessions remain still with an arrow after time. reduced-motion stops decorations.
 
-| Agent | 原生候选入口 | 当前接入与实测结论 |
-|---|---|---|
-| Codex | `codex://threads/{threadId}` | 已接入；ARC app-server 创建并完成的线程可打开，IPC 确认同一 threadId 的 Desktop owner。Linux 不给 Desktop 入口。 |
-| Claude Code | `claude --resume {sessionId}`，使用原工作目录 | macOS 已接入；ACP 会话在 CLI 恢复后显示原测试回复。命令只使用已记录会话或当前活动 transcript 的 UUID 与工作目录。 |
-| Cursor | `cursor-agent --resume {sessionId}` | 已确认独立 `cursor-agent`；同名 `agent` 不作为身份依据。打开停在工作区信任提示，尚未确认会话恢复，不给 open。 |
-| Grok | `grok --resume {sessionId}` | ACP 可创建会话；CLI 启动未取得同会话内容回读，不给 open。 |
-| OpenCode | `opencode --session {sessionId}` | ACP 可创建会话；CLI 打开空会话界面，未取得同 id 内容确认，不给 open。该参数也可创建不存在的会话，不能仅按启动成功判断恢复成功。 |
-| Pi | `pi --session <path或id>`；ARC 自有 session-dir | 空 RPC 会话尚未写出可恢复文件，按 id 恢复返回找不到会话；不把 sessionFile 的预期路径当作已持久化证据，不给 open。 |
-| DeepSeek Harness | `dsh tui --resume <session>` / ACP profile | ACP profile 可创建会话；已安装配置缺少 tui profile，未确认 Desktop 按会话打开的路径，不给 open。 |
-| Gemini、Copilot、Kimi、Qwen、Kiro、Devin、Cline、Junie、Hermes、Droid、Goose、CodeBuddy、Oh My Pi | — | 本次原生发现未安装可用入口；未接入。 |
+Running tentacles use accent plus light `1 14` dashes at 1s. Pending uses stationary warning, 1.5px bubble inset border, and a 6px 16% warning halo breathing at 2.4s, with warning outer arc. Recently ended uses stationary translucent success.
+
+When a full backend snapshot removes a session, retain final summary/actual end time as completed. Unread bubbles keep a dot indefinitely and count toward slots/aggregate. This is current-page ARC read state, not native-app/Dock state, and does not persist across reload. Viewing details marks read, including completion while already open. Details retain task data while panel-open behavior hides bubbles. Leaving details waits about 2s before spring fade, port retraction, and slot closure. Elapsed duration remains fixed at actual end. A new turn clears prior completion/unread state. Keep a selected slot visible if it would otherwise overflow.
+
+External transcript bubbles use text-tertiary `3 5` dashes and an arrow indicating origin, not navigation. All open details. Native navigation is in the header. Narrow windows clip bubbles/tentacles with a 32px right fade without shrinking, hiding the whole group, or horizontal scrolling. Visible parts remain clickable. New tasks grow/fade from their outer-arc port.
+
+### Agent view and task details
+
+Agent nodes/overflow open layer one. Bubbles open layer two. Agent headers show quota-ring icon, name, version, connection, verified native link, settings detail, and close. Quota cards reuse windows/reset/pace/credits/refresh with missing-source explanation.
+
+Active rows follow pending priority/local order: PhaseTile/title/time, PhaseLabel/StepTrail, then headline. Pending rows use warning border and approval label. External rows are read-only with an arrow. Rows have no approval buttons. Ended tasks are ARC sessions observed by this page in the current Core full activity snapshots, retained after removal and confirmed readable by existing timeline API. Exclude transcripts. New activity removes ended entries. backendSession changes clear them. No reload persistence, pre-page backfill, receipt-completion inference, or new native interface.
+
+Mirrored ElasticPanel/panelMorph shells open right from node/bubble, 400px wide with 16px margins and 20px radius. Open ~250ms, close ~160ms, fading content. No scrim/scroll lock/inert. Switch Agents within the shell. Reclick/Escape closes with trigger focus restoration or owning-Agent fallback. Left source views are mutually exclusive. Center dots remain global entry points.
+
+Reserved panel space shifts/compresses the scene without vertical reorder, preserving 40px selected-node/name clearance. Below 760px, overlay mode leaves about 18px of selected-node edge. Pause drag/keyboard reorder while open. All Agent bubbles/tentacles fade toward nodes and outer arcs retract. Nonselected active nodes show counts with warning for pending. Selected nodes enlarge/halo and connect through existing tentacle geometry to the panel edge. Closing restores bubbles. reduced-motion switches directly without flow.
+
+Details have Back, Agent/task title, native link, close, status, project, and duration. Forward/back slide slightly in opposite directions over 160ms without shell resizing. Activity-snapshot membership means ongoing, including external sessions whose completion is snapshot removal rather than old item status. Timelines scroll internally with jump-to-latest.
+
+ARC first reads fully, then polls after each completed read plus ~1s with after, without overlap. Expired cursors force full reload. External read-only snapshots refresh fully about every 5s. Leaving details stops polling. Partial coverage is disclosed. Later errors preserve acquired entries.
+
+External Codex uses app-server thread/read includeTurns without ownership/resume/approval registration. Claude transcripts project user/text/thinking/tool/results by stable tool ID, reading at most the last 8 MiB and reporting partial truncation. External responses include readOnly and use full snapshots rather than after. Missing/failed timelines show phase/recent content and a localized explanation directing complete-record inspection to the native Agent. Verified open appears in the header. External sessions offer no approval actions.
+
+Initially scroll to bottom. Follow running work until the user scrolls up. Resume within 24px of bottom. Layout clamping after collapse is not user scrolling. Preserve the final follow at completion, then stop automatic jumps. Completion never closes details.
+
+Approval and Pi choice/input cards appear only in the fixed bottom area, using warning-soft/warning, requester/object, allow-once explanation, and deny/allow actions. Pending cards receive focus. Full-width cards use 14px horizontal padding with explanation left and actions right. File requests use known paths. Only explicitly associated same-turn read/write/edit/create operations classify permission as read/write. Otherwise retain generic file access without inference from titles/paths.
+
+Existing local respond forwarding, submission locks, stable requestId, and receipt state remain. Pending submission spins/disables repeats. Success removes the card while preserving timeline outcome. ACP allows only allow_once and disables allow if absent. Timeline interactions are borderless single lines showing pending object and eventual result. Suppress a uniquely associated same-turn/object pending tool until execution, but keep ambiguous parallel matches. Executed tools return normally. File/command rows without details have no collapse control. Unknown durations have no placeholder. No extra message box exists except question-answer fields.
+
+### Entry rendering
+
+User messages are right-aligned light bubbles with 14/14/4/14px corners. Text/thinking use react-markdown/remark-gfm for tables, links, tasks, and code, skipping raw HTML. Links use platform opening. No syntax-highlighting dependency is added. Existing plainMarkdown and other-page rendering remain.
+
+Thinking starts collapsed. Reliable duration yields a localized seconds label, otherwise completed thinking or active thinking. Only active labels shimmer. Expanded content uses a pale-purple left rule and secondary text.
+
+Consecutive same-turn command/file/tool entries group until another type/turn. Single tools render directly. Group IDs anchor to the first tool ID across replacement, appends, and prepended history. Inserted separators leave the ID only with the anchor-containing segment. Headers deduplicate at most three stacked icons and count explicit read/write/file-access/command/tool operations plus failures. Sum duration only when every tool has reliable timing.
+
+Running groups default expanded and completed groups collapsed. Manual choices win and persist by stable ID within details, including single-to-group transitions, then release on exit. Tool rows show status, monospace command/path, and duration with FilePath directory truncation. Expanded sections show cwd/path/input/output/exit/truncation/changes. Long output scrolls. Failure uses danger and cancellation gray.
+
+The latest running tool gets a current-execution card below a collapsed group only. Expanded groups do not duplicate it. Ungrouped current tools use that styling directly with detail expansion. Command-tinted background, rotating icon, phase shimmer, and live duration return to normal on completion. Plans use checklists with thinking color for current items. Pending interactions show warning placeholders while actions remain at the bottom. Receipts show allowed/denied/answered. Native completed interactions without a decision show handled without inferring approval. Errors are prominent one-line rows with scrolling expanded content.
+
+Radix Collapsible owns keyboard/semantics. motion animates height around 180ms. Live reduced-motion changes immediately stop mounted transitions and icon rotation. Expansion affects only timeline content, never polling/cursors/follow behavior/panel shell. All colors use semantic light/dark tokens.
+
+## Native navigation
+
+Navigation support requires actual session readback, not command existence/help. Never modify private indexes. Do not add unverified Windows/Linux CLI routes.
+
+| Agent | Candidate | Current boundary |
+| --- | --- | --- |
+| Codex | codex://threads/{threadId} | Integrated. Completed ARC threads can open with matching Desktop owner over IPC. No Desktop link on Linux. |
+| Claude Code | claude --resume {sessionId} in original cwd | Integrated on macOS for recorded or active-transcript UUID/cwd. Same-session content is readable. |
+| Cursor | cursor-agent --resume {sessionId} | Distinct cursor-agent identity required. Generic agent is insufficient. Workspace trust may block session proof, so no open is exposed. |
+| Grok | grok --resume {sessionId} | ACP creation alone does not prove CLI same-session content. No open. |
+| OpenCode | opencode --session {sessionId} | Can create nonexistent IDs, so successful launch/empty UI does not prove resume. No open without content proof. |
+| Pi | pi --session <path-or-id>, ARC session-dir | Empty RPC sessions may lack persisted files. Expected sessionFile paths are not persistence evidence. No open. |
+| DeepSeek Harness | dsh tui --resume <session>, ACP profile | ACP creation does not establish a usable tui profile or Desktop session link. No open. |
+| Gemini, Copilot, Kimi, Qwen, Kiro, Devin, Cline, Junie, Hermes, Droid, Goose, CodeBuddy, Oh My Pi | Unverified | No integrated verified navigation route. |

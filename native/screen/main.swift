@@ -89,14 +89,14 @@ func root(_ app: NSRunningApplication) -> AXUIElement {
 }
 func target(_ args: [String: Any]) throws -> Window {
     guard ["app", "bundleId", "title", "windowId"].contains(where: { args[$0] != nil }) else {
-        try fail("SCREEN_TARGET_REQUIRED: 指定 app、bundleId、title 或 windowId。")
+        try fail("SCREEN_TARGET_REQUIRED: Specify app, bundleId, title or windowId.")
     }
     if args["title"] != nil { try requireRecording() }
     let matches = windows(args)
     guard let first = matches.first else { try fail("WINDOW_NOT_FOUND") }
     let apps = Set(matches.map { $0.app.processIdentifier })
     let app = matches.first(where: { $0.app.isActive })?.app ?? first.app
-    if apps.count > 1 && !app.isActive { try fail("AMBIGUOUS_APP: 请指定 bundleId 或 windowId。") }
+    if apps.count > 1 && !app.isActive { try fail("AMBIGUOUS_APP: Specify bundleId or windowId.") }
     let candidates = matches.filter { $0.app.processIdentifier == app.processIdentifier }
     if candidates.count > 1 && AXIsProcessTrusted(),
        let main = attribute(root(app), kAXMainWindowAttribute) {
@@ -146,7 +146,7 @@ final class Focus {
         // kCGAnyInputEventType is not a Swift enum case.
         let idleSeconds = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~UInt32(0))!)
         if mode == "never" || (mode == "auto" && idleSeconds < 60) {
-            if required { try fail("FOREGROUND_REQUIRED: 目标窗口不在前台；front=never 或用户最近 60 秒内有操作，未抢占前台。") }
+            if required { try fail("FOREGROUND_REQUIRED: The target window is not in the foreground. front=never or user activity within the last 60 seconds prevented foreground activation.") }
             return false
         }
         if mode == "auto" && restoreApp == nil {
@@ -210,12 +210,12 @@ func find(_ args: [String: Any], _ window: Window) throws -> Entry {
         var element = try axWindow(window)
         for index in path.dropFirst() {
             let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
-            guard index >= 0 && index < children.count else { try fail("ELEMENT_NOT_FOUND: 请重新读取 tree。") }
+            guard index >= 0 && index < children.count else { try fail("ELEMENT_NOT_FOUND: Read tree again.") }
             element = children[index]
         }
         return Entry(element: element, ref: ref, role: string(element, kAXRoleAttribute), label: string(element, kAXTitleAttribute))
     }
-    guard let label = args["label"] as? String, !label.isEmpty else { try fail("ELEMENT_TARGET_REQUIRED: 指定 ref 或 label。") }
+    guard let label = args["label"] as? String, !label.isEmpty else { try fail("ELEMENT_TARGET_REQUIRED: Specify ref or label.") }
     let (entries, truncated) = try tree(window, text: false, limit: 1000)
     let matches = entries.filter { $0.label.localizedCaseInsensitiveContains(label) }
     let nth = args["nth"] as? Int ?? 0
@@ -301,7 +301,7 @@ func run(_ args: [String: Any]) throws -> [String: Any] {
     case "raise": try raise(window)
     case "key":
         _ = try focus.prepare(window, mode: mode, required: true)
-        guard isFront(window) else { try fail("FOREGROUND_CHANGED: 未发送按键。") }
+        guard isFront(window) else { try fail("FOREGROUND_CHANGED: No key was sent.") }
         try key(args["key"] as? String ?? "")
     case "press", "show":
         let entry = try find(args, window)
@@ -311,11 +311,11 @@ func run(_ args: [String: Any]) throws -> [String: Any] {
         else if action == "press" {
             _ = try focus.prepare(window, mode: mode, required: true)
             guard let rect = frame(entry.element), rect.width > 0, rect.height > 0,
-                  let currentWindow = frame(try axWindow(window)), currentWindow.contains(CGPoint(x: rect.midX, y: rect.midY)) else { try fail("ELEMENT_NOT_VISIBLE: 请先 show。") }
+                  let currentWindow = frame(try axWindow(window)), currentWindow.contains(CGPoint(x: rect.midX, y: rect.midY)) else { try fail("ELEMENT_NOT_VISIBLE: Call show first.") }
             let point = CGPoint(x: rect.midX, y: rect.midY)
             guard let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
                   let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else { try fail("MOUSE_EVENT_FAILED") }
-            guard isFront(window) else { try fail("FOREGROUND_CHANGED: 未发送点击。") }
+            guard isFront(window) else { try fail("FOREGROUND_CHANGED: No click was sent.") }
             down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
             pause(0.1)
             result["method"] = "CGEvent"
@@ -345,7 +345,7 @@ do {
     let message = (error as? Failure)?.message ?? error.localizedDescription
     let error: Any = message.hasPrefix("PERMISSION_REQUIRED:") ?
         ["code": "PERMISSION_REQUIRED", "permissionId": String(message.dropFirst("PERMISSION_REQUIRED:".count)),
-         "message": "Open ARC Permissions & readiness to grant access. / 打开 ARC 权限与就绪完成授权。"] : message
+         "message": "Open ARC Permissions & readiness to grant access."] : message
     let response = try! JSONSerialization.data(withJSONObject: ["ok": false, "error": error], options: [.sortedKeys])
     FileHandle.standardOutput.write(response)
 }

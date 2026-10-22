@@ -40,6 +40,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const targetArg = args.find(a => a === '--target' || a.startsWith('--target='));
   const target = targetArg === '--target' ? args[args.indexOf(targetArg) + 1] : targetArg?.slice('--target='.length);
-  if (targetArg && !target) throw new Error('--target 需要目标三元组');
+  if (targetArg && !target) throw new Error('--target requires a target triple');
   await buildNative({ release: args.includes('--release'), target });
 }
