@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergeActivity, trackActivity, activityRowHeight, activityScene, activityPorts, activityLayout, visibleActivity, beginApproval, finishApproval, permissionResponse, interactionKey } from "../ui/state/activityModel.ts";
+import { mergeActivity, trackActivity, activityLayout, visibleActivity, beginApproval, finishApproval, permissionResponse, interactionKey } from "../ui/state/activityModel.ts";
 import type { AgentActivitySession, AgentActivitySnapshot, AgentInteraction } from "../ui/types.ts";
 const permission: AgentInteraction = { kind: "permission", summary: "Run example command", respond: { via: "act", op: "agent_respond", args: { agent: "claude", taskId: "task-example", interactionId: 1 } }, options: [{ kind: "allow_once", optionId: "yes" }, { kind: "reject_once", optionId: "no" }] };
 function session(id: string, interaction?: AgentInteraction): AgentActivitySession {
@@ -16,27 +16,6 @@ test("full snapshots update sessions, remove completed ones and reject older obs
   assert.equal(mergeActivity(first, next), next);
   assert.equal(mergeActivity(next, first), next);
   assert.equal(mergeActivity(next, snapshot(3, [])).agents.claude.sessions.length, 0);
-});
-test("task heights reserve 64px slots, 46px idle rows and 10px gaps; scene fills viewport or scrolls", () => {
-  assert.equal(activityRowHeight(0), 46);
-  assert.equal(activityRowHeight(1), 72);
-  assert.equal(activityRowHeight(5), 328);
-  assert.equal(activityRowHeight(20), 328);
-  assert.deepEqual(activityScene([0, 1, 3], 300), { column: 338, height: 498 });
-  assert.deepEqual(activityScene([0, 1, 3], 800), { column: 338, height: 800 });
-  assert.deepEqual(activityScene([], 300), { column: 0, height: 300 });
-});
-test("secondary ports spread evenly inside the expanding outer arc", () => {
-  assert.deepEqual(activityPorts(1), { span: 27, angles: [0] });
-  assert.equal(activityPorts(2).span, 38);
-  assert.equal(activityPorts(5).span, 58);
-  for (let n = 2; n <= 5; n++) {
-    const { span, angles } = activityPorts(n);
-    assert.equal(angles.length, n);
-    assert.ok(Math.abs(angles[0] + span * 0.72) < 1e-9);
-    assert.ok(Math.abs(angles[n - 1] - span * 0.72) < 1e-9);
-    for (let i = 1; i < n; i++) assert.ok(Math.abs(angles[i] - angles[i - 1] - 1.44 * span / (n - 1)) < 1e-9);
-  }
 });
 test("five tasks stay individual; overflow replaces slot five and counts every hidden task", () => {
   for (let n = 0; n <= 9; n++) {

@@ -2,12 +2,13 @@ import { animate, mix, type AnimationPlaybackControlsWithThen } from "motion";
 
 export const surfaceDuration = 0.2;
 
+export interface SurfaceRect { x: number; y: number; width: number; height: number }
 export type Surface = Record<string, string | number>;
 export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // Morph the shell's real dimensions; its independently laid-out content is clipped,
 // never scaled. A shared monotonic curve keeps every edge between its endpoints.
-export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = () => ({}), onFrame?: () => void) {
+export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = () => ({}), onFrame?: (rect: SurfaceRect) => void) {
   const base: Record<string, string> = {};
   const content = node.firstElementChild as HTMLElement | null;
   const contentTranslate = content?.style.translate ?? "";
@@ -88,6 +89,15 @@ export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = (
         Object.assign(node.style, from);
       }
       pinContent();
+      const fromRect = node.getBoundingClientRect();
+      const savedStyle = node.style.cssText;
+      Object.assign(node.style, goal);
+      const toRect = node.getBoundingClientRect();
+      node.style.cssText = savedStyle;
+      const interpolateRect = mix(
+        { x: fromRect.x, y: fromRect.y, width: fromRect.width, height: fromRect.height },
+        { x: toRect.x, y: toRect.y, width: toRect.width, height: toRect.height },
+      );
       const computed = getComputedStyle(node);
       const start = Object.fromEntries(Object.keys(goal).map((key) => [
         key, rendered[key] ?? computed[key as keyof CSSStyleDeclaration],
@@ -105,7 +115,7 @@ export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = (
           rendered = { ...interpolate(progress) };
           Object.assign(node.style, rendered);
           pinContent();
-          onFrame?.();
+          onFrame?.(interpolateRect(progress));
         },
       });
       if (!reduced.matches) {

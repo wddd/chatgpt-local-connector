@@ -4,7 +4,7 @@ import type { AgentActivitySession, AgentActivitySnapshot, AgentInteraction } fr
 export function mergeActivity(current: AgentActivitySnapshot | undefined, next: AgentActivitySnapshot) {
   return current && Date.parse(next.observedAt) < Date.parse(current.observedAt) ? current : next;
 }
-export const activityLayout = { width: 232, height: 54, pitch: 64, gap: 10, radius: 34, nodeGap: 110, hold: 2000, fade: 300 };
+export const activityLayout = { width: 232, height: 54, hold: 2000, fade: 300 };
 export type TrackedActivity = AgentActivitySession & { orderAt: number; endedAt?: number };
 // Freeze the start order on first observation; changing phases/headlines never moves a task.
 export function trackActivity(previous: readonly TrackedActivity[], sessions: readonly AgentActivitySession[], now: number, pinnedId?: string): TrackedActivity[] {
@@ -22,15 +22,6 @@ export function visibleActivity(sessions: readonly TrackedActivity[], pinnedId?:
   if (pinned && !visible.includes(pinned)) visible[visible.length - 1] = pinned;
   return { sessions: visible, hidden: sessions.length > 5 ? sessions.length - 4 : 0,
     count: Math.min(5, sessions.length) };
-}
-export function activityRowHeight(count: number) { return count ? Math.min(5, count) * activityLayout.pitch + 8 : 46; }
-export function activityScene(counts: readonly number[], viewport: number) {
-  const column = counts.reduce((sum, n) => sum + activityRowHeight(n), 0) + Math.max(0, counts.length - 1) * activityLayout.gap;
-  return { column, height: Math.max(viewport, column + 160) };
-}
-export function activityPorts(count: number) {
-  const span = Math.min(58, 16 + 11 * count);
-  return { span, angles: Array.from({ length: count }, (_, j) => count === 1 ? 0 : -0.72 * span + j * 1.44 * span / (count - 1)) };
 }
 export function interactionKey(agent: string, session: AgentActivitySession) {
   return JSON.stringify([agent, session.id, session.phaseSince, session.interaction?.respond]);

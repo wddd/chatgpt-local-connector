@@ -8,7 +8,7 @@ import {
   type CSSProperties,
 } from "react";
 import { animate, type AnimationPlaybackControlsWithThen } from "motion";
-import { surfaceMotion, reducedMotion as reduced, type Surface } from "../motion/surface";
+import { surfaceMotion, reducedMotion as reduced, type Surface, type SurfaceRect } from "../motion/surface";
 import { Dialog as D } from "radix-ui";
 import { X } from "lucide-react";
 import { t } from "../i18n";
@@ -47,6 +47,7 @@ export default function ElasticPanel({
   dockRight = false,
   returnFocus,
   onMotion,
+  onPanelFrame,
 }: {
   open?: boolean;
   onClose: () => void;
@@ -67,6 +68,7 @@ export default function ElasticPanel({
   dockRight?: boolean;
   returnFocus?: string;
   onMotion?: () => void;
+  onPanelFrame?: (rect: SurfaceRect | null) => void;
 }) {
   const [node, setNode] = useState<HTMLDivElement | null>(null),
     [position, setPosition] = useState({ x: 0, y: 0 });
@@ -140,7 +142,8 @@ export default function ElasticPanel({
     }
     const surface = surfaceMotion(node, () => ({
       transform: `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
-    }), onMotion);
+    }), frame => { onMotion?.(); onPanelFrame?.(frame); });
+    onPanelFrame?.(rect);
     motion.current = surface;
     const fades: AnimationPlaybackControlsWithThen[] = [];
     if (!reduced() && source && rect.width && !parent && visualOrigin.current?.trigger.closest(".graph-node, [data-timeline-anchor]")) {
@@ -165,6 +168,7 @@ export default function ElasticPanel({
       panelLayers.set((old) => old.filter((el) => el !== node));
       fades.forEach((fade) => fade.stop());
       surface.dispose();
+      onPanelFrame?.(null);
       motion.current = null;
     };
   }, [node, open]);
@@ -173,6 +177,9 @@ export default function ElasticPanel({
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
   }, [node]);
+  useLayoutEffect(() => {
+    if (node && dockRight && !motion.current?.running) onPanelFrame?.(node.getBoundingClientRect());
+  }, [node, position, dockRight, onPanelFrame]);
   useLayoutEffect(() => {
     const returned = previousView.current.recessed && !recessed;
     const stepped = previousView.current.depthOffset !== depthOffset;

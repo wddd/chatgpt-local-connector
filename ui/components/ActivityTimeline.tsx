@@ -75,8 +75,8 @@ function TimelineEntry({ entry, agent, session, now }: {
     </div>
   </details>;
 }
-export default function ActivityTimeline({ agent, session, onClose, onMotion }: {
-  agent: string; session: AgentActivitySession; onClose: () => void; onMotion: () => void;
+export default function ActivityTimeline({ agent, session, onClose, onPanelFrame }: {
+  agent: string; session: AgentActivitySession; onClose: () => void; onPanelFrame: (rect: import("../motion/surface").SurfaceRect | null) => void;
 }) {
   const { snapshot } = agentActivity.use();
   const submissions = activityApprovals.use(), cardId = useId(), reduced = useReducedMotion();
@@ -152,7 +152,7 @@ export default function ActivityTimeline({ agent, session, onClose, onMotion }: 
         {t(showCard ? pendingSession.interaction?.kind === "question" ? "activity.question" : "activity.phase.interaction" : running ? "timeline.status.running" : "activity.completed")}
       </span><span className="activity-panel-meta" title={subtitle}>{subtitle}</span>
     </div>}
-    width={400} dockRight onClose={onClose} onMotion={onMotion} returnFocus={`[data-activity-session="${CSS.escape(JSON.stringify([agent, session.id]))}"]`} initialFocus={showCard ? cardId : undefined} footer={footer}
+    width={400} dockRight onClose={onClose} onPanelFrame={onPanelFrame} returnFocus={`[data-activity-session="${CSS.escape(JSON.stringify([agent, session.id]))}"]`} initialFocus={showCard ? cardId : undefined} footer={footer}
     actions={nativeSession.open && <Tooltip text={t("activity.open")}><IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
       setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));
     }} /></Tooltip>}>
