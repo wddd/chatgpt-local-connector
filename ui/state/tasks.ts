@@ -3,6 +3,8 @@ import { api } from "../api";
 import { notifyNative } from "../platform";
 import { t } from "../i18n";
 export interface TaskRecord {
+  agent?: string;
+  taskId?: string;
   origin?: { ingressId?: string };
   requestId: string;
   executionOwner?: "desktop" | "connector";

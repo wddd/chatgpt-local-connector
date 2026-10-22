@@ -352,6 +352,8 @@ async fn local_request(
             Ok(
                 json!({"runtime":"rust","instance":s.control.session,"pid":std::process::id(),"owner":"core","version":env!("ARC_BUILD_VERSION"),"build":load(&root().join("app/native.json"))?["build"]}),
             )
+        } else if path == "/api/cli/control" && method == "POST" {
+            local_control(&s, body).await
         } else if let Some(route) = path.strip_prefix("/api/") {
             if method != "GET" {
                 if let Some(owner) = &desktop {
@@ -398,7 +400,104 @@ pub(crate) fn is_wait(request: &Value) -> bool {
             "codex_wait" | "agent_wait" | "inbox_wait"
         )
 }
-async fn enabled_ops(s: &Arc<crate::ingress::Ingress>) -> Vec<Value> {
+// Both transports use this exact validator, dispatcher and output projection.
+// Local CLI is an execution identity, never an ingress registry entry.
+enum ControlSource<'a> {
+    Ingress(&'a Arc<crate::ingress::Ingress>),
+    Local(&'a Arc<crate::execution::Execution>),
+}
+impl ControlSource<'_> {
+    fn id(&self) -> &str {
+        match self {
+            Self::Ingress(s) => &s.id,
+            Self::Local(_) => "local-cli",
+        }
+    }
+    fn execution(&self) -> &Arc<crate::execution::Execution> {
+        match self {
+            Self::Ingress(s) => &s.execution,
+            Self::Local(s) => s,
+        }
+    }
+    fn connected(&self) -> bool {
+        match self {
+            Self::Ingress(s) => s.connected.load(std::sync::atomic::Ordering::SeqCst),
+            Self::Local(_) => true,
+        }
+    }
+    async fn origin(&self) -> Value {
+        match self {
+            Self::Ingress(s) => s.origin().await,
+            Self::Local(_) => {
+                json!({"ingressId":"local-cli","controlSource":"local-cli","authType":"local"})
+            }
+        }
+    }
+    async fn allows(&self, name: &str) -> bool {
+        match self {
+            Self::Ingress(s) => s.allows(name).await,
+            Self::Local(s) => s.available(name).await,
+        }
+    }
+    async fn call(&self, name: &str, args: Value) -> Result<Value> {
+        match self {
+            Self::Ingress(s) => s.call(name, args).await,
+            Self::Local(s) => {
+                if name == "connector_verify" {
+                    let spec = catalog()["ops"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|o| o["name"] == name)
+                        .unwrap();
+                    crate::egress::validate_op(spec, &args)?;
+                    return Ok(
+                        json!({"received":true,"code":args["code"],"origin":self.origin().await}),
+                    );
+                }
+                s.call(name, args, json!("all")).await
+            }
+        }
+    }
+}
+async fn local_control(s: &Arc<Service>, body: Value) -> Result<Value> {
+    let source = ControlSource::Local(&s.execution);
+    let name = string(&body, "op");
+    let tool = if name == "guide" {
+        "guide"
+    } else {
+        catalog()["ops"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|op| op["name"] == name)
+            .map(crate::egress::via)
+            .unwrap_or("query")
+    };
+    let mut args = body.get("args").cloned().unwrap_or(json!({}));
+    if matches!(
+        name,
+        "codex_create" | "codex_send" | "agent_create" | "agent_send"
+    ) {
+        if let Some(fields) = args.as_object_mut() {
+            fields.entry("purpose").or_insert(json!("self-test"));
+            fields.entry("notify").or_insert(Value::Null);
+        }
+    }
+    let envelope = if tool == "guide" {
+        args
+    } else {
+        let mut envelope = json!({"op":name,"args":args});
+        if let Some(request) = body.get("requestId") {
+            envelope["requestId"] = request.clone();
+        }
+        envelope
+    };
+    crate::kernel::origin::ORIGIN
+        .scope(source.origin().await, call_tool(&source, tool, envelope))
+        .await
+}
+async fn enabled_ops(s: &ControlSource<'_>) -> Vec<Value> {
     let mut ops = Vec::new();
     for op in catalog()["ops"].as_array().unwrap() {
         if s.allows(string(op, "name")).await {
@@ -408,7 +507,7 @@ async fn enabled_ops(s: &Arc<crate::ingress::Ingress>) -> Vec<Value> {
     ops
 }
 
-async fn call_tool(s: &Arc<crate::ingress::Ingress>, tool: &str, envelope: Value) -> Result<Value> {
+async fn call_tool(s: &ControlSource<'_>, tool: &str, envelope: Value) -> Result<Value> {
     let name = if tool == "guide" {
         "guide"
     } else {
@@ -421,7 +520,7 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, tool: &str, envelope: Value
     };
     let mut wait_limit = None;
     let result = async {
-        if !s.connected.load(std::sync::atomic::Ordering::SeqCst) {
+        if !s.connected() {
             return Err("Connection closed".into());
         }
         let spec = catalog()["tools"].as_array().unwrap().iter().find(|t| t["name"] == tool)
@@ -469,7 +568,8 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, tool: &str, envelope: Value
             if let Some(limit) = wait_limit {
                 value["waitLimit"] = limit;
             }
-            match crate::claude_notify::read_turns(&s.execution.control, name, &args, &value).await
+            match crate::claude_notify::read_turns(&s.execution().control, name, &args, &value)
+                .await
             {
                 Ok(turns) => reads = turns,
                 Err(error) => crate::logs::record(
@@ -533,7 +633,7 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, tool: &str, envelope: Value
         Value::Null
     } else {
         match crate::claude_notify::inbox(
-            &s.id,
+            s.id(),
             &reads,
             s.origin().await["controlSource"] == "claude",
             args["notify"]["target"].as_str(),
@@ -659,8 +759,9 @@ async fn dispatch(s: &Arc<crate::ingress::Ingress>, request: Value) -> Result<Va
                 .unwrap_or(json!({}));
             let op_args = &args["args"];
             let started = std::time::Instant::now();
+            let source = ControlSource::Ingress(s);
             let response = tokio::select! {
-                result = call_tool(s, string(&request["params"], "name"), args.clone()) => result,
+                result = call_tool(&source, string(&request["params"], "name"), args.clone()) => result,
                 _ = cancel.changed() => {
                     let mut value = json!({"state":"unconfirmed","reason":"wait-cancelled","threadId":op_args["threadId"],"turnId":op_args["turnId"],"runtimeStatus":"unknown","recordedStatus":null,"finalResponse":null,"interaction":[],"changed":false,"conditionMet":false,"observedAt":null,"returnedAt":now(),"elapsedMs":started.elapsed().as_millis() as u64});
                     if args["op"] == "inbox_wait" {
@@ -678,7 +779,7 @@ async fn dispatch(s: &Arc<crate::ingress::Ingress>, request: Value) -> Result<Va
         }
         "tools/call" => {
             call_tool(
-                s,
+                &ControlSource::Ingress(s),
                 string(&request["params"], "name"),
                 request["params"]
                     .get("arguments")

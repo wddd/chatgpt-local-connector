@@ -1,3 +1,5 @@
+import { scenarioName } from "./scenarioMode";
+import { captureRequest, type PanelRequest } from "./acceptance";
 import {
   useEffect,
   useLayoutEffect,
@@ -124,6 +126,7 @@ export default function App() {
     setPage(next);
   }
   useEffect(() => {
+    if (scenarioName) return;
     const stops = [
       startConnector(),
       startPermissions(),
@@ -141,6 +144,7 @@ export default function App() {
     const stops: (() => void)[] = [];
     void import("@tauri-apps/api/event").then(async ({ listen }) => {
       const listeners = await Promise.all([
+        listen<{ id: string; panel?: PanelRequest }>("acceptance:snapshot", e => { void captureRequest(e.payload, () => navigate("overview")); }),
         listen<string>("oauth:open", (e) => setOauthRequest({ id: e.payload })),
         listen<{ id: string; field: string }>("ingress:edit", (e) => {
           navigation.set((old) => ({ ...old, ingressEdit: e.payload }));

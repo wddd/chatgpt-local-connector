@@ -9,7 +9,7 @@ pub struct Service {
     pub subscriptions: Arc<crate::subscriptions::SubscriptionService>,
     pub control: Arc<Control>,
     pub agents: Arc<crate::agents::AgentHost>,
-    execution: Arc<crate::execution::Execution>,
+    pub(crate) execution: Arc<crate::execution::Execution>,
     pub token: String,
     pub port: AtomicU16,
     ingresses: Mutex<BTreeMap<String, Arc<Ingress>>>,
@@ -54,7 +54,8 @@ fn read_entry(id: &str) -> Result<Value> {
     Ok(entry)
 }
 fn valid_id(id: &str) -> Result<()> {
-    if id.is_empty()
+    if id == "local-cli"
+        || id.is_empty()
         || id.len() > 64
         || !id
             .bytes()
@@ -1111,6 +1112,9 @@ impl Service {
                     Ok(settings)
                 }
                 ("POST", "tasks/decision") => {
+                    if let Some(receipt) = self.agents.receipt(body.clone()).await? {
+                        return Ok(receipt);
+                    }
                     self.control
                         .decide(
                             string(&body, "requestId"),
@@ -1120,7 +1124,12 @@ impl Service {
                         )
                         .await
                 }
-                ("GET", "tasks") => Ok(json!({"records":self.control.task_records().await?})),
+                ("GET", "tasks") => {
+                    let mut records = self.control.task_records().await?;
+                    records.extend(self.agents.task_records()?);
+                    records.sort_by(|a, b| string(b, "createdAt").cmp(string(a, "createdAt")));
+                    Ok(json!({"records":records}))
+                }
                 ("POST", "tasks/open") => {
                     crate::desktop::open_thread(string(&body, "threadId")).await
                 }

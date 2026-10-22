@@ -29,7 +29,7 @@ pub fn show(app: &tauri::AppHandle, action: Option<(String, Value)>) -> Result<(
     Ok(())
 }
 
-fn ensure(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
+pub(crate) fn ensure(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     let window = match app.get_webview_window("main") {
         Some(window) => window,
         None => {

@@ -55,7 +55,7 @@ export default function SourceDispatches({ ingressId, limit }: { ingressId: stri
         navigation.set(old => ({ ...old, page: "overview" }));
       }}>
         <PhaseTile phase={phase} completed={state === "completed"} animated={false} />
-        <span><strong>{title}</strong><span className="source-dispatch-meta">Codex · <span>{t(`sourcePanel.${state}`)}</span></span></span>
+        <span><strong>{title}</strong><span className="source-dispatch-meta">{record.agent ?? "Codex"} · <span>{t(`sourcePanel.${state}`)}</span></span></span>
         {canOpen && <Icon icon={ChevronRight} />}
       </button>;
     })}

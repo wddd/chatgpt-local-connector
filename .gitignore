@@ -24,3 +24,6 @@ assets/promo/out/
 
 # Local Worker emulator state
 relay-worker/.wrangler/
+
+# Local acceptance evidence and pixel baselines
+output/acceptance/

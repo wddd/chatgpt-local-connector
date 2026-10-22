@@ -207,6 +207,7 @@ pub fn desktop_route(route: &str) -> bool {
             | "permissions/notify"
             | "appearance"
             | "app"
+            | "app/snapshot"
             | "app/quit"
             | "app/restart"
             | "updates"
@@ -229,6 +230,8 @@ pub fn error_code(message: &str) -> &str {
         "REQUEST_ID_CONFLICT",
         "UNSUPPORTED_OPERATION",
         "APP_START_TIMEOUT",
+        "NOT_SUPPORTED",
+        "SHIM_EXISTS",
     ] {
         if message.starts_with(code) {
             return code;

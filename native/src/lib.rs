@@ -369,3 +369,6 @@ pub fn init_crypto() {
 }
 
 pub(crate) mod wait_transport;
+
+mod cli_acceptance;
+mod cli_shim;

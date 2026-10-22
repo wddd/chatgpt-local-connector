@@ -2370,6 +2370,81 @@
         },
         "additionalProperties": false
       }
+    },
+    {
+      "name": "app.snapshot",
+      "method": "POST",
+      "route": "app/snapshot",
+      "description": "Export live derived UI view-model.json and macOS WKWebView snapshot.png. Other desktops export the model with png.code=NOT_SUPPORTED. out defaults to state/acceptance/<unique id>; width/height are logical pixels; panel.id is required for agent/source.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "out": {
+                "type": "string",
+                "minLength": 1
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 320,
+                "maximum": 3840
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 320,
+                "maximum": 2160
+              },
+              "panel": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "agent",
+                      "source",
+                      "none"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "kind"
+                ],
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "agent",
+                            "source"
+                          ]
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
     }
   ]
 }

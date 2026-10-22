@@ -23,6 +23,96 @@ Commands return a JSON envelope: `schemaVersion: 1`, `ok: true`, and `result`; e
 
 Choose the operation name from capabilities; command names and catalog operation names are not interchangeable. `cli call <operation> --stdin` sends JSON input. `cli mcp` exposes the local management catalog over stdio, separate from remote execution tools.
 
+## Local control and condition waits
+
+`cli control <op> [--stdin]` acts as the built-in `local-cli` control source.
+Stdin is the op's **args object**, not the MCP envelope. `requestId` can be
+provided in that object where the op schema supports it. The existing
+control dispatcher chooses guide/query/act, validates the same schemas and
+returns the same projected result in the CLI `schemaVersion: 1` envelope.
+Control errors retain the remote error object (including code and correction
+hints) under `error`; they do not add a CLI usage field.
+
+```sh
+arc cli control guide
+arc cli control guide codex_create
+printf '%s' '{"prompt":"Do not call tools. Reply ARC_ACCEPTANCE_OK.","mode":"read-only"}' | arc cli control codex_create --stdin
+printf '%s' '{"timeoutMs":1000}' | arc cli control inbox_wait --stdin
+```
+
+Dispatch defaults to `purpose:"self-test"` and `notify:null`. Explicit stdin
+values override these defaults. Receipts, task records and live activity use
+`origin.ingressId` / `origin.controlSource` = `local-cli`; the UI labels this
+source Local CLI. It has no ingress configuration or listener. This command uses
+the existing authenticated local Core channel; neither a network ingress nor
+`cli mcp` can select it. The remote guide/query/act and notification schemas are
+unchanged. `cli capabilities` lists CLI-only descriptors under `cliOnly`;
+`cli schema control`, `cli schema wait` and `cli schema install-shim` describe
+those commands separately from management operations.
+
+```sh
+arc cli wait --op status --until '/core/desktop/state=="ready"' --timeout 20
+printf '%s' '{"threadId":"<thread-id>","turnId":"<turn-id>","until":"terminal"}' | arc cli wait --control --op codex_wait --stdin --until '/conditionMet==true' --timeout 60
+printf '%s' '{"requestId":"<request-id>"}' | arc cli wait --control --op receipt --stdin --until '/threadId exists' --until '/turnId exists' --timeout 60
+```
+
+Conditions address the unwrapped operation result with RFC 6901 JSON Pointers
+(`~0` escapes `~`, `~1` escapes `/`). Comparisons are `==`, `!=`, and the suffix
+`exists`. Equality operands must be JSON literals: quote strings, leave booleans,
+numbers and null unquoted. `exists` includes an explicit null; missing pointers
+match neither equality nor inequality. Repeated `--until` conditions are AND.
+Flags may appear in any order; repeat only `--until`. Timeout is 1–1800 seconds
+(default 60). Management stdin uses the same shape as `cli call`, including
+`body` where required; control stdin uses the op args directly.
+
+Waits accept read-only operations, plus `receipt` with omitted action or
+`action:"read"`. Native `codex_wait`, `agent_wait`, `inbox_wait` and `state.wait`
+retain their existing wait mechanism, bounded by the remaining deadline. Other
+reads fall back to 500 ms polling. Success returns `matched` (pointer/value
+pairs), `elapsedMs` and `lastResult`. Timeout exits nonzero with `ok:false` and
+`error:{code:"WAIT_TIMEOUT",message,elapsedMs,lastResult}`; lastResult is null
+if the first read did not complete. Other read errors stop immediately. A wait
+does not cancel the dispatched task or re-submit it. Terminal state still needs
+to be inspected: failed/cancelled also satisfy native `until:"terminal"`.
+
+## App snapshots and macOS shim
+
+```sh
+arc cli app snapshot --out ./output/acceptance/manual
+printf '%s' '{"width":1280,"height":800,"panel":{"kind":"agent","id":"codex"}}' | arc cli app snapshot --out ./output/acceptance/agent --stdin
+printf '%s' '{"panel":{"kind":"source","id":"<ingress-id>"}}' | arc cli app snapshot --stdin
+arc cli schema app.snapshot
+arc cli install-shim
+```
+
+Snapshot requires an App-owned desktop. It opens the main window, optionally
+sets its logical width/height (320–3840 / 320–2160), and optionally opens a panel:
+`{kind:"agent",id}`, `{kind:"source",id}`, or `{kind:"none"}`. Panel selection
+navigates to the overview. Without `panel`, the current page and panel remain.
+The CLI resolves `--out` relative to its working directory; the management
+operation `app.snapshot` takes `{body:{out,width,height,panel}}` and requires
+an absolute `out`. Without an output path, it creates a unique directory under
+`<state>/acceptance/`.
+
+The result includes `directory`, `viewModel` and `png`. `view-model.json` records
+the current renderer's animated node/task positions, primitive geometry, SVG
+paths (outer arcs and tentacles), task states/text, panel selection, viewport,
+theme and language. The UI refreshes its stores and waits for geometry to settle;
+`layoutSettled:false` indicates the bounded settling period expired. Capture is
+sequential, so live activity can advance between model export and PNG capture.
+On macOS `snapshot.png` comes from WKWebView `takeSnapshot`, without screen
+recording permission and independently of SSH's TCC identity. Other desktop
+platforms still export the model and return `png:{ok:false,code:"NOT_SUPPORTED"}`.
+A failed PNG has its own error while preserving the model; inspect `png.ok`.
+Headless Linux has no WebView and cannot export a rendered UI model.
+
+`install-shim` is macOS-only and must run from the App-bundled executable. It
+creates `~/.local/bin/arc` pointing to that App's `Contents/Resources/bin/arc`.
+An identical link succeeds without changes; any other existing file/link fails
+with `SHIM_EXISTS`. Uninstall removes the link only when this instance recorded
+creating it and its target is unchanged. Add `~/.local/bin` to PATH in your shell
+if needed.
+
 ## Resource diagnostics
 
 `cli status` (catalog operation `status`) and `cli doctor` expose the same Core

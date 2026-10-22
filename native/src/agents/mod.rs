@@ -343,6 +343,51 @@ impl AgentHost {
             });
         }
     }
+    /// Project adapter receipts into the same local task feed as Codex dispatches.
+    pub(crate) fn task_records(&self) -> Result<Vec<Value>> {
+        let directory = root().join("agents/requests");
+        if !directory.exists() {
+            return Ok(Vec::new());
+        }
+        let mut records = Vec::new();
+        for entry in std::fs::read_dir(directory).map_err(|e| e.to_string())? {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            let Some(request) = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .filter(|s| uuid::Uuid::parse_str(s).is_ok())
+            else {
+                continue;
+            };
+            if path.extension().is_none_or(|s| s != "json") {
+                continue;
+            }
+            let receipt = RECEIPTS.read(request, &self.session)?;
+            if !matches!(string(&receipt, "operation"), "agent_create" | "agent_send") {
+                continue;
+            }
+            let args = &receipt["arguments"];
+            let task = task_path(string(&receipt, "taskId"))
+                .ok()
+                .and_then(|p| load(&p).ok())
+                .unwrap_or(Value::Null);
+            let state = string(&task, "status");
+            let runtime = match state {
+                "running" | "starting" | "cancelling" => "active",
+                "waiting-permission" => "waiting",
+                "failed" => "systemError",
+                "completed" | "idle" | "cancelled" => "idle",
+                _ => "unknown",
+            };
+            records.push(json!({"requestId":request,"agent":receipt["agent"],"taskId":receipt["taskId"],"turnId":receipt["turnId"],
+                "origin":receipt["origin"],"state":receipt["state"],"createdAt":receipt["createdAt"],"updatedAt":receipt["updatedAt"],
+                "approval":{"decision":if receipt["state"] == "awaiting-approval" {"pending"} else {args["approval"].as_str().unwrap_or("automatic")},"source":"cloud","at":receipt["createdAt"]},
+                "task":{"kind":if receipt["operation"] == "agent_create" {"create"}else{"send"},"origin":receipt["origin"],"title":task.get("title").unwrap_or(&args["title"]),"prompt":args["prompt"].as_str().unwrap_or(""),"input":[],"directory":task.get("cwd").unwrap_or(&args["cwd"]),"model":args["model"],"settings":{}},
+                "runtime":{"runtimeStatus":runtime,"title":task["title"],"observedAt":task["updatedAt"],"stale":receipt["backendSession"] != self.session && matches!(runtime, "active" | "waiting")},
+                "error":receipt.get("error").or_else(||receipt["result"].get("error"))}));
+        }
+        Ok(records)
+    }
     pub async fn activity(&self, control: &control::Control) -> Value {
         let processes: Vec<_> = self.processes.lock().await.values().cloned().collect();
         let disabled = self.disabled.lock().await.clone();
@@ -374,6 +419,9 @@ impl AgentHost {
                 .unwrap_or_default();
             let mut session = timeline.session(&info, "arc-task", None);
             session["nativeSessionId"] = state["sessionId"].clone();
+            if state["origin"].is_object() {
+                session["origin"] = state["origin"].clone();
+            }
             if agent == "claude"
                 && cfg!(target_os = "macos")
                 && uuid::Uuid::parse_str(string(&state, "sessionId")).is_ok()
@@ -406,7 +454,9 @@ impl AgentHost {
             .map(str::to_owned)
             .collect();
         let transcripts = self.activity.lock().await.sample(selected).await;
-        let recorded = if transcripts.iter().any(|(agent, _)| agent == "codex") {
+        let recorded = if agents.contains_key("codex")
+            || transcripts.iter().any(|(agent, _)| agent == "codex")
+        {
             control.task_records().await.unwrap_or_default()
         } else {
             Vec::new()
@@ -424,7 +474,16 @@ impl AgentHost {
                 activity::insert(&mut agents, &agent, session);
             }
         }
-        for agent in agents.values_mut() {
+        for (agent_id, agent) in agents.iter_mut() {
+            if agent_id == "codex" {
+                for session in agent["sessions"].as_array_mut().into_iter().flatten() {
+                    if let Some(record) = recorded.iter().find(|r| {
+                        r["threadId"] == session["id"] || r["task"]["threadId"] == session["id"]
+                    }) {
+                        session["origin"] = record["origin"].clone();
+                    }
+                }
+            }
             agent["sessions"]
                 .as_array_mut()
                 .unwrap()

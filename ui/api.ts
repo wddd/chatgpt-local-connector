@@ -1,3 +1,4 @@
+import { scenarioName } from "./scenarioMode";
 import { t } from './i18n';
 import { desktopRequest, isDesktop } from './platform';
 export async function api<T = unknown>(
@@ -5,6 +6,7 @@ export async function api<T = unknown>(
   method = "GET",
   body?: unknown,
 ): Promise<T> {
+  if (import.meta.env.DEV && scenarioName) return (await import('./scenarios')).scenarioResponse(path, method) as T;
   if (isDesktop) return desktopRequest<T>(path, method, body);
   const response = await fetch(`/api/${path}`, {
     method,

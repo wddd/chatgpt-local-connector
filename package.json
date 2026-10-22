@@ -31,7 +31,9 @@
     "release:finalize": "node tooling/release.mjs finalize",
     "release": "node tooling/release.mjs release",
     "check:relay": "npm --prefix relay-worker run check",
-    "test:relay": "npm --prefix relay-worker test"
+    "test:relay": "npm --prefix relay-worker test",
+    "accept:ui": "node tooling/acceptance/ui.mjs",
+    "accept:remote": "node tooling/acceptance/remote.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
@@ -46,6 +48,9 @@
     "happy-dom": "^21.0.4",
     "lucide-react": "^1.48.0",
     "motion": "^13.4.4",
+    "pixelmatch": "^8.0.0",
+    "playwright": "^1.64.1",
+    "pngjs": "^7.0.0",
     "radix-ui": "^1.6.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

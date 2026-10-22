@@ -1,4 +1,5 @@
 {
+  "localCli": "本机 CLI",
   "trayConnectionStatus": "连接状态",
   "trayOptions": "选项",
   "trayConnect": "开启连接",

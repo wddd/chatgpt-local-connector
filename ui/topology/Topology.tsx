@@ -1,3 +1,4 @@
+import { observeTopology } from "../acceptance";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject, type PointerEvent, type MouseEvent } from "react";
 import { useMedia } from "../state/hooks";
 import { solve, BUBBLE_W, NODE_R, type Side, type Scene, type Drag, type Layout } from "./solve";
@@ -36,6 +37,13 @@ export default function Topology({ left, right, brand, boundary, onReorderNodes,
   const allTasks = [...new Map([...retained, ...tasks].map(t => [taskKey(t.side, t.id), t])).values()];
   const latest = useRef({ nodes, tasks, allTasks, left, right, reduced, params, guides, slow, onReorderNodes, onReorderTasks });
   latest.current = { nodes, tasks, allTasks, left, right, reduced, params, guides, slow, onReorderNodes, onReorderTasks };
+  useEffect(() => observeTopology(() => ({
+    origin: origin.current, size: size.current, panel: panel.current,
+    nodes: latest.current.nodes.map(({ content: _content, tasks: _tasks, ...node }) => ({ ...node, position: animator.current.values(nodeKey(node.side, node.id)) })),
+    tasks: latest.current.allTasks.map(({ content: _content, ...task }) => ({ ...task, position: animator.current.values(taskKey(task.side, task.id)), text: elements.current.get(taskKey(task.side, task.id))?.textContent })),
+    primitives: Object.fromEntries([...animator.current.live.keys()].map(key => [key, animator.current.values(key)])),
+    paths: [...(svg.current?.querySelectorAll("path") ?? [])].map(path => ({ d: path.getAttribute("d"), class: path.getAttribute("class"), opacity: path.getAttribute("opacity"), mask: path.getAttribute("mask") })),
+  })), []);
   const paint = useCallback(() => {
     const a = animator.current, h = a.values("hub"), root = graph.current;
     if (!h || !root) return;

@@ -35,6 +35,7 @@ pub async fn request(app: &tauri::AppHandle, operation: DesktopRequest) -> Resul
         match (method.as_str(), route.as_str()) {
             ("GET", "permissions/desktop") => return Ok(crate::permissions::status().await),
             ("POST", "permissions/notify") => return crate::permissions::notify(app, body).await,
+            ("POST", "app/snapshot") => return crate::snapshot::capture(app, body).await,
             ("GET", "app") => {
                 return Ok(
                     json!({"pid":std::process::id(),"version":env!("ARC_BUILD_VERSION"),"executable":std::env::current_exe().map_err(|e|e.to_string())?,"build":arc_core::runtime::build_id(&std::env::current_exe().map_err(|e|e.to_string())?)?}),

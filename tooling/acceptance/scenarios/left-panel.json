@@ -1,0 +1,57 @@
+{
+  "theme": "light",
+  "language": "zh-CN",
+  "agents": [
+    "codex",
+    "claude",
+    "pi"
+  ],
+  "tasks": [
+    {
+      "agent": "codex",
+      "phase": "thinking",
+      "title": "并行任务 1",
+      "headline": "确认 API 契约"
+    },
+    {
+      "agent": "codex",
+      "phase": "command",
+      "title": "并行任务 2",
+      "headline": "npm run check"
+    },
+    {
+      "agent": "codex",
+      "phase": "file",
+      "title": "并行任务 3",
+      "headline": "ui/components/ConnectionOverview.tsx"
+    },
+    {
+      "agent": "claude",
+      "phase": "tool",
+      "title": "并行任务 4",
+      "headline": "读取项目文档"
+    },
+    {
+      "agent": "claude",
+      "phase": "text",
+      "title": "并行任务 5",
+      "headline": "整理实现说明"
+    },
+    {
+      "agent": "pi",
+      "phase": "command",
+      "title": "并行任务 6",
+      "headline": "git status --short"
+    },
+    {
+      "agent": "pi",
+      "phase": "thinking",
+      "title": "并行任务 7",
+      "headline": "核对布局边界"
+    }
+  ],
+  "panel": {
+    "kind": "source",
+    "id": "fixture-source"
+  }
+}

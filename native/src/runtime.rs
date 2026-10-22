@@ -113,7 +113,9 @@ impl State {
         &self,
         operation: crate::transport::DesktopRequest,
     ) -> Result<Value> {
-        if cfg!(target_os = "linux") {
+        if cfg!(target_os = "linux")
+            && !matches!(&operation, crate::transport::DesktopRequest::Route(route, _, _) if route == "app/snapshot")
+        {
             return Err(
                 "DESKTOP_UNSUPPORTED: this operation requires a desktop UI; Linux runs headless."
                     .into(),

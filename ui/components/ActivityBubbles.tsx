@@ -38,7 +38,7 @@ export function ActivityBubble({ agent, session, now, onMove, listRow = false }:
   const phase = session.interaction ? "interaction" : session.phase;
   const phaseLabel = completed ? "activity.completed" : session.interaction?.kind === "question" ? "activity.question" : `activity.phase.${phase}`;
   const hint = t("timeline.open"), headline = activityHeadline(session, t("timeline.title"));
-  return <Tooltip text={`${hint} · ${headline.fullText}`}>
+  return <Tooltip text={`${hint} · ${session.origin?.controlSource === "local-cli" ? t("localCli") + " · " : ""}${headline.fullText}`}>
     <button type="button" className={`${listRow ? "activity-task-row" : "activity-bubble"} ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
       data-external={external || undefined}
       data-timeline-anchor
@@ -56,6 +56,7 @@ export function ActivityBubble({ agent, session, now, onMove, listRow = false }:
         {listRow && <span className="activity-row-title"><strong>{session.title || t("timeline.title")}</strong><time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}</time></span>}
         <span className="activity-phase">
           <PhaseLabel phase={phase} running={running} completed={completed}>{t(phaseLabel)}</PhaseLabel>
+          {session.origin?.controlSource === "local-cli" && <span>{t("localCli")}</span>}
           <StepTrail steps={session.recentSteps} running={running} />
           {unread && <span className="activity-unread" role="img" aria-label={t("activity.unread")} />}
           {listRow ? session.interaction && <span className="activity-pending-tag">{t("agentPanel.pending")}</span>

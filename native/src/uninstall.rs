@@ -11,6 +11,9 @@ pub async fn run(purge: bool) -> Result<Value> {
     let executable = std::env::current_exe().map_err(|e| e.to_string())?;
     let executable = executable.canonicalize().map_err(|e| e.to_string())?;
     let mut paths = vec![];
+    if let Some(shim) = crate::cli_shim::owned(&executable) {
+        paths.push(shim);
+    }
     #[allow(unused_mut)]
     let mut warnings: Vec<Value> = vec![];
     // Only historical launchers actually used by this ARC instance belong to it.

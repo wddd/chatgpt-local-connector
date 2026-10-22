@@ -1,3 +1,4 @@
+import { scenarioName } from "../scenarioMode";
 import { agentPanel, selectAgentPanel, ingressPanel, selectIngressPanel } from "../state/overviewPanels";
 import { PhaseTile, PhaseLabel } from "./activity";
 import { resetActivityHistory, useActivityTracking } from "../state/activity";
@@ -61,7 +62,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const [agentsOpen, setAgentsOpen] = useState(false), [settingsAgent, setSettingsAgent] = useState<Agent>();
   const initialSetupShown = useRef(false);
   useEffect(() => {
-    if (!visible || initialSetupShown.current || !status || loading || error) return;
+    if (scenarioName || !visible || initialSetupShown.current || !status || loading || error) return;
     initialSetupShown.current = true;
     if (!status.ingresses.some(i => i.transport !== "relay" || i.oauth?.grants.length)) openOnboarding("welcome");
   }, [visible, status, loading, error]);

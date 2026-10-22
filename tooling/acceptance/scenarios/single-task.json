@@ -1,0 +1,15 @@
+{
+  "theme": "light",
+  "language": "zh-CN",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [
+    {
+      "agent": "codex",
+      "phase": "thinking",
+      "title": "阅读项目说明",
+      "headline": "理解 README 中的项目结构"
+    }
+  ]
+}

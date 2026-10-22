@@ -37,7 +37,7 @@ npm run build
 npm run desktop:check
 ```
 
-check 检查 React/TypeScript；check:format 检查 Rust 格式。test 执行已有 Rust 单元测试和 MCP fixture 合同测试，fixture 使用独立临时状态。build 编译前端、Core 和适用的屏幕 helper；desktop:check 检查桌面 crate。不得新增测试文件或用例，迁移已有测试不扩大覆盖。
+check 检查 React/TypeScript；check:format 检查 Rust 格式。test 执行已有 Rust 单元测试和 MCP fixture 合同测试，fixture 使用独立临时状态。build 编译前端、Core 和适用的屏幕 helper；desktop:check 检查桌面 crate。允许新增验收场景与验收脚本；单元测试仍不新增（待后续讨论）。迁移已有测试不扩大覆盖。场景、跨设备验收与产物查看见[验收](acceptance.md)。
 
 直接运行 Cargo 构建或测试后执行：
 

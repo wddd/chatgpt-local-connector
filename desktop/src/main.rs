@@ -12,6 +12,7 @@ mod i18n;
 mod oauth_links;
 mod permissions;
 mod session;
+mod snapshot;
 mod tray;
 mod updates;
 mod windows;
@@ -120,6 +121,7 @@ fn main() {
     tauri::Builder::default()
         .manage(updates::UpdateState::default())
         .manage(windows::MainState::default())
+        .manage(snapshot::State::default())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             show_main_window(app);
         }))
@@ -142,6 +144,7 @@ fn main() {
             windows::main_window_ready,
             windows::release_main_window,
             service_request,
+            snapshot::snapshot_ready,
             i18n::set_ui_locale,
             #[cfg(target_os = "windows")]
             windows_frame::set_windows_appearance

@@ -1,0 +1,15 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [
+    {
+      "agent": "codex",
+      "phase": "thinking",
+      "title": "A long task / 很长的任务名称 / 日本語 / العربية / Français",
+      "headline": "Review a very long multi-language summary — 中文排版与长路径 日本語の表示 العربية Français — very-long-content very-long-content very-long-content very-long-content very-long-content very-long-content very-long-content very-long-content very-long-content very-long-content very-long-content very-long-content "
+    }
+  ]
+}

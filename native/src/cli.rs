@@ -3,6 +3,8 @@ use std::io::Read;
 
 const COMMANDS: &[&str] = &[
     "capabilities",
+    "control <op> [--stdin]",
+    "install-shim",
     "schema <operation>",
     "call <operation> [--stdin]",
     "mcp",
@@ -126,6 +128,17 @@ async fn doctor() -> crate::Result<Value> {
 }
 // Keep help and argument validation on the same command grammar.
 fn command_usage(args: &[&str]) -> Result<String, (String, String)> {
+    if let Some(result) = crate::cli_acceptance::usage(args) {
+        return result.map_err(|e| {
+            (
+                e,
+                "cli help; cli schema wait; cli schema app.snapshot".into(),
+            )
+        });
+    }
+    if matches!(args, ["control", "guide", op] if !op.starts_with('-')) {
+        return Ok("cli control guide [op]".into());
+    }
     if args.first() == Some(&"setup") && args.contains(&"--locale") {
         let (normalized, _) = setup_locale(args)
             .map_err(|e| (e, "cli setup next|apply|wait [--locale zh-CN|en]".into()))?;
@@ -449,7 +462,7 @@ fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
     1
 }
 
-fn stdin_json() -> crate::Result<Value> {
+pub(crate) fn stdin_json() -> crate::Result<Value> {
     let mut input = String::new();
     std::io::stdin()
         .take(16385)
@@ -509,6 +522,13 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         json!({"body":body})
     };
     match args.as_slice() {
+        ["control", "guide", op] if *op != "--stdin" => crate::cli_acceptance::control("guide", json!({"op":op})).await,
+        ["control", op] => crate::cli_acceptance::control(op, json!({})).await,
+        ["control", op, "--stdin"] => crate::cli_acceptance::control(op, stdin_json()?).await,
+        ["wait", ..] => crate::cli_acceptance::wait(&args).await,
+        ["app", "snapshot", ..] => crate::cli_acceptance::snapshot(&args).await,
+        ["install-shim"] => crate::cli_shim::install(),
+        ["schema", name] if crate::cli_acceptance::schemas().get(*name).is_some() => Ok(crate::cli_acceptance::schemas()[*name].clone()),
         ["setup"] | ["setup", "next"] => crate::management::call("setup.next",setup_body(json!({}))).await,
         ["setup", "--goal", goal] | ["setup", "next", "--goal", goal] => crate::management::call("setup.next",setup_body(json!({"goal":goal}))).await,
         ["setup", "apply", step, "--stdin"] => crate::management::call("setup.apply",setup_body(json!({"stepId":step,"input":stdin_json()?}))).await,
@@ -519,7 +539,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         ["setup", "reset"] => forward_request("setup/reset","DELETE",json!({})).await,
         ["uninstall"] => crate::uninstall::run(false).await,
         ["uninstall", "--purge"] => crate::uninstall::run(true).await,
-        ["capabilities"] => Ok(crate::management::catalog()),
+        ["capabilities"] => { let mut c = crate::management::catalog(); c["cliOnly"] = crate::cli_acceptance::schemas(); Ok(c) },
         ["schema", name] => crate::management::catalog()["operations"]
             .as_array()
             .unwrap()
@@ -543,6 +563,8 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         [] | ["help"] | ["--help"] => Ok(json!({"version":env!("ARC_BUILD_VERSION"),
             "usage":"arc cli <command>",
             "groups":[
+                {"commands":"control <op> [--stdin]; control guide [op]; wait --op <op> [--control] [--stdin] --until <condition> [--until <condition>] [--timeout <seconds>]","description":"Local-only control dispatch and bounded condition waiting. Read cli schema control and cli schema wait."},
+                {"commands":"app snapshot [--out <directory>] [--stdin]; install-shim","description":"Export the live UI and a macOS WebView PNG; install the macOS CLI symlink."},
                 {"commands":"setup next|apply|wait|playbook|reset; skill install --target codex|claude-code","description":"Configure ARC with an Agent; follow the returned step and nextAction."},
                 {"commands":"status; doctor; onboarding; context --stdin","description":"Read current state, diagnostics and onboarding evidence."},
                 {"commands":"ingress list|presets|add|update|remove|start|stop|restart|probe|doctor|verify","description":"Manage and diagnose a selected connection; add/update accept JSON on stdin."},
@@ -762,6 +784,14 @@ pub async fn run(args: Vec<String>) -> i32 {
     }
     match execute(&args).await {
         Ok(result) => print_output(json!({"schemaVersion":1,"ok":true,"result":result})),
-        Err(message) => print_error(&message, &usage, &words),
+        Err(message) => {
+            if matches!(words.first(), Some(&"control" | &"wait")) {
+                if let Ok(error) = serde_json::from_str::<Value>(&message) {
+                    print_output(json!({"schemaVersion":1,"ok":false,"error":error}));
+                    return 1;
+                }
+            }
+            print_error(&message, &usage, &words)
+        }
     }
 }

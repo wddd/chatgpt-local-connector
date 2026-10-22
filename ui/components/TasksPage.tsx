@@ -14,7 +14,7 @@ import {
 import { useInterval } from "../state/hooks";
 import { Button, Empty, IconButton, Loading, Notice, Dialog } from "./ui";
 import { Markdown, plainMarkdown } from "./ui/Markdown";
-const idOf = (r: TaskRecord) => r.threadId || r.task.threadId;
+const idOf = (r: TaskRecord) => r.taskId || r.threadId || r.task.threadId;
 export default function TasksPage() {
   const { records, error, loading } = tasks.use(),
     { busy } = connector.use();
@@ -77,6 +77,7 @@ export default function TasksPage() {
     if (reading.current) return;
     reading.current = true;
     const ids = groups
+      .filter(g => !g.first.agent || g.first.agent === "codex")
       .map((g) => idOf(g.first))
       .filter((id): id is string => !!id);
     for (let i = 0; i < ids.length; i += 4)
@@ -137,7 +138,7 @@ export default function TasksPage() {
             {projectName(selected.first)}
           </span>
           {["running", "runtimeError"].includes(stateOf(selected)) && <span className="task-document-state">{t(stateOf(selected))}</span>}
-          {idOf(selected.first) && !runtime(selected.first)?.archived && (
+          {!selected.first.agent && idOf(selected.first) && !runtime(selected.first)?.archived && (
             <IconButton
               icon={ExternalLink}
               label={t("openInCodex")}
@@ -211,7 +212,7 @@ export default function TasksPage() {
                   reject: "rejected",
                 }[r.approval.decision] || r.approval.decision,
               )}{" "}
-              · {t(r.approval.source === "local" ? "local" : "cloud")}
+              · {t((r.origin ?? r.task.origin)?.ingressId === "local-cli" ? "localCli" : r.approval.source === "local" ? "local" : "cloud")}
               {r.task.model ? ` · ${r.task.model}` : ""}
               {r.task.effort ? ` · ${r.task.effort}` : ""}
             </p>

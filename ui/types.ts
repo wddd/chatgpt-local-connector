@@ -72,6 +72,7 @@ export interface AgentInteraction {
   method?: "select" | "confirm" | "input" | "editor";
 }
 export interface AgentActivitySession {
+  origin?: { ingressId?: string; controlSource?: string };
   id: string;
   source: "arc-task" | "codex-thread" | "transcript";
   nativeSessionId?: string;
