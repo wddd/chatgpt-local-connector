@@ -55,6 +55,43 @@ fn parse_url(address: &str) -> Result<Url> {
 }
 
 impl NetworkProxy {
+    /// Relay traffic honors launching-shell proxies on every platform, then native settings.
+    pub async fn resolve_relay(settings: &Value) -> Result<Self> {
+        if string(settings, "proxyMode") == "system" {
+            let env = |keys: &[&str]| -> Result<Option<Url>> {
+                keys.iter()
+                    .filter_map(|key| std::env::var(key).ok())
+                    .find(|v| !v.is_empty())
+                    .map(|v| {
+                        let url =
+                            Url::parse(&v).map_err(|_| "Invalid relay proxy environment URL")?;
+                        if !["http", "https", "socks5", "socks5h"].contains(&url.scheme())
+                            || url.host_str().is_none()
+                        {
+                            return Err("Unsupported relay proxy environment URL".into());
+                        }
+                        Ok(url)
+                    })
+                    .transpose()
+            };
+            let https = env(&["https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"])?;
+            if https.is_some() {
+                return Ok(Self {
+                    http: env(&["http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"])?,
+                    https,
+                    bypass: format!(
+                        "{},localhost,127.0.0.1,::1",
+                        std::env::var("NO_PROXY")
+                            .or_else(|_| std::env::var("no_proxy"))
+                            .unwrap_or_default()
+                    ),
+                    message: "Using relay environment proxy",
+                });
+            }
+        }
+        Self::resolve(settings).await
+    }
+
     pub async fn resolve(settings: &Value) -> Result<Self> {
         let mode = string(settings, "proxyMode");
         let address = string(settings, "proxyUrl");

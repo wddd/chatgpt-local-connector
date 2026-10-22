@@ -21,3 +21,6 @@ release-artifacts/
 # promo video build inputs/outputs
 assets/promo/fonts/
 assets/promo/out/
+
+# Local Worker emulator state
+relay-worker/.wrangler/

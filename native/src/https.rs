@@ -151,7 +151,7 @@ async fn handle(
         let mut response = reply(401, Some(json!({"error":"unauthorized"})));
         response.headers_mut().insert(
             "www-authenticate",
-            hyper::header::HeaderValue::from_str(&if oauth { format!("Bearer resource_metadata=\"{origin}/.well-known/oauth-protected-resource/mcp\", scope=\"mcp\"") } else { "Bearer".to_owned() }).unwrap(),
+            hyper::header::HeaderValue::from_str(&if oauth { format!("Bearer resource_metadata=\"{origin}/.well-known/oauth-protected-resource{}\", scope=\"mcp\"", url.path()) } else { "Bearer".to_owned() }).unwrap(),
         );
         return Ok(response);
     }

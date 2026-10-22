@@ -23,7 +23,7 @@ function render(state) {
   try { element('callback').textContent = new URL(state.redirectUri).hostname; }
   catch { element('callback').textContent = '—'; }
   if (['approved', 'denied'].includes(state.status)) {
-    returnLink.href = `/oauth/continue?request=${encodeURIComponent(request)}`;
+    returnLink.href = `./continue?request=${encodeURIComponent(request)}`;
     returnLink.hidden = false;
     if (!redirecting) {
       redirecting = true;
@@ -35,7 +35,7 @@ function render(state) {
 async function refresh() {
   if (redirecting) return;
   try {
-    const response = await fetch(`/oauth/status?request=${encodeURIComponent(request || '')}`, {cache:'no-store'});
+    const response = await fetch(`./status?request=${encodeURIComponent(request || '')}`, {cache:'no-store'});
     if (!response.ok) throw new Error('读取失败');
     const state = await response.json();
     render(state);

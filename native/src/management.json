@@ -750,7 +750,8 @@
               "transport": {
                 "enum": [
                   "https",
-                  "openai-tunnel"
+                  "openai-tunnel",
+                  "relay"
                 ]
               },
               "auth": {
@@ -843,7 +844,8 @@
               "transport": {
                 "enum": [
                   "https",
-                  "openai-tunnel"
+                  "openai-tunnel",
+                  "relay"
                 ]
               },
               "auth": {
@@ -1223,7 +1225,8 @@
               "transport": {
                 "enum": [
                   "https",
-                  "openai-tunnel"
+                  "openai-tunnel",
+                  "relay"
                 ]
               },
               "auth": {
@@ -1331,7 +1334,8 @@
               "transport": {
                 "enum": [
                   "https",
-                  "openai-tunnel"
+                  "openai-tunnel",
+                  "relay"
                 ]
               },
               "auth": {
@@ -1934,6 +1938,392 @@
         ],
         "additionalProperties": false
       },
+      "localOnly": true
+    },
+    {
+      "name": "relay.list",
+      "method": "GET",
+      "route": "relay/list",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "List locally configured relays and bundled ARC/Worker version. No invitation or private key is returned.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.progress",
+      "method": "GET",
+      "route": "relay/progress",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "Read last relay job: jobId, phase (idle/login/deploying/connecting/ready/failed), reason, loginUrl, relayId, ingressId, result; accounts is present if account selection is required. loginUrl is transient and must not be logged.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.create",
+      "method": "POST",
+      "route": "relay/create",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "workerName": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,63}$"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "openBrowser": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Start creation via managed Wrangler browser OAuth, deploy bundled Worker with management public key secret, register this instance and connect. Returns job snapshot; read relay.progress. Installs an isolated Node.js/Wrangler deployment tool when needed; ordinary relay traffic stays native.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.redeploy",
+      "method": "POST",
+      "route": "relay/redeploy",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "openBrowser": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Owner only: redeploy bundled ARC version, preserving Worker name, identities, members and shared token. Also resumes a partially completed creation.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.join",
+      "method": "POST",
+      "route": "relay/join",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "link": {
+                "type": "string",
+                "writeOnly": true
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "link"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Join a shared relay and connect. The invitation token is consumed for registration and not stored on member machines. Returns a progress job.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.connect",
+      "method": "POST",
+      "route": "relay/connect",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Reconnect an already registered local instance. Returns a progress job.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.cancel",
+      "method": "POST",
+      "route": "relay/cancel",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Cancel the running job and terminate its deployment process tree. Completed remote effects are retained and reported through relay.list; cancellation is not a rollback.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.me",
+      "method": "POST",
+      "route": "relay/me",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Read only this instance: id, publicKey, name, joinedAt, lastOnline, online.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.leave",
+      "method": "POST",
+      "route": "relay/leave",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Remove this instance from the relay, stop/delete its local ingress. Owners retain local relay management authority.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.instances",
+      "method": "POST",
+      "route": "relay/instances",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Owner signature only: list relay instances, display names, join times, last online and online status.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.remove",
+      "method": "POST",
+      "route": "relay/remove",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "instanceId": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "id",
+              "instanceId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Owner signature only: revoke an instance address and active connection immediately. A revoked identity cannot rejoin with a shared token.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.share",
+      "method": "POST",
+      "route": "relay/share",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Owner only: return shared link encoding relay origin and invitation token in the URL fragment. Do not log the result.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.reset-token",
+      "method": "POST",
+      "route": "relay/reset-token",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Owner signature only: rotate shared invitation token and return a new shared link; existing members remain registered.",
+      "localOnly": true
+    },
+    {
+      "name": "relay.delete",
+      "method": "POST",
+      "route": "relay/delete",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Owner signature only: tombstone the relay, disconnect all instances, then delete the Worker with Wrangler. Returns a progress job. Failed physical deletion can be retried.",
       "localOnly": true
     }
   ]

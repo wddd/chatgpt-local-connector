@@ -24,6 +24,9 @@ pub fn secrets() -> impl Iterator<Item = (&'static str, &'static str)> {
         .filter_map(|(key, field)| field["savedFlag"].as_str().map(|flag| (key.as_str(), flag)))
 }
 pub(crate) fn configured(s: &Value) -> bool {
+    if s["connectionMode"] == "relay" {
+        return !string(s, "relayUrl").is_empty() && !string(s, "relayInstanceId").is_empty();
+    }
     if s["connectionMode"] != "https" {
         return !string(s, "tunnelId").is_empty() && !string(s, "apiKey").is_empty();
     }
@@ -51,6 +54,9 @@ pub(crate) fn configured(s: &Value) -> bool {
 }
 
 pub(crate) fn binding(s: &Value) -> String {
+    if s["connectionMode"] == "relay" {
+        return hash(json!([s["relayUrl"], s["relayInstanceId"]]).to_string());
+    }
     if s["connectionMode"] == "https" {
         hash(
             json!([
@@ -96,8 +102,11 @@ pub(crate) fn validate_config(s: &Value) -> Result<()> {
             }
         }
     }
-    if !["tunnel", "https"].contains(&string(s, "connectionMode")) {
+    if !["tunnel", "https", "relay"].contains(&string(s, "connectionMode")) {
         return Err("连接方式无效".into());
+    }
+    if s["connectionMode"] == "relay" {
+        crate::relay::validate_config(s)?;
     }
     let providers = descriptor()["providers"].as_object().unwrap();
     if !["token", "login"].contains(&string(s, "cloudflareAuth")) {

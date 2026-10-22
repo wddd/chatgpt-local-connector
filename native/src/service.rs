@@ -15,6 +15,7 @@ pub struct Service {
     ingresses: Mutex<BTreeMap<String, Arc<Ingress>>>,
     drafts: Mutex<BTreeMap<String, (Arc<Ingress>, std::time::Instant, tokio::task::AbortHandle)>>,
     configuration: Mutex<()>,
+    pub(crate) relay: crate::relay::Manager,
     closing: std::sync::atomic::AtomicBool,
 }
 use crate::ingress::config::{defaults, secrets};
@@ -100,8 +101,8 @@ fn normalize(mut entry: Value) -> Result<Value> {
     if !entry["enabled"].is_boolean() {
         return Err("enabled must be boolean".into());
     }
-    if !["openai-tunnel", "https"].contains(&string(&entry, "transport")) {
-        return Err("transport must be openai-tunnel or https".into());
+    if !["openai-tunnel", "https", "relay"].contains(&string(&entry, "transport")) {
+        return Err("transport must be openai-tunnel, https or relay".into());
     }
     if entry["transport"] == "openai-tunnel" {
         if entry["auth"] != "openai" {
@@ -142,7 +143,9 @@ fn normalize(mut entry: Value) -> Result<Value> {
     {
         config[k] = v.clone();
     }
-    config["connectionMode"] = json!(if entry["transport"] == "https" {
+    config["connectionMode"] = json!(if entry["transport"] == "relay" {
+        "relay"
+    } else if entry["transport"] == "https" {
         "https"
     } else {
         "tunnel"
@@ -233,6 +236,7 @@ impl Service {
             ingresses: Mutex::new(ingresses),
             drafts: Mutex::new(BTreeMap::new()),
             configuration: Mutex::new(()),
+            relay: Default::default(),
             closing: std::sync::atomic::AtomicBool::new(false),
         }))
     }
@@ -369,6 +373,7 @@ impl Service {
         Ok(status)
     }
     pub async fn stop(&self) -> Result<()> {
+        self.relay.cancel().await;
         crate::cloudflare::stop_login().await;
         let _configuration = self.configuration.lock().await;
         self.closing.store(true, Ordering::SeqCst);
@@ -490,6 +495,9 @@ impl Service {
     ) -> Result<Value> {
         if self.closing.load(Ordering::SeqCst) {
             return Err("core shutting down".into());
+        }
+        if route.starts_with("relay/") {
+            return crate::relay::request(self, route, method, body).await;
         }
         if route.starts_with("setup/") {
             return crate::setup::request(self, route, method, body).await;

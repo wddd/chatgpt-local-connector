@@ -29,7 +29,9 @@
     "postcheck:native": "node tooling/prune-build-cache.mjs --keep=target/debug",
     "release:stage": "node tooling/release.mjs stage",
     "release:finalize": "node tooling/release.mjs finalize",
-    "release": "node tooling/release.mjs release"
+    "release": "node tooling/release.mjs release",
+    "check:relay": "npm --prefix relay-worker run check",
+    "test:relay": "npm --prefix relay-worker test"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

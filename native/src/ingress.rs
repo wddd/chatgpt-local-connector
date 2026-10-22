@@ -24,6 +24,7 @@ pub struct Ingress {
     tunnel: Mutex<Option<Child>>,
     https: Mutex<Option<tokio::task::JoinHandle<()>>>,
     managed_tunnel: Mutex<Option<crate::https_tunnel::Tunnel>>,
+    relay: Mutex<Option<crate::relay::transport::Runtime>>,
     pub(crate) mcp_url: Mutex<String>,
     starting: std::sync::atomic::AtomicBool,
     run_dir: Mutex<Option<PathBuf>>,
@@ -72,6 +73,7 @@ impl Ingress {
             tunnel: Mutex::new(None),
             https: Mutex::new(None),
             managed_tunnel: Mutex::new(None),
+            relay: Mutex::new(None),
             mcp_url: Mutex::new(String::new()),
             starting: std::sync::atomic::AtomicBool::new(false),
             run_dir: Mutex::new(None),
@@ -114,7 +116,9 @@ impl Ingress {
     pub async fn persist(&self, config: &Value) -> Result<()> {
         let mut entry = self.meta.lock().await.clone();
         entry["config"] = config.clone();
-        entry["transport"] = json!(if config["connectionMode"] == "https" {
+        entry["transport"] = json!(if config["connectionMode"] == "relay" {
+            "relay"
+        } else if config["connectionMode"] == "https" {
             "https"
         } else {
             "openai-tunnel"
@@ -184,7 +188,11 @@ impl Ingress {
     }
     pub async fn network_proxy(&self) -> Result<crate::proxy::NetworkProxy> {
         let settings = self.settings.lock().await.clone();
-        crate::proxy::NetworkProxy::resolve(&settings).await
+        if settings["connectionMode"] == "relay" {
+            crate::proxy::NetworkProxy::resolve_relay(&settings).await
+        } else {
+            crate::proxy::NetworkProxy::resolve(&settings).await
+        }
     }
     pub async fn log(&self, level: &str, msg: &str) {
         let settings = self.settings.lock().await;
@@ -291,7 +299,14 @@ impl Ingress {
             .map(|t| t.health.clone())
             .unwrap_or(Value::Null);
         drop(managed);
-        let running = starting
+        let relay_status = self
+            .relay
+            .lock()
+            .await
+            .as_ref()
+            .map(|r| r.status.borrow().clone());
+        let running = relay_status.is_some()
+            || starting
             || tunnel_running
             || (https_running && self.connected.load(std::sync::atomic::Ordering::SeqCst));
         let mut ready = !starting
@@ -347,6 +362,10 @@ impl Ingress {
                 crate::i18n::text(&crate::i18n::locale(), "setup.runtime-key-rejected").into();
         }
         let mut error = self.failure.lock().await.clone();
+        if let Some(relay) = &relay_status {
+            error = string(relay, "error").to_owned();
+            control_plane = relay.clone();
+        }
         if error.is_empty() && !starting {
             error = health_error;
         }
@@ -399,6 +418,17 @@ impl Ingress {
             json!({"discoveredUrls":urls,"core":core,"connection":{"running":running,"updateAvailable":false,"mcpUrl":mcp_url},"config":config,"tunnel":{"state":state,"error":error,"health":tunnel_health,"controlPlane":control_plane,"dependency":self.tunnel_dependency.lock().await.clone(),"lastError":self.tunnel_error.lock().await.clone()},"connector":{"state":state},"logs":logs,"version":env!("ARC_BUILD_VERSION"),"platform":if cfg!(target_os="macos"){"darwin"}else if cfg!(windows){"win32"}else{"linux"},"deviceName":std::env::var("HOSTNAME").unwrap_or_else(|_|"本机".into()),"taskApprovalEnabled":self.execution.approval_mode()?,"autoOpenCodex":self.execution.auto_open_codex()?,"notificationsEnabled":crate::claude_notify::settings()?["notificationsEnabled"],"chatgptUrl":"https://chatgpt.com/plugins"}),
         )
     }
+    pub(crate) async fn relay_ready(&self) -> Result<()> {
+        let status = self
+            .relay
+            .lock()
+            .await
+            .as_ref()
+            .ok_or("Relay is not running")?
+            .status
+            .clone();
+        crate::relay::transport::Runtime::ready(status).await
+    }
     pub async fn stop(&self) -> Result<()> {
         self.stopping
             .store(true, std::sync::atomic::Ordering::SeqCst);
@@ -407,6 +437,11 @@ impl Ingress {
         let was_connected = self
             .connected
             .swap(false, std::sync::atomic::Ordering::SeqCst);
+        if let Some(relay) = self.relay.lock().await.take() {
+            relay.stop().await;
+            self.connected
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+        }
         if let Some(task) = self.https.lock().await.take() {
             task.abort();
             let _ = task.await;
@@ -473,7 +508,7 @@ impl Ingress {
         }
         let settings = self.settings.lock().await.clone();
         // Check even an already-running ingress before treating start as a no-op.
-        let binary = if settings["connectionMode"] != "https" && configured(&settings) {
+        let binary = if settings["connectionMode"] == "tunnel" && configured(&settings) {
             Some(self.prepare_tunnel(false).await?)
         } else {
             None
@@ -484,6 +519,23 @@ impl Ingress {
         self.stop().await?;
         if !configured(&settings) {
             return Err("请先填写连接信息".into());
+        }
+        if settings["connectionMode"] == "relay" {
+            let (task, address) =
+                crate::https::listen(self.clone(), &json!({"httpsProvider":"relay"})).await?;
+            *self.https.lock().await = Some(task);
+            let origin = string(&settings, "relayUrl");
+            *self.mcp_url.lock().await =
+                format!("{origin}/u/{}/mcp", string(&settings, "relayInstanceId"));
+            *self.started.lock().await = Some(Instant::now());
+            self.stopping
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            *self.relay.lock().await = Some(crate::relay::transport::start(
+                self,
+                origin.into(),
+                format!("http://{address}"),
+            ));
+            return Ok(());
         }
         if settings["connectionMode"] == "https" {
             let (task, address) = crate::https::listen(self.clone(), &settings).await?;

@@ -96,6 +96,14 @@
     "cloudflareTunnelId": {
       "default": "",
       "maxBytes": 36
+    },
+    "relayUrl": {
+      "default": "",
+      "maxBytes": 2048
+    },
+    "relayInstanceId": {
+      "default": "",
+      "maxBytes": 64
     }
   },
   "providers": {
