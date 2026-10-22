@@ -65,6 +65,22 @@ pub fn receipt(value: Value) -> Value {
             out[key] = value[key].clone();
         }
     }
+    if value["origin"].is_object() {
+        let mut origin = json!({});
+        // Provenance is public; credential anchors and authentication material are not.
+        for key in [
+            "ingressId",
+            "sourceId",
+            "sourceLabel",
+            "controlSource",
+            "authType",
+        ] {
+            if let Some(text) = value["origin"][key].as_str() {
+                origin[key] = json!(text);
+            }
+        }
+        out["origin"] = origin;
+    }
     let result = &value["result"];
     if value["task"]["dispatch"].is_object() {
         out["dispatch"] = value["task"]["dispatch"].clone();
