@@ -21,7 +21,8 @@ fn identity(source_id: &str, request: &Value) -> String {
     )
 }
 fn issue_in(dir: &Path, source_id: &str, request: &mut Value, at: i64) -> Result<()> {
-    if request["canRespond"] == false
+    if source_id.is_empty()
+        || request["canRespond"] == false
         || request["backendSession"].is_null()
         || request["id"].is_null()
     {
@@ -67,7 +68,9 @@ fn resolve_in(
         return Err("RESPOND_TOKEN_INVALID_OR_EXPIRED".into());
     }
     for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
-        let record = load(&entry.path())?;
+        let Ok(record) = load(&entry.path()) else {
+            continue;
+        };
         if record["token"] != token {
             continue;
         }

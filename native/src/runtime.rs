@@ -456,6 +456,7 @@ pub async fn serve_mode(daemon: bool) -> Result<()> {
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
         .map_err(|e| e.to_string())?;
     crate::claude_notify::migrate().await?;
+    crate::sources::complete_migration().await?;
     let listener = crate::transport::listen(service.clone(), None).await?;
     crate::claude_notify::start(&service);
     crate::dispatch_queue::start(&service.control);

@@ -157,9 +157,18 @@ fn binding(dir: &Path, thread: &str, turn: &str) -> Result<Option<Binding>> {
     if !path.exists() {
         return Ok(None);
     }
-    serde_json::from_value(load(&path)?)
-        .map(Some)
-        .map_err(|e| e.to_string())
+    read_binding(&path)
+}
+// Fail a malformed record closed without making unrelated bindings unavailable.
+fn read_binding(path: &Path) -> Result<Option<Binding>> {
+    let text = std::fs::read(path).map_err(|e| e.to_string())?;
+    match serde_json::from_slice(&text) {
+        Ok(binding) => Ok(Some(binding)),
+        Err(_) => {
+            crate::logs::record("WARN", "Ignored malformed notification binding", None);
+            Ok(None)
+        }
+    }
 }
 fn bind_in(dir: &Path, session: Option<&str>, thread: &str, turn: &str, cwd: &str) -> Result<()> {
     let Some(session) = session else {
@@ -257,6 +266,9 @@ pub(crate) async fn bind(
     let caller = crate::kernel::origin::current_origin();
     if !b.source_id.is_empty() && b.source_id != string(&caller, "sourceId") {
         return Err("NOTIFICATION_SOURCE_MISMATCH".into());
+    }
+    if !created && b.source_id.is_empty() {
+        return Err("NOTIFICATION_SOURCE_UNATTRIBUTED".into());
     }
     if b.source_id.is_empty() {
         b.source_id = string(&crate::kernel::origin::current_origin(), "sourceId").into();
@@ -1362,8 +1374,9 @@ fn records(dir: &Path) -> Result<Vec<Binding>> {
         .map_err(|e| e.to_string())?
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().is_some_and(|v| v == "json"))
-        .map(|e| serde_json::from_value(load(&e.path())?).map_err(|e| e.to_string()))
-        .collect()
+        .map(|e| read_binding(&e.path()))
+        .collect::<Result<Vec<_>>>()
+        .map(|rows| rows.into_iter().flatten().collect())
 }
 
 pub(crate) fn settings() -> Result<Value> {
@@ -1969,7 +1982,9 @@ pub(crate) async fn migrate() -> Result<()> {
         .map(|e| e.path())
         .collect::<Vec<_>>();
     for path in &old_tasks {
-        let b: Binding = serde_json::from_value(load(path)?).map_err(|e| e.to_string())?;
+        let Some(b) = read_binding(path)? else {
+            continue;
+        };
         if !path_in(&dir, &b.thread_id, &b.turn_id).exists() {
             persist(&dir, &b)?;
         }
@@ -1977,7 +1992,7 @@ pub(crate) async fn migrate() -> Result<()> {
     let old_control = dir.join("control/state.json");
     let new_control = dir.join("subscriptions/state.json");
     let mut state = if !new_control.exists() && old_control.exists() {
-        serde_json::from_value(load(&old_control)?).map_err(|e| e.to_string())?
+        State::decode(load(&old_control)?)?
     } else {
         State::load(&dir)?
     };
@@ -2017,8 +2032,15 @@ pub(crate) async fn migrate() -> Result<()> {
                     d.failures =
                         attempts.saturating_sub(u32::from(d.status == "callback-accepted"));
                     d.next_attempt_at = 0;
-                    d.timing =
-                        serde_json::from_value(row["timing"].clone()).map_err(|e| e.to_string())?;
+                    let Ok(timing) = serde_json::from_value(row["timing"].clone()) else {
+                        crate::logs::record(
+                            "WARN",
+                            "Ignored malformed legacy notification delivery",
+                            None,
+                        );
+                        continue;
+                    };
+                    d.timing = timing;
                     b.deliveries.push(d);
                 }
             }
@@ -2047,6 +2069,9 @@ pub(crate) async fn migrate() -> Result<()> {
     // historical successful send as controller acknowledgement.
     let settings = settings()?;
     for b in &all {
+        if b.source_id.is_empty() {
+            continue;
+        }
         for d in &b.deliveries {
             if !d.target.is_empty() && d.failures > 0 {
                 let t = state.target(
@@ -2142,8 +2167,12 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                         .filter(|e| e.path().extension().is_some_and(|v| v == "json"))
                     {
                         let _guard = LOCK.lock().await;
-                        let mut b: Binding = serde_json::from_value(load(&entry.path())?)
-                            .map_err(|e| e.to_string())?;
+                        let Some(mut b) = read_binding(&entry.path())? else {
+                            continue;
+                        };
+                        if b.source_id.is_empty() {
+                            continue;
+                        }
                         if remove_expired(&directory(), &b, chrono::Utc::now().timestamp())? {
                             continue;
                         }

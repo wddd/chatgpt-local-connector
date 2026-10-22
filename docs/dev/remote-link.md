@@ -66,9 +66,9 @@ One-time migration runs at Core startup after the state lock.
 
 1. Each existing OAuth grant becomes a source. Product comes from the UI label preference when present, otherwise from the ingress `controlSource` for non-relay ingresses, otherwise from the registry match on client name, otherwise custom.
 2. Each non-OAuth ingress becomes one source with the ingress's `controlSource` as product.
-3. Labels default to the ingress name for single-source ingresses and to the product name plus connection date otherwise.
-4. Existing records with only ingressId map to a source only when that ingress has exactly one source. Others remain unattributed. Provenance MUST NOT be inferred.
-5. Delete migrated preference keys and obsolete fields. Keep no aliases.
+3. Labels default to the ingress name for single-source ingresses and to the product name plus connection date otherwise. Add numeric suffixes to colliding migration-generated defaults on the same ingress. Renamed labels are not rewritten; version-1 repair only disambiguates labels that still equal the exact legacy generated default.
+4. Existing records with only ingressId map to a source only when that ingress has exactly one source. Others remain unattributed. Provenance MUST NOT be inferred. Drop unattributable subscriptions, governance controls, and respond tokens. Keep unattributed bindings and dispatch history inert; fail active unattributed queue rows with `source-unattributed`.
+5. Delete migrated preference keys and obsolete fields. Keep no aliases. Persist the migration version only after notification migration and row decoding succeed. Version 2 repairs incomplete version-1 migrations without regenerating source IDs or overwriting renamed labels. Interrupted steps are safe to re-run. Malformed notification rows are skipped individually without rejecting valid siblings.
 
 ### Management surface
 

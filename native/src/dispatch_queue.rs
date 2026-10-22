@@ -16,8 +16,19 @@ fn records() -> Result<Vec<Value>> {
         .map_err(|e| e.to_string())?
         .flatten()
         .filter(|e| e.path().extension().is_some_and(|v| v == "json"))
-        .map(|e| load(&e.path()))
-        .collect::<Result<Vec<_>>>()?;
+        .filter_map(|e| {
+            let row = load(&e.path()).ok()?;
+            if !row.is_object()
+                || string(&row["origin"], "sourceId").is_empty()
+                || uuid::Uuid::parse_str(string(&row, "queueId")).is_err()
+                || string(&row, "threadId").is_empty()
+                || !row["args"].is_object()
+            {
+                return None;
+            }
+            Some(row)
+        })
+        .collect::<Vec<_>>();
     rows.sort_by_key(|r| r["sequence"].as_u64().unwrap_or(0));
     Ok(rows)
 }
@@ -127,6 +138,9 @@ pub(crate) async fn control(control: &Arc<control::Control>, args: &Value) -> Re
     Ok(json!({"changed":changed.len(),"items":changed}))
 }
 async fn tick(control: &Arc<control::Control>, mut row: Value) -> Result<()> {
+    if string(&row["origin"], "sourceId").is_empty() {
+        return Err("SOURCE_REQUIRED".into());
+    }
     // The send path serializes this check with all other ARC writes to this thread.
     let thread = string(&row, "threadId").to_owned();
     if row["state"] != "dispatching" {

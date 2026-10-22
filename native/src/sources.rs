@@ -9,6 +9,7 @@ struct Cache {
     persisted: Value,
     last_seen_writes: BTreeMap<String, Instant>,
 }
+const MIGRATION_VERSION: u64 = 2;
 static CACHE: OnceLock<RwLock<Cache>> = OnceLock::new();
 static WRITER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 fn path() -> PathBuf {
@@ -28,8 +29,7 @@ fn cache() -> Result<&'static RwLock<Cache>> {
 }
 /// Called once after the state lock, before serving requests.
 pub fn initialize() -> Result<()> {
-    migrate()?;
-    let mut store = read()?;
+    let mut store = migrate()?;
     let previous = store.clone();
     reconcile(
         store["sources"]
@@ -53,6 +53,23 @@ pub fn initialize() -> Result<()> {
             last_seen_writes,
         }))
         .map_err(|_| "Source store is already initialized".into())
+}
+/// Commit only after every startup migration, including notification decoding, succeeds.
+pub async fn complete_migration() -> Result<()> {
+    let _writer = WRITER.lock().await;
+    let mut store = cache()?.read().map_err(|e| e.to_string())?.current.clone();
+    if store["version"] == MIGRATION_VERSION {
+        return Ok(());
+    }
+    store["version"] = json!(MIGRATION_VERSION);
+    let snapshot = store.clone();
+    tokio::task::spawn_blocking(move || save(&path(), &snapshot))
+        .await
+        .map_err(|e| e.to_string())??;
+    let mut cache = cache()?.write().map_err(|e| e.to_string())?;
+    cache.current = store.clone();
+    cache.persisted = store;
+    Ok(())
 }
 async fn change<T: Send + 'static>(
     f: impl FnOnce(&mut Vec<Value>) -> Result<T> + Send + 'static,
@@ -522,11 +539,66 @@ pub fn decorate(value: &mut Value) {
     visit(value, &rows);
 }
 
+fn migration_label(source: &Value) -> String {
+    format!(
+        "{} {}",
+        string(
+            &crate::control_sources::preset(string(source, "product")),
+            "displayName"
+        ),
+        source["connectedAt"]
+            .as_i64()
+            .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
+            .map(|t| t.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "unknown date".into())
+    )
+}
+fn disambiguate_migration_labels(rows: &mut [Value]) {
+    // Version 1 had no label provenance flag. Only the exact legacy generated
+    // default is eligible; renamed and already suffixed labels are reserved.
+    let defaults = rows
+        .iter()
+        .map(|s| {
+            rows.iter()
+                .filter(|other| other["ingressId"] == s["ingressId"])
+                .count()
+                > 1
+                && s["label"] == migration_label(s)
+        })
+        .collect::<Vec<_>>();
+    let mut used = rows
+        .iter()
+        .zip(&defaults)
+        .filter(|(_, default)| !**default)
+        .map(|(s, _)| {
+            (
+                string(s, "ingressId").to_owned(),
+                string(s, "label").to_owned(),
+            )
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    for (source, default) in rows.iter_mut().zip(defaults) {
+        if !default {
+            continue;
+        }
+        let ingress = string(source, "ingressId").to_owned();
+        let base = migration_label(source);
+        let mut label = base.clone();
+        let mut suffix = 2;
+        while used.contains(&(ingress.clone(), label.clone())) {
+            label = format!("{base} {suffix}");
+            suffix += 1;
+        }
+        used.insert((ingress, label.clone()));
+        source["label"] = json!(label);
+    }
+}
+
 /// Restartable one-time conversion. Persist identities before rewriting references.
-pub fn migrate() -> Result<()> {
+fn migrate() -> Result<Value> {
     let mut store = read()?;
-    if store["version"] == 1 {
-        return Ok(());
+    if store["version"] == MIGRATION_VERSION {
+        return Ok(store);
     }
     let pref_path = root().join("ui-preferences.json");
     let mut prefs = if pref_path.exists() {
@@ -575,15 +647,7 @@ pub fn migrate() -> Result<()> {
                         &product,
                         grant["connected_at"].clone(),
                     );
-                    s["label"] = json!(format!(
-                        "{} {}",
-                        string(&crate::control_sources::preset(&product), "displayName"),
-                        grant["connected_at"]
-                            .as_i64()
-                            .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
-                            .map(|t| t.format("%Y-%m-%d").to_string())
-                            .unwrap_or_else(|| "unknown date".into())
-                    ));
+                    s["label"] = json!(migration_label(&s));
                     rows.push(s);
                 }
             } else {
@@ -607,6 +671,15 @@ pub fn migrate() -> Result<()> {
             Value::Null,
         ));
         store["sources"] = json!(rows);
+        save(&path(), &store)?;
+    }
+    let before_labels = store.clone();
+    disambiguate_migration_labels(
+        store["sources"]
+            .as_array_mut()
+            .ok_or("Invalid source store")?,
+    );
+    if store != before_labels {
         save(&path(), &store)?;
     }
     let rows = store["sources"].as_array().ok_or("Invalid source store")?;
@@ -640,8 +713,7 @@ pub fn migrate() -> Result<()> {
     if pref_path.exists() {
         save(&pref_path, &prefs)?;
     }
-    store["version"] = json!(1);
-    save(&path(), &store)
+    Ok(store)
 }
 fn unique<'a>(rows: &'a [Value], ingress: &str) -> Option<&'a Value> {
     let mut matches = rows.iter().filter(|s| s["ingressId"] == ingress);
@@ -666,8 +738,24 @@ fn migrate_files(dir: &Path, rows: &[Value]) -> Result<()> {
     }
     Ok(())
 }
+fn legacy_record(path: &Path) -> Result<Option<Value>> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    match serde_json::from_slice(&bytes) {
+        Ok(value) => Ok(Some(value)),
+        Err(_) => {
+            crate::logs::record(
+                "WARN",
+                "Ignored malformed legacy source-scoped record",
+                None,
+            );
+            Ok(None)
+        }
+    }
+}
 fn migrate_file(path: &Path, rows: &[Value]) -> Result<()> {
-    let mut value = load(path)?;
+    let Some(mut value) = legacy_record(path)? else {
+        return Ok(());
+    };
     fn visit(v: &mut Value, rows: &[Value]) {
         match v {
             Value::Object(o) => {
@@ -678,9 +766,14 @@ fn migrate_file(path: &Path, rows: &[Value]) -> Result<()> {
                     .or_else(|| o.get("ingressId").and_then(Value::as_str))
                     .unwrap_or("")
                     .to_owned();
-                if !ingress.is_empty() && !o.contains_key("sourceId") {
+                if (old.is_some() || o.contains_key("ingressId") || o.contains_key("authType"))
+                    && !o.contains_key("sourceId")
+                {
                     o.insert("ingressId".into(), json!(ingress));
-                    if let Some(s) = unique(rows, &ingress) {
+                    if let Some(s) = (!ingress.is_empty())
+                        .then(|| unique(rows, &ingress))
+                        .flatten()
+                    {
                         o.insert("sourceId".into(), s["id"].clone());
                         if o.contains_key("controlSource") {
                             o.insert("controlSource".into(), s["product"].clone());
@@ -706,6 +799,13 @@ fn migrate_file(path: &Path, rows: &[Value]) -> Result<()> {
                     .contains(&k.as_str())
                     {
                         visit(v, rows);
+                        if k == "origin" {
+                            if let Some(origin) = v.as_object_mut() {
+                                if !origin.get("sourceId").is_some_and(Value::is_string) {
+                                    origin.insert("sourceId".into(), json!(""));
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -718,6 +818,39 @@ fn migrate_file(path: &Path, rows: &[Value]) -> Result<()> {
         }
     }
     visit(&mut value, rows);
+    let parent = path.parent().unwrap_or(Path::new(""));
+    if parent.ends_with("notifications/tasks")
+        || parent.ends_with("notifications")
+        || parent.ends_with("respond-tokens")
+    {
+        if let Some(o) = value.as_object_mut() {
+            if !o.get("sourceId").is_some_and(Value::is_string) {
+                o.insert("sourceId".into(), json!(""));
+            }
+        }
+    }
+    if parent.ends_with("respond-tokens") && string(&value, "sourceId").is_empty() {
+        // An unattributable response capability must never become usable again.
+        std::fs::remove_file(path).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    if parent.ends_with("send-queue") && value.is_object() {
+        if !value["origin"].is_object() {
+            value["origin"] = json!({});
+        }
+        if !value["origin"]["sourceId"].is_string() {
+            value["origin"]["sourceId"] = json!("");
+        }
+        if string(&value["origin"], "sourceId").is_empty()
+            && matches!(
+                string(&value, "state"),
+                "queued" | "blocked" | "dispatching"
+            )
+        {
+            value["state"] = json!("failed");
+            value["reason"] = json!("source-unattributed");
+        }
+    }
     // Inbox filenames were keyed by ingress; only unambiguous histories can move.
     if path.parent().is_some_and(|p| p.ends_with("inboxes")) {
         for s in rows {
@@ -726,7 +859,9 @@ fn migrate_file(path: &Path, rows: &[Value]) -> Result<()> {
                     == Some(hash(string(s, "ingressId")).as_str())
             {
                 let target = path.with_file_name(format!("{}.json", hash(string(s, "id"))));
-                save(&target, &value)?;
+                if !target.exists() {
+                    save(&target, &value)?;
+                }
                 std::fs::remove_file(path).map_err(|e| e.to_string())?;
                 return Ok(());
             }
@@ -751,7 +886,9 @@ fn migrate_file(path: &Path, rows: &[Value]) -> Result<()> {
         );
         let target = path.with_file_name(format!("{digest}.json"));
         if target != path {
-            save(&target, &value)?;
+            if !target.exists() {
+                save(&target, &value)?;
+            }
             std::fs::remove_file(path).map_err(|e| e.to_string())?;
             return Ok(());
         }
@@ -815,7 +952,12 @@ fn migrate_dispatch_origins() -> Result<()> {
             if p.extension().is_none_or(|e| e != "json") {
                 continue;
             }
-            let mut row = load(&p)?;
+            let Some(mut row) = legacy_record(&p)? else {
+                continue;
+            };
+            if !row.is_object() {
+                continue;
+            }
             if row["origin"].is_object() {
                 continue;
             }
@@ -842,12 +984,17 @@ fn migrate_notification_keys() -> Result<()> {
         return Ok(());
     }
     let mut state = load(&path)?;
+    if !state.is_object() {
+        return Err("Invalid notification state".into());
+    }
     let mut tasks = vec![];
     if dir.join("tasks").exists() {
         for e in std::fs::read_dir(dir.join("tasks")).map_err(|e| e.to_string())? {
             let path = e.map_err(|e| e.to_string())?.path();
             if path.extension().is_some_and(|e| e == "json") {
-                tasks.push((path.clone(), load(&path)?));
+                if let Some(row) = legacy_record(&path)?.filter(Value::is_object) {
+                    tasks.push((path.clone(), row));
+                }
             }
         }
     }
@@ -922,36 +1069,16 @@ fn migrate_notification_keys() -> Result<()> {
             ids.insert(old, new);
         }
     }
-    // A historical global bucket is attributable only if every associated binding
-    // and subscription has the same nonempty migrated source identity.
-    let subscriptions = state["subscriptions"].clone();
+    // Missing scope never grants ownership, including legacy global buckets.
+    for field in ["subscriptions", "targets", "threads"] {
+        if let Some(items) = state[field].as_array_mut() {
+            items.retain(|row| !string(row, "sourceId").is_empty());
+        }
+    }
     for target in state["targets"].as_array_mut().into_iter().flatten() {
         if let Some(new) = ids.get(string(target, "target")) {
             target["target"] = json!(new);
         }
-        if !string(target, "sourceId").is_empty() {
-            continue;
-        }
-        let scopes = subscriptions
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|s| s["target"] == target["target"] && s["channel"] == target["channel"])
-            .map(|s| string(s, "sourceId").to_owned())
-            .chain(
-                tasks
-                    .iter()
-                    .filter(|(_, b)| {
-                        b["target"] == target["target"] && b["channel"] == target["channel"]
-                    })
-                    .map(|(_, b)| string(b, "sourceId").to_owned()),
-            )
-            .collect::<std::collections::BTreeSet<_>>();
-        target["sourceId"] = json!(if scopes.len() == 1 {
-            scopes.iter().next().unwrap().as_str()
-        } else {
-            ""
-        });
     }
     save(&path, &state)?;
     for (path, mut task) in tasks {

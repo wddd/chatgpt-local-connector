@@ -99,12 +99,16 @@ pub(super) fn validate(arguments: &Value) -> Result<Value> {
 pub(super) fn sync(state: &mut State, bindings: &[Binding]) {
     // Task bindings retain dispatch metadata; all actual destinations live here.
     state.subscriptions.retain(|s| {
-        s.channel != Channel::ClaudeSession
-            || bindings
-                .iter()
-                .any(|b| claude_id(b) == s.id && b.target.is_some())
+        !s.source_id.is_empty()
+            && (s.channel != Channel::ClaudeSession
+                || bindings
+                    .iter()
+                    .any(|b| !b.source_id.is_empty() && claude_id(b) == s.id && b.target.is_some()))
     });
     for b in bindings {
+        if b.source_id.is_empty() {
+            continue;
+        }
         let Some(target) = &b.target else { continue };
         let id = claude_id(b);
         if let Some(s) = state.subscriptions.iter_mut().find(|s| s.id == id) {

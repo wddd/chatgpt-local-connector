@@ -112,7 +112,40 @@ impl State {
         if !path.exists() {
             return Ok(Self::default());
         }
-        serde_json::from_value(load(&path)?).map_err(|e| e.to_string())
+        Self::decode(load(&path)?)
+    }
+    pub(super) fn decode(value: Value) -> Result<Self> {
+        if !value.is_object() {
+            return Err("Invalid notification state".into());
+        }
+        fn rows<T: serde::de::DeserializeOwned>(value: &Value, key: &str) -> Vec<T> {
+            value[key]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|row| {
+                    if string(row, "sourceId").is_empty() {
+                        return None;
+                    }
+                    match serde_json::from_value(row.clone()) {
+                        Ok(row) => Some(row),
+                        Err(_) => {
+                            crate::logs::record(
+                                "WARN",
+                                &format!("Ignored malformed notification {key} row"),
+                                None,
+                            );
+                            None
+                        }
+                    }
+                })
+                .collect()
+        }
+        Ok(Self {
+            targets: rows(&value, "targets"),
+            subscriptions: rows(&value, "subscriptions"),
+            threads: rows(&value, "threads"),
+        })
     }
     pub fn save(&self, dir: &Path) -> Result<()> {
         save(
