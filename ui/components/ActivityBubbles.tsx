@@ -39,7 +39,7 @@ function PhaseIcon({ phase, completed }: { phase: AgentPhase; completed: boolean
   if (phase === "text") return <span className="activity-cursor" aria-hidden="true" />;
   return <Icon className={`activity-icon-${phase}`} icon={{ command: LoaderCircle, file: Pencil, tool: Wrench, interaction: ShieldAlert, idle: CirclePause }[phase]} />;
 }
-export function ActivityBubble({ agent, session, now, onOpen, listRow = false }: { agent: string; session: TrackedActivity; now: number; onOpen?: () => void; listRow?: boolean }) {
+export function ActivityBubble({ agent, session, now, onOpen, onMove, listRow = false }: { agent: string; session: TrackedActivity; now: number; onOpen?: () => void; onMove?: (by: number) => void; listRow?: boolean }) {
   const completed = session.endedAt !== undefined, external = session.source === "transcript";
   const phase = session.interaction ? "interaction" : session.phase;
   const phaseLabel = completed ? "activity.completed" : session.interaction?.kind === "question" ? "activity.question" : `activity.phase.${phase}`;
@@ -47,6 +47,10 @@ export function ActivityBubble({ agent, session, now, onOpen, listRow = false }:
   return <Tooltip text={`${hint} · ${headline.fullText}`}>
     <button type="button" className={`${listRow ? "activity-task-row" : "activity-bubble"} ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
       data-timeline-anchor
+      aria-keyshortcuts={onMove ? "ArrowUp ArrowDown" : undefined} aria-description={onMove ? t("reorderNodeHint") : undefined}
+      onKeyDown={event => { if (onMove && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault(); onMove(event.key === "ArrowUp" ? -1 : 1);
+      } }}
       data-activity-session={JSON.stringify([agent, session.id])}
       aria-label={`${session.title || t(phaseLabel)} · ${hint}`} onClick={() => {
         onOpen?.(); activityTimeline.set({ agent, session });

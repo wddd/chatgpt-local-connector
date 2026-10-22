@@ -16,6 +16,13 @@ export function trackActivity(previous: readonly TrackedActivity[], sessions: re
       .filter(s => s.id === pinnedId || now < s.endedAt + activityLayout.hold + activityLayout.fade),
   ].sort((a, b) => Number(!!b.interaction) - Number(!!a.interaction) || a.orderAt - b.orderAt || a.id.localeCompare(b.id));
 }
+// Attention is a hard partition; manual order applies within each partition.
+export function orderActivity(sessions: readonly TrackedActivity[], ids: readonly string[]) {
+  const rank = new Map(ids.map((id, index) => [id, index]));
+  return [...sessions].sort((a, b) => Number(!!b.interaction) - Number(!!a.interaction)
+    || (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity)
+    || a.orderAt - b.orderAt || a.id.localeCompare(b.id));
+}
 export function visibleActivity(sessions: readonly TrackedActivity[], pinnedId?: string) {
   const visible = sessions.slice(0, sessions.length > 5 ? 4 : 5);
   const pinned = sessions.find(s => s.id === pinnedId);

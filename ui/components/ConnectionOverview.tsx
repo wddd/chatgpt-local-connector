@@ -1,5 +1,6 @@
 import { activityTimeline, useActivityTracking } from "../state/activity";
-import { visibleActivity } from "../state/activityModel";
+import { orderActivity, visibleActivity } from "../state/activityModel";
+import { taskOrder, reorderTasks } from "../state/taskOrder";
 import { useInterval } from "../state/hooks";
 import { maxVisibleAgents } from "../subscriptions/displayPreferences";
 import { subscriptions } from "../state/subscriptions";
@@ -20,6 +21,7 @@ import {
   agents as agentStore,
   orderedAgents,
   moveAgent,
+  reorderAgents,
   name,
   type Agent,
 } from "../state/agents";
@@ -45,7 +47,7 @@ function wireState(state: string): WireState {
 }
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
   const gradientId = useId();
-  const tracked = useActivityTracking(), selectedActivity = activityTimeline.use();
+  const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selectedActivity = activityTimeline.use();
   const { status, busy, loading, error } = connector.use();
   agentStore.use();
   const max = maxVisibleAgents.use();
@@ -185,17 +187,17 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     if (index >= 0 && target) moveAgent(id, target.agent);
   }
   const sourceViews: NodeView[] = sources.map(source => ({
-    id: source.id, state: wireState(sourceState(source)), attention: false, selected: false, tasks: [],
+    id: source.id, state: wireState(sourceState(source)), attention: false, selected: false, tasks: [], reorderable: true,
     content: <GraphNode label={`${source.name}: ${t(sourceState(source))}`} state={wireState(sourceState(source))}
       onMove={by => moveSource(source.id, by)} onOpen={() => { setAutoConnect(false); setDetails(source); }}>
       <SourceIcon platform={source.controlSource} panelVisual /><span className="graph-node-name">{source.name}</span>
     </GraphNode>,
   }));
   const agentViews: NodeView[] = agents.map(agent => {
-    const sessions = tracked[agent.agent] ?? [], selected = selectedActivity?.agent === agent.agent;
+    const sessions = orderActivity(tracked[agent.agent] ?? [], manualOrder[agent.agent] ?? []), selected = selectedActivity?.agent === agent.agent;
     const shown = visibleActivity(sessions, selected ? selectedActivity.session.id : undefined);
     return {
-      id: agent.agent, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected,
+      id: agent.agent, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled,
       content: <GraphNode label={`${name(agent)}: ${t(agentState(agent))}`} state={wireState(agentState(agent))}
         onMove={agent.enabled ? by => moveVisibleAgent(agent.agent, by) : undefined}
         highlighted={selected} onOpen={() => setDetailAgent(agent)}>
@@ -204,8 +206,14 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       tasks: [
         ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]),
           state: (session.endedAt !== undefined ? "completed" : session.interaction ? "attention" : session.source === "transcript" ? "external" : "running") as import("../topology/render").TaskState,
-          selected: selected && selectedActivity.session.id === session.id,
-          content: <ActivityBubble agent={agent.agent} session={session} now={now} />,
+          selected: selected && selectedActivity.session.id === session.id, reorderable: true,
+          content: <ActivityBubble agent={agent.agent} session={session} now={now} onMove={by => {
+            const group = shown.sessions.filter(s => !!s.interaction === !!session.interaction);
+            const from = group.findIndex(s => s.id === session.id), to = from + by;
+            if (to < 0 || to >= group.length) return;
+            const ids = group.map(s => s.id); ids.splice(from, 1); ids.splice(to, 0, session.id);
+            reorderTasks(agent.agent, ids, sessions);
+          }} />,
         })),
         ...(shown.hidden ? [{ id: JSON.stringify([agent.agent, null]), state: "summary" as const, selected: false,
           content: <button type="button" className="activity-bubble activity-summary" onClick={() => setListAgent(agent.agent)}>
@@ -236,6 +244,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
           </button>
         </div>
         <Topology ref={topology} boundary={core} left={sourceViews} right={agentViews}
+          onReorderNodes={(side, ids) => side === -1 ? reorderSources(ids) : reorderAgents(ids)}
+          onReorderTasks={(_side, agent, ids) => reorderTasks(agent, ids.map(id => JSON.parse(id)[1] as string), tracked[agent] ?? [])}
           brand={<svg className="graph-brand" viewBox="4 4 92 92" role="img" aria-label="Agent Remote Control"
             dangerouslySetInnerHTML={{ __html: themedMark.replace(/^<svg[^>]*>|<\/svg>$/g, "").replaceAll("agent-theme", `${gradientId}-mark`) }} />}
           leftUtility={<button data-panel-anchor className="graph-node add-source" aria-label={t("addControlSource")}

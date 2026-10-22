@@ -32,4 +32,3 @@ export function arcPath(cx: number, cy: number, R: number, lo: number, hi: numbe
   const s = p(lo), e = p(hi);
   return `M ${s.x.toFixed(1)} ${s.y.toFixed(1)} A ${R} ${R} 0 0 ${side > 0 ? 1 : 0} ${e.x.toFixed(1)} ${e.y.toFixed(1)}`;
 }
-

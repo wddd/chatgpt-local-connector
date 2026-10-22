@@ -45,11 +45,6 @@
 .graph-node:hover {
   background: transparent;
 }
-.graph-node[data-reorderable] {
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-}
 .sources {
   align-items: flex-end;
 }
@@ -929,6 +924,10 @@
 .topology-wires .external-wire { fill: none; stroke: var(--text-tertiary); stroke-width: 1.5; stroke-dasharray: 3 5; }
 @keyframes graph-connecting { to { stroke-dashoffset: -11; } }
 .activity-slot { position: absolute; left: 0; top: 0; width: 232px; height: 54px; z-index: 3; }
+.topology-scene [data-reorderable] { touch-action: none; user-select: none; }
+.topology-scene [data-reorderable] button { cursor: grab; }
+.topology-scene [data-dragging] { z-index: 6; }
+.topology-scene [data-dragging] button { cursor: grabbing; }
 .activity-slot[inert] button { pointer-events: none; }
 .activity-focused .topology-wires, .activity-focused .topology-node[data-highlighted] { z-index: 101; }
 .activity-focused .topology-node[data-highlighted] { pointer-events: none; }

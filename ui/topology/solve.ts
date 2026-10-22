@@ -21,7 +21,7 @@ export interface NodeGeometry extends Point {
 export interface TaskGeometry extends Point { id: string; parent: string; side: Side; port: number }
 interface WingOptions { idleStyle: boolean; rowScale: number; squeeze: number }
 interface Row { e: Entity; n: number; h: number }
-export interface Wing { side: Side; H: number; nodes: NodeGeometry[]; ear: { lo: number; hi: number }; tasks: TaskGeometry[] }
+export interface Wing { side: Side; H: number; nodes: NodeGeometry[]; ear: { lo: number; hi: number }; utility: Point; tasks: TaskGeometry[] }
 export interface Layout { vw: number; vh: number; sceneH: number; hub: Point & { Re: number }; wings: Wing[] }
 export const deg = (d: number) => d * Math.PI / 180;
 export const NODE_R = 22, BUBBLE_W = 232, BUBBLE_H = 54, LABEL_W = 110;
@@ -84,11 +84,15 @@ function solveWing(list: readonly Entity[], side: Side, hub: Point, Re: number, 
       tasks.push({ id: t.id, parent: n.id, side, port: tA[i], x: n.x + side * p.bubbleOffset, y: slots[i] });
     });
   });
-  return { side, H, nodes, ear: { lo, hi }, tasks };
+  // Utilities occupy the fixed tail, independent of the pointer's displacement.
+  const last = rows.at(-1);
+  const utility = { x: nodes.at(-1)?.x ?? colX,
+    y: last ? hub.y + H / 2 + Math.max(16, 64 - last.h / 2) + 16 : hub.y };
+  return { side, H, nodes, ear: { lo, hi }, utility, tasks };
 }
 
 export function extentOf(w: Wing, hubX: number, Re: number) {
-  let core = Re * 1.15;
+  let core = Math.max(Re * 1.15, Math.abs(w.utility.x - hubX) + 16);
   w.nodes.forEach((n) => { core = Math.max(core, Math.abs(n.x - hubX) + LABEL_W / 2); });
   let full = core;
   w.tasks.forEach((t) => { full = Math.max(full, Math.abs(t.x - hubX) + BUBBLE_W); });
@@ -140,4 +144,3 @@ export function solve(sc: Scene, p: Params = DEFAULTS, drag: Drag | null = null)
   const R = solveWing(sc.right, 1, hub, Re, p, optR, dragOf(1));
   return { vw, vh, sceneH, hub, wings: [L, R] };
 }
-
