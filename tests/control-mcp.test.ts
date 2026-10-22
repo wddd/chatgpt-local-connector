@@ -233,14 +233,18 @@ test('MCP lists frozen tools and guide exposes existing ops and native domains w
     new AjvJsonSchemaValidator().getValidator(tool.inputSchema);
   }
   const waitSchema = operations.find(tool => tool.name === 'codex_wait')!.inputSchema;
-  assert.equal((waitSchema.properties!.timeoutMs as { maximum: number }).maximum, 90000);
+  assert.equal((waitSchema.properties!.timeoutMs as { maximum: number }).maximum, 300000);
   const validateWait = new AjvJsonSchemaValidator().getValidator(waitSchema);
-  assert.equal(validateWait({ threadId: 'fixture', timeoutMs: 90000 }).valid, true);
-  for (const timeoutMs of [90001, 100000, 270000]) {
+  assert.equal(validateWait({ threadId: 'fixture', timeoutMs: 300000 }).valid, true);
+  for (const timeoutMs of [300001, 330000]) {
     assert.equal(validateWait({ threadId: 'fixture', timeoutMs }).valid, false);
     const rejected = await call('codex_wait', { threadId: 'fixture', timeoutMs });
     assert.equal(rejected.response.isError, true);
   }
+  const agentWaitSchema = operations.find(tool => tool.name === 'agent_wait')!.inputSchema;
+  const validateAgentWait = new AjvJsonSchemaValidator().getValidator(agentWaitSchema);
+  assert.equal(validateAgentWait({agent:'tracking-example',taskId:'fixture',timeoutMs:300000}).valid,true);
+  assert.equal(validateAgentWait({agent:'tracking-example',taskId:'fixture',timeoutMs:300001}).valid,false);
   for (const name of ['read', 'codex_read', 'codex_items']) {
     const exposed = operations.find(tool => tool.name === name)!;
     const source = catalog.ops.find((tool: {name: string}) => tool.name === name);
@@ -913,6 +917,34 @@ test('completed notification freezes bounded Git changes with attribution and fu
   const full=(await call('codex_changes',{threadId:r.threadId,turnId:r.turnId,limit:100})).result;assert.equal(full.commits.length,6);
 });
 
+test('wait omits repeated nonterminal text and retains complete terminal replies', async () => {
+  const created=await dispatchFixture('fixture-dispatch-queue');
+  const threadId=created.threadId, turnId=created.turnId;
+  await mkdir(path.join(directory,'execution'),{recursive:true});
+  await writeFile(path.join(directory,'execution',threadId+'.json'),JSON.stringify({owner:'connector'}));
+  const rows=await fixtureRows();
+  rows[threadId].turns[0].status='inProgress';
+  await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(rows));
+  const args={threadId,turnId,timeoutMs:200,until:'terminal'};
+  const first=(await call('codex_wait',args)).result;
+  assert.equal(first.state,'timeout');assert.equal(first.finalResponse.text,'pong');
+  const second=(await call('codex_wait',{...args,expectedHash:first.snapshotHash})).result;
+  assert.equal(second.changed,false);assert.equal(second.finalResponse.text,undefined);
+  assert.equal(second.finalResponseUnchanged,true);assert.equal(second.finalResponse.textHash,first.finalResponse.textHash);
+  assert.equal(second.next.args.expectedHash,second.snapshotHash);assert.equal(second.next.args.timeoutMs,200);
+  const full=(await call('codex_wait',args)).result;assert.equal(full.finalResponse.text,'pong');
+  const updated=await fixtureRows();updated[threadId].turns[0].items[0].id='different-message';
+  await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(updated));
+  const metadata=(await call('codex_wait',{...args,expectedHash:second.snapshotHash})).result;
+  assert.equal(metadata.changed,true);assert.equal(metadata.finalResponseUnchanged,true);assert.equal(metadata.finalResponse.text,undefined);
+  updated[threadId].turns[0].status='completed';
+  await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(updated));
+  const terminal=(await call('codex_wait',{...args,timeoutMs:300000,expectedHash:metadata.snapshotHash})).result;
+  assert.equal(terminal.state,'completed');assert.equal(terminal.finalResponse.text,'pong');
+  const repeated=(await call('codex_wait',{...args,expectedHash:terminal.snapshotHash})).result;
+  assert.equal(repeated.changed,false);assert.equal(repeated.finalResponse.text,'pong');assert.equal(repeated.finalResponseUnchanged,undefined);
+});
+
 test('argument errors are short, field-specific and leave unread inbox untouched', async () => {
   const inboxDir=path.join(directory,'notifications/inboxes');await mkdir(inboxDir,{recursive:true});
   const inboxFile=path.join(inboxDir,createHash('sha256').update('default').digest('hex')+'.json');
@@ -923,7 +955,7 @@ test('argument errors are short, field-specific and leave unread inbox untouched
     for(const [name,args,field,reason] of [
       ['read',{path:'fixture',linCount:2},'/linCount',/lineCount/],
       ['codex_items',{threadId:'fixture',order:'desc'},'/order',/latest/],
-      ['codex_wait',{threadId:'fixture',timeoutMs:90001},'/timeoutMs',/90000/],
+      ['codex_wait',{threadId:'fixture',timeoutMs:300001},'/timeoutMs',/300000/],
       ['read',{path:'fixture',lineCount:'private-input'},'/lineCount',/integer/],
       ['command',{cmd:'private-command'},'/cwd',/Required/],
       ['command',{cmd:'private-command',cwd:directory,action:'exec'},'/action',/combine/],
@@ -1121,6 +1153,9 @@ test('ACP task tracking keeps approvals active and projects context, SSE and inc
   assert.equal(responded.state,'completed',JSON.stringify(responded));
   const settled=(await call('agent_wait',{agent:'tracking-example',taskId,timeoutMs:10000})).result;
   assert.equal(settled.state,'completed');
+  const repeatedWait=(await call('agent_wait',{agent:'tracking-example',taskId,timeoutMs:300000,expectedHash:settled.snapshotHash,until:'terminal'})).result;
+  assert.equal(repeatedWait.changed,false);assert.equal(repeatedWait.finalResponse,settled.finalResponse);
+  assert.equal(repeatedWait.finalResponseUnchanged,undefined);
   const timeline=await management(`agents/timeline/${taskId}?after=${initial.cursor}`);
   assert.equal(timeline.coverage.state,'complete');
   assert.ok(timeline.entries.some((r: any)=>r.id==='example-command'&&r.exitCode===0&&r.status==='completed'));

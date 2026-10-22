@@ -149,6 +149,10 @@ ARC 只适配控制源提供的可控外部途径，不使用 computer use、浏
 - `act codex_create` / `act codex_send`：已绑定且通道可用 → “可以结束回合，等待 [ARC] 通知”；未绑定、总开关关闭、达到上限或通道不可用 → 建议的 `query codex_wait` 调用（带 threadId / turnId）。Work 订阅通过事件协议独立建立；未确认有效订阅时仍建议等待。Agent 对应使用 agent_wait。操作尚未返回轮次时，先建议 receipt 回读。
 - 进入 `awaiting-approval`：建议带原 requestId 的 receipt 读取，控制源按用户意图决定。`interaction-required`（事件 kind 为 needs-input）建议 codex_pending / agent_pending 获取交互，再按原流程 respond；不代填用户决策。
 - `query codex_wait` 超时：给出续等调用（沿用 threadId、turnId，将 snapshotHash 作为 expectedHash）。
+- `codex_wait` / `agent_wait` 默认 30 秒，上限 300 秒；分段续等建议 `until:terminal`，原样传回 `snapshotHash` 作为 `expectedHash`。`snapshotHash` 是不透明的快照摘要与正文摘要组合，不依赖缓存；`changed` 仍比较整个快照。非终态快照或正文摘要相同时，控制源响应标记 `finalResponseUnchanged:true` 并省略正文：对象只移除 `text`，字符串移除 `finalResponse`；保留顶层 `textHash`、原有正文元信息和 `next`。未传 expectedHash、终态及交互状态保留正文和原有分页/截断信息。裁剪在通知与收件箱读取之后进行，不影响其观察内容。
+- 原生读取每次最多 10 秒；Desktop snapshot、thread/read 和 thread/turns/list 超时重试至本次 wait 期限。剩余等待预算耗尽不制造 native-read-timeout；真实读取故障未恢复仍在到期时返回 unconfirmed，不伪造确认状态。
+- 本机 HTTP 的 5 秒请求头/请求体期限、HTTPS 的 10 秒请求头/15 秒请求体期限不限制响应耗时；stdio 转 HTTP 对 wait 已单独设置 330 秒。官方 Tunnel Client 的 MCP 连接 TTL 默认 10 分钟，控制面 poll 的 30 秒期限不等于执行请求期限；服务端可按命令携带 `response_timeout`，覆盖连接、执行和结果投递（[协议](https://github.com/openai/tunnel-client/blob/master/docs/protocol.md)）；该期限未透传到 ARC，调用方与服务端仍可施加自身期限。
+- Cloudflare HTTPS 入口等待最多执行 120 秒，为其默认 125 秒 Proxy Read Timeout 留响应余量（[官方限制](https://developers.cloudflare.com/fundamentals/reference/connection-limits/)）。schema 仍允许 300 秒，next 保留原请求参数；其他 HTTPS 代理和控制源须配置大于 wait 预算的请求期限。第三方网络与控制源期限不由 ARC 保证。
 
 `hint` 一句话；建议调用时同时给出 via、op、args，没有建议调用时只含 hint。receipt 为混合读写 op，读取回执也使用 act；等待与审查使用 query。
 

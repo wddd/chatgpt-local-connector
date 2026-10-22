@@ -57,7 +57,10 @@ pub(crate) async fn wait(
         };
         let observed = match observation {
             Ok(result) => result,
-            Err(_) if source.deadline_is_timeout() && Instant::now() >= deadline => {
+            Err(_)
+                if Instant::now() >= deadline
+                    && (source.deadline_is_timeout() || !last["observedAt"].is_null()) =>
+            {
                 return deadline_result(last, started, baseline.as_deref());
             }
             Err(_) => Err("native-read-timeout".into()),
@@ -86,7 +89,10 @@ pub(crate) async fn wait(
             Err(error)
                 if matches!(
                     error.as_str(),
-                    "native-read-timeout" | "DESKTOP_SNAPSHOT_TIMEOUT" | "RPC_TIMEOUT: thread/read"
+                    "native-read-timeout"
+                        | "DESKTOP_SNAPSHOT_TIMEOUT"
+                        | "RPC_TIMEOUT: thread/read"
+                        | "RPC_TIMEOUT: thread/turns/list"
                 ) =>
             {
                 // A read timeout is not the wait deadline. Keep the last observation
@@ -127,7 +133,49 @@ fn deadline_result(last: Value, started: Instant, baseline: Option<&str>) -> Val
     }
 }
 fn snapshot_hash(v: &Value) -> String {
-    hash(json!({"turnId":v["turnId"],"recordedStatus":v["recordedStatus"],"runtimeStatus":v["runtimeStatus"],"interaction":v["interaction"],"finalResponse":v["finalResponse"],"error":v["error"],"externalUserInputs":v["externalUserInputs"]}).to_string())
+    let snapshot = hash(json!({"turnId":v["turnId"],"recordedStatus":v["recordedStatus"],"runtimeStatus":v["runtimeStatus"],"interaction":v["interaction"],"finalResponse":v["finalResponse"],"error":v["error"],"externalUserInputs":v["externalUserInputs"]}).to_string());
+    format!("{snapshot}:{}", response_text_hash(v))
+}
+
+fn response_text_hash(v: &Value) -> String {
+    v["finalResponse"]["textHash"]
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| {
+            hash(
+                v["finalResponse"]
+                    .as_str()
+                    .or_else(|| v["finalResponse"]["text"].as_str())
+                    .unwrap_or(""),
+            )
+        })
+}
+
+/// Apply only at the control-source boundary, after notification/inbox reads.
+/// The opaque snapshot token carries the text digest so no cache or new input is needed.
+pub(crate) fn compact_response(v: &mut Value, args: &Value) {
+    let Some(expected) = args["expectedHash"].as_str() else {
+        return;
+    };
+    if matches!(
+        string(v, "state"),
+        "completed" | "failed" | "cancelled" | "interaction-required"
+    ) {
+        return;
+    }
+    let text_hash = response_text_hash(v);
+    let unchanged = v["snapshotHash"] == expected
+        || expected
+            .split_once(':')
+            .is_some_and(|(_, text)| text == text_hash);
+    if unchanged {
+        v["finalResponseUnchanged"] = json!(true);
+        if let Some(response) = v["finalResponse"].as_object_mut() {
+            response.remove("text");
+        } else if v["finalResponse"].is_string() {
+            v.as_object_mut().unwrap().remove("finalResponse");
+        }
+    }
 }
 fn finish(
     mut v: Value,
@@ -141,6 +189,7 @@ fn finish(
     v["reason"] = json!(reason);
     v["changed"] = json!(baseline.is_some_and(|h| h != digest));
     v["snapshotHash"] = json!(digest);
+    v["textHash"] = json!(response_text_hash(&v));
     v["observedAt"] = v.get("observedAt").cloned().unwrap_or(Value::Null);
     v["returnedAt"] = json!(now());
     v["elapsedMs"] = json!(started.elapsed().as_millis() as u64);
@@ -466,6 +515,102 @@ mod tests {
         .await;
         condition(&mut value, &args);
         value
+    }
+
+    #[test]
+    fn response_deduplication_preserves_metadata_and_terminal_bodies() {
+        for body in [
+            json!("same reply"),
+            json!({"text":"same reply","textHash":hash("same reply"),"itemId":"message","nextOffset":null}),
+        ] {
+            let mut original = snapshot("running", "");
+            original["finalResponse"] = body.clone();
+            let expected = snapshot_hash(&original);
+            for changed in [false, true] {
+                let mut observation = original.clone();
+                if changed {
+                    observation["runtimeStatus"] = json!("busy");
+                }
+                let mut result = finish(
+                    observation,
+                    "timeout",
+                    "deadline",
+                    Instant::now(),
+                    Some(&expected),
+                );
+                let before = result.clone();
+                compact_response(&mut result, &json!({"expectedHash":expected}));
+                assert_eq!(result["changed"], changed);
+                assert_eq!(result["finalResponseUnchanged"], true);
+                assert_eq!(result["textHash"], hash("same reply"));
+                assert!(result["finalResponse"].as_str().is_none());
+                assert!(result["finalResponse"].get("text").is_none());
+                for key in [
+                    "snapshotHash",
+                    "textHash",
+                    "state",
+                    "reason",
+                    "observedAt",
+                    "returnedAt",
+                    "elapsedMs",
+                ] {
+                    assert_eq!(result[key], before[key]);
+                }
+                if body.is_object() {
+                    assert_eq!(result["finalResponse"]["itemId"], "message");
+                }
+                let mut without_expected = before.clone();
+                compact_response(&mut without_expected, &json!({}));
+                assert_eq!(without_expected, before);
+                for state in ["completed", "failed", "cancelled", "interaction-required"] {
+                    let mut terminal = before.clone();
+                    terminal["state"] = json!(state);
+                    compact_response(&mut terminal, &json!({"expectedHash":expected}));
+                    assert_eq!(terminal["finalResponse"], body);
+                    assert!(terminal.get("finalResponseUnchanged").is_none());
+                }
+            }
+            let mut changed_text = original.clone();
+            changed_text["finalResponse"] = json!("new reply");
+            let mut result = finish(
+                changed_text,
+                "timeout",
+                "deadline",
+                Instant::now(),
+                Some(&expected),
+            );
+            compact_response(&mut result, &json!({"expectedHash":expected}));
+            assert_eq!(result["finalResponse"], "new reply");
+            assert!(result.get("finalResponseUnchanged").is_none());
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn long_wait_retries_reads_past_ninety_seconds() {
+        let mut reads = vec![(0, Ok(snapshot("running", "partial")))];
+        reads.extend((0..10).map(|_| (11000, Ok(snapshot("running", "late")))));
+        reads.push((0, Err("RPC_TIMEOUT: thread/turns/list".into())));
+        reads.push((0, Ok(snapshot("completed", "final"))));
+        let result = run(reads, 300000).await;
+        assert_eq!(result["state"], "completed");
+        assert!(result["elapsedMs"].as_u64().unwrap() > 90000);
+        assert!(result["elapsedMs"].as_u64().unwrap() < 300000);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_deadline_during_read_does_not_invent_read_failure() {
+        let reads = (0..99)
+            .map(|_| (1000, Ok(snapshot("running", "partial"))))
+            .chain(std::iter::once((9000, Ok(snapshot("running", "late")))))
+            .collect();
+        let result = run(reads, 300000).await;
+        assert_eq!(result["state"], "timeout");
+        assert_eq!(result["reason"], "deadline");
+        assert_eq!(result["elapsedMs"], 300000);
+        let result = run(vec![(0, Ok(snapshot("running", "partial")))], 300000).await;
+        assert_eq!(result["state"], "unconfirmed");
+        assert_eq!(result["reason"], "native-read-timeout");
+        assert_eq!(result["elapsedMs"], 300000);
     }
 
     #[test]

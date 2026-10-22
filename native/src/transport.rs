@@ -446,7 +446,23 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, tool: &str, envelope: Value
         if let Some(request_id) = envelope.get("requestId") {
             args["requestId"] = request_id.clone();
         }
-        s.call(name, args.clone()).await
+        let mut execution_args = args.clone();
+        if matches!(name, "codex_wait" | "agent_wait") {
+            let spec = catalog()["ops"].as_array().unwrap().iter().find(|op| op["name"] == name).unwrap();
+            crate::egress::validate_op(spec, &args)?;
+            // Cloudflare's buffered HTTP response has a 125-second read deadline.
+            // Keep the caller's args intact for next; other transports allow 300s.
+            let cloudflare = {
+                let meta = s.meta.lock().await;
+                meta["transport"] == "https" && meta["config"]["httpsProvider"] == "cloudflare"
+            };
+            if cloudflare
+                && args["timeoutMs"].as_u64().is_some_and(|ms| ms > 120000)
+            {
+                execution_args["timeoutMs"] = json!(120000);
+            }
+        }
+        s.call(name, execution_args).await
     }.await;
     let mut images = Vec::new();
     let mut reads = Vec::new();
@@ -460,6 +476,9 @@ async fn call_tool(s: &Arc<crate::ingress::Ingress>, tool: &str, envelope: Value
                     &format!("Inbox read tracking failed: {error}"),
                     None,
                 ),
+            }
+            if matches!(name, "codex_wait" | "agent_wait") {
+                crate::waiter::compact_response(&mut value, &args);
             }
             if matches!(name, "read" | "codex_read" | "codex_items" | "screen") {
                 images = crate::images::take(&mut value);
