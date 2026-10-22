@@ -106,7 +106,7 @@ export default function Onboarding({ onAdvanced, onPanelFrame }: { onAdvanced: (
   }, [current?.oauth, flow.requestId, flow.step]);
   const title = flow.step === "connect" ? name : t(`connect.title.${flow.step}`);
   return <Dialog title={title} leading={flow.step === "welcome" ? <img className="welcome-logo" src={new URL("../assets/arc/mark.svg", import.meta.url).href} alt="ARC" /> : undefined} dock="left" width={440} onPanelFrame={onPanelFrame} returnFocus=".hub-source" onClose={() => onboarding.set(undefined)} busy={busy}>
-    <div className="onboarding">
+    <div className="onboarding side-panel-scroll">
       {error && <Notice tone="danger">{error}</Notice>}
       {flow.step === "welcome" && <>
         <p className="muted">{t("connect.welcomeSubtitle")}</p>

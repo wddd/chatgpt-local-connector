@@ -300,15 +300,27 @@ impl Client {
             let mut child = child
                 .spawn()
                 .map_err(|e| format!("Core start failed: {e}"))?;
+            let (exited, mut exit) = tokio::sync::oneshot::channel();
             std::thread::spawn(move || {
-                let _ = child.wait();
+                let _ = exited.send(child.wait());
             });
             let deadline = Instant::now() + Duration::from_secs(15);
             while owner(&self.build).await?.is_none() {
                 if Instant::now() >= deadline {
                     return Err("Core 启动超时；请检查状态目录中的 core.log。".into());
                 }
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                tokio::select! {
+                    result = &mut exit => {
+                        let status = result.map_err(|e| format!("Core wait failed: {e}"))?
+                            .map_err(|e| format!("Core wait failed: {e}"))?;
+                        // Another Core can still hold the lock while its listener
+                        // disappears. A successful no-op launch must be retried,
+                        // not awaited for a listener it will never create.
+                        return Err(if status.success() { "core shutting down".into() }
+                            else { format!("Core exited during startup ({status}); check core.log.") });
+                    }
+                    _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+                }
             }
         }
         if let Err(error) = crate::transport::forward_request("runtime/lease", "POST", json!({"id":self.id,"kind":self.kind,"pid":std::process::id(),"desktop":self.desktop.lock().await.clone()})).await {

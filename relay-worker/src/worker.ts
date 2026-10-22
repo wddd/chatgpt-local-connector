@@ -111,9 +111,10 @@ export class Registry extends DurableObject<Env> {
             const bytes = decode(input.publicKey);
             if (bytes.length !== 32 || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 120) fail('Invalid instance');
             const id = await digest(bytes);
-            const previous = await this.ctx.storage.get<Member>(`member:${id}`);
+            const stored = await this.ctx.storage.get<Member>(`member:${id}`);
+            const previous = stored?.removed ? undefined : stored;
             if (!admin) {
-              if (publicKey !== input.publicKey || previous?.removed) fail('Instance registration denied', 403);
+              if (publicKey !== input.publicKey) fail('Instance registration denied', 403);
               const token = await this.ctx.storage.get<string>('tokenHash');
               if (!token || typeof input.token !== 'string' || await digest(encoder.encode(input.token)) !== token) fail('Invalid shared token', 403);
             }

@@ -102,7 +102,7 @@ test('streamed binary request and SSE response preserve headers, discovery paths
   assert.equal(cancel.type,'cancel');
 
 });
-test('rotation preserves members; removal closes active requests and prevents shared rejoin; leave is self-only', async () => {
+test('rotation preserves members; removal closes active requests and allows valid shared rejoin; leave is self-only', async () => {
   const newToken = (await (await call(admin,{op:'rotate'})).json()).token;
   assert.notEqual(newToken,token); assert.equal((await register(identity(),token)).status,403);
   assert.equal((await call(member,{op:'me'})).status,200);
@@ -111,7 +111,7 @@ test('rotation preserves members; removal closes active requests and prevents sh
   assert.equal((await call(admin,{op:'remove',id:member.id})).status,200);
   assert.equal((await pending).status,503);
   assert.equal((await mf.dispatchFetch(`${origin}/u/${member.id}/mcp`)).status,404);
-  assert.equal((await register(member,newToken)).status,403);
+  assert.equal((await register(member,newToken)).status,200);
   assert.equal((await call(other,{op:'leave',id:member.id})).status,200);
   assert.equal((await call(other,{op:'me'})).status,403);
   assert.equal((await register(other,newToken)).status,200);

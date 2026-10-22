@@ -1163,7 +1163,7 @@ button.timeline-summary:focus-visible { outline: 2px solid var(--accent); outlin
 .source-dispatch-row[data-state="failed"] .source-dispatch-meta > span, .source-dispatch-row[data-state="failed"] .phase-tile { color: var(--danger); }
 
 /* Remote-link onboarding uses the same left panel and semantic controls. */
-.onboarding { display:flex; flex-direction:column; gap:20px; }
+.onboarding { min-width:0; }
 .onboarding p { margin:0; }
 .onboarding form { display:grid; gap:16px; }
 .welcome-logo { width:40px; height:40px; flex-shrink:0; }
