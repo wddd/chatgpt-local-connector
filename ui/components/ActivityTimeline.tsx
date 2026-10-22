@@ -11,7 +11,7 @@ import { Button, Dialog, Icon, IconButton, Tooltip } from "./ui";
 import { Markdown } from "./ui/Markdown";
 import ActivityInteraction from "./ActivityInteraction";
 import FilePath from "./FilePath";
-import { activityHeadline, filePathParts, interactionKey } from "../state/activityModel";
+import { activityHeadline, filePathParts, interactionKey, type TrackedActivity } from "../state/activityModel";
 
 import { name, orderedAgents, icons as agentIcons } from "../state/agents";
 
@@ -76,7 +76,7 @@ function TimelineEntry({ entry, agent, session, now }: {
   </details>;
 }
 export default function ActivityTimeline({ agent, session, onClose, onPanelFrame }: {
-  agent: string; session: AgentActivitySession; onClose: () => void; onPanelFrame: (rect: import("../motion/surface").SurfaceRect | null) => void;
+  agent: string; session: TrackedActivity; onClose: () => void; onPanelFrame: (rect: import("../motion/surface").SurfaceRect | null) => void;
 }) {
   const { snapshot } = agentActivity.use();
   const submissions = activityApprovals.use(), cardId = useId(), reduced = useReducedMotion();
@@ -89,7 +89,10 @@ export default function ActivityTimeline({ agent, session, onClose, onPanelFrame
   const live = snapshot?.agents[agent]?.sessions.find(s => s.id === session.id);
   const external = session.source === "transcript";
   // Completed history entries do not override a session in the live snapshot.
-  const running = !!live || !external && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? "");
+  const running = !!live || session.endedAt === undefined && !external && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? "");
+  const completedAt = useRef(session.endedAt);
+  if (running) completedAt.current = undefined;
+  else completedAt.current ??= session.endedAt ?? now;
   const followAllowed = useRef(true);
   followAllowed.current = running;
   useInterval(() => setNow(Date.now()), running ? 1000 : null);
@@ -128,7 +131,8 @@ export default function ActivityTimeline({ agent, session, onClose, onPanelFrame
   const submission = pendingSession ? submissions[interactionKey(agent, pendingSession)] : undefined;
   const showCard = !!pendingSession && submission?.status !== "submitted";
   const agentName = name(orderedAgents().find(a => a.agent === agent) ?? { agent });
-  const duration = session.startedAt ? Math.max(0, Math.floor((now - Date.parse(session.startedAt)) / 1000)) : undefined;
+  const startedAt = nativeSession.turnStartedAt ?? nativeSession.startedAt;
+  const duration = startedAt ? Math.max(0, Math.floor(((completedAt.current ?? now) - Date.parse(startedAt)) / 1000)) : undefined;
   useEffect(() => {
     if (showCard) document.getElementById(cardId)?.focus({ preventScroll: true });
   }, [showCard, pendingSession?.phaseSince, cardId]);

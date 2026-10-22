@@ -27,6 +27,7 @@ export const PARAMETERS = [
   { key: "bubbleOffset", group: "secondary", label: { en: "Bubble offset", "zh-CN": "气泡距节点" }, min: 60, max: 220, step: 2, default: 104 },
   { key: "t2Root", group: "secondary", label: { en: "Root tension", "zh-CN": "根部端张力" }, min: 0.05, max: 0.7, step: 0.02, default: 0.34 },
   { key: "t2End", group: "secondary", label: { en: "Bubble tension", "zh-CN": "气泡端张力" }, min: 0.1, max: 0.8, step: 0.02, default: 0.5 },
+  { key: "nodeSize", group: "rows", label: { en: "Node size", "zh-CN": "节点大小" }, min: 32, max: 60, step: 1, default: 44 },
   { key: "colDist", group: "rows", label: { en: "Column distance", "zh-CN": "节点列距" }, min: 2, max: 3.2, step: 0.02, default: 2.6 },
   { key: "pitch", group: "rows", label: { en: "Task pitch", "zh-CN": "任务槽高" }, min: 52, max: 80, step: 1, default: 64 },
   { key: "rowGap", group: "rows", label: { en: "Row gap", "zh-CN": "行间距" }, min: 0, max: 30, step: 1, default: 12 },
@@ -35,7 +36,7 @@ export const PARAMETERS = [
   { key: "idleIndent", group: "rows", label: { en: "Idle indentation", "zh-CN": "空闲左缩进" }, min: 0, max: 60, step: 1, default: 22 },
   { key: "activeScale", group: "rows", label: { en: "Active scale", "zh-CN": "活跃缩放" }, min: 1, max: 1.4, step: 0.02, default: 1.1 },
   { key: "idleScale", group: "rows", label: { en: "Idle scale", "zh-CN": "空闲缩放" }, min: 0.6, max: 1, step: 0.02, default: 1 },
-  { key: "minIdleScale", group: "rows", label: { en: "Minimum idle scale", "zh-CN": "空闲缩放下限" }, min: 0.6, max: 0.9, step: 0.02, default: 0.6 },
+  { key: "minIdleScale", group: "rows", label: { en: "Minimum idle scale", "zh-CN": "空闲缩放下限" }, min: 0.4, max: 0.9, step: 0.02, default: 0.6 },
   { key: "minIdleRow", group: "rows", label: { en: "Minimum idle row height", "zh-CN": "压缩下限" }, min: 34, max: 60, step: 1, default: 44 },
   { key: "stiffness", group: "motion", label: { en: "Stiffness", "zh-CN": "刚度" }, min: 60, max: 600, step: 5, default: 210 },
   { key: "damping", group: "motion", label: { en: "Damping", "zh-CN": "阻尼" }, min: 8, max: 60, step: 1, default: 26 },
@@ -50,7 +51,7 @@ export interface Scene { vw: number; vh: number; left: readonly Entity[]; right:
 export interface Drag extends Point { kind: "node" | "task"; side: Side; id: string }
 export interface Point { x: number; y: number }
 export interface NodeGeometry extends Point {
-  id: string; tasks: readonly Task[]; active: boolean; scale: number; opacity: number; dim: boolean; side: Side;
+  id: string; tasks: readonly Task[]; active: boolean; size: number; scale: number; opacity: number; dim: boolean; side: Side;
   port: number; arc: { R: number; lo: number; hi: number } | null;
 }
 export interface TaskGeometry extends Point { id: string; parent: string; side: Side; port: number }
@@ -105,7 +106,7 @@ function solveWing(list: readonly Entity[], side: Side, hub: Point, Re: number, 
     const ny = y + r.h / 2; y += r.h + p.rowGap;
     const nodeDrag = drag && drag.kind === 'node' && drag.id === r.e.id;
     return { id: r.e.id, port: 0, arc: null, tasks: r.e.tasks, active, x: nodeDrag ? drag.x : colX - side * (idle ? idleIndent : 0),
-      y: nodeDrag ? drag.y : ny, scale: active ? p.activeScale : idle ? idleScale : 1, opacity: idle ? 0.62 : 1, dim: idle, side };
+      y: nodeDrag ? drag.y : ny, size: p.nodeSize, scale: active ? p.activeScale : idle ? idleScale : 1, opacity: idle ? 0.62 : 1, dim: idle, side };
   });
   // Earmuff ports follow the direction from the hub to each node.
   const raw = nodes.map((n) => Math.atan2(n.y - hub.y, Math.abs(n.x - hub.x)) * 180 / Math.PI);
@@ -117,7 +118,7 @@ function solveWing(list: readonly Entity[], side: Side, hub: Point, Re: number, 
   const tasks: TaskGeometry[] = [];
   nodes.forEach((n) => {
     if (!n.active) { n.arc = null; return; }
-    const R = NODE_R * n.scale + p.arcGap, k = n.tasks.length;
+    const R = n.size / 2 * n.scale + p.arcGap, k = n.tasks.length;
     const slots = n.tasks.map((t, i) => (drag && drag.kind === 'task' && drag.id === t.id) ? drag.y : n.y + (i - (k - 1) / 2) * p.pitch);
     const rawT = n.tasks.map((_, i) => Math.atan2(n.y + (i - (k - 1) / 2) * p.pitch - n.y, p.bubbleOffset) * 180 / Math.PI);
     const tA = distribute(rawT, p.arcFollow, 9, p.arcMax);
@@ -136,7 +137,7 @@ function solveWing(list: readonly Entity[], side: Side, hub: Point, Re: number, 
 
 export function extentOf(w: Wing, hubX: number, Re: number) {
   let core = Math.max(Re * 1.15, Math.abs(w.utility.x - hubX) + 16);
-  w.nodes.forEach((n) => { core = Math.max(core, Math.abs(n.x - hubX) + LABEL_W * n.scale / 2); });
+  w.nodes.forEach((n) => { core = Math.max(core, Math.abs(n.x - hubX) + LABEL_W * n.scale * n.size / (NODE_R * 2) / 2); });
   let full = core;
   w.tasks.forEach((t) => { full = Math.max(full, Math.abs(t.x - hubX) + BUBBLE_W); });
   return { core, full };

@@ -69,7 +69,7 @@ test("mounted topology paints paths, observes its parent viewport and reacts to 
     assert.ok(paths.length >= 17, "ears and both levels of branches must have nonempty paths after mounting");
     assert.equal(observers.size, 1, "the parent ref must be attached before observing");
     assert.equal(mount.querySelectorAll(".topology-ear").length, 2);
-    assertHub(); assert.ok(Math.abs(hub().x - 527.6) < 1e-6);
+    assertHub(); assert.ok(Math.abs(hub().x - 527.05) < 1e-6);
     await act(() => topologyDebug.set({ guides: true, slow: false }));
     assert.ok(mount.querySelector(".topology-guides path")?.getAttribute("d"));
     await settle();

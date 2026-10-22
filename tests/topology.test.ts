@@ -24,7 +24,7 @@ for (const [name, scene] of Object.entries(fixtures)) test(`topology lab: ${name
     assert.equal(wing.nodes.length, (wing.side === -1 ? scene.left : scene.right).length);
     for (let i = 1; i < wing.nodes.length; i++) assert.ok(wing.nodes[i].port - wing.nodes[i - 1].port >= DEFAULTS.earSep - 1e-9);
     for (const node of wing.nodes) {
-      if (wing.side === -1) { assert.equal(node.scale, 1); assert.equal(node.opacity, 1); }
+      if (wing.side === -1) { assert.equal(node.scale, node.active ? DEFAULTS.activeScale : 1); assert.equal(node.opacity, 1); }
       const tasks = wing.tasks.filter(t => t.parent === node.id);
       for (let i = 1; i < tasks.length; i++) {
         assert.equal(tasks[i].y - tasks[i - 1].y, DEFAULTS.pitch);
@@ -96,8 +96,8 @@ test("topology parameter ranges clamp at input, save and load boundaries", () =>
   const saved = parameterDiff({ ...DEFAULTS, margin: -200, damping: 999, flare: NaN });
   assert.deepEqual(saved.overrides, { margin: 16, damping: 60 });
   assert.equal(loadParameters({ schemaVersion: 1, overrides: { margin: 999 } }).margin, 120);
-  // Preserve the reference default, even when it falls between slider steps.
-  assert.equal(clampParameter("colDist", 1.85), 1.85);
+  // Preserve in-range values even when they fall between slider steps.
+  assert.equal(clampParameter("colDist", 2.13), 2.13);
 });
 
 test("topology imports validate the complete document before applying any values", () => {
@@ -116,7 +116,7 @@ test("topology imports validate the complete document before applying any values
   const defaults = Object.freeze({ ...DEFAULTS });
   assert.equal(importParameters('{"schemaVersion":1,"overrides":{"margin":80,"flare":"bad"}}', defaults).ok, false);
   assert.deepEqual(defaults, DEFAULTS);
-  const imported = importParameters('{"schemaVersion":1,"overrides":{"margin":999,"earFollow":-1,"colDist":1.85}}');
+  const imported = importParameters('{"schemaVersion":1,"overrides":{"margin":999,"earFollow":-1,"colDist":2.6}}');
   assert.ok(imported.ok);
   assert.deepEqual(imported.clamped, ["margin", "earFollow"]);
   assert.deepEqual(imported.document, { schemaVersion: 1, overrides: { margin: 120, earFollow: 0 } });

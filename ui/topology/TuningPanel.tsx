@@ -1,11 +1,23 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { Accordion } from "radix-ui";
 import { ChevronDown, ChevronUp, Grip, RotateCcw } from "lucide-react";
 import { locale, t } from "../i18n";
 import { copyText } from "../platform";
-import { Button, Field, IconButton, Input, Slider, Switch, Textarea } from "../components/ui";
+import { Button, Field, Icon, IconButton, Input, Slider, Switch, Textarea } from "../components/ui";
 import { PARAMETERS, PARAMETER_GROUPS } from "./solve";
 import { importParameters, parameterDiff } from "./parameters";
 import { topologyPanel, topologyParameters, topologyValues, topologyDebug, previewParameter, saveTopologyParameters, resetTopologyParameter } from "../state/topology";
+
+function TuningSection({ value, title, className, children }: { value: string; title: string; className: string; children: ReactNode }) {
+  return <Accordion.Item value={value} className={className}>
+    <Accordion.Header className="topology-section-heading">
+      <Accordion.Trigger asChild><Button variant="ghost" className="topology-section-trigger">
+        <span>{title}</span><Icon icon={ChevronDown} size={16} />
+      </Button></Accordion.Trigger>
+    </Accordion.Header>
+    <Accordion.Content className="topology-section-content"><div className="topology-section-inner">{children}</div></Accordion.Content>
+  </Accordion.Item>;
+}
 
 function ParameterControl({ spec, value }: { spec: typeof PARAMETERS[number]; value: number }) {
   const lang = locale.use(), label = spec.label[lang], changed = value !== spec.default;
@@ -87,7 +99,6 @@ export default function TuningPanel() {
         aria-expanded={!collapsed} aria-controls="topology-tuner-body" onClick={() => topologyPanel.set({ ...position.current, collapsed: !collapsed })} />
     </header>
     {!collapsed && <div className="topology-tuner-body" id="topology-tuner-body">
-      <p className="topology-tuner-hint">{t("topology.panelHint")}</p>
       <div className="topology-tuner-option"><span>{t("topology.guides")}</span><Switch label={t("topology.guides")} checked={debug.guides} onChange={guides => topologyDebug.set(old => ({ ...old, guides }))} /></div>
       <div className="topology-tuner-option"><span>{t("topology.slow")}</span><Switch label={t("topology.slow")} checked={debug.slow} onChange={slow => topologyDebug.set(old => ({ ...old, slow }))} /></div>
       {debug.guides && <p className="topology-tuner-hint">{t("topology.guideHint")}</p>}
@@ -96,24 +107,25 @@ export default function TuningPanel() {
         <Button onClick={() => { void copyText(JSON.stringify(parameterDiff(topologyValues.get()), null, 2)).then(() => setMessage(t("topology.copied")), () => setMessage(t("topology.copyFailed"))); }}>{t("topology.export")}</Button>
       </div>
       <div role="status" className="topology-tuner-status">{message}</div>
-      <details className="topology-import"><summary>{t("topology.import")}</summary>
-        <form noValidate onSubmit={event => {
-          event.preventDefault(); const result = importParameters(json);
-          if (!result.ok) { setImportError(t(`topology.importError.${result.error}`)); element.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus(); return; }
-          topologyParameters.set(result.document); setImportError("");
-          setMessage(result.clamped.length ? t("topology.importClamped", { labels: result.clamped.map(key => PARAMETERS.find(p => p.key === key)!.label[lang]).join(", ") }) : t("topology.imported"));
-        }}>
-          <Field id="topology-import" label={t("topology.paste")} error={importError}>
-            <Textarea id="topology-import" rows={4} value={json} spellCheck={false} aria-invalid={!!importError}
-              aria-describedby={importError ? "topology-import-error" : undefined} onChange={event => { setJson(event.target.value); setImportError(""); }} />
-          </Field>
-          <Button type="submit">{t("topology.applyImport")}</Button>
-        </form>
-      </details>
-      {Object.entries(PARAMETER_GROUPS).map(([group, label]) => <details className="topology-parameter-group" key={group} open>
-        <summary>{label[lang]}</summary>
-        {PARAMETERS.filter(p => p.group === group).map(spec => <ParameterControl key={spec.key} spec={spec} value={values[spec.key]} />)}
-      </details>)}
+      <Accordion.Root type="multiple" defaultValue={Object.keys(PARAMETER_GROUPS)}>
+        <TuningSection value="import" title={t("topology.import")} className="topology-import">
+          <form noValidate onSubmit={event => {
+            event.preventDefault(); const result = importParameters(json);
+            if (!result.ok) { setImportError(t(`topology.importError.${result.error}`)); element.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus(); return; }
+            topologyParameters.set(result.document); setImportError("");
+            setMessage(result.clamped.length ? t("topology.importClamped", { labels: result.clamped.map(key => PARAMETERS.find(p => p.key === key)!.label[lang]).join(", ") }) : t("topology.imported"));
+          }}>
+            <Field id="topology-import" label={t("topology.paste")} error={importError}>
+              <Textarea id="topology-import" rows={4} value={json} spellCheck={false} aria-invalid={!!importError}
+                aria-describedby={importError ? "topology-import-error" : undefined} onChange={event => { setJson(event.target.value); setImportError(""); }} />
+            </Field>
+            <Button type="submit">{t("topology.applyImport")}</Button>
+          </form>
+        </TuningSection>
+        {Object.entries(PARAMETER_GROUPS).map(([group, label]) => <TuningSection value={group} title={label[lang]} className="topology-parameter-group" key={group}>
+          {PARAMETERS.filter(p => p.group === group).map(spec => <ParameterControl key={spec.key} spec={spec} value={values[spec.key]} />)}
+        </TuningSection>)}
+      </Accordion.Root>
     </div>}
   </aside>;
 }

@@ -943,6 +943,7 @@
 .activity-phase time { margin-left: auto; flex: none; color: var(--text-tertiary); font-size: 11.5px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .needs-attention .activity-phase > .icon { color: var(--warning); }
 .completed .activity-phase > .icon { color: var(--success); }
+.activity-phase > .activity-unread { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--accent); }
 .activity-headline { display: grid; height: 19px; line-height: 19px; font-size: 13px; color: var(--text); }
 .activity-headline > span { grid-area: 1 / 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .activity-headline-fallback { color: var(--text-tertiary); }
@@ -1054,7 +1055,21 @@ summary.timeline-summary { cursor: pointer; }
 .topology-tuner-status { color: var(--text-secondary); line-height: 1.5; overflow-wrap: anywhere; }
 .topology-tuner-status:not(:empty) { margin-top: 8px; }
 .topology-parameter-group, .topology-import { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
-.topology-tuner summary { cursor: pointer; font-weight: 500; padding: 4px 0; }
+.topology-section-heading { margin: 0; font-size: inherit; }
+.topology-section-trigger { display: flex; justify-content: space-between; gap: 8px; width: 100%; min-height: 0; padding: 4px 0; border: 0; font-size: inherit; font-weight: 500; text-align: left; }
+.topology-tuner .topology-section-trigger:hover:not(:disabled) { background: transparent; }
+.topology-section-trigger > .icon { transition: transform 160ms ease; }
+.topology-section-trigger[data-state="open"] > .icon { transform: rotate(180deg); }
+.topology-section-content { overflow: hidden; }
+.topology-section-content[data-state="open"] { animation: topology-expand 160ms ease-out; }
+.topology-section-content[data-state="closed"] { animation: topology-collapse 160ms ease-in; }
+.topology-section-inner { display: flow-root; padding-bottom: 4px; }
+@keyframes topology-expand { from { height: 0; opacity: 0; } to { height: var(--radix-accordion-content-height); opacity: 1; } }
+@keyframes topology-collapse { from { height: var(--radix-accordion-content-height); opacity: 1; } to { height: 0; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .topology-section-trigger > .icon { transition: none; }
+  .topology-section-content[data-state] { animation: none; }
+}
 .topology-tuner .field { gap: 4px; margin-top: 8px; }
 .topology-tuner .field label { font-size: var(--text-xs); }
 .topology-parameter { display: grid; grid-template-columns: minmax(0, 1fr) 62px 32px; align-items: center; gap: 8px; }

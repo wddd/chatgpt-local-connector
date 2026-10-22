@@ -41,21 +41,24 @@ function PhaseIcon({ phase, completed }: { phase: AgentPhase; completed: boolean
 }
 export function ActivityBubble({ agent, session, now, onOpen, onMove, listRow = false }: { agent: string; session: TrackedActivity; now: number; onOpen?: () => void; onMove?: (by: number) => void; listRow?: boolean }) {
   const completed = session.endedAt !== undefined, external = session.source === "transcript";
+  const unread = completed && session.readAt === undefined;
   const phase = session.interaction ? "interaction" : session.phase;
   const phaseLabel = completed ? "activity.completed" : session.interaction?.kind === "question" ? "activity.question" : `activity.phase.${phase}`;
   const hint = t("timeline.open"), headline = activityHeadline(session, t("timeline.title"));
   return <Tooltip text={`${hint} · ${headline.fullText}`}>
     <button type="button" className={`${listRow ? "activity-task-row" : "activity-bubble"} ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
       data-timeline-anchor
+      data-unread={unread || undefined}
       aria-keyshortcuts={onMove ? "ArrowUp ArrowDown" : undefined} aria-description={onMove ? t("reorderNodeHint") : undefined}
       onKeyDown={event => { if (onMove && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
         event.preventDefault(); onMove(event.key === "ArrowUp" ? -1 : 1);
       } }}
       data-activity-session={JSON.stringify([agent, session.id])}
-      aria-label={`${session.title || t(phaseLabel)} · ${hint}`} onClick={() => {
+      aria-label={`${session.title || t(phaseLabel)}${unread ? ` · ${t("activity.unread")}` : ""} · ${hint}`} onClick={() => {
         onOpen?.(); activityTimeline.set({ agent, session });
       }}>
       <span className="activity-phase"><PhaseIcon phase={phase} completed={completed} /><span>{t(phaseLabel)}</span>
+        {unread && <span className="activity-unread" role="img" aria-label={t("activity.unread")} />}
         {external && <Icon icon={ArrowUpRight} />}<time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}</time></span>
       <Headline session={session} />
     </button>

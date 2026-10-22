@@ -1,4 +1,4 @@
-import { NODE_R, deg, type Side, type Layout, type Point } from "./solve";
+import { deg, type Side, type Layout, type Point } from "./solve";
 import { arcPath, grownWire, finitePoints } from "./geometry";
 import { TopologyAnimator, nodeKey, taskKey } from "./animate";
 import type { SurfaceRect } from "../motion/surface";
@@ -54,7 +54,7 @@ export class TopologyPainter {
       keep.add(key);
       const b = this.branch(key), a = deg(v.port), radial = { x: n.side * Math.cos(a), y: Math.sin(a) };
       const port = { x: h.x + h.Re * radial.x, y: h.y + h.Re * radial.y };
-      const start = { x: v.x - n.side * (NODE_R * v.scale + 6), y: v.y }, D = Math.hypot(start.x - port.x, start.y - port.y);
+      const start = { x: v.x - n.side * (v.size / 2 * v.scale + 6), y: v.y }, D = Math.hypot(start.x - port.x, start.y - port.y);
       const c1 = { x: start.x - n.side * D * p.t1Node, y: start.y };
       const c2 = { x: port.x + radial.x * D * p.t1Root, y: port.y + radial.y * D * p.t1Root };
       const shape = grownWire(start, c1, c2, port, scale, p.flare, false, n.state === "connecting");

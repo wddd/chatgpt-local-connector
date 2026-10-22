@@ -42,15 +42,15 @@ test("start order is stable across phases, payload order and corrected timestamp
   const fallback = trackActivity([], [session("b"), session("a")], 100);
   assert.deepEqual(trackActivity(fallback, [session("a"), session("b")], 200).map(s => s.orderAt), [100, 100]);
 });
-test("missing sessions complete for two seconds plus fade; repeated snapshots do not reset expiry", () => {
+test("missing sessions retain unread completions; read completions expire after two seconds plus fade", () => {
   const active = trackActivity([], [session("one", permission)], 100);
   const ended = trackActivity(active, [], 500);
   assert.equal(ended[0].endedAt, 500);
   assert.equal(ended[0].interaction, undefined);
   assert.equal(trackActivity(ended, [], 2499)[0].endedAt, 500);
-  assert.equal(trackActivity(ended, [], 2500).length, 1);
+  assert.equal(trackActivity([{ ...ended[0], readAt: 500 }], [], 2800).length, 0);
   assert.equal(trackActivity(ended, [], 2799).length, 1);
-  assert.equal(trackActivity(ended, [], 2800).length, 0);
+  assert.equal(trackActivity(ended, [], 2800).length, 1);
   assert.equal(trackActivity(ended, [session("one")], 1000)[0].endedAt, undefined);
   assert.equal(trackActivity(ended, [session("one")], 1000)[0].orderAt, active[0].orderAt);
 });
@@ -59,7 +59,7 @@ test("an open task keeps its origin and branch for focus restoration, even beyon
   const shown = visibleActivity(active, "6");
   assert.deepEqual(shown.sessions.map(s => s.id), ["0", "1", "2", "6"]);
   assert.equal(shown.hidden, 3);
-  const ended = trackActivity(active, [], 500);
+  const ended = trackActivity(active, [], 500).map(s => ({ ...s, readAt: 500 }));
   assert.deepEqual(trackActivity(ended, [], 5000, "6").map(s => s.id), ["6"]);
   assert.equal(trackActivity(ended, [], 5000).length, 0);
 });

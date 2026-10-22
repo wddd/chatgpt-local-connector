@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject, type PointerEvent, type MouseEvent } from "react";
 import { useMedia } from "../state/hooks";
-import { solve, BUBBLE_W, type Side, type Scene, type Drag, type Layout } from "./solve";
+import { solve, BUBBLE_W, NODE_R, type Side, type Scene, type Drag, type Layout } from "./solve";
 import { TopologyAnimator, nodeKey, taskKey } from "./animate";
 import { TopologyPainter, type PaintNode, type PaintTask } from "./render";
 import { orderedSubset, moveToY } from "./order";
@@ -48,7 +48,7 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
     for (const n of latest.current.nodes) {
       const key = nodeKey(n.side, n.id), v = a.values(key), el = elements.current.get(key);
       if (v && el) {
-        el.style.transform = `translate(${v.x - 22}px, ${v.y - 22}px) scale(${v.scale})`;
+        el.style.transform = `translate(${v.x - NODE_R}px, ${v.y - NODE_R}px) scale(${v.scale * v.size / (NODE_R * 2)})`;
         el.style.opacity = String(v.op);
       }
     }

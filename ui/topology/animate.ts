@@ -1,4 +1,4 @@
-import { DEFAULTS, NODE_R, type Drag, type Layout, type Side } from "./solve.ts";
+import { DEFAULTS, type Drag, type Layout, type Side } from "./solve.ts";
 
 export const nodeKey = (side: Side, id: string) => JSON.stringify(["node", side, id]);
 export const taskKey = (side: Side, id: string) => JSON.stringify(["task", side, id]);
@@ -34,8 +34,8 @@ export class TopologyAnimator {
       this.spring(`ear${w.side}`, w.ear);
       this.spring(`utility${w.side}`, { ...w.utility });
       for (const n of w.nodes) {
-        const s = this.spring(nodeKey(w.side, n.id), { x: n.x, y: n.y, scale: n.scale, op: n.opacity, port: n.port,
-          radius: n.arc?.R ?? NODE_R + this.params.arcGap, alo: n.arc?.lo ?? 0, ahi: n.arc?.hi ?? 0, aop: n.arc ? 1 : 0 },
+        const s = this.spring(nodeKey(w.side, n.id), { x: n.x, y: n.y, size: n.size, scale: n.scale, op: n.opacity, port: n.port,
+          radius: n.arc?.R ?? n.size / 2 * n.scale + this.params.arcGap, alo: n.arc?.lo ?? 0, ahi: n.arc?.hi ?? 0, aop: n.arc ? 1 : 0 },
         { aop: 0, alo: 0, ahi: 0 });
         s.side = w.side;
         if (drag?.kind === "node" && drag.side === w.side && drag.id === n.id) {

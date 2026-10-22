@@ -6,7 +6,7 @@ import type { AgentActivitySession, AgentActivitySnapshot } from "../types";
 import { trackActivity, activityLayout, type TrackedActivity, beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission } from "./activityModel";
 
 export const agentActivity = createStore<{ snapshot?: AgentActivitySnapshot; error: string }>({ error: "" });
-export const activityTimeline = createStore<{ agent: string; session: AgentActivitySession } | undefined>(undefined);
+export const activityTimeline = createStore<{ agent: string; session: TrackedActivity } | undefined>(undefined);
 export const activityApprovals = createStore<Record<string, ApprovalSubmission>>({});
 export function acceptActivity(snapshot: AgentActivitySnapshot) {
   const next = mergeActivity(agentActivity.get().snapshot, snapshot);
@@ -102,16 +102,18 @@ export function useActivityTracking() {
   useEffect(() => {
     const previous = previousSelection.current;
     previousSelection.current = selected;
-    // Keep the selected origin and its branch until dismissal can restore focus.
-    if (previous && previous !== selected) setTracked(old => ({ ...old, [previous.agent]: (old[previous.agent] ?? []).map(s =>
-      s.id === previous.session.id && s.endedAt !== undefined ? { ...s, endedAt: Date.now() } : s) }));
+    // Opening reads a completion; closing starts its dismissal delay without
+    // changing the actual completion time or removing the focus origin early.
+    setTracked(old => Object.fromEntries(Object.entries(old).map(([agent, sessions]) => [agent, sessions.map(s =>
+      s.endedAt !== undefined && ((selected?.agent === agent && selected.session.id === s.id)
+        || (previous?.agent === agent && previous.session.id === s.id)) ? { ...s, readAt: Date.now() } : s)])));
   }, [selected]);
   useEffect(() => {
     const pinned = (agent: string, id: string) => selected?.agent === agent && selected.session.id === id;
-    const ends = Object.entries(tracked).flatMap(([agent, sessions]) => sessions.flatMap(s => s.endedAt === undefined || pinned(agent, s.id) ? [] : [s.endedAt + activityLayout.hold + activityLayout.fade]));
+    const ends = Object.entries(tracked).flatMap(([agent, sessions]) => sessions.flatMap(s => s.endedAt === undefined || s.readAt === undefined || pinned(agent, s.id) ? [] : [s.readAt + activityLayout.hold + activityLayout.fade]));
     if (!ends.length) return;
     const timer = setTimeout(() => setTracked(old => Object.fromEntries(Object.entries(old).map(([agent, sessions]) =>
-      [agent, sessions.filter(s => s.endedAt === undefined || pinned(agent, s.id) || Date.now() < s.endedAt + activityLayout.hold + activityLayout.fade)]))),
+      [agent, sessions.filter(s => s.endedAt === undefined || s.readAt === undefined || pinned(agent, s.id) || Date.now() < s.readAt + activityLayout.hold + activityLayout.fade)]))),
       Math.max(0, Math.min(...ends) - Date.now()));
     return () => clearTimeout(timer);
   }, [tracked, selected]);

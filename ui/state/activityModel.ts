@@ -5,15 +5,16 @@ export function mergeActivity(current: AgentActivitySnapshot | undefined, next: 
   return current && Date.parse(next.observedAt) < Date.parse(current.observedAt) ? current : next;
 }
 export const activityLayout = { width: 232, height: 54, hold: 2000, fade: 300 };
-export type TrackedActivity = AgentActivitySession & { orderAt: number; endedAt?: number };
+export type TrackedActivity = AgentActivitySession & { orderAt: number; endedAt?: number; readAt?: number };
 // Freeze the start order on first observation; changing phases/headlines never moves a task.
 export function trackActivity(previous: readonly TrackedActivity[], sessions: readonly AgentActivitySession[], now: number, pinnedId?: string): TrackedActivity[] {
   const old = new Map(previous.map(s => [s.id, s]));
   const live = new Set(sessions.map(s => s.id));
   return [
     ...sessions.map(s => ({ ...s, orderAt: old.get(s.id)?.orderAt ?? (Number.isFinite(Date.parse(s.startedAt ?? "")) ? Date.parse(s.startedAt!) : now) })),
-    ...previous.filter(s => !live.has(s.id)).map(s => ({ ...s, interaction: undefined, endedAt: s.endedAt ?? now }))
-      .filter(s => s.id === pinnedId || now < s.endedAt + activityLayout.hold + activityLayout.fade),
+    ...previous.filter(s => !live.has(s.id)).map(s => ({ ...s, interaction: undefined, endedAt: s.endedAt ?? now,
+      readAt: s.readAt ?? (s.id === pinnedId ? now : undefined) }))
+      .filter(s => s.readAt === undefined || s.id === pinnedId || now < s.readAt + activityLayout.hold + activityLayout.fade),
   ].sort((a, b) => Number(!!b.interaction) - Number(!!a.interaction) || a.orderAt - b.orderAt || a.id.localeCompare(b.id));
 }
 // Attention is a hard partition; manual order applies within each partition.
