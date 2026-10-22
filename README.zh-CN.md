@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/bc58f15f-4d6e-4a0c-a78f-a7661e1ccf33
 
 ## Claude + Codex：协作闭环（Loop）
 
-在 claude.ai 的 Claude Code 会话里讨论和规划，网页、手机和桌面 App 都能打开。Claude 通过 ARC 读取当前文件、Git 改动和 Codex 任务，再把明确的工作派给本机 Codex。派发后 Claude 可以直接结束本轮；Codex 完成时，ARC 的通知会唤醒同一云端会话，让 Claude 审查改动并继续。离开键盘，也能继续推进。
+在 claude.ai 的 Claude Code 会话里讨论和规划，网页、手机和桌面 App 都能打开。Claude 通过 ARC 读取当前文件、Git 改动和 Codex 任务，再把明确的工作派给本机 Codex。先通过该会话收到的验证码确认通知可达，派发后 Claude 才可结束本轮等待通知，再回来审查改动并继续。验证前按回执安排回访或等待。
 
 Claude 使用远程链接并在本机批准接入。自动回访还需要发起方的 Claude Code 云端会话 ID，以及本机已登录的 Claude Code CLI。[建立闭环](docs/zh-CN/guides/claude.md)。
 

@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/bc58f15f-4d6e-4a0c-a78f-a7661e1ccf33
 
 ## Claude + Codex: the Loop
 
-Discuss and plan in a Claude Code session on claude.ai, accessible from the web, phone, or desktop app. Through ARC, Claude reads current files, Git changes, and Codex tasks, then sends a concrete job to Codex on your computer. After dispatching, Claude can end its turn; when Codex finishes, ARC’s notification wakes the same session to review the changes and continue, while you are away from the keyboard.
+Discuss and plan in a Claude Code session on claude.ai, accessible from the web, phone, or desktop app. Through ARC, Claude reads current files, Git changes, and Codex tasks, then sends a concrete job to Codex on your computer. After verifying notification delivery with a code received in that session, Claude can end its turn after dispatch; ARC’s notification brings it back to review and continue. Until then, follow the receipt’s revisit or wait guidance.
 
 Connect Claude with a remote link and approve it locally. Automatic follow-ups additionally need the initiating Claude Code cloud session ID and a signed-in local Claude Code CLI. [Set up the Loop](docs/guides/claude.md).
 
