@@ -1,5 +1,5 @@
-import { useCallback, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject, type PointerEvent, type MouseEvent } from "react";
-import { useReducedMotion } from "motion/react";
+import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject, type PointerEvent, type MouseEvent } from "react";
+import { useMedia } from "../state/hooks";
 import { solve, BUBBLE_W, type Side, type Scene, type Drag, type Layout } from "./solve";
 import { TopologyAnimator, nodeKey, taskKey } from "./animate";
 import { TopologyPainter, type PaintNode, type PaintTask } from "./render";
@@ -22,11 +22,11 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
   const elements = useRef(new Map<string, HTMLDivElement>()), utilities = useRef(new Map<Side, HTMLDivElement>());
   const animator = useRef(new TopologyAnimator()), painter = useRef<TopologyPainter | null>(null);
   const frame = useRef(0), lastTime = useRef(0), panel = useRef<SurfaceRect | null>(null);
-  const origin = useRef({ x: 0, y: 0 }), size = useRef({ vw: 1000, vh: 650 });
+  const origin = useRef({ x: 0, y: 0 }), size = useRef<{ vw: number; vh: number } | null>(null);
   const drag = useRef<(Drag & { pointer: number; startClientY: number; grab: number; parent?: string;
     order: string[]; active: boolean; target: HTMLElement; slot: HTMLElement; key: string }) | null>(null);
   const suppressedClick = useRef<string | null>(null);
-  const reduced = useReducedMotion(), prefix = useId();
+  const reduced = useMedia("(prefers-reduced-motion: reduce)"), prefix = useId();
   const params = topologyValues.use(), { guides, slow } = topologyDebug.use();
   const layout = useRef<Layout | null>(null);
   const nodes = [...left.map(n => ({ ...n, side: -1 as const })), ...right.map(n => ({ ...n, side: 1 as const }))];
@@ -85,7 +85,7 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
   }, [paint]);
   const wake = useCallback(() => { if (!frame.current) frame.current = requestAnimationFrame(tick); }, [tick]);
   const scene = useCallback((): Scene => {
-    const sc: Scene = { ...size.current, left: latest.current.left, right: latest.current.right }, d = drag.current;
+    const sc: Scene = { ...size.current!, left: latest.current.left, right: latest.current.right }, d = drag.current;
     if (!d?.active) return sc;
     const wing = d.side === -1 ? "left" : "right";
     if (d.kind === "node") sc[wing] = orderedSubset(sc[wing], d.order);
@@ -99,6 +99,7 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
     return sc;
   }, []);
   const target = useCallback(() => {
+    if (!size.current) return;
     let d = drag.current;
     if (d && (!(d.kind === "node" ? latest.current.nodes : latest.current.tasks).some(item => item.side === d!.side && item.id === d!.id)
       || latest.current.tasks.some(t => t.selected))) {
@@ -156,12 +157,16 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
   useImperativeHandle(ref, () => ({ panelFrame(rect) { panel.current = rect; paint(); } }), [paint]);
   useLayoutEffect(() => { setRetained(latest.current.allTasks); }, [left, right]);
   useLayoutEffect(() => { target(); });
-  useLayoutEffect(() => {
+  // Parent host refs attach after child layout effects. Initialize after the
+  // whole commit so the painter and viewport observer always mount together.
+  useEffect(() => {
     if (!svg.current || !boundary.current || !graph.current) return;
     painter.current = new TopologyPainter(svg.current, prefix);
     const container = boundary.current;
     const measure = () => {
-      size.current = { vw: container.clientWidth, vh: container.clientHeight };
+      const vw = container.clientWidth, vh = container.clientHeight;
+      if (vw <= 0 || vh <= 0) return;
+      size.current = { vw, vh };
       const rect = graph.current!.getBoundingClientRect();
       origin.current = { x: rect.x, y: rect.y }; target();
     };
@@ -175,7 +180,7 @@ export default function Topology({ left, right, brand, leftUtility, rightUtility
     container.addEventListener("scroll", scroll, { passive: true }); window.addEventListener("resize", measure);
     measure();
     return () => {
-      drag.current = null;
+      drag.current = null; size.current = null;
       cancelAnimationFrame(frame.current); frame.current = 0; lastTime.current = 0;
       observer.disconnect(); container.removeEventListener("scroll", scroll); window.removeEventListener("resize", measure);
       painter.current?.dispose(); painter.current = null;
