@@ -1,7 +1,16 @@
 //! Core-owned control-source identity. Credentials anchor identity; names never do.
 use crate::*;
-use std::sync::Mutex as StoreMutex;
-static LOCK: StoreMutex<()> = StoreMutex::new(());
+use std::collections::BTreeMap;
+use std::sync::{OnceLock, RwLock};
+use std::time::{Duration, Instant};
+
+struct Cache {
+    current: Value,
+    persisted: Value,
+    last_seen_writes: BTreeMap<String, Instant>,
+}
+static CACHE: OnceLock<RwLock<Cache>> = OnceLock::new();
+static WRITER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 fn path() -> PathBuf {
     root().join("sources.json")
 }
@@ -12,21 +21,122 @@ fn read() -> Result<Value> {
         Ok(json!({"version":0,"sources":[]}))
     }
 }
-fn change<T>(f: impl FnOnce(&mut Vec<Value>) -> Result<T>) -> Result<T> {
-    let _guard = LOCK.lock().map_err(|e| e.to_string())?;
+fn cache() -> Result<&'static RwLock<Cache>> {
+    CACHE
+        .get()
+        .ok_or_else(|| "Source store is not initialized".into())
+}
+/// Called once after the state lock, before serving requests.
+pub fn initialize() -> Result<()> {
+    migrate()?;
     let mut store = read()?;
     let previous = store.clone();
-    let result = f(store["sources"]
-        .as_array_mut()
-        .ok_or("Invalid source store")?)?;
+    reconcile(
+        store["sources"]
+            .as_array_mut()
+            .ok_or("Invalid source store")?,
+    )?;
     if store != previous {
         save(&path(), &store)?;
     }
-    Ok(result)
+    let last_seen_writes = store["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|s| !s["lastSeenAt"].is_null())
+        .map(|s| (string(s, "id").to_owned(), Instant::now()))
+        .collect();
+    CACHE
+        .set(RwLock::new(Cache {
+            current: store.clone(),
+            persisted: store,
+            last_seen_writes,
+        }))
+        .map_err(|_| "Source store is already initialized".into())
+}
+async fn change<T: Send + 'static>(
+    f: impl FnOnce(&mut Vec<Value>) -> Result<T> + Send + 'static,
+) -> Result<T> {
+    transaction(false, f).await
+}
+async fn transaction<T: Send + 'static>(
+    activity: bool,
+    f: impl FnOnce(&mut Vec<Value>) -> Result<T> + Send + 'static,
+) -> Result<T> {
+    // Own the transaction so request cancellation cannot separate a disk commit
+    // from its cache update. The async writer gate never blocks executor threads.
+    tokio::spawn(async move {
+        let _writer = WRITER.lock().await;
+        let (mut current, persisted, mut last_seen_writes) = {
+            let cache = cache()?.read().map_err(|e| e.to_string())?;
+            (
+                cache.current.clone(),
+                cache.persisted.clone(),
+                cache.last_seen_writes.clone(),
+            )
+        };
+        let previous = current.clone();
+        let result = f(current["sources"]
+            .as_array_mut()
+            .ok_or("Invalid source store")?)?;
+        if current == previous && !activity {
+            return Ok(result);
+        }
+        let mut disk = current.clone();
+        let at = Instant::now();
+        let mut seen_changes = vec![];
+        for source in disk["sources"].as_array_mut().unwrap() {
+            let id = string(source, "id").to_owned();
+            let old = persisted["sources"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["id"] == id);
+            let old_seen = old.map(|s| s["lastSeenAt"].clone()).unwrap_or(Value::Null);
+            if source["lastSeenAt"] != old_seen {
+                if last_seen_writes
+                    .get(&id)
+                    .is_some_and(|t| at.duration_since(*t) < Duration::from_secs(60))
+                {
+                    source["lastSeenAt"] = old_seen;
+                } else {
+                    seen_changes.push(id);
+                }
+            }
+        }
+        if disk != persisted {
+            let snapshot = disk.clone();
+            tokio::task::spawn_blocking(move || save(&path(), &snapshot))
+                .await
+                .map_err(|e| e.to_string())??;
+        }
+        // Measure the throttle from completed persistence, not queue time.
+        for id in seen_changes {
+            last_seen_writes.insert(id, Instant::now());
+        }
+        let mut cache = cache()?.write().map_err(|e| e.to_string())?;
+        // Activity may advance while the disk snapshot is being saved.
+        for source in current["sources"].as_array_mut().unwrap() {
+            if let Some(live) = cache.current["sources"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["id"] == source["id"])
+            {
+                source["lastSeenAt"] = live["lastSeenAt"].clone();
+            }
+        }
+        cache.current = current;
+        cache.persisted = disk;
+        cache.last_seen_writes = last_seen_writes;
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 pub fn list() -> Result<Vec<Value>> {
-    let _guard = LOCK.lock().map_err(|e| e.to_string())?;
-    Ok(read()?["sources"]
+    let cache = cache()?.read().map_err(|e| e.to_string())?;
+    Ok(cache.current["sources"]
         .as_array()
         .ok_or("Invalid source store")?
         .clone())
@@ -94,8 +204,9 @@ fn make(
         "product":product_id,"platform":p["platform"],"label":crate::control_sources::default_name(product_id,&names),
         "createdAt":now(),"connectedAt":connected,"lastSeenAt":null,"state":"disconnected"})
 }
-pub fn ensure_ingress(entry: &Value) -> Result<Value> {
-    change(|rows| {
+pub async fn ensure_ingress(entry: &Value) -> Result<Value> {
+    let entry = entry.clone();
+    change(move |rows| {
         if let Some(s) = rows
             .iter()
             .find(|s| s["ingressId"] == entry["id"] && s["credential"]["type"] != "oauth-grant")
@@ -106,17 +217,22 @@ pub fn ensure_ingress(entry: &Value) -> Result<Value> {
             json!({"type":if entry["transport"] == "local" { "local" } else { "ingress" }});
         let source = make(
             rows,
-            entry,
+            &entry,
             credential,
-            string(entry, "controlSource"),
+            string(&entry, "controlSource"),
             Value::Null,
         );
         rows.push(source.clone());
         Ok(source)
     })
+    .await
 }
-pub fn pending(entry: &Value, grant: &str, client: &str, name: &str) -> Result<Value> {
-    change(|rows| {
+pub async fn pending(entry: &Value, grant: &str, client: &str, name: &str) -> Result<Value> {
+    let entry = entry.clone();
+    let grant = grant.to_owned();
+    let client = client.to_owned();
+    let name = name.to_owned();
+    change(move |rows| {
         if let Some(s) = rows
             .iter()
             .find(|s| s["ingressId"] == entry["id"] && s["credential"]["grantId"] == grant)
@@ -124,13 +240,13 @@ pub fn pending(entry: &Value, grant: &str, client: &str, name: &str) -> Result<V
             return Ok(s.clone());
         }
         let product = if entry["transport"] == "relay" {
-            match_product(name)
+            match_product(&name)
         } else {
-            normalized(string(entry, "controlSource")).into()
+            normalized(string(&entry, "controlSource")).into()
         };
         let s = make(
             rows,
-            entry,
+            &entry,
             json!({"type":"oauth-grant","grantId":grant,"clientId":client}),
             &product,
             Value::Null,
@@ -138,6 +254,7 @@ pub fn pending(entry: &Value, grant: &str, client: &str, name: &str) -> Result<V
         rows.push(s.clone());
         Ok(s)
     })
+    .await
 }
 pub fn for_grant(ingress: &str, grant: &str) -> Result<Value> {
     list()?
@@ -145,7 +262,9 @@ pub fn for_grant(ingress: &str, grant: &str) -> Result<Value> {
         .find(|s| s["ingressId"] == ingress && s["credential"]["grantId"] == grant)
         .ok_or("SOURCE_NOT_FOUND".into())
 }
-pub fn update(id: &str, body: &Value) -> Result<Value> {
+pub async fn update(id: &str, body: &Value) -> Result<Value> {
+    let id = id.to_owned();
+    let body = body.clone();
     if !body.is_object()
         || body
             .as_object()
@@ -166,7 +285,7 @@ pub fn update(id: &str, body: &Value) -> Result<Value> {
             return Err("Invalid source label".into());
         }
     }
-    change(|rows| {
+    change(move |rows| {
         let s = rows
             .iter_mut()
             .find(|s| s["id"] == id)
@@ -180,14 +299,9 @@ pub fn update(id: &str, body: &Value) -> Result<Value> {
         }
         Ok(s.clone())
     })
+    .await
 }
-pub fn candidates(source: &Value) -> Result<Vec<Value>> {
-    let oauth = load(
-        &root()
-            .join("ingresses")
-            .join(string(source, "ingressId"))
-            .join("oauth.json"),
-    )?;
+pub fn candidates(source: &Value, grants: &[String]) -> Result<Vec<Value>> {
     Ok(list()?
         .into_iter()
         .filter(|s| {
@@ -197,29 +311,34 @@ pub fn candidates(source: &Value) -> Result<Vec<Value>> {
                 && s["credential"]["type"] == "oauth-grant"
                 && (s["state"] == "revoked"
                     || !s["connectedAt"].is_null()
-                    || oauth["grants"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .any(|g| g["id"] == s["credential"]["grantId"]))
+                    || grants.iter().any(|g| *g == s["credential"]["grantId"]))
         })
         .collect())
 }
-pub fn validate_claim(pending: &Value, target: &str) -> Result<()> {
+pub fn validate_claim(pending: &Value, target: &str, grants: &[String]) -> Result<()> {
     if target == "new" {
         return Ok(());
     }
-    if candidates(pending)?.iter().any(|s| s["id"] == target) {
+    if candidates(pending, grants)?
+        .iter()
+        .any(|s| s["id"] == target)
+    {
         Ok(())
     } else {
         Err("INVALID_SOURCE_CLAIM: select new or an existing source of the same product on this connection".into())
     }
 }
 /// Move the anchor only after PKCE succeeds. The caller removes the returned old grant before issuing tokens.
-pub fn connect(ingress: &str, grant: &str, target: &str) -> Result<Option<String>> {
+pub async fn connect(
+    ingress: &str,
+    grant: &str,
+    target: &str,
+    grants: &[String],
+) -> Result<Option<String>> {
     let pending = for_grant(ingress, grant)?;
-    validate_claim(&pending, target)?;
-    change(|rows| {
+    validate_claim(&pending, target, grants)?;
+    let target = target.to_owned();
+    change(move |rows| {
         let current = rows
             .iter()
             .find(|s| s["id"] == pending["id"])
@@ -233,7 +352,7 @@ pub fn connect(ingress: &str, grant: &str, target: &str) -> Result<Option<String
         let chosen = if target == "new" {
             string(&pending, "id")
         } else {
-            target
+            &target
         };
         let s = rows
             .iter_mut()
@@ -256,9 +375,15 @@ pub fn connect(ingress: &str, grant: &str, target: &str) -> Result<Option<String
         }
         Ok(old)
     })
+    .await
 }
-pub fn revoke_grants(ingress: &str, grants: &[String]) -> Result<()> {
-    change(|rows| {
+pub async fn revoke_grants(ingress: &str, grants: &[String]) -> Result<()> {
+    if grants.is_empty() {
+        return Ok(());
+    }
+    let ingress = ingress.to_owned();
+    let grants = grants.to_vec();
+    change(move |rows| {
         for s in rows {
             if s["ingressId"] == ingress && grants.iter().any(|g| s["credential"]["grantId"] == *g)
             {
@@ -267,9 +392,11 @@ pub fn revoke_grants(ingress: &str, grants: &[String]) -> Result<()> {
         }
         Ok(())
     })
+    .await
 }
-pub fn disconnect(id: &str) -> Result<Value> {
-    change(|rows| {
+pub async fn disconnect(id: &str) -> Result<Value> {
+    let id = id.to_owned();
+    change(move |rows| {
         let s = rows
             .iter_mut()
             .find(|s| s["id"] == id)
@@ -277,9 +404,11 @@ pub fn disconnect(id: &str) -> Result<Value> {
         s["state"] = json!("revoked");
         Ok(s.clone())
     })
+    .await
 }
-pub fn connection_state(ingress: &str, connected: bool) -> Result<()> {
-    change(|rows| {
+pub async fn connection_state(ingress: &str, connected: bool) -> Result<()> {
+    let ingress = ingress.to_owned();
+    change(move |rows| {
         for s in rows {
             if s["ingressId"] == ingress
                 && s["state"] != "revoked"
@@ -294,12 +423,41 @@ pub fn connection_state(ingress: &str, connected: bool) -> Result<()> {
         }
         Ok(())
     })
+    .await
 }
 pub fn origin(source: &Value, auth: &str) -> Value {
     json!({"ingressId":source["ingressId"],"sourceId":source["id"],"controlSource":source["product"],"authType":auth,"sourceLabel":source["label"]})
 }
-pub fn touch(source: &Value, auth: &str) -> Result<Value> {
-    change(|rows| {
+pub async fn touch(source: &Value, auth: &str) -> Result<Value> {
+    let source_id = string(source, "id");
+    let (result, persist) = {
+        let mut cache = cache()?.write().map_err(|e| e.to_string())?;
+        let due = cache
+            .last_seen_writes
+            .get(source_id)
+            .is_none_or(|t| t.elapsed() >= Duration::from_secs(60));
+        let s = cache.current["sources"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|s| s["id"] == source_id)
+            .ok_or("SOURCE_NOT_FOUND")?;
+        if s["state"] == "revoked" || s["credential"] != source["credential"] {
+            return Err("SOURCE_REVOKED".into());
+        }
+        // Telemetry is immediately visible, even while a durable mutation is in flight.
+        s["lastSeenAt"] = json!(chrono::Utc::now().timestamp());
+        (
+            origin(s, auth),
+            due || s["state"] != "connected" || s["connectedAt"].is_null(),
+        )
+    };
+    if !persist {
+        return Ok(result);
+    }
+    let source = source.clone();
+    let auth = auth.to_owned();
+    transaction(true, move |rows| {
         let s = rows
             .iter_mut()
             .find(|s| s["id"] == source["id"])
@@ -308,17 +466,18 @@ pub fn touch(source: &Value, auth: &str) -> Result<Value> {
             return Err("SOURCE_REVOKED".into());
         }
         s["state"] = json!("connected");
-        s["lastSeenAt"] = json!(chrono::Utc::now().timestamp());
         if s["connectedAt"].is_null() {
             s["connectedAt"] = s["lastSeenAt"].clone();
         }
-        Ok(origin(s, auth))
+        Ok(origin(s, &auth))
     })
+    .await
 }
-pub fn local_origin() -> Result<Value> {
+pub async fn local_origin() -> Result<Value> {
     let s =
-        ensure_ingress(&json!({"id":"local-cli","transport":"local","controlSource":"local-cli"}))?;
-    touch(&s, "local")
+        ensure_ingress(&json!({"id":"local-cli","transport":"local","controlSource":"local-cli"}))
+            .await?;
+    touch(&s, "local").await
 }
 /// Labels are read from the current store, including retained revoked sources.
 pub fn decorate(value: &mut Value) {
@@ -600,33 +759,31 @@ fn migrate_file(path: &Path, rows: &[Value]) -> Result<()> {
     save(path, &value)
 }
 
-pub fn reconcile() -> Result<()> {
-    change(|rows| {
-        for s in rows {
-            if s["credential"]["type"] == "oauth-grant" && s["state"] != "revoked" {
-                let path = root()
-                    .join("ingresses")
-                    .join(string(s, "ingressId"))
-                    .join("oauth.json");
-                let oauth = if path.exists() {
-                    load(&path)?
-                } else {
-                    json!({})
-                };
-                if !oauth["grants"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .any(|g| g["id"] == s["credential"]["grantId"])
-                {
-                    s["state"] = json!("revoked");
-                } else {
-                    s["state"] = json!("disconnected");
-                }
+fn reconcile(rows: &mut Vec<Value>) -> Result<()> {
+    for s in rows {
+        if s["credential"]["type"] == "oauth-grant" && s["state"] != "revoked" {
+            let path = root()
+                .join("ingresses")
+                .join(string(s, "ingressId"))
+                .join("oauth.json");
+            let oauth = if path.exists() {
+                load(&path)?
+            } else {
+                json!({})
+            };
+            if !oauth["grants"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|g| g["id"] == s["credential"]["grantId"])
+            {
+                s["state"] = json!("revoked");
+            } else {
+                s["state"] = json!("disconnected");
             }
         }
-        Ok(())
-    })
+    }
+    Ok(())
 }
 
 pub fn task_origin(thread: &str, turn: Option<&str>) -> Value {

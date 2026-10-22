@@ -143,9 +143,9 @@ impl Ingress {
             if meta["auth"] == "oauth" {
                 return Err("OAuth principal required".into());
             }
-            crate::sources::ensure_ingress(&meta)?
+            crate::sources::ensure_ingress(&meta).await?
         };
-        crate::sources::touch(&source, string(&meta, "auth"))
+        crate::sources::touch(&source, string(&meta, "auth")).await
     }
     pub async fn allows(&self, name: &str) -> bool {
         let meta = self.meta.lock().await;
@@ -163,7 +163,8 @@ impl Ingress {
                 .oauth
                 .lock()
                 .await
-                .authenticate(header, resource.as_str());
+                .authenticate(header, resource.as_str())
+                .await;
         }
         let allowed = meta["auth"] == "none"
             || meta["auth"] == "bearer"
@@ -193,9 +194,9 @@ impl Ingress {
             result["oauth"] = self.oauth.lock().await.snapshot()?;
         }
         if meta["auth"] != "oauth" && self.dir.join("config.json").exists() {
-            crate::sources::ensure_ingress(&meta)?;
+            crate::sources::ensure_ingress(&meta).await?;
         }
-        crate::sources::connection_state(&self.id, result["running"] == true)?;
+        crate::sources::connection_state(&self.id, result["running"] == true).await?;
         result["sources"] = json!(crate::sources::list()?
             .into_iter()
             .filter(|s| s["ingressId"] == self.id)
@@ -450,7 +451,7 @@ impl Ingress {
         crate::relay::transport::Runtime::ready(status).await
     }
     pub async fn stop(&self) -> Result<()> {
-        crate::sources::connection_state(&self.id, false)?;
+        crate::sources::connection_state(&self.id, false).await?;
         self.stopping
             .store(true, std::sync::atomic::Ordering::SeqCst);
         self.ready_logged

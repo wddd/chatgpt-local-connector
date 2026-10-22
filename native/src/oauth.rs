@@ -150,10 +150,10 @@ impl OAuth {
             .and_then(|v| v.to_str())
             .unwrap_or("")
     }
-    fn revoke_sources(&self, grants: Vec<String>) -> Result<()> {
-        crate::sources::revoke_grants(self.ingress_id(), &grants)
+    async fn revoke_sources(&self, grants: Vec<String>) -> Result<()> {
+        crate::sources::revoke_grants(self.ingress_id(), &grants).await
     }
-    pub fn reset(&mut self) -> Result<()> {
+    pub async fn reset(&mut self) -> Result<()> {
         self.revoke_sources(
             self.stored
                 .grants
@@ -161,14 +161,15 @@ impl OAuth {
                 .map(|g| g.id.clone())
                 .chain(self.pending.keys().cloned())
                 .collect(),
-        )?;
+        )
+        .await?;
         self.stored.grants.clear();
         self.pending.clear();
         self.persist()
     }
-    fn prepare(&mut self, resource: &str) -> Result<()> {
+    async fn prepare(&mut self, resource: &str) -> Result<()> {
         if self.stored.resource != resource {
-            self.reset()?;
+            self.reset().await?;
             self.stored.resource = resource.to_owned();
             self.persist()?;
         }
@@ -181,7 +182,8 @@ impl OAuth {
                 })
                 .map(|(key, _)| key.clone())
                 .collect(),
-        )?;
+        )
+        .await?;
         self.pending
             .retain(|_, p| p.expires + if p.decision == Some(true) { 300 } else { 0 } > now);
         // Unused dynamic registrations expire; active grants retain their client metadata.
@@ -191,8 +193,8 @@ impl OAuth {
         self.registrations.retain(|t| *t + 3600 > now);
         Ok(())
     }
-    pub fn authenticate(&mut self, header: &str, resource: &str) -> Option<Value> {
-        self.prepare(resource).ok()?;
+    pub async fn authenticate(&mut self, header: &str, resource: &str) -> Option<Value> {
+        self.prepare(resource).await.ok()?;
         let digest = hash(header.strip_prefix("Bearer ")?);
         self.stored
             .grants
@@ -214,12 +216,12 @@ impl OAuth {
             .iter()
             .any(|g| g.id == principal && (resource.is_empty() || g.resource == resource))
     }
-    pub fn register(
+    pub async fn register(
         &mut self,
         body: &Value,
         resource: &str,
     ) -> std::result::Result<Value, RegistrationError> {
-        self.prepare(resource)?;
+        self.prepare(resource).await?;
         if self.stored.clients.len() >= 128 || self.registrations.len() >= 20 {
             return Err("temporarily_unavailable".to_owned().into());
         }
@@ -324,8 +326,12 @@ impl OAuth {
         }
         Ok(result)
     }
-    pub fn authorize(&mut self, q: &BTreeMap<String, String>, resource: &str) -> Result<String> {
-        self.prepare(resource)?;
+    pub async fn authorize(
+        &mut self,
+        q: &BTreeMap<String, String>,
+        resource: &str,
+    ) -> Result<String> {
+        self.prepare(resource).await?;
         let get = |k: &str| q.get(k).map(String::as_str).unwrap_or("");
         let client = self
             .stored
@@ -388,7 +394,7 @@ impl OAuth {
                 .ok_or("Invalid OAuth directory")?
                 .join("config.json"),
         )?;
-        crate::sources::pending(&entry, &key, get("client_id"), &client.name)?;
+        crate::sources::pending(&entry, &key, get("client_id"), &client.name).await?;
         self.pending.insert(
             key.clone(),
             Pending {
@@ -407,12 +413,15 @@ impl OAuth {
         );
         Ok(key)
     }
-    pub fn management(&mut self, resource: &str) -> Result<Value> {
-        self.prepare(resource)?;
+    pub async fn management(&mut self, resource: &str) -> Result<Value> {
+        self.prepare(resource).await?;
         self.snapshot()
     }
     pub fn resource(&self) -> &str {
         &self.stored.resource
+    }
+    fn grant_ids(&self) -> Vec<String> {
+        self.stored.grants.iter().map(|g| g.id.clone()).collect()
     }
     pub fn snapshot(&self) -> Result<Value> {
         let resource = &self.stored.resource;
@@ -424,7 +433,8 @@ impl OAuth {
                 if let Ok(source) = crate::sources::for_grant(self.ingress_id(), key) {
                     status["sourceId"] = source["id"].clone();
                     status["product"] = source["product"].clone();
-                    status["sourceCandidates"] = json!(crate::sources::candidates(&source)?);
+                    status["sourceCandidates"] =
+                        json!(crate::sources::candidates(&source, &self.grant_ids())?);
                 }
                 Ok(status)
             })
@@ -465,7 +475,7 @@ impl OAuth {
         }
         Ok(json!({"id":key,"status":"expired"}))
     }
-    pub fn decide(&mut self, key: &str, allow: bool, choice: Option<&str>) -> Result<()> {
+    pub async fn decide(&mut self, key: &str, allow: bool, choice: Option<&str>) -> Result<()> {
         let source = crate::sources::for_grant(self.ingress_id(), key)?;
         let choice = if allow {
             let choice = choice
@@ -473,10 +483,10 @@ impl OAuth {
                 .or_else(|| self.pending.get(key).and_then(|p| p.source_choice.clone()));
             let choice = match choice {
                 Some(c) => c,
-                None if crate::sources::candidates(&source)?.is_empty() => "new".into(),
+                None if crate::sources::candidates(&source, &self.grant_ids())?.is_empty() => "new".into(),
                 None => return Err("SOURCE_CHOICE_REQUIRED: choose sourceId=new or an existing source ID; use source claim".into()),
             };
-            crate::sources::validate_claim(&source, &choice)?;
+            crate::sources::validate_claim(&source, &choice, &self.grant_ids())?;
             Some(choice)
         } else {
             None
@@ -504,12 +514,12 @@ impl OAuth {
             p.expires = clock() + 60;
         }
         if !allow {
-            crate::sources::disconnect(string(&source, "id"))?;
+            crate::sources::disconnect(string(&source, "id")).await?;
         }
         Ok(())
     }
-    pub fn resume(&mut self, key: &str, resource: &str) -> Result<Option<String>> {
-        self.prepare(resource)?;
+    pub async fn resume(&mut self, key: &str, resource: &str) -> Result<Option<String>> {
+        self.prepare(resource).await?;
         let p = self
             .pending
             .get_mut(key)
@@ -571,13 +581,13 @@ impl OAuth {
         }
         Ok(id.to_owned())
     }
-    pub fn token(
+    pub async fn token(
         &mut self,
         q: &BTreeMap<String, String>,
         basic: Option<(String, String)>,
         resource: &str,
     ) -> Result<Value> {
-        self.prepare(resource)?;
+        self.prepare(resource).await?;
         let client = self.client(q, basic)?;
         let get = |k: &str| q.get(k).map(String::as_str).unwrap_or("");
         if get("resource") != resource {
@@ -604,7 +614,8 @@ impl OAuth {
                             .filter(|g| g.client == client && g.authorization_code == code_hash)
                             .map(|g| g.id.clone())
                             .collect(),
-                    )?;
+                    )
+                    .await?;
                     self.stored
                         .grants
                         .retain(|g| !(g.client == client && g.authorization_code == code_hash));
@@ -638,7 +649,10 @@ impl OAuth {
                     self.ingress_id(),
                     &key,
                     p.source_choice.as_deref().ok_or("invalid_grant")?,
-                )? {
+                    &self.grant_ids(),
+                )
+                .await?
+                {
                     self.stored.grants.retain(|g| g.id != old);
                 }
                 self.pending.remove(&key);
@@ -662,7 +676,8 @@ impl OAuth {
                     .iter()
                     .position(|g| g.client == client && g.used_refresh.contains(&digest))
                 {
-                    self.revoke_sources(vec![self.stored.grants[index].id.clone()])?;
+                    self.revoke_sources(vec![self.stored.grants[index].id.clone()])
+                        .await?;
                     self.stored.grants.remove(index);
                     self.persist()?;
                     return Err("invalid_grant".into());
@@ -692,7 +707,7 @@ impl OAuth {
             json!({"access_token":access,"token_type":"Bearer","expires_in":expires,"refresh_token":refresh,"scope":"mcp"}),
         )
     }
-    pub fn remove_client(&mut self, client: &str) -> Result<()> {
+    pub async fn remove_client(&mut self, client: &str) -> Result<()> {
         self.revoke_sources(
             self.stored
                 .grants
@@ -706,25 +721,26 @@ impl OAuth {
                         .map(|(k, _)| k.clone()),
                 )
                 .collect(),
-        )?;
+        )
+        .await?;
         self.stored.clients.remove(client);
         self.stored.grants.retain(|g| g.client != client);
         self.pending.retain(|_, p| p.client != client);
         self.persist()
     }
-    pub fn revoke(&mut self, grant: &str) -> Result<()> {
-        self.revoke_sources(vec![grant.into()])?;
+    pub async fn revoke(&mut self, grant: &str) -> Result<()> {
+        self.revoke_sources(vec![grant.into()]).await?;
         self.pending.remove(grant);
         self.stored.grants.retain(|g| g.id != grant);
         self.persist()
     }
-    pub fn revoke_token(
+    pub async fn revoke_token(
         &mut self,
         q: &BTreeMap<String, String>,
         basic: Option<(String, String)>,
         resource: &str,
     ) -> Result<()> {
-        self.prepare(resource)?;
+        self.prepare(resource).await?;
         let client = self.client(q, basic)?;
         let digest = hash(q.get("token").ok_or("invalid_request")?);
         self.revoke_sources(
@@ -739,7 +755,8 @@ impl OAuth {
                 })
                 .map(|g| g.id.clone())
                 .collect(),
-        )?;
+        )
+        .await?;
         self.stored.grants.retain(|g| {
             !(g.client == client
                 && (g.refresh == digest || g.access == digest || g.used_refresh.contains(&digest)))
@@ -934,7 +951,7 @@ async fn route(
                 ))
             }
             "/oauth/authorize" => {
-                let key = ingress.oauth.lock().await.authorize(&q, resource)?;
+                let key = ingress.oauth.lock().await.authorize(&q, resource).await?;
                 ingress.observe_request("firstOAuthRequestAt").await?;
                 return Ok(Response::builder()
                     .status(303)
@@ -972,7 +989,7 @@ async fn route(
             "/oauth/status" => {
                 let connection_name = ingress.meta.lock().await["name"].clone();
                 let mut oauth = ingress.oauth.lock().await;
-                oauth.prepare(resource)?;
+                oauth.prepare(resource).await?;
                 let mut state =
                     oauth.status(q.get("request").ok_or("invalid_request")?, resource)?;
                 state["openAppUrl"] = json!(format!(
@@ -989,6 +1006,7 @@ async fn route(
                         .lock()
                         .await
                         .resume(q.get("request").ok_or("invalid_request")?, resource)
+                        .await
                     {
                         Ok(Some(url)) => Response::builder()
                             .status(303)
@@ -1057,7 +1075,7 @@ async fn route(
             *registration_field = Some("body");
             "invalid_request"
         })?;
-        let registered = oauth.register(&metadata, resource).map_err(|error| {
+        let registered = oauth.register(&metadata, resource).await.map_err(|error| {
             *registration_field = error.field;
             *registration_detail = error.detail;
             error.code
@@ -1071,9 +1089,9 @@ async fn route(
     }
     let q = parameters(std::str::from_utf8(&body).map_err(|_| "invalid_request")?)?;
     if path == "/oauth/revoke" {
-        oauth.revoke_token(&q, basic, resource)?;
+        oauth.revoke_token(&q, basic, resource).await?;
         Ok(response(200, json!({})))
     } else {
-        Ok(response(200, oauth.token(&q, basic, resource)?))
+        Ok(response(200, oauth.token(&q, basic, resource).await?))
     }
 }

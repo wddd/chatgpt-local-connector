@@ -444,8 +444,9 @@ pub async fn serve_mode(daemon: bool) -> Result<()> {
     {
         return Ok(());
     }
-    crate::sources::migrate()?;
-    crate::sources::reconcile()?;
+    tokio::task::spawn_blocking(crate::sources::initialize)
+        .await
+        .map_err(|e| e.to_string())??;
     let service = crate::service::Service::new()?;
     service
         .runtime

@@ -487,7 +487,7 @@ async fn local_control(s: &Arc<Service>, body: Value) -> Result<Value> {
     };
     crate::kernel::origin::ORIGIN
         .scope(
-            crate::sources::local_origin()?,
+            crate::sources::local_origin().await?,
             call_tool(&source, tool, envelope),
         )
         .await

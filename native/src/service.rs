@@ -514,7 +514,7 @@ impl Service {
             let (id, action) = path.split_once('/').unwrap_or((path, ""));
             let source = crate::sources::get(id)?;
             if action.is_empty() && method == "PUT" {
-                return crate::sources::update(id, &body);
+                return crate::sources::update(id, &body).await;
             }
             if action == "disconnect" && method == "POST" {
                 if source["credential"]["type"] == "oauth-grant" {
@@ -522,12 +522,14 @@ impl Service {
                         let _runtime = i.operation.lock().await;
                         let mut oauth = i.oauth.lock().await;
                         let current = crate::sources::get(id)?;
-                        oauth.revoke(string(&current["credential"], "grantId"))?;
+                        oauth
+                            .revoke(string(&current["credential"], "grantId"))
+                            .await?;
                     }
                 } else if let Ok(i) = self.ingress(string(&source, "ingressId")).await {
                     i.stop().await?;
                 }
-                return crate::sources::disconnect(id);
+                return crate::sources::disconnect(id).await;
             }
             if action == "claim" && method == "POST" {
                 let i = self.ingress(string(&source, "ingressId")).await?;
@@ -536,15 +538,17 @@ impl Service {
                     return Err("Connection configuration changed; retry".into());
                 }
                 let mut oauth = i.oauth.lock().await;
-                oauth.decide(
-                    string(&source["credential"], "grantId"),
-                    true,
-                    Some(
-                        body["sourceId"]
-                            .as_str()
-                            .ok_or("sourceId must be new or an existing source ID")?,
-                    ),
-                )?;
+                oauth
+                    .decide(
+                        string(&source["credential"], "grantId"),
+                        true,
+                        Some(
+                            body["sourceId"]
+                                .as_str()
+                                .ok_or("sourceId must be new or an existing source ID")?,
+                        ),
+                    )
+                    .await?;
                 return Ok(json!({"approved":true,"sourceId":body["sourceId"]}));
             }
             return Err("UNKNOWN_ROUTE".into());
@@ -963,31 +967,33 @@ impl Service {
                     .map_err(|_| "Invalid OAuth resource URL")?
                     .to_string();
                 if method == "GET" && action == "oauth" {
-                    return oauth.management(&resource);
+                    return oauth.management(&resource).await;
                 }
                 if method == "GET" && action.starts_with("oauth/request/") {
-                    oauth.management(&resource)?;
+                    oauth.management(&resource).await?;
                     return oauth.status(action.trim_start_matches("oauth/request/"), &resource);
                 }
                 if method == "POST" && action == "oauth/decision" {
-                    oauth.management(&resource)?;
-                    oauth.decide(
-                        string(&body, "id"),
-                        body["allow"].as_bool().ok_or("allow must be boolean")?,
-                        body["sourceId"].as_str(),
-                    )?;
+                    oauth.management(&resource).await?;
+                    oauth
+                        .decide(
+                            string(&body, "id"),
+                            body["allow"].as_bool().ok_or("allow must be boolean")?,
+                            body["sourceId"].as_str(),
+                        )
+                        .await?;
                     return oauth.status(string(&body, "id"), &resource);
                 }
                 if method == "POST" && action == "oauth/client/remove" {
-                    oauth.remove_client(string(&body, "id"))?;
+                    oauth.remove_client(string(&body, "id")).await?;
                     return Ok(json!({"removed":true}));
                 }
                 if method == "POST" && action == "oauth/revoke" {
-                    oauth.revoke(string(&body, "id"))?;
+                    oauth.revoke(string(&body, "id")).await?;
                     return Ok(json!({"ok":true}));
                 }
                 if method == "POST" && action == "oauth/register" {
-                    return oauth.register(&body, &resource).map_err(String::from);
+                    return oauth.register(&body, &resource).await.map_err(String::from);
                 }
                 return Err("UNKNOWN_ROUTE".into());
             }
@@ -1004,12 +1010,12 @@ impl Service {
                 let _runtime = i.operation.lock().await;
                 i.stop().await?;
                 i.retired.store(true, Ordering::SeqCst);
-                i.oauth.lock().await.reset()?;
+                i.oauth.lock().await.reset().await?;
                 for source in crate::sources::list()?
                     .iter()
                     .filter(|s| s["ingressId"] == id)
                 {
-                    crate::sources::disconnect(string(source, "id"))?;
+                    crate::sources::disconnect(string(source, "id")).await?;
                 }
                 let mut entries = self.ingresses.lock().await;
                 let ids: Vec<_> = entries.keys().filter(|k| *k != id).cloned().collect();
@@ -1089,7 +1095,7 @@ impl Service {
                         .any(|key| previous[*key] != entry[*key]);
                 if previous["auth"] != entry["auth"] || previous["transport"] != entry["transport"]
                 {
-                    next.oauth.lock().await.reset()?;
+                    next.oauth.lock().await.reset().await?;
                 }
                 if identity_changed {
                     next.request("verification/reset", "POST", json!({}))
