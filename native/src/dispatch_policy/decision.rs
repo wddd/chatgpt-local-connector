@@ -23,9 +23,9 @@ fn clean(value: &mut Value) {
         Value::Object(map) => {
             let stale = map.get("state").is_some_and(|v| v == "stale")
                 || map.get("stale") == Some(&json!(true))
-                || map
-                    .get("source")
-                    .is_some_and(|v| v == "persistent-snapshot");
+                || map.get("source").is_some_and(|v| {
+                    v == "persistent-snapshot" || v == "persisted-session-snapshot"
+                });
             map.retain(|key, value| {
                 clean(value);
                 !(key == "observedAt" && !stale || empty(value))
@@ -289,6 +289,8 @@ pub(super) fn present(mut facts: Value, args: &Value) -> Value {
             }
             if row["models"].is_object() {
                 out["models"] = row["models"].clone();
+            } else if row["capabilities"]["models"].is_object() {
+                out["models"] = row["capabilities"]["models"].clone();
             }
         }
         let mut quota = vec![];

@@ -15,7 +15,7 @@ const report={purpose:'self-test',checks:[],defects:[]};
 const check=(name,value)=>{assert.ok(value,name);report.checks.push(name);};
 const put=async(name,value)=>{const p=path.join(dir,name);await mkdir(path.dirname(p),{recursive:true});await writeFile(p,JSON.stringify(value));};
 const save=async(name,value)=>{await mkdir(out,{recursive:true});await writeFile(path.join(out,name+'.json'),JSON.stringify(value,null,2)+'\n');};
-const policy={criteria:'Choose based on evidence.',codex:{model:'sample-model',effort:'high',criteria:'MUST review the result.',denyModels:['denied-model']},claude:{model:'native-default',denyModels:['denied-model']}};
+const policy={criteria:'Choose based on evidence.',codex:{model:'sample-model',effort:'high',criteria:'MUST review the result.',denyModels:['denied-model']},claude:{model:'native-default',denyModels:['denied-model']},dsh:{criteria:'MUST use observed choices.'}};
 let client;
 async function call(op,args={}){const r=await client.callTool({name:'query',arguments:{op,args}});assert.ok(!r.isError,JSON.stringify(r));return r.structuredContent.result;}
 try{
@@ -23,6 +23,7 @@ try{
  await put('ingresses/default/config.json',{id:'default',name:'Self-test',controlSource:'claude',transport:'openai-tunnel',auth:'openai',enabled:true,toolPolicy:'all',config:{}});
  await put('ingresses/default/secrets.json',{});
  await put('dispatch-policy.json',policy);
+ await put('agents/tasks/self-test-snapshot.json',{taskId:'self-test-snapshot',agent:'dsh',updatedAt:'2026-01-01T00:00:00Z',configurationObservedAt:'2026-01-01T00:00:00Z',metadata:{models:{currentModelId:'sample-model',availableModels:[]}}});
  await put('subscriptions/settings.json',{enabled:false,agentProviders:{claude:['opencode-go'],dsh:['opencode-go']}});
  await put('subscriptions/readings/opencode-go.json',{observedAt:'2026-01-01T00:00:00Z',rawUsage:{},accountBlocked:false,blockedPoolIds:[],windows:[{id:'weekly',poolId:'shared',label:'weekly',usedPercent:22}]});
  // Synthetic history is seeded directly. No task-purpose work is dispatched.
@@ -52,6 +53,8 @@ try{
  check('no-policy keeps defaults and constraints',empty.availability.endsWith('no policy')&&empty.defaults.model==='native-default'&&empty.denyModels[0]==='denied-model');
  const d=decision.agents.find(a=>a.agent==='dsh');
  check('shared quota reference',d.quota.some(q=>q.ref==='claude/opencode-go/shared'));
+ check('persisted session timestamp retained',d.source==='persisted-session-snapshot'&&d.observedAt==='2026-01-01T00:00:00Z');
+ check('unavailable native models remain explicit',d.models.unavailable==='not-reported-by-session');
  check('stale quota timestamp retained',empty.quota[0].observedAt==='2026-01-01T00:00:00Z'&&empty.quota[0].state==='stale');
  check('fresh timestamps omitted',decision.observedAt===undefined&&c.observedAt===undefined);
  const knownCriteriaHash={global:decision.criteriaHash,codex:c.criteriaHash};

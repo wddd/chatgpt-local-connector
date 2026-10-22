@@ -452,7 +452,8 @@ fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
             json!(args.get(1))
         );
     }
-    message.push_str(&format!(". Correct usage: {usage}"));
+    let separator = if message.ends_with('.') { " " } else { ". " };
+    message.push_str(&format!("{separator}Correct usage: {usage}"));
     let mut error = json!({"code":code,"message":message,"usage":usage});
     if args.first() == Some(&"control") {
         let op = if args.get(1) == Some(&"guide") {
