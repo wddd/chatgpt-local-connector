@@ -337,7 +337,7 @@ test("control source dock preserves editing, new onboarding, field navigation an
     await click(mount.querySelector(".hub-source"));
     assert.equal(document.querySelector('[data-panel-dock]'), null);
     assert.ok(document.querySelector('.elastic-backdrop'));
-    assert.ok(document.querySelector('.source-product-list'));
+    assert.ok(document.querySelector('.platform-group'));
     assert.equal(ingressPanel.get(), undefined);
     await escape();
     await click(first());
@@ -385,15 +385,15 @@ test("control source dock preserves editing, new onboarding, field navigation an
     for (const id of ["claude", "chatgpt", "custom"]) {
       await click(mount.querySelector(".hub-source"));
       assert.equal(document.querySelector('[data-panel-dock]'), null);
-      assert.ok(document.querySelector('.source-product-list'));
-      await click(document.querySelector(`.source-product-list [role="radio"][value="${id}"]`));
+      assert.ok(document.querySelector('.platform-group'));
+      await click(document.querySelector(`.platform-group [role="radio"][value="${id}"]`));
       await click(button(t("source.next")));
       await click(button(t("source.next")));
-      assert.ok(document.querySelector('.connection-steps'));
+      assert.ok(document.querySelector('.setup-instructions'));
       assert.equal(document.querySelector('#ingress-tunnelId'), null);
       await click(button(t("back")));
       await click(button(t("back")));
-      assert.ok(document.querySelector('.source-product-list'));
+      assert.ok(document.querySelector('.platform-group'));
       await escape();
     }
     await click(first());
@@ -404,17 +404,20 @@ test("control source dock preserves editing, new onboarding, field navigation an
     assert.equal(document.querySelector('[data-source-node="one"]'), null);
     await act(() => { status.ingresses = []; connector.set({ ...connector.get(), sources: [], status: { ...status } }); });
     await click(mount.querySelector('.hub-source'));
-    assert.ok(document.querySelector(".source-product-list"), "the source entry always opens the shared add flow");
+    assert.ok(document.querySelector(".platform-group"), "the source entry always opens the shared add flow");
     const { locale } = await server.ssrLoadModule("/ui/i18n.ts");
     const { onboarding } = await server.ssrLoadModule("/ui/state/onboarding.ts");
     await act(() => locale.set("en"));
     for (const step of ["welcome", "product", "connection", "address", "approval"]) {
       await act(() => onboarding.set({ step, source: "claude" })); await flush();
-      const header = document.querySelector<HTMLElement>(".elastic-panel-content > .dialog-header")!;
-      assert.ok(header.querySelector("h2")?.textContent, `English ${step} title`);
-      assert.equal(getComputedStyle(header).gridTemplateColumns,
-        step === "welcome" ? "32px minmax(0, 1fr) auto" : "minmax(0, 1fr) auto",
-        `${step} title must use the flexible column, including transitions from the welcome icon`);
+      if (step === "welcome") {
+        assert.ok(document.querySelector(".welcome-page h1")?.textContent, "English Welcome page title");
+      } else {
+        const header = document.querySelector<HTMLElement>(".elastic-panel-content > .dialog-header")!;
+        assert.ok(header.querySelector("h2")?.textContent, `English ${step} title`);
+        assert.equal(getComputedStyle(header).gridTemplateColumns, "minmax(0, 1fr) auto",
+          `${step} title must use the flexible column`);
+      }
     }
     await escape();
     const { default: RecordsPage } = await server.ssrLoadModule("/ui/components/RecordsPage.tsx");

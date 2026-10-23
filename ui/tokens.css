@@ -137,3 +137,10 @@
   --chart-7: light-dark(#357cbc, #74aad9);
   --chart-8: light-dark(#9761bc, #c496e6);
 }
+
+:root {
+  --setup-height: 496px;
+  --setup-stacked-height: 476px;
+  --radius-card: 14px;
+  --overlay-stacked: light-dark(#0002, #0005);
+}

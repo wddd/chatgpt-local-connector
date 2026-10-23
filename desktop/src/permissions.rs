@@ -103,3 +103,46 @@ pub async fn notify(app: &tauri::AppHandle, body: &Value) -> Result<Value, Strin
         .map_err(|e| e.to_string())?;
     Ok(json!({"sent":true}))
 }
+
+/// Pairing notifications retain the exact request through native activation.
+pub async fn notify_oauth(
+    app: &tauri::AppHandle,
+    body: String,
+    request: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    if notification(false).await? != "granted" {
+        return Err("NOTIFICATION_PERMISSION_REQUIRED".into());
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut notice = notify_rust::Notification::new();
+        notice.summary("Agent Remote Control").body(&body);
+        #[cfg(target_os = "windows")]
+        notice.app_id(&app.config().identifier);
+        #[cfg(target_os = "macos")]
+        let _ = notify_rust::set_application(&app.config().identifier);
+        let result = notice.show().and_then(|handle| {
+            handle.wait_for_response(move |response: &notify_rust::NotificationResponse| {
+                if matches!(
+                    response,
+                    notify_rust::NotificationResponse::Default
+                        | notify_rust::NotificationResponse::Action(_)
+                ) {
+                    let handle = app.clone();
+                    let request = request.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        let _ = crate::windows::show(
+                            &handle,
+                            Some(("oauth:open".into(), json!(request))),
+                        );
+                    });
+                }
+            })
+        });
+        if let Err(error) = result {
+            eprintln!("OAuth notification failed: {error}");
+        }
+    });
+    Ok(())
+}

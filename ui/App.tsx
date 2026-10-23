@@ -37,6 +37,7 @@ import {
   updateVisible,
   installDirect,
 } from "./state/updates";
+import { onboarding } from "./state/onboarding";
 import { navigation, type Page } from "./state/navigation";
 import { panelLayers, panelAnchorAt } from "./state/panels";
 import {
@@ -76,6 +77,7 @@ export default function App() {
     lastPage = useRef<Page>(page === "overview" ? "tasks" : page),
     sheetClosing = useRef(false),
     backdropDown = useRef(false);
+  const welcome = onboarding.use()?.step === "welcome" && page === "overview";
   const layers = panelLayers.use();
   const modalOpen = layers.some(layer => !layer.dataset.panelDock);
   useEffect(() => { localStorage.setItem("arc-page", page); }, [page]);
@@ -275,6 +277,7 @@ export default function App() {
         />
       )}
       <div
+        hidden={welcome}
         className={`navigation-surface ${page !== "overview" ? "expanded" : ""} ${updateVisible() ? "has-update" : ""}`}
         aria-hidden="true"
       />
@@ -341,8 +344,9 @@ export default function App() {
       )}
       <nav
         className={`navigation-capsule ${page !== "overview" ? "expanded" : ""} ${updateVisible() ? "has-update" : ""}`}
-        inert={page !== "overview" || modalOpen}
-        aria-hidden={page !== "overview"}
+        inert={welcome || page !== "overview" || modalOpen}
+        aria-hidden={welcome || page !== "overview"}
+        hidden={welcome}
         aria-label={t("mainNavigation")}
       >
         <HoverScope

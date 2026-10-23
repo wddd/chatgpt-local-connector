@@ -40,7 +40,7 @@ import type { SurfaceRect } from "../motion/surface";
 import type { WireState } from "../topology/render";
 import Onboarding from "./Onboarding";
 import AddConnection from "./AddConnection";
-import { onboarding, openOnboarding, connectionSetup } from "../state/onboarding";
+import { onboarding, openOnboarding, connectionSetup, addedSource } from "../state/onboarding";
 import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
 import { Button, Icon, Notice } from "./ui";
@@ -56,6 +56,12 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const tuning = topologyTuningEnabled.use();
   const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use(), sourceSelection = ingressPanel.use();
   const flow = onboarding.use(), newConnection = connectionSetup.use();
+  const newSourceId = addedSource.use();
+  useEffect(() => {
+    if (!newSourceId || onboarding.get()) return;
+    const timer = setTimeout(() => addedSource.set(undefined), 2000);
+    return () => clearTimeout(timer);
+  }, [newSourceId, flow]);
   const detailOpen = !!selection || !!sourceSelection, panelOpen = detailOpen || !!flow || !!newConnection;
   const [panelExpanded, setPanelExpanded] = useState(false);
   const [panelWidth, setPanelWidth] = useState(PANEL_MIN_WIDTH);
@@ -191,7 +197,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     const selected = sourceSelection?.client?.id === source.id;
     return [{
       id: source.id, state: wireState(state), attention: false, selected, tasks: [], reorderable: !panelOpen,
-      content: <GraphNode label={`${source.label}: ${t(state)}`} state={wireState(state)} highlighted={selected}
+      content: <GraphNode label={`${source.label}: ${t(state)}`} state={wireState(state)} highlighted={selected} newlyAdded={source.id === newSourceId && !flow}
         onMove={panelOpen ? undefined : by => moveSource(source.id, by)}
         onOpen={() => selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } })}>
         <SourceIcon platform={source.product} panelVisual /><span className="graph-node-name">{source.label}</span>
@@ -232,7 +238,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   });
   return (
     <>
-      <section ref={core} className={`connection-core brand-mode ${panelOpen ? "side-panel-open" : ""}`} aria-label={t("connectionStatus")}>
+      <section ref={core} inert={flow?.step === "welcome"} aria-hidden={flow?.step === "welcome" || undefined} className={`connection-core brand-mode ${panelOpen ? "side-panel-open" : ""}`} aria-label={t("connectionStatus")}>
         <div className="core-toggle">
           <button
             className={`connection-action ${switchOn ? "is-on" : ""} ${progressing ? "is-busy" : ""}`}
@@ -279,7 +285,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       {visible && tuning && <TuningPanel />}
       {flow && visible && <Onboarding />}
       {newConnection && visible && <AddConnection options={newConnection} onClose={() => connectionSetup.set(undefined)} onAdded={id => {
-        if (newConnection.forSource) onboarding.set(old => old?.step === "connection" ? { ...old, ingressId: id } : old);
+        if (newConnection.forSource) onboarding.set(old => old?.step === "connection" ? { ...old, step: "address", ingressId: id, baseline: (connector.get().status?.ingresses.find(i => i.id === id)?.oauth?.pending ?? []).map(p => p.id) } : old);
         connectionSetup.set(undefined);
       }} />}
       {agentsOpen && <AgentsSettings initialAgent={settingsAgent} onClose={() => { setAgentsOpen(false); setSettingsAgent(undefined); }} />}

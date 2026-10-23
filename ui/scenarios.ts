@@ -1,3 +1,6 @@
+import { onboarding, connectionSetup, type SourceSetup, type ConnectionSetup } from './state/onboarding';
+import { navigation, type Page } from './state/navigation';
+import type { RelayProgress } from './state/relay';
 import { connector } from './state/connector';
 import { agents, type Agent } from './state/agents';
 import { acceptActivity } from './state/activity';
@@ -10,7 +13,7 @@ import type { AgentActivitySnapshot, AgentActivitySession } from './types';
 import type { Status } from './state/types';
 import config from '../native/src/ingress/config.json';
 
-type Fixture = { theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean }[]; panel?: PanelRequest };
+type Fixture = { theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean }; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 export function scenarioResponse(path: string, method: string): unknown {
@@ -35,6 +38,18 @@ export async function installScenario(name: string) {
     core: { backendSession: 'acceptance-fixture', version: 'fixture', desktop: { state: 'ready', supported: true, message: '' }, appServer: { state: 'ready', resources: {} }, account: { state: 'ready' }, resources: {}, activeTurns: fixture.tasks.length, activeWrites: 0, pendingInteractions: 0, logs: [] },
     deviceName: 'Acceptance', platform: 'darwin', version: 'fixture', connector: { state: 'ready' }, tunnel: { state: 'ready' }, config: defaults, logs: [],
   } as unknown as Status;
+  if (fixture.remoteLink) {
+    const base = status.ingresses[0];
+    const remote = fixture.remoteLink;
+    const source = { ...base.sources![0], id: 'source-personal', ingressId: 'relay-main', credential: { type: 'oauth-grant' as const, grantId: 'grant-personal' }, label: 'Claude · Personal' };
+    const pendingSource = { ...source, id: 'source-new', label: 'Claude', credential: { type: 'oauth-grant' as const, grantId: 'request-new' }, connectedAt: remote.connected ? 1 : null, lastSeenAt: remote.connected ? 1 : null };
+    status.ingresses = remote.empty ? [] : [
+      { ...base, id: 'relay-main', transport: 'relay', auth: 'oauth', name: 'My relay', url: 'https://relay.example.com/mcp', sources: [source, ...(remote.pending || remote.connected ? [pendingSource] : [])],
+        oauth: { grants: [{ id: 'grant-personal', clientName: 'Claude', clientId: 'client-personal', connectedAt: 1, registeredAt: 1 }], pending: remote.pending ? [{ id: 'request-new', sourceId: 'source-new', product: 'claude', clientName: 'Claude', redirectUri: 'https://claude.ai/api/mcp/auth_callback', resource: 'https://relay.example.com/mcp', pairingCode: '4F7K', status: 'pending' }] : [] } },
+      { ...base, id: 'secure-tunnel', name: 'ChatGPT tunnel', transport: 'openai-tunnel', controlSource: 'chatgpt', auth: 'openai', url: '', sources: [] },
+    ];
+    if (remote.local) status.ingresses = [{ ...base, id: 'local-claude-code', name: 'Claude Code', sources: [{ ...base.sources![0], id: 'local-source', ingressId: 'local-claude-code', connectedAt: null, lastSeenAt: null }] }];
+  }
   const inventory: Agent[] = fixture.agents.map(agent => ({ agent, installed: true, available: true, enabled: true, status: 'ready', version: 'fixture' }));
   const activity: AgentActivitySnapshot = { observedAt: now, activeAgents: fixture.agents, agents: Object.fromEntries(fixture.agents.map(a => [a, { sessions: [] }])) };
   fixture.tasks.forEach((task, index) => {
@@ -47,7 +62,7 @@ export async function installScenario(name: string) {
     origin: { ingressId: 'fixture-source', sourceId: 'fixture-source' }, approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } }));
   const permissionData = { items: [], observedAt: now };
   const subscriptionData = { instanceId: 'fixture', revision: 1, settings: { enabled: false, refreshMinutes: 30, agentProviders: {} }, providers: [] };
-  responses = { status, source: { sources: status.ingresses.flatMap(i => i.sources ?? []) }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, relay: { relays: [] } };
+  responses = { status, source: { sources: status.ingresses.flatMap(i => i.sources ?? []) }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
   connector.set({ status, sources: status.ingresses.flatMap(i => i.sources ?? []), sourcesLoaded: true, busy: '', loading: false, error: '', feedback: { text: '', error: false } });
   agents.set({ items: inventory, loaded: true, loading: false, saving: '', error: '' });
   acceptActivity(activity); tasks.set({ records, loading: false, error: '' });
@@ -55,6 +70,9 @@ export async function installScenario(name: string) {
   subscriptions.set({ snapshot: subscriptionData, error: '' });
   return async () => {
     openSnapshotPanel(fixture.panel);
+    if (fixture.sourceSetup) onboarding.set(fixture.sourceSetup);
+    if (fixture.connectionSetup) connectionSetup.set(fixture.connectionSetup);
+    if (fixture.page) navigation.set({ page: fixture.page, remoteConnectionId: fixture.remoteConnectionId });
     await settledViewModel();
     document.documentElement.dataset.scenarioReady = name;
   };

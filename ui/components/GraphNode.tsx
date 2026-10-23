@@ -2,12 +2,12 @@ import type { ReactNode } from "react";
 import { t } from "../i18n";
 import type { WireState } from "../topology/render";
 
-export default function GraphNode({ label, state, onOpen, onMove, highlighted, children }: {
+export default function GraphNode({ label, state, onOpen, onMove, highlighted, newlyAdded, children }: {
   label: string; state: WireState; onOpen: () => void; onMove?: (by: number) => void;
-  highlighted?: boolean; children: ReactNode;
+  highlighted?: boolean; newlyAdded?: boolean; children: ReactNode;
 }) {
   return <button type="button" className="graph-node" data-panel-anchor
-    data-highlighted={highlighted || undefined} data-connection-state={state}
+    data-highlighted={highlighted || undefined} data-new-source={newlyAdded || undefined} data-connection-state={state}
     aria-label={label} aria-haspopup="dialog" aria-description={onMove ? t("reorderNodeHint") : undefined}
     aria-keyshortcuts={onMove ? "ArrowUp ArrowDown" : undefined} onClick={onOpen}
     onKeyDown={event => {

@@ -118,21 +118,21 @@ pub fn install(app: &tauri::App) -> tauri::Result<()> {
                                 let id = request["id"].as_str().unwrap_or("").to_owned();
                                 current.insert(id.clone());
                                 if !focused && !notified.contains(&id) {
+                                    let product = arc_core::control_sources::preset(
+                                        request["product"].as_str().unwrap_or("custom"),
+                                    );
                                     let body = t("connect.notification")
                                         .replace(
                                             "{name}",
-                                            request["clientName"].as_str().unwrap_or("AI"),
+                                            product["displayName"].as_str().unwrap_or("MCP client"),
                                         )
                                         .replace(
                                             "{code}",
                                             request["pairingCode"].as_str().unwrap_or(""),
                                         );
-                                    if crate::permissions::notify(
-                                        &handle,
-                                        &serde_json::json!({"body":body}),
-                                    )
-                                    .await
-                                    .is_ok()
+                                    if crate::permissions::notify_oauth(&handle, body, id.clone())
+                                        .await
+                                        .is_ok()
                                     {
                                         notified.insert(id);
                                     }

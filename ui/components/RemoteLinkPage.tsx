@@ -21,6 +21,7 @@ export default function RemoteLinkPage() {
   const { status, sources, error: readError } = connector.use(), nav = navigation.use(), relays = useRelays();
   const group = grouping.use();
   const [editing, setEditing] = useState<Ingress>(), [error, setError] = useState("");
+  const [removing, setRemoving] = useState(false), [removeBusy, setRemoveBusy] = useState(false);
   const [claim, setClaim] = useState<string>();
   const previous = useRef<string | undefined>(undefined);
   const entries = status?.ingresses ?? [];
@@ -28,6 +29,8 @@ export default function RemoteLinkPage() {
   const selected = sources.find(s => s.id === nav.remoteSourceId);
   const connection = entries.find(i => i.id === nav.remoteConnectionId);
   const selectedRelay = relays.relays.find(r => r.ingressId === connection?.id);
+  const affected = visible.filter(s => s.ingressId === connection?.id);
+  const joined = selectedRelay && !selectedRelay.owner;
   const requests = entries.flatMap(ingress => (ingress.oauth?.pending ?? []).filter(request => request.status === "pending").map(request => ({ ingress, request })));
   const claiming = requests.find(p => p.request.id === claim);
   useEffect(() => {
@@ -47,17 +50,32 @@ export default function RemoteLinkPage() {
     if (connectionOnly) openConnectionSetup();
     else openOnboarding();
   }
+  async function removeConnection() {
+    if (!connection) return;
+    setRemoveBusy(true); setError("");
+    try {
+      if (joined) await api("relay/leave", "POST", { id: selectedRelay.id });
+      else await api(`ingress/${connection.id}`, "DELETE");
+      await refreshConnector(); await relays.refresh(); setRemoving(false);
+      navigation.set(old => ({ ...old, remoteConnectionId: undefined }));
+    } catch (e) { setError(String(e)); } finally { setRemoveBusy(false); }
+  }
   const groups = group === "platform" ? [...new Set(visible.map(s => s.platform))].sort() : [""];
   return <div className="remote-link-page">
     {readError && <Notice>{readError}</Notice>}
     {connection ? <div className="connection-detail">
-      <div className="source-section-heading"><Icon icon={connectionIcon(connection)} size={20} /><span>{t(`source.kind.${connectionKind(connection)}`)}</span><Status tone={connection.state === "ready" ? "success" : "neutral"}>{t(connection.state === "ready" ? "connect.online" : "connect.offline")}</Status></div>
-      {connection.transport !== "relay" && connection.url && <CopyField value={connection.url} label={t("source.copyAddress")} />}
-      <dl className="source-facts"><div><dt>{t("source.provider")}</dt><dd>{connectionProvider(connection)}</dd></div></dl>
+      <div className="connection-detail-heading"><span className="connection-detail-icon"><Icon icon={connectionIcon(connection)} size={20} /></span><div><h2>{connection.name}</h2><p>{connectionProvider(connection)}{selectedRelay?.owner ? ` · ${t("setup.hostedHere")}` : ""}</p></div><Status tone={connection.state === "ready" ? "success" : "neutral"}>{t(connection.state === "ready" ? "connect.online" : "connect.offline")}</Status></div>
+      {connection.url && <CopyField value={connection.url} label={t("source.copyAddress")} />}
+      <section className="connection-sources"><div className="source-section-heading"><h3>{t("setup.sourcesUsing", { count: affected.length })}</h3><Button onClick={() => { navigation.set(old => ({ ...old, page: "overview" })); openOnboarding("product", { ingressId: connection.id, fixedConnection: true }); }}>{t("setup.addSourceForConnection")}</Button></div>
+        <HoverScope>{affected.map(source => <Button key={source.id} variant="ghost" className="connection-source-row" onClick={() => navigation.set(old => ({ ...old, remoteSourceId: source.id, remoteConnectionId: undefined }))}><SourceIcon platform={source.product} /><strong>{source.label}</strong><Status tone={source.state === "connected" ? "success" : "neutral"}>{t(`source.state.${source.state}`)}</Status><Icon icon={ChevronRight} /></Button>)}</HoverScope>
+        {!affected.length && <p className="muted">{t("source.unused")}</p>}
+      </section>
+      <dl className="source-facts connection-provider-facts"><div><dt>{t("source.provider")}</dt><dd>{connection.transport === "relay" ? "Cloudflare Workers" : connectionProvider(connection)}</dd></div><div><dt>{t("connectionMethod")}</dt><dd>{t(`source.kind.${connectionKind(connection)}`)}</dd></div>{selectedRelay && <div><dt>{t("setup.workerVersion")}</dt><dd>{selectedRelay.workerVersion ?? "—"}</dd></div>}</dl>
       {connection.error && <Notice>{connection.error}</Notice>}
       {selectedRelay && <RelaySettings relay={selectedRelay} version={relays.version} refresh={relays.refresh} />}
       {!["local", "relay"].includes(connection.transport) && <Button onClick={() => setEditing(connection)}>{t("edit")}</Button>}
-      <Button onClick={() => add(true)}>{t("source.newConnection")}</Button>
+      {selectedRelay?.owner && <Button className="connection-hosting-link" variant="ghost" onClick={() => navigation.set(old => ({ ...old, page: "settings", settingsExtras: true }))}>{t("setup.hostingLink")}<Icon icon={ChevronRight} /></Button>}
+      <div className="connection-remove"><div><strong>{t(joined ? "connect.leave" : "setup.removeConnection")}</strong><p>{t("setup.removeAffected", { names: affected.map(s => s.label).join(", ") || t("source.unused") })}</p></div><Button variant="danger-outline" onClick={() => { setError(""); setRemoving(true); }}>{t(joined ? "connect.leave" : "remove")}</Button></div>
     </div> : selected ? <SourceDetail key={selected.id} source={selected} onConnection={id => navigation.set(old => ({ ...old, remoteConnectionId: id }))} /> : <>
       <div className="source-section-heading"><SingleChoice compact label={t("source.grouping")} value={group} onChange={value => grouping.set(value as "all" | "platform")} options={[{ value: "all", label: t("all") }, { value: "platform", label: t("source.byPlatform") }]} /><Button variant="primary" onClick={() => add()}>{t("addControlSource")}</Button></div>
       {requests.filter(({ ingress, request }) => sourceCandidates(sources, entries, ingress.id, request.product ?? "custom", request.sourceId).length > 0).map(({ ingress, request }) => <Notice key={request.id} tone="warning" action={<Button onClick={() => setClaim(request.id)}>{t("source.review")}</Button>}>{t("source.pendingReauthorization", { name: request.clientName, connection: ingress.name })}</Notice>)}
@@ -83,6 +101,9 @@ export default function RemoteLinkPage() {
       </section>
     </>}
     {(error || relays.error) && <Notice>{error || t("connect.readFailed")}</Notice>}
+    {removing && connection && <Dialog centered title={t(joined ? "connect.confirm.leave" : "setup.removeConnection")} width={440} busy={removeBusy} onClose={() => setRemoving(false)} footer={<><Button disabled={removeBusy} onClick={() => setRemoving(false)}>{t("cancel")}</Button><Button variant="danger" busy={removeBusy} onClick={() => void removeConnection()}>{t(joined ? "connect.leave" : "remove")}</Button></>}>
+      <p>{t("setup.removeConfirm", { name: connection.name, names: affected.map(s => s.label).join(", ") || t("source.unused") })}</p>{error && <Notice>{error}</Notice>}
+    </Dialog>}
     {claiming && <Dialog title={t("source.authorization")} onClose={() => setClaim(undefined)}><ApprovalCard key={claiming.request.id} {...claiming} onDecided={() => setClaim(undefined)} /></Dialog>}
     {editing && <IngressDialog ingress={editing} onClose={() => setEditing(undefined)} onRemoved={() => { setEditing(undefined); navigation.set(old => ({ ...old, remoteConnectionId: undefined })); }} onSaved={entry => {
       setEditing(undefined); void api(`ingress/${entry.id}/start`, "POST").then(refreshConnector).catch(e => setError(String(e)));

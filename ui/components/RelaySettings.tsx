@@ -6,12 +6,12 @@ import { openConnectionSetup } from "../state/onboarding";
 import { navigation } from "../state/navigation";
 import { useRelayProgress, type Relay } from "../state/relay";
 import RelayProgress from "./RelayProgress";
-import { Button, CopyField, Dialog, Notice, Row, Status } from "./ui";
+import { Button, Notice } from "./ui";
 export function RelaySettings({ relay, version, refresh }: { relay: Relay; version: string; refresh: () => Promise<unknown> }) {
   const { status } = connector.use();
   const ingress = status?.ingresses.find(i => i.id === relay.ingressId);
   const [busy, setBusy] = useState("");
-  const [error, setError] = useState(""), [confirm, setConfirm] = useState<"leave">();
+  const [error, setError] = useState("");
   const [operation, setOperation] = useState(""), [account, setAccount] = useState("");
   const { progress, setProgress, error: progressError } = useRelayProgress(!!operation, () => {
     setOperation(""); void refresh().catch(() => {}); void refreshConnector().catch(() => {});
@@ -29,16 +29,11 @@ export function RelaySettings({ relay, version, refresh }: { relay: Relay; versi
       const value = await api<import("../state/relay").RelayProgress>(`relay/${name}`, "POST", { id: relay.id, ...extra });
       if (value.jobId) { setProgress(value); setOperation(name); }
       if (name === "leave") { await refresh(); await refreshConnector(); }
-      setConfirm(undefined); return true;
+      return true;
     } catch { setError(t("connect.actionFailed")); return false; }
     finally { setBusy(""); }
   }
   return <section className="relay-settings">
-    <Row title={relay.name}>
-      <Status tone={ingress?.state === "ready" ? "success" : "neutral"}>{t(ingress?.state === "ready" ? "connect.online" : "connect.offline")}</Status>
-      {!relay.owner && <Button disabled={!!busy || !!operation} onClick={() => setConfirm("leave")}>{t("connect.leave")}</Button>}
-    </Row>
-    {ingress?.url && <CopyField value={ingress.url} label={t("connect.remoteLink")} />}
     {ingress?.state !== "ready" && !operation && <Button disabled={!!busy} onClick={() => void action(relay.url ? "connect" : "redeploy")}>{t("retry")}</Button>}
     {relay.owner && relay.workerVersion !== version && !operation && <Notice action={<Button disabled={!!busy} onClick={() => void action("redeploy")}>{t("connect.updateRelay")}</Button>}>{t("connect.updateAvailable")}</Notice>}
     {operation && <>
@@ -49,6 +44,6 @@ export function RelaySettings({ relay, version, refresh }: { relay: Relay; versi
       }} />
     </>}
     {error && <Notice tone="danger">{error}</Notice>}
-    {confirm && <Dialog title={t("connect.confirm.leave")} width={420} onClose={() => setConfirm(undefined)} busy={!!busy} footer={<><Button disabled={!!busy} onClick={() => setConfirm(undefined)}>{t("cancel")}</Button><Button variant="danger" busy={!!busy} onClick={() => void action("leave")}>{t("confirm")}</Button></>}><p>{t("connect.removeHint")}</p>{error && <Notice>{error}</Notice>}</Dialog>}
+
   </section>;
 }

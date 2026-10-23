@@ -156,3 +156,9 @@ Relay hosting lists only relays this computer deployed. Cards show the hostname,
 ## Limits
 
 Source identity covers OAuth grants, non-OAuth ingresses, and local clients. Two clients sharing one Bearer token or one OpenAI Secure Tunnel are one source. Platform aggregation is a display grouping and never an isolation boundary.
+
+P3 uses the existing removal API: it revokes grants and preserves source records and history, but marks sources revoked. P4 changes that state to disconnected and adds connection switching; P3 does not offer a switch action after removal.
+
+Local configuration installation currently supports Claude Code and Claude Desktop. Other MCP client uses manual HTTPS configuration. The registry has no settings URL for every product, so Configure shows the generic MCP settings instruction when a product has no setup metadata.
+
+RelayProgress supports account selection when Core returns multiple Cloudflare accounts, copy-login-link fallback, cancel, and retry. Core does not expose the current signed-in account or a forced account-login change action. The reference's inline signed-in identity and Change action remain unavailable until that contract exists. Own-address forms retain provider-specific domain modes and required credentials; providers collapse to the shared dropdown when pills do not fit.

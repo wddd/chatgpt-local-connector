@@ -7,6 +7,7 @@ import { acceptActivity } from './state/activity';
 import { api } from './api';
 import type { AgentActivitySnapshot } from './types';
 import { locale } from './i18n';
+import { navigation } from './state/navigation';
 import { onboarding, connectionSetup } from './state/onboarding';
 
 let topology: (() => unknown) | undefined;
@@ -21,7 +22,7 @@ export function viewModel(layoutSettled = false) {
     theme: document.documentElement.dataset.theme, language: locale.get(),
     topology: topology?.() ?? null,
     panels: { agent: agentPanel.get() ?? null, source: ingressPanel.get()?.client?.id ?? null,
-      onboarding: onboarding.get()?.step ?? null, page: localStorage.getItem('arc-page') ?? 'overview' },
+      onboarding: onboarding.get()?.step ?? null, connectionSetup: connectionSetup.get() ?? null, remoteConnectionId: navigation.get().remoteConnectionId ?? null, page: localStorage.getItem('arc-page') ?? 'overview' },
   };
 }
 export type PanelRequest = { kind: 'agent' | 'source' | 'none'; id?: string };

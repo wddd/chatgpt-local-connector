@@ -46,6 +46,7 @@ export default function IngressDialog({
   onRemoved,
   embedded = false,
   onBusy,
+  setupFormId,
 }: {
   initialProduct?: string;
   initialTransport?: "https" | "openai-tunnel";
@@ -53,6 +54,7 @@ export default function IngressDialog({
   connectionOnly?: boolean;
   embedded?: boolean;
   onBusy?: (busy: boolean) => void;
+  setupFormId?: string;
   ingress?: Ingress;
   focusField?: string;
   onClose: () => void;
@@ -78,6 +80,7 @@ export default function IngressDialog({
         f.connectionMode =
           ingress.transport === "openai-tunnel" ? "tunnel" : "https";
       if (!ingress && initialTransport) f.connectionMode = initialTransport === "openai-tunnel" ? "tunnel" : "https";
+      if (!ingress && setupFormId && initialTransport === "https") { f.httpsProvider = "cloudflare"; f.cloudflareMode = "named"; }
       if (!ingress && initialProvider) f.httpsProvider = initialProvider;
       return f;
     });
@@ -193,6 +196,7 @@ export default function IngressDialog({
     }
     setErrors(next);
     if (Object.keys(next).length) {
+      if (formRef.current?.querySelector("details")) formRef.current.querySelector("details")!.open = true;
       requestAnimationFrame(() =>
         formRef.current
           ?.querySelector<HTMLElement>("[aria-invalid=true]")
@@ -270,7 +274,7 @@ export default function IngressDialog({
     <Field
       id={`ingress-${key}`}
       label={label}
-      help={help}
+      help={key === "domain" ? t("setup.domainHint") : help}
       error={errors[key]}
     >
       <Input
@@ -284,11 +288,31 @@ export default function IngressDialog({
         onChange={(e) => change(key, e.target.value as never)}
         placeholder={placeholder}
         disabled={working}
+        required={key === "domain" || key === "tunnelId"}
       />
     </Field>
   );
   useEffect(() => { onBusy?.(working); return () => onBusy?.(false); }, [working, onBusy]);
-  const Frame = embedded ? IngressEditLayer : Dialog;
+  const nameField = (<Field
+            id="ingress-name"
+            label={t(connectionOnly ? "setup.connectionName" : "sourceName")}
+            help={!connectionOnly && preset?.docs[0] && <a className="form-subtitle" href={preset.docs[0]} onClick={(e) => { e.preventDefault(); void openUrl(preset.docs[0]!).catch(e => setError(String(e))); }}>{t("officialSetup")}</a>}
+            error={errors.name}
+          >
+            <Input
+              id="ingress-name"
+              required
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setErrors((old) => ({ ...old, name: "" }));
+              }}
+              aria-invalid={!!errors.name}
+              aria-describedby={errors.name ? "ingress-name-error" : undefined}
+              disabled={working}
+            />
+          </Field>);
+  const Frame = setupFormId ? IngressSetupBody : embedded ? IngressEditLayer : Dialog;
   return (
     <Frame
       initialFocus={focusField ? `ingress-${focusField}` : undefined}
@@ -354,13 +378,13 @@ export default function IngressDialog({
       ) : (
         <form
           onChangeCapture={e => { const id = (e.target as HTMLElement).id; if (id.startsWith("ingress-")) dirty.current.add(id.slice(8)); }}
-          className="form"
+          id={setupFormId}
+          className={`form ${setupFormId ? "connection-config-form" : ""}`}
           ref={formRef}
           onSubmit={(e) => {
             e.preventDefault();
             void save();
           }}
-          noValidate
         >
           {!connectionOnly && <p className="form-subtitle">{t(selected === "claude" ? "wakeClaude" : selected === "chatgpt" ? "wakeChatgpt" : "wakeOther")}</p>}
           {https &&
@@ -369,24 +393,7 @@ export default function IngressDialog({
             !preset.supportedAuth.includes("bearer") && (
               <Notice tone="warning">{t("presetAuthMismatch")}</Notice>
             )}
-          <Field
-            id="ingress-name"
-            label={t("sourceName")}
-            help={!connectionOnly && preset?.docs[0] && <a className="form-subtitle" href={preset.docs[0]} onClick={(e) => { e.preventDefault(); void openUrl(preset.docs[0]!).catch(e => setError(String(e))); }}>{t("officialSetup")}</a>}
-            error={errors.name}
-          >
-            <Input
-              id="ingress-name"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setErrors((old) => ({ ...old, name: "" }));
-              }}
-              aria-invalid={!!errors.name}
-              aria-describedby={errors.name ? "ingress-name-error" : undefined}
-              disabled={working}
-            />
-          </Field>
+          {!setupFormId && nameField}
           {selected === "custom" && !connectionOnly && (
             <Field
               id="ingress-source"
@@ -484,6 +491,10 @@ export default function IngressDialog({
                 </Field>
               )}
               {form.httpsProvider === "cloudflare" && form.cloudflareAuth === "login" && <Notice>{t("setup.cloudflare-managed")}</Notice>}
+              {fixedDomain(form) &&
+                textField("domain", t("domain"), false, "mcp.example.com")}
+              {setupFormId && nameField}
+              <details className="connection-advanced" open={Object.keys(errors).some(key => !["name", "domain"].includes(key)) || undefined}><summary>{t("setup.advanced")}</summary>
               {needsCredential(form) &&
                 provider.credential &&
                 textField(
@@ -495,8 +506,6 @@ export default function IngressDialog({
                     : t("pasteCredential", { provider: provider.label, credential: provider.credentialLabel }),
                   provider.help && <a href={provider.help} onClick={(e) => { e.preventDefault(); void openUrl(provider.help!).catch(e => setError(String(e))); }}>{t("getCredentials")}</a>,
                 )}
-              {fixedDomain(form) &&
-                textField("domain", t("domain"), false, "mcp.example.com")}
               <Field label={t("authentication")}>
                 <SingleChoice
                   value={auth}
@@ -510,9 +519,12 @@ export default function IngressDialog({
                   ]}
                 />
               </Field>
+              {!ingress && <ToolPolicyField value={toolPolicy} onChange={setToolPolicy} disabled={working} />}
+              </details>
             </>
           )}
-          {!ingress && <ToolPolicyField
+          {!https && setupFormId && nameField}
+          {!ingress && !https && <ToolPolicyField
             value={toolPolicy}
             onChange={value => { dirty.current.add("toolPolicy"); setToolPolicy(value); }}
             disabled={working}
@@ -539,3 +551,5 @@ function IngressEditLayer({ title, children, footer, onClose, initialFocus, busy
     <div className="side-panel-scroll">{children}</div><footer className="dialog-footer">{footer}</footer>
   </section>;
 }
+
+function IngressSetupBody({ children }: ComponentProps<typeof Dialog>) { return <>{children}</>; }

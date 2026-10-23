@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { nextSourceName } from "../controlSources";
 import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
-import { onboarding } from "../state/onboarding";
+import { onboarding, connectionSetup } from "../state/onboarding";
+import { navigation } from "../state/navigation";
 import { sourceCandidates } from "../sourcePresentation";
 import type { Ingress, OAuthRequest } from "../state/types";
 import { Button, Dialog, Field, Input, Notice, SingleChoice } from "./ui";
 
-export function ApprovalCard({ request, ingress, inline = false, product, onDecided }: { request: OAuthRequest; ingress: Ingress; inline?: boolean; product?: string; onDecided?: (allow: boolean) => void }) {
+export function ApprovalCard({ request, ingress, inline = false, product, onDecided, onBusy }: { request: OAuthRequest; ingress: Ingress; inline?: boolean; product?: string; onDecided?: (allow: boolean) => void; onBusy?: (busy: boolean) => void }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const [sourceId, setSourceId] = useState("new"), [label, setLabel] = useState(""), [labelError, setLabelError] = useState("");
+  const [sourceId, setSourceId] = useState("new"), [label, setLabel] = useState(() => nextSourceName(product ?? request.product ?? "custom", connector.get().sources.filter(s => s.id !== request.sourceId).map(s => s.label))), [labelError, setLabelError] = useState("");
   const { status, sources } = connector.use();
   const candidates = sourceCandidates(sources, status?.ingresses ?? [], ingress.id, product ?? request.product ?? "custom", request.sourceId);
+  useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]);
   async function decide(allow: boolean) {
+    if (busy || allow && sourceId !== "new" && !candidates.some(s => s.id === sourceId)) return;
     if (allow && sourceId === "new" && new TextEncoder().encode(label.trim()).length > 120) {
       setLabelError(t("sourceNameTooLong")); document.getElementById(`approval-label-${request.id}`)?.focus(); return;
     }
@@ -26,21 +30,20 @@ export function ApprovalCard({ request, ingress, inline = false, product, onDeci
     } catch (e) { setError(`${t("connect.approvalFailed")} ${String(e)}`); }
     finally { setBusy(false); }
   }
-  return <section className="pairing-card" aria-live="polite">
+  return <form id={`approval-${request.id}`} className={`pairing-card ${inline ? "pairing-inline" : ""}`} aria-live="polite" onSubmit={e => { e.preventDefault(); void decide((e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") !== "deny"); }}>
     {request.status === "pending" ? <>
-      {inline && <h3>{t("connect.approveTitle")}</h3>}<p className="muted">{t("connect.compareCode")}</p>
-      <strong className="pairing-code">{request.pairingCode ?? "—"}</strong>
+      <div className="pairing-code-panel"><span>{t("connect.compareCode")}</span><strong className="pairing-code">{request.pairingCode ?? "—"}</strong></div>
+      {candidates.length > 0 && <SingleChoice label={t("source.authorization")} value={sourceId} onChange={setSourceId} disabled={busy} options={[{ value: "new", label: t("source.new") }, ...candidates.map(s => ({ value: s.id, label: t("source.reauthorize", { name: s.label }) }))]} />}
+      {sourceId === "new" && <Field id={`approval-label-${request.id}`} label={t("setup.accountName")} error={labelError}>
+        <Input id={`approval-label-${request.id}`} value={label} disabled={busy} aria-invalid={!!labelError} aria-describedby={labelError ? `approval-label-${request.id}-error` : undefined} onChange={e => { setLabel(e.target.value); setLabelError(""); }} />
+      </Field>}
       <p>{t("connect.client", { name: request.clientName })}</p>
       <p className="source-callback">{t("source.callback")}: {request.redirectUri}</p>
       <p>{t("connect.scope", { scope: ingress.toolPolicy === "all" ? t("connect.allPermissions") : t("connect.selectedPermissions") })}</p>
-      {candidates.length > 0 && <SingleChoice cards label={t("source.authorization")} value={sourceId} onChange={setSourceId} disabled={busy} options={[{ value: "new", label: t("source.new") }, ...candidates.map(s => ({ value: s.id, label: t("source.reauthorize", { name: s.label }) }))]} />}
-      {sourceId === "new" && <Field id={`approval-label-${request.id}`} label={t("source.optionalLabel")} error={labelError}>
-        <Input id={`approval-label-${request.id}`} value={label} disabled={busy} aria-invalid={!!labelError} aria-describedby={labelError ? `approval-label-${request.id}-error` : undefined} onChange={e => { setLabel(e.target.value); setLabelError(""); }} />
-      </Field>}
-      <div className="actions"><Button disabled={busy} onClick={() => void decide(false)}>{t("oauthDeny")}</Button><Button variant="primary" busy={busy} disabled={sourceId !== "new" && !candidates.some(s => s.id === sourceId)} onClick={() => void decide(true)}>{t("oauthAllow")}</Button></div>
+      {!inline && <div className="actions"><Button disabled={busy} onClick={() => void decide(false)}>{t("oauthDeny")}</Button><Button variant="primary" busy={busy} disabled={sourceId !== "new" && !candidates.some(s => s.id === sourceId)} onClick={() => void decide(true)}>{t("oauthAllow")}</Button></div>}
     </> : <p>{t(request.status === "approved" ? "connect.returning" : request.status === "denied" ? "oauthDenied" : "oauthFinished")}</p>}
     {error && <Notice tone="danger">{error}</Notice>}
-  </section>;
+  </form>;
 }
 export default function OAuthApproval({ requested, onClose, inlineEnabled }: { requested?: { id: string }; onClose: () => void; inlineEnabled: boolean }) {
   const { status } = connector.use(), savedFlow = onboarding.use();
@@ -49,10 +52,18 @@ export default function OAuthApproval({ requested, onClose, inlineEnabled }: { r
   const [selectedId, setSelectedId] = useState<string>();
   const requests = status?.ingresses.flatMap(ingress => (ingress.oauth?.pending ?? []).map(request => ({ ingress, request }))) ?? [];
   useEffect(() => {
-    if (requested) { dismissed.current.delete(requested.id); setSelectedId(requested.id); }
-  }, [requested]);
+    if (!requested) return;
+    const target = requests.find(p => p.request.id === requested.id);
+    if (!target) return;
+    dismissed.current.delete(requested.id);
+    connectionSetup.set(undefined);
+    navigation.set(old => ({ ...old, page: "overview" }));
+    onboarding.set(old => ({ ...(old?.ingressId === target.ingress.id ? old : {}), step: "approval", ingressId: target.ingress.id,
+      source: target.request.product ?? target.ingress.controlSource, requestId: requested.id }));
+    onClose();
+  }, [requested, status]);
   const inFlow = (id: string) => requests.some(p => p.request.id === id && p.ingress.id === flow?.ingressId && ["address", "approval"].includes(flow.step));
-  const selected = requested ? requests.find(p => p.request.id === requested.id) : requests.find(p => p.request.id === selectedId)
+  const selected = requested ? requests.find(p => p.request.id === requested.id) : requests.find(p => p.request.id === selectedId && p.request.status === "pending" && !inFlow(p.request.id))
     ?? requests.find(p => p.request.status === "pending" && !dismissed.current.has(p.request.id) && !inFlow(p.request.id));
   useEffect(() => { if (selected) setSelectedId(selected.request.id); }, [selected?.request.id]);
   if (selected && inFlow(selected.request.id)) return null;

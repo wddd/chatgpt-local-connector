@@ -37,6 +37,8 @@ export default function ElasticPanel({
   actions,
   leading,
   headerDetail,
+  centered = false,
+  stepBar,
   wide = false,
   busy = false,
   unframed = false,
@@ -61,6 +63,8 @@ export default function ElasticPanel({
   actions?: ReactNode;
   leading?: ReactNode;
   headerDetail?: ReactNode;
+  centered?: boolean;
+  stepBar?: ReactNode;
   wide?: boolean;
   busy?: boolean;
   unframed?: boolean;
@@ -118,12 +122,13 @@ export default function ElasticPanel({
   useLayoutEffect(() => {
     if (!open) return;
     const active = document.activeElement;
-    const visual = takePanelOrigin() ?? (
+    const savedOrigin = takePanelOrigin();
+    const visual = centered ? undefined : savedOrigin ?? (
       active instanceof HTMLElement && active.matches("button, [data-panel-anchor]")
         ? readOrigin(active) : undefined
     );
     visualOrigin.current = visual;
-    trigger.current = visual?.trigger ?? null;
+    trigger.current = visual?.trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     origin.current = visual?.rect;
     parentPanel.current = dock ? undefined : visual?.parent;
     closing.current = false;
@@ -141,7 +146,7 @@ export default function ElasticPanel({
       (initialFocus ? node.querySelector<HTMLElement>(`#${CSS.escape(initialFocus)}`) ?? node : node).focus({ preventScroll: true }),
     );
     let rect = node.getBoundingClientRect();
-    if (parent && source) {
+    if (parent && source && !centered) {
       const x = Math.max(-(innerWidth - rect.width) / 2 + 20, Math.min((innerWidth - rect.width) / 2 - 20, source.x + source.width / 2 - innerWidth / 2));
       const y = Math.max(-(innerHeight - rect.height) / 2 + 20, Math.min((innerHeight - rect.height) / 2 - 20, source.y + source.height / 2 - innerHeight / 2));
       setPosition({ x, y });
@@ -154,7 +159,7 @@ export default function ElasticPanel({
     onPanelFrame?.(rect);
     motion.current = surface;
     const fades: AnimationPlaybackControlsWithThen[] = [];
-    if (!reduced() && source && rect.width && !parent && visualOrigin.current?.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]")) {
+    if (!centered && !reduced() && source && rect.width && !parent && visualOrigin.current?.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]")) {
       const visual = visualOrigin.current;
       const opening = surface.to({ ...frameAt(rect, 1, "28px"), ...surfaceOf(node) }, {
         from: { ...frameAt(source, visual ? 1 : 0, "28px"), ...(visual?.surface ?? {}) },
@@ -230,7 +235,7 @@ export default function ElasticPanel({
     clearGhost.current?.();
     const from = node.getBoundingClientRect(),
       to = parent?.getBoundingClientRect() ?? visual?.rect ?? origin.current;
-    if (!replacement && to && !parent && visual?.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]") && !reduced()) {
+    if (!centered && !replacement && to && !parent && visual?.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]") && !reduced()) {
       const style = getComputedStyle(node);
       const current = { ...frameAt(from, Number(style.opacity), style.borderRadius), ...surfaceOf(node) };
       const animation = motion.current?.to(
@@ -276,7 +281,7 @@ export default function ElasticPanel({
     >
       <D.Portal>
         {!dock && <D.Overlay
-          className="elastic-backdrop"
+          className={`elastic-backdrop ${centered ? "setup-backdrop" : ""}`}
           style={{ zIndex: 100 + Math.max(0, layers.indexOf(node!)) * 2 }}
           onPointerDown={(e) => {
             backdropPressed.current =
@@ -298,7 +303,7 @@ export default function ElasticPanel({
         />}
         <D.Content
           ref={attach}
-          className={`dialog elastic-panel ${wide ? "dialog-wide" : ""} ${unframed ? "unframed" : ""} ${headerless ? "headerless" : ""} ${dock ? "activity-panel" : ""}`}
+          className={`dialog elastic-panel ${wide ? "dialog-wide" : ""} ${unframed ? "unframed" : ""} ${headerless ? "headerless" : ""} ${dock ? "activity-panel" : ""} ${centered ? "setup-dialog" : ""}`}
           data-panel-dock={dock}
           data-recessed={recessed || undefined}
           inert={recessed || undefined}
@@ -347,7 +352,7 @@ export default function ElasticPanel({
                 data-leading={leading ? "true" : "false"}
                 onPointerDown={(e) => {
                   if (
-                    dock || e.button !== 0 ||
+                    centered || dock || e.button !== 0 ||
                     !e.isPrimary ||
                     (e.target as Element).closest("button") ||
                     motion.current?.running
@@ -392,6 +397,7 @@ export default function ElasticPanel({
                 {headerDetail}
               </header>
             )}
+            {stepBar}
             <div className="dialog-body">{children}</div>
             {footer && <footer className="dialog-footer">{footer}</footer>}
           </div>

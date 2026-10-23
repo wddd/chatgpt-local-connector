@@ -328,6 +328,7 @@ export type Choice = {
   graphic?: ReactNode;
   color?: string;
   description?: string;
+  disabled?: boolean;
 };
 export function SingleChoice({
   value,
@@ -339,6 +340,7 @@ export function SingleChoice({
   compact = false,
   cards = false,
   navigation = false,
+  tiles = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -349,6 +351,7 @@ export function SingleChoice({
   compact?: boolean;
   cards?: boolean;
   navigation?: boolean;
+  tiles?: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const measure = useRef<HTMLDivElement>(null);
@@ -373,7 +376,7 @@ export function SingleChoice({
     <div
       ref={container}
       style={compact ? { width: contentWidth } : undefined}
-      className={`choice ${swatches ? "choice-swatches" : ""} ${cards ? "choice-cards" : ""} ${navigation ? "choice-navigation" : ""}`}
+      className={`choice ${swatches ? "choice-swatches" : ""} ${cards ? "choice-cards" : ""} ${navigation ? "choice-navigation" : ""} ${tiles ? "choice-tiles" : ""}`}
     >
       {!swatches && options.length <= 5 && (
         <div ref={measure} className="choice-measure" aria-hidden="true">
@@ -384,7 +387,7 @@ export function SingleChoice({
           ))}
         </div>
       )}
-      {navigation || cards || swatches || (options.length <= 5 && fits) ? (
+      {tiles || navigation || cards || swatches || (options.length <= 5 && fits) ? (
         <RadioGroup.Root
           value={value}
           onValueChange={onChange}
@@ -397,9 +400,11 @@ export function SingleChoice({
             <RadioGroup.Item
               key={option.value}
               value={option.value}
+              disabled={option.disabled}
               className="choice-option"
               data-hover-target={navigation ? option.value : undefined}
               aria-label={option.label}
+              title={option.disabled ? option.description : undefined}
               style={
                 option.color
                   ? ({ "--swatch": option.color } as CSSProperties)
@@ -442,6 +447,7 @@ export function SingleChoice({
                   <S.Item
                     key={option.value}
                     value={option.value}
+                    disabled={option.disabled}
                     className="select-item"
                     data-hover-target={option.value}
                   >
