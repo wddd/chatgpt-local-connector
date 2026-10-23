@@ -390,11 +390,18 @@ impl AgentHost {
             }
             native_sessions.insert((agent.to_owned(), string(&state, "sessionId").to_owned()));
             let info = json!({"id":state["taskId"],"taskId":state["taskId"],"agent":agent,"title":state["title"],"project":state["cwd"],"startedAt":state["createdAt"]});
-            let timeline = events
+            let mut timeline = events
                 .timelines
                 .get(string(&state, "taskId"))
                 .cloned()
                 .unwrap_or_default();
+            if !timeline.turn.is_empty() {
+                if let Some(summary) = activity::agent_summary(&state) {
+                    timeline
+                        .turn_dispatch_summaries
+                        .insert(timeline.turn.clone(), summary);
+                }
+            }
             let mut session = timeline.session(&info, "arc-task", None);
             session["nativeSessionId"] = state["sessionId"].clone();
             if state["origin"].is_object() {
@@ -437,6 +444,33 @@ impl AgentHost {
             Vec::new()
         };
         for (agent, mut session) in transcripts {
+            if agent == "codex" {
+                let external = self.activity.lock().await.external(string(&session, "id"));
+                if let Some(external) = external {
+                    if let Some(timeline) = control
+                        .events
+                        .lock()
+                        .await
+                        .timelines
+                        .get_mut(string(&session, "id"))
+                    {
+                        timeline
+                            .turn_dispatch_summaries
+                            .extend(external.turn_dispatch_summaries);
+                    }
+                }
+            }
+            if let Some(live) = agents
+                .get_mut(&agent)
+                .and_then(|agent| agent["sessions"].as_array_mut())
+                .and_then(|sessions| sessions.iter_mut().find(|live| live["id"] == session["id"]))
+            {
+                if live["turnId"] == session["turnId"] && live["dispatchSummary"].is_null() {
+                    if let Some(summary) = session.get("dispatchSummary") {
+                        live["dispatchSummary"] = summary.clone();
+                    }
+                }
+            }
             if !native_sessions.contains(&(agent.clone(), string(&session, "id").to_owned())) {
                 if agent == "codex"
                     && recorded.iter().any(|r| {
@@ -445,6 +479,14 @@ impl AgentHost {
                 {
                     session["timeline"] = json!(true);
                     session["source"] = json!("codex-thread");
+                }
+                if let Some(summary) = crate::task_tracking::dispatch_summaries(
+                    string(&session, "id"),
+                    &HashMap::new(),
+                )
+                .get(string(&session, "turnId"))
+                {
+                    session["dispatchSummary"] = summary.clone();
                 }
                 activity::insert(&mut agents, &agent, session);
             }
@@ -507,6 +549,13 @@ impl AgentHost {
         };
         let mut timeline: crate::task_tracking::Timeline =
             serde_json::from_value(state["tracking"].clone()).unwrap_or_default();
+        if !timeline.turn.is_empty() {
+            if let Some(summary) = activity::agent_summary(&state) {
+                timeline
+                    .turn_dispatch_summaries
+                    .insert(timeline.turn.clone(), summary);
+            }
+        }
         if state["tracking"].is_null() {
             timeline.partial = true;
         }

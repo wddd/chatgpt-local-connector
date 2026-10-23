@@ -60,6 +60,12 @@ export interface CoreSnapshot {
 }
 
 export type AgentPhase = "thinking" | "command" | "file" | "tool" | "text" | "interaction" | "idle";
+export interface DispatchSummary {
+  controlSource?: { id?: string; label?: string; kind?: string };
+  model?: string;
+  effort?: string;
+  serviceTier?: string;
+}
 export interface AgentInteraction {
   kind: "permission" | "question";
   summary: string;
@@ -72,6 +78,7 @@ export interface AgentInteraction {
   method?: "select" | "confirm" | "input" | "editor";
 }
 export interface AgentActivitySession {
+  dispatchSummary?: DispatchSummary;
   origin?: { ingressId?: string; controlSource?: string };
   id: string;
   source: "arc-task" | "codex-thread" | "transcript";
@@ -111,6 +118,7 @@ export interface AgentConversationPage {
   scope: "native-unarchived" | "arc-tasks";
 }
 export interface AgentTimelineEntry {
+  phase?: string;
   id: string;
   type: "user" | "text" | "thinking" | "command" | "file" | "tool" | "plan" | "interaction" | "error";
   status: "pending" | "running" | "completed" | "failed" | "cancelled" | "unknown";
@@ -144,6 +152,8 @@ export interface AgentTrackingExcerpt {
   hashScope: "excerpt";
 }
 export interface AgentTimeline {
+  dispatchSummary?: DispatchSummary;
+  turnDispatchSummaries?: Record<string, DispatchSummary>;
   readOnly?: boolean;
   status?: string;
   sessionId: string;

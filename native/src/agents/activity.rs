@@ -19,12 +19,16 @@ pub(super) struct Monitor {
 struct TurnClock {
     offset: u64,
     started_at: Value,
+    turn_id: String,
+    dispatch_summary: Option<Value>,
+    turn_dispatch_summaries: HashMap<String, Value>,
 }
 #[derive(Clone)]
 pub(super) struct External {
     pub agent: String,
     pub session: Value,
     pub path: PathBuf,
+    pub turn_dispatch_summaries: HashMap<String, Value>,
 }
 impl Monitor {
     pub fn external(&self, id: &str) -> Option<External> {
@@ -113,16 +117,20 @@ fn scan(selected: &[String], clocks: &mut HashMap<PathBuf, TurnClock>) -> Vec<Ex
                     continue;
                 }
                 if let Some(mut session) = working(&entry.path(), agent, modified, now) {
-                    session["turnStartedAt"] = turn_started_at(
-                        &entry.path(),
-                        agent,
-                        clocks.entry(entry.path()).or_default(),
-                    )
-                    .unwrap_or(Value::Null);
+                    let clock = clocks.entry(entry.path()).or_default();
+                    session["turnStartedAt"] =
+                        turn_started_at(&entry.path(), agent, clock).unwrap_or(Value::Null);
+                    if !clock.turn_id.is_empty() {
+                        session["turnId"] = json!(clock.turn_id);
+                    }
+                    if let Some(summary) = &clock.dispatch_summary {
+                        session["dispatchSummary"] = summary.clone();
+                    }
                     active.push(External {
                         agent: agent.clone(),
                         session,
                         path: entry.path(),
+                        turn_dispatch_summaries: clock.turn_dispatch_summaries.clone(),
                     });
                 }
             }
@@ -166,11 +174,54 @@ fn turn_started_at(path: &Path, agent: &str, clock: &mut TurnClock) -> Result<Va
         if let Ok(record) = serde_json::from_slice::<Value>(&line) {
             if let Some(start) = turn_start(&record, agent) {
                 clock.started_at = start;
+                if let Some(turn) = record["payload"]["turn_id"].as_str() {
+                    if clock.turn_id != turn {
+                        clock.dispatch_summary = None;
+                    }
+                    clock.turn_id = turn.into();
+                }
+            }
+            if agent == "codex" && record["type"] == "turn_context" {
+                if let Some(turn) = record["payload"]["turn_id"].as_str() {
+                    clock.turn_id = turn.into();
+                    let context = &record["payload"];
+                    clock.dispatch_summary = crate::egress::dispatch_summary(&json!({
+                        "model":context["model"],"effort":context["effort"],
+                        "serviceTier":context["service_tier"]
+                    }));
+                    if let Some(summary) = &clock.dispatch_summary {
+                        clock
+                            .turn_dispatch_summaries
+                            .insert(turn.into(), summary.clone());
+                    }
+                }
             }
         }
         clock.offset += count as u64;
     }
     Ok(clock.started_at.clone())
+}
+
+pub(super) fn agent_summary(state: &Value) -> Option<Value> {
+    let facts = super::dispatch::catalog_facts(
+        state,
+        &state["metadata"],
+        state["configurationObservedAt"].clone(),
+        "persisted-session-snapshot",
+        Value::Null,
+    );
+    let mut configuration = super::dispatch::current_configuration(&facts);
+    if state["agent"] == "pi"
+        && state["lastMessage"]["provider"].is_string()
+        && state["lastMessage"]["model"].is_string()
+    {
+        configuration["model"] = json!(format!(
+            "{}/{}",
+            string(&state["lastMessage"], "provider"),
+            string(&state["lastMessage"], "model")
+        ));
+    }
+    crate::egress::dispatch_summary(&configuration)
 }
 
 fn read_tail(path: &Path, limit: u64) -> Result<(Vec<Value>, bool)> {

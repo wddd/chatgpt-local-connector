@@ -169,6 +169,51 @@ pub(crate) fn dispatch_receipt(value: &Value) -> bool {
     )
 }
 
+/// The activity surfaces need configuration and source identity, never raw receipts.
+pub(crate) fn dispatch_summary(value: &Value) -> Option<Value> {
+    let known = |value: &Value| {
+        value
+            .as_str()
+            .filter(|text| !text.is_empty() && *text != "unknown")
+            .map(str::to_owned)
+    };
+    let mut summary = json!({});
+    for field in ["model", "effort", "serviceTier"] {
+        if let Some(text) = [
+            &value["turnEvidence"][field],
+            &value["effectiveConfiguration"][field],
+            &value[field],
+            &value["options"][field],
+        ]
+        .into_iter()
+        .find_map(known)
+        {
+            summary[field] = json!(text);
+        }
+    }
+    if summary["effort"].is_null() {
+        if let Some(effort) = known(&value["options"]["thinkingLevel"])
+            .or_else(|| known(&value["options"]["reasoning_effort"]))
+        {
+            summary["effort"] = json!(effort);
+        }
+    }
+    let mut source = json!({});
+    for (field, origin) in [
+        ("id", "sourceId"),
+        ("label", "sourceLabel"),
+        ("kind", "controlSource"),
+    ] {
+        if let Some(text) = known(&value["origin"][origin]) {
+            source[field] = json!(text);
+        }
+    }
+    if !source.as_object().unwrap().is_empty() {
+        summary["controlSource"] = source;
+    }
+    (!summary.as_object().unwrap().is_empty()).then_some(summary)
+}
+
 pub(crate) fn arc_version() -> &'static str {
     static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     VERSION.get_or_init(|| protocol_hash(catalog()))

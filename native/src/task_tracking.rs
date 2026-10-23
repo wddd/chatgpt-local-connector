@@ -236,6 +236,7 @@ pub(crate) struct Timeline {
     pub info: Value,
     pub status: String,
     pub turn: String,
+    pub turn_dispatch_summaries: HashMap<String, Value>,
     turn_started_at: Option<String>,
     #[serde(skip)]
     pub history_loaded: bool,
@@ -739,6 +740,11 @@ impl Timeline {
     }
     /// Project history first, then overlay observations made while the read was in flight.
     pub fn backfill_codex(&mut self, thread: &Value, baseline: u64, observed: u64, at: &str) {
+        for (turn, configuration) in crate::control::turn_configurations(thread) {
+            if let Some(summary) = crate::egress::dispatch_summary(&configuration) {
+                self.turn_dispatch_summaries.insert(turn, summary);
+            }
+        }
         let mut history = Timeline::default();
         let turns = thread["turns"].as_array();
         history.partial = turns.is_none();
@@ -856,6 +862,9 @@ impl Timeline {
         };
         let mut row = self.entry(id, kind, status);
         row["type"] = json!(kind);
+        if kind == "text" && item["phase"].is_string() {
+            row["phase"] = item["phase"].clone();
+        }
         if item["durationMs"].is_number() {
             row["durationMs"] = item["durationMs"].clone();
         }
@@ -966,7 +975,15 @@ impl Timeline {
             .collect::<Vec<_>>())
     }
     pub fn response(&self, session: &str, after: u64) -> Value {
-        json!({"sessionId":session,"status":self.status,"entries":self.entries.iter().enumerate().filter(|(_,r)|r["cursor"].as_u64().unwrap_or(0)>after).map(|(i,r)| { let mut row=r.clone(); if row.get("position").is_none() { row["position"]=json!(i); } row }).collect::<Vec<_>>(),"cursor":self.revision,"coverage":{"state":if self.partial {"partial"} else {"complete"},"truncated":self.partial},"executionEvidence":self.execution_evidence()})
+        let mut result = json!({"sessionId":session,"status":self.status,"entries":self.entries.iter().enumerate().filter(|(_,r)|r["cursor"].as_u64().unwrap_or(0)>after).map(|(i,r)| { let mut row=r.clone(); if row.get("position").is_none() { row["position"]=json!(i); } row }).collect::<Vec<_>>(),"cursor":self.revision,"coverage":{"state":if self.partial {"partial"} else {"complete"},"truncated":self.partial},"executionEvidence":self.execution_evidence()});
+        let summaries = dispatch_summaries(session, &self.turn_dispatch_summaries);
+        if let Some(summary) = summaries.get(&self.turn) {
+            result["dispatchSummary"] = summary.clone();
+        }
+        if !summaries.is_empty() {
+            result["turnDispatchSummaries"] = json!(summaries);
+        }
+        result
     }
     pub fn session(&self, info: &Value, source: &str, pending: Option<Value>) -> Value {
         let recent: Vec<_> = self
@@ -1016,6 +1033,11 @@ impl Timeline {
             json!(self.turn)
         };
         row["turnStartedAt"] = json!(self.turn_started_at);
+        if let Some(summary) =
+            dispatch_summaries(string(info, "id"), &self.turn_dispatch_summaries).get(&self.turn)
+        {
+            row["dispatchSummary"] = summary.clone();
+        }
         row["fallbackHeadline"] = json!(fallback);
         row["recentContent"] = json!(recent.iter().rev().collect::<Vec<_>>());
         // Entries already merge chunks and tool updates by stable id. Preserve
@@ -1073,6 +1095,27 @@ impl Timeline {
         }
         row
     }
+}
+
+pub(crate) fn dispatch_summaries(
+    session: &str,
+    native: &HashMap<String, Value>,
+) -> HashMap<String, Value> {
+    let mut summaries = native.clone();
+    for mut record in crate::dispatch_policy::records(session).unwrap_or_default() {
+        let turn = string(&record, "turnId").to_owned();
+        if turn.is_empty() {
+            continue;
+        }
+        crate::sources::decorate(&mut record["origin"]);
+        // A recorded dispatch owns its configuration. Do not fill missing fields
+        // with a later session default or an unrelated persisted turn context.
+        summaries.remove(&turn);
+        if let Some(summary) = crate::egress::dispatch_summary(&record) {
+            summaries.insert(turn, summary);
+        }
+    }
+    summaries
 }
 fn entry_headline(item: &Value) -> String {
     let kind = string(item, "type");

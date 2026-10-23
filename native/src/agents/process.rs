@@ -269,8 +269,15 @@ impl Process {
             .lock()
             .await
             .timelines
-            .get(string(state, "taskId"))
+            .get_mut(string(state, "taskId"))
         {
+            if !timeline.turn.is_empty() {
+                if let Some(summary) = super::activity::agent_summary(state) {
+                    timeline
+                        .turn_dispatch_summaries
+                        .insert(timeline.turn.clone(), summary);
+                }
+            }
             state["tracking"] = serde_json::to_value(timeline).unwrap_or(Value::Null);
         }
     }

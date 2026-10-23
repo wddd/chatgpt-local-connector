@@ -49,6 +49,8 @@ phase/headline prefer pending/running noninteraction entries over the latest end
 
 recentSteps contains at most five observed types in stable-entry chronological order. Chunks/completion/results neither duplicate entries nor move old ones to the end. Include thinking/command/file/tool/text/interaction, excluding user/plan/error. Transcripts may omit it or return empty.
 
+dispatchSummary optionally describes the latest turn with controlSource (id, label, kind), model, effort, and serviceTier. ARC dispatch records take precedence. Persisted native Codex turn context supplies configuration for turns without ARC dispatch records. Pi and ACP supply known model metadata. Unknown fields are omitted. Local CLI origins use kind:local-cli. UI model labels shorten recognized GPT astra/sol/luna/terra IDs; Fast means serviceTier:priority.
+
 turnStartedAt is dispatch time for ARC Agents and observed turn-start time for Codex app-server. External Codex uses latest task_started. Claude uses latest readable user input. Missing trustworthy starts remain null rather than using phase/session start. External start tracking is independent of the 128 KiB summary tail: first scan locates the current turn, subsequent reads use byte offsets, truncation resets scanning, and incomplete last lines wait for the next read.
 
 Pending interactions, including waiting-permission, remain active and separately marked. timeline:true permits a request but does not guarantee complete coverage. fallbackHeadline uses latest readable text/thinking/command/file, then title/latest user message. recentContent provides three readable summaries. Neither changes phase/headline semantics. open is present only for verified navigation. Activity pushes throttle around one second through Tauri/SSE with GET fallback.
@@ -65,6 +67,8 @@ Pending interactions, including waiting-permission, remain active and separately
 | Open in agent | POST /api/tasks/open with `{"agent":"codex","taskId":"<thread-id>"}`; CLI tasks.open. |
 
 Use sessions[].id: ARC taskId for ACP/Pi, with separate nativeSessionId, or Codex threadId. after defaults to 0 and is an entry-update sequence. Chunk merges, completion, and interaction resolution advance it. Replace entries by ID, retain absent entries, and sort by position. Backfill may update positions. Cursor beyond current sequence returns TIMELINE_CURSOR_EXPIRED and requires a full read. Frontends never process raw chunks.
+
+turnDispatchSummaries optionally maps turn IDs to the same dispatch summary. Merge summaries by turn ID during incremental reads. Text entries preserve a native phase when available, including Codex final_answer; absent phases remain unknown.
 
 ```json
 {
