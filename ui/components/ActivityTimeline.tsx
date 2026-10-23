@@ -110,13 +110,13 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const tool = pendingEntry && timeline ? interactionTool(timeline.entries, pendingEntry) : undefined;
   const requestLabel = pendingSession?.interaction?.kind === "question" ? "timeline.questionRequest"
     : pendingSession?.interaction?.command ? "timeline.commandRequest" : permissionRequestLabel(tool);
-  const subtitle = [agentName, session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop(),
-    duration === undefined ? undefined : durationText(duration * 1000)].filter(Boolean).join(" · ");
+  const project = timeline?.projectName || nativeSession.projectName || session.projectName
+    || session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
   const latestSummary = live ? live.dispatchSummary : timeline?.dispatchSummary ?? nativeSession.dispatchSummary;
   const source = latestSummary?.controlSource;
   const knownSource = source?.id ? connection.sources.find(item => item.id === source.id) : undefined;
   const where = knownSource ? connection.status?.ingresses.find(item => item.id === knownSource.ingressId)?.name || knownSource.connectionName : undefined;
-  const turnCount = timelineGroups(timeline?.entries ?? [], external).length;
+  const turnCount = timelineGroups(timeline?.entries ?? []).length;
   const title = taskTitle || nativeSession.title || session.title || t("timeline.title");
   const footer = showCard && <section className="activity-approval-card" id={cardId} tabIndex={-1} aria-label={t("activity.needsAttention")}>
     <strong>{t(requestLabel, { agent: agentName })}</strong>
@@ -139,16 +139,15 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
         <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
           aria-pressed={expanded} onClick={onToggleWidth} />
       </div>
-      <div className="activity-panel-subline">
-        <span className="activity-panel-meta" title={subtitle}>{subtitle}</span>
-      </div>
       <div className="activity-panel-subline task-detail-dispatch">
+        {project && <span className="activity-panel-meta" title={session.project || project}>{project}</span>}
+        {duration !== undefined && <span className="timeline-meta">{durationText(duration * 1000)}</span>}
         {source && <span className="task-source-chip"><SourceBadge source={source} /><span>{dispatchSourceLabel(source)}</span>{where && <span className="task-source-where">{where}</span>}</span>}
         <SpecPill summary={latestSummary} />{turnCount > 0 && <span className="timeline-meta">{t("timeline.turnCount", { count: turnCount })}</span>}
       </div>
     </header>
     <div className="task-timeline">
-      {((!external && error) || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}
+      {(error || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => {
           const node = event.currentTarget;
@@ -167,14 +166,13 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           if ((event.target as Element).closest("button")) manualDisclosure.current = true;
         }}>
           {timeline?.coverage.state === "partial" && <p className="timeline-meta">{t("timeline.truncated")}</p>}
-          {external && <p className="timeline-meta">{t("timeline.external")}</p>}
           {!timeline && session.timeline && !error && <p role="status">{t("timeline.loading")}</p>}
           {(!session.timeline || !timeline?.entries.length && (external || !!error)) && <section className="activity-session-summary">
             <span className="timeline-meta">{t(`activity.phase.${nativeSession.phase}`)}</span>
             {(nativeSession.recentContent?.length ? nativeSession.recentContent : [activityHeadline(nativeSession, t("timeline.title")).text])
               .map((text, index) => <p key={index}>{text}</p>)}
           </section>}
-          {!external && timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
+          {timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
           <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} partial={timeline?.coverage.state === "partial"} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries} />
         </div>
       </div>

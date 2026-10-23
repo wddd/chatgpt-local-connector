@@ -2,9 +2,9 @@ import type { AgentTimelineEntry } from "../types.ts";
 
 export type TimelineGroup = { id: string; turnId?: string; entries: AgentTimelineEntry[] };
 // Turn ids keep disclosures stable when history arrives before a live entry.
-export function timelineGroups(entries: readonly AgentTimelineEntry[], singleTurn = false): TimelineGroup[] {
+export function timelineGroups(entries: readonly AgentTimelineEntry[]): TimelineGroup[] {
   const groups = new Map<string, TimelineGroup>();
-  const fallback = singleTurn || !entries.some(entry => entry.turnId);
+  const fallback = !entries.some(entry => entry.turnId);
   for (const entry of entries) {
     const turnId = fallback ? undefined : entry.turnId || undefined;
     const id = turnId ? `turn:${turnId}` : "turn:session";

@@ -82,13 +82,15 @@ impl AgentHost {
                 params["cursor"] = cursor.clone();
             }
             let page = control.request("thread/list", params, 15000).await?;
+            let projects = crate::projects::catalog(control).await.unwrap_or_default();
             let rows = page["data"]
                 .as_array()
                 .ok_or("NATIVE_CONVERSATIONS_MISSING")?;
             let data: Vec<_> = rows.iter().map(|row| {
                 let title = row["name"].as_str().filter(|s| !s.is_empty()).unwrap_or_else(|| string(row, "preview"));
                 let mut item = json!({"id":row["id"],"title":title.chars().take(240).collect::<String>(),
-                    "project":row["cwd"],"createdAt":timestamp(&row["createdAt"]),"source":"codex-thread"});
+                    "project":row["cwd"],"projectName":crate::projects::display_name(&projects, string(row,"cwd"), row["projectId"].as_str()),
+                    "createdAt":timestamp(&row["createdAt"]),"source":"codex-thread"});
                 if let Some(open) = self.task_navigation(agent, string(row, "id")) {
                     item["open"] = open;
                 }

@@ -142,7 +142,7 @@ export default function TimelineEntries({ entries, agent, session, now, running 
   // Entries keep their state when work blocks grow or history is backfilled.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const change = (id: string) => (open: boolean) => setExpanded(previous => ({ ...previous, [id]: open }));
-  const groups = timelineGroups(entries, session.source === "transcript");
+  const groups = timelineGroups(entries);
   return <>{groups.map((group, index) => {
     const latest = index === groups.length - 1;
     const matchesSession = !group.turnId || group.turnId === session.turnId;

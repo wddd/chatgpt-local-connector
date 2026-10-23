@@ -431,6 +431,12 @@ impl Control {
         let mut timeline = crate::task_tracking::Timeline::default();
         timeline.backfill_codex(&history["thread"], 0, 0, &now());
         let mut result = timeline.response(thread, 0);
+        let projects = crate::projects::catalog(self).await.unwrap_or_default();
+        result["projectName"] = json!(crate::projects::display_name(
+            &projects,
+            string(&history["thread"], "cwd"),
+            history["thread"]["projectId"].as_str(),
+        ));
         result["readOnly"] = json!(true);
         Ok(result)
     }
@@ -468,10 +474,7 @@ impl Control {
         let timeline = events.timelines.entry(thread.into()).or_default();
         match history {
             Ok(result) => timeline.backfill_codex(&result["thread"], baseline, observed, &now()),
-            Err(_) => {
-                timeline.partial = true;
-                timeline.history_loaded = true;
-            }
+            Err(error) => return Err(error),
         }
         if after > timeline.revision {
             return Err("TIMELINE_CURSOR_EXPIRED: fetch again without after".into());

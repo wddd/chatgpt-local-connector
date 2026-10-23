@@ -70,7 +70,7 @@ export default function AgentConversations({ agent, active }: { agent: string; a
   }, [active, next, loading, error]);
   const sessions = new Map<string, TrackedActivity>(rows.map(conversation => [conversation.id, {
     id: conversation.id, source: conversation.source, title: conversation.title || undefined, phase: "idle", phaseSince: null,
-    headline: "", startedAt: conversation.createdAt, project: conversation.project,
+    headline: "", startedAt: conversation.createdAt, project: conversation.project, projectName: conversation.projectName,
     nativeSessionId: conversation.nativeSessionId ?? undefined, open: conversation.open,
     timeline: true, orderAt: Date.parse(conversation.createdAt ?? "") || 0, conversation: true,
   }]));

@@ -36,7 +36,7 @@ export function ActivityBubbleContent({ session, now, density = "standard", hist
   const phase = session.interaction ? "interaction" : session.phase;
   const phaseLabel = completed ? "activity.completed" : session.interaction ? "activity.waitingConfirm" : `activity.phase.${phase}`;
   const source = session.dispatchSummary?.controlSource;
-  const project = session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+  const project = session.projectName || session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
   const previous = session.recentContent?.filter(text => text !== activityHeadline(session).text).at(-1);
   const duration = elapsed(session.turnStartedAt, session.endedAt ?? now);
   const detail = session.interaction ? t("activity.pendingHint") : completed ? duration === "—" ? undefined : t("activity.totalDuration", { duration }) : previous;

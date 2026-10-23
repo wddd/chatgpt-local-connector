@@ -4,6 +4,10 @@
 
 React renders. Tauri/Rust owns configuration, connections, tasks, authentication, native windows, and updates. The main window shares semantic tokens, preferences, and controls.
 
+Activity model badges retain their intrinsic width. Codex project labels use the native project catalog, shared with project resolution through a 30-second cache. Explicit project IDs take precedence; directory matching requires an unambiguous deepest root. The filesystem directory remains separate from its display name. Task details combine project, duration, source, model, and turn count in one metadata row without repeating the Agent name.
+
+Timeline groups follow native turn IDs regardless of dispatch origin. External Codex history remains readable after the activity monitor no longer retains the session. History read failures stay visible and retryable instead of becoming a cached partial result. Only actual coverage limits show a partial-history notice; external origin alone does not imply missing history.
+
 ## Homepage and layout
 
 The homepage uses the ARC mark and arc-shaped earcup connections in both themes. Five two-color palettes are ARC, cyan/blue, pink/purple, red/orange, and yellow/green. ARC retains orange and blue-purple gradients. Other palettes apply to the control-source and Agent sides.

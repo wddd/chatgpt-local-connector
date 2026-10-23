@@ -78,6 +78,7 @@ export interface AgentInteraction {
   method?: "select" | "confirm" | "input" | "editor";
 }
 export interface AgentActivitySession {
+  projectName?: string | null;
   dispatchSummary?: DispatchSummary;
   origin?: { ingressId?: string; controlSource?: string };
   id: string;
@@ -104,6 +105,7 @@ export interface AgentActivitySnapshot {
   agents: Record<string, { sessions: AgentActivitySession[] }>;
 }
 export interface AgentConversation {
+  projectName?: string | null;
   id: string;
   source: "arc-task" | "codex-thread";
   title?: string | null;
@@ -152,6 +154,7 @@ export interface AgentTrackingExcerpt {
   hashScope: "excerpt";
 }
 export interface AgentTimeline {
+  projectName?: string | null;
   dispatchSummary?: DispatchSummary;
   turnDispatchSummaries?: Record<string, DispatchSummary>;
   turnStatuses?: Record<string, string>;

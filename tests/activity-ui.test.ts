@@ -332,7 +332,6 @@ test("timeline turns keep every work kind together and preserve steering request
   assert.equal(turn.prompt, prompt); assert.equal(turn.final, answer);
   assert.deepEqual(turn.work.map(item => item.id), ["cmd", "think", "steering"]);
   assert.equal(timelineGroups([...entries, { ...prompt, id: "next", turnId: "next" }]).length, 2);
-  assert.equal(timelineGroups([...entries, { ...prompt, id: "next", turnId: "next" }], true).length, 1);
   assert.equal(timelineGroups(entries.map(item => ({ ...item, turnId: "" }))).length, 1);
 });
 

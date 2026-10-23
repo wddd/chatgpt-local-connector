@@ -942,8 +942,7 @@ button.activity-bubble:active { transform: scale(.97); }
 .activity-bubble .activity-phase > .activity-headline { flex: 1; min-width: 0; height: 17px; line-height: 17px; font-size: 11.5px; }
 .activity-detail-line { min-width: 0; height: 17px; line-height: 17px; font-size: 11px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .activity-spec-row { display: flex; align-items: center; gap: 4px; min-width: 0; height: 17px; font-size: 10px; }
-.activity-spec { display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 65%; border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 0 5px; color: var(--text-secondary); font-size: 10px; line-height: 15px; white-space: nowrap; }
-.activity-spec > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.activity-spec { display: inline-flex; flex: none; align-items: center; gap: 3px; border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 0 5px; color: var(--text-secondary); font-size: 10px; line-height: 15px; white-space: nowrap; }
 .activity-spec > span[role="img"] { display: flex; flex: none; color: var(--warning); }
 .activity-spec .icon { width: 12px; height: 12px; }
 .activity-project { min-width: 0; padding: 0 4px; line-height: 16px; background: var(--surface-subtle); border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); }

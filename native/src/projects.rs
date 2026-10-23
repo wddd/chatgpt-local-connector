@@ -25,6 +25,51 @@ pub async fn list(c: &Control) -> Result<Vec<Value>> {
         }
     }
 }
+pub(crate) async fn catalog(c: &Control) -> Result<Vec<Value>> {
+    let mut cache = c.projects.lock().await;
+    if cache
+        .as_ref()
+        .is_none_or(|(at, _)| at.elapsed().as_secs() >= 30)
+    {
+        *cache = Some((std::time::Instant::now(), list(c).await?));
+    }
+    Ok(cache.as_ref().unwrap().1.clone())
+}
+
+pub(crate) fn display_name<'a>(
+    projects: &'a [Value],
+    directory: &str,
+    project_id: Option<&str>,
+) -> Option<&'a str> {
+    if let Some(id) = project_id.filter(|id| !id.is_empty()) {
+        return projects
+            .iter()
+            .find(|project| project["id"] == id)
+            .and_then(|project| project["name"].as_str());
+    }
+    let directory = Path::new(directory);
+    let candidates: Vec<_> = projects
+        .iter()
+        .filter_map(|project| {
+            let depth = project["roots"]
+                .as_array()?
+                .iter()
+                .filter_map(|root| root["path"].as_str())
+                .filter(|root| !root.is_empty() && directory.starts_with(root))
+                .map(|root| Path::new(root).components().count())
+                .max()?;
+            Some((depth, project))
+        })
+        .collect();
+    let depth = candidates.iter().map(|(depth, _)| *depth).max()?;
+    let mut matches = candidates.iter().filter(|(value, _)| *value == depth);
+    let project = matches.next()?.1;
+    if matches.next().is_some() {
+        return None;
+    }
+    project["name"].as_str()
+}
+
 pub async fn resolve(c: &Control, id: &str) -> Result<Value> {
     if id.is_empty() {
         return Err("PROJECT_REQUIRED_FOR_RELATIVE_PATH".into());
@@ -40,16 +85,7 @@ pub async fn resolve(c: &Control, id: &str) -> Result<Value> {
                 .into_owned(),
         )
     } else {
-        let catalog = {
-            let mut cache = c.projects.lock().await;
-            if cache
-                .as_ref()
-                .is_none_or(|(at, _)| at.elapsed().as_secs() >= 30)
-            {
-                *cache = Some((std::time::Instant::now(), list(c).await?));
-            }
-            cache.as_ref().unwrap().1.clone()
-        };
+        let catalog = catalog(c).await?;
         let exact = catalog.iter().find(|p| p["id"] == id);
         let candidates = if let Some(p) = exact {
             vec![p]

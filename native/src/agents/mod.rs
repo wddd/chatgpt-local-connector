@@ -491,9 +491,21 @@ impl AgentHost {
                 activity::insert(&mut agents, &agent, session);
             }
         }
+        let projects = if agents.contains_key("codex") {
+            crate::projects::catalog(control).await.unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         for (agent_id, agent) in agents.iter_mut() {
             if agent_id == "codex" {
                 for session in agent["sessions"].as_array_mut().into_iter().flatten() {
+                    if let Some(name) = crate::projects::display_name(
+                        &projects,
+                        string(session, "project"),
+                        session["projectId"].as_str(),
+                    ) {
+                        session["projectName"] = json!(name);
+                    }
                     if let Some(record) = recorded.iter().find(|r| {
                         r["threadId"] == session["id"] || r["task"]["threadId"] == session["id"]
                     }) {
@@ -530,16 +542,16 @@ impl AgentHost {
         let external = self.activity.lock().await.external(session);
         if !task_path(session)?.exists() {
             if let Some(external) = external {
-                if external.agent == "codex" {
-                    return control.external_timeline(session).await;
+                if external.agent == "claude" {
+                    let session = session.to_owned();
+                    return tokio::task::spawn_blocking(move || {
+                        activity::claude_timeline(&external.path, &session)
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
                 }
-                let session = session.to_owned();
-                return tokio::task::spawn_blocking(move || {
-                    activity::claude_timeline(&external.path, &session)
-                })
-                .await
-                .map_err(|e| e.to_string())?;
             }
+            return control.external_timeline(session).await;
         }
         let process = self.processes.lock().await.get(session).cloned();
         let state = if let Some(p) = process {
