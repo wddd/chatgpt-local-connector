@@ -433,181 +433,7 @@ fn event(b: &Binding, d: &Delivery) -> Value {
     } else {
         json!({"hint":"Read the result and review its changes.","via":"query","op":"codex_read","args":{"threadId":b.thread_id}})
     };
-    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":b.title,"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":format!("ARC task {kind}."),"interaction":d.interaction,"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":d.task_error,"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
-}
-fn literal(value: &Value) -> String {
-    value
-        .as_str()
-        .map(str::to_owned)
-        .unwrap_or_else(|| value.to_string())
-}
-fn question_lines(question: &Value) -> String {
-    let text = question
-        .get("question")
-        .or_else(|| question.get("title"))
-        .unwrap_or(&Value::Null);
-    let options = question["options"]
-        .as_array()
-        .filter(|v| !v.is_empty())
-        .map(|options| {
-            options
-                .iter()
-                .enumerate()
-                .map(|(i, option)| format!("{}) {}", i + 1, literal(option)))
-                .collect::<Vec<_>>()
-                .join(" | ")
-        })
-        .unwrap_or_else(|| "(free text)".into());
-    // Option objects retain labels, descriptions and any upstream extension fields.
-    let mut lines = format!("question: {}\noptions: {options}", literal(text));
-    let mut extra = question.clone();
-    if let Some(fields) = extra.as_object_mut() {
-        for key in ["question", "title", "options"] {
-            fields.remove(key);
-        }
-        if !fields.is_empty() {
-            lines.push_str(&format!("\nquestionDetails: {extra}"));
-        }
-    }
-    lines
-}
-fn response_call(b: &Binding, r: &Value) -> Option<Value> {
-    if r["canRespond"] == false {
-        return None;
-    }
-    if r["respondToken"].is_string() && (b.agent.is_empty() || b.agent == "codex") {
-        return Some(json!({"op":"codex_respond","args":{"respondToken":r["respondToken"]}}));
-    }
-    if r["next"]["via"] == "act" && r["next"]["args"].is_object() {
-        return Some(json!({"op":r["next"]["op"],"args":r["next"]["args"]}));
-    }
-    let key = r.get("responseId").or_else(|| r.get("id"))?;
-    if !b.agent.is_empty() && b.agent != "codex" {
-        Some(
-            json!({"op":"agent_respond","args":{"agent":b.agent,"taskId":b.thread_id,"interactionId":r.get("interactionId").unwrap_or(key),"backendSession":r["backendSession"]}}),
-        )
-    } else if !r["backendSession"].is_null() {
-        Some(
-            json!({"op":"codex_respond","args":{"backendSession":r["backendSession"],"id":literal(key)}}),
-        )
-    } else {
-        None
-    }
-}
-fn interaction_text(b: &Binding, r: &Value) -> String {
-    let respond = response_call(b, r)
-        .map(|call| format!("respond={call}"))
-        .unwrap_or_else(|| "respond: unavailable (handle in task owner)".into());
-    let method = string(r, "method");
-    let mut params = r.get("params").cloned().unwrap_or_else(|| r.clone());
-    if let Some(fields) = params.as_object_mut() {
-        for key in [
-            "threadId",
-            "turnId",
-            "questionItemId",
-            "id",
-            "backendSession",
-            "interactionId",
-        ] {
-            fields.remove(key);
-        }
-    }
-    if method == "request_user_input_async" {
-        return format!(
-            "{respond}\n{}\nresult: {{\"answer\":\"<answer>\"}}",
-            question_lines(&params)
-        );
-    }
-    if method == "item/tool/requestUserInput" {
-        let mut answers = serde_json::Map::new();
-        let mut blocks = Vec::new();
-        for q in params["questions"].as_array().into_iter().flatten() {
-            answers.insert(string(q, "id").into(), json!({"answers":["<answer>"]}));
-            blocks.push(format!("{respond}\n{}", question_lines(q)));
-        }
-        blocks.push(format!(
-            "result (submit all question IDs together): {}",
-            json!({"answers":answers})
-        ));
-        if let Some(fields) = params.as_object_mut() {
-            fields.remove("questions");
-            if !fields.is_empty() {
-                blocks.push(format!("details: {params}"));
-            }
-        }
-        return blocks.join("\n");
-    }
-    let mut lines = format!("{respond}\nmethod: {method}\napproval/input: {params}");
-    if matches!(
-        method,
-        "item/commandExecution/requestApproval" | "item/fileChange/requestApproval"
-    ) {
-        let decisions = params
-            .get("availableDecisions")
-            .filter(|v| v.is_array())
-            .cloned()
-            .unwrap_or_else(|| json!(["accept", "acceptForSession", "decline", "cancel"]));
-        lines.push_str(&format!(
-            "\ndecisions: {decisions}\nresult: {{\"decision\":\"<decision>\"}}"
-        ));
-    } else if method == "item/permissions/requestApproval" {
-        lines.push_str("\nresult fields: permissions (approved subset of requested permissions), scope (turn|session)");
-    } else if method == "mcpServer/elicitation/request" {
-        lines.push_str("\nresult fields: action (accept|decline|cancel), content (values matching requestedSchema when accepted)");
-    }
-    lines
-}
-fn changes_text(b: &Binding, changes: &Value) -> Vec<String> {
-    let query = json!({"op":"codex_changes","args":{"threadId":b.thread_id,"turnId":b.turn_id}});
-    if changes.is_null() || !changes["unavailable"].is_null() {
-        return vec![
-            format!(
-                "changes: unavailable ({})",
-                changes["unavailable"]
-                    .as_str()
-                    .unwrap_or("not captured for this event")
-            ),
-            format!("query={query}"),
-        ];
-    }
-    let stats = &changes["summary"];
-    let fallback = changes["fallback"] == true;
-    let mut lines = vec![format!(
-        "changes (truncated={}, scope={}): {} files, +{} -{}, {} binary/unreadable",
-        if changes["truncated"] == true {
-            "yes"
-        } else {
-            "no"
-        },
-        if fallback {
-            "current-workspace; turn baseline unavailable"
-        } else {
-            "workspace since turn start"
-        },
-        stats["files"],
-        stats["added"],
-        stats["removed"],
-        stats["binaryOrUnreadable"]
-    )];
-    lines.push("attribution: may include other tasks and pre-existing dirty files; not exclusively attributable to this task".into());
-    lines.push(format!(
-        "changes observedAt={}",
-        string(changes, "observedAt")
-    ));
-    if !fallback {
-        lines.push(format!("commits: {}", changes["commitCount"]));
-        for commit in changes["commits"].as_array().into_iter().flatten() {
-            lines.push(format!(
-                "{} {}",
-                string(commit, "sha").chars().take(8).collect::<String>(),
-                string(commit, "title")
-            ));
-        }
-    }
-    if fallback || changes["truncated"] == true {
-        lines.push(format!("query={query}"));
-    }
-    lines
+    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":b.title,"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":d.task_error,"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
 }
 fn empty_answered_completion(b: &Binding, observed: &Value) -> bool {
     observed["state"] == "completed"
@@ -621,37 +447,75 @@ fn empty_answered_completion(b: &Binding, observed: &Value) -> bool {
                 .iter()
                 .any(|d| d.interaction["method"] == "request_user_input_async"))
 }
-fn message(b: &Binding) -> String {
-    b.deliveries.iter().map(|d| {
-        let event = event(b, d);
-        let agent = !b.agent.is_empty() && b.agent != "codex";
-        let mut lines = vec![format!("[ARC] {} · {} · {}", string(&event,"kind"), b.project, b.title),
-            format!("{}={} turn={} event={}", if agent {"task"} else {"thread"}, b.thread_id, b.turn_id, d.event_id)];
-        if agent { lines.push(format!("agent={}",b.agent)); }
-        if !d.dispatches.is_null() { lines.push(format!("dispatches: {}",d.dispatches)); }
-        for input in d.external_user_inputs.as_array().into_iter().flatten().take(5) {
-            lines.push(format!("external user input [{}]: {}", input["timestamp"], string(input,"text").chars().take(240).collect::<String>()));
-        }
-        match string(&event,"kind") {
-            "completed" => {
-                let text = d.final_response.as_str().or_else(|| d.final_response["text"].as_str());
-                let truncated=text.is_none_or(|text|text.chars().count()>2000 || d.final_response["textTruncated"]==true);
-                if let Some(text)=text {lines.push(format!("final (truncated={}):\n{}",if truncated{"yes"}else{"no"},text.chars().take(2000).collect::<String>()));}
-                else {lines.push("final: unavailable".into());}
-                if truncated {
-                    let call=if agent {json!({"op":"agent_read","args":{"agent":b.agent,"taskId":b.thread_id}})}else{json!({"op":"codex_items","args":{"threadId":b.thread_id,"turnId":b.turn_id,"latest":true,"limit":1,"length":65536}})};
-                    lines.push(format!("query={call}"));
+// Only dispatch metadata belongs in pushed text. Task output remains queryable.
+fn receipt_line(value: &str, limit: usize) -> String {
+    let text = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.chars().count() > limit {
+        format!("{}…", text.chars().take(limit - 1).collect::<String>())
+    } else {
+        text
+    }
+}
+fn receipt(b: &Binding, d: &Delivery) -> String {
+    let (icon, state) = match d.task_state.as_str() {
+        "completed" => ("✓", "completed"),
+        "failed" => ("✗", "failed"),
+        "cancelled" | "interrupted" => ("■", "interrupted"),
+        _ if d.state == "waiting for approval" => ("?", "approval"),
+        _ => ("?", "needs-input"),
+    };
+    let dispatch = d
+        .dispatches
+        .as_array()
+        .and_then(|rows| rows.iter().rev().find(|row| row["turnId"] == b.turn_id));
+    let mut configuration = Vec::new();
+    if let Some(row) = dispatch {
+        let effective = &row["effectiveConfiguration"];
+        for key in ["model", "effort", "serviceTier"] {
+            if let Some(value) = effective[key].as_str().or_else(|| row[key].as_str()) {
+                if !value.is_empty() {
+                    configuration.push(receipt_line(
+                        if key == "serviceTier" && matches!(value, "fast" | "priority") {
+                            "Fast"
+                        } else {
+                            value
+                        },
+                        100,
+                    ));
                 }
-                if !agent {lines.extend(changes_text(b,&d.changes));}
-            },
-            "failed" | "interrupted" => {
-                lines.push(format!("error: {}", if d.task_error.is_null() {"(not provided by task owner)".into()} else {literal(&d.task_error)}));
-                if !b.retry["status"].is_null() || b.retry["attempts"].as_u64().unwrap_or(0)>0 { lines.push(format!("retry: attempts={} status={}{}",b.retry["attempts"].as_u64().unwrap_or(0),b.retry["status"].as_str().unwrap_or("none"),if b.retry["reason"].is_null(){String::new()}else{format!(" reason={}",literal(&b.retry["reason"]))})); }
-            },
-            _ => lines.push(interaction_text(b, &d.interaction)),
+            }
         }
-        lines.join("\n")
-    }).collect::<Vec<_>>().join("\n\n")
+    }
+    let duration = dispatch
+        .and_then(|row| row["terminal"]["observedDurationMs"].as_u64())
+        .map(|ms| format!(" · {}m{}s", ms / 60000, ms / 1000 % 60))
+        .unwrap_or_default();
+    let project = b
+        .project
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("");
+    let agent = if b.agent.is_empty() {
+        "codex"
+    } else {
+        &b.agent
+    };
+    let config = if configuration.is_empty() {
+        String::new()
+    } else {
+        format!(" · {}", configuration.join(" "))
+    };
+    format!("⟢ ARC receipt — automated, not a user message\n{icon} {state} · {}{duration}\n{}\n{}{config} · ref {}",
+        receipt_line(project, 100), receipt_line(if b.title.is_empty() { "Untitled task" } else { &b.title }, 100),
+        receipt_line(agent, 100), b.thread_id)
+}
+fn message(b: &Binding) -> String {
+    b.deliveries
+        .iter()
+        .map(|d| receipt(b, d))
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 fn arguments(session: &str, message: &str) -> Vec<String> {
     ["-p", message, "--cloud", session, "--output-format", "json"]
@@ -884,12 +748,6 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
         return Ok(());
     };
     *b = current;
-    if let Some(title) = observation["title"]
-        .as_str()
-        .filter(|title| !title.is_empty())
-    {
-        b.title = title.into();
-    }
     continuation::adopt(dir, b, observation)?;
     let mut resolved = false;
     if observation["state"] != "unconfirmed" {
@@ -969,7 +827,13 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
             },
             external_user_inputs: observation["externalUserInputs"].clone(),
             changes: observation["changes"].clone(),
-            dispatches: observation["dispatches"].clone(),
+            dispatches: if observation["dispatches"].is_null() {
+                crate::dispatch_policy::records(&b.thread_id)
+                    .map(|rows| json!(rows))
+                    .unwrap_or(Value::Null)
+            } else {
+                observation["dispatches"].clone()
+            },
             task_error: if matches!(string(observation, "state"), "failed" | "cancelled") {
                 observation["error"].clone()
             } else {
@@ -1433,40 +1297,6 @@ fn queued(d: &mut Delivery, reason: &str) {
         );
     }
 }
-fn health(b: &Binding, d: &Delivery, wakes: usize, tokens: u64, capacity: u64) -> String {
-    let mut parts = Vec::new();
-    if d.urgent() {
-        let count = b
-            .deliveries
-            .iter()
-            .take_while(|row| row.event_id != d.event_id)
-            .filter(|row| row.urgent() && row.state == d.state)
-            .count()
-            + 1;
-        parts.push(format!(
-            "{} number {count} in this turn",
-            if d.state == "waiting for input" {
-                "question"
-            } else {
-                "approval"
-            }
-        ));
-    }
-    parts.push(format!(
-        "{wakes} wakeup attempts for this target in the last 10 minutes, including retries"
-    ));
-    if let (Some(op), Some(at)) = (b.caused_by["op"].as_str(), b.caused_by["at"].as_str()) {
-        if let Ok(time) = chrono::DateTime::parse_from_rfc3339(at) {
-            parts.push(format!(
-                "Triggered by {} {op}",
-                time.with_timezone(&chrono::Local).format("%H:%M")
-            ));
-        }
-    }
-    parts.push(format!("Bucket remaining {tokens}/{capacity}"));
-    parts.join(" · ")
-}
-
 // One target bucket and one scheduling path for every kind. Retried events have
 // already paid; new events join a retry only when a token is available for them.
 async fn flush(
@@ -1645,9 +1475,6 @@ async fn flush(
         let charged = selected
             .iter()
             .any(|(bi, di, _)| !all[*bi].deliveries[*di].token_charged);
-        let throttled = selected.iter().any(|(bi, di, _)| {
-            all[*bi].deliveries[*di].timing.queue_reason.as_deref() == Some("token-wait")
-        });
         let batch = id();
         let mut kinds = std::collections::BTreeMap::new();
         let mut thread_ids = std::collections::BTreeSet::new();
@@ -1658,7 +1485,7 @@ async fn flush(
                 .or_insert(0) += 1;
             thread_ids.insert(b.thread_id.clone());
         }
-        let (remaining, wakes) = {
+        {
             let t = state.target(&source_id, channel, &target, now, settings);
             if charged {
                 t.tokens -= 1;
@@ -1671,14 +1498,7 @@ async fn flush(
                 status: "sending".into(),
                 charged,
             });
-            (
-                t.tokens,
-                t.batches
-                    .iter()
-                    .filter(|b| b.at > now.saturating_sub(600) && b.status != "cancelled")
-                    .count(),
-            )
-        };
+        }
         let mut reserved = Vec::<Binding>::new();
         let mut blocks = Vec::new();
         for (bi, di, digest) in &selected {
@@ -1699,22 +1519,7 @@ async fn flush(
             single.deliveries = vec![b.deliveries[*di].clone()];
             single.channel = channel;
             single.target = Some(target.clone());
-            if !*digest {
-                let mut block = message(&single);
-                if throttled || remaining <= (governance::capacity(settings) / 5).max(1) {
-                    block.push_str(&format!(
-                        "\n{}",
-                        health(
-                            b,
-                            &b.deliveries[*di],
-                            wakes,
-                            remaining,
-                            governance::capacity(settings)
-                        )
-                    ));
-                }
-                blocks.push(block);
-            }
+            blocks.push(message(&single));
             if let Some(r) = reserved
                 .iter_mut()
                 .find(|r| r.thread_id == b.thread_id && r.turn_id == b.turn_id)
@@ -1723,40 +1528,6 @@ async fn flush(
             } else {
                 reserved.push(single);
             }
-        }
-        for r in &reserved {
-            let ds = r.deliveries.iter().filter(|d| d.digest).collect::<Vec<_>>();
-            if let Some(last) = ds.last() {
-                let mut counts = std::collections::BTreeMap::<String, usize>::new();
-                for d in &ds {
-                    *counts
-                        .entry(string(&event(r, d), "kind").into())
-                        .or_default() += 1;
-                }
-                let full = all
-                    .iter()
-                    .find(|b| b.thread_id == r.thread_id && b.turn_id == r.turn_id)
-                    .unwrap();
-                blocks.push(format!(
-                    "[ARC] digest · {} · {}\nthread={} turn={}\ncounts: {}{}",
-                    r.project,
-                    r.title,
-                    r.thread_id,
-                    r.turn_id,
-                    json!(counts),
-                    if throttled || remaining <= (governance::capacity(settings) / 5).max(1) {
-                        format!(
-                            "\n{}",
-                            health(full, last, wakes, remaining, governance::capacity(settings))
-                        )
-                    } else {
-                        String::new()
-                    }
-                ));
-            }
-        }
-        if throttled {
-            blocks.push(format!("Throttled. Merged {} events", selected.len()));
         }
         batches.push((reserved, blocks.join("\n\n")));
     }
@@ -2369,7 +2140,7 @@ mod tests {
         b
     }
     #[tokio::test]
-    async fn empty_async_completion_is_suppressed_and_changes_are_bounded_in_message() {
+    async fn empty_async_completion_is_suppressed_and_changes_stay_out_of_message() {
         let dir = Sandbox::new();
         let mut b = fixture(&dir.0);
         let fake = Fake::success();
@@ -2398,19 +2169,17 @@ mod tests {
         .await
         .unwrap();
         let body = message(&b);
-        assert!(body.contains("final (truncated=no):\ndone"));
-        assert!(body.contains("abcdef12 feat: sample"));
-        assert!(body.contains("2 files, +4 -1"));
-        assert!(body.contains("other tasks"));
-        assert!(body.contains("codex_changes"));
-        assert!(body.contains("truncated=yes"));
+        assert!(body.contains("✓ completed"));
+        assert_eq!(body.lines().count(), 4);
+        assert!(!body.contains("done"));
+        assert!(!body.contains("abcdef12"));
+        assert_eq!(b.deliveries[0].changes, changes);
+        assert_eq!(event(&b, &b.deliveries[0])["finalResponse"]["text"], "done");
         b.deliveries[0].changes = json!({"unavailable":"not a repository"});
-        assert!(message(&b).contains("not a repository"));
+        assert_eq!(message(&b), body);
         b.deliveries[0].changes = changes;
         b.deliveries[0].changes["fallback"] = json!(true);
-        let body = message(&b);
-        assert!(body.contains("turn baseline unavailable"));
-        assert!(!body.contains("abcdef12"));
+        assert_eq!(message(&b), body);
     }
     #[tokio::test]
     async fn bucket_refill_batches_interactions_and_survives_reload() {
@@ -2446,9 +2215,9 @@ mod tests {
         flush(&fake, &dir.0, &lock, 160, 30, &s).await.unwrap();
         let calls = fake.calls.lock().unwrap();
         assert_eq!(calls.len(), 2);
-        assert!(calls[1][1].contains("Throttled. Merged 2 events"));
-        assert!(calls[1][1].contains("Bucket remaining 0/1"));
-        assert!(calls[1][1].contains("codex_send"));
+        assert_eq!(calls[1][1].matches("⟢ ARC receipt").count(), 2);
+        assert!(!calls[1][1].contains("Bucket remaining"));
+        assert!(!calls[1][1].contains("codex_send"));
         let state = State::load(&dir.0).unwrap();
         assert_eq!(state.targets[0].tokens, 0);
         assert_eq!(state.targets[0].batches[1].kinds["needs-input"], 1);
@@ -2477,7 +2246,15 @@ mod tests {
         let success = Fake::success();
         flush(&success, &dir.0, &lock, 132, 30, &s).await.unwrap();
         assert_eq!(success.calls.lock().unwrap().len(), 1);
-        assert!(success.calls.lock().unwrap()[0][1].contains(&event));
+        assert!(!success.calls.lock().unwrap()[0][1].contains(&event));
+        assert_eq!(
+            binding(&dir.0, "retry", "turn-1")
+                .unwrap()
+                .unwrap()
+                .deliveries[0]
+                .event_id,
+            event
+        );
         assert_eq!(
             binding(&dir.0, "fresh", "turn-1")
                 .unwrap()
@@ -2578,7 +2355,7 @@ mod tests {
         assert!(fake.calls.lock().unwrap().is_empty());
         flush(&fake, &dir.0, &lock, 3700, 0, &s).await.unwrap();
         assert_eq!(fake.calls.lock().unwrap().len(), 1);
-        assert!(fake.calls.lock().unwrap()[0][1].contains("[ARC] digest"));
+        assert!(fake.calls.lock().unwrap()[0][1].contains("⟢ ARC receipt"));
         assert_eq!(
             inbox_in(&dir.0, "claude", &[], true, Some("session_test")).unwrap()["events"][0]
                 ["target"],
@@ -2742,16 +2519,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn actionable_notification_rendering() {
+    async fn compact_notification_rendering() {
         let dir = Sandbox::new();
         let mut b = fixture(&dir.0);
         let fake = Fake::success();
+        b.title = "Dispatch title".into();
+        persist(&dir.0, &b).unwrap();
         let request = json!({"id":"[\"desktop\",\"thread-1\",0]","owner":"desktop","backendSession":"old-session","method":"request_user_input_async","canRespond":true,"params":{"question":"原文\n第二行","options":["保持原样","继续"]}});
         process(
             &fake,
             &dir.0,
             &mut b,
-            &json!({"state":"interaction-required","interaction":[request]}),
+            &json!({"state":"interaction-required","title":"SECRET_GENERATED_TITLE","interaction":[request]}),
         )
         .await
         .unwrap();
@@ -2773,38 +2552,42 @@ mod tests {
         )
         .unwrap());
         let body = message(&b);
-        assert!(body.starts_with("[ARC] needs-input · "));
-        assert!(body.contains("question: 原文\n第二行\noptions: 1) 保持原样 | 2) 继续"));
-        let call: Value = serde_json::from_str(
-            body.lines()
-                .find_map(|s| s.strip_prefix("respond="))
-                .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(call["args"]["id"], request["id"]);
-        assert_eq!(call["args"]["backendSession"], "old-session");
-        let sync = json!({"id":"sync","backendSession":"session","method":"item/tool/requestUserInput","params":{"questions":[{"id":"a","question":"甲","options":[]},{"id":"b","question":"乙"}]}});
-        let text = interaction_text(&b, &sync);
-        assert_eq!(text.matches("respond=").count(), 2);
-        assert_eq!(text.matches("options: (free text)").count(), 2);
-        assert!(text.contains("submit all question IDs together"));
-        let approval = json!({"id":"approval","backendSession":"session","method":"item/commandExecution/requestApproval","params":{"command":"echo \"quoted\"","availableDecisions":["decline","cancel"]}});
-        assert!(interaction_text(&b, &approval).contains("decisions: [\"decline\",\"cancel\"]"));
-        process(&fake, &dir.0, &mut b, &json!({"state":"completed","finalResponse":{"text":"🙂".repeat(2001),"textTruncated":false}})).await.unwrap();
-        let mut terminal = b.clone();
-        terminal.deliveries = vec![b.deliveries.last().unwrap().clone()];
-        let text = message(&terminal);
-        assert!(text.contains("final (truncated=yes):"));
-        assert_eq!(text.matches('🙂').count(), 2000);
-        assert!(text.contains("query={"));
-        terminal.deliveries[0].final_response = json!({"text":"完整原文\n下一行"});
-        assert!(message(&terminal).contains("final (truncated=no):\n完整原文\n下一行"));
-        for state in ["failed", "cancelled"] {
-            terminal.deliveries[0].task_state = state.into();
-            terminal.deliveries[0].task_error = json!("原始错误\n详情");
-            assert!(message(&terminal).ends_with("error: 原始错误\n详情"));
+        assert!(body.contains("? needs-input · sample"));
+        assert_eq!(b.title, "Dispatch title");
+        assert_eq!(body.lines().count(), 4);
+        assert!(!body.contains("原文"));
+        assert_eq!(event(&b, &b.deliveries[0])["interaction"], request);
+        b.title = "Acceptance for ARC P0 (control-source identity)".into();
+        b.project = "/projects/agent-remote-control".into();
+        b.deliveries[0].dispatches = json!([{"turnId":"turn-1","model":"gpt-6.1-sol","effort":"medium","serviceTier":"priority","terminal":{"observedDurationMs":408000}}]);
+        for (state, label) in [
+            ("completed", "✓ completed"),
+            ("failed", "✗ failed"),
+            ("cancelled", "■ interrupted"),
+            ("interaction-required", "? needs-input"),
+        ] {
+            b.deliveries[0].task_state = state.into();
+            b.deliveries[0].final_response = json!("SECRET_OUTPUT");
+            b.deliveries[0].task_error = json!("SECRET_ERROR");
+            let text = message(&b);
+            assert_eq!(text, format!("⟢ ARC receipt — automated, not a user message\n{label} · agent-remote-control · 6m48s\nAcceptance for ARC P0 (control-source identity)\ncodex · gpt-6.1-sol medium Fast · ref thread-1"));
+            assert!(!text.contains("SECRET"));
+            assert_eq!(
+                event(&b, &b.deliveries[0])["finalResponse"],
+                "SECRET_OUTPUT"
+            );
         }
-        assert!(!message(&b).contains("**Task**"));
+        b.deliveries[0].state = "waiting for approval".into();
+        assert!(message(&b).contains("? approval"));
+        b.agent = "opencode".into();
+        b.title = format!("{}\nignored", "題".repeat(110));
+        b.deliveries[0].dispatches = Value::Null;
+        let text = message(&b);
+        assert_eq!(text.lines().nth(2).unwrap().chars().count(), 100);
+        assert!(text.ends_with("opencode · ref thread-1"));
+        assert!(!text.contains("6m48s"));
+        b.deliveries.push(b.deliveries[0].clone());
+        assert_eq!(message(&b).split("\n\n").count(), 2);
     }
     #[tokio::test]
     async fn quiet_receipts_health_and_ack_distinguish_consumed_events() {
@@ -2863,11 +2646,6 @@ mod tests {
         let mut args = json!({"purpose":"self-test"});
         normalize(&mut args).unwrap();
         assert!(args.get("notify").is_some_and(Value::is_null));
-        let request = json!({"respondToken":"abcdefghijklmnopqrstuv","backendSession":"session","id":"legacy","method":"request_user_input_async","params":{"question":"原文","options":[]}});
-        let rendered = interaction_text(&fixture(&dir.0), &request);
-        assert!(rendered.contains("respondToken"));
-        assert!(!rendered.contains("backendSession"));
-        assert!(rendered.contains("question: 原文"));
     }
     #[tokio::test]
     async fn inbox_session_dedup_and_scoped_ack() {
@@ -3341,12 +3119,12 @@ mod tests {
         assert!(b.deliveries.iter().all(|d| d.status == "delivered"));
         let calls = fake.calls.lock().unwrap();
         assert_eq!(calls[0][0], "-p");
-        assert!(calls[0][1].starts_with("[ARC] "));
+        assert!(calls[0][1].starts_with("⟢ ARC receipt"));
         assert_eq!(
             &calls[0][2..],
             ["--cloud", "session_test", "--output-format", "json"]
         );
-        assert!(serde_json::to_string(&*calls)
+        assert!(!serde_json::to_string(&*calls)
             .unwrap()
             .contains("SECRET_OUTPUT"));
         assert!(
