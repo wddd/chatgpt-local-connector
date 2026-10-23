@@ -237,7 +237,10 @@ pub(crate) struct Timeline {
     pub status: String,
     pub turn: String,
     pub turn_dispatch_summaries: HashMap<String, Value>,
+    turn_statuses: HashMap<String, String>,
     turn_started_at: Option<String>,
+    #[serde(skip)]
+    turn_status_observations: HashMap<String, u64>,
     #[serde(skip)]
     pub history_loaded: bool,
     #[serde(skip)]
@@ -247,6 +250,24 @@ pub(crate) struct Timeline {
     buffers: HashMap<String, String>,
 }
 impl Timeline {
+    fn record_turn_status(&mut self) {
+        if self.turn.is_empty() {
+            return;
+        }
+        self.turn_status_observations
+            .insert(self.turn.clone(), self.observed_events);
+        let status = match self.status.as_str() {
+            "running" | "inProgress" => "running",
+            "completed" => "completed",
+            "failed" => "failed",
+            "cancelled" | "interrupted" => "cancelled",
+            _ => {
+                self.turn_statuses.remove(&self.turn);
+                return;
+            }
+        };
+        self.turn_statuses.insert(self.turn.clone(), status.into());
+    }
     fn put(&mut self, mut row: Value, at: &str) {
         self.partial |= row["truncated"] == true;
         let index = self.entries.iter().position(|r| r["id"] == row["id"]);
@@ -338,6 +359,7 @@ impl Timeline {
     pub fn finish(&mut self, status: &str, at: &str) {
         self.end_chunk(at);
         self.status = status.into();
+        self.record_turn_status();
         self.buffers.clear();
         let ids: Vec<_> = self
             .entries
@@ -392,6 +414,7 @@ impl Timeline {
                 self.turn = string(msg, "turnId").into();
                 self.turn_started_at = Some(at.into());
                 self.status = "running".into();
+                self.record_turn_status();
                 let (text, truncated) = cut(&redact(string(msg, "text")), MAX_TEXT);
                 self.partial |= truncated;
                 self.put(json!({"id":format!("{}:user:{}",self.turn,self.revision+1),"type":"user","status":"completed","text":text,"truncated":truncated}), at);
@@ -520,6 +543,7 @@ impl Timeline {
                     if m["stopReason"] == "aborted" {
                         self.status = "cancelled".into();
                     }
+                    self.record_turn_status();
                     self.pi_message += 1;
                 }
             }
@@ -704,6 +728,7 @@ impl Timeline {
             };
             if role == "user" && blocks.iter().any(|b| b["type"] == "text") {
                 self.turn = id.into();
+                self.status.clear();
             }
             for (index, block) in blocks.iter().enumerate() {
                 match string(block, "type") {
@@ -736,6 +761,15 @@ impl Timeline {
                     _ => self.partial = true,
                 }
             }
+            if role == "assistant"
+                && matches!(
+                    string(&record["message"], "stop_reason"),
+                    "end_turn" | "stop_sequence"
+                )
+            {
+                self.status = "completed".into();
+                self.record_turn_status();
+            }
         }
     }
     /// Project history first, then overlay observations made while the read was in flight.
@@ -751,6 +785,7 @@ impl Timeline {
         for turn in turns.into_iter().flatten() {
             history.turn = string(turn, "id").into();
             history.status = string(turn, "status").into();
+            history.record_turn_status();
             history.partial |= !turn["items"].is_array();
             for item in turn["items"].as_array().into_iter().flatten() {
                 let status = match string(item, "status") {
@@ -799,6 +834,20 @@ impl Timeline {
         );
         self.partial = history.partial || history.entries.iter().any(|r| r["truncated"] == true);
         self.tool_observed |= history.tool_observed;
+        // Preserve lifecycle evidence that arrived after the history read began.
+        for (turn, _) in history.turn_status_observations {
+            if self
+                .turn_status_observations
+                .get(&turn)
+                .is_none_or(|event| *event <= observed)
+            {
+                if let Some(status) = history.turn_statuses.remove(&turn) {
+                    self.turn_statuses.insert(turn, status);
+                } else {
+                    self.turn_statuses.remove(&turn);
+                }
+            }
+        }
         if self.observed_events == observed || self.status.is_empty() {
             self.status = history.status;
             if self.turn != history.turn {
@@ -938,8 +987,14 @@ impl Timeline {
                 }
                 self.turn = turn.into();
                 self.status = "running".into();
+                self.record_turn_status();
             }
-            "turn/completed" => {self.finish(match string(&params["turn"],"status") {"failed"=>"failed","interrupted"=>"cancelled",_=>"completed"},at);}
+            "turn/completed" => {
+                if let Some(turn) = params["turn"]["id"].as_str() {
+                    self.turn = turn.into();
+                }
+                self.finish(match string(&params["turn"],"status") {"failed"=>"failed","interrupted"|"cancelled"=>"cancelled","completed"=>"completed",_=>"unknown"},at);
+            }
             "item/started"|"item/completed" => {
                 if let Some(turn) = params["turnId"].as_str() {
                     if self.turn != turn {
@@ -982,6 +1037,9 @@ impl Timeline {
         }
         if !summaries.is_empty() {
             result["turnDispatchSummaries"] = json!(summaries);
+        }
+        if !self.turn_statuses.is_empty() {
+            result["turnStatuses"] = json!(self.turn_statuses);
         }
         result
     }
@@ -1156,9 +1214,11 @@ pub(crate) fn observe(
             let state = &params["change"]["conversationState"];
             match crate::desktop::turns(state) {
                 Ok(turns) => {
+                    t.observed_events += 1;
                     for turn in turns {
                         t.turn = string(&turn, "id").into();
                         t.status = string(&turn, "status").into();
+                        t.record_turn_status();
                         for item in turn["items"].as_array().into_iter().flatten() {
                             t.codex_item(
                                 item,

@@ -8,6 +8,7 @@ export function mergeTimeline(current: AgentTimeline | undefined, next: AgentTim
     ...(current.turnDispatchSummaries || next.turnDispatchSummaries ? { turnDispatchSummaries: {
       ...current.turnDispatchSummaries, ...next.turnDispatchSummaries,
     } } : {}),
+    ...(current.turnStatuses || next.turnStatuses ? { turnStatuses: { ...current.turnStatuses, ...next.turnStatuses } } : {}),
     entries: [...entries.values()].sort((a, b) => (a.position ?? 0) - (b.position ?? 0)) };
 }
 export async function refreshTimeline(current: AgentTimeline | undefined, read: (after?: number) => Promise<AgentTimeline>) {
@@ -40,11 +41,6 @@ export function interactionTool(entries: readonly AgentTimelineEntry[], interact
   // Parallel requests for the same object are ambiguous without a join id.
   if (candidates.filter(entry => entry.status === "pending" && !entry.endedAt).length > 1) return;
   return candidates.at(-1);
-}
-export function visibleTimelineEntries(entries: readonly AgentTimelineEntry[]) {
-  const waitingTools = new Set(entries.filter(entry => entry.type === "interaction" && entry.interaction?.kind === "permission")
-    .map(entry => interactionTool(entries, entry)).filter(entry => entry?.status === "pending" && !entry.endedAt));
-  return entries.filter(entry => !waitingTools.has(entry));
 }
 export function permissionRequestLabel(tool?: AgentTimelineEntry) {
   if (tool?.type === "command") return "timeline.commandRequest";

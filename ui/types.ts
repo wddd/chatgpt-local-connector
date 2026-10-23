@@ -154,6 +154,7 @@ export interface AgentTrackingExcerpt {
 export interface AgentTimeline {
   dispatchSummary?: DispatchSummary;
   turnDispatchSummaries?: Record<string, DispatchSummary>;
+  turnStatuses?: Record<string, string>;
   readOnly?: boolean;
   status?: string;
   sessionId: string;

@@ -214,24 +214,21 @@ test("file approvals use path labels in interaction bubbles and timeline cards",
 });
 
 
-test("approval projection hides only its unexecuted tool in the same turn and preserves execution results", async () => {
-  // Property: approval projection hides only its unexecuted tool in the same turn and preserves execution results.
-  const { visibleTimelineEntries, interactionTool } = await import("../ui/state/timelineModel.ts");
+test("approval details match only an unambiguous preceding object in the same turn", async () => {
+  // Property: approval associations require the same turn and exact structured object.
+  const { interactionTool } = await import("../ui/state/timelineModel.ts");
   const tool = { ...entry("write", 1, "", 1), type: "file" as const, status: "pending" as const, path: "/workspace/example/file.txt", operation: "write" as const };
   const interaction = { ...entry("approval", 2, "", 2), type: "interaction" as const, status: "pending" as const, interaction: { ...permission, path: tool.path } };
   const other = { ...tool, id: "other-turn", turnId: "other" };
-  const entries = [other, tool, interaction];
-  assert.equal(interactionTool(entries, interaction), tool);
-  assert.deepEqual(visibleTimelineEntries(entries).map(e => e.id), ["other-turn", "approval"]);
-  for (const status of ["running", "completed", "failed", "cancelled"] as const)
-    assert.equal(visibleTimelineEntries([{ ...tool, status }, interaction]).length, 2);
-  assert.equal(visibleTimelineEntries([tool, { ...interaction, status: "completed" }]).length, 1);
-  assert.equal(visibleTimelineEntries([{ ...tool, path: "/workspace/example/other.txt" }, interaction]).length, 2);
-  assert.equal(visibleTimelineEntries([tool, { ...tool, id: "parallel" }, interaction]).length, 3);
+  assert.equal(interactionTool([other, tool, interaction], interaction), tool);
+  assert.equal(interactionTool([other, interaction], interaction), undefined);
+  assert.equal(interactionTool([{ ...tool, path: "/workspace/example/other.txt" }, interaction], interaction), undefined);
+  assert.equal(interactionTool([tool, { ...tool, id: "parallel" }, interaction], interaction), undefined);
   const command = { ...tool, type: "command" as const, path: undefined, command: "printf example" };
   const commandApproval = { ...interaction, interaction: { ...permission, command: command.command } };
-  assert.equal(visibleTimelineEntries([command, commandApproval]).length, 1);
-  assert.equal(visibleTimelineEntries([command, { ...commandApproval, interaction: { ...permission, summary: command.command } }]).length, 2);
+  assert.equal(interactionTool([command, commandApproval], commandApproval), command);
+  const summaryOnly = { ...commandApproval, interaction: { ...permission, summary: command.command } };
+  assert.equal(interactionTool([command, summaryOnly], summaryOnly), undefined);
 });
 
 test("approval wording uses structured operations and retains generic file access when unknown", async () => {
@@ -321,58 +318,58 @@ test("source dispatches filter ownership and never equate a dispatch receipt wit
   assert.deepEqual(sourceDispatches([{ ...latest, origin: undefined, task: { ...latest.task, origin: { sourceId: "left" } } }], "left").length, 1);
 });
 
-test("timeline tool groups stop at every non-tool and turn boundary; singles retain their anchor", async () => {
-  // Property: timeline tool groups stop at every non-tool and turn boundary; singles retain their anchor.
-  const { timelineGroups } = await import("../ui/state/timelineGroups.ts");
-  const command = { ...entry("cmd", 1, "", 1), type: "command" as const };
-  const file = { ...entry("file", 2, "", 2), type: "file" as const };
-  const tool = { ...entry("tool", 3, "", 3), type: "tool" as const };
-  assert.deepEqual(timelineGroups([command]).map(g => g.entries.length), [1]);
-  assert.deepEqual(timelineGroups([command, file, tool]).map(g => g.entries.length), [3]);
-  for (const type of ["text", "user", "interaction", "error", "plan", "thinking"] as const) {
-    const groups = timelineGroups([command, { ...entry("break", 2, "", 2), type }, file]);
-    assert.deepEqual(groups.map(g => g.entries.length), [1, 1, 1]);
-  }
-  assert.equal(timelineGroups([command, { ...file, turnId: "next" }]).length, 2);
+test("timeline turns keep every work kind together and preserve steering requests", async () => {
+  // Property: each turn preserves every entry except its primary prompt and final response in one work block.
+  const { timelineGroups, turnEntries } = await import("../ui/state/timelineGroups.ts");
+  const prompt = { ...entry("prompt", 1, "Request", 1), type: "user" as const };
+  const command = { ...entry("cmd", 2, "", 2), type: "command" as const };
+  const thinking = { ...entry("think", 3, "Reasoning", 3), type: "thinking" as const };
+  const steering = { ...prompt, id: "steering", text: "Also handle this" };
+  const answer = { ...entry("answer", 5, "Done", 5), phase: "final_answer" };
+  const entries = [prompt, command, thinking, steering, answer];
+  assert.equal(timelineGroups(entries).length, 1);
+  const turn = turnEntries(entries, false);
+  assert.equal(turn.prompt, prompt); assert.equal(turn.final, answer);
+  assert.deepEqual(turn.work.map(item => item.id), ["cmd", "think", "steering"]);
+  assert.equal(timelineGroups([...entries, { ...prompt, id: "next", turnId: "next" }]).length, 2);
+  assert.equal(timelineGroups([...entries, { ...prompt, id: "next", turnId: "next" }], true).length, 1);
+  assert.equal(timelineGroups(entries.map(item => ({ ...item, turnId: "" }))).length, 1);
 });
 
-test("timeline group state auto-expands running tools, preserves manual choices and counts failures", async () => {
-  // Property: timeline group state auto-expands running tools, preserves manual choices and counts failures.
-  const { toolGroupState, toolGroupOpen, currentTimelineTool, entryDuration } = await import("../ui/state/timelineGroups.ts");
+test("work blocks preserve manual choices and count observed work without adding concurrent durations", async () => {
+  // Property: manual disclosure overrides live state and turn duration uses observed wall time.
+  const { workState, workBlockOpen, entryDuration, turnDuration } = await import("../ui/state/timelineGroups.ts");
   const base = { ...entry("cmd", 1, "", 1), type: "command" as const, durationMs: 2000 };
   const running = { ...base, id: "running", status: "running" as const, durationMs: undefined, startedAt: "2026-01-01T00:00:00Z" };
   const now = Date.parse("2026-01-01T00:00:03Z");
-  const state = toolGroupState([base, running, { ...base, id: "failed", status: "failed" }, { ...base, id: "file", type: "file", operation: "read" }], now);
-  assert.equal(state.running, true); assert.equal(state.failed, 1); assert.equal(state.duration, 9000);
-  assert.deepEqual(state.kinds, ["command", "file"]); assert.equal(state.counts.command, 3); assert.equal(state.counts.read, 1);
-  assert.equal(toolGroupOpen(true), true); assert.equal(toolGroupOpen(false), false);
-  assert.equal(toolGroupOpen(false, true), true); assert.equal(toolGroupOpen(true, false), false);
-  assert.equal(currentTimelineTool([running, base, { ...running, id: "last" }])?.id, "last");
-  assert.equal(currentTimelineTool([base]), undefined);
+  const state = workState([base, running, { ...base, id: "failed", status: "failed" }, { ...base, id: "file", type: "file", operation: "read", path: "/project/a" }]);
+  assert.equal(state.failed, 1); assert.equal(state.counts.command, 3); assert.equal(state.counts.read, 1);
+  assert.deepEqual(state.kinds, ["command", "file"]);
+  assert.equal(workBlockOpen(true), true); assert.equal(workBlockOpen(false), false);
+  assert.equal(workBlockOpen(false, true), true); assert.equal(workBlockOpen(true, false), false);
   assert.equal(entryDuration({ ...base, durationMs: undefined }, now), undefined);
   assert.equal(entryDuration({ ...base, durationMs: -2 }, now), 0);
-  assert.equal(toolGroupState([base, { ...base, durationMs: undefined }], now).duration, undefined);
+  assert.equal(turnDuration([base, running], now, true, running.startedAt), 3000);
+  assert.equal(turnDuration([base], now, false), undefined);
+  assert.equal(turnDuration([{ ...base, type: "user", startedAt: running.startedAt, endedAt: "2026-01-01T00:00:01Z" }], now, false), 1000);
+  assert.equal(turnDuration([{ ...base, type: "user", startedAt: running.startedAt, endedAt: running.startedAt }, { ...base, id: "parallel-a", endedAt: "2026-01-01T00:00:10Z" }, { ...base, id: "parallel-b", endedAt: "2026-01-01T00:00:03Z" }], now, false), 10000);
 });
 
-test("incremental timeline merge retains tool group ids through updates and appends", async () => {
-  // Property: incremental timeline merge retains tool group ids through updates and appends.
+test("incremental timeline backfill retains turn identities and updated entry content", async () => {
+  // Property: turn ids remain stable when earlier work and earlier turns are backfilled.
   const { mergeTimeline } = await import("../ui/state/timelineModel.ts");
   const { timelineGroups } = await import("../ui/state/timelineGroups.ts");
   const first = { ...entry("first", 1, "", 1), type: "command" as const, status: "running" as const };
   const initial = timeline([first]);
-  const merged = mergeTimeline(initial, timeline([{ ...first, cursor: 2, status: "completed" }, { ...entry("second", 3, "", 2), type: "file" }]));
-  assert.equal(timelineGroups(initial.entries)[0].id, timelineGroups(merged.entries)[0].id);
-  const previous = timelineGroups(merged.entries);
-  const backfilled = mergeTimeline(merged, timeline([{ ...entry("older", 4, "", 0), type: "tool" }]));
-  const groups = timelineGroups(backfilled.entries, previous);
-  assert.equal(groups[0].id, previous[0].id, "backfilled earlier tools keep the existing anchor");
-  const split = timelineGroups([backfilled.entries[0], entry("separator", 5, "", 0.5), ...merged.entries], groups);
-  assert.equal(new Set(split.map(g => g.id)).size, split.length, "splitting a group never duplicates ids");
-  assert.equal(split[2].id, previous[0].id);
-  const withText = mergeTimeline(merged, timeline([entry("text", 4, "Answer", 3), { ...entry("next", 5, "", 4), type: "tool" }]));
-  const appended = timelineGroups(withText.entries);
-  assert.equal(appended[0].id, previous[0].id);
-  assert.deepEqual(appended.map(group => group.entries.map(item => item.id)), [["first", "second"], ["text"], ["next"]]);
+  const merged = mergeTimeline(initial, timeline([{ ...first, cursor: 2, status: "completed" }, { ...entry("second", 3, "", 2), type: "thinking" }]));
+  const id = timelineGroups(initial.entries)[0].id;
+  assert.equal(timelineGroups(merged.entries)[0].id, id);
+  const backfilled = mergeTimeline(merged, timeline([{ ...entry("older", 4, "Earlier", 0), type: "user" }, { ...entry("previous", 5, "Previous", -1), turnId: "previous" }]));
+  const groups = timelineGroups(backfilled.entries);
+  assert.equal(groups[1].id, id);
+  assert.deepEqual(groups[1].entries.map(item => item.id), ["older", "first", "second"]);
+  assert.equal(groups[1].entries.find(item => item.id === "first")?.status, "completed");
+  assert.equal(new Set(groups.map(group => group.id)).size, groups.length);
 });
 
 
@@ -392,15 +389,20 @@ test("timeline resumes at the bottom threshold despite layout clamping and follo
   assert.equal(timelineScrollTarget(true, false, false, 4000), undefined, "finished history still does not jump");
 });
 
-test("current tools render inline when single and only repeat below a collapsed group", async () => {
-  // Property: current tools render inline when single and only repeat below a collapsed group.
-  const { timelineGroups, currentToolPresentation } = await import("../ui/state/timelineGroups.ts");
-  const first = { ...entry("first", 1, "", 1), type: "command" as const, status: "running" as const };
-  const single = timelineGroups([first])[0];
-  assert.equal(currentToolPresentation(single, "first", false), "inline");
-  const group = timelineGroups([first, { ...first, id: "second", status: "completed" }])[0];
-  assert.equal(currentToolPresentation(group, "first", true), "none");
-  assert.equal(currentToolPresentation(group, "first", false), "card");
-  assert.equal(currentToolPresentation(group, undefined, false), "none");
-  assert.equal(currentToolPresentation(group, "elsewhere", false), "none");
+test("final answers prefer native markers and only infer trailing text after completion", async () => {
+  // Property: native final markers win and unmarked live text remains work.
+  const { turnEntries } = await import("../ui/state/timelineGroups.ts");
+  const text = entry("text", 1, "Interim", 1);
+  const tool = { ...entry("tool", 2, "", 2), type: "command" as const };
+  const final = { ...entry("final", 3, "Answer", 3), phase: "final_answer" };
+  assert.equal(turnEntries([text, tool, final], true).final, final);
+  assert.deepEqual(turnEntries([text, tool, final], true).work, [text, tool]);
+  assert.equal(turnEntries([text], true).final, undefined);
+  assert.equal(turnEntries([text], false, false).final, undefined);
+  assert.equal(turnEntries([{ ...text, status: "failed" }], false).final, undefined);
+  assert.equal(turnEntries([{ ...tool, status: "failed" }, text], false, true).final, text);
+  assert.equal(turnEntries([text], false).final, text);
+  assert.equal(turnEntries([text, tool], false).final, undefined);
+  const unmarked = { ...final, phase: undefined };
+  assert.equal(turnEntries([text, tool, unmarked], false).final, unmarked);
 });

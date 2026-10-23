@@ -1,59 +1,51 @@
 import type { AgentTimelineEntry } from "../types.ts";
 
-export type ToolKind = "command" | "file" | "tool";
-export type TimelineGroup = { id: string; tools: boolean; entries: AgentTimelineEntry[] };
-export function isTimelineTool(entry: AgentTimelineEntry): entry is AgentTimelineEntry & { type: ToolKind } {
-  return entry.type === "command" || entry.type === "file" || entry.type === "tool";
-}
-// Anchor even a single tool at its first id, so appending tools does not change identity.
-export function timelineGroups(entries: readonly AgentTimelineEntry[], previous: readonly TimelineGroup[] = []): TimelineGroup[] {
-  const groups: TimelineGroup[] = [];
+export type TimelineGroup = { id: string; turnId?: string; entries: AgentTimelineEntry[] };
+// Turn ids keep disclosures stable when history arrives before a live entry.
+export function timelineGroups(entries: readonly AgentTimelineEntry[], singleTurn = false): TimelineGroup[] {
+  const groups = new Map<string, TimelineGroup>();
+  const fallback = singleTurn || !entries.some(entry => entry.turnId);
   for (const entry of entries) {
-    const tools = isTimelineTool(entry), previous = groups.at(-1);
-    if (tools && previous?.tools && previous.entries[0]!.turnId === entry.turnId) previous.entries.push(entry);
-    else groups.push({ id: `${tools ? "tools" : "entry"}:${entry.id}`, tools, entries: [entry] });
+    const turnId = fallback ? undefined : entry.turnId || undefined;
+    const id = turnId ? `turn:${turnId}` : "turn:session";
+    const group = groups.get(id) ?? { id, turnId, entries: [] };
+    group.entries.push(entry);
+    groups.set(id, group);
   }
-  // History can arrive before the current tool. Reuse the previous anchor when
-  // backfilling, and give it to only one fragment if a separator splits a run.
-  const assigned = new Set<TimelineGroup>();
-  for (const old of previous.filter(group => group.tools)) {
-    const candidates = groups.filter(group => group.tools && !assigned.has(group));
-    const anchor = old.id.slice("tools:".length);
-    const match = candidates.find(group => group.entries.some(entry => entry.id === anchor))
-      ?? candidates.find(group => group.entries.some(entry => old.entries.some(item => item.id === entry.id)));
-    if (match) { match.id = old.id; assigned.add(match); }
-  }
-  return groups;
+  return [...groups.values()];
 }
 export function entryDuration(entry: AgentTimelineEntry, now: number): number | undefined {
   const duration = entry.durationMs ?? (entry.startedAt && (entry.endedAt || entry.status === "running")
     ? (entry.endedAt ? Date.parse(entry.endedAt) : now) - Date.parse(entry.startedAt) : NaN);
   return Number.isFinite(duration) ? Math.max(0, duration) : undefined;
 }
-export function toolGroupState(entries: readonly AgentTimelineEntry[], now: number) {
-  const durations = entries.map(entry => entryDuration(entry, now));
+export function turnEntries(entries: readonly AgentTimelineEntry[], live: boolean, completed = !live && entries.every(entry => !["running", "pending", "failed", "cancelled", "unknown"].includes(entry.status))) {
+  const prompt = entries.find(entry => entry.type === "user");
+  const marked = [...entries].reverse().find(entry => entry.type === "text" && entry.phase === "final_answer");
+  const last = entries.at(-1);
+  const final = marked ?? (!live && completed && last?.type === "text" ? last : undefined);
+  return { prompt, final, work: entries.filter(entry => entry !== prompt && entry !== final) };
+}
+export function turnDuration(entries: readonly AgentTimelineEntry[], now: number, live: boolean, startedAt?: string | null) {
+  const prompt = entries.find(entry => entry.type === "user");
+  const start = Date.parse(startedAt || prompt?.startedAt || "");
+  const ends = entries.map(entry => Date.parse(entry.endedAt || "")).filter(Number.isFinite);
+  const end = live ? now : ends.length ? Math.max(...ends) : NaN;
+  return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : undefined;
+}
+export function workState(entries: readonly AgentTimelineEntry[]) {
+  const files = (read: boolean) => new Set(entries.filter(entry => entry.type === "file" && (read ? entry.operation === "read" : entry.operation && entry.operation !== "read"))
+    .flatMap(entry => entry.changes?.length ? entry.changes.map(change => change.path) : entry.path ? [entry.path] : [entry.id])).size;
   return {
-    running: entries.some(entry => entry.status === "running"),
-    failed: entries.filter(entry => entry.status === "failed").length,
-    kinds: [...new Set(entries.filter(isTimelineTool).map(entry => entry.type))].slice(0, 3),
-    // Missing timing is unknown, not zero; never present a partial sum as the total.
-    duration: durations.every(value => value !== undefined) ? durations.reduce((sum, value) => sum + value, 0) : undefined,
+    failed: entries.filter(entry => entry.status === "failed" || entry.type === "error").length,
+    kinds: [...new Set(entries.map(entry => entry.type))].slice(0, 4),
     counts: {
-      read: entries.filter(entry => entry.type === "file" && entry.operation === "read").length,
-      write: entries.filter(entry => entry.type === "file" && entry.operation && entry.operation !== "read").length,
-      file: entries.filter(entry => entry.type === "file" && !entry.operation).length,
+      thinking: entries.filter(entry => entry.type === "thinking").length,
       command: entries.filter(entry => entry.type === "command").length,
+      write: files(false), read: files(true),
+      file: entries.filter(entry => entry.type === "file" && !entry.operation).length,
       tool: entries.filter(entry => entry.type === "tool").length,
     },
   };
 }
-export function toolGroupOpen(running: boolean, manual?: boolean) { return manual ?? running; }
-export function currentTimelineTool(entries: readonly AgentTimelineEntry[]) {
-  return entries.filter(entry => isTimelineTool(entry) && entry.status === "running").at(-1);
-}
-
-export function currentToolPresentation(group: TimelineGroup, currentId: string | undefined, open: boolean): "none" | "inline" | "card" {
-  if (!group.tools || !currentId || !group.entries.some(entry => entry.id === currentId)) return "none";
-  if (group.entries.length === 1) return "inline";
-  return open ? "none" : "card";
-}
+export function workBlockOpen(live: boolean, manual?: boolean) { return manual ?? live; }

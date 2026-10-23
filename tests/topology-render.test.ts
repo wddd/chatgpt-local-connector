@@ -259,8 +259,8 @@ test("control source dock preserves editing, field navigation and cross-side dis
   }
 });
 
-test("timeline disclosures preserve choices through incremental grouping and render GFM", async () => {
-  // Regression: incremental grouping must not reset a manually expanded tool.
+test("timeline turn disclosures preserve choices through incremental work and render GFM", async () => {
+  // Regression: backfilled turn work must not reset a manually expanded step.
   const window = new Window({ url: "http://localhost" });
   const media = Object.assign(new window.EventTarget(), { matches: true });
   window.matchMedia = () => media as unknown as MediaQueryList;
@@ -299,20 +299,20 @@ test("timeline disclosures preserve choices through incremental grouping and ren
     assert.equal(tool().getAttribute("aria-expanded"), "true");
     await click(group());
     assert.equal(group().getAttribute("aria-expanded"), "false");
-    assert.ok(page.getByText(first.command));
+    assert.equal(page.queryByRole("button", { name: /npm test/ }), null);
     await click(group());
     await render([{ ...first, status: "failed", durationMs: 4000, exitCode: 1 }, second]);
     assert.equal(group().getAttribute("aria-expanded"), "true");
     assert.ok(page.getByRole("img", { name: t("timeline.status.failed") }));
     assert.ok(page.getByText(first.output.text));
-    await render([{ ...first, id: "automatic" }, { ...second, id: "automatic-file" }]);
+    await render([{ ...first, id: "automatic", turnId: "automatic" }, { ...second, id: "automatic-file", turnId: "automatic" }]);
     assert.equal(group().getAttribute("aria-expanded"), "true");
-    await render([{ ...first, id: "automatic", status: "completed" }, { ...second, id: "automatic-file" }]);
+    await render([{ ...first, id: "automatic", turnId: "automatic", status: "completed" }, { ...second, id: "automatic-file", turnId: "automatic" }]);
     assert.equal(group().getAttribute("aria-expanded"), "false");
     const thinking = { ...base, id: "thinking", type: "thinking", status: "completed", durationMs: 2000, text: "Reasoning detail" };
     const text = { ...base, id: "text", type: "text", status: "completed", text: '| Name | Value |\n| --- | --- |\n| A | B |\n\n- [x] Done\n\n[Docs](https://example.com/docs)\n\n```js\nconst value = 1;\n```\n\n<script>window.bad = true</script>' };
     await render([thinking, text]);
-    const disclosure = () => page.getByRole("button", { name: t("timeline.thought", { duration: t("activity.seconds", { count: 2 }) }) });
+    const disclosure = () => page.getByRole("button", { name: name => name.includes(t("timeline.thinking")) && !name.includes(t("timeline.workDone")) });
     assert.equal(disclosure().getAttribute("aria-expanded"), "false");
     await click(disclosure());
     await render([{ ...thinking, text: "Updated reasoning" }, text]);
@@ -371,7 +371,7 @@ test("mounted timeline follows the next poll after scrolling up and returning wi
   try {
     const { default: ActivityTimeline } = await server.ssrLoadModule('/ui/components/ActivityTimeline.tsx');
     const { agentActivity } = await server.ssrLoadModule('/ui/state/activity.ts');
-    const session = { id: 'follow', source: 'arc-task', phase: 'text', headline: 'Response', phaseSince: null, timeline: true, orderAt: 0 };
+    const session = { id: 'follow', turnId: 'turn', source: 'arc-task', phase: 'text', headline: 'Response', phaseSince: null, timeline: true, orderAt: 0 };
     agentActivity.set({ error: '', snapshot: { observedAt: '', activeAgents: ['claude'], agents: { claude: { sessions: [session] } } } });
     await act(async () => { root.render(h(ActivityTimeline, { agent: 'claude', session, onClose() {}, onBack() {} })); });
     const page = within(mount);

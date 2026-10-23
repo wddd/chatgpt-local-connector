@@ -9,17 +9,19 @@ import { permissions } from './state/permissions';
 import { subscriptions } from './state/subscriptions';
 import { acceptPreferences } from './state/store';
 import { openSnapshotPanel, settledViewModel, type PanelRequest } from './acceptance';
-import type { AgentActivitySnapshot, AgentActivitySession } from './types';
+import type { AgentActivitySnapshot, AgentActivitySession, AgentTimeline, AgentTimelineEntry } from './types';
+import { selectAgentPanel } from './state/overviewPanels';
 import type { Status } from './state/types';
 import config from '../native/src/ingress/config.json';
 
-type Fixture = { bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; completed?: boolean; elapsedSeconds?: number }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
+type Fixture = { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; completed?: boolean; elapsedSeconds?: number }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 export function scenarioResponse(path: string, method: string): unknown {
   if (path === 'preferences' || path === 'preferences/import') return responses.preferences;
   if (method !== 'GET') throw new Error('SCENARIO_READ_ONLY');
-  if (Object.hasOwn(responses, path)) return structuredClone(responses[path]);
+  const route = path.split('?')[0];
+  if (Object.hasOwn(responses, route)) return structuredClone(responses[route]);
   if (path.startsWith('tasks/runtime/')) return { runtimeStatus: 'active', observedAt: new Date().toISOString() };
   throw new Error(`SCENARIO_ROUTE_UNAVAILABLE: ${path}`);
 }
@@ -81,17 +83,56 @@ export async function installScenario(name: string) {
   const activity: AgentActivitySnapshot = { observedAt: now, activeAgents: fixture.agents, agents: Object.fromEntries(fixture.agents.map(a => [a, { sessions: [] }])) };
   fixture.tasks.forEach((task, index) => {
     activity.agents[task.agent].sessions.push({ id: `fixture-task-${index}`, source: task.agent === 'codex' ? 'codex-thread' : 'arc-task', title: task.title, headline: task.headline, phase: task.phase,
-      project: '/workspace/acceptance', phaseSince: now, turnStartedAt: new Date(Date.parse(now) - (task.elapsedSeconds ?? 83) * 1000).toISOString(), startedAt: now, timeline: true, recentSteps: ['thinking', 'command', 'file'],
+      turnId: `fixture-turn-${index}-${fixture.timeline ? 2 : 1}`, project: '/workspace/acceptance', phaseSince: now, turnStartedAt: new Date(Date.parse(now) - (task.elapsedSeconds ?? 83) * 1000).toISOString(), startedAt: now, timeline: true, recentSteps: ['thinking', 'command', 'file'],
       recentContent: ['Reviewed project files', task.headline],
       dispatchSummary: { controlSource: { id: 'fixture-source', label: 'Claude', kind: 'claude' }, model: 'gpt-6.1-sol', effort: 'high', serviceTier: 'priority' },
       ...(task.approval ? { interaction: { kind: 'permission' as const, summary: 'Read README.md', command: 'cat README.md', canRespond: true, respond: { via: 'act' as const, op: 'codex_respond' as const, args: {} } } } : {}),
     });
   });
+  const timelines: Record<string, AgentTimeline> = {};
+  fixture.tasks.forEach((task, taskIndex) => {
+    const session = activity.agents[task.agent].sessions.find(session => session.id === `fixture-task-${taskIndex}`)!;
+    const entries: AgentTimelineEntry[] = [];
+    const summaries: NonNullable<AgentTimeline['turnDispatchSummaries']> = {};
+    const turnStatuses: Record<string, string> = {};
+    const count = fixture.timeline ? 2 : 1;
+    for (let turnIndex = 1; turnIndex <= count; turnIndex++) {
+      const turnId = `fixture-turn-${taskIndex}-${turnIndex}`;
+      const live = !task.completed && turnIndex === count;
+      turnStatuses[turnId] = live ? 'running' : 'completed';
+      const start = Date.parse(session.turnStartedAt!) - (count - turnIndex) * 180000;
+      const rows: (Pick<AgentTimelineEntry, 'type' | 'status'> & Partial<AgentTimelineEntry>)[] = [
+        { type: 'user', status: 'completed', text: turnIndex === 1 ? 'Review the project and check the configuration.\n\nKeep the existing behavior while making the requested changes.' : 'Apply the changes and run the project checks.' },
+        { type: 'thinking', status: 'completed', text: 'I will read the current configuration and preserve its documented behavior.', durationMs: 3200 },
+        { type: 'command', status: 'completed', command: 'cat package.json', cwd: '/workspace/acceptance', output: { state: 'available', text: '{ "scripts": { "check": "tsc --noEmit" } }', truncated: false, sha256: 'fixture', hashScope: 'excerpt' }, durationMs: 300, exitCode: 0 },
+        { type: 'thinking', status: 'completed', text: 'The existing check command covers the changed TypeScript files.', durationMs: 2800 },
+        { type: 'text', status: 'completed', text: 'The project configuration is ready. I am applying the change next.' },
+        { type: 'file', status: 'completed', path: '/workspace/acceptance/config.json', operation: 'edit', changes: [{ path: '/workspace/acceptance/config.json', operation: 'edit' }], durationMs: 1400 },
+        { type: 'tool', status: 'completed', title: 'Read project metadata', durationMs: 600 },
+        { type: 'plan', status: 'completed', plan: [{ content: { state: 'available', text: 'Verify project changes', truncated: false, sha256: 'fixture', hashScope: 'excerpt' }, status: live ? 'in_progress' : 'completed' }] },
+        task.approval && live
+          ? { type: 'interaction', status: 'pending', interaction: session.interaction }
+          : { type: 'command', status: live ? 'running' : 'completed', command: 'npm run check', cwd: '/workspace/acceptance', ...(live ? {} : { durationMs: 1700, exitCode: 0 }) },
+      ];
+      if (!live) rows.push({ type: 'text', status: 'completed', phase: 'final_answer', text: 'The requested changes are complete.\n\n| Check | Result |\n| --- | --- |\n| Configuration | Updated |\n| TypeScript | Passed |\n\n- Preserved existing behavior.\n- Verified the changed files.' });
+      for (const [index, row] of rows.entries()) {
+        const at = new Date(start + index * 4000).toISOString();
+        entries.push({ id: `${turnId}-entry-${index}`, turnId, cursor: entries.length + 1, position: entries.length,
+          startedAt: at, updatedAt: at, ...(row.status === 'completed' ? { endedAt: new Date(Date.parse(at) + (row.durationMs ?? 1000)).toISOString() } : {}), ...row });
+      }
+      summaries[turnId] = turnIndex === 1 && count > 1
+        ? { controlSource: { kind: 'local-cli' }, model: 'gpt-5.6-sol', effort: 'medium' }
+        : session.dispatchSummary!;
+    }
+    timelines[`agents/timeline/${session.id}`] = { sessionId: session.id, status: task.completed ? 'completed' : 'running', entries,
+      cursor: entries.length, executionEvidence: true, coverage: { state: 'complete', truncated: false },
+      dispatchSummary: session.dispatchSummary, turnDispatchSummaries: summaries, turnStatuses };
+  });
   const records = fixture.tasks.map((task, index) => ({ requestId: `fixture-request-${index}`, threadId: `fixture-task-${index}`, state: task.approval ? 'awaiting-approval' : 'completed', createdAt: now, updatedAt: now,
     origin: { ingressId: 'fixture-source', sourceId: 'fixture-source' }, approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } }));
   const permissionData = { items: [], observedAt: now };
   const subscriptionData = { instanceId: 'fixture', revision: 1, settings: { enabled: false, refreshMinutes: 30, agentProviders: {} }, providers: [] };
-  responses = { status, source: { sources }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
+  responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
   connector.set({ status, sources, sourcesLoaded: true, busy: '', loading: false, error: '', feedback: { text: '', error: false } });
   agents.set({ items: inventory, loaded: true, loading: false, saving: '', error: '' });
   acceptActivity(activity);
@@ -108,6 +149,12 @@ export async function installScenario(name: string) {
       acceptActivity(finished);
     }
     openSnapshotPanel(fixture.panel);
+    if (fixture.detailTask !== undefined) {
+      await settledViewModel();
+      const task = fixture.tasks[fixture.detailTask];
+      const session = activity.agents[task.agent].sessions.find(session => session.id === `fixture-task-${fixture.detailTask}`)!;
+      selectAgentPanel({ type: 'task', agent: task.agent, session: { ...session, orderAt: Date.parse(session.startedAt!) } });
+    }
     if (fixture.switchFlow) connectionSwitch.set(fixture.switchFlow);
     if (fixture.sourceSetup) onboarding.set(fixture.sourceSetup);
     if (fixture.connectionSetup) connectionSetup.set(fixture.connectionSetup);

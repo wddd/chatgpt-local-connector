@@ -7,7 +7,10 @@ import { activityApprovals, agentActivity, openActivitySession } from "../state/
 import { interactionTool, permissionRequestLabel, followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
 import { useInterval } from "../state/hooks";
 import { Button, IconButton, Tooltip } from "./ui";
-import TimelineEntries from "./TimelineEntries";
+import TimelineEntries, { durationText } from "./TimelineEntries";
+import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
+import { connector } from "../state/connector";
+import { timelineGroups } from "../state/timelineGroups";
 import ActivityInteraction from "./ActivityInteraction";
 import FilePath from "./FilePath";
 import { activityHeadline, interactionKey, type TrackedActivity } from "../state/activityModel";
@@ -19,6 +22,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   agent: string; session: TrackedActivity; expanded: boolean; onToggleWidth: () => void; onBack: () => void;
 }) {
   const { snapshot } = agentActivity.use();
+  const connection = connector.use();
   const submissions = activityApprovals.use(), cardId = useId();
   const [atLatest, setAtLatest] = useState(true);
   const [timeline, setTimeline] = useState<AgentTimeline>();
@@ -95,7 +99,13 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const requestLabel = pendingSession?.interaction?.kind === "question" ? "timeline.questionRequest"
     : pendingSession?.interaction?.command ? "timeline.commandRequest" : permissionRequestLabel(tool);
   const subtitle = [agentName, session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop(),
-    duration === undefined ? undefined : t("activity.seconds", { count: duration })].filter(Boolean).join(" · ");
+    duration === undefined ? undefined : durationText(duration * 1000)].filter(Boolean).join(" · ");
+  const latestSummary = live ? live.dispatchSummary : timeline?.dispatchSummary ?? nativeSession.dispatchSummary;
+  const source = latestSummary?.controlSource;
+  const knownSource = source?.id ? connection.sources.find(item => item.id === source.id) : undefined;
+  const where = knownSource ? connection.status?.ingresses.find(item => item.id === knownSource.ingressId)?.name || knownSource.connectionName : undefined;
+  const turnCount = timelineGroups(timeline?.entries ?? [], external).length;
+  const title = taskTitle || nativeSession.title || session.title || t("timeline.title");
   const footer = showCard && <section className="activity-approval-card" id={cardId} tabIndex={-1} aria-label={t("activity.needsAttention")}>
     <strong>{t(requestLabel, { agent: agentName })}</strong>
     <p className="mono">{pendingSession.interaction?.path
@@ -106,7 +116,10 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   return <section className="agent-panel-layer task-detail-layer">
     <header className="dialog-header">
       <IconButton icon={ArrowLeft} label={t("back")} onClick={onBack} />
-      <h2 className="activity-panel-title">{taskTitle || nativeSession.title || session.title || t("timeline.title")}</h2>
+      <div className="task-detail-heading"><h2 className="activity-panel-title" title={title}>{title}</h2>
+        <span className="activity-status" data-state={showCard ? "attention" : running ? "running" : statusUnknown ? "unknown" : "completed"}>
+          {t(showCard ? pendingSession.interaction?.kind === "question" ? "activity.question" : "activity.phase.interaction" : running ? "timeline.status.running" : statusUnknown ? "unknown" : "activity.completed")}
+        </span></div>
       <div className="actions">
         {nativeSession.open && <Tooltip text={t("activity.open")}><IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
           setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));
@@ -115,9 +128,11 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           aria-pressed={expanded} onClick={onToggleWidth} />
       </div>
       <div className="activity-panel-subline">
-        <span className="activity-status" data-state={showCard ? "attention" : running ? "running" : statusUnknown ? "unknown" : "completed"}>
-          {t(showCard ? pendingSession.interaction?.kind === "question" ? "activity.question" : "activity.phase.interaction" : running ? "timeline.status.running" : statusUnknown ? "unknown" : "activity.completed")}
-        </span><span className="activity-panel-meta" title={subtitle}>{subtitle}</span>
+        <span className="activity-panel-meta" title={subtitle}>{subtitle}</span>
+      </div>
+      <div className="activity-panel-subline task-detail-dispatch">
+        {source && <span className="task-source-chip"><SourceBadge source={source} /><span>{dispatchSourceLabel(source)}</span>{where && <span className="task-source-where">{where}</span>}</span>}
+        <SpecPill summary={latestSummary} />{turnCount > 0 && <span className="timeline-meta">{t("timeline.turnCount", { count: turnCount })}</span>}
       </div>
     </header>
     <div className="task-timeline">
@@ -140,7 +155,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
               .map((text, index) => <p key={index}>{text}</p>)}
           </section>}
           {!external && timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
-          <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} />
+          <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} partial={timeline?.coverage.state === "partial"} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries} />
         </div>
       </div>
       {!atLatest && <Button variant="ghost" className="timeline-latest" onClick={() => {
