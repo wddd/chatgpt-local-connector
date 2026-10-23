@@ -180,13 +180,15 @@ test("Agent dock reserves its width and label clearance without reordering or mo
     assert.deepEqual(solve(scene), base, "closing restores the original geometry");
   }
 });
-test("narrow docks expose an 18px node edge and mirror the left dock", () => {
+test("narrow docks retain arc clearance at minimum width and mirror the left dock", () => {
   for (const vw of [360, 600, 759]) for (const side of [-1, 1] as const) {
     const edge = side === 1 ? vw - Math.min(400, vw - 32) - 16 : Math.min(400, vw - 32) + 16;
     const selected = side === 1 ? "agent0" : "source0";
     const layout = solve({ ...fixtures.bilateral, vw, panel: { side, selected, edge, narrow: true } });
     const node = layout.wings.find(w => w.side === side)!.nodes.find(n => n.id === selected)!;
-    assert.ok(Math.abs(node.x - side * node.size * node.scale / 2 - (edge - side * 18)) < 1e-6);
+    const radius = node.arc?.R ?? node.size * node.scale / 2 + DEFAULTS.arcGap;
+    const stroke = 2 * Math.max(0.8, layout.hub.Re / 130);
+    assert.ok(Math.abs(node.x + side * (radius + stroke + 40) - edge) < 1e-6);
     assert.ok(Number.isFinite(layout.hub.x));
   }
 });

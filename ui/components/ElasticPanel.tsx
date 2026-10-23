@@ -149,7 +149,7 @@ export default function ElasticPanel({
     }
     const surface = surfaceMotion(node, () => ({
       transform: `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
-    }), frame => { dockFrame.current = frame; onMotion?.(); onPanelFrame?.(frame); });
+    }), frame => { dockFrame.current = frame; onMotion?.(); onPanelFrame?.(frame); }, !dock);
     dockFrame.current = rect;
     onPanelFrame?.(rect);
     motion.current = surface;
@@ -188,7 +188,7 @@ export default function ElasticPanel({
     const resize = () => moveTo(positionRef.current.x, positionRef.current.y);
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
-  }, [node, expanded]);
+  }, [node, expanded, width]);
   useLayoutEffect(() => {
     if (!node || !dock) return;
     const rect = node.getBoundingClientRect(), from = dockFrame.current;
@@ -202,7 +202,7 @@ export default function ElasticPanel({
       }
     }
     if (!motion.current?.running) { dockFrame.current = rect; onPanelFrame?.(rect); }
-  }, [node, position, dock, expanded, onPanelFrame]);
+  }, [node, position, dock, expanded, width, onPanelFrame]);
   useLayoutEffect(() => {
     const returned = previousView.current.recessed && !recessed;
     const stepped = previousView.current.depthOffset !== depthOffset;

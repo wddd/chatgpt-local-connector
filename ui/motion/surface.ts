@@ -8,7 +8,7 @@ export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)"
 
 // Morph the shell's real dimensions; its independently laid-out content is clipped,
 // never scaled. A shared monotonic curve keeps every edge between its endpoints.
-export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = () => ({}), onFrame?: (rect: SurfaceRect) => void) {
+export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = () => ({}), onFrame?: (rect: SurfaceRect) => void, observeResize = true) {
   const base: Record<string, string> = {};
   const content = node.firstElementChild as HTMLElement | null;
   const contentTranslate = content?.style.translate ?? "";
@@ -53,7 +53,7 @@ export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = (
       void resize(settledSize, next);
     } else settledSize = next;
   });
-  if (content) observer.observe(content);
+  if (content && observeResize) observer.observe(content);
   const motion = {
     get running() { return active; },
     to(target: Surface, { from, retain = false, duration = surfaceDuration }: {
@@ -138,9 +138,9 @@ export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = (
           const natural = node.getBoundingClientRect();
           // Content may have changed during opening. Continue from the visible
           // size instead of snapping when explicit dimensions are released.
-          if (!reduced.matches && sizeChanged(end, natural)) {
+          if (observeResize && !reduced.matches && sizeChanged(end, natural)) {
             void resize(end, natural);
-          } else settledSize = natural;
+          } else { settledSize = natural; onFrame?.(natural); }
         }
       });
       return controls;

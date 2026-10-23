@@ -1,7 +1,7 @@
 import { observeTopology } from "../acceptance";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject, type PointerEvent, type MouseEvent } from "react";
 import { useMedia } from "../state/hooks";
-import { solve, BUBBLE_W, NODE_R, type Side, type Scene, type Drag, type Layout } from "./solve";
+import { solve, BUBBLE_W, NODE_R, PANEL_MIN_WIDTH, PANEL_MARGIN, panelWidth, type Side, type Scene, type Drag, type Layout } from "./solve";
 import { TopologyAnimator, nodeKey, taskKey } from "./animate";
 import { TopologyPainter, type PaintNode, type PaintTask } from "./render";
 import { orderedSubset, moveToY } from "./order";
@@ -13,9 +13,10 @@ export interface NodeView extends Omit<PaintNode, "side"> { content: ReactNode; 
 type PositionedTask = TaskView & { parent: string; side: Side };
 export interface TopologyHandle { panelFrame: (rect: SurfaceRect | null) => void }
 
-export default function Topology({ left, right, brand, boundary, panelExpanded = false, onReorderNodes, onReorderTasks, ref }: {
+export default function Topology({ left, right, brand, boundary, panelExpanded = false, onPanelWidth, onReorderNodes, onReorderTasks, ref }: {
   left: NodeView[]; right: NodeView[]; brand: ReactNode;
   panelExpanded?: boolean;
+  onPanelWidth?: (width: number) => void;
   onReorderNodes: (side: Side, ids: string[]) => void;
   onReorderTasks: (side: Side, parent: string, ids: string[]) => void;
   boundary: RefObject<HTMLElement | null>; ref: Ref<TopologyHandle>;
@@ -24,6 +25,7 @@ export default function Topology({ left, right, brand, boundary, panelExpanded =
   const elements = useRef(new Map<string, HTMLDivElement>());
   const animator = useRef(new TopologyAnimator()), painter = useRef<TopologyPainter | null>(null);
   const frame = useRef(0), lastTime = useRef(0), panel = useRef<SurfaceRect | null>(null);
+  const reportedPanelWidth = useRef<number>(undefined);
   const origin = useRef({ x: 0, y: 0 }), size = useRef<{ vw: number; vh: number } | null>(null);
   const drag = useRef<(Drag & { pointer: number; startClientX: number; startClientY: number; grabX: number; grabY: number; parent?: string;
     order: string[]; active: boolean; target: HTMLElement; slot: HTMLElement; key: string }) | null>(null);
@@ -36,8 +38,8 @@ export default function Topology({ left, right, brand, boundary, panelExpanded =
   // Retain departing HTML until its primitive has collapsed into the port.
   const [retained, setRetained] = useState<PositionedTask[]>([]);
   const allTasks = [...new Map([...retained, ...tasks].map(t => [taskKey(t.side, t.id), t])).values()];
-  const latest = useRef({ nodes, tasks, allTasks, left, right, panelExpanded, reduced, params, guides, slow, onReorderNodes, onReorderTasks });
-  latest.current = { nodes, tasks, allTasks, left, right, panelExpanded, reduced, params, guides, slow, onReorderNodes, onReorderTasks };
+  const latest = useRef({ nodes, tasks, allTasks, left, right, panelExpanded, onPanelWidth, reduced, params, guides, slow, onReorderNodes, onReorderTasks });
+  latest.current = { nodes, tasks, allTasks, left, right, panelExpanded, onPanelWidth, reduced, params, guides, slow, onReorderNodes, onReorderTasks };
   useEffect(() => observeTopology(() => ({
     origin: origin.current, size: size.current, panel: panel.current,
     nodes: latest.current.nodes.map(({ content: _content, tasks: _tasks, ...node }) => ({ ...node, position: animator.current.values(nodeKey(node.side, node.id)) })),
@@ -49,6 +51,16 @@ export default function Topology({ left, right, brand, boundary, panelExpanded =
     const a = animator.current, h = a.values("hub"), root = graph.current;
     if (!h || !root) return;
     root.style.height = `${a.values("scene")!.height}px`;
+    const selected = latest.current.nodes.find(n => n.selected);
+    const selectedNode = selected && a.values(nodeKey(selected.side, selected.id));
+    if (latest.current.onPanelWidth && !latest.current.panelExpanded) {
+      const width = selected && selectedNode ? panelWidth(innerWidth, selected.side, origin.current.x + selectedNode.x,
+        selectedNode.radius + 2 * Math.max(0.8, h.Re / 130)) : PANEL_MIN_WIDTH;
+      if (reportedPanelWidth.current !== width) {
+        reportedPanelWidth.current = width;
+        latest.current.onPanelWidth(width);
+      }
+    }
     boundary.current?.style.setProperty("--topology-hub-x", `${h.x}px`);
     if (hub.current) {
       const size = h.Re * 240 / 130; // Preserve the ARC mark's existing earmuff clearance.
@@ -95,9 +107,11 @@ export default function Topology({ left, right, brand, boundary, panelExpanded =
   const scene = useCallback((): Scene => {
     const sc: Scene = { ...size.current!, left: latest.current.left, right: latest.current.right }, d = drag.current;
     const selected = latest.current.nodes.find(n => n.selected);
-    const panelWidth = latest.current.panelExpanded ? innerWidth - 32 : Math.min(400, innerWidth - 32);
+    // Reserve only the minimum; following the measured panel would feed its
+    // growing width back into the node layout and move the arc again.
+    const reservedWidth = Math.min(latest.current.panelExpanded ? innerWidth - 2 * PANEL_MARGIN : PANEL_MIN_WIDTH, innerWidth - 2 * PANEL_MARGIN);
     if (selected) sc.panel = { side: selected.side, selected: selected.id,
-      edge: selected.side === 1 ? innerWidth - panelWidth - 16 - origin.current.x : 16 + panelWidth - origin.current.x,
+      edge: selected.side === 1 ? innerWidth - reservedWidth - PANEL_MARGIN - origin.current.x : PANEL_MARGIN + reservedWidth - origin.current.x,
       narrow: innerWidth < 760 || latest.current.panelExpanded };
     if (!d?.active) return sc;
     const wing = d.side === -1 ? "left" : "right";

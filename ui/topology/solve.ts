@@ -62,6 +62,14 @@ export interface WingBalance { core: number; full: number; effective: number; sq
 export interface Layout { balance: WingBalance[]; vw: number; vh: number; sceneH: number; hub: Point & { Re: number }; wings: Wing[] }
 export const deg = (d: number) => d * Math.PI / 180;
 export const NODE_R = 22, BUBBLE_W = 232, BUBBLE_H = 54, LABEL_W = 110;
+export const PANEL_MIN_WIDTH = 400, PANEL_MARGIN = 16, PANEL_ARC_GAP = 40;
+
+// The selected node's animated outer arc defines the dock's inner edge.
+export function panelWidth(vw: number, side: Side, x: number, radius: number) {
+  const remaining = side === 1 ? vw - x - radius - PANEL_ARC_GAP - PANEL_MARGIN
+    : x - radius - PANEL_ARC_GAP - PANEL_MARGIN;
+  return Math.min(Math.max(0, vw - 2 * PANEL_MARGIN), Math.max(PANEL_MIN_WIDTH, remaining));
+}
 
 // Distribute port angles: follow each target's direction, keep a minimum
 // separation in order, and fit the run inside ±max. Returns degrees.
@@ -197,7 +205,11 @@ export function solve(sc: Scene, p: Params = DEFAULTS, drag: Drag | null = null)
     const side = sc.panel.side;
     const wing = panelWing(solveWing(side === 1 ? sc.right : sc.left, side, at(0), Re, p, side === 1 ? optR : optL, null));
     const selected = wing.nodes.find(n => n.id === sc.panel!.selected);
-    if (selected) hx = sc.panel.edge + side * (selected.size * selected.scale / 2 - 18) - selected.x;
+    if (selected) {
+      const radius = selected.arc?.R ?? selected.size * selected.scale / 2 + p.arcGap;
+      const stroke = 2 * Math.max(0.8, Re / 130);
+      hx = sc.panel.edge - side * (radius + stroke + PANEL_ARC_GAP) - selected.x;
+    }
   }
   const hub = { x: hx, y: sceneH / 2, Re };
   const L = panelWing(solveWing(sc.left, -1, hub, Re, p, optL, dragOf(-1)));

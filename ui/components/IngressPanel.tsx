@@ -12,8 +12,8 @@ import IngressDialog from "./IngressDialog";
 import SourceDispatches from "./SourceDispatches";
 import { Dialog, IconButton, Notice, Switch } from "./ui";
 
-export default function IngressPanel({ onPanelFrame, expanded, onToggleWidth }: {
-  onPanelFrame: (rect: SurfaceRect | null) => void; expanded: boolean; onToggleWidth: () => void;
+export default function IngressPanel({ onPanelFrame, width, expanded, onToggleWidth }: {
+  onPanelFrame: (rect: SurfaceRect | null) => void; width?: number; expanded: boolean; onToggleWidth: () => void;
 }) {
   const selected = ingressPanel.use()!, { status, sources } = connector.use();
   const entry = status?.ingresses.find(i => i.id === selected.ingress.id) ?? selected.ingress;
@@ -45,7 +45,7 @@ export default function IngressPanel({ onPanelFrame, expanded, onToggleWidth }: 
     catch (e) { if (currentId.current === entry.id) setError(String(e)); }
     finally { if (currentId.current === entry.id) setToggling(false); }
   }
-  return <Dialog width={400} dock="left" expanded={expanded} headerless title={client?.name ?? entry.name} busy={busy || toggling}
+  return <Dialog width={width} dock="left" expanded={expanded} headerless title={client?.name ?? entry.name} busy={busy || toggling}
     originKey={client?.id ?? entry.id} closeRequested={selected.closing} onClose={() => { if (ingressPanel.get()?.ingress.id === entry.id) ingressPanel.set(undefined); }}
     returnFocus={`[data-source-node="${CSS.escape(client ? client.id : entry.id)}"] button`} onPanelFrame={onPanelFrame}>
     <motion.div className="side-panel-layer" key={`${entry.id}:${selected.editing ? "edit" : "view"}`}

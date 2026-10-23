@@ -33,6 +33,7 @@ import { isPendingSource } from "../sourcePresentation";
 import GraphNode from "./GraphNode";
 import { ActivityBubble } from "./ActivityBubbles";
 import Topology, { type TopologyHandle, type NodeView } from "../topology/Topology";
+import { PANEL_MIN_WIDTH } from "../topology/solve";
 import TuningPanel from "../topology/TuningPanel";
 import { topologyTuningEnabled } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
@@ -57,6 +58,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const flow = onboarding.use(), newConnection = connectionSetup.use();
   const detailOpen = !!selection || !!sourceSelection, panelOpen = detailOpen || !!flow || !!newConnection;
   const [panelExpanded, setPanelExpanded] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(PANEL_MIN_WIDTH);
   useEffect(() => { if (!detailOpen) setPanelExpanded(false); }, [detailOpen]);
   const { status, sources: sourceRecords, sourcesLoaded, busy, loading, error } = connector.use();
   const inventory = agentStore.use();
@@ -248,16 +250,16 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             </span>
           </button>
         </div>
-        <Topology ref={topology} boundary={core} left={sourceViews} right={agentViews} panelExpanded={panelExpanded}
+        <Topology ref={topology} boundary={core} left={sourceViews} right={agentViews} panelExpanded={panelExpanded} onPanelWidth={setPanelWidth}
           onReorderNodes={(side, ids) => side === -1 ? reorderSources(ids) : reorderAgents(ids)}
           onReorderTasks={(_side, agent, ids) => reorderTasks(agent, ids.map(id => JSON.parse(id)[1] as string), tracked[agent] ?? [])}
           brand={<Hub sourceEmpty={!sourceViews.length} agentEmpty={!agents.length}
             onAddSource={() => openOnboarding("product")}
             onManageAgents={() => setAgentsOpen(true)} />} />
         {selectedAgent && visible && <AgentPanel agent={selectedAgent} state={agentState(selectedAgent)}
-          expanded={panelExpanded} onToggleWidth={() => setPanelExpanded(value => !value)}
+          width={panelWidth} expanded={panelExpanded} onToggleWidth={() => setPanelExpanded(value => !value)}
           onSettings={() => { setSettingsAgent(selectedAgent); setAgentsOpen(true); }} onPanelFrame={panelFrame} />}
-        {sourceSelection && visible && <IngressPanel expanded={panelExpanded} onToggleWidth={() => setPanelExpanded(value => !value)} onPanelFrame={panelFrame} />}
+        {sourceSelection && visible && <IngressPanel width={panelWidth} expanded={panelExpanded} onToggleWidth={() => setPanelExpanded(value => !value)} onPanelFrame={panelFrame} />}
         <div className="activity-edge-fade" aria-hidden="true" />
 
         {error && (
