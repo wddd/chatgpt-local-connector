@@ -150,6 +150,7 @@
   "archived": "Archived",
   "copyFailedSelectAndCopyTheTextManually": "Copy failed. Select and copy the text manually.",
   "unableToOpenCodexMakeSureCodexIs": "Unable to open Codex. Make sure Codex is running and retry.",
+  "codexExternalTaskRestartHint": "Tasks created outside Codex Desktop appear after it restarts.",
   "connectorRunsThisTaskInTheBackgroundDisconnecting": "Agent Remote Control runs this task in the background. Disconnecting stops its execution; continuing or interrupting it in Codex Desktop is not guaranteed.",
   "copyPrompt": "Copy prompt",
   "local": "Local",

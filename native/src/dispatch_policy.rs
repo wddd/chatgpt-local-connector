@@ -508,6 +508,7 @@ pub(crate) fn record(receipt: &Value) -> Result<()> {
     for key in ["requestId", "threadId", "turnId", "dispatchMode"] {
         row[key] = receipt[key].clone();
     }
+    row["title"] = json!(crate::control::dispatch_title(&receipt["task"]));
     row["origin"] = receipt["origin"].clone();
     row["agent"] = receipt["agent"]
         .as_str()

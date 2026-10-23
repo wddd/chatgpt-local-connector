@@ -374,3 +374,11 @@ test("current tools render inline when single and only repeat below a collapsed 
   assert.equal(currentToolPresentation(group, undefined, false), "none");
   assert.equal(currentToolPresentation(group, "elsewhere", false), "none");
 });
+
+// Desktop navigation must allow only the Codex thread deep-link route.
+test("desktop opener permits Codex threads without allowing arbitrary custom schemes", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const capability = JSON.parse(await readFile(new URL("../desktop/capabilities/default.json", import.meta.url), "utf8"));
+  const permission = capability.permissions.find((p: any) => p.identifier === "opener:allow-open-url");
+  assert.deepEqual(permission.allow, [{url:"codex://threads/*"}]);
+});

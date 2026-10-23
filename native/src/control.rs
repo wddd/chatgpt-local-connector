@@ -176,6 +176,9 @@ impl Control {
         if args["ephemeral"] == true {
             return Err("BACKGROUND_TASK_MUST_PERSIST".into());
         }
+        let title = dispatch_title(
+            &json!({"title":title,"prompt":receipt.as_deref().map(|r| &r["task"]["prompt"])}),
+        );
         let rpc = self.utility().await?;
         let mut args = args;
         args["ephemeral"] = json!(false);
@@ -252,22 +255,13 @@ impl Control {
         let seed = Rpc::start(&self.rpc_binary()?, Default::default(), &id()).await?;
         let mut timings = json!({"initializeMs":started.elapsed().as_millis()});
         let mut created = None;
-        let title = if title.trim().is_empty() {
-            let line = receipt
-                .as_deref()
-                .and_then(|r| r["task"]["prompt"].as_str())
-                .unwrap_or("")
-                .lines()
-                .find(|line| !line.trim().is_empty())
-                .unwrap_or("ARC task");
-            regex::Regex::new(r"^\s*(?:(?:[#>]+|[-*+]|[0-9]+[.)])\s+)*")
-                .unwrap()
-                .replace(line, "")
-                .chars()
-                .take(120)
-                .collect::<String>()
+        let derived = dispatch_title(
+            &json!({"title":title,"prompt":receipt.as_deref().map(|r| &r["task"]["prompt"])}),
+        );
+        let title = if derived.is_empty() {
+            "ARC task".into()
         } else {
-            title.to_owned()
+            derived
         };
         let result = async {
             let mut args = args;
@@ -1838,12 +1832,46 @@ fn task_details(operation: &str, args: &Value) -> Result<Option<Value>> {
         .cloned()
         .unwrap_or(Value::Null);
     Ok(Some(
-        json!({"kind":kind,"title":args["title"],"prompt":prompt,"input":input,
+        json!({"kind":kind,"title":dispatch_title(&json!({"title":args["title"],"prompt":prompt})),"prompt":prompt,"input":input,
         "project":args["project"],"directory":if native{p["cwd"].clone()}else{args["thread"]["cwd"].clone()},
         "threadId":if native{p["threadId"].clone()}else{args["threadId"].clone()},
         "model":model,"effort":p["effort"],
         "settings":if native{json!({"params":p})}else{json!({"thread":args["thread"],"turn":args["turn"],"resume":args["resume"],"mode":args["mode"],"networkAccess":args["networkAccess"],"serviceTier":args["serviceTier"]})}}),
     ))
+}
+pub(crate) fn dispatch_title(args: &Value) -> String {
+    let explicit = string(args, "title").trim();
+    if !explicit.is_empty() {
+        return explicit
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(120)
+            .collect();
+    }
+    let input = args["input"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|item| item["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let prompt = args["prompt"]
+        .as_str()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(&input);
+    let line = prompt
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("");
+    regex::Regex::new(r"^\s*(?:(?:[#>]+|[-*+]|[0-9]+[.)])\s+)*")
+        .unwrap()
+        .replace(line, "")
+        .trim()
+        .chars()
+        .take(120)
+        .collect()
 }
 fn task_input(args: &Value) -> Result<Value> {
     desktop::input(
@@ -2104,6 +2132,28 @@ pub(crate) fn turn_configurations(thread: &Value) -> HashMap<String, Value> {
 #[cfg(test)]
 mod pagination_tests {
     use super::*;
+    #[test]
+    fn dispatch_titles_use_control_source_text() {
+        assert_eq!(
+            dispatch_title(&json!({"prompt":"\n## Verify task\nDo work"})),
+            "Verify task"
+        );
+        assert_eq!(
+            dispatch_title(&json!({"title":" Explicit\n title ","prompt":"ignored"})),
+            "Explicit title"
+        );
+        assert_eq!(
+            dispatch_title(&json!({"input":[{"type":"text","text":"1. Input title\nDetails"}]})),
+            "Input title"
+        );
+        assert_eq!(
+            dispatch_title(&json!({"prompt":"題".repeat(130)}))
+                .chars()
+                .count(),
+            120
+        );
+        assert_eq!(dispatch_title(&json!({})), "");
+    }
     #[tokio::test]
     async fn fresh_submission_skips_unmaterialized_history_but_existing_turns_are_read() {
         let calls = std::cell::RefCell::new(Vec::new());

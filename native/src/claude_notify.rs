@@ -277,11 +277,7 @@ pub(crate) async fn bind(
         b.agent = args["agent"].as_str().unwrap_or("codex").into();
     }
     if b.title.is_empty() {
-        b.title = args["title"]
-            .as_str()
-            .filter(|v| !v.is_empty())
-            .unwrap_or(&b.project)
-            .into();
+        b.title = crate::control::dispatch_title(args);
     }
     if created {
         if cause.is_object() {
@@ -468,21 +464,40 @@ fn receipt(b: &Binding, d: &Delivery) -> String {
         .dispatches
         .as_array()
         .and_then(|rows| rows.iter().rev().find(|row| row["turnId"] == b.turn_id));
+    let dispatch_title = dispatch
+        .map(crate::control::dispatch_title)
+        .unwrap_or_default();
+    let title = if !b.title.is_empty() && b.title != b.project {
+        &b.title
+    } else if !dispatch_title.is_empty() {
+        &dispatch_title
+    } else {
+        &b.project
+    };
     let mut configuration = Vec::new();
     if let Some(row) = dispatch {
         let effective = &row["effectiveConfiguration"];
         for key in ["model", "effort", "serviceTier"] {
-            if let Some(value) = effective[key].as_str().or_else(|| row[key].as_str()) {
-                if !value.is_empty() {
-                    configuration.push(receipt_line(
-                        if key == "serviceTier" && matches!(value, "fast" | "priority") {
-                            "Fast"
-                        } else {
-                            value
-                        },
-                        100,
-                    ));
+            if let Some(value) = effective[key]
+                .as_str()
+                .filter(|v| !v.is_empty() && *v != "unknown")
+                .or_else(|| {
+                    row[key]
+                        .as_str()
+                        .filter(|v| !v.is_empty() && *v != "unknown")
+                })
+            {
+                if key == "serviceTier" && matches!(value, "default" | "standard") {
+                    continue;
                 }
+                configuration.push(receipt_line(
+                    if key == "serviceTier" && matches!(value, "fast" | "priority") {
+                        "Fast"
+                    } else {
+                        value
+                    },
+                    100,
+                ));
             }
         }
     }
@@ -507,7 +522,7 @@ fn receipt(b: &Binding, d: &Delivery) -> String {
         format!(" · {}", configuration.join(" "))
     };
     format!("⟢ ARC receipt — automated, not a user message\n{icon} {state} · {}{duration}\n{}\n{}{config} · ref {}",
-        receipt_line(project, 100), receipt_line(if b.title.is_empty() { "Untitled task" } else { &b.title }, 100),
+        receipt_line(project, 100), receipt_line(title, 100),
         receipt_line(agent, 100), b.thread_id)
 }
 fn message(b: &Binding) -> String {
@@ -2579,6 +2594,20 @@ mod tests {
         }
         b.deliveries[0].state = "waiting for approval".into();
         assert!(message(&b).contains("? approval"));
+        b.title = b.project.clone();
+        b.deliveries[0].dispatches[0]["title"] = json!("Prompt-derived dispatch title");
+        b.deliveries[0].dispatches[0]["effectiveConfiguration"] =
+            json!({"model":"unknown","effort":"unknown","serviceTier":"unknown"});
+        assert!(message(&b)
+            .contains("\nPrompt-derived dispatch title\ncodex · gpt-6.1-sol medium Fast"));
+        b.deliveries[0].dispatches[0]["serviceTier"] = json!("default");
+        assert!(message(&b).contains("codex · gpt-6.1-sol medium · ref"));
+        assert!(!message(&b).contains("unknown"));
+        b.deliveries[0].dispatches[0]["effectiveConfiguration"]["serviceTier"] = json!("priority");
+        assert!(message(&b).contains("medium Fast · ref"));
+        b.deliveries[0].dispatches[0]["title"] = Value::Null;
+        b.deliveries[0].dispatches[0]["prompt"] = json!("## Legacy prompt title\nDetails");
+        assert!(message(&b).contains("\nLegacy prompt title\n"));
         b.agent = "opencode".into();
         b.title = format!("{}\nignored", "題".repeat(110));
         b.deliveries[0].dispatches = Value::Null;

@@ -110,6 +110,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       </div>
     </header>
     <div className="task-timeline">
+      {agent === "codex" && nativeSession.open && <p className="muted small">{t("codexExternalTaskRestartHint")}</p>}
       {((!external && error) || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => { if (event.deltaY < 0) following.current = false; }}
