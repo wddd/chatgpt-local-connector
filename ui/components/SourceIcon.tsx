@@ -1,6 +1,6 @@
 import { controlSource } from "../controlSources";
 import { Plus, Plug } from "lucide-react";
-import { sourceVectors } from "../assets/brand-reserve/control-sources";
+import { sourceImages, sourceVectors } from "../assets/brand-reserve/control-sources";
 import { Icon } from "./ui";
 export default function SourceIcon({
   platform,
@@ -11,13 +11,16 @@ export default function SourceIcon({
   add?: boolean;
   panelVisual?: boolean;
 }) {
-  const raw = sourceVectors[controlSource(platform)?.icon || platform];
+  const icon = controlSource(platform)?.icon || platform;
+  const raw = sourceVectors[icon], image = sourceImages[icon];
   return (
     <span className="source-icon" data-panel-visual={panelVisual || undefined} aria-hidden="true">
       {add ? (
         <Icon icon={Plus} size={20} />
       ) : raw ? (
         <span dangerouslySetInnerHTML={{ __html: raw }} />
+      ) : image ? (
+        <img src={image} alt="" draggable={false} />
       ) : (
         <Icon icon={Plug} size={20} />
       )}

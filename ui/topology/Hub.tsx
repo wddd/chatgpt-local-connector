@@ -27,8 +27,10 @@ export default function Hub({ sourceEmpty, agentEmpty, onAddSource, onManageAgen
               <mask id={`${id}-${side}-mask`} maskUnits="userSpaceOnUse" x="0" y="0" width="20" height="20" style={{ maskType: "luminance" }}>
                 <rect width="20" height="20" fill="white" />
                 <g className="hub-symbol" fill="black" stroke="black" strokeWidth="2.5" strokeLinecap="round">
-                  {source || empty ? <path d="M3.75 10H16.25 M10 3.75V16.25" />
-                    : <g stroke="none"><circle cx="4" cy="10" r="1.5" /><circle cx="10" cy="10" r="1.5" /><circle cx="16" cy="10" r="1.5" /></g>}
+                  <g transform="translate(10 10) scale(.72) translate(-10 -10)">
+                    {source || empty ? <path d="M3.75 10H16.25 M10 3.75V16.25" />
+                      : <g stroke="none"><circle cx="4" cy="10" r="1.5" /><circle cx="10" cy="10" r="1.5" /><circle cx="16" cy="10" r="1.5" /></g>}
+                  </g>
                 </g>
               </mask>
             </defs>

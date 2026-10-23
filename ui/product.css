@@ -80,6 +80,7 @@
   width: 23px;
   height: 23px;
 }
+.source-icon img { width: 100%; height: 100%; object-fit: contain; }
 .agent-brand svg {
   width: 32px;
   height: 32px;

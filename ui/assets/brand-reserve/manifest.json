@@ -414,6 +414,13 @@
       "license": "MIT; brand trademarks reserved",
       "note": "General DeepSeek mark used for DeepSeek Harness.",
       "sha256": "8f9443e351b6dacce71871790201b799d92e8bf96a45ef79aeb5e9bf4db423e2"
+    },
+    {
+      "file": "control-sources/grok-bot/app.png",
+      "source": "https://x.ai/bot",
+      "license": "Official application artwork; proprietary brand asset excluded from the project MIT license; trademarks reserved",
+      "note": "PNG converted from icon.icns in the official Grok Bot desktop application 0.75.5. Distinct from the Grok mark.",
+      "sha256": "ed98af275df444e2f08213537399cc458800831329f446f0402445640a21c61d"
     }
   ],
   "controlSourceUsage": {
@@ -425,6 +432,7 @@
     "slack": "control-sources/slack/color.svg",
     "cursor": "agents/cursor/mono.svg",
     "github-copilot": "control-sources/github-copilot/mono.svg",
-    "raycast": "control-sources/raycast/mono.svg"
+    "raycast": "control-sources/raycast/mono.svg",
+    "grok-bot": "control-sources/grok-bot/app.png"
   }
 }
