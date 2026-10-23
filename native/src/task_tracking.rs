@@ -1091,6 +1091,15 @@ impl Timeline {
             json!(self.turn)
         };
         row["turnStartedAt"] = json!(self.turn_started_at);
+        let mut turns: std::collections::HashSet<&str> = self
+            .entries
+            .iter()
+            .filter_map(|entry| entry["turnId"].as_str())
+            .collect();
+        turns.extend(self.turn_statuses.keys().map(String::as_str));
+        turns.insert(&self.turn);
+        turns.remove("");
+        row["turnCount"] = json!(turns.len());
         if let Some(summary) =
             dispatch_summaries(string(info, "id"), &self.turn_dispatch_summaries).get(&self.turn)
         {

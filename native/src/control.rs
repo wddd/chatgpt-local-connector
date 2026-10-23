@@ -2053,8 +2053,7 @@ pub(crate) fn item(v: &Value, offset: usize, len: usize) -> Value {
     json!({"itemId":v["id"],"type":v["type"],"text":String::from_utf16_lossy(&units[offset.min(units.len())..end.min(units.len())]),"textHash":hash(&text),"offset":offset,"textLength":units.len(),"nextOffset":if end<units.len(){Some(end)}else{None},"textTruncated":end<units.len()})
 }
 
-pub(crate) fn persisted_history(thread: &Value) -> Result<String> {
-    use std::io::Read;
+pub(crate) fn open_persisted_history(thread: &Value) -> Result<std::fs::File> {
     let sessions = std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| dirs::home_dir().unwrap().join(".codex"))
@@ -2078,8 +2077,8 @@ pub(crate) fn persisted_history(thread: &Value) -> Result<String> {
     }
     let file = opts.open(path).map_err(|e| e.to_string())?;
     let stat = file.metadata().map_err(|e| e.to_string())?;
-    if !stat.is_file() || stat.len() > 32 * 1024 * 1024 {
-        return Err("history too large".into());
+    if !stat.is_file() {
+        return Err("invalid history file".into());
     }
     #[cfg(unix)]
     {
@@ -2087,6 +2086,15 @@ pub(crate) fn persisted_history(thread: &Value) -> Result<String> {
         if stat.nlink() != 1 {
             return Err("linked history".into());
         }
+    }
+    Ok(file)
+}
+
+pub(crate) fn persisted_history(thread: &Value) -> Result<String> {
+    use std::io::Read;
+    let file = open_persisted_history(thread)?;
+    if file.metadata().map_err(|e| e.to_string())?.len() > 32 * 1024 * 1024 {
+        return Err("history too large".into());
     }
     let mut text = String::new();
     file.take(32 * 1024 * 1024)

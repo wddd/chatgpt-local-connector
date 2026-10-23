@@ -13,7 +13,7 @@ export const themeColors = {
   blue: { label: "themeBlue", sourceLight: "#00a6c7", sourceDark: "#64d2ff", light: "#007aff", dark: "#0a84ff" },
   purple: { label: "themePurple", sourceLight: "#f8509e", sourceDark: "#ff75b5", light: "#943d96", dark: "#bf5af2" },
   orange: { label: "themeOrange", sourceLight: "#e1393e", sourceDark: "#ff453a", light: "#f78218", dark: "#ff9f0a" },
-  green: { label: "themeGreen", sourceLight: "#e0b219", sourceDark: "#ffd60a", light: "#339a55", dark: "#32d74b" },
+  green: { label: "themeGreen", sourceLight: "#e0b219", sourceDark: "#ffd60a", light: "#22b85c", dark: "#43e773" },
 } as const;
 export const themeColor = preference<keyof typeof themeColors>(
   "theme-color",

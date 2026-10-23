@@ -1,7 +1,7 @@
 use crate::task_tracking::transcript_text;
 use crate::*;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
     time::{Duration, Instant, SystemTime},
@@ -16,10 +16,11 @@ pub(super) struct Monitor {
     turn_clocks: HashMap<PathBuf, TurnClock>,
 }
 #[derive(Default)]
-struct TurnClock {
+pub(super) struct TurnClock {
     offset: u64,
     started_at: Value,
     turn_id: String,
+    turns: HashSet<String>,
     dispatch_summary: Option<Value>,
     turn_dispatch_summaries: HashMap<String, Value>,
     thread_tier: Value,
@@ -132,6 +133,7 @@ fn scan(selected: &[String], clocks: &mut HashMap<PathBuf, TurnClock>) -> Vec<Ex
                         session["project"] = json!(clock.project);
                     }
                     session["startedAt"] = clock.created_at.clone();
+                    session["turnCount"] = json!(clock.turns.len());
                     if !clock.turn_id.is_empty() {
                         session["turnId"] = json!(clock.turn_id);
                     }
@@ -189,8 +191,20 @@ fn turn_start(record: &Value, agent: &str) -> Option<Value> {
 
 // Keep session metadata and turn configuration independently of the headline tail. Each
 // complete record is scanned once while a transcript remains active.
+pub(super) fn conversation_metadata(thread: &Value, clock: &mut TurnClock) -> Result<Value> {
+    read_clock(
+        crate::control::open_persisted_history(thread)?,
+        "codex",
+        clock,
+    )?;
+    Ok(json!({"dispatchSummary":clock.dispatch_summary,"turnCount":clock.turns.len()}))
+}
+
 fn turn_started_at(path: &Path, agent: &str, clock: &mut TurnClock) -> Result<Value> {
-    let mut file = File::open(path).map_err(|e| e.to_string())?;
+    read_clock(File::open(path).map_err(|e| e.to_string())?, agent, clock)
+}
+
+fn read_clock(mut file: File, agent: &str, clock: &mut TurnClock) -> Result<Value> {
     if file.metadata().map_err(|e| e.to_string())?.len() < clock.offset {
         *clock = TurnClock::default();
     }
@@ -240,6 +254,7 @@ fn turn_started_at(path: &Path, agent: &str, clock: &mut TurnClock) -> Result<Va
                         clock.dispatch_summary = None;
                     }
                     clock.turn_id = turn.into();
+                    clock.turns.insert(turn.into());
                 }
             }
             if agent == "codex" && record["type"] == "turn_context" {
@@ -248,6 +263,7 @@ fn turn_started_at(path: &Path, agent: &str, clock: &mut TurnClock) -> Result<Va
                         clock.turn_tier = clock.thread_tier.clone();
                     }
                     clock.turn_id = turn.into();
+                    clock.turns.insert(turn.into());
                     let context = &record["payload"];
                     clock.dispatch_summary = crate::egress::dispatch_summary(&json!({
                         "model":context["model"],"effort":context["effort"],

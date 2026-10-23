@@ -29,7 +29,7 @@ function Headline({ session }: { session: TrackedActivity }) {
     </AnimatePresence>
   </span>;
 }
-export function ActivityBubbleContent({ session, now, density = "standard", historical = false }: { session: TrackedActivity; now: number; density?: BubbleDensity; historical?: boolean }) {
+export function ActivityBubbleContent({ session, now, density = "standard", historical = false, conversationRow = false }: { session: TrackedActivity; now: number; density?: BubbleDensity; historical?: boolean; conversationRow?: boolean }) {
   const language = locale.use();
   const paused = ["cancelled", "interrupted", "aborted"].includes(session.status ?? "");
   const completed = !paused && (session.endedAt !== undefined || historical), external = session.source === "transcript";
@@ -43,6 +43,11 @@ export function ActivityBubbleContent({ session, now, density = "standard", hist
   const duration = elapsed(session.turnStartedAt, session.endedAt ?? now);
   const detail = session.interaction ? t("activity.pendingHint") : completed ? duration === "—" ? undefined : t("activity.totalDuration", { duration }) : previous;
   const created = Date.parse(session.startedAt ?? "");
+  const conversation = conversationRow;
+  const createdTime = Number.isFinite(created) && <time className="activity-created" dateTime={session.startedAt!}
+    title={t("agentPanel.created", { time: new Date(created).toLocaleString(language) })}>
+    {new Date(created).toLocaleDateString(language, { ...(new Date(created).getFullYear() !== new Date(now).getFullYear() ? { year: "numeric" } as const : {}), month: "short", day: "numeric" })}
+  </time>;
   return <>
     <PhaseTile phase={phase} running={running} completed={completed} paused={paused} animated={!external} source={source} />
     {historical && <span className="sr-only">{t(paused ? "timeline.status.cancelled" : "activity.completed")}</span>}
@@ -51,20 +56,20 @@ export function ActivityBubbleContent({ session, now, density = "standard", hist
         {unread && <span className="activity-unread" role="img" aria-label={t("activity.unread")} />}
         {session.interaction ? <span className="activity-pending">{t("activity.pending")}</span> : !historical && <time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}</time>}
       </span>
-      <span className="activity-phase">
-        {historical ? Number.isFinite(created) && <time className="activity-created" dateTime={session.startedAt!}>
-          {t("agentPanel.created", { time: new Date(created).toLocaleDateString(language, { year: "numeric", month: "short", day: "numeric" }) })}
-        </time> : <>
+      {(!historical || !conversation) && <span className="activity-phase">
+        {historical ? createdTime : <>
           <PhaseLabel phase={phase} running={running} completed={completed}>{t(phaseLabel)}</PhaseLabel>
           <Headline session={session.interaction ? { ...session, headline: session.interaction.summary } : session} />
         </>}
-      </span>
+      </span>}
       {density === "detailed" && <span className="activity-detail-line" title={detail}>{detail || "\u00a0"}</span>}
-      {density !== "compact" && <span className="activity-spec-row">
+      {density !== "compact" && <span className={`activity-spec-row ${conversation ? "activity-conversation-meta" : ""}`}>
+        {conversation && project && <span className="activity-project" title={session.project!}>{project}</span>}
         <SpecPill summary={session.dispatchSummary} />
-        {project && <span className="activity-project" title={session.project!}>{project}</span>}
+        {conversation && !!session.turnCount && <span className="activity-spec">{t("timeline.turnCount", { count: session.turnCount })}</span>}
+        {!conversation && project && <span className="activity-project" title={session.project!}>{project}</span>}
         {density === "detailed" && source && <span className="activity-source-name" title={dispatchSourceLabel(source)}>{dispatchSourceLabel(source)}</span>}
-        <StepTrail steps={session.recentSteps} running={running} />
+        {conversation ? createdTime : <StepTrail steps={session.recentSteps} running={running} />}
       </span>}
     </span>
   </>;

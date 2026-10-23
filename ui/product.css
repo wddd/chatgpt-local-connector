@@ -1231,7 +1231,9 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .activity-bubble.agent-conversation-row.needs-attention { background: var(--warning-soft); box-shadow: inset 0 0 0 1.5px var(--warning); }
 .activity-bubble.agent-conversation-row:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
 .activity-bubble.agent-conversation-row .activity-project { background: var(--surface); }
-.activity-phase .activity-created { margin-left: 0; font: 11px var(--font-ui); }
+.activity-created { flex: none; color: var(--text-tertiary); font: 10px/17px var(--font-ui); white-space: nowrap; }
+.activity-conversation-meta .activity-created { margin-left: auto; }
+.activity-conversation-meta .activity-project { max-width: 25%; }
 .agent-conversation-more { height: 1px; }
 @keyframes agent-task-rise { from { opacity: 0; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
 @media (prefers-reduced-motion: reduce) {

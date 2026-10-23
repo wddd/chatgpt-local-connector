@@ -18,7 +18,7 @@ const ConversationRow = memo(function ConversationRow({ agent, session, live, no
     data-activity-session={JSON.stringify([agent, session.id])}
     aria-label={`${session.title || t("timeline.title")} · ${t("timeline.open")}`}
     onClick={() => selectAgentPanel({ type: "task", agent, session })}>
-    <ActivityBubbleContent session={session} now={now} density="standard" historical={!live} />
+    <ActivityBubbleContent session={session} now={now} density="standard" historical={!live} conversationRow />
   </button>;
 });
 
@@ -72,6 +72,7 @@ export default function AgentConversations({ agent, active }: { agent: string; a
   const sessions = new Map<string, TrackedActivity>(rows.map(conversation => [conversation.id, {
     id: conversation.id, source: conversation.source, status: conversation.status, title: conversation.title || undefined, phase: "idle", phaseSince: null,
     headline: "", startedAt: conversation.createdAt, project: conversation.project, projectName: conversation.projectName,
+    dispatchSummary: conversation.dispatchSummary ?? undefined, turnCount: conversation.turnCount ?? undefined,
     nativeSessionId: conversation.nativeSessionId ?? undefined, open: conversation.open,
     timeline: true, orderAt: Date.parse(conversation.createdAt ?? "") || 0, conversation: true,
   }]));
@@ -82,6 +83,8 @@ export default function AgentConversations({ agent, active }: { agent: string; a
       startedAt: history?.startedAt ?? session.startedAt,
       title: session.title || history?.title,
       status: current ? undefined : history?.status,
+      dispatchSummary: session.dispatchSummary ?? history?.dispatchSummary,
+      turnCount: session.turnCount === undefined ? history?.turnCount : Math.max(session.turnCount, history?.turnCount ?? 0),
       orderAt: history?.orderAt || Date.parse(session.startedAt ?? "") || 0,
       conversation: session.source !== "transcript",
     });
