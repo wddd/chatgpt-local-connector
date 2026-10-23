@@ -237,6 +237,7 @@ pub(crate) struct Timeline {
     pub status: String,
     pub turn: String,
     pub turn_dispatch_summaries: HashMap<String, Value>,
+    pub turn_timings: HashMap<String, Value>,
     turn_statuses: HashMap<String, String>,
     turn_started_at: Option<String>,
     #[serde(skip)]
@@ -356,7 +357,32 @@ impl Timeline {
         self.partial |= row["truncated"] == true;
         self.put(row, at);
     }
+    fn start_turn(&mut self, at: &str) {
+        if self.turn.is_empty() {
+            return;
+        }
+        let timing = self
+            .turn_timings
+            .entry(self.turn.clone())
+            .or_insert(json!({}));
+        if !timing["startedAt"].is_string() {
+            timing["startedAt"] = json!(at);
+        }
+        timing.as_object_mut().unwrap().remove("endedAt");
+    }
     pub fn finish(&mut self, status: &str, at: &str) {
+        if !self.turn.is_empty() {
+            let timing = self
+                .turn_timings
+                .entry(self.turn.clone())
+                .or_insert(json!({}));
+            if !timing["startedAt"].is_string() {
+                timing["startedAt"] = json!(self.turn_started_at);
+            }
+            if !timing["endedAt"].is_string() {
+                timing["endedAt"] = json!(at);
+            }
+        }
         self.end_chunk(at);
         self.status = status.into();
         self.record_turn_status();
@@ -414,6 +440,7 @@ impl Timeline {
                 self.turn = string(msg, "turnId").into();
                 self.turn_started_at = Some(at.into());
                 self.status = "running".into();
+                self.start_turn(at);
                 self.record_turn_status();
                 let (text, truncated) = cut(&redact(string(msg, "text")), MAX_TEXT);
                 self.partial |= truncated;
@@ -774,7 +801,16 @@ impl Timeline {
     }
     /// Project history first, then overlay observations made while the read was in flight.
     pub fn backfill_codex(&mut self, thread: &Value, baseline: u64, observed: u64, at: &str) {
-        for (turn, configuration) in crate::control::turn_configurations(thread) {
+        let persisted = crate::control::persisted_turns(thread);
+        for (turn, timing) in persisted.timings {
+            let current = self.turn_timings.entry(turn).or_insert(json!({}));
+            for field in ["startedAt", "endedAt"] {
+                if timing[field].is_string() {
+                    current[field] = timing[field].clone();
+                }
+            }
+        }
+        for (turn, configuration) in persisted.configurations {
             if let Some(summary) = crate::egress::dispatch_summary(&configuration) {
                 self.turn_dispatch_summaries.insert(turn, summary);
             }
@@ -987,6 +1023,7 @@ impl Timeline {
                 }
                 self.turn = turn.into();
                 self.status = "running".into();
+                self.start_turn(at);
                 self.record_turn_status();
             }
             "turn/completed" => {
@@ -1030,7 +1067,12 @@ impl Timeline {
             .collect::<Vec<_>>())
     }
     pub fn response(&self, session: &str, after: u64) -> Value {
-        let mut result = json!({"sessionId":session,"status":self.status,"entries":self.entries.iter().enumerate().filter(|(_,r)|r["cursor"].as_u64().unwrap_or(0)>after).map(|(i,r)| { let mut row=r.clone(); if row.get("position").is_none() { row["position"]=json!(i); } row }).collect::<Vec<_>>(),"cursor":self.revision,"coverage":{"state":if self.partial {"partial"} else {"complete"},"truncated":self.partial},"executionEvidence":self.execution_evidence()});
+        let truncated = self.entries.iter().any(|row| {
+            row["truncated"] == true
+                || row["input"]["truncated"] == true
+                || row["output"]["truncated"] == true
+        });
+        let mut result = json!({"sessionId":session,"status":self.status,"entries":self.entries.iter().enumerate().filter(|(_,r)|r["cursor"].as_u64().unwrap_or(0)>after).map(|(i,r)| { let mut row=r.clone(); if row.get("position").is_none() { row["position"]=json!(i); } row }).collect::<Vec<_>>(),"cursor":self.revision,"coverage":{"state":if self.partial {"partial"} else {"complete"},"truncated":truncated},"executionEvidence":self.execution_evidence()});
         let summaries = dispatch_summaries(session, &self.turn_dispatch_summaries);
         if let Some(summary) = summaries.get(&self.turn) {
             result["dispatchSummary"] = summary.clone();
@@ -1040,6 +1082,9 @@ impl Timeline {
         }
         if !self.turn_statuses.is_empty() {
             result["turnStatuses"] = json!(self.turn_statuses);
+        }
+        if !self.turn_timings.is_empty() {
+            result["turnTimings"] = json!(self.turn_timings);
         }
         result
     }

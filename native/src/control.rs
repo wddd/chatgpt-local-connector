@@ -1648,7 +1648,7 @@ impl Control {
                         );
                     }
                     let configurations = if full {
-                        turn_configurations(&t)
+                        persisted_turns(&t).configurations
                     } else {
                         HashMap::new()
                     };
@@ -2103,14 +2103,26 @@ pub(crate) fn persisted_history(thread: &Value) -> Result<String> {
     Ok(text)
 }
 
-pub(crate) fn turn_configurations(thread: &Value) -> HashMap<String, Value> {
-    let mut result = HashMap::new();
-    if let Ok(text) = persisted_history(thread) {
+#[derive(Default)]
+pub(crate) struct PersistedTurns {
+    pub configurations: HashMap<String, Value>,
+    pub timings: HashMap<String, Value>,
+}
+
+pub(crate) fn persisted_turns(thread: &Value) -> PersistedTurns {
+    let mut result = PersistedTurns::default();
+    use std::io::{BufRead, BufReader};
+    if let Ok(file) = open_persisted_history(thread) {
         let mut matched = false;
         let mut thread_tier = json!("unknown");
         let mut turn_tiers = HashMap::new();
-        for line in text.lines().filter(|l| l.len() <= 1024 * 1024) {
-            let Ok(event) = serde_json::from_str::<Value>(line) else {
+        let mut active_turn = String::new();
+        for line in BufReader::new(file)
+            .lines()
+            .map_while(std::result::Result::ok)
+            .filter(|l| l.len() <= 1024 * 1024)
+        {
+            let Ok(event) = serde_json::from_str::<Value>(&line) else {
                 continue;
             };
             let p = &event["payload"];
@@ -2125,7 +2137,24 @@ pub(crate) fn turn_configurations(thread: &Value) -> HashMap<String, Value> {
                         .unwrap_or(json!("unknown"));
                 }
                 if p["type"] == "task_started" && p["turn_id"].is_string() {
-                    turn_tiers.insert(string(p, "turn_id").to_owned(), thread_tier.clone());
+                    active_turn = string(p, "turn_id").into();
+                    turn_tiers.insert(active_turn.clone(), thread_tier.clone());
+                    if event["timestamp"].is_string() {
+                        result
+                            .timings
+                            .entry(active_turn.clone())
+                            .or_insert(json!({}))["startedAt"] = event["timestamp"].clone();
+                    }
+                }
+            }
+            if matched
+                && event["type"] == "event_msg"
+                && matches!(string(p, "type"), "task_complete" | "turn_aborted")
+            {
+                let turn = p["turn_id"].as_str().unwrap_or(&active_turn);
+                if !turn.is_empty() && event["timestamp"].is_string() {
+                    result.timings.entry(turn.into()).or_insert(json!({}))["endedAt"] =
+                        event["timestamp"].clone();
                 }
             }
             if matched
@@ -2134,7 +2163,7 @@ pub(crate) fn turn_configurations(thread: &Value) -> HashMap<String, Value> {
                 && p["turn_id"].is_string()
             {
                 let value = |key: &str| p.get(key).cloned().unwrap_or(json!("unknown"));
-                result.insert(string(p,"turn_id").into(), json!({"scope":"turn","source":"native-persisted-turn-context","turnId":p["turn_id"],"model":value("model"),"effort":value("effort"),"mode":p["sandbox_policy"].get("type").unwrap_or(&json!("unknown")),"networkAccess":p["sandbox_policy"].get("network_access").unwrap_or(&json!("unknown")),"serviceTier":value("service_tier"),"threadServiceTier":turn_tiers.get(string(p,"turn_id")).unwrap_or(&json!("unknown")),"approvalPolicy":value("approval_policy"),"observedAt":now()}));
+                result.configurations.insert(string(p,"turn_id").into(), json!({"scope":"turn","source":"native-persisted-turn-context","turnId":p["turn_id"],"model":value("model"),"effort":value("effort"),"mode":p["sandbox_policy"].get("type").unwrap_or(&json!("unknown")),"networkAccess":p["sandbox_policy"].get("network_access").unwrap_or(&json!("unknown")),"serviceTier":value("service_tier"),"threadServiceTier":turn_tiers.get(string(p,"turn_id")).unwrap_or(&json!("unknown")),"approvalPolicy":value("approval_policy"),"observedAt":now()}));
             }
         }
     }

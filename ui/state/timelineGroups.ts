@@ -1,4 +1,4 @@
-import type { AgentTimelineEntry } from "../types.ts";
+import type { AgentTimelineEntry, TurnTiming } from "../types.ts";
 
 export type TimelineGroup = { id: string; turnId?: string; entries: AgentTimelineEntry[] };
 // Turn ids keep disclosures stable when history arrives before a live entry.
@@ -26,13 +26,32 @@ export function turnEntries(entries: readonly AgentTimelineEntry[], live: boolea
   const final = marked ?? (!live && completed && last?.type === "text" ? last : undefined);
   return { prompt, final, work: entries.filter(entry => entry !== prompt && entry !== final) };
 }
-export function turnDuration(entries: readonly AgentTimelineEntry[], now: number, live: boolean, startedAt?: string | null) {
+export function turnDuration(entries: readonly AgentTimelineEntry[], now: number, live: boolean, startedAt?: string | null, timing?: TurnTiming) {
   const prompt = entries.find(entry => entry.type === "user");
-  const start = Date.parse(startedAt || prompt?.startedAt || "");
+  const start = Date.parse(timing?.startedAt || startedAt || prompt?.startedAt || "");
   const ends = entries.map(entry => Date.parse(entry.endedAt || "")).filter(Number.isFinite);
-  const end = live ? now : ends.length ? Math.max(...ends) : NaN;
+  const recordedEnd = Date.parse(timing?.endedAt || "");
+  const end = live ? now : Number.isFinite(recordedEnd) ? recordedEnd : ends.length ? Math.max(...ends) : NaN;
   return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : undefined;
 }
+// Sum execution spans; time between turns is not execution time.
+export function timelineDuration(entries: readonly AgentTimelineEntry[], now: number, running: boolean, currentTurn?: string | null, timings: Record<string, TurnTiming> = {}, startedAt?: string | null) {
+  const groups = timelineGroups(entries);
+  const turns = new Map(groups.map(group => [group.turnId ?? "", group.entries]));
+  for (const turn of Object.keys(timings)) if (!turns.has(turn)) turns.set(turn, []);
+  const liveId = currentTurn || groups.at(-1)?.turnId || "";
+  if (running && !turns.has(liveId)) turns.set(liveId, []);
+  if (!turns.size) return;
+  let total = 0;
+  for (const [id, rows] of turns) {
+    const live = running && id === liveId;
+    const duration = turnDuration(rows, now, live, live ? startedAt : undefined, timings[id]);
+    if (duration === undefined) return;
+    total += duration;
+  }
+  return total;
+}
+
 export function workState(entries: readonly AgentTimelineEntry[]) {
   const files = (read: boolean) => new Set(entries.filter(entry => entry.type === "file" && (read ? entry.operation === "read" : entry.operation && entry.operation !== "read"))
     .flatMap(entry => entry.changes?.length ? entry.changes.map(change => change.path) : entry.path ? [entry.path] : [entry.id])).size;

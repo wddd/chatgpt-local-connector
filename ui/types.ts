@@ -157,7 +157,12 @@ export interface AgentTrackingExcerpt {
   sha256: string;
   hashScope: "excerpt";
 }
+export interface TurnTiming {
+  startedAt?: string | null;
+  endedAt?: string | null;
+}
 export interface AgentTimeline {
+  turnTimings?: Record<string, TurnTiming>;
   projectName?: string | null;
   dispatchSummary?: DispatchSummary;
   turnDispatchSummaries?: Record<string, DispatchSummary>;

@@ -354,6 +354,27 @@ test("work blocks preserve manual choices and count observed work without adding
   assert.equal(turnDuration([{ ...base, type: "user", startedAt: running.startedAt, endedAt: running.startedAt }, { ...base, id: "parallel-a", endedAt: "2026-01-01T00:00:10Z" }, { ...base, id: "parallel-b", endedAt: "2026-01-01T00:00:03Z" }], now, false), 10000);
 });
 
+test("task execution totals exclude gaps between turns and retain native lifecycle timing", async () => {
+  // Property: total execution is the sum of known turn spans, excluding idle gaps and never inventing missing time.
+  const { timelineDuration, turnDuration } = await import("../ui/state/timelineGroups.ts");
+  const { mergeTimeline } = await import("../ui/state/timelineModel.ts");
+  const time = (seconds: number) => new Date(Date.parse("2026-01-01T00:00:00Z") + seconds * 1000).toISOString();
+  const first = { ...entry("first", 1, "Request", 1), type: "user" as const, turnId: "first", startedAt: null, endedAt: null };
+  const second = { ...first, id: "second", turnId: "second", position: 2 };
+  for (const gap of [0, 60, 3600]) {
+    const timings = { first: { startedAt: time(0), endedAt: time(10) }, second: { startedAt: time(10 + gap), endedAt: time(30 + gap) } };
+    const now = Date.parse(time(40 + gap));
+    assert.equal(timelineDuration([first, second], now, false, undefined, timings), 30000);
+    assert.equal(turnDuration([first], now, false, undefined, timings.first), 10000);
+    assert.equal(timelineDuration([second], now, false, undefined, timings), 30000);
+    const current = { ...timings, second: { startedAt: time(10 + gap) } };
+    assert.equal(timelineDuration([first, second], now, true, "second", current), 40000);
+    assert.equal(timelineDuration([first, second], now, false, undefined, { first: timings.first }), undefined);
+    const merged = mergeTimeline({ ...timeline([first]), turnTimings: { first: timings.first } }, { ...timeline([second]), turnTimings: { second: timings.second } });
+    assert.equal(timelineDuration(merged.entries, now, false, undefined, merged.turnTimings), 30000);
+  }
+});
+
 test("incremental timeline backfill retains turn identities and updated entry content", async () => {
   // Property: turn ids remain stable when earlier work and earlier turns are backfilled.
   const { mergeTimeline } = await import("../ui/state/timelineModel.ts");

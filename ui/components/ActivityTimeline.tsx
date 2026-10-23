@@ -10,7 +10,7 @@ import { Button, IconButton, LoadingIndicator, Tooltip } from "./ui";
 import TimelineEntries, { durationText } from "./TimelineEntries";
 import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
 import { connector } from "../state/connector";
-import { timelineGroups } from "../state/timelineGroups";
+import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import ActivityInteraction from "./ActivityInteraction";
 import FilePath from "./FilePath";
 import { activityHeadline, interactionKey, type TrackedActivity } from "../state/activityModel";
@@ -38,9 +38,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   // Completed history entries do not override a session in the live snapshot.
   const running = !!live || session.endedAt === undefined && !external && !timeline?.readOnly && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? "");
   const statusUnknown = session.conversation && !running && !["completed", "idle", "cancelled", "failed"].includes(timeline?.status ?? "");
-  const completedAt = useRef(session.endedAt);
-  if (running) completedAt.current = undefined;
-  else completedAt.current ??= session.endedAt ?? now;
   const followAllowed = useRef(true);
   followAllowed.current = running;
   useInterval(() => setNow(Date.now()), running ? 1000 : null);
@@ -101,8 +98,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const submission = pendingSession ? submissions[interactionKey(agent, pendingSession)] : undefined;
   const showCard = !!pendingSession && submission?.status !== "submitted";
   const agentName = name(orderedAgents().find(a => a.agent === agent) ?? { agent });
-  const startedAt = nativeSession.turnStartedAt ?? (session.conversation ? undefined : nativeSession.startedAt);
-  const duration = startedAt ? Math.max(0, Math.floor(((completedAt.current ?? now) - Date.parse(startedAt)) / 1000)) : undefined;
+  const duration = timelineDuration(timeline?.entries ?? [], now, running, nativeSession.turnId, timeline?.turnTimings, nativeSession.turnStartedAt);
   useEffect(() => {
     if (showCard) document.getElementById(cardId)?.focus({ preventScroll: true });
   }, [showCard, pendingSession?.phaseSince, cardId]);
@@ -144,10 +140,10 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           aria-pressed={expanded} onClick={onToggleWidth} />
       </div>
       <div className="activity-panel-subline task-detail-dispatch">
-        {project && <span className="activity-panel-meta" title={session.project || project}>{project}</span>}
+        {project && <span className="activity-project" title={session.project || project}>{project}</span>}
         {source && <span className="task-source-chip"><SourceBadge source={source} /><span>{dispatchSourceLabel(source)}</span>{where && <span className="task-source-where">{where}</span>}</span>}
-        <SpecPill summary={latestSummary} />{turnCount > 0 && <span className="timeline-meta">{t("timeline.turnCount", { count: turnCount })}</span>}
-        {duration !== undefined && <span className="timeline-meta task-detail-duration">{durationText(duration * 1000)}</span>}
+        <SpecPill summary={latestSummary} />{turnCount > 0 && <span className="activity-spec">{t("timeline.turnCount", { count: turnCount })}</span>}
+        {duration !== undefined && <span className="timeline-meta task-detail-duration">{durationText(duration)}</span>}
       </div>
     </header>
     <div className="task-timeline" aria-busy={loading}>
@@ -170,14 +166,14 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           if ((event.target as Element).closest("button")) manualDisclosure.current = true;
         }}>
           {loading ? <LoadingIndicator label={t("timeline.loading")} /> : <>
-          {timeline?.coverage.state === "partial" && <p className="timeline-meta">{t("timeline.truncated")}</p>}
+          {timeline?.coverage.state === "partial" && !timeline.coverage.truncated && <p className="timeline-meta">{t("timeline.partial")}</p>}
           {!session.timeline && <section className="activity-session-summary">
             <span className="timeline-meta">{t(`activity.phase.${nativeSession.phase}`)}</span>
             {(nativeSession.recentContent?.length ? nativeSession.recentContent : [activityHeadline(nativeSession, t("timeline.title")).text])
               .map((text, index) => <p key={index}>{text}</p>)}
           </section>}
           {timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
-          <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} partial={timeline?.coverage.state === "partial"} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries} />
+          <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} turnTimings={timeline?.turnTimings} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries} />
           </>}
         </div>
       </div>

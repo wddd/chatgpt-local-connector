@@ -8,6 +8,7 @@ export function mergeTimeline(current: AgentTimeline | undefined, next: AgentTim
     ...(current.turnDispatchSummaries || next.turnDispatchSummaries ? { turnDispatchSummaries: {
       ...current.turnDispatchSummaries, ...next.turnDispatchSummaries,
     } } : {}),
+    ...(current.turnTimings || next.turnTimings ? { turnTimings: { ...current.turnTimings, ...next.turnTimings } } : {}),
     ...(current.turnStatuses || next.turnStatuses ? { turnStatuses: { ...current.turnStatuses, ...next.turnStatuses } } : {}),
     entries: [...entries.values()].sort((a, b) => (a.position ?? 0) - (b.position ?? 0)) };
 }

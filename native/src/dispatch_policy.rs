@@ -604,7 +604,9 @@ pub(crate) async fn complete(
         )
         .await
     {
-        Ok(t) => control::turn_configurations(&t["thread"]).remove(turn),
+        Ok(t) => control::persisted_turns(&t["thread"])
+            .configurations
+            .remove(turn),
         Err(_) => None,
     };
     // Re-read under the same lock as reviews; observation must never erase a later verdict.
