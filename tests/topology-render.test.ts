@@ -197,7 +197,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
     assert.equal(document.querySelector('[aria-modal="true"]'), null);
     await click(document.querySelector(".activity-task-row")!);
     assert.equal(document.querySelector(".elastic-panel"), shell);
-    assert.match(document.querySelector(".task-detail-layer h2")!.textContent!, /Claude Code \/ External example/);
+    assert.equal(document.querySelector(".task-detail-layer h2")!.textContent!, "External example");
     assert.equal(document.querySelector(".activity-approval-card"), null, "external detail remains read-only");
     await click(document.querySelector(".task-detail-layer .dialog-header button")!);
     assert.equal(document.querySelector(".elastic-panel"), shell);
@@ -337,15 +337,14 @@ test("control source dock preserves editing, new onboarding, field navigation an
     await click(mount.querySelector(".hub-source"));
     assert.equal(document.querySelector('[data-panel-dock]')?.getAttribute('data-panel-dock'), 'left');
     assert.equal(document.querySelector('.elastic-backdrop'), null);
-    assert.ok(document.querySelector('.source-grid'));
+    assert.ok(document.querySelector('.source-product-list'));
     assert.equal(ingressPanel.get(), undefined);
     await escape();
     await click(first());
     shell = document.querySelector(".elastic-panel")!;
-    const footer = shell.querySelector<HTMLElement>('.side-panel-layer > .dialog-footer')!;
-    assert.equal(footer.previousElementSibling?.className, "side-panel-scroll");
-    assert.equal(getComputedStyle(footer).borderTopWidth, "1px");
-    assert.equal(getComputedStyle(footer).flexShrink, "0");
+    assert.equal(shell.querySelector('.side-panel-layer > .dialog-footer'), null);
+    assert.ok(shell.querySelector('.dialog-header .source-panel-heading [data-ingress-edit]'));
+    assert.ok(shell.querySelector('.side-panel-scroll'));
     await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
     assert.equal(document.querySelector(".elastic-panel"), shell);
     assert.ok(document.querySelector(".ingress-edit-layer form"));
@@ -379,22 +378,22 @@ test("control source dock preserves editing, new onboarding, field navigation an
     assert.equal(agentShell.hasAttribute("data-recessed"), false);
     assert.equal(agentShell.hasAttribute("inert"), false);
     await click(first()); assert.equal(agentPanel.get(), undefined); assert.ok(ingressPanel.get());
-    await click(button(t("connect.manage")));
+    await click(document.querySelector(".source-panel-heading [data-ingress-edit]"));
     assert.equal(navigation.get().page, "remote"); assert.equal(ingressPanel.get(), undefined);
     await act(() => navigation.set({}));
     // New source selection stays in the left dock; ChatGPT uses the same link flow.
     for (const id of ["claude", "chatgpt", "custom"]) {
       await click(mount.querySelector(".hub-source"));
       assert.equal(document.querySelector('[data-panel-dock]')?.getAttribute('data-panel-dock'), 'left');
-      assert.ok(document.querySelector('.source-grid'));
-      await click(document.querySelector(`.source-grid [role="radio"][value="${id}"]`));
+      assert.ok(document.querySelector('.source-product-list'));
+      await click(document.querySelector(`.source-product-list [role="radio"][value="${id}"]`));
       await click(button(t("source.next")));
       await click(button(t("source.next")));
       assert.ok(document.querySelector('.connection-steps'));
       assert.equal(document.querySelector('#ingress-tunnelId'), null);
       await click(button(t("back")));
       await click(button(t("back")));
-      assert.ok(document.querySelector('.source-grid'));
+      assert.ok(document.querySelector('.source-product-list'));
       await escape();
     }
     await click(first());
@@ -405,7 +404,7 @@ test("control source dock preserves editing, new onboarding, field navigation an
     assert.equal(document.querySelector('[data-source-node="one"]'), null);
     await act(() => { status.ingresses = []; connector.set({ ...connector.get(), sources: [], status: { ...status } }); });
     await click(mount.querySelector('.hub-source'));
-    assert.ok(document.querySelector(".source-grid"), "the source entry always opens the shared add flow");
+    assert.ok(document.querySelector(".source-product-list"), "the source entry always opens the shared add flow");
     const { locale } = await server.ssrLoadModule("/ui/i18n.ts");
     const { onboarding } = await server.ssrLoadModule("/ui/state/onboarding.ts");
     await act(() => locale.set("en"));

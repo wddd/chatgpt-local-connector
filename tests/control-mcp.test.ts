@@ -22,7 +22,7 @@ let fixtureCommand: string;
 let fixtureEnv: Record<string,string>;
 async function connectFixture() {
   client = new Client({name:"agent-remote-control-test",version:"1"});
-  await client.connect(new StdioClientTransport({command:fixtureCommand,env:fixtureEnv,stderr:"pipe"}));
+  await client.connect(new StdioClientTransport({command:fixtureCommand,env:fixtureEnv,stderr:"inherit"}));
 }
 let inventory: Awaited<ReturnType<Client['listTools']>>;
 let operations: typeof inventory.tools;
@@ -984,7 +984,8 @@ test('wait omits repeated nonterminal text and retains complete terminal replies
 
 test('inbox_wait filters unread events before limiting, isolates ingress and cooperates with ack', async () => {
   const inboxDir=path.join(directory,'notifications/inboxes');await mkdir(inboxDir,{recursive:true});
-  const inboxFile=path.join(inboxDir,createHash('sha256').update('default').digest('hex')+'.json');
+  const sourceId=(await management('source')).sources.find((s: {id:string;ingressId:string})=>s.ingressId==='default')!.id;
+  const inboxFile=path.join(inboxDir,createHash('sha256').update(sourceId).digest('hex')+'.json');
   const original=await readFile(inboxFile,'utf8').catch(()=>null);
   const event=(eventId:string,threadId:string,kind='completed')=>({eventId,threadId,taskId:null,turnId:'turn',kind,channel:'inbox',target:null,finalResponse:'self-test reply'});
   try {
@@ -1084,7 +1085,8 @@ test('stdio bridge forwards negotiated progress, preserves final replies and can
 
 test('argument errors are short, field-specific and leave unread inbox untouched', async () => {
   const inboxDir=path.join(directory,'notifications/inboxes');await mkdir(inboxDir,{recursive:true});
-  const inboxFile=path.join(inboxDir,createHash('sha256').update('default').digest('hex')+'.json');
+  const sourceId=(await management('source')).sources.find((s: {id:string;ingressId:string})=>s.ingressId==='default')!.id;
+  const inboxFile=path.join(inboxDir,createHash('sha256').update(sourceId).digest('hex')+'.json');
   const original=await readFile(inboxFile,'utf8').catch(()=>null);
   const unread=JSON.stringify([{eventId:'argument-error-event',threadId:'old-thread',turnId:'old-turn',read:false,event:'completed'}]);
   await writeFile(inboxFile,unread);

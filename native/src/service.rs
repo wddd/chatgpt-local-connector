@@ -248,6 +248,7 @@ impl Service {
     }
     #[cfg(feature = "test-fixture")]
     pub fn fixture(binary: PathBuf) -> Result<Arc<Self>> {
+        crate::sources::initialize()?;
         let mut service = Self::new()?;
         let service_mut = Arc::get_mut(&mut service).unwrap();
         service_mut.control = Control::new(binary);
