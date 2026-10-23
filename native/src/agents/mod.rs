@@ -895,13 +895,13 @@ impl AgentHost {
         ) {
             return Err("UNKNOWN_TOOL".into());
         }
-        let request = string(&args, "requestId");
-        RECEIPTS.path(request)?;
+        let request = string(&args, "requestId").to_owned();
+        RECEIPTS.path(&request)?;
         let mut payload = args.clone();
         payload.as_object_mut().map(|p| p.remove("waitMs"));
         let digest = hash(json!({"name":name,"args":payload}).to_string());
-        let request_lock = self.requests.lock(request).await;
-        if let Some(receipt) = RECEIPTS.replay(request, &digest, &self.session)? {
+        let request_lock = self.requests.lock(&request).await;
+        if let Some(receipt) = RECEIPTS.replay(&request, &digest, &self.session)? {
             return Ok(receipt);
         }
         let task = if name == "agent_create" {
@@ -910,6 +910,7 @@ impl AgentHost {
             string(&args, "taskId").into()
         };
         if name == "agent_create" {
+            args["cwd"] = crate::projects::working_directory(native, &args).await?;
             let cwd = Path::new(string(&args, "cwd"));
             if !cwd.is_absolute() || !cwd.is_dir() {
                 return Err("ABSOLUTE_CWD_REQUIRED".into());

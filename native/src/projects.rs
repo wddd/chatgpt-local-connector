@@ -70,7 +70,71 @@ pub(crate) fn display_name<'a>(
     project["name"].as_str()
 }
 
+/// Legacy project-only operations retain their established automatic root choice.
 pub async fn resolve(c: &Control, id: &str) -> Result<Value> {
+    resolve_root(c, id, None, false).await
+}
+
+pub(crate) async fn resolve_args(c: &Control, args: &Value) -> Result<Value> {
+    resolve_root(c, string(args, "project"), args["root"].as_str(), false).await
+}
+
+/// New cwd alternatives require explicit selection for multi-root projects.
+pub(crate) async fn working_directory(c: &Control, args: &Value) -> Result<Value> {
+    if let Some(cwd) = args.get("cwd") {
+        return Ok(cwd.clone());
+    }
+    Ok(
+        resolve_root(c, string(args, "project"), args["root"].as_str(), true).await?["root"]
+            .clone(),
+    )
+}
+
+fn select_root<'a>(roots: &'a [Value], selector: &str) -> Result<&'a Value> {
+    let path = Path::new(selector);
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err("root must be a root name or relative path without parent traversal".into());
+    }
+    let matches: Vec<_> = roots
+        .iter()
+        .filter(|r| r["name"] == selector || Path::new(string(r, "path")).ends_with(path))
+        .collect();
+    if matches.len() == 1 {
+        return Ok(matches[0]);
+    }
+    Err(root_error(roots))
+}
+
+fn root_error(roots: &[Value]) -> String {
+    format!(
+        "Specify root; available roots: {}",
+        roots
+            .iter()
+            .map(|r| {
+                let path = string(r, "path");
+                let name = r["name"].as_str().unwrap_or_else(|| {
+                    Path::new(path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(path)
+                });
+                format!("{name} ({path})")
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+async fn resolve_root(
+    c: &Control,
+    id: &str,
+    selector: Option<&str>,
+    for_execution: bool,
+) -> Result<Value> {
     if id.is_empty() {
         return Err("PROJECT_REQUIRED_FOR_RELATIVE_PATH".into());
     }
@@ -105,8 +169,12 @@ pub async fn resolve(c: &Control, id: &str) -> Result<Value> {
                     .is_some_and(|name| name == string(p, "name"))
             })
             .collect();
-        let selected = if roots.len() == 1 {
+        let selected = if let Some(selector) = selector {
+            select_root(roots, selector)?
+        } else if roots.len() == 1 {
             &roots[0]
+        } else if for_execution {
+            return Err(root_error(roots));
         } else if named.len() == 1 {
             named[0]
         } else {
@@ -127,14 +195,7 @@ pub async fn resolve(c: &Control, id: &str) -> Result<Value> {
                 }
             }
             if repositories.len() != 1 {
-                return Err(format!(
-                    "Specify an absolute directory for a multi-directory project: {}",
-                    roots
-                        .iter()
-                        .map(|r| string(r, "path"))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ));
+                return Err(root_error(roots));
             }
             repositories[0]
         };
@@ -144,9 +205,20 @@ pub async fn resolve(c: &Control, id: &str) -> Result<Value> {
             string(p, "name").into(),
         )
     };
-    crate::permissions::check_path(&root)?;
+    if Path::new(id).is_absolute() {
+        if let Some(selector) = selector {
+            select_root(&[json!({"path":root})], selector)?;
+        }
+    }
+    // Execution keeps the same permission boundary as an explicit cwd.
+    // Core file operations still require Core's own disk access.
+    if !for_execution {
+        crate::permissions::check_path(&root)?;
+    }
     let root = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
-    crate::permissions::check_path(&root)?;
+    if !for_execution {
+        crate::permissions::check_path(&root)?;
+    }
     if !root.is_dir() {
         return Err("project must be a directory".into());
     }
@@ -272,7 +344,7 @@ async fn git_bytes(root: &str, args: Vec<String>, identity: bool) -> Result<Vec<
 }
 /// Local Git mutations share Control's durable request reservation and receipts.
 pub async fn write(c: &Control, args: &Value) -> Result<Value> {
-    let project = resolve(c, string(args, "project")).await?;
+    let project = resolve_args(c, args).await?;
     let root = string(&project, "root");
     git(root, strings(&["rev-parse", "--git-dir"])).await?;
     let operation = string(args, "operation");
@@ -290,7 +362,7 @@ pub async fn write(c: &Control, args: &Value) -> Result<Value> {
         .ok_or("invalid Git arguments")?
         .keys()
         .any(|key| {
-            !["project", "operation", "requestId"].contains(&key.as_str())
+            !["project", "root", "operation", "requestId"].contains(&key.as_str())
                 && !permitted.contains(&key.as_str())
         })
     {
@@ -785,7 +857,7 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
     {
         let path = PathBuf::from(string(args, "path"));
         if args["view"] == "review" && args["project"].is_string() {
-            let original = resolve(c, string(args, "project")).await?;
+            let original = resolve_args(c, args).await?;
             review_path(string(&original, "root"), string(args, "path"))?;
         }
         if action == "read" {
@@ -797,7 +869,7 @@ pub async fn query(c: &Control, action: &str, args: &Value) -> Result<Value> {
         }
     }
     let args = &normalized;
-    let p = resolve(c, string(args, "project")).await?;
+    let p = resolve_args(c, args).await?;
     let root = string(&p, "root");
     let started = now();
     let review = args["view"] == "review";

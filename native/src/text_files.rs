@@ -7,7 +7,7 @@ pub async fn write(c: &control::Control, operation: &str, args: &Value) -> Resul
     let path = if requested.is_absolute() {
         requested.to_path_buf()
     } else {
-        let p = projects::resolve(c, string(args, "project")).await?;
+        let p = projects::resolve_args(c, args).await?;
         Path::new(string(&p, "root")).join(requested)
     };
     crate::permissions::check_path(&path)?;
@@ -115,8 +115,8 @@ pub async fn write(c: &control::Control, operation: &str, args: &Value) -> Resul
         .count();
     let mut result = json!({"path":path,"sha256":hash(&content),"created":before.is_none(),"diff":{"changed":old!=content,"replacements":replacements,"startLine":prefix+1,"removedLines":old_lines.len()-prefix-suffix,"addedLines":new_lines.len()-prefix-suffix,"summary":"changed line span (common prefix/suffix excluded)"}});
     // Directory matching comes from the explicit project or the actual repository root.
-    let project_root = if let Some(project) = args["project"].as_str() {
-        projects::resolve(c, project)
+    let project_root = if args["project"].is_string() {
+        projects::resolve_args(c, args)
             .await
             .ok()
             .and_then(|p| p["root"].as_str().map(PathBuf::from))

@@ -162,6 +162,40 @@ pub fn receipt(value: Value) -> Value {
     out
 }
 
+/// Strip ARC attribution only from owned metadata, never native or user payloads.
+pub(crate) fn control_source(name: &str, value: &mut Value) {
+    fn strip(value: &mut Value) {
+        if let Some(fields) = value.as_object_mut() {
+            fields.remove("origin");
+        }
+    }
+    if (value["requestId"].is_string() && value["state"].is_string())
+        || matches!(
+            name,
+            "codex_read" | "codex_tasks" | "agent_read" | "agent_tasks"
+        )
+    {
+        strip(value);
+    }
+    let arrays: &[&str] = match name {
+        "codex_read" => &["turns", "dispatches"],
+        "codex_tasks" => &["tasks"],
+        "agent_read" => &["dispatches"],
+        "agent_tasks" => &["tasks"],
+        _ => &[],
+    };
+    for key in arrays {
+        for row in value
+            .get_mut(*key)
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            strip(row);
+        }
+    }
+}
+
 pub(crate) fn dispatch_receipt(value: &Value) -> bool {
     matches!(
         string(value, "operation"),
@@ -344,8 +378,12 @@ pub(crate) fn validate_op(spec: &Value, args: &Value) -> Result<()> {
                             );
                         }
                     }
-                    if args.get("cwd").is_none() {
-                        return invalid_arguments("command", "/cwd", "Required with cmd.");
+                    if args.get("cwd").is_none() && args.get("project").is_none() {
+                        return invalid_arguments(
+                            "command",
+                            "/cwd",
+                            "Supply cwd or project with cmd.",
+                        );
                     }
                 }
             }
@@ -353,7 +391,7 @@ pub(crate) fn validate_op(spec: &Value, args: &Value) -> Result<()> {
         })
 }
 
-/// Normalize only documented aliases, before defaults and receipt hashing.
+/// Normalize accepted legacy aliases before defaults and receipt hashing.
 pub(crate) fn normalize_args(name: &str, args: &mut Value) -> Result<()> {
     let alias = match name {
         "git" | "git_write" => Some(("action", "operation")),
@@ -494,10 +532,20 @@ pub(crate) fn unknown_op(name: &str, ops: &[Value]) -> String {
     let mut candidates: Vec<_> = ops.iter().map(|op| string(op, "name")).collect();
     candidates.sort_by_key(|candidate| (distance(name, candidate), *candidate));
     candidates.truncate(3);
-    json!({"code":"UNKNOWN_OP","op":name,"message":"Call guide for the enabled op index, then query({op: \"guide\", args: {op: \"<name>\"}}) for its schema (also works with a cached guide schema).","candidates":candidates}).to_string()
+    json!({"code":"UNKNOWN_OP","op":name,"message":"Call query guide with view:full for the enabled op index, then query({op: \"guide\", args: {op: \"<name>\"}}) for its schema (also works with a cached guide schema).","candidates":candidates}).to_string()
 }
 
-pub(crate) fn guide(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> Value {
+pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -> Value {
+    let mut result = guide_content(origin, args, locale, ops);
+    let digest = hash(result.to_string());
+    if args["knownGuideHash"] == digest {
+        return json!({"guideHash":digest,"unchanged":true});
+    }
+    result["guideHash"] = json!(digest);
+    result
+}
+
+fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> Value {
     let ops = ops
         .iter()
         .map(|op| source_spec(op, origin))
@@ -514,20 +562,23 @@ pub(crate) fn guide(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) 
         return json!({"op":name,"via":via(spec),"description":spec["description"],"inputSchema":spec["inputSchema"],"signature":signature(spec),"example":example(spec)});
     }
     let topic = args["topic"].as_str().unwrap_or("loop");
+    let full = args["view"] == "full";
     let source = match string(origin, "controlSource") {
         "claude" => "claude",
         "chatgpt" => "chatgpt",
         _ => "other",
     };
     let guides = &catalog()["guides"]["en"];
-    let body = if guides[topic].is_object() {
+    let body = if topic == "loop" && !full {
+        &guides["core"]
+    } else if guides[topic].is_object() {
         &guides[topic][source]
     } else {
         &guides[topic]
     };
     let examples: Vec<_> = ops
         .iter()
-        .filter(|op| topic == "loop" && string(op, "name") == "codex_create")
+        .filter(|op| full && topic == "loop" && string(op, "name") == "codex_create")
         .map(|op| {
             let mut call = example(op);
             if source == "claude" && matches!(string(op, "name"), "codex_create" | "codex_send") {
@@ -539,6 +590,26 @@ pub(crate) fn guide(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) 
         .collect();
     let index: Vec<_> = ops
         .iter()
+        .filter(|op| {
+            full || topic != "loop"
+                || matches!(
+                    string(op, "name"),
+                    "guide"
+                        | "dispatch_policy"
+                        | "command"
+                        | "read"
+                        | "git"
+                        | "codex_create"
+                        | "codex_send"
+                        | "codex_read"
+                        | "codex_wait"
+                        | "receipt"
+                        | "agent_create"
+                        | "agent_send"
+                        | "agent_read"
+                        | "agent_wait"
+                )
+        })
         .map(|op| {
             let mut entry = json!({"op":op["name"],"via":via(op),"signature":signature(op)});
             if topic != "loop" {
@@ -557,8 +628,8 @@ pub(crate) fn guide(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) 
     } else {
         ""
     };
-    let mut result = json!({"topic":topic,"controlSource":source,"content":format!("MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.\n\n{}\n{}{}",body.as_str().unwrap_or(""),if topic == "loop" {guides["common"].as_str().unwrap_or("")} else {""},context),"examples":examples,"ops":index});
-    if source == "chatgpt" {
+    let mut result = json!({"topic":topic,"controlSource":source,"content":format!("MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.\n\n{}\n{}{}",body.as_str().unwrap_or(""),if topic == "loop" && full {guides["common"].as_str().unwrap_or("")} else {""},context),"examples":examples,"ops":index});
+    if source == "chatgpt" && (full || topic == "notify") {
         result["events"] = crate::claude_notify::subscriptions::guide();
     }
     result
@@ -566,6 +637,24 @@ pub(crate) fn guide(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) 
 
 fn source_spec(op: &Value, origin: &Value) -> Value {
     let mut op = op.clone();
+    let legacy = match string(&op, "name") {
+        "git" | "git_write" => Some(("action", "operation")),
+        "read" => Some(("limit", "lineCount")),
+        _ => None,
+    };
+    if let Some((alias, canonical)) = legacy {
+        op["inputSchema"]["properties"]
+            .as_object_mut()
+            .unwrap()
+            .remove(alias);
+        if matches!(string(&op, "name"), "git" | "git_write") {
+            op["inputSchema"].as_object_mut().unwrap().remove("anyOf");
+            op["inputSchema"]["required"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!(canonical));
+        }
+    }
     if matches!(
         string(&op, "name"),
         "codex_wait" | "agent_wait" | "inbox_wait"

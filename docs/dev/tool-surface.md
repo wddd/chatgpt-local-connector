@@ -26,17 +26,17 @@ Default/read-only/all/custom policies apply to ops. Disabled or locally unavaila
 
 ## Correction and versions
 
-Op argument errors reuse the JSON Schema validator. Errors include the current inputSchema, a minimal example, and a query guide call so the control source can correct the request. Unknown ops return at most three nearby enabled names and direct the caller to guide. Renamed ops need no compatibility alias.
+Op argument errors reuse the JSON Schema validator. Errors include a field path, a short reason, and a query guide call so the control source can correct the request without repeating the schema. Unknown ops return at most three nearby enabled names and direct the caller to guide. Renamed ops need no compatibility alias.
 
 All tool results include arcVersion: the first 12 SHA-256 characters of the embedded catalog, including guides, schemas, examples, and exposure metadata. The control source MUST re-read guide when arcVersion changes. Objects receive the field directly. Arrays, scalars, and null become `{value,arcVersion}`. arcInbox is attached when unread events exist. This is a content version, not the application version. Local availability and policy changes require a fresh guide read without changing the catalog hash.
 
 ## Guide content
 
-The default topic is loop. It includes the source-specific loop, shared rules, a ready-to-use codex_create example, and an op index. Claude examples include notify. Other control sources use waiting and inbox capabilities appropriate to them.
+The default loop response includes core rules and common enabled ops. The query guide op accepts view:full for the complete source-specific workflow, examples, and enabled index. Existing notify/review/approvals topics retain detailed workflows. The compact guide points to these discovery paths. Full Claude examples include notify. Event contracts appear in the full view and notify topic.
 
 Index signatures contain parameter names rather than duplicate orchestration examples. Required names are bare and optional names end in `?`. Limits come from the current schema. catalog.guideParameters chooses display order and important optional fields such as project, notify, latest, turnId, and expectedHash. Generation validates parameter existence and includes all required fields to prevent drift.
 
-guide({op:"<name>"}) returns a full schema, description, signature, and example. Cached clients that reject op use query({op:"guide",args:{op:"<name>"}}). The query guide op also accepts topic and uses the same implementation without changing the frozen tools.
+guide({op:"<name>"}) returns a full schema, description, signature, and example. Cached clients that reject op use query({op:"guide",args:{op:"<name>"}}). The query guide op also accepts topic, view, and knownGuideHash without changing the frozen tools. Hash the projected response before adding guideHash. A matching knownGuideHash returns unchanged:true instead of content. Source-specific limits, enabled ops, and configured context guidance participate in the hash. Only canonical parameters appear in signatures and advertised schemas; execution retains legacy argument normalization before defaults and receipt hashing.
 
 Guides and all model-facing catalog text are English only. The top defines MUST, SHOULD, and MAY once. One sentence expresses one rule. [Terminology](terminology.md) owns the fixed vocabulary. User input and original evidence remain unchanged.
 

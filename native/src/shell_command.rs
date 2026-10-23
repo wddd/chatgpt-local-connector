@@ -1,7 +1,8 @@
 //! Shell convenience form over the existing native command executor.
 use crate::*;
 pub async fn run(c: &control::Control, args: &Value) -> Result<Value> {
-    let cwd = Path::new(string(args, "cwd"));
+    let directory = crate::projects::working_directory(c, args).await?;
+    let cwd = Path::new(directory.as_str().unwrap_or(""));
     if !cwd.is_absolute() {
         return Err("ABSOLUTE_CWD_REQUIRED".into());
     }

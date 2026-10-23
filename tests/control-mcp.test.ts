@@ -156,6 +156,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     }
     if (method === 'project/list' && existsSync(process.env.ARC_FIXTURE_DATA+'/projects-fixture.json')) return emit({id,result:{data:JSON.parse(readFileSync(process.env.ARC_FIXTURE_DATA+'/projects-fixture.json','utf8')),nextCursor:null}});
     if (method === 'model/list' || method === 'thread/list' || method === 'project/list') return emit({ id, result: { data: [], nextCursor: null } });
+    if (method === 'command/exec' && params.command?.at(-1)==='fixture-cwd') return emit({id,result:{stdout:params.cwd,stderr:'',exitCode:0}});
     if (method === 'process/spawn') {
       emit({ method: 'process/outputDelta', params: { processHandle: params.processHandle, stream: 'stdout', deltaBase64: 'b2s=' } });
       emit({ method: 'process/exited', params: { processHandle: params.processHandle, exitCode: 0 } });
@@ -204,7 +205,7 @@ for await (const line of createInterface({input:process.stdin})) {
   await connectFixture();
   await management('task-settings', 'PUT', {autoOpenCodex:false});
   inventory = await client.listTools();
-  const index = (await call('guide')).result.ops;
+  const index = ((await client.callTool({name:'query',arguments:{op:'guide',args:{view:'full'}}})).structuredContent as {result:any}).result.ops;
   operations = await Promise.all(index.map(async ({op}: {op: string}) => {
     const detail = (await call('guide', {op})).result;
     return {...catalog.ops.find((item: any) => item.name === op), inputSchema: detail.inputSchema, description: detail.description};
@@ -265,8 +266,6 @@ test('MCP lists frozen tools and guide exposes existing ops and native domains w
   assert.equal(validateAgentWait({agent:'tracking-example',taskId:'fixture',timeoutMs:1800001}).valid,false);
   for (const name of ['read', 'codex_read', 'codex_items']) {
     const exposed = operations.find(tool => tool.name === name)!;
-    const source = catalog.ops.find((tool: {name: string}) => tool.name === name);
-    assert.deepEqual(exposed.inputSchema, source.inputSchema);
     const params = name === 'read' ? ['maxEdge', 'quality'] : ['includeImages', 'maxImages'];
     for (const key of params) assert.ok(exposed.inputSchema.properties?.[key]);
   }
@@ -420,7 +419,7 @@ test('setup clipboard preserves unrelated content on extraction failure and clea
 });
 
 async function ingressRpc(ingress: any, method: string, params?: any) {
-  if (method === 'tools/call') params = opCall(params.name, params.arguments);
+  if (method === 'tools/call' && !['query','act'].includes(params.name)) params = opCall(params.name, params.arguments);
   const response = await fetch(`http://127.0.0.1:${ingress.config.httpsPort}/mcp`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${`test-${ingress.id}`.padEnd(40, 'x')}` },
     body: JSON.stringify({ jsonrpc: '2.0', id: randomUUID(), method, params }),
@@ -551,7 +550,7 @@ test('real HTTP ingresses isolate discovery and direct execution; policy PUT pre
     assert.equal(a.toolPolicy, 'all');
     await management(`ingress/${a.id}/start`, 'POST');
     await management(`ingress/${b.id}/start`, 'POST');
-    const list = async (i: any) => (await ingressRpc(i, 'tools/call', {name:'guide',arguments:{}})).result.structuredContent.result.ops.map((op: any) => op.op);
+    const list = async (i: any) => (await ingressRpc(i, 'tools/call', {name:'query',arguments:{op:'guide',args:{view:'full'}}})).result.structuredContent.result.ops.map((op: any) => op.op);
     assert.deepEqual(await list(a), config.tools.filter(tool => tool.available !== false).map(tool => tool.name));
     assert.deepEqual(await list(b), config.tools.filter(tool => (b.toolPolicy.allowlist.includes(tool.name) || ['notification_ack', 'notify_status', 'inbox_wait'].includes(tool.name)) && tool.available !== false).map(tool => tool.name));
     assert.deepEqual((await management('tool-catalog')).tools, config.tools, 'management inventory remains unfiltered');
@@ -1063,12 +1062,12 @@ test('argument errors are short, field-specific and leave unread inbox untouched
       ['codex_items',{threadId:'fixture',order:'desc'},'/order',/latest/],
       ['codex_wait',{threadId:'fixture',timeoutMs:1800001},'/timeoutMs',/1800000/],
       ['read',{path:'fixture',lineCount:'private-input'},'/lineCount',/integer/],
-      ['command',{cmd:'private-command'},'/cwd',/Required/],
+      ['command',{cmd:'private-command'},'/cwd',undefined],
       ['command',{cmd:'private-command',cwd:directory,action:'exec'},'/action',/combine/],
     ] as const){
       const {response,result}=await call(name,args);
       assert.equal(response.isError,true);assert.equal(result.error.code,'INVALID_ARGUMENTS');
-      assert.equal(result.error.field,field);assert.match(result.error.message,reason);
+      assert.equal(result.error.field,field);if(reason)assert.match(result.error.message,reason);
       assert.equal(result.error.inputSchema,undefined);assert.equal(result.arcInbox,undefined);
       const text=(response.content as any[])[0].text;
       assert.ok(text.startsWith('{"error":'));assert.doesNotMatch(text,/private-input|private-command/);
@@ -1106,16 +1105,17 @@ test('cmd waitMs returns a pending receipt without changing the process timeout'
 
 });
 
-test('multi-root projects select a unique basename or Git root and list ambiguous candidates', async () => {
+test('multi-root projects preserve legacy selection and resolve project cwd alternatives', async () => {
   // Regression: 68dea77; multi-root projects select a unique basename or Git root and list ambiguous candidates.
   const base=path.join(directory,'multi-root');await mkdir(base);
   const dirs=['client','plain','repo','other'];await Promise.all(dirs.map(d=>mkdir(path.join(base,d))));
   execFileSync('git',['init',path.join(base,'repo')],{stdio:'pipe'});
   await mkdir(path.join(base,'repo','nested'));
   await writeFile(path.join(directory,'projects-fixture.json'),JSON.stringify([
+    {id:'single',name:'one',roots:[{path:path.join(base,'plain')}]},
     {id:'named',name:'client',roots:[{path:path.join(base,'plain')},{path:path.join(base,'client')}]},
     {id:'git-root',name:'plugins',roots:[{path:path.join(base,'repo','nested')},{path:path.join(base,'repo')},{path:path.join(base,'plain')}]},
-    {id:'ambiguous',name:'many',roots:[{path:path.join(base,'plain')},{path:path.join(base,'other')}]},
+    {id:'ambiguous',name:'many',roots:[{name:'primary',path:path.join(base,'plain')},{path:path.join(base,'other')}]},
   ]));
   for(const [project,root] of [['client','client'],['plugins','repo']]) {
     const result=(await call('overview',{project,includeSource:true})).result;
@@ -1123,6 +1123,32 @@ test('multi-root projects select a unique basename or Git root and list ambiguou
   }
   const error=(await call('overview',{project:'many'})).result.error.message;
   assert.ok(error.includes(path.join(base,'plain')));assert.ok(error.includes(path.join(base,'other')));
+  const cwd=path.join(directory,'multi-root','plain');
+  const ambiguous=await completed('command',{cmd:'fixture',project:'many',requestId:randomUUID()});
+  assert.equal(ambiguous.state,'failed');
+  assert.ok(JSON.stringify(ambiguous.result.error).includes('plain'));assert.ok(JSON.stringify(ambiguous.result.error).includes('other'));
+  for (const root of ['primary','plain','multi-root/plain']) {
+    const args={cmd:'fixture-cwd',project:'many',root,requestId:randomUUID()};
+    const result=await completed('command',args);
+    assert.equal(result.state,'completed');assert.equal(result.origin,undefined);assert.equal(result.result.stdout,await realpath(cwd));
+    const replay=(await call('receipt',{requestId:args.requestId,includeOrigin:true})).result;
+    assert.ok(replay.origin.sourceId);assert.ok(replay.origin.ingressId);
+  }
+  const native=await completed('command',{action:'exec',project:'many',root:'plain',params:{command:['fixture']},requestId:randomUUID()});
+  assert.equal(native.state,'completed');assert.equal(native.result.echoedParams.cwd,await realpath(cwd));
+  const spawned=await completed('process',{action:'spawn',project:'many',root:'plain',params:{command:'fixture'},requestId:randomUUID()});
+  assert.equal(spawned.result.echoedParams.cwd,await realpath(cwd));
+  const read=(await call('tree',{project:'many',root:'plain'})).result;
+  assert.equal(read.error,undefined);
+  const single=await completed('command',{cmd:'fixture-cwd',project:'one',requestId:randomUUID()});
+  assert.equal(single.result.stdout,await realpath(cwd));
+  const agentArgs={agent:'tracking-example',project:'one',prompt:'',approval:'approved',purpose:'self-test',requestId:randomUUID()};
+  const agent=await completed('agent_create',agentArgs);assert.equal(agent.state,'completed');
+  const task=(await call('agent_read',{agent:'tracking-example',taskId:agent.taskId})).result;
+  assert.equal(task.cwd,await realpath(cwd));assert.equal(task.origin,undefined);
+  assert.equal((await completed('agent_create',agentArgs)).taskId,agent.taskId);
+  const absolute=await completed('command',{cmd:'fixture',cwd,project:'missing',requestId:randomUUID()});
+  assert.equal(absolute.state,'completed');
 });
 
 test('large non-Git tree returns a bounded first layer and a truncation marker', async () => {
@@ -1361,5 +1387,24 @@ test('source connection switching binds consent and preserves disconnected ident
     assert.equal((await readSource(peer.pending.sourceId)).state, 'revoked');
   } finally {
     for (const i of [a, b, occupied]) if ((await management('status')).ingresses.some((row: any) => row.id === i.id)) await management(`ingress/${i.id}`, 'DELETE');
+  }
+});
+
+
+test('guide progressively discloses every enabled op and caches projected content', async () => {
+  // Contract: query guide caches the source-specific view without changing frozen tools.
+  const readGuide = async (args: Record<string, unknown>) => (await client.callTool({name:'query',arguments:{op:'guide',args}})).structuredContent!.result as any;
+  const compact = (await call('guide')).result;
+  const full = await readGuide({view:'full'});
+  assert.ok(compact.ops.length < full.ops.length);
+  assert.deepEqual(full.ops.map((row:any)=>row.op), operations.map(row=>row.name));
+  const cached = await readGuide({knownGuideHash:compact.guideHash});
+  assert.equal(cached.unchanged,true);assert.equal(cached.content,undefined);assert.equal(cached.ops,undefined);
+  assert.equal((await readGuide({view:'full',knownGuideHash:compact.guideHash})).unchanged,undefined);
+  assert.equal((await readGuide({view:'full',knownGuideHash:full.guideHash})).unchanged,true);
+  for (const [op,canonical,legacy] of [['git','operation','action'],['git_write','operation','action'],['read','lineCount','limit']]) {
+    const detail=await readGuide({op});
+    assert.ok(detail.inputSchema.properties[canonical]);assert.equal(detail.inputSchema.properties[legacy],undefined);
+    assert.equal((await readGuide({op,knownGuideHash:detail.guideHash})).unchanged,true);
   }
 });

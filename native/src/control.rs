@@ -1197,8 +1197,8 @@ impl Control {
                     seed.entry(k).or_insert(v.clone());
                 }
             }
-            if let Some(project) = args["project"].as_str() {
-                let p = crate::projects::resolve(self, project).await?;
+            if args["project"].is_string() {
+                let p = crate::projects::resolve_args(self, args).await?;
                 seed.insert("cwd".into(), p["root"].clone());
                 let pid = if Path::new(string(&p, "id")).is_absolute() {
                     crate::projects::native_id(self, string(&p, "root")).await?
@@ -1394,6 +1394,18 @@ impl Control {
             method = "turn/interrupt".into();
             params = json!({"threadId":args["threadId"],"turnId":args["turnId"]});
         }
+        if args["project"].is_string()
+            && matches!(
+                method.as_str(),
+                "command/exec" | "process/spawn" | "thread/fork"
+            )
+        {
+            let mut directory_args = args.clone();
+            if let Some(cwd) = params.get("cwd") {
+                directory_args["cwd"] = cwd.clone();
+            }
+            params["cwd"] = crate::projects::working_directory(self, &directory_args).await?;
+        }
         r["threadId"] = params["threadId"].clone();
         r["state"] = json!("submitting");
         if operation == "send" {
@@ -1483,7 +1495,14 @@ impl Control {
                     .request(method, params, args["timeoutMs"].as_u64().unwrap_or(60000))
                     .await;
             }
-            return self.mutate("native",json!({"method":method,"params":params,"requestId":args["requestId"],"timeoutMs":args["timeoutMs"].as_u64().unwrap_or(86400000),"waitMs":num(&args,"waitMs",25000)})).await;
+            let mut native_args = json!({"method":method,"params":params,"requestId":args["requestId"],"timeoutMs":args["timeoutMs"].as_u64().unwrap_or(86400000),"waitMs":num(&args,"waitMs",25000)});
+            if args["project"].is_string() {
+                native_args["project"] = args["project"].clone();
+                if let Some(root) = args.get("root") {
+                    native_args["root"] = root.clone();
+                }
+            }
+            return self.mutate("native", native_args).await;
         }
         match name {
             "codex_review" => self.mutate("review", args).await,

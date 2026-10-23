@@ -583,8 +583,12 @@ async fn call_tool(s: &ControlSource<'_>, tool: &str, envelope: Value) -> Result
             if matches!(name, "read" | "codex_read" | "codex_items" | "screen") {
                 images = crate::images::take(&mut value);
             }
+            let mut value = crate::egress::receipt(value);
+            if args["includeOrigin"] != true {
+                crate::egress::control_source(name, &mut value);
+            }
             (
-                crate::kernel::results::page_output(crate::egress::receipt(value), 64 * 1024)?,
+                crate::kernel::results::page_output(value, 64 * 1024)?,
                 false,
             )
         }
