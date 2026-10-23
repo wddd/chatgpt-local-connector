@@ -56,10 +56,12 @@ export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = (
   if (content && observeResize) observer.observe(content);
   const motion = {
     get running() { return active; },
-    to(target: Surface, { from, retain = false, duration = surfaceDuration }: {
+    to(destination: Surface | (() => Surface), { from, retain = false, duration = surfaceDuration }: {
       from?: Surface; retain?: boolean; duration?: number;
     } = {}): AnimationPlaybackControlsWithThen {
       const id = ++generation;
+      const follow = typeof destination === "function" ? destination : undefined;
+      const target = typeof destination === "function" ? destination() : destination;
       retained = retain;
       save(target);
       goal = { ...goal, ...target };
@@ -112,10 +114,13 @@ export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = (
         duration: reduced.matches ? 0 : duration,
         ease: [0.2, 0.8, 0.3, 1],
         onUpdate: (progress) => {
-          rendered = { ...interpolate(progress) };
+          // A dismissing dock follows its live node while the scene rebounds.
+          // Opening and resizing keep a fixed destination from the solver.
+          if (follow) goal = { ...goal, ...follow() };
+          rendered = { ...(follow ? mix(start, goal)(progress) : interpolate(progress)) };
           Object.assign(node.style, rendered);
           pinContent();
-          onFrame?.(interpolateRect(progress));
+          onFrame?.(follow ? node.getBoundingClientRect() : interpolateRect(progress));
         },
       });
       if (!reduced.matches) {

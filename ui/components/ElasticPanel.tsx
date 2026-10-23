@@ -30,6 +30,7 @@ const frameAt = (rect: SurfaceRect, opacity: number, borderRadius: string): Surf
 export default function ElasticPanel({
   open = true,
   onClose,
+  onCloseStart,
   onDismiss,
   title,
   children,
@@ -56,6 +57,7 @@ export default function ElasticPanel({
 }: {
   open?: boolean;
   onClose: () => void | Promise<void>;
+  onCloseStart?: () => void;
   onDismiss?: () => void;
   title: ReactNode;
   children: ReactNode;
@@ -105,9 +107,9 @@ export default function ElasticPanel({
   >(undefined);
   const layers = panelLayers.use(),
     recessed = !!node && layers.includes(node) && layers.at(-1) !== node;
-  const previousExpanded = useRef(expanded), dockFrame = useRef<SurfaceRect | null>(null);
-  const latest = useRef({ onClose, onDismiss, busy, depthOffset });
-  latest.current = { onClose, onDismiss, busy, depthOffset };
+  const previousExpanded = useRef(expanded), previousWidth = useRef(width), dockFrame = useRef<SurfaceRect | null>(null);
+  const latest = useRef({ onClose, onCloseStart, onDismiss, busy, depthOffset });
+  latest.current = { onClose, onCloseStart, onDismiss, busy, depthOffset };
   const moveTo = (x: number, y: number) => {
     if (!node) return;
     if (dock) { setPosition(dockPosition()); return; }
@@ -197,12 +199,16 @@ export default function ElasticPanel({
   useLayoutEffect(() => {
     if (!node || !dock) return;
     const rect = node.getBoundingClientRect(), from = dockFrame.current;
-    if (previousExpanded.current !== expanded) {
+    if (previousExpanded.current !== expanded || previousWidth.current !== width) {
       previousExpanded.current = expanded;
+      previousWidth.current = width;
       if (from && motion.current && !closing.current) {
         const panelWidth = Math.min(expanded ? innerWidth - 32 : width ?? 400, innerWidth - 32);
         const target = { x: dock === "left" ? 16 : innerWidth - panelWidth - 16, y: 16, width: panelWidth, height: innerHeight - 32 };
-        void motion.current.to(frameAt(target, 1, "20px"), { from: frameAt(from, 1, "20px"), duration: 0.18 });
+        const restore = restoreOrigin.current;
+        void motion.current.to(frameAt(target, 1, "20px"), { from: frameAt(from, 1, "20px"), duration: 0.18 }).then(() => {
+          if (restore && restoreOrigin.current === restore) { restore(); restoreOrigin.current = undefined; }
+        });
         return;
       }
     }
@@ -215,6 +221,8 @@ export default function ElasticPanel({
       return;
     }
     closing.current = true;
+    const closingView = latest.current;
+    closingView.onCloseStart?.();
     restoreOrigin.current?.();
     const parent = parentPanel.current?.isConnected ? parentPanel.current : undefined;
     if (parent) replacement = undefined;
@@ -228,11 +236,13 @@ export default function ElasticPanel({
     if (!replacement && to && !parent && visual && (centered || visual.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]")) && !reduced()) {
       const style = getComputedStyle(node);
       const current = { ...frameAt(from, Number(style.opacity), style.borderRadius), ...surfaceOf(node) };
+      const destination = dock ? () => ({ ...frameAt(visual.visual.isConnected ? visual.visual.getBoundingClientRect() : to, 1, "50%"), ...visual.surface })
+        : { ...frameAt(to, 1, "50%"), ...visual.surface };
       const animation = motion.current?.to(
-        { ...frameAt(to, visual || parent ? 1 : 0, parent ? "28px" : "50%"), ...(visual?.surface ?? {}) },
+        destination,
         { retain: true, duration: dock ? 0.16 : undefined, ...(motion.current.running ? {} : { from: current }) },
       );
-      if (visual) {
+      if (!dock) {
         restoreOrigin.current = hideOrigin(visual);
         clearGhost.current = animateOriginContent(visual, Number(node.style.zIndex) + 1, true);
       }
@@ -244,7 +254,7 @@ export default function ElasticPanel({
     }
     if (parent && !reduced()) await animate(node.firstElementChild!, { opacity: 0 }, { duration: 0.14 });
     try {
-      await (dismiss ? latest.current.onDismiss ?? latest.current.onClose : latest.current.onClose)();
+      await (dismiss ? closingView.onDismiss ?? closingView.onClose : closingView.onClose)();
     } finally {
       closing.current = false;
       // Let React remove the closed child before restoring a dialog retained

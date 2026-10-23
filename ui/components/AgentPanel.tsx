@@ -153,7 +153,9 @@ export default function AgentPanel({ agent, onSettings, onPanelFrame, width, exp
     previous.current = selected;
   }, [selected]);
   return <Dialog width={width} dock="right" expanded={expanded} headerless title={name(agent)}
-    originKey={agent.agent} closeRequested={selected.closing} onClose={() => selectAgentPanel({ type: "closed" })}
+    originKey={agent.agent} closeRequested={selected.closing}
+    onCloseStart={() => agentPanel.set(old => old?.agent === agent.agent ? { ...old, closing: true } : old)}
+    onClose={() => { if (agentPanel.get()?.agent === agent.agent && agentPanel.get()?.closing) selectAgentPanel({ type: "closed" }); }}
     returnFocus={`[data-agent-node="${CSS.escape(agent.agent)}"] button`} onPanelFrame={onPanelFrame}>
     {error && <span className="sr-only" role="status">{t("activity.disconnected")}</span>}
     <div ref={content} className="agent-panel-view">
