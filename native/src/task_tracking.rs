@@ -1060,7 +1060,9 @@ impl Timeline {
             row["interaction"] = interaction;
         }
         if source == "codex-thread" {
-            if let Some(open) = codex_open(string(info, "id")) {
+            if let Some(open) =
+                crate::agents::driver::AgentDriver::CodexNative.navigation(string(info, "id"))
+            {
                 row["open"] = open;
             }
         }
@@ -1076,15 +1078,6 @@ fn entry_headline(item: &Value) -> String {
         _ => string(item, "text"),
     };
     headline(kind, text)
-}
-pub(crate) fn codex_open(id: &str) -> Option<Value> {
-    if cfg!(target_os = "linux")
-        || crate::desktop::installation().is_none()
-        || uuid::Uuid::parse_str(id).is_err()
-    {
-        return None;
-    }
-    Some(json!({"kind":"url","target":format!("codex://threads/{id}")}))
 }
 
 /// Separate stream state, shared by the RPC readers; it never changes codex_* responses.

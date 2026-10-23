@@ -687,16 +687,6 @@ impl Service {
             return self.agents.timeline(&self.control, session, after).await;
         }
 
-        if let Some(session) = route
-            .strip_prefix("agents/sessions/")
-            .and_then(|r| r.strip_suffix("/open"))
-            .filter(|_| method == "POST")
-        {
-            return self
-                .agents
-                .open_session(string(&body, "agent"), session)
-                .await;
-        }
         if route == "subscriptions" || route.starts_with("subscriptions/") {
             return self.subscriptions.request(route, method, body).await;
         }
@@ -1199,11 +1189,24 @@ impl Service {
                 ("GET", "tasks") => {
                     let mut records = self.control.task_records().await?;
                     records.extend(self.agents.task_records()?);
+                    for record in &mut records {
+                        let agent = record["agent"].as_str().unwrap_or("codex");
+                        let task = record["taskId"]
+                            .as_str()
+                            .or(record["threadId"].as_str())
+                            .or(record["task"]["threadId"].as_str())
+                            .unwrap_or("");
+                        if let Some(open) = self.agents.task_navigation(agent, task) {
+                            record["open"] = open;
+                        }
+                    }
                     records.sort_by(|a, b| string(b, "createdAt").cmp(string(a, "createdAt")));
                     Ok(json!({"records":records}))
                 }
                 ("POST", "tasks/open") => {
-                    crate::desktop::open_thread(string(&body, "threadId")).await
+                    self.agents
+                        .open_task(string(&body, "agent"), string(&body, "taskId"))
+                        .await
                 }
                 ("GET", route) if route.starts_with("tasks/runtime/") => {
                     self.control.task_runtime(&route[14..]).await

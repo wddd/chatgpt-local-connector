@@ -601,14 +601,9 @@ pub fn input(v: &Value) -> Result<Value> {
     Ok(json!(out))
 }
 pub async fn open_thread(thread: &str) -> Result<Value> {
-    let mut url = reqwest::Url::parse("codex://threads/").map_err(|e| e.to_string())?;
-    url.path_segments_mut()
-        .map_err(|_| "invalid thread URL")?
-        .pop_if_empty()
-        .push(thread);
-    let url = url.to_string();
-    open_url(Some(&url)).await?;
-    Ok(json!({"state":"opened","url":url}))
+    crate::agents::driver::AgentDriver::CodexNative
+        .open_task(thread)
+        .await
 }
 pub async fn reveal(ipc: &Ipc, thread: &str) -> Result<Value> {
     let opened = open_thread(thread).await?;
@@ -635,7 +630,7 @@ pub(crate) fn owner_missing(error: &str) -> bool {
 pub async fn open_app() -> Result<()> {
     open_url(None).await
 }
-async fn open_url(url: Option<&str>) -> Result<()> {
+pub(crate) async fn open_url(url: Option<&str>) -> Result<()> {
     if cfg!(target_os = "linux") {
         return Err("DESKTOP_UNSUPPORTED: headless Linux has no Codex Desktop.".into());
     }

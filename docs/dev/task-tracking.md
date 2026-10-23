@@ -62,7 +62,7 @@ Pending interactions, including waiting-permission, remain active and separately
 | Web stream | GET /api/agents/activity/events, SSE event:snapshot. |
 | Desktop stream | Tauri agents:activity with GET-equivalent payload. |
 | Timeline | GET /api/agents/timeline/{id}?after={cursor}; CLI agents.timeline with `{"id":"...","body":{"after":12}}`. |
-| Verified CLI session | POST /api/agents/sessions/{id}/open with `{"agent":"claude"}`; CLI agents.session.open. |
+| Open in agent | POST /api/tasks/open with `{"agent":"codex","taskId":"<thread-id>"}`; CLI tasks.open. |
 
 Use sessions[].id: ARC taskId for ACP/Pi, with separate nativeSessionId, or Codex threadId. after defaults to 0 and is an entry-update sequence. Chunk merges, completion, and interaction resolution advance it. Replace entries by ID, retain absent entries, and sort by position. Backfill may update positions. Cursor beyond current sequence returns TIMELINE_CURSOR_EXPIRED and requires a full read. Frontends never process raw chunks.
 
@@ -81,7 +81,7 @@ Tool excerpts use agent_context's 1024-byte structure with truncated/hash. Merge
 
 Read failure, missing turns/items, or limits produce partial. Successfully projected history does not become partial solely because the raw event window expires. Failed backfill retains live entries and is not repeatedly retried in the same Core. status is task status. position need not be contiguous and does not reset after eviction. durationMs is native duration when available. Historical times may be null. Pi interaction.method is select/confirm/input/editor. Responses use value, string value for input/editor, or cancelled:true through agent_respond.
 
-Activity checks around once per second ignore observedAt-only changes. Transcript tails sample around every two seconds without eager timelines. Same-entry content changes retain phaseSince. respond uses existing Agent/Codex contracts with answer/options and a new requestId. open.kind=url opens target. agent-session uses the session-open endpoint.
+Activity checks around once per second ignore observedAt-only changes. Transcript tails sample around every two seconds without eager timelines. Same-entry content changes retain phaseSince. respond uses existing Agent/Codex contracts with answer/options and a new requestId. open.taskId declares native task navigation. Timeline, records, and setup send only agent and taskId to tasks/open. The adapter builds the deep link and the backend opens it natively; callers cannot supply URLs. Agents without a deep link expose no action. Codex tasks created outside Desktop become visible after Desktop restarts. The webview opener retains its default web, mail, and telephone schemes.
 
 ## Homepage UI
 
@@ -155,8 +155,8 @@ Navigation support requires actual session readback, not command existence/help.
 
 | Agent | Candidate | Current boundary |
 | --- | --- | --- |
-| Codex | codex://threads/{threadId} | Integrated. Completed ARC threads can open with matching Desktop owner over IPC. No Desktop link on Linux. |
-| Claude Code | claude --resume {sessionId} in original cwd | Integrated on macOS for recorded or active-transcript UUID/cwd. Same-session content is readable. |
+| Codex | codex://threads/{threadId} | Adapter-built link, opened natively by the backend. External threads become visible after Desktop restarts. No Desktop link on Linux. |
+| Claude Code | claude --resume {sessionId} in original cwd | No deep link; no task-open action. |
 | Cursor | cursor-agent --resume {sessionId} | Distinct cursor-agent identity required. Generic agent is insufficient. Workspace trust may block session proof, so no open is exposed. |
 | Grok | grok --resume {sessionId} | ACP creation alone does not prove CLI same-session content. No open. |
 | OpenCode | opencode --session {sessionId} | Can create nonexistent IDs, so successful launch/empty UI does not prove resume. No open without content proof. |

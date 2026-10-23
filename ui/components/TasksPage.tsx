@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Copy } from "lucide-react";
 import { t } from "../i18n";
+import { openAgentTask } from "../state/activity";
 import { api } from "../api";
 import { copyText } from "../platform";
 import { displayMessage } from "../messages";
@@ -138,18 +139,16 @@ export default function TasksPage() {
             {projectName(selected.first)}
           </span>
           {["running", "runtimeError"].includes(stateOf(selected)) && <span className="task-document-state">{t(stateOf(selected))}</span>}
-          {!selected.first.agent && idOf(selected.first) && !runtime(selected.first)?.archived && (
+          {selected.first.open && !runtime(selected.first)?.archived && (
             <IconButton
               icon={ExternalLink}
-              label={t("openInCodex")}
+              label={t("activity.open")}
               busy={opening}
               onClick={() => {
                 setOpening(true);
                 setActionError("");
-                void api("tasks/open", "POST", { threadId: selected.id })
-                  .catch(() =>
-                    setActionError(t("unableToOpenCodexMakeSureCodexIs")),
-                  )
+                void openAgentTask(selected.first.agent || "codex", selected.first.open!.taskId)
+                  .catch(error => setActionError(String(error)))
                   .finally(() => setOpening(false));
               }}
             />

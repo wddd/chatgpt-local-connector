@@ -493,15 +493,8 @@ fn transcript_session(
         .rev()
         .find_map(|record| turn_start(record, agent))
         .unwrap_or(Value::Null);
-    if agent == "claude"
-        && cfg!(target_os = "macos")
-        && project.is_some()
-        && uuid::Uuid::parse_str(id).is_ok()
-    {
-        row["open"] = json!({"kind":"agent-session","target":id});
-    }
     if agent == "codex" {
-        if let Some(open) = crate::task_tracking::codex_open(id) {
+        if let Some(open) = super::driver::AgentDriver::CodexNative.navigation(id) {
             row["open"] = open;
         }
     }

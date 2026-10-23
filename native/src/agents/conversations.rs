@@ -89,8 +89,8 @@ impl AgentHost {
                 let title = row["name"].as_str().filter(|s| !s.is_empty()).unwrap_or_else(|| string(row, "preview"));
                 let mut item = json!({"id":row["id"],"title":title.chars().take(240).collect::<String>(),
                     "project":row["cwd"],"createdAt":timestamp(&row["createdAt"]),"source":"codex-thread"});
-                if !cfg!(target_os = "linux") {
-                    item["open"] = json!({"kind":"url","target":format!("codex://threads/{}", string(row, "id"))});
+                if let Some(open) = self.task_navigation(agent, string(row, "id")) {
+                    item["open"] = open;
                 }
                 item
             }).collect();

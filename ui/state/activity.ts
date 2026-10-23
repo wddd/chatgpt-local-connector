@@ -2,7 +2,7 @@ import { agentPanel } from "./overviewPanels";
 import { useEffect, useRef, useState } from "react";
 import { createStore } from "./store";
 import { api } from "../api";
-import { isDesktop, openUrl } from "../platform";
+import { isDesktop } from "../platform";
 import type { AgentActivitySession, AgentActivitySnapshot } from "../types";
 import { trackActivity, activityLayout, type TrackedActivity, beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission } from "./activityModel";
 
@@ -90,11 +90,12 @@ export async function submitActivityResponse(agent: string, session: AgentActivi
     finish(finishApproval(submission, await api("agents/respond", "POST", submission.payload)));
   } catch (error) { finish({ ...submission, status: "failed", error: String(error) }); }
 }
+export async function openAgentTask(agent: string, taskId: string) {
+  await api("tasks/open", "POST", { agent, taskId });
+}
 // Native navigation is only exposed by the detail header.
 export async function openActivitySession(agent: string, session: AgentActivitySession) {
-  if (session.open?.kind === "url") await openUrl(session.open.target);
-  else if (session.open?.kind === "agent-session")
-    await api(`agents/sessions/${encodeURIComponent(session.open.target)}/open`, "POST", { agent });
+  if (session.open) await openAgentTask(agent, session.open.taskId);
 }
 
 // Presentation-only lifetime: the native snapshot and timeline contracts stay unchanged.

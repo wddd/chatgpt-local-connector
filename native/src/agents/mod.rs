@@ -187,20 +187,15 @@ impl AgentHost {
         }
         #[cfg(not(target_os = "linux"))]
         {
-            self.launch_interactive("claude", " auth login", None).await
+            self.launch_interactive("claude", " auth login").await
         }
     }
     #[cfg(not(target_os = "linux"))]
     pub async fn open_interactive(&self, agent: &str) -> Result<Value> {
-        self.launch_interactive(agent, "", None).await
+        self.launch_interactive(agent, "").await
     }
     #[cfg(not(target_os = "linux"))]
-    async fn launch_interactive(
-        &self,
-        agent: &str,
-        arguments: &str,
-        directory: Option<PathBuf>,
-    ) -> Result<Value> {
+    async fn launch_interactive(&self, agent: &str, arguments: &str) -> Result<Value> {
         let driver = self.drivers.get(agent).ok_or("UNKNOWN_AGENT")?;
         if matches!(driver, AgentDriver::CodexNative) {
             crate::desktop::open_app().await?;
@@ -212,7 +207,7 @@ impl AgentHost {
             driver.binary()
         }
         .ok_or("AGENT_NOT_INSTALLED")?;
-        let home = directory.or_else(dirs::home_dir).ok_or("HOME_NOT_FOUND")?;
+        let home = dirs::home_dir().ok_or("HOME_NOT_FOUND")?;
         #[cfg(target_os = "macos")]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -262,35 +257,15 @@ impl AgentHost {
         return Err("UNSUPPORTED_PLATFORM".into());
         Ok(json!({"opened":true,"target":"terminal"}))
     }
-    pub async fn open_session(&self, agent: &str, session: &str) -> Result<Value> {
-        // Only verified native resume paths are exposed; never edit an agent's index.
-        if agent != "claude" || !cfg!(target_os = "macos") {
-            return Err("AGENT_SESSION_OPEN_UNSUPPORTED".into());
-        }
-        uuid::Uuid::parse_str(session).map_err(|_| "INVALID_SESSION_ID")?;
-        let (native, cwd) = if let Ok(task) = self.task(agent, session).await {
-            (
-                string(&task, "sessionId").to_owned(),
-                PathBuf::from(string(&task, "cwd")),
-            )
-        } else {
-            let rows = self.activity.lock().await.sample(vec![agent.into()]).await;
-            let (_, row) = rows
-                .iter()
-                .find(|(a, row)| a == agent && row["id"] == session)
-                .ok_or("ACTIVE_SESSION_NOT_FOUND")?;
-            (session.to_owned(), PathBuf::from(string(row, "project")))
-        };
-        uuid::Uuid::parse_str(&native).map_err(|_| "INVALID_SESSION_ID")?;
-        if !cwd.is_absolute() || !cwd.is_dir() {
-            return Err("SESSION_WORKSPACE_UNAVAILABLE".into());
-        }
-        #[cfg(not(target_os = "linux"))]
-        return self
-            .launch_interactive(agent, &format!(" --resume {native}"), Some(cwd))
-            .await;
-        #[cfg(target_os = "linux")]
-        Err("AGENT_SESSION_OPEN_UNSUPPORTED".into())
+    pub fn task_navigation(&self, agent: &str, task: &str) -> Option<Value> {
+        self.drivers.get(agent)?.navigation(task)
+    }
+    pub async fn open_task(&self, agent: &str, task: &str) -> Result<Value> {
+        self.drivers
+            .get(agent)
+            .ok_or("UNKNOWN_AGENT")?
+            .open_task(task)
+            .await
     }
     /// UI polling reuses discovery facts; manual refresh bypasses the cache.
     /// MCP discovery and task launch continue to verify the actual executables.
@@ -425,11 +400,8 @@ impl AgentHost {
             if state["origin"].is_object() {
                 session["origin"] = state["origin"].clone();
             }
-            if agent == "claude"
-                && cfg!(target_os = "macos")
-                && uuid::Uuid::parse_str(string(&state, "sessionId")).is_ok()
-            {
-                session["open"] = json!({"kind":"agent-session","target":state["taskId"]});
+            if let Some(open) = self.task_navigation(agent, string(&state, "taskId")) {
+                session["open"] = open;
             }
             activity::insert(&mut agents, agent, session);
         }

@@ -124,6 +124,8 @@ struct Binding {
     #[serde(default)]
     title: String,
     #[serde(default)]
+    thread_title: String,
+    #[serde(default)]
     explicit: bool,
     project: String,
     terminal: bool,
@@ -190,6 +192,7 @@ fn bind_in(dir: &Path, session: Option<&str>, thread: &str, turn: &str, cwd: &st
         source_id: string(&origin, "sourceId").into(),
         agent: String::new(),
         title: String::new(),
+        thread_title: String::new(),
         explicit: false,
         project: Path::new(cwd)
             .file_name()
@@ -467,10 +470,10 @@ fn receipt(b: &Binding, d: &Delivery) -> String {
     let dispatch_title = dispatch
         .map(crate::control::dispatch_title)
         .unwrap_or_default();
-    let title = if !b.title.is_empty() && b.title != b.project {
-        &b.title
-    } else if !dispatch_title.is_empty() {
+    let title = if !dispatch_title.is_empty() {
         &dispatch_title
+    } else if !b.thread_title.is_empty() {
+        &b.thread_title
     } else {
         &b.project
     };
@@ -764,6 +767,12 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     };
     *b = current;
     continuation::adopt(dir, b, observation)?;
+    if let Some(title) = observation["title"]
+        .as_str()
+        .filter(|title| !title.trim().is_empty())
+    {
+        b.thread_title = title.to_owned();
+    }
     let mut resolved = false;
     if observation["state"] != "unconfirmed" {
         for d in &mut b.deliveries {
@@ -2545,7 +2554,7 @@ mod tests {
             &fake,
             &dir.0,
             &mut b,
-            &json!({"state":"interaction-required","title":"SECRET_GENERATED_TITLE","interaction":[request]}),
+            &json!({"state":"interaction-required","title":"Existing thread title","interaction":[request]}),
         )
         .await
         .unwrap();
@@ -2573,6 +2582,7 @@ mod tests {
         assert!(!body.contains("原文"));
         assert_eq!(event(&b, &b.deliveries[0])["interaction"], request);
         b.title = "Acceptance for ARC P0 (control-source identity)".into();
+        b.thread_title = b.title.clone();
         b.project = "/projects/agent-remote-control".into();
         b.deliveries[0].dispatches = json!([{"turnId":"turn-1","model":"gpt-6.1-sol","effort":"medium","serviceTier":"priority","terminal":{"observedDurationMs":408000}}]);
         for (state, label) in [
@@ -2594,7 +2604,8 @@ mod tests {
         }
         b.deliveries[0].state = "waiting for approval".into();
         assert!(message(&b).contains("? approval"));
-        b.title = b.project.clone();
+        b.title = "Stale binding title".into();
+        b.thread_title = "Existing thread title".into();
         b.deliveries[0].dispatches[0]["title"] = json!("Prompt-derived dispatch title");
         b.deliveries[0].dispatches[0]["effectiveConfiguration"] =
             json!({"model":"unknown","effort":"unknown","serviceTier":"unknown"});
@@ -2608,8 +2619,18 @@ mod tests {
         b.deliveries[0].dispatches[0]["title"] = Value::Null;
         b.deliveries[0].dispatches[0]["prompt"] = json!("## Legacy prompt title\nDetails");
         assert!(message(&b).contains("\nLegacy prompt title\n"));
+        b.deliveries[0].dispatches[0]["prompt"] = Value::Null;
+        assert!(message(&b).contains("\nExisting thread title\n"));
+        b.deliveries[0]
+            .dispatches
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"turnId":"other-turn","title":"Other turn title"}));
+        assert!(message(&b).contains("\nExisting thread title\n"));
+        b.thread_title.clear();
+        assert!(message(&b).contains("\n/projects/agent-remote-control\n"));
         b.agent = "opencode".into();
-        b.title = format!("{}\nignored", "題".repeat(110));
+        b.thread_title = format!("{}\nignored", "題".repeat(110));
         b.deliveries[0].dispatches = Value::Null;
         let text = message(&b);
         assert_eq!(text.lines().nth(2).unwrap().chars().count(), 100);

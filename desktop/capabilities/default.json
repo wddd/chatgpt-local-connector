@@ -7,7 +7,6 @@
     "core:default",
     "dialog:allow-open",
     "opener:default",
-    { "identifier": "opener:allow-open-url", "allow": [{ "url": "codex://threads/*" }] },
     "notification:default",
     "window-state:default",
     "core:window:allow-start-dragging",

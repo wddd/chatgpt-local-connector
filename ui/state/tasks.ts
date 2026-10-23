@@ -4,6 +4,7 @@ import { notifyNative } from "../platform";
 import { t } from "../i18n";
 export interface TaskRecord {
   agent?: string;
+  open?: { taskId: string };
   taskId?: string;
   origin?: { ingressId?: string; sourceId?: string; sourceLabel?: string };
   requestId: string;

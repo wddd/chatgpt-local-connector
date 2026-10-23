@@ -88,7 +88,7 @@ export interface AgentActivitySession {
   phaseSince: string | null;
   interaction?: AgentInteraction;
   timeline: boolean;
-  open?: { kind: "url" | "agent-session"; target: string };
+  open?: { taskId: string };
 }
 export interface AgentActivitySnapshot {
   observedAt: string;

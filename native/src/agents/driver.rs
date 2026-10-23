@@ -8,6 +8,36 @@ pub enum AgentDriver {
     Acp(Manifest),
 }
 impl AgentDriver {
+    /// Only adapters build native task URLs; callers supply identifiers, never URLs.
+    pub fn deep_link(&self, task: &str) -> Option<String> {
+        match self {
+            Self::CodexNative if uuid::Uuid::parse_str(task).is_ok() => {
+                Some(format!("codex://threads/{task}"))
+            }
+            _ => None,
+        }
+    }
+    pub fn navigation(&self, task: &str) -> Option<Value> {
+        self.deep_link(task)?;
+        match self {
+            Self::CodexNative
+                if !cfg!(target_os = "linux") && crate::desktop::installation().is_some() =>
+            {
+                Some(json!({"taskId":task}))
+            }
+            _ => None,
+        }
+    }
+    pub async fn open_task(&self, task: &str) -> Result<Value> {
+        let url = self
+            .deep_link(task)
+            .ok_or("AGENT_TASK_OPEN_UNSUPPORTED_OR_INVALID_ID")?;
+        match self {
+            Self::CodexNative => crate::desktop::open_url(Some(&url)).await?,
+            _ => return Err("AGENT_TASK_OPEN_UNSUPPORTED".into()),
+        }
+        Ok(json!({"state":"opened","url":url}))
+    }
     pub fn protocol(&self) -> &str {
         match self {
             Self::CodexNative => "codex-native",
@@ -519,4 +549,35 @@ pub(super) fn discover_in(name: &str, paths: &[PathBuf]) -> Vec<PathBuf> {
         })
         .filter(|p| executable(p))
         .collect()
+}
+
+#[cfg(test)]
+mod navigation_tests {
+    use super::*;
+    #[test]
+    fn adapters_build_links_only_from_valid_task_ids() {
+        let task = "11111111-1111-4111-8111-111111111111";
+        assert_eq!(
+            AgentDriver::CodexNative.deep_link(task).as_deref(),
+            Some("codex://threads/11111111-1111-4111-8111-111111111111")
+        );
+        for invalid in [
+            "",
+            "codex://threads/example",
+            "https://example.com",
+            "../example",
+            "11111111-1111-4111-8111-111111111111?x=y",
+        ] {
+            assert!(AgentDriver::CodexNative.deep_link(invalid).is_none());
+            assert!(AgentDriver::CodexNative.navigation(invalid).is_none());
+        }
+        assert!(AgentDriver::Pi.deep_link(task).is_none());
+        assert!(AgentDriver::Pi.navigation(task).is_none());
+        for manifest in super::super::manifest::builtins().unwrap() {
+            assert!(AgentDriver::Acp(manifest).deep_link(task).is_none());
+        }
+        if let Some(open) = AgentDriver::CodexNative.navigation(task) {
+            assert_eq!(open, json!({"taskId":task}));
+        }
+    }
 }

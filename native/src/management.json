@@ -506,14 +506,18 @@
           "body": {
             "type": "object",
             "properties": {
-              "threadId": {
+              "agent": {
+                "type": "string"
+              },
+              "taskId": {
                 "type": "string"
               }
             },
-            "additionalProperties": false,
             "required": [
-              "threadId"
-            ]
+              "agent",
+              "taskId"
+            ],
+            "additionalProperties": false
           }
         },
         "additionalProperties": false,
@@ -521,7 +525,7 @@
           "body"
         ]
       },
-      "description": "tasks.open",
+      "description": "Open an adapter-built native task deep link. No caller-supplied URLs.",
       "localOnly": true
     },
     {
@@ -1647,39 +1651,6 @@
         },
         "required": [
           "id"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "agents.session.open",
-      "route": "agents/sessions/{id}/open",
-      "method": "POST",
-      "description": "Open a verified native session entry from agents/activity. macOS Claude resumes through its own CLI; no private index changes.",
-      "localOnly": true,
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "body": {
-            "type": "object",
-            "properties": {
-              "agent": {
-                "const": "claude"
-              }
-            },
-            "required": [
-              "agent"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "id",
-          "body"
         ],
         "additionalProperties": false
       }

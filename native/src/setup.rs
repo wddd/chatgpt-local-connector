@@ -626,7 +626,7 @@ async fn dispatch(s: &Arc<Service>, body: Value) -> Result<Value> {
             receipt["result"]["error"]
         ));
     };
-    let result = json!({"requestId":receipt["requestId"],"threadId":thread,"desktopUrl":format!("codex://threads/{thread}")});
+    let result = json!({"requestId":receipt["requestId"],"threadId":thread,"open":crate::agents::driver::AgentDriver::CodexNative.navigation(thread)});
     let _guard = APPLY.lock().await;
     let mut saved = state()?;
     // The new agent may already have applied choices while task creation returns.

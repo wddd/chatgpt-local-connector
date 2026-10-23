@@ -10,7 +10,7 @@ export type Setup = {
   progress: { done: number; total: number };
   steps: SetupStep[];
   step: (SetupStep & { explain: string; openUrl?: string; credentialUrl?: string }) | null;
-  dispatch?: { threadId?: string; desktopUrl?: string };
+  dispatch?: { threadId?: string; open?: { taskId: string } };
   cliPath: string;
   stateDir: string;
   onboarding?: { url?: string } | null;

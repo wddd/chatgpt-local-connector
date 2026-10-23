@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Circle, ExternalLink } from "lucide-react";
 import prompts from "../../native/src/model-prompts.json";
+import { openAgentTask } from "../state/activity";
 import { api } from "../api";
 import { t, locale } from "../i18n";
 import { copyText, openUrl } from "../platform";
@@ -65,8 +66,7 @@ export default function SetupDialog({ mode, setMode, snapshot, error: readError,
   }
   async function open(url: string) {
     try {
-      if (url.startsWith("codex://threads/")) await api("tasks/open", "POST", { threadId: new URL(url).pathname.slice(1) });
-      else await openUrl(url);
+      await openUrl(url);
     } catch (e) { setError(String(e)); }
   }
   async function signIn() {
@@ -85,7 +85,7 @@ export default function SetupDialog({ mode, setMode, snapshot, error: readError,
       {!missing && <Button disabled={working || !snapshot} onClick={() => void start(true, true)}>{t("setup.copyOther")}</Button>}
       <Button variant="primary" busy={working} disabled={!snapshot || login === "loading"} onClick={() => void (ready ? start(false) : missing ? start(true, true) : signIn())}>{t(ready ? "setup.sendCodex" : missing ? "setup.copyPrompt" : "setup.signInCodex")}</Button>
     </> : <>
-      {snapshot?.dispatch?.desktopUrl && <Button onClick={() => void open(snapshot.dispatch!.desktopUrl!)}><Icon icon={ExternalLink} />{t("setup.openTask")}</Button>}
+      {snapshot?.dispatch?.open && <Button onClick={() => void openAgentTask("codex", snapshot.dispatch!.open!.taskId).catch(e => setError(String(e)))}><Icon icon={ExternalLink} />{t("setup.openTask")}</Button>}
       <span className="spacer" />
       <Button variant={complete ? "primary" : "secondary"} disabled={working} onClick={() => {
         if (complete) { void refreshConnector(); onClose(); }
@@ -119,7 +119,7 @@ export default function SetupDialog({ mode, setMode, snapshot, error: readError,
               <CopyField value={snapshot.onboarding.url} label={t("setup.connectionAddress")} />
             </div>}
             {["authorize", "secret"].includes(step.kind) && step.openUrl && <Button variant="primary" onClick={() => void open(step.openUrl!)}>{t(step.kind === "secret" ? "setup.enterCredential" : "setup.openAction")}</Button>}
-            {["decide", "remote-ui"].includes(step.kind) && <p className="muted">{t(snapshot.dispatch?.desktopUrl ? "setup.continueCodex" : "setup.continueAgent")}</p>}
+            {["decide", "remote-ui"].includes(step.kind) && <p className="muted">{t(snapshot.dispatch?.open ? "setup.continueCodex" : "setup.continueAgent")}</p>}
           </>}
           {snapshot.findings?.map(finding => <Notice key={finding.code} tone="warning">{finding.summary}</Notice>)}
         </div>
