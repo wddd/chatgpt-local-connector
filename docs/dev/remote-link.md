@@ -97,7 +97,7 @@ Three centered dialogs exist: Add control source, Add connection, and Change con
 
 Choice grids and radio rows fill the body width. Completed step labels wrap instead of truncating the chosen value. Every step grows with its content; only the body scrolls when the viewport cannot fit it. Inner spacing and platform tiles scale modestly with the viewport; the platform grid keeps three equal columns. Local Claude Code and Claude Desktop remain separate choices. Workspace entry points keep the workspace mounted behind the dialog; dismissal restores the trigger or a visible equivalent. Source completion returns to the homepage for the new-node highlight.
 
-Add connection MAY stack on top of Add control source or Change connection. The parent dialog stays mounted, scaled to 0.95, shifted up and dimmed behind a second scrim. The stacked dialog shows "Returns to <parent title> when done". Completing it closes only the stacked layer and selects the new connection in the parent. Closing it returns to the parent unchanged. Escape closes one layer.
+Add connection MAY stack on top of Add control source or Change connection. The parent dialog stays mounted, scaled to 0.95 and shifted up without dimming or a visible scrim. The stacked dialog shows "Returns to <parent title> when done". Completing it closes only the stacked layer and selects the new connection in the parent. Closing it returns to the parent unchanged. Escape closes one layer.
 
 The design reference for all dialogs and panels is the canvas "ARC onboarding and source setup v2". A static copy of its markup lives outside the repository at `~/Developer/research/arc-remote-link-v2/reference.html`; it is a visual reference, not code to import.
 

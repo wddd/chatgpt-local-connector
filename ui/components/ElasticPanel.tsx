@@ -280,7 +280,7 @@ export default function ElasticPanel({
     >
       <D.Portal>
         {!dock && <D.Overlay
-          className={`elastic-backdrop ${centered ? "setup-backdrop" : ""}`}
+          className="elastic-backdrop"
           style={{ zIndex: 100 + Math.max(0, layers.indexOf(node!)) * 2 }}
           onPointerDown={(e) => {
             backdropPressed.current =

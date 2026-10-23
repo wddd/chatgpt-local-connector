@@ -450,13 +450,6 @@ pre {
   font-size: var(--text-xs);
   max-width: 300px;
 }
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--overlay);
-  z-index: 100;
-  animation: appear var(--duration) var(--ease);
-}
 .dialog {
   position: fixed;
   left: 50%;

@@ -58,7 +58,6 @@
   --success-soft: #edf7ef;
   --warning-soft: #fff5df;
   --danger-soft: #fff0f1;
-  --overlay: #0005;
   --shadow: 0 8px 32px #0000001f, 0 1px 4px #00000014;
 }
 :root[data-theme="dark"] {
@@ -93,7 +92,6 @@
   --success-soft: #183324;
   --warning-soft: #392d1c;
   --danger-soft: #3f2328;
-  --overlay: #0009;
   --shadow: 0 12px 40px #0008, 0 0 0 1px #ffffff0a;
 }
 @media (prefers-color-scheme: dark) {
@@ -146,5 +144,4 @@
   --setup-spacing: clamp(20px, 1.875vw, 28px);
   --setup-gap: clamp(12px, 1.25vw, 18px);
   --radius-card: 14px;
-  --overlay-stacked: light-dark(#0002, #0005);
 }
