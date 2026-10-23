@@ -31,6 +31,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const [now, setNow] = useState(Date.now);
   const viewport = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null);
   const following = useRef(true), initial = useRef(true), previousRunning = useRef(true), previousTop = useRef(0);
+  const manualDisclosure = useRef(false);
   const live = snapshot?.agents[agent]?.sessions.find(s => s.id === session.id);
   const external = session.source === "transcript";
   // Completed history entries do not override a session in the live snapshot.
@@ -61,6 +62,16 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           : api<AgentTimeline>(`agents/timeline/${encodeURIComponent(session.id)}${after === undefined ? "" : `?after=${after}`}`);
         const next = external || current?.readOnly ? await read() : await refreshTimeline(current, read);
         if (stopped) return;
+        if (manualDisclosure.current && (next.cursor !== current?.cursor || next.status !== current?.status
+          || JSON.stringify(next.entries) !== JSON.stringify(current?.entries))) {
+          // Resume only for new timeline content, using the position before it renders.
+          const node = viewport.current;
+          if (node) {
+            following.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 24;
+            setAtLatest(following.current);
+          }
+          manualDisclosure.current = false;
+        }
         current = next; setTimeline(next); setError("");
       } catch (error) { if (!stopped) setError(String(error)); }
       if (!stopped) timer = setTimeout(read, external || current?.readOnly ? 5000 : 1000);
@@ -70,7 +81,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   }, [agent, session.id, session.timeline, session.conversation, external]);
   useLayoutEffect(() => {
     const node = viewport.current;
-    if (!node || !timeline) return;
+    if (!node || !timeline || manualDisclosure.current) return;
     const target = timelineScrollTarget(following.current, running || previousRunning.current, initial.current, node.scrollHeight);
     if (target !== undefined) { node.scrollTop = target; previousTop.current = node.scrollTop; }
     initial.current = false; previousRunning.current = running;
@@ -78,7 +89,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   useEffect(() => {
     const observer = new ResizeObserver(() => {
       const node = viewport.current;
-      if (node && following.current && followAllowed.current) { node.scrollTop = node.scrollHeight; previousTop.current = node.scrollTop; }
+      // Disclosure resizing is local navigation, including its animation frames.
+      if (node && !manualDisclosure.current && following.current && followAllowed.current) { node.scrollTop = node.scrollHeight; previousTop.current = node.scrollTop; }
     });
     if (content.current) observer.observe(content.current);
     return () => observer.disconnect();
@@ -138,14 +150,22 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     <div className="task-timeline">
       {((!external && error) || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
-        onWheel={event => { if (event.deltaY < 0) following.current = false; }}
+        onWheel={event => {
+          const node = event.currentTarget;
+          if (manualDisclosure.current) following.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 24;
+          manualDisclosure.current = false;
+          if (event.deltaY < 0) following.current = false;
+        }}
         onScroll={event => {
           const node = event.currentTarget;
           following.current = followsTimeline(node.scrollTop, node.clientHeight, node.scrollHeight, previousTop.current);
+          if (!following.current) manualDisclosure.current = false;
           previousTop.current = node.scrollTop;
           setAtLatest(node.scrollHeight - node.scrollTop - node.clientHeight <= 24);
         }}>
-        <div ref={content} className="timeline-entries">
+        <div ref={content} className="timeline-entries" onClickCapture={event => {
+          if ((event.target as Element).closest("button")) manualDisclosure.current = true;
+        }}>
           {timeline?.coverage.state === "partial" && <p className="timeline-meta">{t("timeline.truncated")}</p>}
           {external && <p className="timeline-meta">{t("timeline.external")}</p>}
           {!timeline && session.timeline && !error && <p role="status">{t("timeline.loading")}</p>}
@@ -160,7 +180,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       </div>
       {!atLatest && <Button variant="ghost" className="timeline-latest" onClick={() => {
         const node = viewport.current;
-        if (node) { node.scrollTop = node.scrollHeight; following.current = true; setAtLatest(true); }
+        if (node) { manualDisclosure.current = false; node.scrollTop = node.scrollHeight; following.current = true; setAtLatest(true); }
       }}>{t("timeline.latest")}</Button>}
     </div>
     {footer && <footer className="dialog-footer">{footer}</footer>}
