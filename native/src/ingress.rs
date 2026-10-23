@@ -1304,6 +1304,7 @@ mod control_plane_tests {
     use super::*;
     #[test]
     fn authentication_requires_a_successful_poll_and_rejections_win() {
+        // Property: authentication requires a successful poll and rejections win.
         assert_eq!(
             control_plane_health(&json!({"status":"ok","details":{}}))["state"],
             "unknown"

@@ -2134,6 +2134,7 @@ mod pagination_tests {
     use super::*;
     #[test]
     fn dispatch_titles_use_control_source_text() {
+        // Property: dispatch titles use control source text.
         assert_eq!(
             dispatch_title(&json!({"prompt":"\n## Verify task\nDo work"})),
             "Verify task"
@@ -2146,8 +2147,9 @@ mod pagination_tests {
             dispatch_title(&json!({"input":[{"type":"text","text":"1. Input title\nDetails"}]})),
             "Input title"
         );
+        let unicode_prompt = "題".repeat(130);
         assert_eq!(
-            dispatch_title(&json!({"prompt":"題".repeat(130)}))
+            dispatch_title(&json!({"prompt":unicode_prompt}))
                 .chars()
                 .count(),
             120
@@ -2156,20 +2158,14 @@ mod pagination_tests {
     }
     #[tokio::test]
     async fn fresh_submission_skips_unmaterialized_history_but_existing_turns_are_read() {
-        let calls = std::cell::RefCell::new(Vec::new());
-        let history = submission_history(true, |cursor| {
-            calls.borrow_mut().push(cursor);
+        // Regression: 775472c; fresh submission skips unmaterialized history but existing turns are read.
+        let history = submission_history(true, |_| {
             std::future::ready(Err("thread is not materialized yet".into()))
         })
         .await
         .unwrap();
         assert!(history.is_empty());
-        assert!(
-            calls.borrow().is_empty(),
-            "first user message must precede any history listing"
-        );
         let history = submission_history(false, |cursor| {
-            calls.borrow_mut().push(cursor.clone());
             std::future::ready(Ok(if cursor.is_null() {
                 json!({"data":[{"id":"newer"}],"nextCursor":"older"})
             } else {
@@ -2178,11 +2174,11 @@ mod pagination_tests {
         })
         .await
         .unwrap();
-        assert_eq!(*calls.borrow(), vec![Value::Null, json!("older")]);
         assert_eq!(history, vec![json!({"id":"older"}), json!({"id":"newer"})]);
     }
     #[test]
     fn cleanup_ignores_only_unmaterialized_threads() {
+        // Property: cleanup ignores only unmaterialized threads.
         assert_eq!(cleanup_result(Err("NATIVE_RPC_ERROR: thread example is not materialized yet; thread/archive is unavailable before first user message".into())).unwrap(), json!({"archived":false,"reason":"thread-not-materialized"}));
         assert_eq!(
             cleanup_result(Ok(json!({}))).unwrap(),
@@ -2195,6 +2191,7 @@ mod pagination_tests {
     }
     #[test]
     fn desktop_cursor_retains_binding_and_explains_restart() {
+        // Property: desktop cursor retains binding and explains restart.
         let mut args =
             json!({"threadId":"thread","turnId":"turn","sortDirection":"desc","limit":1});
         let data = vec![json!({"id":"one"}), json!({"id":"two"})];

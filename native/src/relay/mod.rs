@@ -421,6 +421,7 @@ mod tests {
     use super::*;
     #[test]
     fn cancelled_creation_reuses_only_an_undeployed_draft() {
+        // Regression: 42f9056; cancelled creation reuses only an undeployed draft.
         let first = draft(None, &json!({"name":"First"})).unwrap();
         assert!(undeployed(&first));
         let retry = draft(Some(first.clone()), &json!({"name":"Retry"})).unwrap();
@@ -441,6 +442,7 @@ mod tests {
     }
     #[tokio::test]
     async fn cancellation_waits_for_job_drop_and_keeps_recovery_information() {
+        // Regression: cancelled deployment must retain recovery information until its job stops.
         let state = Arc::new(Mutex::new(
             json!({"phase":"connecting","relayId":"saved","ingressId":"local","loginUrl":"https://example.invalid"}),
         ));
@@ -465,6 +467,7 @@ mod tests {
     }
     #[test]
     fn relay_api_is_local_and_uses_existing_management_envelope() {
+        // Contract: relay management routes retain the local JSON request envelope.
         for (name, body) in [
             ("relay.create", json!({})),
             (

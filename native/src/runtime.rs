@@ -515,6 +515,7 @@ mod tests {
     use super::*;
     #[test]
     fn restart_handoff_never_attaches_to_a_core_already_tearing_down() {
+        // Regression: 42f9056; restart handoff never attaches to a core already tearing down.
         let state = State::default();
         let old = id();
         let new = id();

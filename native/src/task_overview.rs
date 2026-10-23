@@ -167,6 +167,7 @@ mod tests {
     use super::*;
     #[test]
     fn statuses_are_evidence_based_and_compact_does_not_copy_prompts() {
+        // Property: statuses are evidence based and compact does not copy prompts.
         let mut t = json!({"id":"t","name":"Title","cwd":"/project","preview":"large prompt","status":{"type":"active"},"model":"m"});
         let turn = json!({"id":"turn","status":"inProgress"});
         let q = json!({"pending":2,"blocked":0});

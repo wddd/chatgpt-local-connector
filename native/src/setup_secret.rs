@@ -158,6 +158,7 @@ mod tests {
     use super::*;
     #[test]
     fn validates_each_credential_shape_without_echoing_bad_content() {
+        // Property: validates each credential shape without echoing bad content.
         let key = format!("sk-{}", "a".repeat(40));
         let token = format!("eyJ{}", "a".repeat(80));
         for (field, text, expected) in [

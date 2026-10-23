@@ -41,6 +41,7 @@ function messages(socket) {
 }
 let next;
 test('identity, replay protection, owner/member permissions and offline addresses', async () => {
+  // Contract: identity, replay protection, owner/member permissions and offline addresses.
   assert.equal((await mf.dispatchFetch(`${origin}/u/${member.id}/mcp`)).status,404);
   token = (await (await call(admin,{op:'rotate'})).json()).token;
   assert.equal((await register(member,'wrong')).status,403);
@@ -64,6 +65,7 @@ test('identity, replay protection, owner/member permissions and offline addresse
   ws.send('ping'); assert.equal(await next(),'pong');
 });
 test('streamed binary request and SSE response preserve headers, discovery paths and cancellation', async () => {
+  // Contract: streamed binary request and SSE response preserve headers, discovery paths and cancellation.
   const body = new Uint8Array(70000).fill(123); body[0]=0; body[69999]=255;
   const responsePromise = mf.dispatchFetch(`${origin}/u/${member.id}/oauth/token?x=%2F`,{method:'POST',headers:{'content-type':'application/octet-stream','x-test':'same'},body});
   const request = await next(); assert.equal(request.path,'/oauth/token?x=%2F'); assert.equal(request.method,'POST');
@@ -103,6 +105,7 @@ test('streamed binary request and SSE response preserve headers, discovery paths
 
 });
 test('rotation preserves members; removal closes active requests and allows valid shared rejoin; leave is self-only', async () => {
+  // Contract: rotation preserves members; removal closes active requests and allows valid shared rejoin; leave is self-only.
   const newToken = (await (await call(admin,{op:'rotate'})).json()).token;
   assert.notEqual(newToken,token); assert.equal((await register(identity(),token)).status,403);
   assert.equal((await call(member,{op:'me'})).status,200);

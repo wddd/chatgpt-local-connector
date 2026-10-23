@@ -127,6 +127,7 @@ mod tests {
     use super::*;
     #[tokio::test(start_paused = true)]
     async fn heartbeats_preserve_final_response_and_only_negotiate_progress() {
+        // Contract: wait transport emits progress only after negotiation and preserves the final JSON reply.
         for sse in [false, true] {
             for token in [Value::Null, json!("caller-token"), json!(42)] {
                 let expected =
@@ -170,6 +171,7 @@ mod tests {
 
     #[tokio::test]
     async fn dropped_body_and_disconnected_socket_cancel_the_operation() {
+        // Regression: a disconnected wait must cancel the pending operation.
         for drop_body in [true, false] {
             let (done_tx, done_rx) = tokio::sync::oneshot::channel();
             struct Guard(Option<tokio::sync::oneshot::Sender<()>>);

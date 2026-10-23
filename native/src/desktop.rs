@@ -656,6 +656,7 @@ mod tests {
     use super::*;
     #[test]
     fn only_definite_missing_owner_allows_loading_fallback() {
+        // Property: only definite missing owner allows loading fallback.
         assert!(owner_missing("DESKTOP_REJECTED:\"no-client-found\""));
         assert!(owner_missing("DESKTOP_OWNER_NOT_FOUND"));
         for error in [

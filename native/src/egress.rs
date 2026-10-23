@@ -624,6 +624,7 @@ mod tests {
 
     #[test]
     fn protocol_version_tracks_visible_contract_not_internal_catalog_metadata() {
+        // Property: protocol version tracks visible contract not internal catalog metadata.
         let original = catalog().clone();
         let version = protocol_hash(&original);
         let mut changed = original.clone();
@@ -648,6 +649,7 @@ mod tests {
 
     #[test]
     fn only_dispatch_receipts_expose_notification_delivery_details() {
+        // Property: only dispatch receipts expose notification delivery details.
         for operation in [
             "create",
             "send",

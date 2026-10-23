@@ -392,6 +392,7 @@ mod tests {
     use super::*;
     #[test]
     fn external_summary_falls_back_without_changing_the_current_phase() {
+        // Property: external summary falls back without changing the current phase.
         let records = vec![
             json!({"message":{"role":"user","content":"Read example"}}),
             json!({"message":{"role":"assistant","content":[
@@ -419,6 +420,7 @@ mod tests {
     }
     #[test]
     fn transcript_headlines_skip_injected_content_and_tags() {
+        // Property: transcript headlines skip injected content and tags.
         for agent in ["codex", "claude"] {
             let text = "First sentence. Actual update.\n<image_resize_notice>Injected details</image_resize_notice>\n<total_tokens>1234</total_tokens>\n</image_resize_notice>";
             let record = if agent == "codex" {

@@ -1,0 +1,8 @@
+[
+  {
+    "file": "tests/control-mcp.test.ts",
+    "test": "<harness>",
+    "rules": ["state-access"],
+    "reason": "The isolated native fixture requires initial ingress and custom adapter registration before its listener exists, and endpoint discovery after restart. Only bootstrap code may access state; test cases use public operations. Remove when the fixture can bootstrap and expose its endpoint without persisted discovery."
+  }
+]

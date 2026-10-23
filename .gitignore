@@ -27,3 +27,8 @@ relay-worker/.wrangler/
 
 # Local acceptance evidence and pixel baselines
 output/acceptance/
+
+# Local mutation audit output
+output/mutation/
+mutants.out*/
+.stryker-tmp/
