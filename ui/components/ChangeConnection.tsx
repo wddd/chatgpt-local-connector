@@ -71,7 +71,7 @@ export default function ChangeConnection() {
       {flow.step === "connection" ? <>
         <p>{t("switch.currentVia", { name: current?.name ?? source?.connectionName ?? t("source.connectionRemoved") })}</p>
         <SingleChoice cards label={t("source.connections")} value={flow.ingressId ?? ""} onChange={ingressId => connectionSwitch.set({ ...flow, ingressId })} disabled={busy} options={entries.map(i => ({ value: i.id, label: i.name, disabled: !!reason(i), description: reason(i) || [t(`source.kind.${connectionKind(i)}`), t(i.state === "ready" ? "connect.online" : "connect.offline"), sources.filter(s => s.ingressId === i.id && s.state !== "revoked" && !isPendingSource(s, entries)).map(s => s.label).join(", ")].filter(Boolean).join(" · ") }))} />
-        <Button className="setup-new" data-add-connection disabled={busy} onClick={() => openConnectionSetup({ forSwitch: true, product: source?.product })}><Icon icon={Plus} />{t("source.newConnection")}</Button>
+        <Button className="setup-new" data-add-connection disabled={busy} onClick={() => openConnectionSetup({ forSwitch: true, product: source?.product })}><Icon icon={Plus} /><span>{t("source.newConnection")}<small>{t("setup.newConnectionHint")}</small></span></Button>
         <Notice tone="warning">{t("switch.warning", { name: productName })}</Notice>
       </> : <>
         {target ? <>

@@ -14,7 +14,7 @@ import { Button, CopyField, Field, Icon, Input, Loading, Notice, SingleChoice, S
 
 type LocalAccess = { codeAvailable: boolean; desktopAvailable: boolean };
 const steps = ["method", "address", "success"] as const;
-export default function AddConnection({ options, onClose, onAdded }: { options: ConnectionSetup; onClose: () => void; onAdded: (id: string) => void }) {
+export default function AddConnection({ options, onClose, onAdded, returnFocus }: { options: ConnectionSetup; onClose: () => void; onAdded: (id: string) => void; returnFocus?: string }) {
   const { status, sources } = connector.use();
   const [step, setStep] = useState<typeof steps[number]>(options.step ?? (options.method ? "address" : "method"));
   const [method, setMethod] = useState<ConnectionMethod>(options.localTarget ? `local-${options.localTarget}` : options.method ?? "create");
@@ -84,8 +84,9 @@ export default function AddConnection({ options, onClose, onAdded }: { options: 
   const waiting = !!operation && progress.phase !== "failed";
   const flow = onboarding.get();
   const parentTitle = options.forSwitch ? t("switch.sourceTitle", { name: sources.find(s => s.id === connectionSwitch.get()?.sourceId)?.label ?? "" }) : flow?.source ? t("setup.addProduct", { name: flow.localTarget === "code" ? "Claude Code" : flow.localTarget === "desktop" ? t("setup.claudeDesktop") : controlSource(flow.source)?.shortName ?? t("setup.otherClient") }) : t("addControlSource");
-  return <SetupDialog title={t("source.newConnection")} steps={[{ label: t("connectionMethod"), value: methodName }, { label: t("source.step.address") }, { label: t("setup.ready") }]}
+  return <SetupDialog title={t("source.newConnection")} steps={[{ label: t("setup.method"), value: methodName }, { label: t("source.step.address") }, { label: t("setup.ready") }]}
     active={steps.indexOf(step)} done={step === "success"} stacked={(options.forSource || options.forSwitch)} parentTitle={parentTitle} busy={busy || configBusy} onClose={onClose}
+    returnFocus={returnFocus}
     footer={<>
       {step !== "success" && <Button disabled={busy || configBusy || waiting} variant="ghost" onClick={() => step === "method" ? onClose() : (setError(""), setStep("method"))}>{t("back")}</Button>}
       {step === "method" && <Button variant="primary" disabled={!!reason(method)} onClick={() => { setError(""); setStep("address"); if (method === "create") void startRelay(); }}>{t(method === "create" ? "setup.deploy" : "source.next")}{method === "create" && <Icon icon={ExternalLink} />}</Button>}
@@ -93,7 +94,7 @@ export default function AddConnection({ options, onClose, onAdded }: { options: 
       {waiting && <Loading label={t("connect.inProgress")} />}
       {step === "success" && <>{!(options.forSource || options.forSwitch) && <Button onClick={onClose}>{t("source.done")}</Button>}<span className="spacer" /><Button variant="primary" disabled={!created || busy} onClick={() => { if (!createdId) return; onAdded(createdId); if (!(options.forSource || options.forSwitch)) openOnboarding("product", { ingressId: createdId, fixedConnection: true }); }}>{t((options.forSource || options.forSwitch) ? "setup.continueConnection" : "setup.addSourceForConnection")}</Button></>}
     </>}>
-    <div className="setup-content">
+    <div className={`setup-content ${step === "method" ? "setup-methods" : ""}`}>
       {error && <Notice>{error}</Notice>}
       {step === "method" && <SingleChoice cards label={t("connectionMethod")} value={method} onChange={value => { setMethod(value as ConnectionMethod); setError(""); }} options={methods} />}
       {["https", "openai-tunnel"].includes(method) && <div hidden={!editing}><IngressDialog key={method} setupFormId={formId} connectionOnly initialProduct={method === "openai-tunnel" ? "chatgpt" : options.product ?? "custom"}

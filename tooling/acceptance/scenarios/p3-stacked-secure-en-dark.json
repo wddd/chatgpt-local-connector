@@ -1,0 +1,18 @@
+{
+  "theme": "dark",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "remoteLink": {},
+  "connectionSetup": {
+    "forSource": true,
+    "product": "chatgpt",
+    "method": "openai-tunnel"
+  },
+  "sourceSetup": {
+    "step": "connection",
+    "source": "chatgpt"
+  }
+}

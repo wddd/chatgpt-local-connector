@@ -1,0 +1,14 @@
+{
+  "theme": "dark",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "remoteLink": {
+    "empty": true
+  },
+  "sourceSetup": {
+    "step": "welcome"
+  }
+}

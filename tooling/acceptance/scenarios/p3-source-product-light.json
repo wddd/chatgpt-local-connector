@@ -10,7 +10,6 @@
     "connected": false
   },
   "sourceSetup": {
-    "step": "product",
-    "source": "claude"
+    "step": "product"
   }
 }

@@ -5,13 +5,14 @@ import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
 import { preference } from "../state/store";
 import { navigation } from "../state/navigation";
-import { openOnboarding, openConnectionSetup, connectionSwitch, connectionSetup } from "../state/onboarding";
+import { onboarding, openOnboarding, openConnectionSetup, connectionSwitch, connectionSetup } from "../state/onboarding";
 import { useRelays } from "../state/relay";
 import { connectionIcon, connectionKind, connectionProvider, isPendingSource, sourceCandidates } from "../sourcePresentation";
 import type { Ingress } from "../state/types";
 import IngressDialog from "./IngressDialog";
 import ChangeConnection from "./ChangeConnection";
 import AddConnection from "./AddConnection";
+import Onboarding from "./Onboarding";
 import SourceDetail from "./SourceDetail";
 import SourceIcon from "./SourceIcon";
 import { ApprovalCard } from "./OAuthApproval";
@@ -21,7 +22,7 @@ import { Button, CopyField, Dialog, Empty, HoverScope, Icon, Notice, SingleChoic
 const grouping = preference<"all" | "platform">("arc.source-grouping", "all");
 export default function RemoteLinkPage() {
   const { status, sources, error: readError } = connector.use(), nav = navigation.use(), relays = useRelays();
-  const group = grouping.use(), switching = connectionSwitch.use(), newConnection = connectionSetup.use();
+  const group = grouping.use(), switching = connectionSwitch.use(), newConnection = connectionSetup.use(), flow = onboarding.use();
   const [editing, setEditing] = useState<Ingress>(), [error, setError] = useState("");
   const [removing, setRemoving] = useState(false), [removeBusy, setRemoveBusy] = useState(false);
   const [claim, setClaim] = useState<string>();
@@ -48,7 +49,6 @@ export default function RemoteLinkPage() {
     return () => cancelAnimationFrame(frame);
   }, [nav.remoteSourceId, nav.remoteConnectionId]);
   function add(connectionOnly = false) {
-    navigation.set(old => ({ ...old, page: "overview" }));
     if (connectionOnly) openConnectionSetup();
     else openOnboarding();
   }
@@ -68,7 +68,7 @@ export default function RemoteLinkPage() {
     {connection ? <div className="connection-detail">
       <div className="connection-detail-heading"><span className="connection-detail-icon"><Icon icon={connectionIcon(connection)} size={20} /></span><div><h2>{connection.name}</h2><p>{connectionProvider(connection)}{selectedRelay?.owner ? ` · ${t("setup.hostedHere")}` : ""}</p></div><Status tone={connection.state === "ready" ? "success" : "neutral"}>{t(connection.state === "ready" ? "connect.online" : "connect.offline")}</Status></div>
       {connection.url && <CopyField value={connection.url} label={t("source.copyAddress")} />}
-      <section className="connection-sources"><div className="source-section-heading"><h3>{t("setup.sourcesUsing", { count: affected.length })}</h3><Button onClick={() => { navigation.set(old => ({ ...old, page: "overview" })); openOnboarding("product", { ingressId: connection.id, fixedConnection: true }); }}>{t("setup.addSourceForConnection")}</Button></div>
+      <section className="connection-sources"><div className="source-section-heading"><h3>{t("setup.sourcesUsing", { count: affected.length })}</h3><Button data-add-source onClick={() => openOnboarding("product", { ingressId: connection.id, fixedConnection: true })}>{t("setup.addSourceForConnection")}</Button></div>
         <HoverScope>{affected.map(source => <Button key={source.id} variant="ghost" className="connection-source-row" onClick={() => navigation.set(old => ({ ...old, remoteSourceId: source.id, remoteConnectionId: undefined }))}><SourceIcon platform={source.product} /><strong>{source.label}</strong><Status tone={source.state === "connected" ? "success" : "neutral"}>{t(`source.state.${source.state}`)}</Status><Icon icon={ChevronRight} /></Button>)}</HoverScope>
         {!affected.length && <p className="muted">{t("source.unused")}</p>}
       </section>
@@ -79,7 +79,7 @@ export default function RemoteLinkPage() {
       {selectedRelay?.owner && <Button className="connection-hosting-link" variant="ghost" onClick={() => navigation.set(old => ({ ...old, page: "settings", settingsExtras: true }))}>{t("setup.hostingLink")}<Icon icon={ChevronRight} /></Button>}
       <div className="connection-remove"><div><strong>{t(joined ? "connect.leave" : "setup.removeConnection")}</strong><p>{t("setup.removeAffected", { names: affected.map(s => s.label).join(", ") || t("source.unused") })}</p></div><Button variant="danger-outline" onClick={() => { setError(""); setRemoving(true); }}>{t(joined ? "connect.leave" : "remove")}</Button></div>
     </div> : selected ? <SourceDetail key={selected.id} source={selected} onConnection={id => navigation.set(old => ({ ...old, remoteConnectionId: id }))} /> : <>
-      <div className="source-section-heading"><SingleChoice compact label={t("source.grouping")} value={group} onChange={value => grouping.set(value as "all" | "platform")} options={[{ value: "all", label: t("all") }, { value: "platform", label: t("source.byPlatform") }]} /><Button variant="primary" onClick={() => add()}>{t("addControlSource")}</Button></div>
+      <div className="source-section-heading"><SingleChoice compact label={t("source.grouping")} value={group} onChange={value => grouping.set(value as "all" | "platform")} options={[{ value: "all", label: t("all") }, { value: "platform", label: t("source.byPlatform") }]} /><Button data-add-source variant="primary" onClick={() => add()}>{t("addControlSource")}</Button></div>
       {requests.filter(({ ingress, request }) => request.switchSourceId || sourceCandidates(sources, entries, ingress.id, request.product ?? "custom", request.sourceId).length > 0).map(({ ingress, request }) => <Notice key={request.id} tone="warning" action={<Button onClick={() => setClaim(request.id)}>{t("source.review")}</Button>}>{t("source.pendingReauthorization", { name: request.clientName, connection: ingress.name })}</Notice>)}
       <HoverScope>{groups.map(platform => <section key={platform} className="source-list">
         {platform && <h3>{t(`source.platform.${platform}`) === `source.platform.${platform}` ? platform : t(`source.platform.${platform}`)}</h3>}
@@ -92,7 +92,7 @@ export default function RemoteLinkPage() {
         })}
       </section>)}</HoverScope>
       {!visible.length && <Empty>{t("source.empty")}</Empty>}
-      <section className="connection-list"><div className="source-section-heading"><h3>{t("source.connections")}</h3><Button onClick={() => add(true)}>{t("source.newConnection")}</Button></div>
+      <section className="connection-list"><div className="source-section-heading"><h3>{t("source.connections")}</h3><Button data-new-connection onClick={() => add(true)}>{t("source.newConnection")}</Button></div>
         <HoverScope>{entries.map(ingress => {
           const count = visible.filter(s => s.ingressId === ingress.id && s.state !== "revoked").length;
           return <Button key={ingress.id} variant="ghost" className="source-list-row connection-list-row" data-hover-target={ingress.id} data-remote-row={ingress.id} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: ingress.id }))}>
@@ -107,7 +107,12 @@ export default function RemoteLinkPage() {
       <p>{t("setup.removeConfirm", { name: connection.name, names: affected.map(s => s.label).join(", ") || t("source.unused") })}</p>{error && <Notice>{error}</Notice>}
     </Dialog>}
     {switching && <ChangeConnection />}
-    {switching && newConnection?.forSwitch && <AddConnection options={newConnection} onClose={() => connectionSetup.set(undefined)} onAdded={id => { connectionSwitch.set(old => old && { ...old, ingressId: id }); connectionSetup.set(undefined); }} />}
+    {flow && <Onboarding returnFocus="[data-add-source], .hub-source" />}
+    {newConnection && <AddConnection options={newConnection} returnFocus="[data-new-connection], [data-add-source], .hub-source" onClose={() => connectionSetup.set(undefined)} onAdded={id => {
+      if (newConnection.forSwitch) connectionSwitch.set(old => old && { ...old, ingressId: id });
+      if (newConnection.forSource) onboarding.set(old => old?.step === "connection" ? { ...old, step: "address", ingressId: id, baseline: (connector.get().status?.ingresses.find(i => i.id === id)?.oauth?.pending ?? []).map(p => p.id) } : old);
+      connectionSetup.set(undefined);
+    }} />}
     {claiming && <Dialog title={t("source.authorization")} onClose={() => setClaim(undefined)}><ApprovalCard key={claiming.request.id} {...claiming} onDecided={() => setClaim(undefined)} /></Dialog>}
     {editing && <IngressDialog ingress={editing} onClose={() => setEditing(undefined)} onRemoved={() => { setEditing(undefined); navigation.set(old => ({ ...old, remoteConnectionId: undefined })); }} onSaved={entry => {
       setEditing(undefined); void api(`ingress/${entry.id}/start`, "POST").then(refreshConnector).catch(e => setError(String(e)));

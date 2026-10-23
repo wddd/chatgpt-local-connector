@@ -328,6 +328,7 @@ export type Choice = {
   graphic?: ReactNode;
   color?: string;
   description?: string;
+  warning?: string;
   disabled?: boolean;
 };
 export function SingleChoice({
@@ -417,7 +418,7 @@ export function SingleChoice({
                 <>
                   {option.graphic}
                   {option.icon && <Icon icon={option.icon} />}
-                  <span>{option.label}{(cards || navigation) && option.description && <small>{option.description}</small>}</span>
+                  <span>{option.label}{(cards || navigation) && <>{option.description && <small>{option.description}</small>}{option.warning && <small className="choice-warning">{option.warning}</small>}</>}</span>
                 </>
               )}
             </RadioGroup.Item>

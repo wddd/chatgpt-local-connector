@@ -14,7 +14,7 @@ import { Button, CopyField, Field, Icon, Loading, Notice, SingleChoice } from ".
 
 const steps: OnboardingStep[] = ["product", "connection", "address", "approval", "success"];
 const products = ["claude", "chatgpt", "gemini", "grok", "grok-bot", "microsoft-copilot", "local-code", "local-desktop", "custom"];
-export default function AddControlSource() {
+export default function AddControlSource({ returnFocus }: { returnFocus?: string }) {
   const flow = onboarding.use()!, { status, sources } = connector.use();
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [route, setRoute] = useState("");
@@ -80,7 +80,7 @@ export default function AddControlSource() {
   }
   function newConnection(method?: ConnectionMethod) { openConnectionSetup({ forSource: true, product, localTarget: flow.localTarget, method }); }
   const productName = (id: string) => id === "custom" ? t("setup.otherClient") : id === "local-code" ? "Claude Code" : id === "local-desktop" ? t("setup.claudeDesktop") : id === "microsoft-copilot" ? "Copilot" : controlSource(id)!.displayName;
-  const title = flow.source ? t("setup.addProduct", { name: productName(selectedProduct) }) : t("addControlSource");
+  const title = selectedProduct ? t("setup.addProduct", { name: productName(selectedProduct) }) : t("addControlSource");
   const footer = <>
     {flow.step === "approval" && waiting?.status === "pending" && <><Button type="submit" form={`approval-${waiting.id}`} value="deny" disabled={busy}>{t("oauthDeny")}</Button><Button variant="primary" type="submit" form={`approval-${waiting.id}`} value="allow" busy={busy}>{t("oauthAllow")}</Button></>}
     {flow.step !== "product" && flow.step !== "success" && flow.step !== "approval" && <Button variant="ghost" disabled={busy} onClick={() => step(flow.step === "address" && flow.fixedConnection ? "product" : steps[Math.max(0, steps.indexOf(flow.step) - 1)])}>{t("back")}</Button>}
@@ -92,6 +92,7 @@ export default function AddControlSource() {
   return <SetupDialog title={title} steps={steps.slice(0, 4).map((value, index) => ({ label: t(`source.step.${value}`), value: index === 0 ? productName(selectedProduct || "custom") : index === 1 ? current?.name : undefined }))}
     active={steps.indexOf(flow.step)} done={flow.step === "success"} busy={busy} onClose={finishSourceSetup}
     initialFocus={flow.step === "product" && flow.focusGroup ? `platform-${flow.focusGroup}` : undefined}
+    returnFocus={returnFocus}
     footer={footer}>
     <div className="setup-content">
     {error && <Notice>{error}</Notice>}
@@ -108,10 +109,13 @@ export default function AddControlSource() {
       {flow.fixedConnection && current && <p className="muted">{t("setup.via", { name: current.name })}</p>}
     </>}
     {flow.step === "connection" && <>
+      <p className="muted">{t("setup.connectionPrompt", { name: productName(selectedProduct || "custom") })}</p>
       {visible.length > 0 && <SingleChoice cards label={t("source.connections")} value={route} onChange={setRoute} disabled={busy} options={visible.map(i => {
         const carried = sources.filter(s => s.ingressId === i.id && !isPendingSource(s, entries) && s.state !== "revoked");
         const reason = connectionDisabledReason(i, product, sources, flow.localTarget);
-        return { value: i.id, label: i.name, disabled: !!reason, description: reason || [t(`source.kind.${connectionKind(i)}`), t(i.state === "ready" ? "connect.online" : "connect.offline"), carried.map(s => s.label).join(", "), carried.some(s => s.product === product) && t("setup.newOrReauthorize")].filter(Boolean).join(" · ") };
+        return { value: i.id, label: i.name, disabled: !!reason,
+          description: reason || [t(`source.kind.${connectionKind(i)}`), carried.length && t("setup.carriesSources", { names: carried.map(s => s.label).join(", ") }), t(i.state === "ready" ? "connect.online" : "connect.offline")].filter(Boolean).join(" · "),
+          warning: !reason && i.auth === "oauth" && carried.some(s => s.product === product) ? t("setup.newOrReauthorize", { name }) : undefined };
       })} />}
       {!existing.length && <div className="setup-empty">
         <h3>{t("setup.noConnection")}</h3>
@@ -121,7 +125,7 @@ export default function AddControlSource() {
           <Button onClick={() => newConnection("https")}>{t("setup.ownAddress")}</Button>
         </>}
       </div>}
-      {existing.length > 0 && <Button className="setup-new" data-add-connection disabled={busy} onClick={() => newConnection()}><Icon icon={Plus} />{t("source.newConnection")}</Button>}
+      {existing.length > 0 && <Button className="setup-new" data-add-connection disabled={busy} onClick={() => newConnection()}><Icon icon={Plus} /><span>{t("source.newConnection")}<small>{t("setup.newConnectionHint")}</small></span></Button>}
     </>}
     {flow.step === "address" && (current ? <>
       {current.transport === "local" ? <p>{t("connect.restartClaude")}</p> : <ol className="setup-instructions">

@@ -1,5 +1,6 @@
 import { createStore } from "./store";
 import { agentPanel, ingressPanel } from "./overviewPanels";
+import { navigation } from "./navigation";
 export type OnboardingStep = "welcome" | "product" | "connection" | "address" | "approval" | "success";
 export type SourceSetup = { step: OnboardingStep; source?: string; localTarget?: "code" | "desktop"; ingressId?: string; requestId?: string; sourceId?: string; baseline?: string[]; focusGroup?: "local" | "remote"; fixedConnection?: boolean };
 export const onboarding = createStore<SourceSetup | undefined>(undefined);
@@ -19,7 +20,10 @@ export function openConnectionSetup(options: ConnectionSetup = {}) {
 export function finishSourceSetup() {
   const id = onboarding.get()?.sourceId;
   onboarding.set(undefined);
-  if (id) addedSource.set(id);
+  if (id) {
+    addedSource.set(id);
+    navigation.set(old => ({ ...old, page: "overview" }));
+  }
 }
 
 export type ConnectionSwitch = { sourceId: string; step: "connection" | "address" | "approval"; ingressId?: string; requestId?: string };

@@ -128,7 +128,7 @@ export default function ElasticPanel({
         ? readOrigin(active) : undefined
     );
     visualOrigin.current = visual;
-    trigger.current = visual?.trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    trigger.current = savedOrigin?.trigger ?? visual?.trigger ?? (active instanceof HTMLElement ? active : null);
     origin.current = visual?.rect;
     parentPanel.current = dock ? undefined : visual?.parent;
     closing.current = false;
@@ -332,9 +332,14 @@ export default function ElasticPanel({
             // Wait for the scene to restore its bubbles and remove modal inert.
             requestAnimationFrame(() => {
               if (dock && document.querySelector("[data-panel-dock]")) return;
-              const fallback = returnFocus ? document.querySelector<HTMLElement>(returnFocus) : null;
-              const target = trigger.current?.isConnected && !trigger.current.closest("[inert]") ? trigger.current : fallback;
-              target?.focus({ preventScroll: true });
+              const fallbacks = returnFocus ? Array.from(document.querySelectorAll<HTMLElement>(returnFocus)) : [];
+              for (const target of [trigger.current, parentPanel.current, panelLayers.get().at(-1), ...fallbacks]) {
+                if (!target?.isConnected || target === document.body || target.closest("[inert], [hidden]") || target.matches(":disabled")) continue;
+                const style = getComputedStyle(target);
+                if (style.display === "none" || style.visibility === "hidden") continue;
+                target.focus({ preventScroll: true });
+                if (document.activeElement === target) break;
+              }
             });
           }}
           onEscapeKeyDown={(e) => {

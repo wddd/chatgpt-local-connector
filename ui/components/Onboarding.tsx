@@ -11,7 +11,7 @@ import type { Login } from "../state/types";
 import AddControlSource from "./AddControlSource";
 import { Button, Icon, Notice, Status } from "./ui";
 
-export default function Onboarding() {
+export default function Onboarding({ returnFocus }: { returnFocus?: string }) {
   const flow = onboarding.use()!, { status, sources, sourcesLoaded } = connector.use(); permissions.use();
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [login, setLogin] = useState("loading");
@@ -28,10 +28,11 @@ export default function Onboarding() {
     try { await api("codex/login", "POST"); setLogin((await api<Login>("codex/login")).state); }
     catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
-  if (flow.step !== "welcome") return <AddControlSource />;
+  if (flow.step !== "welcome") return <AddControlSource returnFocus={returnFocus} />;
   return <section className="welcome-page" aria-labelledby="welcome-title">
     <img className="welcome-mark" src={new URL("../assets/arc/mark.svg", import.meta.url).href} alt="ARC" />
     <h1 id="welcome-title">{t("setup.welcomeTitle")}</h1>
+    <p className="welcome-subtitle">{t("setup.welcomeSubtitle")}</p>
     {error && <Notice>{error}</Notice>}
     <div className="welcome-cards">{(["local", "remote"] as const).map(group => <Button key={group} className="welcome-card" onClick={() => onboarding.set({ step: "product", focusGroup: group })}>
       <Icon icon={group === "local" ? Monitor : Smartphone} size={20} />

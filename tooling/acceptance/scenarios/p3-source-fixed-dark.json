@@ -10,5 +10,7 @@
     "step": "product",
     "ingressId": "relay-main",
     "fixedConnection": true
-  }
+  },
+  "page": "remote",
+  "remoteConnectionId": "relay-main"
 }
