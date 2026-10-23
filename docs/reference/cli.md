@@ -23,6 +23,10 @@ Commands return a JSON envelope: `schemaVersion: 1`, `ok: true`, and `result`; e
 
 Choose the operation name from capabilities; command names and catalog operation names are not interchangeable. `cli call <operation> --stdin` sends JSON input. `cli mcp` exposes the local management catalog over stdio, separate from remote execution tools.
 
+## Local build replacement
+
+On macOS, use `cli app replace <absolute-path-to-.app>` for self-replacement, including from an ARC-owned task. `--check` validates without installing; `cli app replace --status` reads the durable outcome even while Core is offline. The CLI returns a receipt before the detached launchd helper stops ARC. End the calling turn after that receipt. Query status from a new turn after reconnecting. Do not run `app quit` or background a replacement shell script from the task. For a first upgrade, invoke the candidate bundle's Core CLI. See [Local app replacement](app-replacement.md) for validation, acknowledgment, task draining, rollback, and limitations.
+
 ## Control-source management
 
 These commands use authenticated local management only. They do not change the remote `guide`, `query`, `act`, or `notification` schemas.

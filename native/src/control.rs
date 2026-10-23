@@ -515,6 +515,7 @@ impl Control {
         fresh_thread: bool,
     ) -> Result<Value> {
         if matches!(method, "turn/start" | "turn/steer") {
+            crate::app_replace::check_dispatch()?;
             let thread = string(&args, "threadId");
             let turns = submission_history(fresh_thread, |cursor| {
                 self.request_native("thread/turns/list", json!({"threadId":thread,"limit":100,"cursor":cursor,"sortDirection":"desc","itemsView":"full"}), timeout)
@@ -690,6 +691,9 @@ impl Control {
     }
 
     pub async fn mutate(self: &Arc<Self>, operation: &str, mut args: Value) -> Result<Value> {
+        if matches!(operation, "create" | "send" | "native") {
+            crate::app_replace::check_dispatch()?;
+        }
         if matches!(operation, "create" | "send") {
             crate::claude_notify::normalize(&mut args)?;
         }

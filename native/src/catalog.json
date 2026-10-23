@@ -919,7 +919,7 @@
     },
     {
       "name": "command",
-      "description": "Simple commands use cmd/cwd/timeoutMs and the user's default shell, returning output, exit code, and duration. waitMs may return a pending receipt early. timeoutMs still limits execution. Native action/params preserve sandbox/permission, PTY, and streaming semantics. macOS protected locations require Full Disk Access (Core file tools and the Codex execution host for command). See ARC Permissions & readiness.",
+      "description": "Simple commands use cmd/cwd/timeoutMs and the user's default shell, returning output, exit code, and duration. waitMs may return a pending receipt early. timeoutMs still limits execution. Native action/params preserve sandbox/permission, PTY, and streaming semantics. macOS protected locations require Full Disk Access (Core file tools and the Codex execution host for command). See ARC Permissions & readiness. The executor terminates its process tree/group when execution returns; nohup and background forks are not a supported lifecycle escape. Use local cli app replace for ARC self-replacement and end the turn after its receipt.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -5073,7 +5073,7 @@
       }
     },
     "command": {
-      "description": "Simple commands use cmd/cwd/timeoutMs and the user's default shell, synchronously returning output, exit code, and duration. Native action/params preserve sandbox/permission, PTY, and streaming semantics.",
+      "description": "Simple commands use cmd/cwd/timeoutMs and the user's default shell, synchronously returning output, exit code, and duration. Native action/params preserve sandbox/permission, PTY, and streaming semantics. The executor terminates its process tree/group when execution returns; nohup and background forks are not a supported lifecycle escape. Use local cli app replace for ARC self-replacement and end the turn after its receipt.",
       "params": "Full native parameters: exec {command: string[],cwd?,env?,timeoutMs?,disableTimeout?,tty?,size?:{rows,cols},processId?,streamStdin?,streamStdoutStderr?,sandboxPolicy?,permissionProfile?,outputBytesCap?,disableOutputCap?}, write {processId,deltaBase64?,closeStdin?}, terminate {processId}, resize {processId,size:{rows,cols}}. Null env values remove inherited variables. PTY, streaming, and subsequent control require processId. Omitted permissions use host configuration.",
       "actions": {
         "exec": [

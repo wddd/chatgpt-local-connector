@@ -195,6 +195,82 @@
       "localOnly": true
     },
     {
+      "name": "app.replace",
+      "method": "POST",
+      "route": "app/replace",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Absolute candidate .app path; must differ from the running installation."
+              },
+              "check": {
+                "type": "boolean",
+                "default": false,
+                "description": "Validate only; do not stage, launch a worker, or stop ARC."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "macOS only. Validate and stage a same-identity package, then bootstrap a detached launchd worker. Returns a durable replacement receipt before shutdown. CLI and local management MCP acknowledge after flushing output; raw HTTP clients MUST call app.replace.ack after receiving it. End the dispatching turn immediately after receipt. The helper waits up to five minutes for active turns, then replaces and verifies Core health, rolling back on failure. Read app.replace.status after reconnecting.",
+      "localOnly": true
+    },
+    {
+      "name": "app.replace.status",
+      "method": "GET",
+      "route": "app/replace/status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "Read the latest durable replacement receipt, phase, statusPath, logPath, backup and error. Works offline through CLI/local management MCP.",
+      "localOnly": true
+    },
+    {
+      "name": "app.replace.ack",
+      "method": "POST",
+      "route": "app/replace/ack",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Acknowledge receipt of app.replace before the worker may stop ARC. Raw HTTP clients send the returned id after reading the response. CLI and local management MCP do this automatically after output flush. Without acknowledgment the worker cancels after 60 seconds.",
+      "localOnly": true
+    },
+    {
       "name": "app.quit",
       "method": "POST",
       "route": "app/quit",

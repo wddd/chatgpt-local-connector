@@ -635,6 +635,15 @@ impl Service {
             return Ok(readiness);
         }
         match (method, route) {
+            ("POST", "app/replace") => {
+                crate::management::resolve("app.replace", &json!({"body":body}))?;
+                return crate::app_replace::prepare(body).await;
+            }
+            ("GET", "app/replace/status") => return crate::app_replace::status(),
+            ("POST", "app/replace/ack") => {
+                crate::management::resolve("app.replace.ack", &json!({"body":body}))?;
+                return crate::app_replace::acknowledge(string(&body, "id"));
+            }
             ("GET", "capabilities") => return Ok(crate::management::catalog()),
             ("GET", "health") => {
                 return Ok(

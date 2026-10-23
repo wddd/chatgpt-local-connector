@@ -80,6 +80,8 @@ Memory events are bounded to 2000 entries or 8 MiB. Full Pi/ACP events persist a
 
 Stopping an ingress leaves Agent processes running. Core shutdown closes ARC-owned children. Stopped task snapshots remain readable; live events and pending requests need a running process. Codex Desktop retains its own lifecycle.
 
+For local ARC upgrades, use [app replace](app-replacement.md) and end the calling turn after its receipt. The detached helper waits for active turns and pending interactions to finish before shutdown; it cancels if they do not settle. RPC pipes and callbacks are not reattached across Core restart. Continue the conversation with a new turn after replacement health succeeds.
+
 ## Custom ACP manifests
 
 Add a local definition to `agents/manifests.json` under ARC state, then restart ARC:

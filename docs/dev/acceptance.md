@@ -2,6 +2,12 @@
 
 [Development](development.md) · [CLI contracts](../reference/cli.md)
 
+## Local replacement
+
+Use the [local app replacement protocol](../reference/app-replacement.md) for an authorized installed-build upgrade. Run the candidate Core's `cli app replace <bundle> --check` first, then `cli app replace <bundle>` as the dispatching turn's final command. Do not call `app quit` before it. Reconnect from the control source and read `app replace --status`, `app status`, and `status`; compare Desktop/Core build hashes and then perform the requested connection or provider acceptance. A staged receipt or successful package check alone is not installed-app acceptance. Build-only or no-restart tasks must stop before the mutating replacement command.
+
+For offline CLI regressions against a freshly built Core, run `npm run check:tests`, then `ARC_TEST_BINARY="/absolute/path/to/arc" node --test tests/app-replace.test.ts`. These tests use temporary state and do not launch or stop Desktop. The Rust `app_replace` regression covers the active-turn, active-command, pending-interaction, and unknown-observation drain decisions.
+
 ## UI scenarios
 
 ```sh

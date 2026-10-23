@@ -16,6 +16,14 @@ async fn run() -> Result<()> {
         .collect::<Vec<_>>()
         .as_slice()
     {
+        #[cfg(target_os = "macos")]
+        ["replace-worker", id] => arc_core::app_replace::worker(id).await,
+        #[cfg(target_os = "macos")]
+        ["replace-run", id] => arc_core::app_replace::run_worker(id).await,
+        #[cfg(target_os = "macos")]
+        ["package-check", path] => {
+            arc_core::output::line(arc_core::package::check(std::path::Path::new(path)).await?)
+        }
         ["context-provider-stdio"] => arc_core::context_provider::stdio().await,
         ["stdio"] => arc_core::transport::stdio().await,
         ["serve"] => runtime::serve().await,

@@ -242,6 +242,8 @@ Delivery details appear only on dispatch receipts and in notify_status; review a
 
 Simple `act {"op":"command","args":{"cmd":"git status --short","cwd":"/absolute/project","timeoutMs":10000}}` uses the user's shell and returns stdout, stderr, exitCode, and durationMs. It defaults to a 60-second execution timeout. Optional `waitMs` (0–120000) bounds only the wait for the receipt and can return `pending`; continue with `receipt` and the returned requestId. Without waitMs, the simple form waits for the execution timeout plus ten seconds. Simple fields and action/params are mutually exclusive. Native command/exec uses the upstream sandbox/permission policy; process/spawn runs directly on the host outside the Codex sandbox. Neither creates a thread.
 
+The command executor terminates its process tree/group when execution returns. `nohup`, background subshells, and double-forking are not supported ways to keep work alive beyond that lifecycle. A pending receipt changes how long the caller waits, not process ownership. For ARC self-replacement, invoke the supported local `cli app replace` entry point as the turn's final command. Its native launchd worker owns the handoff independently of the command runner. See [Local app replacement](app-replacement.md).
+
 Native handles for processes, watches, and MCP subscriptions belong to the current App Server connection. MCP tool/call and event/stream/start require an existing threadId. Consult codex_schema before using native parameters; top-level RPC timeoutMs is separate from params.timeoutMs.
 
 ## Output, events, and logs

@@ -58,6 +58,18 @@ Build recompiles the frontend and creates native packages without installing or 
 
 Packages contain Desktop, standalone Core, static frontend, icons, and licenses. Tunnel Client is prepared on demand from official sources. External Agents use native installations. The Claude ACP adapter is prepared separately after explicit enablement. Build scripts remap Rust source paths to avoid embedding maintainer paths.
 
+For a fast signed local macOS package, use `npm run desktop:build -- --debug`. This builds without installing. Check the bundle under `target/aarch64-apple-darwin/debug/bundle/macos/Agent Remote Control.app`.
+
+Install only when local replacement is authorized. From an ARC-dispatched task, use the candidate CLI so the first upgrade also works with an older installed Core:
+
+```sh
+NEW_APP="$PWD/target/aarch64-apple-darwin/debug/bundle/macos/Agent Remote Control.app"
+"$NEW_APP/Contents/Resources/bin/arc" cli app replace "$NEW_APP" --check
+"$NEW_APP/Contents/Resources/bin/arc" cli app replace "$NEW_APP"
+```
+
+Save the receipt and end the turn after the second command. Do not quit ARC first or launch an installer script with `nohup` through `command`. The native launchd helper stages and validates the package, waits for task completion, backs up the app, replaces it, and rolls back on startup failure. Query `arc cli app replace --status` from a new turn after reconnecting. See [Local app replacement](../reference/app-replacement.md) for the exact protocol and recovery limits.
+
 Version precedence is ARC_BUILD_VERSION, nearest reachable v-tag, then 0.0.0. package.json, Cargo, and Tauri use 0.0.0 as an internal placeholder. Formal artifacts inject versions into existing feature commits without version-bump commits.
 
 ## Native icons and branding
