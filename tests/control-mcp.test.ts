@@ -1408,3 +1408,29 @@ test('guide progressively discloses every enabled op and caches projected conten
     assert.equal((await readGuide({op,knownGuideHash:detail.guideHash})).unchanged,true);
   }
 });
+
+
+test('control stats report byte baselines and waste candidates without call content', async()=>{
+  // Contract: CLI stats control returns content-free accounting for frozen control calls.
+  const guide=(await call('guide')).result;
+  await call('guide');
+  await client.callTool({name:'query',arguments:{op:'guide',args:{knownGuideHash:guide.guideHash}}});
+  await call('read',{path:'private-metric-payload',unsupported:true});
+  await call('read',{path:'private-metric-payload',unsupported:true});
+  await call('projects');
+  await completed('command',{cmd:'private-metric-payload',cwd:directory,requestId:randomUUID()});
+  const created=await dispatchFixture('fixture-dispatch');
+  await call('codex_read',{threadId:created.threadId,statusOnly:true});
+  await completed('codex_review',{threadId:created.threadId,turnId:created.turnId,verdict:'pass',requestId:randomUUID()});
+  const stats=JSON.parse(execFileSync(fixtureCommand,['cli','stats','control','--since','1h'],{env:fixtureEnv,encoding:'utf8'}));
+  assert.equal(stats.ok,true);const r=stats.result;
+  assert.equal(r.metadataOnly,true);assert.ok(r.totals.calls>0);
+  assert.ok(r.bySource.every((s:any)=>s.sourceId&&s.controlSource));
+  assert.ok(r.byOp.find((s:any)=>s.op==='guide').textBytes>0);
+  assert.ok(r.totals.structuredContentBytes>0);assert.ok(r.byDay.length);
+  assert.ok(r.wasteCandidates.lookupThenAct>0);assert.ok(r.wasteCandidates.uncachedUnchangedReads>0);assert.ok(r.wasteCandidates.argumentErrorRetries>0);
+  const task=r.tasks.find((t:any)=>t.taskId===created.threadId);
+  assert.equal(task.reviewed,true);assert.ok(task.calls>=3);assert.ok(task.responseBytes>0);
+  assert.ok(!JSON.stringify(stats).includes('private-metric-payload'));
+  console.log('CONTROL_BASELINE '+JSON.stringify(r.totals));
+});

@@ -13,6 +13,8 @@ const COMMANDS: &[&str] = &[
     "logs --stdin",
     "logs --follow",
     "logs --offline",
+    "stats control",
+    "stats control --since <duration>",
     "app start",
     "app status",
     "app quit",
@@ -545,6 +547,8 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         json!({"body":body})
     };
     match args.as_slice() {
+        ["stats", "control"] => crate::control_metrics::report("1d"),
+        ["stats", "control", "--since", since] => crate::control_metrics::report(since),
         ["control", "guide", op] if *op != "--stdin" => crate::cli_acceptance::control("guide", json!({"op":op})).await,
         ["control", op] => crate::cli_acceptance::control(op, json!({})).await,
         ["control", op, "--stdin"] => crate::cli_acceptance::control(op, stdin_json()?).await,
@@ -601,7 +605,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
                 {"commands":"ingress oauth list|request|decision|register|revoke; ingress token rotate","description":"Manage this connection's OAuth access and bearer token."},
                 {"commands":"app start|status|quit|restart; app replace <path> [--check]; app replace --status; uninstall [--purge]","description":"Control the installed application. On macOS, replace validates and hands off to launchd; end the turn after its receipt. --check validates without installation."},
                 {"commands":"subscriptions get|set|refresh|open","description":"Read or refresh subscription usage; set accepts JSON on stdin."},
-                {"commands":"logs [--stdin|--follow|--offline]; watch; storage compact","description":"Inspect logs, watch changes or compact local storage."},
+                {"commands":"stats control [--since <duration>]; logs [--stdin|--follow|--offline]; watch; storage compact","description":"Inspect logs, watch changes or compact local storage."},
                 {"commands":"configure --stdin; network --stdin; connect; disconnect; verify [--fresh]","description":"Configure and control the primary connection."},
                 {"commands":"capabilities; schema <operation>; call <operation> [--stdin]; mcp","description":"Discover full operation schemas, execute an operation or serve local management MCP."},
                 {"commands":"help; guide","description":"Show this compact index or the full CLI reference."}

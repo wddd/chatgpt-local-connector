@@ -1,6 +1,9 @@
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[tokio::main]
 async fn main() {
+    if std::env::args().nth(1).as_deref() == Some("cli") {
+        std::process::exit(arc_core::cli::run(std::env::args().skip(2).collect()).await);
+    }
     if std::env::args().nth(1).as_deref() == Some("stdio") {
         arc_core::transport::stdio().await.unwrap();
         return;

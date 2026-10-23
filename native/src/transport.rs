@@ -503,6 +503,13 @@ async fn enabled_ops(s: &ControlSource<'_>) -> Vec<Value> {
 }
 
 async fn call_tool(s: &ControlSource<'_>, tool: &str, envelope: Value) -> Result<Value> {
+    let metric = crate::control_metrics::Call::new(&s.origin().await, tool, &envelope);
+    let response = call_tool_inner(s, tool, envelope).await;
+    metric.finish(&response).await;
+    response
+}
+
+async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> Result<Value> {
     let name = if tool == "guide" {
         "guide"
     } else {
