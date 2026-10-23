@@ -75,6 +75,10 @@ for await (const line of createInterface({ input: process.stdin })) {
     }
     if (saved[params?.threadId]) {
       const row = saved[params.threadId];
+      if (row.model.includes('unmaterialized') && !row.turns.length && ['thread/turns/list','thread/archive'].includes(method)) {
+        row.prematureReads=(row.prematureReads||0)+1;saveFixture(saved);
+        return emit({id,error:{code:-32600,message:'thread '+params.threadId+' is not materialized yet; '+method+' is unavailable before first user message'}});
+      }
       if (method === 'thread/name/set') {
         row.named=true;row.thread.name=params.name;saveFixture(saved);return emit({id,result:{}});
       }
@@ -90,7 +94,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         return emit({id,result:{thread:{...row.thread,status:{type:row.turns.at(-1)?.status==='inProgress'?'active':'idle'}}}});
       }
       if (method === 'turn/start') {
-        if (row.model === 'fixture-dispatch-reject') return emit({id,error:{code:-32602,message:'invalid turn configuration'}});
+        if (row.model === 'fixture-dispatch-reject' || row.model === 'fixture-dispatch-unmaterialized-reject') return emit({id,error:{code:-32602,message:'invalid turn configuration'}});
         const overload=row.model.includes('overload') && (row.model.includes('exhausted') || row.model.includes('side-effect') || row.turns.length<2);
         row.turns.push({id:randomUUID(),status:overload?'failed':(row.model.includes('queue')||(row.model.includes('question')&&row.turns.length===0))?'inProgress':'completed',error:overload?{codexErrorInfo:'serverOverloaded',message:'Selected model is at capacity'}:null,items:overload?(row.model.includes('side-effect')?[{type:'commandExecution',status:'completed'}]:[]):[{id:randomUUID(),type:'agentMessage',status:'completed',text:'pong'}],input:params.input,model:params.model||row.model});
         saveFixture(saved);
@@ -761,6 +765,27 @@ test('creation starts its first turn without legacy history reads, cleans defini
   const create = async (model: string) => completed('codex_create', {
     project: directory, prompt: 'ping', thread: { model }, requestId: randomUUID(), waitMs: 1000,
   });
+  // Only this isolated fixture owns these settings; never change the installed app.
+  const settingsPath = path.join(directory, 'task-settings.json');
+  const settingsBefore = await readFile(settingsPath).catch(() => null);
+  try {
+    await writeFile(settingsPath, JSON.stringify({autoOpenCodex:false}));
+    const fresh = await create('fixture-dispatch-unmaterialized');
+    assert.equal(fresh.state, 'completed', JSON.stringify(fresh));
+    assert.equal(fresh.executionOwner, 'connector');
+    let rows = JSON.parse(await readFile(path.join(directory, 'dispatch-fixture.json'), 'utf8'));
+    assert.equal(rows[fresh.threadId].prematureReads, undefined);
+    assert.equal(rows[fresh.threadId].turns.length, 1);
+    const rejected = await create('fixture-dispatch-unmaterialized-reject');
+    assert.equal(rejected.failureStage, 'turn-submitting');
+    assert.deepEqual(rejected.cleanup, {archived:false,reason:'thread-not-materialized'});
+    rows = JSON.parse(await readFile(path.join(directory, 'dispatch-fixture.json'), 'utf8'));
+    assert.equal(rows[rejected.threadId].turns.length, 0);
+    assert.equal(rows[rejected.threadId].prematureReads, 1);
+  } finally {
+    if (settingsBefore) await writeFile(settingsPath, settingsBefore);
+    else await rm(settingsPath, {force:true});
+  }
   const providerConfig = path.join(directory, 'context-provider.json');
   const providerCalled = path.join(directory, 'provider-called');
   await writeFile(providerConfig, JSON.stringify({command: process.execPath, args: ['-e',

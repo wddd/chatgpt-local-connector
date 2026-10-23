@@ -19,6 +19,50 @@ pub struct Control {
 }
 const RECEIPTS: crate::kernel::receipts::ReceiptStore =
     crate::kernel::receipts::ReceiptStore::new("");
+// Fresh creations have no user history and may not be materialized until turn/start.
+async fn submission_history<F, Fut>(fresh_thread: bool, mut list: F) -> Result<Vec<Value>>
+where
+    F: FnMut(Value) -> Fut,
+    Fut: std::future::Future<Output = Result<Value>>,
+{
+    let mut turns = Vec::new();
+    if fresh_thread {
+        return Ok(turns);
+    }
+    let mut cursor = Value::Null;
+    loop {
+        let page = list(cursor.clone()).await?;
+        turns.extend(
+            page["data"]
+                .as_array()
+                .ok_or("native-turns-missing")?
+                .iter()
+                .cloned(),
+        );
+        let next = page["nextCursor"].clone();
+        if next.is_null() {
+            break;
+        }
+        if next == cursor {
+            return Err("native-turn-cursor-repeated".into());
+        }
+        cursor = next;
+    }
+    turns.reverse();
+    Ok(turns)
+}
+fn unmaterialized_thread(error: &str) -> bool {
+    error.contains("is not materialized yet")
+}
+fn cleanup_result(result: Result<Value>) -> Result<Value> {
+    match result {
+        Ok(_) => Ok(json!({"archived":true})),
+        Err(error) if unmaterialized_thread(&error) => {
+            Ok(json!({"archived":false,"reason":"thread-not-materialized"}))
+        }
+        Err(error) => Err(error),
+    }
+}
 impl Control {
     pub fn new(binary: PathBuf) -> Arc<Self> {
         Arc::new(Self {
@@ -280,13 +324,11 @@ impl Control {
                 let cleanup = seed
                     .call("thread/archive", json!({"threadId":thread}), 60000)
                     .await;
-                let cleanup = match cleanup {
-                    Ok(_) => json!({"archived":true}),
-                    Err(error) => json!({"archived":false,"error":error}),
-                };
+                let cleanup = cleanup_result(cleanup)
+                    .unwrap_or_else(|error| json!({"archived":false,"error":error}));
                 if let Some(r) = receipt.as_deref_mut() {
                     r["cleanup"] = cleanup;
-                } else if cleanup["archived"] != true {
+                } else if cleanup["error"].is_string() {
                     crate::logs::record(
                         "WARN",
                         &format!("Seed {thread} cleanup failed: {}", cleanup["error"]),
@@ -355,24 +397,32 @@ impl Control {
             Err(e) => Err(e),
         }
     }
-    async fn archive_empty_creation(&self, thread: &str) -> Result<bool> {
+    async fn archive_empty_creation(&self, thread: &str) -> Result<Value> {
         let rpc = self.utility().await?;
-        let history = rpc
+        let history = match rpc
             .call(
                 "thread/turns/list",
                 json!({"threadId":thread,"limit":1,"itemsView":"notLoaded"}),
                 10000,
             )
-            .await?;
+            .await
+        {
+            Ok(history) => history,
+            Err(error) if unmaterialized_thread(&error) => {
+                return Ok(json!({"archived":false,"reason":"thread-not-materialized"}))
+            }
+            Err(error) => return Err(error),
+        };
         if history["data"]
             .as_array()
             .is_none_or(|rows| !rows.is_empty())
         {
-            return Ok(false);
+            return Ok(json!({"archived":false}));
         }
-        rpc.call("thread/archive", json!({"threadId":thread}), 10000)
-            .await?;
-        Ok(true)
+        cleanup_result(
+            rpc.call("thread/archive", json!({"threadId":thread}), 10000)
+                .await,
+        )
     }
     pub(crate) async fn external_timeline(&self, thread: &str) -> Result<Value> {
         let history = self
@@ -445,6 +495,7 @@ impl Control {
                         "thread/read",
                         json!({"threadId":thread,"includeTurns":false}),
                         10000,
+                        false,
                     )
                     .await
                 {
@@ -452,38 +503,28 @@ impl Control {
                     Err(e) => json!({"unavailable":e}),
                 }
             };
-            let out = self.request_inner(method, args.clone(), timeout).await?;
+            let out = self
+                .request_inner(method, args.clone(), timeout, false)
+                .await?;
             if let Err(e) = crate::changes::record(thread, string(&out["turn"], "id"), &baseline) {
                 crate::logs::record("WARN", &e, None);
             }
             return Ok(out);
         }
-        self.request_inner(method, args, timeout).await
+        self.request_inner(method, args, timeout, false).await
     }
-    async fn request_inner(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
+    async fn request_inner(
+        &self,
+        method: &str,
+        args: Value,
+        timeout: u64,
+        fresh_thread: bool,
+    ) -> Result<Value> {
         if matches!(method, "turn/start" | "turn/steer") {
             let thread = string(&args, "threadId");
-            let mut turns = Vec::new();
-            let mut cursor = Value::Null;
-            loop {
-                let page = self.request_native("thread/turns/list", json!({"threadId":thread,"limit":100,"cursor":cursor,"sortDirection":"desc","itemsView":"full"}), timeout).await?;
-                turns.extend(
-                    page["data"]
-                        .as_array()
-                        .ok_or("native-turns-missing")?
-                        .iter()
-                        .cloned(),
-                );
-                let next = page["nextCursor"].clone();
-                if next.is_null() {
-                    break;
-                }
-                if next == cursor {
-                    return Err("native-turn-cursor-repeated".into());
-                }
-                cursor = next;
-            }
-            turns.reverse();
+            let turns = submission_history(fresh_thread, |cursor| {
+                self.request_native("thread/turns/list", json!({"threadId":thread,"limit":100,"cursor":cursor,"sortDirection":"desc","itemsView":"full"}), timeout)
+            }).await?;
             crate::external_inputs::observe(thread, &turns, None)?;
             let token = crate::external_inputs::begin(
                 thread,
@@ -764,7 +805,7 @@ impl Control {
                         let thread = string(&receipt, "threadId");
                         let cleanup = c.archive_empty_creation(thread).await;
                         receipt["cleanup"] = match cleanup {
-                            Ok(archived) => json!({"archived":archived}),
+                            Ok(cleanup) => cleanup,
                             Err(error) => json!({"archived":false,"error":error}),
                         };
                     }
@@ -1208,7 +1249,9 @@ impl Control {
                 .cloned()
                 .unwrap_or_else(|| result["model"].clone());
             retry_args["_retryTurn"] = retry_turn(&turn);
-            let out = self.request_inner("turn/start", turn, timeout).await?;
+            let out = self
+                .request_inner("turn/start", turn, timeout, true)
+                .await?;
             r["dispatchMode"] = json!("new-turn");
             if !background {
                 let _ = self.follow(thread).await;
@@ -1363,7 +1406,7 @@ impl Control {
             desktop::reveal(self.ipc().await?.as_ref(), string(&out["thread"], "id")).await?;
             out
         } else if method == "turn/start" && r["turnBaseline"].is_object() {
-            self.request_inner(&method, params, timeout).await?
+            self.request_inner(&method, params, timeout, false).await?
         } else {
             self.request(&method, params, timeout).await?
         };
@@ -2061,6 +2104,45 @@ pub(crate) fn turn_configurations(thread: &Value) -> HashMap<String, Value> {
 #[cfg(test)]
 mod pagination_tests {
     use super::*;
+    #[tokio::test]
+    async fn fresh_submission_skips_unmaterialized_history_but_existing_turns_are_read() {
+        let calls = std::cell::RefCell::new(Vec::new());
+        let history = submission_history(true, |cursor| {
+            calls.borrow_mut().push(cursor);
+            std::future::ready(Err("thread is not materialized yet".into()))
+        })
+        .await
+        .unwrap();
+        assert!(history.is_empty());
+        assert!(
+            calls.borrow().is_empty(),
+            "first user message must precede any history listing"
+        );
+        let history = submission_history(false, |cursor| {
+            calls.borrow_mut().push(cursor.clone());
+            std::future::ready(Ok(if cursor.is_null() {
+                json!({"data":[{"id":"newer"}],"nextCursor":"older"})
+            } else {
+                json!({"data":[{"id":"older"}],"nextCursor":null})
+            }))
+        })
+        .await
+        .unwrap();
+        assert_eq!(*calls.borrow(), vec![Value::Null, json!("older")]);
+        assert_eq!(history, vec![json!({"id":"older"}), json!({"id":"newer"})]);
+    }
+    #[test]
+    fn cleanup_ignores_only_unmaterialized_threads() {
+        assert_eq!(cleanup_result(Err("NATIVE_RPC_ERROR: thread example is not materialized yet; thread/archive is unavailable before first user message".into())).unwrap(), json!({"archived":false,"reason":"thread-not-materialized"}));
+        assert_eq!(
+            cleanup_result(Ok(json!({}))).unwrap(),
+            json!({"archived":true})
+        );
+        assert_eq!(
+            cleanup_result(Err("RPC_TIMEOUT: thread/archive".into())).unwrap_err(),
+            "RPC_TIMEOUT: thread/archive"
+        );
+    }
     #[test]
     fn desktop_cursor_retains_binding_and_explains_restart() {
         let mut args =
