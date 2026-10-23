@@ -6,7 +6,7 @@ import type { AgentTimeline } from "../types";
 import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
 import { interactionTool, permissionRequestLabel, followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
 import { useInterval } from "../state/hooks";
-import { Button, IconButton, Tooltip } from "./ui";
+import { Button, IconButton, LoadingIndicator, Tooltip } from "./ui";
 import TimelineEntries, { durationText } from "./TimelineEntries";
 import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
 import { connector } from "../state/connector";
@@ -28,6 +28,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const [timeline, setTimeline] = useState<AgentTimeline>();
   const [taskTitle, setTaskTitle] = useState("");
   const [error, setError] = useState(""), [openError, setOpenError] = useState("");
+  const loading = session.timeline && !timeline && !error;
   const [now, setNow] = useState(Date.now);
   const viewport = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null);
   const following = useRef(true), initial = useRef(true), previousRunning = useRef(true), previousTop = useRef(0);
@@ -128,25 +129,28 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   return <section className="agent-panel-layer task-detail-layer">
     <header className="dialog-header">
       <IconButton icon={ArrowLeft} label={t("back")} onClick={onBack} />
-      <div className="task-detail-heading"><h2 className="activity-panel-title" title={title}>{title}</h2>
+      <div className="task-detail-heading">
+        <div className="task-detail-title">
+          <h2 className="activity-panel-title" title={title}>{title}</h2>
+          {nativeSession.open && <Tooltip text={t("activity.open")}><IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
+            setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));
+          }} /></Tooltip>}
+        </div>
         <span className="activity-status" data-state={showCard ? "attention" : running ? "running" : statusUnknown ? "unknown" : "completed"}>
           {t(showCard ? pendingSession.interaction?.kind === "question" ? "activity.question" : "activity.phase.interaction" : running ? "timeline.status.running" : statusUnknown ? "unknown" : "activity.completed")}
         </span></div>
       <div className="actions">
-        {nativeSession.open && <Tooltip text={t("activity.open")}><IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
-          setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));
-        }} /></Tooltip>}
         <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
           aria-pressed={expanded} onClick={onToggleWidth} />
       </div>
       <div className="activity-panel-subline task-detail-dispatch">
         {project && <span className="activity-panel-meta" title={session.project || project}>{project}</span>}
-        {duration !== undefined && <span className="timeline-meta">{durationText(duration * 1000)}</span>}
         {source && <span className="task-source-chip"><SourceBadge source={source} /><span>{dispatchSourceLabel(source)}</span>{where && <span className="task-source-where">{where}</span>}</span>}
         <SpecPill summary={latestSummary} />{turnCount > 0 && <span className="timeline-meta">{t("timeline.turnCount", { count: turnCount })}</span>}
+        {duration !== undefined && <span className="timeline-meta task-detail-duration">{durationText(duration * 1000)}</span>}
       </div>
     </header>
-    <div className="task-timeline">
+    <div className="task-timeline" aria-busy={loading}>
       {(error || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => {
@@ -162,18 +166,19 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           previousTop.current = node.scrollTop;
           setAtLatest(node.scrollHeight - node.scrollTop - node.clientHeight <= 24);
         }}>
-        <div ref={content} className="timeline-entries" onClickCapture={event => {
+        <div ref={content} className={loading ? "timeline-loading" : "timeline-entries"} onClickCapture={event => {
           if ((event.target as Element).closest("button")) manualDisclosure.current = true;
         }}>
+          {loading ? <LoadingIndicator label={t("timeline.loading")} /> : <>
           {timeline?.coverage.state === "partial" && <p className="timeline-meta">{t("timeline.truncated")}</p>}
-          {!timeline && session.timeline && !error && <p role="status">{t("timeline.loading")}</p>}
-          {(!session.timeline || !timeline?.entries.length && (external || !!error)) && <section className="activity-session-summary">
+          {!session.timeline && <section className="activity-session-summary">
             <span className="timeline-meta">{t(`activity.phase.${nativeSession.phase}`)}</span>
             {(nativeSession.recentContent?.length ? nativeSession.recentContent : [activityHeadline(nativeSession, t("timeline.title")).text])
               .map((text, index) => <p key={index}>{text}</p>)}
           </section>}
           {timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
           <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} partial={timeline?.coverage.state === "partial"} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries} />
+          </>}
         </div>
       </div>
       {!atLatest && <Button variant="ghost" className="timeline-latest" onClick={() => {

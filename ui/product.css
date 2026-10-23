@@ -1005,6 +1005,7 @@ button.activity-bubble:active, .activity-bubble-shell:active { transform: scale(
 .task-timeline { height: min(520px, calc(100dvh - 160px)); min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .timeline-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }
 .timeline-entries { display: flex; flex-direction: column; gap: 12px; padding: 4px 4px 12px; }
+.timeline-loading { height: 100%; display: grid; place-items: center; }
 /* Disclosures remain inside the existing timeline viewport. */
 .timeline-item { min-width: 0; }
 .timeline-text { font-size: 14px; overflow-wrap: anywhere; min-width: 0; }
@@ -1077,9 +1078,12 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 
 /* Turns share the existing scroll viewport, including nested disclosures. */
 .task-detail-heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.task-detail-heading .activity-panel-title { display: block; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.task-detail-heading .activity-status { flex: none; }
+.task-detail-title { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.task-detail-heading .activity-panel-title { display: block; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.task-detail-title > .icon-button { flex: none; }
+.task-detail-heading .activity-status { flex: none; margin-left: auto; }
 .task-detail-dispatch { flex-wrap: wrap; gap: 6px; }
+.task-detail-duration { flex: none; margin-left: auto; white-space: nowrap; }
 .task-source-chip, .timeline-turn-source { display: inline-flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--text-xs); color: var(--text-secondary); }
 .task-source-chip { padding: 3px 6px; border-radius: 999px; background: var(--surface-subtle); max-width: 100%; }
 .task-source-chip > span:not(.activity-source-badge), .timeline-turn-source > span:not(.activity-source-badge) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
