@@ -1,51 +1,118 @@
 import { agentPanel, selectAgentPanel } from "../state/overviewPanels";
 import { useLayoutEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowUpRight, Settings, Maximize2, Minimize2 } from "lucide-react";
-import { t } from "../i18n";
+import { ArrowUpRight, Settings, Maximize2, Minimize2, RefreshCw } from "lucide-react";
+import { locale, t } from "../i18n";
 import { api } from "../api";
 import { agentActivity } from "../state/activity";
-import { subscriptions } from "../state/subscriptions";
+import { refreshSubscription, subscriptions } from "../state/subscriptions";
+import { useNow } from "../state/hooks";
 import { name, type Agent } from "../state/agents";
 import { connector } from "../state/connector";
-import { AgentQuotaIcon } from "../subscriptions/QuotaRing";
-import QuotaBubble from "../subscriptions/QuotaBubble";
-import { Dialog, IconButton } from "./ui";
+import { AgentQuotaIcon, agentQuotaWindows } from "../subscriptions/QuotaRing";
+import { quotaDisplay, quotaLabel, quotaPercent, quotaValue, resetDisplay } from "../subscriptions/displayPreferences";
+import { isWeekly, windowLabel } from "../subscriptions/labels";
+import { compactReset, errorLabels, preciseTime, quotaColor } from "../subscriptions/presentation";
+import { quotaPace } from "../subscriptions/pace";
+import type { ProviderSnapshot } from "../subscriptions/types";
+import { Dialog, IconButton, Notice } from "./ui";
 import AgentConversations from "./AgentConversations";
 import ActivityTimeline from "./ActivityTimeline";
 import type { SurfaceRect } from "../motion/surface";
 
-function AgentView({ agent, state, onSettings, expanded, onToggleWidth, active }: {
-  agent: Agent; state: string; active: boolean;
+function AgentQuota({ provider, onRefresh, refreshing }: { provider: ProviderSnapshot; onRefresh: () => void; refreshing: boolean }) {
+  const now = useNow(), language = locale.use();
+  const display = quotaDisplay.use(), reset = resetDisplay.use();
+  const { short, weekly } = agentQuotaWindows(provider);
+  const selected = [short, weekly].filter(window => window !== undefined);
+  const windows = selected.length ? selected : provider.windows.filter(window => Number.isFinite(window.usedPercent)).slice(0, 2);
+  const pace = windows.map(window => quotaPace(window, provider, now));
+  const hint = pace.find(value => value?.flame || value?.label) ?? (weekly ? quotaPace(weekly, provider, now) : pace[0]);
+  const observed = Date.parse(provider.observedAt ?? ""), minutes = Math.max(0, Math.floor((now - observed) / 60000));
+  const age = !Number.isFinite(observed) ? "—" : minutes < 1 ? t("justNow")
+    : new Intl.RelativeTimeFormat(language).format(-Math.floor(minutes < 60 ? minutes : minutes < 1440 ? minutes / 60 : minutes / 1440), minutes < 60 ? "minute" : minutes < 1440 ? "hour" : "day");
+  if (!windows.length) return <p className="timeline-meta agent-no-quota">{t("agentPanel.noQuota")}</p>;
+  return <section className="agent-quota-block" aria-label={t("agentQuotaGroup")}>
+    <div className="agent-quota-cards">
+      {windows.map((window, index) => {
+        const resetAt = Date.parse(window.resetsAt ?? "");
+        const elapsed = isWeekly(window.label) && Number.isFinite(resetAt)
+          ? Math.max(0, Math.min(1, (now - resetAt + 7 * 86400000) / (7 * 86400000))) : undefined;
+        const tick = elapsed === undefined ? undefined : (display === "remaining" ? 1 - elapsed : elapsed) * 100;
+        const label = windowLabel(window.label), value = quotaValue(window);
+        const resetText = reset === "time" && Number.isFinite(resetAt) ? preciseTime(window.resetsAt) : compactReset(window.resetsAt, now);
+        return <div className="agent-quota-card" key={window.id}>
+          <div className="agent-quota-window"><span title={window.scope}>{label}</span>
+            <time dateTime={Number.isFinite(resetAt) ? window.resetsAt : undefined}
+              title={Number.isFinite(resetAt) ? t("quotaResetAt", { time: preciseTime(window.resetsAt) }) : t("quotaResetUnknown")}
+              aria-label={t(reset === "time" ? "quotaResetAt" : "quotaResetIn", { time: resetText })}>{resetText}</time>
+          </div>
+          <strong className="agent-quota-percent" aria-label={`${label} · ${quotaLabel()} ${quotaPercent(window)}`}>{quotaPercent(window)}</strong>
+          <div className="agent-quota-track" role="meter" aria-label={`${label} · ${quotaLabel()}`}
+            aria-valuenow={value} aria-valuemin={0} aria-valuemax={100}>
+            <div style={{ width: `${value}%`, background: pace[index]?.color ?? quotaColor(window, provider, now) }} />
+            {tick !== undefined && <span className="agent-quota-pace-marker" role="img" aria-label={t("quotaTimeTick")}
+              title={t("quotaTimeTick")} style={{ left: `clamp(1px, ${tick}%, calc(100% - 1px))` }} />}
+          </div>
+        </div>;
+      })}
+    </div>
+    <footer className="agent-quota-footer">
+      <span className="agent-quota-hint" title={hint?.tooltip}>{hint?.label || hint?.tooltip}</span>
+      <time dateTime={Number.isFinite(observed) ? provider.observedAt : undefined}
+        title={Number.isFinite(observed) ? preciseTime(provider.observedAt) : undefined}
+        aria-label={t("agentPanel.updated", { time: age })}>{age}</time>
+      <IconButton icon={RefreshCw} size={16} label={t("usageRefresh")} busy={refreshing || provider.refreshing}
+        disabled={!provider.eligible} onClick={onRefresh} />
+    </footer>
+  </section>;
+}
+
+function AgentView({ agent, onSettings, expanded, onToggleWidth, active }: {
+  agent: Agent; active: boolean;
   onSettings: () => void; expanded: boolean; onToggleWidth: () => void;
 }) {
   const { snapshot } = subscriptions.use(), { status } = connector.use();
-  const [error, setError] = useState("");
+  const activity = agentActivity.use().snapshot;
+  const [error, setError] = useState(""), [refreshing, setRefreshing] = useState(false);
   const provider = snapshot?.settings.enabled ? snapshot.providers.find(p => p.agentIds.includes(agent.agent) && p.eligible) : undefined;
+  const providerError = provider?.error && !["no-subscription", "no-limits-reported", "unsupported-platform"].includes(provider.error.code)
+    ? provider.error.message || t(errorLabels[provider.error.code] || "usageUnavailable") : undefined;
+  async function refresh() {
+    if (!provider) return;
+    setRefreshing(true); setError("");
+    try { await refreshSubscription(provider.providerId); }
+    catch (error) { setError(String(error)); }
+    finally { setRefreshing(false); }
+  }
   return <section className="agent-panel-layer agent-overview-layer">
-    <header className="dialog-header">
-      <AgentQuotaIcon agent={agent.agent} />
-      <h2 className="activity-panel-title" tabIndex={-1}>{name(agent)}</h2>
+    <header className="dialog-header agent-panel-header">
+      <AgentQuotaIcon agent={agent.agent} dual />
+      <div className="agent-panel-heading">
+        <h2 className="activity-panel-title" tabIndex={-1} title={name(agent)}>{name(agent)}</h2>
+        <span className="activity-panel-meta">{[agent.version, t("agentPanel.inProgress", { count: activity?.agents[agent.agent]?.sessions.length ?? 0 })].filter(Boolean).join(" · ")}</span>
+      </div>
       <div className="actions">
         {agent.installed && status?.platform && status.platform !== "linux" && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
           setError(""); void api("agents/open", "POST", { agent: agent.agent }).catch(error => setError(String(error)));
         }} />}
-        <IconButton icon={Settings} label={t("settings")} onClick={onSettings} />
+        <IconButton icon={Settings} label={t("agentDisplaySettings")} onClick={onSettings} />
         <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
           aria-pressed={expanded} onClick={onToggleWidth} />
       </div>
-      <div className="activity-panel-subline"><span className="activity-panel-meta">{[agent.version, t(state)].filter(Boolean).join(" · ")}</span></div>
     </header>
     <div className="agent-view-scroll">
       {error && <p className="timeline-error" role="alert">{error}</p>}
-      {provider ? <QuotaBubble provider={provider} /> : <p className="timeline-meta">{t("agentPanel.noQuota")}</p>}
+      {providerError && <Notice action={<IconButton icon={RefreshCw} size={16} label={t("usageRefresh")}
+        busy={refreshing || provider?.refreshing} onClick={() => void refresh()} />}>{providerError}</Notice>}
+      {provider ? <AgentQuota provider={provider} onRefresh={() => void refresh()} refreshing={refreshing} /> : <p className="timeline-meta agent-no-quota">{t("agentPanel.noQuota")}</p>}
       <AgentConversations key={agent.agent} agent={agent.agent} active={active} />
     </div>
   </section>;
 }
 
-export default function AgentPanel({ agent, state, onSettings, onPanelFrame, width, expanded, onToggleWidth }: {
-  agent: Agent; state: string; width?: number;
+export default function AgentPanel({ agent, onSettings, onPanelFrame, width, expanded, onToggleWidth }: {
+  agent: Agent; width?: number;
   onSettings: () => void; onPanelFrame: (rect: SurfaceRect | null) => void;
   expanded: boolean; onToggleWidth: () => void;
 }) {
@@ -71,7 +138,7 @@ export default function AgentPanel({ agent, state, onSettings, onPanelFrame, wid
     <div ref={content} className="agent-panel-view">
       <motion.div className="agent-panel-view" key={agent.agent} style={{ display: session ? "none" : "flex" }}
         initial={{ opacity: reduced ? 1 : 0, x: 0 }} animate={{ opacity: session ? 0 : 1, x: reduced || !session ? 0 : -12 }} transition={{ duration: reduced ? 0 : 0.16 }}>
-        <AgentView agent={agent} state={state} active={!session} onSettings={onSettings} expanded={expanded} onToggleWidth={onToggleWidth} />
+        <AgentView agent={agent} active={!session} onSettings={onSettings} expanded={expanded} onToggleWidth={onToggleWidth} />
       </motion.div>
       {session && <motion.div className="agent-panel-view" key={`${agent.agent}:${session.id}`}
         initial={{ opacity: reduced ? 1 : 0, x: reduced ? 0 : 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>

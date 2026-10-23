@@ -9,16 +9,30 @@ import { permissions } from './state/permissions';
 import { subscriptions } from './state/subscriptions';
 import { acceptPreferences } from './state/store';
 import { openSnapshotPanel, settledViewModel, type PanelRequest } from './acceptance';
-import type { AgentActivitySnapshot, AgentActivitySession, AgentTimeline, AgentTimelineEntry } from './types';
+import type { AgentActivitySnapshot, AgentActivitySession, AgentConversation, AgentTimeline, AgentTimelineEntry } from './types';
+import type { Snapshot } from './subscriptions/types';
 import { selectAgentPanel } from './state/overviewPanels';
 import type { Status } from './state/types';
 import config from '../native/src/ingress/config.json';
 
-type Fixture = { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; completed?: boolean; elapsedSeconds?: number }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
+type Fixture = { panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; completed?: boolean; elapsedSeconds?: number }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
-export function scenarioResponse(path: string, method: string): unknown {
+let conversations: Record<string, AgentConversation[]> = {};
+export function scenarioResponse(path: string, method: string, body?: unknown): unknown {
   if (path === 'preferences' || path === 'preferences/import') return responses.preferences;
+  if (path === 'agents/conversations/timeline' && method === 'POST') {
+    const timeline = responses[`agents/timeline/${(body as { id: string }).id}`];
+    if (timeline) return structuredClone(timeline);
+    throw new Error('SCENARIO_TIMELINE_UNAVAILABLE');
+  }
+  if (path === 'agents/conversations' && method === 'POST') {
+    const { agent, cursor, limit = 20 } = body as { agent: string; cursor?: string; limit?: number };
+    const start = Number(cursor?.replace('fixture-page-', '') ?? 0);
+    const rows = conversations[agent] ?? [], size = Math.max(1, Math.min(50, limit));
+    return { data: structuredClone(rows.slice(start, start + size)), nextCursor: start + size < rows.length ? `fixture-page-${start + size}` : null,
+      scope: agent === 'codex' ? 'native-unarchived' : 'arc-tasks' };
+  }
   if (method !== 'GET') throw new Error('SCENARIO_READ_ONLY');
   const route = path.split('?')[0];
   if (Object.hasOwn(responses, route)) return structuredClone(responses[route]);
@@ -30,7 +44,7 @@ export async function installScenario(name: string) {
   if (!load) throw new Error(`Unknown acceptance scenario: ${name}`);
   const fixture = await load() as Fixture;
   localStorage.setItem('arc-page', 'overview');
-  const preferences = { theme: fixture.theme, language: fixture.language, 'arc.agent-order': JSON.stringify(fixture.agents), 'task-bubble-density': fixture.bubbles?.density ?? 'standard', 'task-bubble-width': fixture.bubbles?.width ?? 'medium', 'task-bubble-auto-compact': fixture.bubbles?.autoCompact === false ? 'off' : 'on' };
+  const preferences = { theme: fixture.theme, language: fixture.language, 'arc.agent-order': JSON.stringify(fixture.agents), 'quota-display': fixture.quotaDisplay ?? 'remaining', 'quota-reset-display': fixture.resetDisplay ?? 'countdown', 'task-bubble-density': fixture.bubbles?.density ?? 'standard', 'task-bubble-width': fixture.bubbles?.width ?? 'medium', 'task-bubble-auto-compact': fixture.bubbles?.autoCompact === false ? 'off' : 'on' };
   acceptPreferences(preferences);
   const now = new Date().toISOString();
   const defaults = Object.fromEntries(Object.entries(config.fields).map(([key, field]) => [key, field.default]));
@@ -128,10 +142,33 @@ export async function installScenario(name: string) {
       cursor: entries.length, executionEvidence: true, coverage: { state: 'complete', truncated: false },
       dispatchSummary: session.dispatchSummary, turnDispatchSummaries: summaries, turnStatuses };
   });
+  conversations = Object.fromEntries(fixture.agents.map(agent => {
+    const current = activity.agents[agent].sessions.map(session => ({ id: session.id, source: session.source as AgentConversation['source'], title: session.title,
+      project: session.project, createdAt: session.startedAt ?? null }));
+    const today = new Date(now); today.setHours(0, 0, 0, 0);
+    const history: AgentConversation[] = fixture.panelHistory ? Array.from({ length: 24 }, (_, index) => {
+      const id = `fixture-history-${agent}-${index}`, title = `Review project change ${index + 1}`;
+      const start = index < 3 ? Math.max(today.getTime(), Date.parse(now) - (index + 1) * 60000) : today.getTime() - (index - 2) * 86400000;
+      const createdAt = new Date(start).toISOString(), endedAt = new Date(start + 83000).toISOString(), turnId = `${id}-turn`;
+      timelines[`agents/timeline/${id}`] = { sessionId: id, status: 'completed', entries: [
+        { id: `${id}-prompt`, turnId, type: 'user', status: 'completed', startedAt: createdAt, updatedAt: createdAt, text: title, cursor: 1, position: 0 },
+        { id: `${id}-answer`, turnId, type: 'text', status: 'completed', phase: 'final_answer', startedAt: endedAt, updatedAt: endedAt, endedAt, text: 'The project changes have been reviewed.', cursor: 2, position: 1 },
+      ], cursor: 2, executionEvidence: true, coverage: { state: 'complete', truncated: false }, turnStatuses: { [turnId]: 'completed' } };
+      return { id, source: agent === 'codex' ? 'codex-thread' : 'arc-task', title, project: '/workspace/acceptance', createdAt };
+    }) : [];
+    return [agent, [...current, ...history]];
+  }));
   const records = fixture.tasks.map((task, index) => ({ requestId: `fixture-request-${index}`, threadId: `fixture-task-${index}`, state: task.approval ? 'awaiting-approval' : 'completed', createdAt: now, updatedAt: now,
     origin: { ingressId: 'fixture-source', sourceId: 'fixture-source' }, approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } }));
   const permissionData = { items: [], observedAt: now };
-  const subscriptionData = { instanceId: 'fixture', revision: 1, settings: { enabled: false, refreshMinutes: 30, agentProviders: {} }, providers: [] };
+  const subscriptionData: Snapshot = { instanceId: 'fixture', revision: 1, settings: { enabled: !!fixture.quota, refreshMinutes: 30, agentProviders: {} }, providers: fixture.quota ? [{
+    providerId: 'codex', agentId: 'codex', agentIds: ['codex'], name: 'ChatGPT', eligible: true, state: 'ready', refreshing: false,
+    observedAt: new Date(Date.parse(now) - 120000).toISOString(), blockedPoolIds: [], hasCredential: true, acceptsKey: false, displayWindowId: 'weekly',
+    windows: [
+      { id: 'five-hour', poolId: 'main', label: 'five_hour', usedPercent: 37, resetsAt: new Date(Date.parse(now) + 2 * 3600000).toISOString() },
+      { id: 'weekly', poolId: 'main', label: 'weekly', usedPercent: 68, resetsAt: new Date(Date.parse(now) + 3 * 86400000).toISOString() },
+    ],
+  }] : [] };
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
   connector.set({ status, sources, sourcesLoaded: true, busy: '', loading: false, error: '', feedback: { text: '', error: false } });
   agents.set({ items: inventory, loaded: true, loading: false, saving: '', error: '' });

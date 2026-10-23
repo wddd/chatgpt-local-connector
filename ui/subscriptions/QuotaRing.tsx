@@ -11,9 +11,22 @@ import {
   quotaPercent,
 } from "./displayPreferences";
 import { readingStatus, brandIcon, quotaColor } from "./presentation";
-import { windowLabel } from "./labels";
+import { isFiveHour, isWeekly, windowLabel } from "./labels";
 import { quotaPace } from "./pace";
+import { quotaPeriod } from "./quotaTiming";
 import type { ProviderSnapshot, QuotaWindow } from "./types";
+
+export function agentQuotaWindows(provider: ProviderSnapshot) {
+  const windows = provider.windows.filter(window => Number.isFinite(window.usedPercent));
+  const weekly = windows.find(window => window.id === provider.displayWindowId && isWeekly(window.label))
+    ?? windows.find(window => isWeekly(window.label));
+  const shortWindows = windows.filter(window => {
+    const period = quotaPeriod(window, provider);
+    return isFiveHour(window.label) || (period !== undefined && period < 7 * 86400000);
+  });
+  const short = shortWindows.find(window => window.poolId === weekly?.poolId) ?? shortWindows[0];
+  return { short, weekly };
+}
 export function ActivityArc({ attention = false }: { attention?: boolean }) {
   return (
     <svg
@@ -52,7 +65,7 @@ function TimeTick({
     />
   );
 }
-export function AgentQuotaIcon({ agent }: { agent: string }) {
+export function AgentQuotaIcon({ agent, dual = false }: { agent: string; dual?: boolean }) {
   const { snapshot } = subscriptions.use();
   const now = useNow();
   quotaDisplay.use();
@@ -69,34 +82,27 @@ export function AgentQuotaIcon({ agent }: { agent: string }) {
             (!w.resetsAt || Date.parse(w.resetsAt) > now),
         )
       : [];
-  const current = windows.find((w) => w.id === provider?.displayWindowId),
-    label = current
-      ? `${windowLabel(current.label)} · ${quotaLabel()} ${quotaPercent(current)}`
-      : undefined;
+  const current = windows.find((w) => w.id === provider?.displayWindowId);
+  const pair = provider ? agentQuotaWindows({ ...provider, windows }) : { short: undefined, weekly: undefined };
+  const rings = dual ? [{ window: pair.weekly, radius: 21 }, { window: pair.short, radius: 16.5 }]
+    : [{ window: current, radius: 21 }];
+  const label = rings.flatMap(({ window }) => window
+    ? [`${windowLabel(window.label)} · ${quotaLabel()} ${quotaPercent(window)}`] : []).join(" · ") || undefined;
   return (
     <span
-      className={`agent-quota-icon ${current ? "has-quota" : ""}`}
+      className={`agent-quota-icon ${label ? "has-quota" : ""} ${dual ? "dual-quota" : ""}`}
       aria-label={label}
       role={label ? "img" : undefined}
     >
-      {current && provider && (
+      {label && provider && (
         <svg className="quota-outline" viewBox="0 0 48 48" aria-hidden="true">
-          <circle className="quota-track" cx="24" cy="24" r="21" />
-          <circle
-            cx="24"
-            cy="24"
-            r="21"
-            pathLength="100"
-            stroke={readingStatus(current, provider, now).color}
-            strokeDasharray={`${quotaValue(current)} 100`}
-            transform="rotate(-90 24 24)"
-          />
-          <TimeTick
-            provider={provider}
-            window={current}
-            center={24}
-            radius={21}
-          />
+          {rings.map(({ window, radius }) => window && <g key={window.id}>
+            <circle className="quota-track" cx="24" cy="24" r={radius} />
+            <circle cx="24" cy="24" r={radius} pathLength="100"
+              stroke={readingStatus(window, provider, now).color}
+              strokeDasharray={`${quotaValue(window)} 100`} transform="rotate(-90 24 24)" />
+            {!dual && <TimeTick provider={provider} window={window} center={24} radius={radius} />}
+          </g>)}
         </svg>
       )}
       {icons[agent] ? (

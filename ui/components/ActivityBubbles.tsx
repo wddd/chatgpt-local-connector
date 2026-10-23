@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { t } from "../i18n";
+import { locale, t } from "../i18n";
 import { PhaseTile, PhaseLabel, StepTrail, SpecPill, dispatchSourceLabel } from "./activity";
 import { selectAgentPanel } from "../state/overviewPanels";
 import { activityHeadline, type TrackedActivity, type BubbleDensity } from "../state/activityModel";
@@ -28,7 +28,8 @@ function Headline({ session }: { session: TrackedActivity }) {
     </AnimatePresence>
   </span>;
 }
-export function ActivityBubbleContent({ session, now, density = "standard" }: { session: TrackedActivity; now: number; density?: BubbleDensity }) {
+export function ActivityBubbleContent({ session, now, density = "standard", historical = false }: { session: TrackedActivity; now: number; density?: BubbleDensity; historical?: boolean }) {
+  const language = locale.use();
   const completed = session.endedAt !== undefined, external = session.source === "transcript";
   const running = !completed && !external && !session.interaction && session.phase !== "idle";
   const unread = completed && session.readAt === undefined;
@@ -39,16 +40,21 @@ export function ActivityBubbleContent({ session, now, density = "standard" }: { 
   const previous = session.recentContent?.filter(text => text !== activityHeadline(session).text).at(-1);
   const duration = elapsed(session.turnStartedAt, session.endedAt ?? now);
   const detail = session.interaction ? t("activity.pendingHint") : completed ? duration === "—" ? undefined : t("activity.totalDuration", { duration }) : previous;
+  const created = Date.parse(session.startedAt ?? "");
   return <>
     <PhaseTile phase={phase} running={running} completed={completed} animated={!external} source={source} />
     <span className="activity-copy">
       <span className="activity-title-row"><strong title={session.title}>{session.title || t("timeline.title")}</strong>
         {unread && <span className="activity-unread" role="img" aria-label={t("activity.unread")} />}
-        {session.interaction ? <span className="activity-pending">{t("activity.pending")}</span> : <time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}</time>}
+        {session.interaction ? <span className="activity-pending">{t("activity.pending")}</span> : !historical && <time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}</time>}
       </span>
       <span className="activity-phase">
-        <PhaseLabel phase={phase} running={running} completed={completed}>{t(phaseLabel)}</PhaseLabel>
-        <Headline session={session.interaction ? { ...session, headline: session.interaction.summary } : session} />
+        {historical ? Number.isFinite(created) && <time className="activity-created" dateTime={session.startedAt!}>
+          {t("agentPanel.created", { time: new Date(created).toLocaleDateString(language, { year: "numeric", month: "short", day: "numeric" }) })}
+        </time> : <>
+          <PhaseLabel phase={phase} running={running} completed={completed}>{t(phaseLabel)}</PhaseLabel>
+          <Headline session={session.interaction ? { ...session, headline: session.interaction.summary } : session} />
+        </>}
       </span>
       {density === "detailed" && <span className="activity-detail-line" title={detail}>{detail || "\u00a0"}</span>}
       {density !== "compact" && <span className="activity-spec-row">

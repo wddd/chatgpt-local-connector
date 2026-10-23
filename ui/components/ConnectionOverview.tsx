@@ -43,6 +43,7 @@ import AddConnection from "./AddConnection";
 import { onboarding, openOnboarding, connectionSetup, addedSource } from "../state/onboarding";
 import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
+import AgentDisplaySettings from "./AgentDisplaySettings";
 import { Button, Icon, Notice } from "./ui";
 import AgentPanel from "./AgentPanel";
 import Hub from "../topology/Hub";
@@ -71,7 +72,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const max = maxVisibleAgents.use();
   const density = bubbleDensity.use(), width = bubbleWidths[bubbleWidth.use()], autoCompact = bubbleAutoCompact.use();
   const { snapshot } = subscriptions.use(), nav = navigation.use();
-  const [agentsOpen, setAgentsOpen] = useState(false), [settingsAgent, setSettingsAgent] = useState<Agent>();
+  const [agentsOpen, setAgentsOpen] = useState(false), [displaySettingsOpen, setDisplaySettingsOpen] = useState(false);
   const initialSetupShown = useRef(false);
   useEffect(() => {
     if (scenarioName || !visible || initialSetupShown.current || !status || !sourcesLoaded || loading || error) return;
@@ -265,9 +266,9 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
           brand={<Hub sourceEmpty={!sourceViews.length} agentEmpty={!agents.length}
             onAddSource={() => openOnboarding("product")}
             onManageAgents={() => setAgentsOpen(true)} />} />
-        {selectedAgent && visible && <AgentPanel agent={selectedAgent} state={agentState(selectedAgent)}
+        {selectedAgent && visible && <AgentPanel agent={selectedAgent}
           width={panelWidth} expanded={panelExpanded} onToggleWidth={() => setPanelExpanded(value => !value)}
-          onSettings={() => { setSettingsAgent(selectedAgent); setAgentsOpen(true); }} onPanelFrame={panelFrame} />}
+          onSettings={() => setDisplaySettingsOpen(true)} onPanelFrame={panelFrame} />}
         {sourceSelection && visible && <IngressPanel width={panelWidth} expanded={panelExpanded} onToggleWidth={() => setPanelExpanded(value => !value)} onPanelFrame={panelFrame} />}
         <div className="activity-edge-fade" aria-hidden="true" />
 
@@ -291,7 +292,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         if (newConnection.forSource) onboarding.set(old => old?.step === "connection" ? { ...old, step: "address", ingressId: id, baseline: (connector.get().status?.ingresses.find(i => i.id === id)?.oauth?.pending ?? []).map(p => p.id) } : old);
         connectionSetup.set(undefined);
       }} />}
-      {agentsOpen && <AgentsSettings initialAgent={settingsAgent} onClose={() => { setAgentsOpen(false); setSettingsAgent(undefined); }} />}
+      {agentsOpen && <AgentsSettings onClose={() => setAgentsOpen(false)} />}
+      {displaySettingsOpen && <AgentDisplaySettings onClose={() => setDisplaySettingsOpen(false)} />}
     </>
   );
 }
