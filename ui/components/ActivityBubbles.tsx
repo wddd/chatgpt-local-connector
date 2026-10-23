@@ -31,9 +31,10 @@ function Headline({ session }: { session: TrackedActivity }) {
 }
 export function ActivityBubbleContent({ session, now, density = "standard", historical = false }: { session: TrackedActivity; now: number; density?: BubbleDensity; historical?: boolean }) {
   const language = locale.use();
-  const completed = session.endedAt !== undefined, external = session.source === "transcript";
-  const running = !completed && !external && !session.interaction && session.phase !== "idle";
-  const unread = completed && session.readAt === undefined;
+  const paused = ["cancelled", "interrupted", "aborted"].includes(session.status ?? "");
+  const completed = !paused && (session.endedAt !== undefined || historical), external = session.source === "transcript";
+  const running = !paused && !completed && !external && !session.interaction && session.phase !== "idle";
+  const unread = completed && !historical && session.readAt === undefined;
   const phase = session.interaction ? "interaction" : session.phase;
   const phaseLabel = completed ? "activity.completed" : session.interaction ? "activity.waitingConfirm" : `activity.phase.${phase}`;
   const source = session.dispatchSummary?.controlSource;
@@ -43,7 +44,8 @@ export function ActivityBubbleContent({ session, now, density = "standard", hist
   const detail = session.interaction ? t("activity.pendingHint") : completed ? duration === "—" ? undefined : t("activity.totalDuration", { duration }) : previous;
   const created = Date.parse(session.startedAt ?? "");
   return <>
-    <PhaseTile phase={phase} running={running} completed={completed} animated={!external} source={source} />
+    <PhaseTile phase={phase} running={running} completed={completed} paused={paused} animated={!external} source={source} />
+    {historical && <span className="sr-only">{t(paused ? "timeline.status.cancelled" : "activity.completed")}</span>}
     <span className="activity-copy">
       <span className="activity-title-row"><strong title={session.title}>{session.title || t("timeline.title")}</strong>
         {unread && <span className="activity-unread" role="img" aria-label={t("activity.unread")} />}

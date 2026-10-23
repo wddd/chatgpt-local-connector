@@ -17,7 +17,7 @@ export type BubbleWidth = keyof typeof bubbleWidths;
 export function effectiveBubbleDensity(density: BubbleDensity, autoCompact: boolean, count: number): BubbleDensity {
   return autoCompact && count > 4 ? density === "detailed" ? "standard" : "compact" : density;
 }
-export type TrackedActivity = AgentActivitySession & { orderAt: number; endedAt?: number; readAt?: number; conversation?: boolean };
+export type TrackedActivity = AgentActivitySession & { orderAt: number; endedAt?: number; readAt?: number; conversation?: boolean; status?: string | null };
 export type AgentPanelSelection = { agent: string; session?: TrackedActivity; closing?: boolean } | undefined;
 export type AgentPanelAction = { type: "agent" | "toggle"; agent: string } | { type: "task"; agent: string; session: TrackedActivity } | { type: "back" } | { type: "dismiss" } | { type: "closed" };
 export function agentPanelSelection(current: AgentPanelSelection, action: AgentPanelAction): AgentPanelSelection {

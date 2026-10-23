@@ -23,6 +23,7 @@ struct TaskMetadata {
     cwd: Option<String>,
     created_at: String,
     session_id: Option<String>,
+    status: Option<String>,
     #[serde(default)]
     archived: bool,
 }
@@ -46,7 +47,7 @@ fn stored() -> Result<Vec<Value>> {
         }
         rows.push(
             json!({"agent":task.agent,"id":task.task_id,"title":task.title,"project":task.cwd,
-            "createdAt":task.created_at,"nativeSessionId":task.session_id,"source":"arc-task"}),
+            "createdAt":task.created_at,"nativeSessionId":task.session_id,"source":"arc-task","status":task.status}),
         );
     }
     rows.sort_by(|a, b| {
@@ -91,6 +92,7 @@ impl AgentHost {
                 let mut item = json!({"id":row["id"],"title":title.chars().take(240).collect::<String>(),
                     "project":row["cwd"],"projectName":crate::projects::display_name(&projects, string(row,"cwd"), row["projectId"].as_str()),
                     "createdAt":timestamp(&row["createdAt"]),"source":"codex-thread"});
+                item["status"] = row["status"].as_str().or_else(|| row["status"]["type"].as_str()).map(|s| json!(s)).unwrap_or(Value::Null);
                 if let Some(open) = self.task_navigation(agent, string(row, "id")) {
                     item["open"] = open;
                 }

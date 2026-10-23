@@ -163,17 +163,24 @@ export default function ElasticPanel({
     const morphOrigin = !!visualOrigin.current && (centered || !!visualOrigin.current.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]"));
     if (!reduced() && source && rect.width && !parent && morphOrigin) {
       const visual = visualOrigin.current;
-      const opening = surface.to({ ...frameAt(rect, 1, getComputedStyle(node).borderRadius), ...surfaceOf(node) }, {
+      void surface.to({ ...frameAt(rect, 1, getComputedStyle(node).borderRadius), ...surfaceOf(node) }, {
         from: { ...frameAt(source, visual ? 1 : 0, "28px"), ...(visual?.surface ?? {}) },
         duration: dock ? 0.25 : undefined,
       });
       if (visual) {
-        restoreOrigin.current = hideOrigin(visual);
         if (dock) {
-          const restore = restoreOrigin.current;
-          void opening.then(() => { if (restoreOrigin.current === restore) { restore(); restoreOrigin.current = undefined; } });
+          // Keep the real moving node above the expanding shell, without
+          // replacing it with a stationary copy or changing its opacity.
+          const anchor = visual.trigger.closest<HTMLElement>(".topology-node");
+          if (anchor) {
+            const before = anchor.style.zIndex;
+            anchor.style.zIndex = String(Number(node.style.zIndex) + 1);
+            restoreOrigin.current = () => { anchor.style.zIndex = before; };
+          }
+        } else {
+          restoreOrigin.current = hideOrigin(visual);
+          clearGhost.current = animateOriginContent(visual, Number(node.style.zIndex) + 1);
         }
-        clearGhost.current = animateOriginContent(visual, Number(node.style.zIndex) + 1);
       }
       for (const child of Array.from(node.children))
         fades.push(animate(child, { opacity: [0, 1] }, { duration: 0.15 }));
@@ -205,10 +212,7 @@ export default function ElasticPanel({
       if (from && motion.current && !closing.current) {
         const panelWidth = Math.min(expanded ? innerWidth - 32 : width ?? 400, innerWidth - 32);
         const target = { x: dock === "left" ? 16 : innerWidth - panelWidth - 16, y: 16, width: panelWidth, height: innerHeight - 32 };
-        const restore = restoreOrigin.current;
-        void motion.current.to(frameAt(target, 1, "20px"), { from: frameAt(from, 1, "20px"), duration: 0.18 }).then(() => {
-          if (restore && restoreOrigin.current === restore) { restore(); restoreOrigin.current = undefined; }
-        });
+        void motion.current.to(frameAt(target, 1, "20px"), { from: frameAt(from, 1, "20px"), duration: 0.18 });
         return;
       }
     }
@@ -223,7 +227,7 @@ export default function ElasticPanel({
     closing.current = true;
     const closingView = latest.current;
     closingView.onCloseStart?.();
-    restoreOrigin.current?.();
+    if (!dock) restoreOrigin.current?.();
     const parent = parentPanel.current?.isConnected ? parentPanel.current : undefined;
     if (parent) replacement = undefined;
     const saved = visualOrigin.current;

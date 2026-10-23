@@ -108,6 +108,7 @@ export interface AgentConversation {
   projectName?: string | null;
   id: string;
   source: "arc-task" | "codex-thread";
+  status?: string | null;
   title?: string | null;
   project?: string | null;
   createdAt: string | null;

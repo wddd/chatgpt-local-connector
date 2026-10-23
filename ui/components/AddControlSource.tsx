@@ -21,7 +21,8 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
   const [credentials, setCredentials] = useState<{ ingressId: string; bearerToken: string }>();
   const product = flow.source ?? "custom", info = controlSource(product), name = info?.shortName ?? t("connect.other");
   const entries = status?.ingresses ?? [], current = entries.find(i => i.id === flow.ingressId);
-  const visible = entries.filter(i => !flow.localTarget || i.id === `local-claude-${flow.localTarget}`);
+  const visible = entries.filter(i => (!flow.localTarget || i.id === `local-claude-${flow.localTarget}`)
+    && (i.transport !== "openai-tunnel" || product === "chatgpt"));
   const existing = visible.filter(i => !connectionDisabledReason(i, product, sources, flow.localTarget));
   const existingIds = existing.map(i => i.id).join(",");
   useEffect(() => {
@@ -114,8 +115,7 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
         const carried = sources.filter(s => s.ingressId === i.id && !isPendingSource(s, entries) && s.state !== "revoked");
         const reason = connectionDisabledReason(i, product, sources, flow.localTarget);
         return { value: i.id, label: i.name, disabled: !!reason,
-          description: reason || [t(`source.kind.${connectionKind(i)}`), carried.length && t("setup.carriesSources", { names: carried.map(s => s.label).join(", ") }), t(i.state === "ready" ? "connect.online" : "connect.offline")].filter(Boolean).join(" · "),
-          warning: !reason && i.auth === "oauth" && carried.some(s => s.product === product) ? t("setup.newOrReauthorize", { name }) : undefined };
+          description: reason || [t(`source.kind.${connectionKind(i)}`), carried.length && t("setup.carriesSources", { names: carried.map(s => s.label).join(", ") }), t(i.state === "ready" ? "connect.online" : "connect.offline")].filter(Boolean).join(" · ") };
       })} />}
       {!existing.length && <div className="setup-empty">
         <h3>{t("setup.noConnection")}</h3>

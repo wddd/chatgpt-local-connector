@@ -27,6 +27,7 @@ export default function ChangeConnection() {
     if (i.auth !== "oauth" && sources.some(s => s.ingressId === i.id)) return t("setup.connectionOccupied");
     return connectionDisabledReason(i, source?.product ?? "custom", sources);
   }
+  const connections = entries.filter(i => i.transport !== "openai-tunnel" || source?.product === "chatgpt");
   useEffect(() => {
     if (flow.step === "address" && request?.status === "pending") connectionSwitch.set(old => old && { ...old, step: "approval", requestId: request.id });
   }, [flow.step, request?.id, request?.status]);
@@ -71,7 +72,7 @@ export default function ChangeConnection() {
       {error && <Notice>{error}</Notice>}
       {flow.step === "connection" ? <>
         <p>{t("switch.currentVia", { name: current?.name ?? source?.connectionName ?? t("source.connectionRemoved") })}</p>
-        <SingleChoice cards label={t("source.connections")} value={flow.ingressId ?? ""} onChange={ingressId => connectionSwitch.set({ ...flow, ingressId })} disabled={busy} options={entries.map(i => ({ value: i.id, label: i.name, disabled: !!reason(i), description: reason(i) || [t(`source.kind.${connectionKind(i)}`), t(i.state === "ready" ? "connect.online" : "connect.offline"), sources.filter(s => s.ingressId === i.id && s.state !== "revoked" && !isPendingSource(s, entries)).map(s => s.label).join(", ")].filter(Boolean).join(" · ") }))} />
+        <SingleChoice cards label={t("source.connections")} value={flow.ingressId ?? ""} onChange={ingressId => connectionSwitch.set({ ...flow, ingressId })} disabled={busy} options={connections.map(i => ({ value: i.id, label: i.name, disabled: !!reason(i), description: reason(i) || [t(`source.kind.${connectionKind(i)}`), t(i.state === "ready" ? "connect.online" : "connect.offline"), sources.filter(s => s.ingressId === i.id && s.state !== "revoked" && !isPendingSource(s, entries)).map(s => s.label).join(", ")].filter(Boolean).join(" · ") }))} />
         <Button className="setup-new" data-add-connection disabled={busy} onClick={() => openConnectionSetup({ forSwitch: true, product: source?.product })}><Icon icon={Plus} /><span>{t("source.newConnection")}<small>{t("setup.newConnectionHint")}</small></span></Button>
         <Notice tone="warning">{addressInstruction} {t("switch.warning")}</Notice>
       </> : <>

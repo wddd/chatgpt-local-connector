@@ -8,8 +8,8 @@ import SourceIcon from "../SourceIcon";
 import { Icon } from "../ui";
 import "./activity.css";
 
-export function PhaseTile({ phase, running = false, completed = false, animated = true, source }: {
-  phase: AgentPhase; running?: boolean; completed?: boolean; animated?: boolean; source?: DispatchSummary["controlSource"];
+export function PhaseTile({ phase, running = false, completed = false, paused = false, animated = true, source }: {
+  phase: AgentPhase; running?: boolean; completed?: boolean; paused?: boolean; animated?: boolean; source?: DispatchSummary["controlSource"];
 }) {
   const mask = useId();
   const drawing = animated && (completed || (running && phase === "file"));
@@ -21,8 +21,8 @@ export function PhaseTile({ phase, running = false, completed = false, animated 
         <rect className="phase-stroke-reveal" width="1" height="1" fill="white" />
       </mask>
     </defs></svg>}
-    <Icon icon={completed ? Check : { thinking: Brain, command: Terminal, file: Pencil, tool: Wrench,
-      text: MessageSquare, interaction: ShieldAlert, idle: CirclePause }[phase]} />
+    <Icon icon={paused ? CirclePause : completed ? Check : { thinking: Brain, command: Terminal, file: Pencil, tool: Wrench,
+      text: MessageSquare, interaction: ShieldAlert, idle: Check }[phase]} />
     {source && <SourceBadge source={source} />}
   </span>;
 }

@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 import { api } from "../api";
-import { t } from "../i18n";
+import { locale, t } from "../i18n";
 import type { AgentActivitySession, AgentConversation, AgentConversationPage } from "../types";
 import { agentActivity } from "../state/activity";
 import { selectAgentPanel } from "../state/overviewPanels";
@@ -23,6 +23,7 @@ const ConversationRow = memo(function ConversationRow({ agent, session, live, no
 });
 
 export default function AgentConversations({ agent, active }: { agent: string; active: boolean }) {
+  const language = locale.use();
   const { snapshot } = agentActivity.use();
   const [observed, setObserved] = useState<Record<string, AgentActivitySession>>({});
   const [now, setNow] = useState(Date.now);
@@ -69,7 +70,7 @@ export default function AgentConversations({ agent, active }: { agent: string; a
     return () => observer.disconnect();
   }, [active, next, loading, error]);
   const sessions = new Map<string, TrackedActivity>(rows.map(conversation => [conversation.id, {
-    id: conversation.id, source: conversation.source, title: conversation.title || undefined, phase: "idle", phaseSince: null,
+    id: conversation.id, source: conversation.source, status: conversation.status, title: conversation.title || undefined, phase: "idle", phaseSince: null,
     headline: "", startedAt: conversation.createdAt, project: conversation.project, projectName: conversation.projectName,
     nativeSessionId: conversation.nativeSessionId ?? undefined, open: conversation.open,
     timeline: true, orderAt: Date.parse(conversation.createdAt ?? "") || 0, conversation: true,
@@ -80,21 +81,34 @@ export default function AgentConversations({ agent, active }: { agent: string; a
     sessions.set(session.id, { ...history, ...session,
       startedAt: history?.startedAt ?? session.startedAt,
       title: session.title || history?.title,
+      status: current ? undefined : history?.status,
       orderAt: history?.orderAt || Date.parse(session.startedAt ?? "") || 0,
       conversation: session.source !== "transcript",
     });
   }
   const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
-  const groups: Record<"attention" | "running" | "today" | "earlier", TrackedActivity[]> = { attention: [], running: [], today: [], earlier: [] };
+  const yesterday = new Date(midnight); yesterday.setDate(yesterday.getDate() - 1);
+  const week = new Date(midnight); week.setDate(week.getDate() - (week.getDay() + 6) % 7);
+  type Group = { id: string; label: string; entries: TrackedActivity[] };
+  const groups = Object.fromEntries(["attention", "running", "today", "yesterday", "earlier"].map(id => [id, { id, label: t(`agentPanel.${id}`), entries: [] as TrackedActivity[] }])) as Record<string, Group>;
+  const dates = new Map<number, Group>();
   for (const session of [...sessions.values()].sort((a, b) => b.orderAt - a.orderAt || b.id.localeCompare(a.id))) {
-    const group = live.has(session.id) ? session.interaction ? "attention" : "running"
-      : session.orderAt >= midnight.getTime() ? "today" : "earlier";
-    groups[group].push(session);
+    let group = live.has(session.id) ? groups[session.interaction ? "attention" : "running"]
+      : session.orderAt >= midnight.getTime() ? groups.today
+      : session.orderAt >= yesterday.getTime() ? groups.yesterday : groups.earlier;
+    if (!live.has(session.id) && group === groups.earlier && session.orderAt >= week.getTime()) {
+      const date = new Date(session.orderAt); date.setHours(0, 0, 0, 0);
+      const key = date.getTime();
+      group = dates.get(key) ?? { id: `date:${key}`, label: date.toLocaleDateString(language, { month: "short", day: "numeric", weekday: "short" }), entries: [] };
+      dates.set(key, group);
+    }
+    group.entries.push(session);
   }
+  const sections = [groups.attention, groups.running, groups.today, groups.yesterday, ...dates.values(), groups.earlier];
   return <div className="activity-task-list agent-conversations">
-    {Object.entries(groups).map(([group, entries]) => entries.length > 0 && <section className="agent-task-section" key={group} aria-label={t(`agentPanel.${group}`)}>
-      <h3 className="agent-task-section-heading" data-attention={group === "attention" || undefined}>
-        {t(`agentPanel.${group}`)}<span className="agent-section-count">{entries.length}</span>
+    {sections.map(({ id, label, entries }) => entries.length > 0 && <section className="agent-task-section" key={id} aria-label={label}>
+      <h3 className="agent-task-section-heading" data-attention={id === "attention" || undefined}>
+        {label}<span className="agent-section-count">{entries.length}</span>
       </h3>
       <div className="agent-task-section-rows">{entries.map((session, index) => <ConversationRow key={session.id} agent={agent}
         session={session} live={live.has(session.id)} now={now} index={index} />)}</div>
