@@ -544,9 +544,6 @@
   "timeline.open": "Open execution timeline",
   "timeline.durationHours": "{hours}h {minutes}m {seconds}s",
   "timeline.durationMinutes": "{minutes}m {seconds}s",
-  "timeline.workRunning": "Working",
-  "timeline.workDone": "Worked",
-  "timeline.workWaiting": "Waiting for you",
   "timeline.turn": "Turn {count}",
   "timeline.turnCount": "{count} turns",
   "timeline.earlierSteps": "{count} earlier steps",
@@ -1040,5 +1037,7 @@
   "activity.pendingHint": "Open details to respond",
   "activity.totalDuration": "Total {duration}",
   "activity.fast": "Fast",
-  "topology.taskGap": "Task gap"
+  "topology.taskGap": "Task gap",
+  "timeline.imageUnavailable": "Image unavailable",
+  "timeline.revealFile": "Show {path} in file manager"
 }

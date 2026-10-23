@@ -1,11 +1,8 @@
-import { memo, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AlertCircle, Brain, Check, ChevronRight, Circle, FileText, ListChecks, LoaderCircle, MessageSquare, Minus, ShieldAlert, Terminal, UserRound, Wrench, X } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import { AnimatePresence, motion } from "motion/react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { t } from "../i18n";
-import { openUrl } from "../platform";
 import { useMedia } from "../state/hooks";
 import type { AgentActivitySession, AgentTimelineEntry, DispatchSummary, TurnTiming } from "../types";
 import { activityApprovals } from "../state/activity";
@@ -14,8 +11,9 @@ import { expandableTimelineEntry } from "../state/timelineModel";
 import { entryDuration, timelineGroups, turnDuration, turnEntries, workBlockOpen, workState } from "../state/timelineGroups";
 import { Button, Icon } from "./ui";
 import { AnimatedSize } from "./ui/AnimatedSize";
-import { dispatchSourceLabel, PhaseLabel, SourceBadge, SpecPill } from "./activity";
+import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
 import FilePath from "./FilePath";
+import TimelineMarkdown, { TimelineResources } from "./TimelineMarkdown";
 
 const stepIcons = { command: Terminal, file: FileText, tool: Wrench, thinking: Brain, text: MessageSquare, user: UserRound, plan: ListChecks, interaction: ShieldAlert, error: AlertCircle };
 const statusIcons = { running: LoaderCircle, completed: Check, failed: X, cancelled: Minus, pending: Circle, unknown: Circle };
@@ -47,12 +45,6 @@ function Fold({ open, onChange, summary, children, className = "", expandable = 
     </AnimatePresence>}
   </Collapsible.Root>;
 }
-const TimelineMarkdown = memo(function TimelineMarkdown({ text }: { text: string }) {
-  return <div className="markdown timeline-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{
-    a: ({ href, children }) => <a href={href} onClick={event => { event.preventDefault(); if (href) void openUrl(href); }}>{children}</a>,
-    table: ({ children }) => <div className="timeline-table"><table>{children}</table></div>,
-  }}>{text}</ReactMarkdown></div>;
-});
 function UserMessage({ text, truncated, open, onChange }: { text: string; truncated?: boolean; open: boolean; onChange: (open: boolean) => void }) {
   const id = useId(), content = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
@@ -152,13 +144,12 @@ export default function TimelineEntries({ entries, agent, session, now, running 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const change = (id: string) => (open: boolean) => setExpanded(previous => ({ ...previous, [id]: open }));
   const groups = timelineGroups(entries);
-  return <>{groups.map((group, index) => {
+  return <TimelineResources agent={agent} id={session.id}>{groups.map((group, index) => {
     const latest = index === groups.length - 1;
     const matchesSession = !group.turnId || group.turnId === session.turnId;
     const currentTurn = !session.turnId || matchesSession;
     const turnStatus = (group.turnId ? turnStatuses?.[group.turnId] : undefined) ?? (latest && currentTurn ? status : undefined);
     const live = latest && currentTurn && running;
-    const waiting = live && (!!session.interaction || turnStatus === "waiting-permission");
     const completed = turnStatus === undefined ? undefined : ["completed", "idle"].includes(turnStatus);
     const { prompt, final, work } = turnEntries(group.entries, live, completed);
     const state = workState(work);
@@ -172,19 +163,20 @@ export default function TimelineEntries({ entries, agent, session, now, running 
     const earlierId = `earlier:${group.id}`, earlier = workRows.length - 3;
     const visibleWork = live && earlier > 0 && !expanded[earlierId] ? workRows.slice(-3) : workRows;
     const stats = Object.entries(state.counts).filter(([, count]) => count).map(([kind, count]) => t(`timeline.group.${kind}${count === 1 ? "One" : "Many"}`, { count })).join(t("timeline.group.separator"));
-    const label = t(waiting ? "timeline.workWaiting" : live ? "timeline.workRunning" : "timeline.workDone");
     const header = <><span className="timeline-turn-number">{t("timeline.turn", { count: index + 1 })}</span>
       {source && <span className="timeline-turn-source" title={dispatchSourceLabel(source)}><SourceBadge source={source} /><span>{dispatchSourceLabel(source)}</span></span>}
       <SpecPill summary={summary} /><Duration value={duration} /></>;
     return <Collapsible.Root key={group.id} open={turnOpen} onOpenChange={change(group.id)} asChild>
-      <section className="timeline-item timeline-turn" data-timeline-id={group.id}>
+      <section className="timeline-item timeline-turn" data-timeline-id={group.id} onClick={event => {
+        if (!turnOpen && !(event.target as Element).closest("button, a")) change(group.id)(true);
+      }}>
         <Collapsible.Trigger type="button" className="timeline-turn-header">{header}</Collapsible.Trigger>
         <AnimatedSize>
           <Collapsible.Content className="timeline-turn-body">
             {prompt && <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[`entry:${prompt.id}`] ?? false} onChange={change(`entry:${prompt.id}`)} />}
             {!!workRows.length && <Fold className="timeline-work" open={workOpen} onChange={change(workId)} summary={<>
               <span className="timeline-tool-icons">{state.kinds.map(kind => <span key={kind} data-phase={kind}><Icon icon={stepIcons[kind]} /></span>)}</span>
-              <span className="timeline-work-heading"><PhaseLabel phase={waiting ? "interaction" : "tool"} running={live && !waiting}>{label}</PhaseLabel>{stats && <span className="timeline-work-stats">{stats}</span>}</span>
+              <span className="timeline-work-heading">{stats && <span className="timeline-work-stats">{stats}</span>}</span>
               {state.failed > 0 && <span className="timeline-failure">{t("timeline.failures", { count: state.failed })}</span>}
             </>}><div className="timeline-group-entries">
               {live && earlier > 0 && <Button variant="ghost" className="timeline-earlier-steps" onClick={() => change(earlierId)(!expanded[earlierId])}>{t(expanded[earlierId] ? "timeline.hideEarlierSteps" : "timeline.earlierSteps", { count: earlier })}</Button>}
@@ -199,5 +191,5 @@ export default function TimelineEntries({ entries, agent, session, now, running 
         </AnimatedSize>
       </section>
     </Collapsible.Root>;
-  })}</>;
+  })}</TimelineResources>;
 }

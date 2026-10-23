@@ -312,12 +312,12 @@ test("timeline turn disclosures preserve choices through incremental work and re
     const thinking = { ...base, id: "thinking", type: "thinking", status: "completed", durationMs: 2000, text: "Reasoning detail" };
     const text = { ...base, id: "text", type: "text", status: "completed", text: '| Name | Value |\n| --- | --- |\n| A | B |\n\n- [x] Done\n\n[Docs](https://example.com/docs)\n\n```js\nconst value = 1;\n```\n\n<script>window.bad = true</script>' };
     await render([thinking, text]);
-    const disclosure = () => page.getByRole("button", { name: name => name.includes(t("timeline.thinking")) && !name.includes(t("timeline.workDone")) });
+    const disclosure = (summary = thinking.text) => page.getByRole("button", { name: name => name.includes(summary) });
     assert.equal(disclosure().getAttribute("aria-expanded"), "false");
     await click(disclosure());
     await render([{ ...thinking, text: "Updated reasoning" }, text]);
-    assert.equal(disclosure().getAttribute("aria-expanded"), "true");
-    assert.ok(page.getByText("Updated reasoning"));
+    assert.equal(disclosure("Updated reasoning").getAttribute("aria-expanded"), "true");
+    assert.ok(page.getAllByText("Updated reasoning").length > 0);
     assert.ok(page.getByRole("cell", { name: "B" }));
     assert.ok(page.getByText("const value = 1;"));
     assert.equal(page.queryByText("window.bad = true"), null);

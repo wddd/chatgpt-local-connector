@@ -7,6 +7,16 @@
     "core:default",
     "dialog:allow-open",
     "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "codex://*" },
+        { "url": "vscode://*" },
+        { "url": "vscode-insiders://*" },
+        { "url": "cursor://*" },
+        { "url": "zed://*" }
+      ]
+    },
     "notification:default",
     "window-state:default",
     "core:window:allow-start-dragging",

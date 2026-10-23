@@ -544,9 +544,6 @@
   "timeline.open": "打开执行时间线",
   "timeline.durationHours": "{hours}时{minutes}分{seconds}秒",
   "timeline.durationMinutes": "{minutes}分{seconds}秒",
-  "timeline.workRunning": "正在工作",
-  "timeline.workDone": "已工作",
-  "timeline.workWaiting": "等你确认",
   "timeline.turn": "第 {count} 轮",
   "timeline.turnCount": "{count} 轮",
   "timeline.earlierSteps": "前面还有 {count} 步",
@@ -1040,5 +1037,7 @@
   "activity.pendingHint": "打开详情处理请求",
   "activity.totalDuration": "总用时 {duration}",
   "activity.fast": "快速",
-  "topology.taskGap": "任务间距"
+  "topology.taskGap": "任务间距",
+  "timeline.imageUnavailable": "图片不可用",
+  "timeline.revealFile": "在文件管理器中显示 {path}"
 }

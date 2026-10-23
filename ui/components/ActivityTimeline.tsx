@@ -163,7 +163,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           setAtLatest(node.scrollHeight - node.scrollTop - node.clientHeight <= 24);
         }}>
         <div ref={content} className={loading ? "timeline-loading" : "timeline-entries"} onClickCapture={event => {
-          if ((event.target as Element).closest("button")) manualDisclosure.current = true;
+          if ((event.target as Element).closest("button, .timeline-turn[data-state=closed]")) manualDisclosure.current = true;
         }}>
           {loading ? <LoadingIndicator label={t("timeline.loading")} /> : <>
           {timeline?.coverage.state === "partial" && !timeline.coverage.truncated && <p className="timeline-meta">{t("timeline.partial")}</p>}

@@ -1659,6 +1659,31 @@
       }
     },
     {
+      "name": "agents.resources",
+      "route": "agents/resources",
+      "method": "POST",
+      "localOnly": true,
+      "description": "Read a bounded image or reveal a file in the host file manager. Resolve paths only inside the selected task's project or its dedicated thread visualization directory, including symlink checks. Read native metadata without resuming the Agent. Images return a data URL; unavailable assets report an error. No caller-supplied project root or arbitrary file access.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "agent": { "type": "string", "minLength": 1 },
+              "id": { "type": "string", "format": "uuid" },
+              "path": { "type": "string", "minLength": 1, "maxLength": 8192 },
+              "action": { "enum": ["image", "reveal"] }
+            },
+            "required": ["agent", "id", "path", "action"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["body"],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "agents.respond",
       "route": "agents/respond",
       "method": "POST",

@@ -134,7 +134,7 @@ pub fn take(value: &mut Value) -> Vec<Value> {
         .and_then(|v| v.as_array().cloned())
         .unwrap_or_default()
 }
-fn local_path(path: &str, thread: &str, cwd: &str) -> Result<PathBuf> {
+pub(crate) fn local_path(path: &str, thread: &str, cwd: &str) -> Result<PathBuf> {
     let project = Path::new(cwd).canonicalize().map_err(|e| e.to_string())?;
     let requested = project.join(path);
     let actual = requested.canonicalize().map_err(|e| e.to_string())?;

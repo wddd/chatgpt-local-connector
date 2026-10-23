@@ -9,6 +9,7 @@ pub(crate) mod driver;
 mod manifest;
 mod mcp;
 mod process;
+mod resources;
 mod wait;
 
 /// Codex Desktop supplies the CLI on desktop platforms; Linux uses the installed CLI.

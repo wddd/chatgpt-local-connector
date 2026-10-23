@@ -759,6 +759,10 @@ impl Service {
                 .conversation_timeline(&self.control, &body)
                 .await;
         }
+        if route == "agents/resources" && method == "POST" {
+            crate::management::resolve("agents.resources", &json!({"body":body}))?;
+            return self.agents.resource(&self.control, &body).await;
+        }
         if let Some(session) = route
             .strip_prefix("agents/timeline/")
             .filter(|_| method == "GET")
