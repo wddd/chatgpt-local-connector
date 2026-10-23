@@ -429,9 +429,12 @@ pub async fn update(id: &str, body: &Value) -> Result<Value> {
             .as_object()
             .unwrap()
             .keys()
-            .any(|k| !["label", "product"].contains(&k.as_str()))
+            .any(|k| !["label", "product", "minimalText"].contains(&k.as_str()))
     {
-        return Err("Expected label and/or product".into());
+        return Err("Expected label, product, and/or minimalText".into());
+    }
+    if body.get("minimalText").is_some_and(|v| !v.is_boolean()) {
+        return Err("minimalText must be a boolean".into());
     }
     let p = body
         .get("product")
@@ -455,6 +458,9 @@ pub async fn update(id: &str, body: &Value) -> Result<Value> {
         }
         if let Some(label) = body.get("label") {
             s["label"] = label.clone();
+        }
+        if let Some(value) = body.get("minimalText") {
+            s["minimalText"] = value.clone();
         }
         Ok(s.clone())
     })
@@ -1285,4 +1291,12 @@ fn migrate_notification_keys() -> Result<()> {
         save(&path, &task)?;
     }
     Ok(())
+}
+
+/// Opt-in only; absent fields on existing and future sources mean full text.
+pub(crate) fn minimal_text(source: &str) -> bool {
+    list().is_ok_and(|rows| {
+        rows.iter()
+            .any(|s| s["id"] == source && s["minimalText"] == true)
+    })
 }

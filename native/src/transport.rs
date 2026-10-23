@@ -504,7 +504,12 @@ async fn enabled_ops(s: &ControlSource<'_>) -> Vec<Value> {
 
 async fn call_tool(s: &ControlSource<'_>, tool: &str, envelope: Value) -> Result<Value> {
     let metric = crate::control_metrics::Call::new(&s.origin().await, tool, &envelope);
-    let response = call_tool_inner(s, tool, envelope).await;
+    let mut response = call_tool_inner(s, tool, envelope).await;
+    if crate::sources::minimal_text(string(&s.origin().await, "sourceId")) {
+        if let Ok(response) = &mut response {
+            crate::egress::minimal_text(response);
+        }
+    }
     metric.finish(&response).await;
     response
 }

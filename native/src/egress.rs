@@ -15,6 +15,25 @@ pub fn tool(mut value: Value, error: bool) -> Value {
     };
     json!({"content":[{"type":"text","text":text}],"structuredContent":{"result":value},"isError":error})
 }
+/// Opted-in clients read structuredContent; images and other content stay intact.
+pub(crate) fn minimal_text(response: &mut Value) {
+    if !response["structuredContent"].is_object() {
+        return;
+    }
+    let text = if response["isError"] == true {
+        format!(
+            "Error {}; see structuredContent.result.error.",
+            string(&response["structuredContent"]["result"]["error"], "code")
+        )
+    } else {
+        "See structuredContent.result.".into()
+    };
+    if let Some(content) = response["content"].as_array_mut() {
+        content.retain(|b| b["type"] != "text");
+        content.insert(0, json!({"type":"text","text":text}));
+    }
+}
+
 pub fn failure(e: &str) -> Value {
     if let Ok(value) = serde_json::from_str::<Value>(e) {
         if matches!(

@@ -2603,6 +2603,10 @@
               },
               "product": {
                 "type": "string"
+              },
+              "minimalText": {
+                "type": "boolean",
+                "description": "Opt in to minimal MCP text while retaining structuredContent. Omitted source settings default to false."
               }
             },
             "additionalProperties": false
@@ -2614,7 +2618,7 @@
           "body"
         ]
       },
-      "description": "Update a source label or registry product.",
+      "description": "Update a source label, registry product, or minimalText response setting.",
       "localOnly": true
     },
     {

@@ -453,3 +453,14 @@ Run `arc cli stats control --since 1h` (default: `1d`; supported units: `m`, `h`
 Records contain timestamps, source identity, op, byte counts, duration, ARC version, error codes, correlation IDs, and guide/criteria hashes. They never contain prompts, commands, file paths, results, authentication material, or error messages. Content sampling is not implemented. Storage rotates at 2 MiB, expires after 30 days, and has a 64 MiB budget. Collection and reports prune expired files; an inactive installation prunes on its next use. Storage failures do not fail control calls. Cancelled calls retain request metadata without claiming response bytes.
 
 Sequences group calls from the same source with gaps of at most five minutes. Waste candidates include projects-then-act calls, repeated guide/policy hashes (with uncached repeats counted separately), and same-op retries after INVALID_ARGUMENTS. These are timing-based candidates, not proof of unnecessary work. Task totals associate create and subsequent calls through task/thread IDs and request receipts, ending at the first successful review. Tasks whose create predates the retained window are excluded. Unrelated source calls without a task association are not charged to a task.
+
+
+## Per-source MCP text
+
+Use `arc cli source list` to obtain a source ID. Enable minimal text only after verifying that this source's client reads structuredContent:
+
+```sh
+printf '%s' '{"minimalText":true}' | arc cli source update <sourceId> --stdin
+```
+
+Set `minimalText:false` to restore full text immediately. This setting defaults to false for every existing and new source and is read for each response without rebuilding or reconnecting. In minimal mode, MCP text points to structuredContent.result; errors also name their code. Structured results, isError, and non-text content such as images are retained. Some clients consume only text, so do not enable this setting globally. Offline configuration may set the source's minimalText boolean in sources.json while Core is stopped. CLI updates are the supported live path. No credentials or source identity change with this setting.

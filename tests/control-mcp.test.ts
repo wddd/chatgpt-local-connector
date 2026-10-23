@@ -1434,3 +1434,27 @@ test('control stats report byte baselines and waste candidates without call cont
   assert.ok(!JSON.stringify(stats).includes('private-metric-payload'));
   console.log('CONTROL_BASELINE '+JSON.stringify(r.totals));
 });
+
+
+test('minimal MCP text is opt-in per source and preserves structured results and errors',async()=>{
+  // Contract: frozen tools retain structuredContent when a source opts into minimal text.
+  const before=await call('guide');
+  const sources=await management('source');
+  const rows=Array.isArray(sources)?sources:sources.sources;
+  const source=rows.find((s:any)=>s.ingressId==='default');assert.ok(source);
+  assert.equal(source.minimalText===true,false);
+  await management(`source/${source.id}`,'PUT',{minimalText:true});
+  try {
+    const compact=await call('guide');
+    assert.deepEqual(compact.result,before.result);
+    assert.ok(JSON.stringify(compact.response.content).length<JSON.stringify(before.response.content).length);
+    const failed=await call('read',{unsupported:true});
+    assert.equal(failed.response.isError,true);assert.equal(failed.result.error.code,'INVALID_ARGUMENTS');
+    assert.ok((failed.response.content[0] as any).text.includes(failed.result.error.code));
+    const local=JSON.parse(execFileSync(fixtureCommand,['cli','control','guide'],{env:fixtureEnv,encoding:'utf8'}));
+    assert.equal(local.ok,true);assert.ok(local.result.content);
+  } finally {await management(`source/${source.id}`,'PUT',{minimalText:false});}
+  const restored=await call('guide');
+  assert.deepEqual(JSON.parse((restored.response.content[0] as any).text),restored.result);
+  assert.equal(restored.result.guideHash,before.result.guideHash);
+});
