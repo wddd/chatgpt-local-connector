@@ -159,7 +159,7 @@ async fn request(route: &str, method: &str) -> Result<Value> {
     .await
     .map_err(|_| format!("REPLACE_TIMEOUT: {route}"))?
 }
-async fn wait_idle(path: &Path, receipt: &Value) -> Result<()> {
+async fn wait_idle(path: &Path, receipt: &mut Value) -> Result<()> {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
     let mut quiet = 0;
     loop {
@@ -170,7 +170,14 @@ async fn wait_idle(path: &Path, receipt: &Value) -> Result<()> {
         }
         let activity = request("agents/activity", "GET").await?;
         let status = request("status", "GET").await?;
-        if idle(&activity, &status) {
+        let tasks = request("tasks", "GET")
+            .await
+            .unwrap_or_else(|error| json!({"error":error}));
+        receipt["waiting"] = waiting(&activity, &status, &tasks);
+        receipt["waiting"]["observedAt"] = json!(now());
+        receipt["updatedAt"] = json!(now());
+        save(&path.join("status.json"), receipt)?;
+        if receipt["waiting"]["idle"] == true {
             quiet += 1;
         } else {
             quiet = 0;
@@ -180,7 +187,7 @@ async fn wait_idle(path: &Path, receipt: &Value) -> Result<()> {
         }
         if tokio::time::Instant::now() >= deadline {
             return Err(
-                "REPLACE_TASKS_BUSY: no shutdown performed; finish active turns and retry".into(),
+                "REPLACE_TASKS_BUSY: no shutdown performed; inspect cli app replace --status for blocking work and retry when it is idle".into(),
             );
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -389,7 +396,7 @@ pub async fn run_worker(id: &str) -> Result<()> {
         phase(&path, &mut receipt, "waiting-for-turns", None)?;
         // Give the command executor time to deliver its own receipt to the calling turn.
         tokio::time::sleep(Duration::from_secs(10)).await;
-        wait_idle(&path, &receipt).await?;
+        wait_idle(&path, &mut receipt).await?;
         crate::package::check(&staged).await?;
         if crate::runtime::build_id(&target.join("Contents/Resources/bin/arc"))?
             != receipt["oldPackage"]["coreBuild"]

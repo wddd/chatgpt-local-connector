@@ -1010,6 +1010,11 @@ impl Timeline {
                 .map(|r| r["interaction"].clone())
         });
         let mut row = json!({"id":info["id"],"source":source,"title":redact(string(info,"title")),"project":info["project"],"phase":"idle","headline":"","startedAt":info["startedAt"],"phaseSince":info["startedAt"],"timeline":true});
+        row["turnId"] = if self.turn.is_empty() {
+            Value::Null
+        } else {
+            json!(self.turn)
+        };
         row["turnStartedAt"] = json!(self.turn_started_at);
         row["fallbackHeadline"] = json!(fallback);
         row["recentContent"] = json!(recent.iter().rev().collect::<Vec<_>>());

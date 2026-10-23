@@ -75,6 +75,7 @@ export interface AgentActivitySession {
   origin?: { ingressId?: string; controlSource?: string };
   id: string;
   source: "arc-task" | "codex-thread" | "transcript";
+  turnId?: string | null;
   nativeSessionId?: string;
   title?: string;
   project?: string | null;
