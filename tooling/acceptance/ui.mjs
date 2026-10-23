@@ -92,6 +92,24 @@ try {
             }
           }
         }
+        if (width >= 1280 && !fixture.panel && fixture.tasks.some(task => task.completed)) {
+          // Regression: dragging a completed card left a click guard that swallowed its mark-read action.
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          for (const task of fixture.tasks.filter(task => task.completed)) {
+            const bubble = page.getByRole('button', { name: task.title });
+            const bounds = await bubble.boundingBox();
+            if (!bounds) throw new Error('Completed task is unavailable for mark-read acceptance');
+            await bubble.dragTo(bubble, {
+              sourcePosition: { x: bounds.width / 2, y: bounds.height / 2 },
+              targetPosition: { x: bounds.width * 0.6, y: bounds.height * 0.6 },
+            });
+            const markRead = page.getByRole('button', { name: messages['activity.markRead'], exact: true });
+            await markRead.click();
+            await markRead.waitFor({ state: 'hidden' });
+            await bubble.getByRole('img', { name: messages['activity.unread'], exact: true }).waitFor({ state: 'hidden' });
+            if (await page.getByRole('dialog').count()) throw new Error('Mark-read opened a task detail panel');
+          }
+        }
       } catch (error) { errors.push(String(error)); }
       if (errors.length) report.failures.push(key);
       report.scenarios.push(row);

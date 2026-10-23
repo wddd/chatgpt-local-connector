@@ -155,7 +155,6 @@ export default function Topology({ left, right, brand, boundary, panelKey, panel
     const key = kind === "node" ? nodeKey(side, id) : taskKey(side, id), v = animator.current.values(key);
     const button = (event.target as Element).closest("button");
     if (!v || !button || drag.current) return;
-    suppressedClick.current = null;
     const candidates = kind === "node" ? latest.current.nodes.filter(n => n.side === side && n.reorderable)
       : latest.current.tasks.filter(t => t.side === side && t.parent === parent && t.reorderable
         && (t.state === "attention") === (latest.current.tasks.find(t => t.side === side && t.id === id)?.state === "attention"));
@@ -236,7 +235,10 @@ export default function Topology({ left, right, brand, boundary, panelKey, panel
       painter.current?.dispose(); painter.current = null;
     };
   }, [boundary, paint, prefix, target]);
+  // A new pointer sequence clears the previous drag's click guard, including
+  // controls that stop pointerdown before the draggable slot can receive it.
   return <div ref={graph} className="connection-graph topology-scene"
+    onPointerDownCapture={() => { suppressedClick.current = null; }}
     onPointerMove={moveDrag} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)}
     onLostPointerCapture={event => finishDrag(event, true)}
     onKeyDownCapture={event => { if (event.key === "Escape" && drag.current) {

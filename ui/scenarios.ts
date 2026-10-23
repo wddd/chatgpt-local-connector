@@ -3,7 +3,7 @@ import { navigation, type Page } from './state/navigation';
 import type { RelayProgress } from './state/relay';
 import { connector } from './state/connector';
 import { agents, type Agent } from './state/agents';
-import { acceptActivity } from './state/activity';
+import { acceptActivity, resetActivityCore } from './state/activity';
 import { tasks } from './state/tasks';
 import { permissions } from './state/permissions';
 import { subscriptions } from './state/subscriptions';
@@ -172,6 +172,7 @@ export async function installScenario(name: string) {
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
   connector.set({ status, sources, sourcesLoaded: true, busy: '', loading: false, error: '', feedback: { text: '', error: false } });
   agents.set({ items: inventory, loaded: true, loading: false, saving: '', error: '' });
+  if (status.core.backendSession) resetActivityCore(status.core.backendSession);
   acceptActivity(activity);
   tasks.set({ records, loading: false, error: '' });
   permissions.set({ data: permissionData, loading: false, error: '' });
