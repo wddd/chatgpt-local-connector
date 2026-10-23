@@ -83,8 +83,7 @@ export class TopologyPainter {
       if (!v || !n) continue;
       keep.add(key);
       const b = this.branch(key), a = deg(v.port), radial = { x: t.side * Math.cos(a), y: Math.sin(a) };
-      const radius = bridge ? n.size * n.scale / 2 + 6 : n.radius;
-      const port = { x: n.x + radius * radial.x, y: n.y + radius * radial.y };
+      const port = { x: n.x + n.radius * radial.x, y: n.y + n.radius * radial.y };
       const end = bridge && panel ? { x: t.side === 1 ? panel.x : panel.x + panel.width,
         y: clamp(v.y, panel.y + 27, panel.y + panel.height - 27) } : { x: v.x, y: v.y };
       const D = Math.hypot(end.x - port.x, end.y - port.y);

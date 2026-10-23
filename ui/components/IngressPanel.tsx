@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, Settings } from "lucide-react";
 import { t } from "../i18n";
 import { api } from "../api";
 import { connector, refreshConnector } from "../state/connector";
@@ -10,7 +10,7 @@ import type { SurfaceRect } from "../motion/surface";
 import SourceIcon from "./SourceIcon";
 import IngressDialog from "./IngressDialog";
 import SourceDispatches from "./SourceDispatches";
-import { Button, Dialog, IconButton, Notice, Switch } from "./ui";
+import { Dialog, IconButton, Notice, Switch } from "./ui";
 
 export default function IngressPanel({ onPanelFrame, expanded, onToggleWidth }: {
   onPanelFrame: (rect: SurfaceRect | null) => void; expanded: boolean; onToggleWidth: () => void;
@@ -54,7 +54,11 @@ export default function IngressPanel({ onPanelFrame, expanded, onToggleWidth }: 
         onClose={() => selectIngressPanel(entry)} onRemoved={() => { if (ingressPanel.get()?.ingress.id === entry.id) ingressPanel.set(undefined); }}
         onSaved={ingress => { if (ingressPanel.get()?.ingress.id === entry.id) selectIngressPanel(ingress, { autoConnect: true }); }} /> : <>
         <header className="dialog-header">
-          <SourceIcon platform={client?.source ?? entry.controlSource} /><h2 className="activity-panel-title">{client?.name ?? entry.name}</h2>
+          <SourceIcon platform={client?.source ?? entry.controlSource} />
+          <div className="source-panel-heading">
+            <h2 className="activity-panel-title">{client?.name ?? entry.name}</h2>
+            <IconButton icon={Settings} label={t("settings")} data-ingress-edit onClick={() => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: "remote", remoteSourceId: client?.id, remoteConnectionId: undefined })); }} />
+          </div>
           <div className="actions">{(!client || sources.filter(s => s.ingressId === entry.id && s.state !== "revoked").length === 1) && <Switch label={t("sourcePanel.enabled")} checked={entry.enabled} disabled={busy || toggling} onChange={value => void toggle(value)} />}
             <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
               aria-pressed={expanded} onClick={onToggleWidth} /></div>
@@ -63,7 +67,6 @@ export default function IngressPanel({ onPanelFrame, expanded, onToggleWidth }: 
           {error && <Notice>{error}</Notice>}
           <section><h3>{t("sourcePanel.dispatches")}</h3><SourceDispatches key={client?.id} sourceId={client?.id ?? ""} /></section>
         </div>
-        <footer className="dialog-footer"><Button data-ingress-edit onClick={() => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: "remote", remoteSourceId: client?.id, remoteConnectionId: undefined })); }}>{t("connect.manage")}</Button></footer>
       </>}
     </motion.div>
   </Dialog>;

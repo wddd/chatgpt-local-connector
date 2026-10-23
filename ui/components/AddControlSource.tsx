@@ -14,7 +14,7 @@ import IngressDialog from "./IngressDialog";
 import SetupDialog from "./SetupDialog";
 import RelayProgress from "./RelayProgress";
 import { ApprovalCard } from "./OAuthApproval";
-import { Button, CopyField, Field, Icon, Input, Loading, Notice, SingleChoice, Status } from "./ui";
+import { Button, CopyField, Field, HoverScope, Icon, Input, Loading, Notice, SingleChoice, Status } from "./ui";
 
 const steps: OnboardingStep[] = ["product", "connection", "address", "approval"];
 const products = ["claude", "chatgpt", "gemini", "grok", "grok-bot", "microsoft-copilot", "local-code", "local-desktop", "custom"];
@@ -113,8 +113,8 @@ export default function AddControlSource({ onBusy }: { onBusy: (busy: boolean) =
     <ol className="source-flow-progress" aria-label={t("addControlSource")}>{steps.map((value, index) => <li key={value} data-complete={steps.indexOf(flow.step) >= index || undefined} aria-current={flow.step === value ? "step" : undefined}>{t(`source.step.${value}`)}</li>)}</ol>
     {error && <Notice>{error}</Notice>}
     {flow.step === "product" && <>
-      <div className="source-grid"><SingleChoice cards label={t("source.product")} value={selectedProduct} onChange={value => onboarding.set(old => old && { ...old, source: value.startsWith("local-") ? "claude" : value, localTarget: value.startsWith("local-") ? value.slice(6) as "code" | "desktop" : undefined, ingressId: undefined, requestId: undefined })}
-        options={products.map(id => ({ value: id, label: id === "custom" ? t("connect.other") : id === "local-code" ? "Claude Code" : id === "local-desktop" ? "Claude Desktop" : controlSource(id)!.displayName, graphic: <SourceIcon platform={id.startsWith("local-") ? "claude" : id} /> }))} /></div>
+      <HoverScope className="source-product-list"><SingleChoice navigation label={t("source.product")} value={selectedProduct} onChange={value => onboarding.set(old => old && { ...old, source: value.startsWith("local-") ? "claude" : value, localTarget: value.startsWith("local-") ? value.slice(6) as "code" | "desktop" : undefined, ingressId: undefined, requestId: undefined })}
+        options={products.map(id => ({ value: id, label: id === "custom" ? t("connect.other") : id === "local-code" ? "Claude Code" : id === "local-desktop" ? "Claude Desktop" : controlSource(id)!.displayName, graphic: <SourceIcon platform={id.startsWith("local-") ? "claude" : id} /> }))} /></HoverScope>
       <Button variant="primary" disabled={!flow.source} onClick={() => step("connection")}>{t("source.next")}</Button>
     </>}
     {flow.step === "connection" && (operation ? <>

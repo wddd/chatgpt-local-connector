@@ -45,7 +45,10 @@ export default function SourceDetail({ source, onConnection }: { source: Control
       </Field>
     </form>
     <Field label={t("source.product")}><SourceProductChoice value={source.product} disabled={busy} onChange={product => void update({ product })} /></Field>
-    <Status tone={source.state === "connected" ? "success" : "neutral"}>{t(`source.state.${source.state}`)}</Status>
+    <div className="source-section-heading">
+      <Status tone={source.state === "connected" ? "success" : "neutral"}>{t(`source.state.${source.state}`)}</Status>
+      <Button variant="danger" disabled={busy || source.state === "revoked"} onClick={() => setConfirm(true)}>{t("source.disconnect")}</Button>
+    </div>
     {error && !confirm && <Notice>{error}</Notice>}
     {ingress ? <section className="source-connection-card">
       <div className="source-section-heading"><Button variant="ghost" data-source-connection onClick={() => onConnection(ingress.id)}>{ingress.name}</Button><span className="muted">{t(`source.kind.${connectionKind(ingress)}`)}</span></div>
@@ -58,7 +61,6 @@ export default function SourceDetail({ source, onConnection }: { source: Control
       <div><dt>{t("source.clientName")}</dt><dd>{client || "—"}</dd></div>
     </dl>
     <section><h3>{t("sourcePanel.dispatches")}</h3><SourceDispatches key={source.id} sourceId={source.id} /></section>
-    <footer className="source-danger"><Button variant="danger" disabled={busy || source.state === "revoked"} onClick={() => setConfirm(true)}>{t("source.disconnect")}</Button></footer>
     {confirm && <Dialog title={t("source.disconnectTitle", { name: source.label })} onClose={() => setConfirm(false)} busy={busy}
       footer={<><Button disabled={busy} onClick={() => setConfirm(false)}>{t("cancel")}</Button><Button variant="danger" busy={busy} onClick={() => void disconnect()}>{t("disconnect")}</Button></>}>
       <p>{t("source.disconnectHint")}</p>{error && <Notice>{error}</Notice>}

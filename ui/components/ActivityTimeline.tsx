@@ -95,7 +95,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   return <section className="agent-panel-layer task-detail-layer">
     <header className="dialog-header">
       <IconButton icon={ArrowLeft} label={t("back")} onClick={onBack} />
-      <h2 className="activity-panel-title">{agentName} / {session.title || t("timeline.title")}</h2>
+      <h2 className="activity-panel-title">{nativeSession.title || session.title || t("timeline.title")}</h2>
       <div className="actions">
         {nativeSession.open && <Tooltip text={t("activity.open")}><IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
           setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));
@@ -110,7 +110,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       </div>
     </header>
     <div className="task-timeline">
-      {agent === "codex" && nativeSession.open && <p className="muted small">{t("codexExternalTaskRestartHint")}</p>}
       {((!external && error) || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => { if (event.deltaY < 0) following.current = false; }}

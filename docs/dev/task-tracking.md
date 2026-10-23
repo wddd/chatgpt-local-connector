@@ -123,7 +123,7 @@ Mirrored ElasticPanel/panelMorph shells open right from node/bubble, 400px wide 
 
 Reserved panel space shifts/compresses the scene without vertical reorder, preserving 40px selected-node/name clearance. Below 760px, overlay mode leaves about 18px of selected-node edge. Pause drag/keyboard reorder while open. All Agent bubbles/tentacles fade toward nodes while outer arcs retain their geometry. Nonselected active nodes show counts with warning for pending. Selected nodes retain normal scale without an outline or halo. Their primary tentacle brightens and a secondary tentacle connects to the panel edge. Closing restores bubbles. reduced-motion switches directly without flow.
 
-Details have Back, Agent/task title, native link, width toggle, status, project, and duration. Agent and task layers share the default 400px or viewport-minus-32px width. Forward/back slide slightly in opposite directions over 160ms without shell resizing. Activity-snapshot membership means ongoing, including external sessions whose completion is snapshot removal rather than old item status. Timelines scroll internally with jump-to-latest.
+Details have Back, task title, native link, width toggle, status, project, and duration. The title omits the Agent name; the metadata row retains it. Agent and task layers share the default 400px or viewport-minus-32px width. Forward/back slide slightly in opposite directions over 160ms without shell resizing. Activity-snapshot membership means ongoing, including external sessions whose completion is snapshot removal rather than old item status. Timelines scroll internally with jump-to-latest.
 
 ARC first reads fully, then polls after each completed read plus ~1s with after, without overlap. Expired cursors force full reload. External read-only snapshots refresh fully about every 5s. Leaving details stops polling. Partial coverage is disclosed. Later errors preserve acquired entries.
 
@@ -139,7 +139,7 @@ Existing local respond forwarding, submission locks, stable requestId, and recei
 
 User messages are right-aligned light bubbles with 14/14/4/14px corners. Text/thinking use react-markdown/remark-gfm for tables, links, tasks, and code, skipping raw HTML. Links use platform opening. No syntax-highlighting dependency is added. Existing plainMarkdown and other-page rendering remain.
 
-Thinking starts collapsed. Reliable duration yields a localized seconds label, otherwise completed thinking or active thinking. Only active labels shimmer. Expanded content uses a pale-purple left rule and secondary text.
+Thinking starts collapsed. Reliable duration yields a localized duration label, otherwise completed thinking or active thinking. Known durations below one second display in milliseconds for thinking, tools, and tool groups, including native zero values as 0ms. Durations of at least one second display in whole seconds. Missing timing remains unknown. Only active labels shimmer. Expanded content uses a pale-purple left rule and secondary text.
 
 Consecutive same-turn command/file/tool entries group until another type/turn. Single tools render directly. Group IDs anchor to the first tool ID across replacement, appends, and prepended history. Inserted separators leave the ID only with the anchor-containing segment. Headers deduplicate at most three stacked icons and count explicit read/write/file-access/command/tool operations plus failures. Sum duration only when every tool has reliable timing.
 

@@ -18,8 +18,11 @@ import FilePath from "./FilePath";
 
 const toolIcons = { command: Terminal, file: FileText, tool: Wrench };
 const statusIcons = { running: LoaderCircle, completed: Check, failed: X, cancelled: Minus, pending: Circle, unknown: Circle };
+function durationText(value: number) {
+  return t(value < 1000 ? "activity.milliseconds" : "activity.seconds", { count: value < 1000 ? value : Math.floor(value / 1000) });
+}
 function Duration({ value }: { value?: number }) {
-  return value === undefined ? null : <time>{t("activity.seconds", { count: Math.floor(value / 1000) })}</time>;
+  return value === undefined ? null : <time>{durationText(value)}</time>;
 }
 function Fold({ open, onChange, summary, children, className = "" }: {
   open: boolean; onChange: (open: boolean) => void; summary: ReactNode; children: ReactNode; className?: string;
@@ -73,7 +76,7 @@ function TimelineEntry({ entry, agent, session, now, open, onChange, current = f
   </article>;
   if (entry.type === "thinking") return <Fold open={open} onChange={onChange} className="timeline-thinking" summary={<>
     <PhaseTile phase="thinking" animated={false} />
-    <PhaseLabel phase="thinking" running={entry.status === "running"}>{duration === undefined ? t(entry.status === "running" ? "activity.phase.thinking" : "timeline.thinking") : t("timeline.thought", { count: Math.floor(duration / 1000) })}</PhaseLabel>
+    <PhaseLabel phase="thinking" running={entry.status === "running"}>{duration === undefined ? t(entry.status === "running" ? "activity.phase.thinking" : "timeline.thinking") : t("timeline.thought", { duration: durationText(duration) })}</PhaseLabel>
   </>}><div className="timeline-thought-text"><TimelineMarkdown text={entry.text ?? ""} />{entry.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}</div></Fold>;
   if (entry.type === "error") return <Fold open={open} onChange={onChange} className="timeline-error" summary={<>
     <Icon icon={AlertCircle} /><span className="timeline-entry-title">{entry.text || entry.title || t("timeline.status.failed")}</span>
