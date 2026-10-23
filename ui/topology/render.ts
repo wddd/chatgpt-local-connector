@@ -117,10 +117,10 @@ export class TopologyPainter {
       line(middle, y, h.x, y);
       label((middle + h.x) / 2, y - 8, `Δx ${(h.x - middle).toFixed(1)} px`);
       for (const [index, side] of ([-1, 1] as const).entries()) {
-        const b = debug.balance[index], edge = h.x + side * b.effective;
+        const b = debug.balance[index], edge = h.x + side * b.full;
         line(h.x, y + 24, edge, y + 24, side === -1 ? "guide-left" : "guide-right");
         line(edge, y + 18, edge, y + 30);
-        label(h.x + side * 18, y + 46, `${side === -1 ? "L" : "R"} ${b.effective.toFixed(1)} px · ×${b.squeeze.toFixed(2)}`, side === -1 ? "end" : "start");
+        label(h.x + side * 18, y + 46, `${side === -1 ? "L" : "R"} ${b.full.toFixed(1)} px · ×${b.squeeze.toFixed(2)}`, side === -1 ? "end" : "start");
       }
       this.svg.append(g);
     }

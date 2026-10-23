@@ -1,6 +1,6 @@
 // Metadata is the single source for solver defaults, controls and validation.
 export const PARAMETER_GROUPS = {
-  balance: { en: "Balance", "zh-CN": "平衡" },
+  balance: { en: "Fitting", "zh-CN": "空间适配" },
   hub: { en: "Hub and earmuffs", "zh-CN": "中心与耳罩" },
   primary: { en: "Primary branches", "zh-CN": "一级触手" },
   secondary: { en: "Outer arcs and task branches", "zh-CN": "外弧与二级触手" },
@@ -8,7 +8,6 @@ export const PARAMETER_GROUPS = {
   motion: { en: "Motion", "zh-CN": "动效" },
 } as const;
 export const PARAMETERS = [
-  { key: "bubbleWeight", group: "balance", label: { en: "Bubble visual weight", "zh-CN": "气泡视觉权重" }, min: 0, max: 1, step: 0.05, default: 0.8 },
   { key: "margin", group: "balance", label: { en: "Window margin", "zh-CN": "窗口留白" }, min: 16, max: 120, step: 2, default: 40 },
   { key: "squeezeMin", group: "balance", label: { en: "Minimum column ratio", "zh-CN": "最小列距比例" }, min: 0.5, max: 1, step: 0.02, default: 0.72 },
   { key: "ringScale", group: "hub", label: { en: "Ring size", "zh-CN": "环尺寸" }, min: 0.6, max: 1.4, step: 0.02, default: 1 },
@@ -58,7 +57,7 @@ export interface TaskGeometry extends Task, Point { parent: string; side: Side; 
 interface WingOptions { idleStyle: boolean; rowScale: number; squeeze: number }
 interface Row { e: Entity; n: number; h: number }
 export interface Wing { side: Side; H: number; nodes: NodeGeometry[]; ear: { lo: number; hi: number }; tasks: TaskGeometry[] }
-export interface WingBalance { core: number; full: number; effective: number; squeeze: number }
+export interface WingBalance { core: number; full: number; squeeze: number }
 export interface Layout { balance: WingBalance[]; vw: number; vh: number; sceneH: number; hub: Point & { Re: number }; wings: Wing[] }
 export const deg = (d: number) => d * Math.PI / 180;
 export const NODE_R = 22, LABEL_W = 110;
@@ -202,10 +201,9 @@ export function solve(sc: Scene, p: Params = DEFAULTS, drag: Drag | null = null)
     else break;
     e = measure();
   }
-  // Balance: centre the optically weighted bounds, then let the window edges
-  // push the hub — a long right wing squeezes the ring toward free left space.
-  const eff = (x: { core: number; full: number }) => x.core + p.bubbleWeight * (x.full - x.core);
-  let hx = (leftEdge + rightEdge) / 2 + (eff(e.eL) - eff(e.eR)) / 2;
+  // Keep the hub at the viewport center whenever both wings fit. Only an
+  // actual edge constraint may displace it, by the smallest distance needed.
+  let hx = vw / 2;
   const minX = leftEdge + e.eL.full, maxX = rightEdge - e.eR.full;
   if (minX <= maxX) hx = Math.max(minX, Math.min(maxX, hx));
   else hx = sc.panel?.side === 1 ? maxX : minX; // A dock prioritizes its selected node; the far wing may clip.
@@ -223,7 +221,7 @@ export function solve(sc: Scene, p: Params = DEFAULTS, drag: Drag | null = null)
   const L = panelWing(solveWing(sc.left, -1, hub, Re, p, optL, dragOf(-1)));
   const R = panelWing(solveWing(sc.right, 1, hub, Re, p, optR, dragOf(1)));
   return { vw, vh, sceneH, hub, wings: [L, R], balance: [
-    { ...e.eL, effective: eff(e.eL), squeeze: optL.squeeze },
-    { ...e.eR, effective: eff(e.eR), squeeze: optR.squeeze },
+    { ...e.eL, squeeze: optL.squeeze },
+    { ...e.eR, squeeze: optR.squeeze },
   ] };
 }

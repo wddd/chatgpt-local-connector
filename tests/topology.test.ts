@@ -49,8 +49,8 @@ for (const [name, scene] of Object.entries(fixtures)) test(`topology lab: ${name
     if (l.full + r.full <= scene.vw - 2 * DEFAULTS.margin) assert.ok(layout.hub.x + r.full <= scene.vw - DEFAULTS.margin + 1e-9);
   }
 });
-test("right activity moves the hub left without compressing or dimming sources", () => {
-  // Property: right activity moves the hub left without compressing or dimming sources.
+test("right-side overflow moves the hub left without compressing or dimming sources", () => {
+  // Property: right-side overflow moves the hub left without compressing or dimming sources.
   const empty = { ...fixtures.multi, right: entities("agent", [0, 0, 0, 0]) };
   const idle = solve(empty), busy = solve(fixtures.multi), overflow = solve({ ...fixtures.multi, right: fixtures.busy.right });
   assert.ok(busy.hub.x < idle.hub.x);
@@ -59,6 +59,44 @@ test("right activity moves the hub left without compressing or dimming sources",
     idle.wings[0].nodes.map(n => [n.y - idle.hub.y, n.scale, n.opacity]));
   assert.ok(solve(fixtures.busy).sceneH > fixtures.busy.vh);
 });
+test("asymmetric tasks keep the hub centered while both wings have space", () => {
+  // Property: task asymmetry does not displace or compress a scene that fits on both sides of its center.
+  for (const counts of [[0, 0], [1, 0], [0, 1], [3, 2], [2, 3]]) {
+    const scene = { vw: 2400, vh: 1000, left: entities("source", counts.slice(0, 1)), right: entities("agent", counts.slice(1)) };
+    const layout = solve(scene), center = scene.vw / 2;
+    assert.ok(layout.balance.every(wing => wing.full <= center - DEFAULTS.margin));
+    assert.equal(layout.hub.x, center);
+    assert.ok(layout.balance.every(wing => wing.squeeze === 1));
+    assert.equal(solve({ ...scene, left: entities("source", [0]), right: entities("agent", [0]) }).hub.x, layout.hub.x);
+  }
+});
+
+test("edge fitting makes only the displacement needed and recenters when space returns", () => {
+  // Property: a fitting scene chooses the nearest feasible point to the viewport center before compressing its columns.
+  for (const side of [-1, 1] as const) for (const vw of [1200, 1500, 2000, 2400]) {
+    const scene = { vw, vh: 900, left: entities("source", side === -1 ? [2] : [0]), right: entities("agent", side === 1 ? [2] : [0]) };
+    const layout = solve(scene), [left, right] = layout.balance;
+    assert.ok(left.full + right.full <= vw - 2 * DEFAULTS.margin);
+    assert.ok(layout.balance.every(wing => wing.squeeze === 1));
+    if (right.full > vw / 2 - DEFAULTS.margin) assert.equal(layout.hub.x + right.full, vw - DEFAULTS.margin);
+    else if (left.full > vw / 2 - DEFAULTS.margin) assert.equal(layout.hub.x - left.full, DEFAULTS.margin);
+    else assert.equal(layout.hub.x, vw / 2);
+    assert.equal(solve({ ...scene, vw: vw * 2 }).hub.x, vw);
+  }
+});
+
+test("side panels leave the hub centered when their reserved space already fits", () => {
+  // Property: either dock may occupy available space without moving a scene that still fits around the viewport center.
+  const scene = { ...fixtures.multi, vw: 2400, vh: 900 }, base = solve(scene);
+  for (const side of [-1, 1] as const) {
+    const selected = side === -1 ? scene.left[0].id : scene.right[0].id;
+    const panel = { side, selected, edge: side === 1 ? scene.vw - 416 : 416 };
+    const docked = solve({ ...scene, panel });
+    assert.equal(docked.hub.x, base.hub.x);
+    assert.ok(docked.balance.every(wing => wing.squeeze === 1));
+  }
+});
+
 test("column compression exhausts the left column before the right; overflow clips on the right", () => {
   // Property: column compression exhausts the left column before the right; overflow clips on the right.
   for (let vw = 1400; vw >= 700; vw -= 10) {
@@ -152,10 +190,10 @@ test("topology imports validate the complete document before applying any values
 test("upgraded defaults apply to untouched parameters while manual overrides remain", () => {
   // Property: upgraded defaults apply to untouched parameters while manual overrides remain.
   const saved = parameterDiff({ ...DEFAULTS, damping: 38 });
-  const upgraded = { ...DEFAULTS, margin: 54, damping: 30, bubbleWeight: 0.9 };
+  const upgraded = { ...DEFAULTS, margin: 54, damping: 30, earFollow: 0.9 };
   const loaded = loadParameters(saved, upgraded);
   assert.equal(loaded.margin, 54);
-  assert.equal(loaded.bubbleWeight, 0.9);
+  assert.equal(loaded.earFollow, 0.9);
   assert.equal(loaded.damping, 38);
   assert.deepEqual(loadParameters(emptyParameters(), upgraded), upgraded);
   const imported = importParameters(JSON.stringify(saved), upgraded);
@@ -197,7 +235,6 @@ test("Agent dock reserves its width and label clearance without reordering or mo
       assert.ok(node.x + LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 <= edge - PANEL_ARC_GAP + 1e-6);
       assert.ok(node.x - node.size * node.scale / 2 >= 0);
       assert.ok(node.scale <= Math.max(1, DEFAULTS.activeScale));
-      assert.ok(docked.hub.x < base.hub.x);
       assert.ok(docked.wings[1].nodes.every(n => n.active ? n.arc !== null : n.arc === null));
       assert.ok(docked.wings[1].tasks.every(t => t.hidden));
       assert.ok(docked.balance.every(w => w.squeeze >= DEFAULTS.squeezeMin));
@@ -218,13 +255,12 @@ test("narrow docks retain arc clearance at minimum width and mirror the left doc
   }
 });
 
-test("source dock moves the scene right, clears labels and keeps Agent bubbles in their original rows", () => {
-  // Property: source dock moves the scene right, clears labels and keeps Agent bubbles in their original rows.
+test("source dock reserves clearance and keeps Agent bubbles in their original rows", () => {
+  // Property: source dock reserves clearance and keeps Agent bubbles in their original rows.
   for (const vw of [760, 900, 1280, 1800]) {
     const scene = { ...fixtures.busy, vw }, base = solve(scene);
     for (const selected of scene.left.map(n => n.id)) {
       const docked = solve({ ...scene, panel: { side: -1, edge: 416, selected } });
-      assert.ok(docked.hub.x > base.hub.x);
       assert.deepEqual(docked.wings.map(w => w.nodes.map(n => [n.id, n.y])), base.wings.map(w => w.nodes.map(n => [n.id, n.y])));
       const node = docked.wings[0].nodes.find(n => n.id === selected)!;
       assert.ok(node.x - LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 >= 416 + PANEL_ARC_GAP - 1e-6);
