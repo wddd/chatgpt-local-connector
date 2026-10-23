@@ -6,19 +6,19 @@ Call `guide` first for this connection’s workflow, enabled ops, and examples. 
 
 ## Install and connect
 
-[Install ARC](installation.md), open it, and sign in to Codex. Use the status shortcuts to review permissions, then choose **Add control source**. Later, use the homepage left dot or **Remote link → Add control source**.
+[Install ARC](installation.md), open it, and sign in to Codex. Welcome offers **This computer** for Claude Code or Claude Desktop, and **Phone and web** for remote platforms. Both open Add control source. Use the footer shortcuts to check login and permissions, or **Have a relay invite link?** to join a relay. Later, open setup from the homepage left dot or **Remote link → Add control source**.
 
 ### Add a control source
 
-1. Choose a platform in the centered panel.
-2. Select an existing connection. If needed, choose **Add connection**, complete that separate flow, and return with the new connection selected.
-3. Copy the address and follow the platform settings path shown in ARC. Use **Open settings** to open the platform.
-4. Return to ARC, compare the four-character pairing codes and check the client name and callback. Choose **New source** or **Reauthorize** an existing source. Optionally name a new source, then approve.
-5. ARC shows the added source. Choose **Done**.
+1. **Platform:** choose the client you use.
+2. **Connection:** select an existing connection. **Add connection** opens Add connection above this dialog; finishing returns with the new connection selected. With no compatible connection, choose a relay or your own address.
+3. **Configure:** copy the address, open the platform settings shown in ARC, and add the ARC connector. Click Connect in the client.
+4. **Approval:** return to ARC, compare the four-character pairing codes, and check the client and permissions. Enter an account name, or choose **Reauthorize** for an existing source when offered. Approve and return to the client.
+5. Choose **Done** on the success screen, or add another source.
 
 ### Add a connection
 
-Open **Remote link → Connections → Add connection**. Choose **Create my relay**, **Paste relay link**, **Dedicated tunnel**, **Own address**, **OpenAI Secure Tunnel**, **Claude Code**, or **Claude Desktop**. Follow the chosen method's configuration and finish on the connection success screen. Creating a connection is separate from authorizing a control source.
+Open **Remote link → Connections → Add connection**. Choose **Create my relay**, **Paste relay link**, **Use your own address**, **OpenAI Secure Tunnel**, **Claude Code**, or **Claude Desktop**. Configure the chosen method, then finish on **Ready**. From a stacked dialog, choose **Continue with this connection**; standalone setup offers **Done** or **Add a source for it**. Creating a connection does not itself authorize a control source. See [Connections](guides/connections.md) for each method.
 
 ### Local clients
 
@@ -26,11 +26,13 @@ Choose **Claude Code** or **Claude Desktop** when adding a source, then select i
 
 ### Manage sources and connections
 
-**Remote link** lists each source separately. Open a source to change its label or product, copy its connection address, view its dispatches, or disconnect it. **All / By platform** changes grouping. The Connections section includes unused connections; open a dedicated tunnel there to edit it. Use **Add connection** to configure an own address or OpenAI Secure Tunnel.
+**Remote link** lists sources and connections separately. Open a source to edit its account name or product, view dispatches, disconnect it, or choose **Change connection**. Open a connection to copy its address, see the sources using it, add a source, or remove it. Removing a connection retains source names and history for later reconnection.
 
-Relay owners manage sharing, members, and deletion under **Settings → Extras → Relay hosting**. Joined relays have **Leave** in their connection detail. The deployer can technically inspect relayed traffic in the Cloudflare dashboard; only join someone you trust.
+To change a source's connection, select the target in ARC first. In the client, delete the old ARC connector and add it again with the new address; editing the URL also works where supported. Return to ARC, compare the code, check **Claim as <account name>**, and approve the switch. Name, history and notification settings stay; the old grant is revoked after the new authorization completes.
 
-### 3. Dispatch and receive a notification
+Relay owners manage invite links, devices and deletion under **Settings → Extras → Relay hosting**. Joined relays have **Leave relay** in Connection detail. Only join a host you trust: the deployer can technically inspect relayed traffic in Cloudflare.
+
+### Dispatch and receive a notification
 
 Open a Claude Code cloud session on claude.ai and send this prompt. Claude can read its own session ID from its environment, for example the `cse_…` value in `CLAUDE_CODE_REMOTE_SDK_URL`:
 

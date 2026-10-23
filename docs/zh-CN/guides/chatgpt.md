@@ -14,13 +14,19 @@ Codex 提供普通 `gpt-6-astra`，其模型列表没有独立的 Astra Pro 选�
 
 ## 通过远程链接连接
 
-在 ARC 打开**添加控制源**，选择 **ChatGPT**，再选择已有连接。需要新连接时，通过**添加连接**创建，再返回控制源流程。复制地址，按面板路径在 ChatGPT 添加应用。在批准步骤核对配对码、客户端自报名称和回调地址，选择新来源或重新授权该连接上的已有 ChatGPT 来源，然后批准。连接完成后在对话中启用 ARC。参见[上手](../getting-started.md)。
+欢迎页选择**在手机和网页上**，再选 **ChatGPT**。之后可从**远程链接 → 添加控制源**进入。选择已有连接，或通过**添加连接**完成方式 → 配置 → 就绪，返回时新连接会自动选中。
+
+在配置步骤复制地址，按 ARC 的设置路径在 ChatGPT 添加 ARC 应用。在批准步骤核对配对码、客户端和权限，填写账号名称；要保留该连接上的已有 ChatGPT 来源时，选择**重新授权**。批准并完成设置后，在对话中启用 ARC。
+
+迁移来源时，打开来源详情并选择**更换连接**。先选目标连接，再到 ChatGPT 删除旧 ARC 应用，用新地址重新添加；支持编辑 URL 时也可直接修改。回到 ARC 核对配对码和**认领为「账号名称」**并批准。名称、历史和通知设置保留，新授权完成后旧授权才会撤销。
+
+**远程链接 → 连接**可查看连接详情，包括地址、使用它的来源及移除操作。中继托管位于**设置 → 附加功能 → 中继托管**。连接方式见[连接指南](connections.md)，欢迎页的本地客户端选择见[上手](../getting-started.md)。
 
 ## 高级：OpenAI Secure Tunnel
 
 1. 安装 ARC，并登录 Codex Desktop。
-2. 按官方 [Secure MCP Tunnel 流程](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)取得 Tunnel ID 和运行时 API key，在 ARC **远程链接 → 连接 → 添加连接 → OpenAI Secure Tunnel** 的连接表单中填入，再在**添加控制源 → ChatGPT**中选择新连接。选择连接时也有**添加连接**快捷入口。
-3. 点击**继续**添加并连接。ARC 会准备和管理官方 Tunnel Client；优先复用合格缓存，没有合格缓存时直接下载支持的官方版本并校验 SHA256，不依赖匿名 GitHub API。
+2. 按官方 [Secure MCP Tunnel 流程](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)取得 Tunnel ID 和运行时 API key，在 ARC **远程链接 → 连接 → 添加连接 → OpenAI Secure Tunnel** 的连接表单中填入。添加控制源的连接选择步骤也有**添加连接**快捷入口。
+3. 点击**保存并启动**。在就绪页为该连接添加控制源并选择 **ChatGPT**，或返回打开此对话框的控制源流程。ARC 会准备和管理官方 Tunnel Client；优先复用合格缓存，没有合格缓存时直接下载支持的官方版本并校验 SHA256，不依赖匿名 GitHub API。
 4. 在 ChatGPT 开启可用的 **Developer Mode**。打开[插件](https://chatgpt.com/plugins)，创建开发者连接，选择 **Tunnel**，选中同一个 Tunnel。界面名称不同时，按当前[连接说明](https://developers.openai.com/plugins/deploy/connect-chatgpt)操作。
 5. 在 Chat 对话启用 ARC。Secure Tunnel 使用已配置的认证方式，没有本机配对码批准。
 

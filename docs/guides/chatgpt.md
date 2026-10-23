@@ -14,13 +14,19 @@ Codex offers the ordinary `gpt-6-astra` model; its model list does not expose a 
 
 ## Connect with a remote link
 
-Open **Add control source** in ARC, choose **ChatGPT**, then select an existing connection. Use **Add connection** to create one if needed, then return to source setup. Copy the address and follow the panel’s path to add an app in ChatGPT. In the approval step, compare the pairing codes and check the client name and callback. Choose a new source or reauthorize an existing ChatGPT source on that connection, then approve. Enable ARC in the conversation once connected. See [Getting started](../getting-started.md).
+On Welcome, choose **Phone and web**, then **ChatGPT**. Later, use **Remote link → Add control source**. Select an existing connection, or open **Add connection**, finish Method → Configure → Ready, and return with it selected.
+
+In Configure, copy the address and follow ARC's settings path to add the ARC app in ChatGPT. In Approval, compare the pairing codes, check the client and permissions, and enter an account name. Choose **Reauthorize** if you want to retain an existing ChatGPT source on that connection. Approve, finish setup, and enable ARC in the conversation.
+
+To move a source, open its detail and choose **Change connection**. Select the target first, then delete the old ARC app in ChatGPT and add it again with the new address; editing the URL also works if supported. Return to ARC, compare the code, check **Claim as <account name>**, and approve. Name, history and notification settings stay, and the old grant is revoked after the new authorization completes.
+
+**Remote link → Connections** opens connection details, including the address, sources using it, and removal. Relay hosting is under **Settings → Extras → Relay hosting**. See [Connections](connections.md) for methods and [Getting started](../getting-started.md) for Welcome's local-client choice.
 
 ## Advanced: OpenAI Secure Tunnel
 
 1. Install ARC and sign in to Codex Desktop.
-2. Follow the official [Secure MCP Tunnel setup](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) to obtain a Tunnel ID and runtime API key. Open **Remote link → Connections → Add connection → OpenAI Secure Tunnel** and enter them in the connection form. Then select the new connection in **Add control source → ChatGPT**. The connection-selection step also offers an **Add connection** shortcut.
-3. Choose **Continue** to add and connect. ARC prepares and manages the official Tunnel Client, reusing a qualifying cached version before downloading the supported official release with SHA256 verification. Startup does not depend on the anonymous GitHub API.
+2. Follow the official [Secure MCP Tunnel setup](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) to obtain a Tunnel ID and runtime API key. Open **Remote link → Connections → Add connection → OpenAI Secure Tunnel** and enter them in the connection form. The connection-selection step in Add control source also offers an **Add connection** shortcut.
+3. Choose **Save and start**. On Ready, choose **Add a source for it** and select **ChatGPT** (or continue back to the source setup that opened this dialog). ARC prepares and manages the official Tunnel Client, reusing a qualifying cached version before downloading the supported official release with SHA256 verification. Startup does not depend on the anonymous GitHub API.
 4. Enable **Developer Mode** in ChatGPT where available. Open [Plugins](https://chatgpt.com/plugins), create a developer-mode connection, choose **Tunnel**, and select the same tunnel. Follow the current [connection instructions](https://developers.openai.com/plugins/deploy/connect-chatgpt) if the UI labels differ.
 5. Enable ARC in the Chat conversation. Secure Tunnel uses its configured authentication and has no local pairing-code approval.
 
