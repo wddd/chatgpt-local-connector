@@ -927,5 +927,6 @@
   "hosting.removeDescription": "Remove {name} from this relay? Its relay connection will stop working. It can join again using a valid invite link.",
   "hosting.deleteTitle": "Delete this relay",
   "hosting.deleteDescription": "Every connected device disconnects, including this computer’s relay link.",
-  "hosting.delete": "Delete…"
+  "hosting.delete": "Delete…",
+  "hosting.remove": "Remove"
 }

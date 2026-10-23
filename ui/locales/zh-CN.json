@@ -596,7 +596,7 @@
   "timeline.latest": "回到最新",
   "timeline.readRequest": "{agent} 请求读取文件",
   "timeline.writeRequest": "{agent} 请求写入文件",
-  "topology.experimental": "实验性",
+  "topology.experimental": "实验性功能",
   "topology.tuning": "首页拓扑调参",
   "topology.settingDescription": "在首页显示浮动调参面板。关闭后，已保存的参数继续生效。",
   "topology.custom": "已偏离默认值",
@@ -927,5 +927,6 @@
   "hosting.removeDescription": "要从此中继移除 {name} 吗？该设备的中继连接将停止工作，它可以使用有效邀请链接重新加入。",
   "hosting.deleteTitle": "删除此中继",
   "hosting.deleteDescription": "所有已连接的设备都会断开，包括本机的中继连接。",
-  "hosting.delete": "删除…"
+  "hosting.delete": "删除…",
+  "hosting.remove": "移除"
 }

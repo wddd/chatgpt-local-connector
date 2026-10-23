@@ -91,7 +91,7 @@ function HostedRelay({ relay, version, startJob, disabled }: {
           { key: "device", title: t("hosting.device"), width: 180, render: member => <div className="hosted-relay-device"><Status tone={member.online ? "success" : "neutral"}><span className="sr-only">{t(member.online ? "connect.online" : "connect.offline")}</span></Status><span className="hosted-relay-device-name" title={name(member)}>{name(member)}</span>{member.isSelf && <span className="hosted-relay-self">{t("hosting.self")}</span>}</div> },
           { key: "joined", title: t("hosting.joined"), width: 100, render: member => <time dateTime={member.joinedAt}>{compactDate(member.joinedAt)}</time> },
           { key: "seen", title: t("hosting.lastSeen"), width: 100, render: member => member.lastOnline ? <time dateTime={member.lastOnline}>{compactDate(member.lastOnline, true)}</time> : t("connect.neverOnline") },
-          { key: "actions", title: <span className="sr-only">{t("hosting.actions")}</span>, width: 80, align: "right", render: member => !member.isSelf && <Button variant="ghost" disabled={blocked} onClick={() => { setError(""); setConfirm(member); }}>{t("remove")}</Button> },
+          { key: "actions", title: <span className="sr-only">{t("hosting.actions")}</span>, width: 80, align: "right", render: member => !member.isSelf && <Button variant="ghost" disabled={blocked} onClick={() => { setError(""); setConfirm(member); }}>{t("hosting.remove")}</Button> },
         ]} />
       </div>
     </section>
@@ -102,7 +102,7 @@ function HostedRelay({ relay, version, startJob, disabled }: {
     {error && !confirm && <Notice tone="danger">{error}</Notice>}
     {confirm && <Dialog title={t(confirm === "reset-token" ? "hosting.resetTitle" : confirm === "delete" ? "hosting.deleteTitle" : "connect.confirm.remove")} width={440} onClose={() => setConfirm(undefined)} busy={!!busy} footer={<>
       <Button disabled={!!busy} onClick={() => setConfirm(undefined)}>{t("cancel")}</Button>
-      <Button variant={confirm === "reset-token" ? "primary" : "danger"} busy={!!busy} onClick={() => void action(typeof confirm === "string" ? confirm : "remove", typeof confirm === "object" ? confirm : undefined)}>{t(confirm === "reset-token" ? "hosting.reset" : confirm === "delete" ? "delete" : "remove")}</Button>
+      <Button variant={confirm === "reset-token" ? "primary" : "danger"} busy={!!busy} onClick={() => void action(typeof confirm === "string" ? confirm : "remove", typeof confirm === "object" ? confirm : undefined)}>{t(confirm === "reset-token" ? "hosting.reset" : confirm === "delete" ? "delete" : "hosting.remove")}</Button>
     </>}>
       <p>{t(confirm === "reset-token" ? "hosting.resetDescription" : confirm === "delete" ? "hosting.deleteDescription" : "hosting.removeDescription", { name: typeof confirm === "object" ? name(confirm) : "" })}</p>
       {error && <Notice tone="danger">{error}</Notice>}
