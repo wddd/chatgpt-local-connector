@@ -55,7 +55,7 @@ function wireState(state: string): WireState {
 }
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
   const tuning = topologyTuningEnabled.use();
-  const tracked = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use(), sourceSelection = ingressPanel.use();
+  const { tracked, markRead } = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use(), sourceSelection = ingressPanel.use();
   const flow = onboarding.use(), newConnection = connectionSetup.use();
   const newSourceId = addedSource.use();
   useEffect(() => {
@@ -224,7 +224,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]), width, height: bubbleHeights[effectiveDensity], taskId: session.id, threadId: session.nativeSessionId, origin: session.origin,
           state: (session.endedAt !== undefined ? "completed" : session.interaction ? "attention" : session.source === "transcript" ? "external" : "running") as import("../topology/render").TaskState,
           selected: selected && selection.session?.id === session.id, reorderable: !panelOpen,
-          content: <ActivityBubble agent={agent.agent} session={session} now={now} density={effectiveDensity} onMove={panelOpen ? undefined : by => {
+          content: <ActivityBubble agent={agent.agent} session={session} now={now} density={effectiveDensity} onRead={() => markRead(agent.agent, session.id)} onMove={panelOpen ? undefined : by => {
             const group = shown.sessions.filter(s => !!s.interaction === !!session.interaction);
             const from = group.findIndex(s => s.id === session.id), to = from + by;
             if (to < 0 || to >= group.length) return;

@@ -132,5 +132,10 @@ export function useActivityTracking() {
       Math.max(0, Math.min(...ends) - Date.now()));
     return () => clearTimeout(timer);
   }, [tracked, selected]);
-  return tracked;
+  function markRead(agent: string, id: string) {
+    setTracked(old => ({ ...old, [agent]: (old[agent] ?? []).map(session =>
+      session.id === id && session.endedAt !== undefined && session.readAt === undefined
+        ? { ...session, readAt: Date.now() } : session) }));
+  }
+  return { tracked, markRead };
 }

@@ -22,6 +22,11 @@ struct TurnClock {
     turn_id: String,
     dispatch_summary: Option<Value>,
     turn_dispatch_summaries: HashMap<String, Value>,
+    thread_tier: Value,
+    turn_tier: Value,
+    title: String,
+    project: Option<String>,
+    created_at: Value,
 }
 #[derive(Clone)]
 pub(super) struct External {
@@ -76,12 +81,12 @@ fn scan(selected: &[String], clocks: &mut HashMap<PathBuf, TurnClock>) -> Vec<Ex
         return active;
     };
     let now = SystemTime::now();
+    let codex_home = std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".codex"));
     for agent in selected {
         let root = if agent == "codex" {
-            std::env::var_os("CODEX_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| home.join(".codex"))
-                .join("sessions")
+            codex_home.join("sessions")
         } else {
             std::env::var_os("CLAUDE_CONFIG_DIR")
                 .map(PathBuf::from)
@@ -120,6 +125,13 @@ fn scan(selected: &[String], clocks: &mut HashMap<PathBuf, TurnClock>) -> Vec<Ex
                     let clock = clocks.entry(entry.path()).or_default();
                     session["turnStartedAt"] =
                         turn_started_at(&entry.path(), agent, clock).unwrap_or(Value::Null);
+                    if !clock.title.is_empty() {
+                        session["title"] = json!(clock.title);
+                    }
+                    if session["project"].is_null() {
+                        session["project"] = json!(clock.project);
+                    }
+                    session["startedAt"] = clock.created_at.clone();
                     if !clock.turn_id.is_empty() {
                         session["turnId"] = json!(clock.turn_id);
                     }
@@ -132,6 +144,29 @@ fn scan(selected: &[String], clocks: &mut HashMap<PathBuf, TurnClock>) -> Vec<Ex
                         path: entry.path(),
                         turn_dispatch_summaries: clock.turn_dispatch_summaries.clone(),
                     });
+                }
+            }
+        }
+    }
+    // Codex stores generated and renamed conversation titles separately from rollouts.
+    // Later index records replace earlier names for the same session.
+    if active.iter().any(|session| session.agent == "codex") {
+        if let Ok(file) = File::open(codex_home.join("session_index.jsonl")) {
+            for line in BufReader::new(file)
+                .lines()
+                .map_while(std::result::Result::ok)
+            {
+                let Ok(record) = serde_json::from_str::<Value>(&line) else {
+                    continue;
+                };
+                let title = string(&record, "thread_name").trim();
+                if title.is_empty() {
+                    continue;
+                }
+                if let Some(session) = active.iter_mut().find(|session| {
+                    session.agent == "codex" && session.session["id"] == record["id"]
+                }) {
+                    session.session["title"] = json!(title.chars().take(240).collect::<String>());
                 }
             }
         }
@@ -152,7 +187,7 @@ fn turn_start(record: &Value, agent: &str) -> Option<Value> {
     record.get("timestamp").filter(|v| v.is_string()).cloned()
 }
 
-// Keep the turn boundary independently of the bounded headline tail. Each
+// Keep session metadata and turn configuration independently of the headline tail. Each
 // complete record is scanned once while a transcript remains active.
 fn turn_started_at(path: &Path, agent: &str, clock: &mut TurnClock) -> Result<Value> {
     let mut file = File::open(path).map_err(|e| e.to_string())?;
@@ -172,8 +207,34 @@ fn turn_started_at(path: &Path, agent: &str, clock: &mut TurnClock) -> Result<Va
             break;
         }
         if let Ok(record) = serde_json::from_slice::<Value>(&line) {
+            if clock.created_at.is_null() && record["timestamp"].is_string() {
+                clock.created_at = record["timestamp"].clone();
+            }
+            if let Some(project) = record["cwd"]
+                .as_str()
+                .or_else(|| record["payload"]["cwd"].as_str())
+            {
+                clock.project = Some(project.into());
+            }
+            let user = if agent == "codex" {
+                record["payload"]["role"] == "user"
+            } else {
+                record["message"]["role"] == "user"
+            };
+            if clock.title.is_empty() && user {
+                if let Some((_, title, _)) = phase_content(&record, agent, false) {
+                    clock.title = title;
+                }
+            }
+            if agent == "codex"
+                && record["type"] == "event_msg"
+                && record["payload"]["type"] == "thread_settings_applied"
+            {
+                clock.thread_tier = record["payload"]["thread_settings"]["service_tier"].clone();
+            }
             if let Some(start) = turn_start(&record, agent) {
                 clock.started_at = start;
+                clock.turn_tier = clock.thread_tier.clone();
                 if let Some(turn) = record["payload"]["turn_id"].as_str() {
                     if clock.turn_id != turn {
                         clock.dispatch_summary = None;
@@ -183,11 +244,14 @@ fn turn_started_at(path: &Path, agent: &str, clock: &mut TurnClock) -> Result<Va
             }
             if agent == "codex" && record["type"] == "turn_context" {
                 if let Some(turn) = record["payload"]["turn_id"].as_str() {
+                    if clock.turn_id != turn {
+                        clock.turn_tier = clock.thread_tier.clone();
+                    }
                     clock.turn_id = turn.into();
                     let context = &record["payload"];
                     clock.dispatch_summary = crate::egress::dispatch_summary(&json!({
                         "model":context["model"],"effort":context["effort"],
-                        "serviceTier":context["service_tier"]
+                        "serviceTier":context["service_tier"],"threadServiceTier":clock.turn_tier
                     }));
                     if let Some(summary) = &clock.dispatch_summary {
                         clock

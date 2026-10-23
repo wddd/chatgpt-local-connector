@@ -465,9 +465,22 @@ impl AgentHost {
                 .and_then(|agent| agent["sessions"].as_array_mut())
                 .and_then(|sessions| sessions.iter_mut().find(|live| live["id"] == session["id"]))
             {
-                if live["turnId"] == session["turnId"] && live["dispatchSummary"].is_null() {
-                    if let Some(summary) = session.get("dispatchSummary") {
-                        live["dispatchSummary"] = summary.clone();
+                for field in ["title", "project", "startedAt"] {
+                    if live[field].as_str().is_none_or(str::is_empty) && session[field].is_string()
+                    {
+                        live[field] = session[field].clone();
+                    }
+                }
+                if live["turnId"] == session["turnId"] {
+                    if let Some(summary) = session["dispatchSummary"].as_object() {
+                        if live["dispatchSummary"].is_null() {
+                            live["dispatchSummary"] = json!({});
+                        }
+                        for (field, value) in summary {
+                            if live["dispatchSummary"][field].is_null() {
+                                live["dispatchSummary"][field] = value.clone();
+                            }
+                        }
                     }
                 }
             }

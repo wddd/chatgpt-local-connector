@@ -6,6 +6,7 @@ import { selectAgentPanel } from "../state/overviewPanels";
 import { activityHeadline, type TrackedActivity, type BubbleDensity } from "../state/activityModel";
 import { useInterval } from "../state/hooks";
 import FilePath from "./FilePath";
+import { Button } from "./ui";
 
 export function elapsed(since: string | null | undefined, now: number) {
   const seconds = since ? Math.max(0, Math.floor((now - Date.parse(since)) / 1000)) : NaN;
@@ -66,10 +67,10 @@ export function ActivityBubbleContent({ session, now, density = "standard", hist
     </span>
   </>;
 }
-export function ActivityBubble({ agent, session, now, onMove, density = "standard" }: { agent: string; session: TrackedActivity; now: number; density?: BubbleDensity; onMove?: (by: number) => void }) {
+export function ActivityBubble({ agent, session, now, onMove, onRead, density = "standard" }: { agent: string; session: TrackedActivity; now: number; density?: BubbleDensity; onMove?: (by: number) => void; onRead: () => void }) {
   const completed = session.endedAt !== undefined, unread = completed && session.readAt === undefined;
   const hint = t("timeline.open");
-  return <button type="button" className={`activity-bubble ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
+  return <div className="activity-bubble-shell"><button type="button" className={`activity-bubble ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
       data-density={density} data-external={session.source === "transcript" || undefined}
       data-timeline-anchor
       data-unread={unread || undefined}
@@ -82,5 +83,8 @@ export function ActivityBubble({ agent, session, now, onMove, density = "standar
         selectAgentPanel({ type: "task", agent, session });
       }}>
       <ActivityBubbleContent session={session} now={now} density={density} />
-    </button>;
+    </button>
+    {unread && <Button variant="ghost" className="activity-mark-read" aria-label={t("activity.markRead")} title={t("activity.markRead")}
+      onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()} onClick={onRead} />}
+  </div>;
 }

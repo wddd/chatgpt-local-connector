@@ -191,6 +191,11 @@ pub(crate) fn dispatch_summary(value: &Value) -> Option<Value> {
             summary[field] = json!(text);
         }
     }
+    if summary["serviceTier"].is_null() {
+        if let Some(tier) = known(&value["threadServiceTier"]) {
+            summary["serviceTier"] = json!(tier);
+        }
+    }
     if summary["effort"].is_null() {
         if let Some(effort) = known(&value["options"]["thinkingLevel"])
             .or_else(|| known(&value["options"]["reasoning_effort"]))
