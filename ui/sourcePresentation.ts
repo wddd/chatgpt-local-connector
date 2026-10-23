@@ -27,6 +27,7 @@ export function connectionDisabledReason(ingress: Ingress, product: string, sour
   if (ingress.transport === "openai-tunnel" && product !== "chatgpt") return t("setup.chatgptOnly");
   const auth = controlSource(product)?.supportedAuth;
   if (ingress.transport !== "local" && auth && !auth.includes(ingress.auth)) return t("setup.authUnsupported", { auth: ingress.auth });
+  if (ingress.auth !== "oauth" && sources.some(s => s.retiredIngressIds?.includes(ingress.id))) return t("switch.retiredConnection");
   if (ingress.auth !== "oauth" && sources.some(s => s.ingressId === ingress.id && (s.state === "revoked" || s.connectedAt !== null || s.lastSeenAt !== null))) return t("setup.connectionOccupied");
   return "";
 }

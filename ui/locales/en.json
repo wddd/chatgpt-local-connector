@@ -996,5 +996,6 @@
   "switch.approve": "Approve and switch",
   "switch.warning": "Update the address in {name} and authorize again. Name, history and notification settings stay. The old grant is revoked only after successful authorization on the new connection.",
   "switch.expired": "This switch expired or was canceled. Go back to choose a connection and try again.",
-  "switch.detached": "Former connection: {connection}. This source is disconnected; its name and history stay."
+  "switch.detached": "Former connection: {connection}. This source is disconnected; its name and history stay.",
+  "switch.retiredConnection": "This connection’s credential was retired. Remove it and create a new connection."
 }
