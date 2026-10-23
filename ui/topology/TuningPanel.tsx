@@ -20,7 +20,7 @@ function TuningSection({ value, title, className, children }: { value: string; t
 }
 
 function ParameterControl({ spec, value }: { spec: typeof PARAMETERS[number]; value: number }) {
-  const lang = locale.use(), label = spec.label[lang], changed = value !== spec.default;
+  const lang = locale.use(), label = "labelKey" in spec ? t(spec.labelKey) : spec.label[lang], changed = value !== spec.default;
   const [text, setText] = useState(String(value)), [notice, setNotice] = useState("");
   useEffect(() => setText(String(value)), [value]);
   function apply() {
@@ -113,7 +113,10 @@ export default function TuningPanel() {
             event.preventDefault(); const result = importParameters(json);
             if (!result.ok) { setImportError(t(`topology.importError.${result.error}`)); element.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus(); return; }
             topologyParameters.set(result.document); setImportError("");
-            setMessage(result.clamped.length ? t("topology.importClamped", { labels: result.clamped.map(key => PARAMETERS.find(p => p.key === key)!.label[lang]).join(", ") }) : t("topology.imported"));
+            setMessage(result.clamped.length ? t("topology.importClamped", { labels: result.clamped.map(key => {
+              const spec = PARAMETERS.find(p => p.key === key)!;
+              return "labelKey" in spec ? t(spec.labelKey) : spec.label[lang];
+            }).join(", ") }) : t("topology.imported"));
           }}>
             <Field id="topology-import" label={t("topology.paste")} error={importError}>
               <Textarea id="topology-import" rows={4} value={json} spellCheck={false} aria-invalid={!!importError}

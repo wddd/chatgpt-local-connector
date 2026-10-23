@@ -1,0 +1,21 @@
+{
+  "theme": "dark",
+  "language": "zh-CN",
+  "agents": [
+    "codex",
+    "claude"
+  ],
+  "tasks": [
+    {
+      "agent": "codex",
+      "phase": "interaction",
+      "title": "Review file access",
+      "headline": "Read README.md",
+      "approval": true
+    }
+  ],
+  "bubbles": {
+    "density": "detailed",
+    "width": "medium"
+  }
+}

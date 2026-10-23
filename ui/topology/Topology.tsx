@@ -1,14 +1,14 @@
 import { observeTopology } from "../acceptance";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject, type PointerEvent, type MouseEvent } from "react";
 import { useMedia } from "../state/hooks";
-import { solve, BUBBLE_W, NODE_R, PANEL_MIN_WIDTH, PANEL_MARGIN, panelWidth, type Side, type Scene, type Drag, type Layout } from "./solve";
+import { solve, NODE_R, PANEL_MIN_WIDTH, PANEL_MARGIN, panelWidth, type Side, type Scene, type Drag, type Layout, type Task } from "./solve";
 import { TopologyAnimator, nodeKey, taskKey } from "./animate";
 import { TopologyPainter, type PaintNode, type PaintTask } from "./render";
 import { orderedSubset, moveToY } from "./order";
 import { topologyValues, topologyDebug } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
 
-export interface TaskView extends Omit<PaintTask, "parent" | "side"> { content: ReactNode; reorderable?: boolean; taskId?: string; threadId?: string; origin?: { ingressId?: string; controlSource?: string } }
+export interface TaskView extends Task, Omit<PaintTask, "parent" | "side"> { content: ReactNode; reorderable?: boolean; taskId?: string; threadId?: string; origin?: { ingressId?: string; controlSource?: string } }
 export interface NodeView extends Omit<PaintNode, "side"> { content: ReactNode; tasks: TaskView[]; reorderable?: boolean }
 type PositionedTask = TaskView & { parent: string; side: Side };
 export interface TopologyHandle { panelFrame: (rect: SurfaceRect | null) => void }
@@ -82,7 +82,11 @@ export default function Topology({ left, right, brand, boundary, panelExpanded =
       const hidden = latest.current.nodes.some(n => n.side === t.side && n.selected);
       el.style.pointerEvents = a.live.get(key)?.alive && !hidden ? "" : "none";
       el.inert = !a.live.get(key)?.alive || hidden;
-      if (v) el.style.transform = `translate(${v.x - (t.side === -1 ? BUBBLE_W : 0)}px, ${v.y - 27}px)`;
+      if (v) {
+        el.style.width = `${v.width}px`;
+        el.style.height = `${v.height}px`;
+        el.style.transform = `translate(${v.x - (t.side === -1 ? v.width : 0)}px, ${v.y - v.height / 2}px)`;
+      }
     }
     const rect = panel.current ? { ...panel.current, x: panel.current.x - origin.current.x, y: panel.current.y - origin.current.y } : null;
     svg.current?.style.setProperty("--topology-time-scale", latest.current.slow ? "4" : "1");

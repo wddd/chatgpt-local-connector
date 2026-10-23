@@ -1,11 +1,11 @@
 import { arcPath, grownWire } from "../ui/topology/geometry.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULTS, PARAMETERS, PARAMETER_GROUPS, distribute, extentOf, solve, LABEL_W, NODE_R, BUBBLE_W, BUBBLE_H, PANEL_ARC_GAP, type Scene } from "../ui/topology/solve.ts";
+import { DEFAULTS, PARAMETERS, PARAMETER_GROUPS, distribute, extentOf, solve, LABEL_W, NODE_R, PANEL_ARC_GAP, type Scene } from "../ui/topology/solve.ts";
 import { clampParameter, emptyParameters, importParameters, loadParameters, parameterDiff } from "../ui/topology/parameters.ts";
 
 const entities = (prefix: string, counts: number[]) => counts.map((count, i) => ({ id: `${prefix}${i}`,
-  tasks: Array.from({ length: count }, (_, j) => ({ id: `${prefix}${i}/task${j}` })) }));
+  tasks: Array.from({ length: count }, (_, j) => ({ id: `${prefix}${i}/task${j}`, width: 232 + j * 18, height: 54 + j * 12 })) }));
 // Representative populations for the five lab viewport scenarios. The reference
 // solver supplies no serialized scene populations; ids here are synthetic.
 const fixtures: Record<string, Scene> = {
@@ -17,8 +17,8 @@ const fixtures: Record<string, Scene> = {
 };
 for (const [name, scene] of Object.entries(fixtures)) test(`topology lab: ${name}`, () => {
   // Property: `topology lab: each population`.
-  for (const pitch of [DEFAULTS.pitch, PARAMETERS.find(p => p.key === "pitch")!.min, PARAMETERS.find(p => p.key === "pitch")!.max]) {
-    const parameters = { ...DEFAULTS, pitch };
+  for (const taskGap of [DEFAULTS.taskGap, PARAMETERS.find(p => p.key === "taskGap")!.min, PARAMETERS.find(p => p.key === "taskGap")!.max]) {
+    const parameters = { ...DEFAULTS, taskGap };
     const frozen = JSON.stringify(scene), layout = solve(scene, parameters), [left, right] = layout.wings;
     assert.equal(JSON.stringify(scene), frozen);
     assert.ok(layout.sceneH >= scene.vh);
@@ -30,7 +30,7 @@ for (const [name, scene] of Object.entries(fixtures)) test(`topology lab: ${name
         if (wing.side === -1) { assert.equal(node.scale, node.active ? DEFAULTS.activeScale : 1); assert.equal(node.opacity, 1); }
         const tasks = wing.tasks.filter(t => t.parent === node.id);
         for (let i = 1; i < tasks.length; i++) {
-          assert.equal(tasks[i].y - tasks[i - 1].y, parameters.pitch);
+          assert.equal(tasks[i].y - tasks[i - 1].y, (tasks[i].height + tasks[i - 1].height) / 2 + parameters.taskGap);
           assert.ok(tasks[i].port - tasks[i - 1].port >= 9 - 1e-9);
         }
       }
@@ -38,8 +38,8 @@ for (const [name, scene] of Object.entries(fixtures)) test(`topology lab: ${name
     for (const wing of layout.wings) {
       const extent = extentOf(wing, layout.hub.x, layout.hub.Re);
       for (const node of [...wing.nodes, ...wing.tasks]) {
-        const halfHeight = "size" in node ? node.size * node.scale / 2 : BUBBLE_H / 2;
-        const outerWidth = "size" in node ? LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 : BUBBLE_W;
+        const halfHeight = "size" in node ? node.size * node.scale / 2 : node.height / 2;
+        const outerWidth = "size" in node ? LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 : node.width;
         assert.ok(node.y - halfHeight >= DEFAULTS.margin && node.y + halfHeight <= layout.sceneH - DEFAULTS.margin);
         assert.ok(extent.full >= Math.abs(node.x - layout.hub.x) + outerWidth);
       }
@@ -97,7 +97,8 @@ test("topology parameters persist only deviations and round-trip through JSON", 
   for (const spec of PARAMETERS) {
     assert.ok(spec.default >= spec.min && spec.default <= spec.max);
     assert.ok(spec.step > 0);
-    assert.ok(PARAMETER_GROUPS[spec.group].en && spec.label.en && spec.label["zh-CN"]);
+    assert.ok(PARAMETER_GROUPS[spec.group].en);
+    assert.ok("labelKey" in spec ? spec.labelKey : spec.label.en && spec.label["zh-CN"]);
     assert.equal(DEFAULTS[spec.key], spec.default);
   }
   assert.deepEqual(parameterDiff(DEFAULTS), emptyParameters());

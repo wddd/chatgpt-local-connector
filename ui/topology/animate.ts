@@ -43,7 +43,7 @@ export class TopologyAnimator {
       }
       for (const t of w.tasks) {
         const parent = nodeKey(w.side, t.parent), n = this.values(parent)!;
-        const s = this.spring(taskKey(w.side, t.id), { x: t.x, y: t.y, port: t.port, op: t.hidden ? 0 : 1 },
+        const s = this.spring(taskKey(w.side, t.id), { x: t.x, y: t.y, width: t.width, height: t.height, port: t.port, op: t.hidden ? 0 : 1 },
           { x: n.x + t.side * n.radius, y: n.y, port: 0, op: 0 });
         s.parent = parent; s.side = w.side;
         if (drag?.kind === "task" && drag.side === w.side && drag.id === t.id) {

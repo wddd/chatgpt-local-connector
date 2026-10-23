@@ -9,7 +9,14 @@ export function shortModelLabel(model: string) {
 export function mergeActivity(current: AgentActivitySnapshot | undefined, next: AgentActivitySnapshot) {
   return current && Date.parse(next.observedAt) < Date.parse(current.observedAt) ? current : next;
 }
-export const activityLayout = { width: 232, height: 54, hold: 2000, fade: 300 };
+export const activityLayout = { hold: 2000, fade: 300 };
+export const bubbleHeights = { compact: 54, standard: 76, detailed: 100 };
+export const bubbleWidths = { narrow: 232, medium: 264, wide: 304 };
+export type BubbleDensity = keyof typeof bubbleHeights;
+export type BubbleWidth = keyof typeof bubbleWidths;
+export function effectiveBubbleDensity(density: BubbleDensity, autoCompact: boolean, count: number): BubbleDensity {
+  return autoCompact && count > 4 ? density === "detailed" ? "standard" : "compact" : density;
+}
 export type TrackedActivity = AgentActivitySession & { orderAt: number; endedAt?: number; readAt?: number; conversation?: boolean };
 export type AgentPanelSelection = { agent: string; session?: TrackedActivity; closing?: boolean } | undefined;
 export type AgentPanelAction = { type: "agent" | "toggle"; agent: string } | { type: "task"; agent: string; session: TrackedActivity } | { type: "back" } | { type: "dismiss" } | { type: "closed" };

@@ -1,11 +1,15 @@
 import { useId, type CSSProperties, type ReactNode } from "react";
-import { Brain, Terminal, Pencil, Wrench, MessageSquare, ShieldAlert, CirclePause, Check } from "lucide-react";
-import type { AgentPhase } from "../../types";
+import { Brain, Terminal, Pencil, Wrench, MessageSquare, ShieldAlert, CirclePause, Check, Zap } from "lucide-react";
+import type { AgentPhase, DispatchSummary } from "../../types";
+import { shortModelLabel } from "../../state/activityModel";
+import { controlSource } from "../../controlSources";
+import { t } from "../../i18n";
+import SourceIcon from "../SourceIcon";
 import { Icon } from "../ui";
 import "./activity.css";
 
-export function PhaseTile({ phase, running = false, completed = false, animated = true }: {
-  phase: AgentPhase; running?: boolean; completed?: boolean; animated?: boolean;
+export function PhaseTile({ phase, running = false, completed = false, animated = true, source }: {
+  phase: AgentPhase; running?: boolean; completed?: boolean; animated?: boolean; source?: DispatchSummary["controlSource"];
 }) {
   const mask = useId();
   const drawing = animated && (completed || (running && phase === "file"));
@@ -19,6 +23,23 @@ export function PhaseTile({ phase, running = false, completed = false, animated 
     </defs></svg>}
     <Icon icon={completed ? Check : { thinking: Brain, command: Terminal, file: Pencil, tool: Wrench,
       text: MessageSquare, interaction: ShieldAlert, idle: CirclePause }[phase]} />
+    {source && <SourceBadge source={source} />}
+  </span>;
+}
+export function dispatchSourceLabel(source?: DispatchSummary["controlSource"]) {
+  return source?.label || (source?.kind === "local-cli" ? t("localCli") : controlSource(source?.kind ?? "")?.displayName || source?.kind || source?.id || "");
+}
+export function SourceBadge({ source }: { source: NonNullable<DispatchSummary["controlSource"]> }) {
+  return <span className="activity-source-badge" title={dispatchSourceLabel(source)}>
+    {source.kind === "local-cli" ? <Icon icon={Terminal} /> : <SourceIcon platform={source.kind ?? ""} />}
+  </span>;
+}
+export function SpecPill({ summary }: { summary?: DispatchSummary }) {
+  if (!summary || !summary.model && !summary.effort && summary.serviceTier !== "priority") return null;
+  const label = [summary.model, summary.effort, summary.serviceTier === "priority" ? t("activity.fast") : undefined].filter(Boolean).join(" · ");
+  return <span className="activity-spec" title={label}>
+    <span>{[summary.model && shortModelLabel(summary.model), summary.effort].filter(Boolean).join(" · ")}</span>
+    {summary.serviceTier === "priority" && <span role="img" aria-label={t("activity.fast")}><Icon icon={Zap} /></span>}
   </span>;
 }
 export function PhaseLabel({ phase, running = false, completed = false, children }: {

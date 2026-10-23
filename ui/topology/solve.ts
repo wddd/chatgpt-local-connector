@@ -29,7 +29,7 @@ export const PARAMETERS = [
   { key: "t2End", group: "secondary", label: { en: "Bubble tension", "zh-CN": "气泡端张力" }, min: 0.1, max: 0.8, step: 0.02, default: 0.5 },
   { key: "nodeSize", group: "rows", label: { en: "Node size", "zh-CN": "节点大小" }, min: 32, max: 60, step: 1, default: 44 },
   { key: "colDist", group: "rows", label: { en: "Column distance", "zh-CN": "节点列距" }, min: 2, max: 3.2, step: 0.02, default: 2.6 },
-  { key: "pitch", group: "rows", label: { en: "Task pitch", "zh-CN": "任务槽高" }, min: 52, max: 80, step: 1, default: 64 },
+  { key: "taskGap", group: "rows", labelKey: "topology.taskGap", min: 0, max: 30, step: 1, default: 10 },
   { key: "rowGap", group: "rows", label: { en: "Row gap", "zh-CN": "行间距" }, min: 0, max: 30, step: 1, default: 12 },
   { key: "sourceRow", group: "rows", label: { en: "Source row height", "zh-CN": "控制源行高" }, min: 56, max: 96, step: 1, default: 78 },
   { key: "idleRow", group: "rows", label: { en: "Idle Agent row height", "zh-CN": "Agent 空闲行高" }, min: 40, max: 96, step: 1, default: 78 },
@@ -45,7 +45,7 @@ export type ParameterKey = typeof PARAMETERS[number]["key"];
 export type Params = Record<ParameterKey, number>;
 export const DEFAULTS = Object.fromEntries(PARAMETERS.map(p => [p.key, p.default])) as Params;
 export type Side = -1 | 1;
-export interface Task { id: string }
+export interface Task { id: string; width: number; height: number }
 export interface Entity { id: string; tasks: readonly Task[] }
 export interface Scene { vw: number; vh: number; left: readonly Entity[]; right: readonly Entity[]; panel?: { side: Side; edge: number; selected: string; narrow?: boolean } }
 export interface Drag extends Point { kind: "node" | "task"; side: Side; id: string }
@@ -54,14 +54,14 @@ export interface NodeGeometry extends Point {
   id: string; tasks: readonly Task[]; active: boolean; size: number; scale: number; opacity: number; dim: boolean; side: Side;
   port: number; arc: { R: number; lo: number; hi: number } | null;
 }
-export interface TaskGeometry extends Point { id: string; parent: string; side: Side; port: number; hidden?: boolean }
+export interface TaskGeometry extends Task, Point { parent: string; side: Side; port: number; hidden?: boolean }
 interface WingOptions { idleStyle: boolean; rowScale: number; squeeze: number }
 interface Row { e: Entity; n: number; h: number }
 export interface Wing { side: Side; H: number; nodes: NodeGeometry[]; ear: { lo: number; hi: number }; tasks: TaskGeometry[] }
 export interface WingBalance { core: number; full: number; effective: number; squeeze: number }
 export interface Layout { balance: WingBalance[]; vw: number; vh: number; sceneH: number; hub: Point & { Re: number }; wings: Wing[] }
 export const deg = (d: number) => d * Math.PI / 180;
-export const NODE_R = 22, BUBBLE_W = 232, BUBBLE_H = 54, LABEL_W = 110;
+export const NODE_R = 22, LABEL_W = 110;
 export const PANEL_MIN_WIDTH = 400, PANEL_MARGIN = 16, PANEL_ARC_GAP = 40;
 
 // The selected node's animated outer arc defines the dock's inner edge.
@@ -93,7 +93,8 @@ function wingRows(list: readonly Entity[], p: Params, opt: Pick<WingOptions, "id
   return list.map((e) => {
     const n = e.tasks.length;
     const base = opt.idleStyle ? Math.max(p.minIdleRow, p.idleRow * opt.rowScale) : Math.max(56, p.sourceRow * opt.rowScale);
-    return { e, n, h: n > 0 ? Math.max(base, n * p.pitch + 10) : base };
+    const taskHeight = e.tasks.reduce((height, task) => height + task.height, 0) + Math.max(0, n - 1) * p.taskGap;
+    return { e, n, h: n > 0 ? Math.max(base, taskHeight + 20) : base };
   });
 }
 function wingHeight(rows: Row[], p: Params) { return rows.reduce((s, r) => s + r.h, 0) + p.rowGap * Math.max(0, rows.length - 1); }
@@ -122,18 +123,25 @@ function solveWing(list: readonly Entity[], side: Side, hub: Point, Re: number, 
   nodes.forEach((n, i) => { n.port = ang[i]; });
   const lo = Math.min(-p.earMin, ang.length ? ang[0] - p.earPad : 0);
   const hi = Math.max(p.earMin, ang.length ? ang[ang.length - 1] + p.earPad : 0);
-  // Tasks: fixed-size bubbles in ordered slots around the node, ports on an outer arc.
+  // Task dimensions define ordered slots around the node, with ports on an outer arc.
   const tasks: TaskGeometry[] = [];
   nodes.forEach((n) => {
     if (!n.active) { n.arc = null; return; }
-    const R = n.size / 2 * n.scale + p.arcGap, k = n.tasks.length;
-    const slots = n.tasks.map((t, i) => (drag && drag.kind === 'task' && drag.id === t.id) ? drag.y : n.y + (i - (k - 1) / 2) * p.pitch);
-    const rawT = n.tasks.map((_, i) => Math.atan2(n.y + (i - (k - 1) / 2) * p.pitch - n.y, p.bubbleOffset) * 180 / Math.PI);
+    const R = n.size / 2 * n.scale + p.arcGap;
+    const height = n.tasks.reduce((height, task) => height + task.height, 0) + (n.tasks.length - 1) * p.taskGap;
+    let edge = n.y - height / 2;
+    const slots = n.tasks.map(task => {
+      const center = edge + task.height / 2;
+      edge += task.height + p.taskGap;
+      return center;
+    });
+    const rawT = slots.map(y => Math.atan2(y - n.y, p.bubbleOffset) * 180 / Math.PI);
     const tA = distribute(rawT, p.arcFollow, 9, p.arcMax);
     n.arc = { R, lo: Math.min(-14, tA[0] - p.arcPad), hi: Math.max(14, tA[tA.length - 1] + p.arcPad) };
     n.tasks.forEach((t, i) => {
       const taskDrag = drag && drag.kind === 'task' && drag.id === t.id;
-      tasks.push({ id: t.id, parent: n.id, side, port: tA[i], x: taskDrag ? drag.x : n.x + side * p.bubbleOffset, y: slots[i] });
+      tasks.push({ id: t.id, width: t.width, height: t.height, parent: n.id, side, port: tA[i],
+        x: taskDrag ? drag.x : n.x + side * p.bubbleOffset, y: taskDrag ? drag.y : slots[i] });
     });
   });
   return { side, H, nodes, ear: { lo, hi }, tasks };
@@ -143,7 +151,7 @@ export function extentOf(w: Wing, hubX: number, Re: number) {
   let core = Re * 1.15;
   w.nodes.forEach((n) => { core = Math.max(core, Math.abs(n.x - hubX) + LABEL_W * n.scale * n.size / (NODE_R * 2) / 2); });
   let full = core;
-  w.tasks.forEach((t) => { full = Math.max(full, Math.abs(t.x - hubX) + BUBBLE_W); });
+  w.tasks.forEach((t) => { full = Math.max(full, Math.abs(t.x - hubX) + t.width); });
   return { core, full };
 }
 

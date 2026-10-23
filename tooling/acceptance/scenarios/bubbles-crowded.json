@@ -1,0 +1,44 @@
+{
+  "theme": "light",
+  "language": "zh-CN",
+  "agents": [
+    "codex",
+    "claude"
+  ],
+  "tasks": [
+    {
+      "agent": "codex",
+      "phase": "command",
+      "title": "Check task 1",
+      "headline": "npm run check"
+    },
+    {
+      "agent": "codex",
+      "phase": "command",
+      "title": "Check task 2",
+      "headline": "npm run check"
+    },
+    {
+      "agent": "codex",
+      "phase": "command",
+      "title": "Check task 3",
+      "headline": "npm run check"
+    },
+    {
+      "agent": "codex",
+      "phase": "command",
+      "title": "Check task 4",
+      "headline": "npm run check"
+    },
+    {
+      "agent": "codex",
+      "phase": "command",
+      "title": "Check task 5",
+      "headline": "npm run check"
+    }
+  ],
+  "bubbles": {
+    "density": "detailed",
+    "width": "narrow"
+  }
+}

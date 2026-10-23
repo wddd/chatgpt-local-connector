@@ -4,8 +4,27 @@ import { clampParameter, emptyParameters, importParameters, loadParameters, para
 
 export const topologyTuningEnabled = preference("arc.topology-tuning", false, raw => JSON.parse(raw) === true);
 export const topologyParameters = preference("arc.topology-parameters", emptyParameters(), raw => {
-  const result = importParameters(raw);
+  const input = JSON.parse(raw);
+  const overrides = input?.schemaVersion === 1 && input.overrides && typeof input.overrides === "object" && !Array.isArray(input.overrides)
+    ? input.overrides : null;
+  const migrated = overrides && Object.hasOwn(overrides, "pitch");
+  if (migrated) {
+    if (typeof overrides.pitch !== "number" || !Number.isFinite(overrides.pitch)) throw new Error("Invalid task pitch");
+    if (!Object.hasOwn(overrides, "taskGap")) overrides.taskGap = Math.max(0, overrides.pitch - 54);
+    delete overrides.pitch;
+  }
+  const result = importParameters(JSON.stringify(input));
   if (!result.ok) throw new Error(result.error);
+  if (migrated) queueMicrotask(() => {
+    if (topologyParameters.get() !== result.document) return;
+    try {
+      // Replace the cache so the preference store also writes the migrated document to Core.
+      localStorage.removeItem("arc.topology-parameters");
+      topologyParameters.set({ ...result.document });
+    } catch {
+      // The parsed preferences remain usable when browser storage is unavailable.
+    }
+  });
   return result.document;
 });
 // Slider preview does not flood native preferences with in-flight writes.

@@ -1,0 +1,28 @@
+{
+  "theme": "light",
+  "language": "zh-CN",
+  "agents": [
+    "codex",
+    "claude"
+  ],
+  "tasks": [
+    {
+      "agent": "codex",
+      "phase": "command",
+      "title": "Check project changes",
+      "headline": "npm run check"
+    },
+    {
+      "agent": "claude",
+      "phase": "file",
+      "title": "Update configuration",
+      "headline": "/workspace/acceptance/config.json",
+      "elapsedSeconds": 3965
+    }
+  ],
+  "bubbles": {
+    "density": "compact",
+    "width": "narrow",
+    "autoCompact": false
+  }
+}

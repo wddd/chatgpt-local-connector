@@ -2,10 +2,10 @@ import { scenarioName } from "../scenarioMode";
 import { agentPanel, selectAgentPanel, ingressPanel, selectIngressPanel } from "../state/overviewPanels";
 import { PhaseTile, PhaseLabel } from "./activity";
 import { resetActivityCore, useActivityTracking } from "../state/activity";
-import { orderActivity, visibleActivity } from "../state/activityModel";
+import { orderActivity, visibleActivity, effectiveBubbleDensity, bubbleWidths, bubbleHeights } from "../state/activityModel";
 import { taskOrder, reorderTasks } from "../state/taskOrder";
 import { useInterval } from "../state/hooks";
-import { maxVisibleAgents } from "../subscriptions/displayPreferences";
+import { maxVisibleAgents, bubbleDensity, bubbleWidth, bubbleAutoCompact } from "../subscriptions/displayPreferences";
 import { subscriptions } from "../state/subscriptions";
 import { navigation } from "../state/navigation";
 import { AgentQuotaIcon } from "../subscriptions/QuotaRing";
@@ -69,6 +69,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const { status, sources: sourceRecords, sourcesLoaded, busy, loading, error } = connector.use();
   const inventory = agentStore.use();
   const max = maxVisibleAgents.use();
+  const density = bubbleDensity.use(), width = bubbleWidths[bubbleWidth.use()], autoCompact = bubbleAutoCompact.use();
   const { snapshot } = subscriptions.use(), nav = navigation.use();
   const [agentsOpen, setAgentsOpen] = useState(false), [settingsAgent, setSettingsAgent] = useState<Agent>();
   const initialSetupShown = useRef(false);
@@ -207,6 +208,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const agentViews: NodeView[] = agents.map(agent => {
     const sessions = orderActivity(tracked[agent.agent] ?? [], manualOrder[agent.agent] ?? []), selected = selection?.agent === agent.agent;
     const shown = visibleActivity(sessions, selected ? selection.session?.id : undefined);
+    const effectiveDensity = effectiveBubbleDensity(density, autoCompact, sessions.length);
     return {
       id: agent.agent, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled && !panelOpen,
       content: <GraphNode label={`${name(agent)}: ${t(agentState(agent))}`} state={wireState(agentState(agent))}
@@ -215,12 +217,13 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         <AgentQuotaIcon agent={agent.agent} />
         {selection && !selected && sessions.some(s => s.endedAt === undefined) && <span className="agent-task-count" data-attention={sessions.some(s => !!s.interaction) || undefined}>{sessions.filter(s => s.endedAt === undefined).length}</span>}
         <span className="graph-node-name">{name(agent)}</span>
+        {effectiveDensity !== density && <span className="agent-auto-compact">{t("activity.autoCompacted")}</span>}
       </GraphNode>,
       tasks: [
-        ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]), taskId: session.id, threadId: session.nativeSessionId, origin: session.origin,
+        ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]), width, height: bubbleHeights[effectiveDensity], taskId: session.id, threadId: session.nativeSessionId, origin: session.origin,
           state: (session.endedAt !== undefined ? "completed" : session.interaction ? "attention" : session.source === "transcript" ? "external" : "running") as import("../topology/render").TaskState,
           selected: selected && selection.session?.id === session.id, reorderable: !panelOpen,
-          content: <ActivityBubble agent={agent.agent} session={session} now={now} onMove={panelOpen ? undefined : by => {
+          content: <ActivityBubble agent={agent.agent} session={session} now={now} density={effectiveDensity} onMove={panelOpen ? undefined : by => {
             const group = shown.sessions.filter(s => !!s.interaction === !!session.interaction);
             const from = group.findIndex(s => s.id === session.id), to = from + by;
             if (to < 0 || to >= group.length) return;
@@ -228,7 +231,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             reorderTasks(agent.agent, ids, sessions);
           }} />,
         })),
-        ...(shown.hidden ? [{ id: JSON.stringify([agent.agent, null]), state: "summary" as const, selected: false,
+        ...(shown.hidden ? [{ id: JSON.stringify([agent.agent, null]), width, height: bubbleHeights.compact, state: "summary" as const, selected: false,
           content: <button type="button" className="activity-bubble activity-summary" onClick={() => selectAgentPanel({ type: "agent", agent: agent.agent })}>
             <PhaseTile phase="tool" animated={false} /><span className="activity-copy"><span className="activity-phase"><PhaseLabel phase="tool">{t("activity.more", { count: shown.hidden })}</PhaseLabel></span><span className="activity-headline">{t("activity.viewAll")}</span></span>
           </button>,
