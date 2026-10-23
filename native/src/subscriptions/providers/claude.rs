@@ -110,26 +110,19 @@ fn reset_time(text: &str, now: chrono::DateTime<chrono::Utc>, hours: i64) -> Opt
         text
     };
     let text = text.replace("AM", "am").replace("PM", "pm");
+    // Chrono requires minutes even when the CLI reports only an hour.
+    let hour_only = regex::Regex::new(r"(^|[ ,])([0-9]{1,2})(am|pm)$").unwrap();
+    let text = hour_only.replace(&text, "${1}${2}:00${3}");
     let earliest = now - chrono::Duration::days(1);
     let latest = now + chrono::Duration::hours(hours + 2);
     let mut dates = vec![];
-    for format in [
-        "%b %e, %Y at %I:%M%P",
-        "%b %e, %Y at %I%P",
-        "%b %e, %Y, %I:%M%P",
-        "%b %e, %Y, %I%P",
-    ] {
+    for format in ["%b %e, %Y at %I:%M%P", "%b %e, %Y, %I:%M%P"] {
         if let Ok(date) = chrono::NaiveDateTime::parse_from_str(&text, format) {
             return Some(chrono::Utc.from_utc_datetime(&date).to_rfc3339());
         }
     }
     for year in now.year() - 1..=now.year() + 1 {
-        for format in [
-            "%Y %b %e at %I:%M%P",
-            "%Y %b %e at %I%P",
-            "%Y %b %e, %I:%M%P",
-            "%Y %b %e, %I%P",
-        ] {
+        for format in ["%Y %b %e at %I:%M%P", "%Y %b %e, %I:%M%P"] {
             if let Ok(date) =
                 chrono::NaiveDateTime::parse_from_str(&format!("{year} {text}"), format)
             {
@@ -137,12 +130,10 @@ fn reset_time(text: &str, now: chrono::DateTime<chrono::Utc>, hours: i64) -> Opt
             }
         }
     }
-    for format in ["%I:%M%P", "%I%P"] {
-        if let Ok(time) = chrono::NaiveTime::parse_from_str(&text, format) {
-            for day in -1..=1 {
-                let date = now.date_naive() + chrono::Duration::days(day);
-                dates.push(chrono::Utc.from_utc_datetime(&date.and_time(time)));
-            }
+    if let Ok(time) = chrono::NaiveTime::parse_from_str(&text, "%I:%M%P") {
+        for day in -1..=1 {
+            let date = now.date_naive() + chrono::Duration::days(day);
+            dates.push(chrono::Utc.from_utc_datetime(&date.and_time(time)));
         }
     }
     dates.sort();
@@ -182,6 +173,12 @@ mod tests {
         );
         assert_eq!(reading.windows[2].scope.as_deref(), Some("Sonnet"));
         assert_eq!(reading.windows[2].resets_at, None);
+        let with_minutes = parse_usage("Current session: 13% used · resets 1:30AM (UTC)", now)
+            .unwrap_or_else(|_| panic!("minute precision should parse"));
+        assert_eq!(
+            with_minutes.windows[0].resets_at.as_deref(),
+            Some("2026-01-01T01:30:00+00:00")
+        );
     }
 
     #[test]
