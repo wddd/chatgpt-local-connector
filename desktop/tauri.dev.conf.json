@@ -3,9 +3,7 @@
   "productName": "Agent Remote Control Dev",
   "identifier": "com.whzxc.agent-remote-control.dev",
   "build": {
-    "beforeDevCommand": "npm run dev:ui",
-    "devUrl": "http://127.0.0.1:5187",
-    "additionalWatchFolders": ["../native/src", "../native/Cargo.toml"]
+    "devUrl": "http://127.0.0.1:5187"
   },
   "app": {
     "security": {

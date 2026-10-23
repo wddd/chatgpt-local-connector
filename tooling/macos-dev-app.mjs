@@ -50,6 +50,8 @@ const app = spawn(executable, process.argv.slice(3), {
   env: { ...env, ARC_DEV_SUPERVISED: '1' },
   stdio: ['pipe', 'inherit', 'inherit'],
 });
+process.stdin.resume();
+process.stdin.on('end', () => app.stdin.end());
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => app.stdin.end());
 app.on('error', error => { console.error(error.message); process.exitCode = 1; });
-app.on('exit', code => { process.exitCode = code ?? 1; });
+app.on('exit', code => { process.stdin.destroy(); process.exitCode = code ?? 1; });

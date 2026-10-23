@@ -151,7 +151,7 @@ fn main() {
         ])
         .setup(|app| {
             updates::start(app.handle().clone());
-            #[cfg(all(debug_assertions, unix))]
+            #[cfg(debug_assertions)]
             if std::env::var_os("ARC_DEV_SUPERVISED").is_some() {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
@@ -160,20 +160,27 @@ fn main() {
                     while std::io::stdin().read(&mut byte).is_ok_and(|n| n > 0) {}
                     handle.exit(0);
                 });
-                let handle = app.handle().clone();
-                let (mut terminate, mut interrupt) = tauri::async_runtime::block_on(async {
-                    Ok::<_, std::io::Error>((
-                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?,
-                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?,
-                    ))
-                })?;
-                tauri::async_runtime::spawn(async move {
-                    tokio::select! {
-                        _ = terminate.recv() => {},
-                        _ = interrupt.recv() => {},
-                    }
-                    handle.exit(0);
-                });
+                #[cfg(unix)]
+                {
+                    let handle = app.handle().clone();
+                    let (mut terminate, mut interrupt) = tauri::async_runtime::block_on(async {
+                        Ok::<_, std::io::Error>((
+                            tokio::signal::unix::signal(
+                                tokio::signal::unix::SignalKind::terminate(),
+                            )?,
+                            tokio::signal::unix::signal(
+                                tokio::signal::unix::SignalKind::interrupt(),
+                            )?,
+                        ))
+                    })?;
+                    tauri::async_runtime::spawn(async move {
+                        tokio::select! {
+                            _ = terminate.recv() => {},
+                            _ = interrupt.recv() => {},
+                        }
+                        handle.exit(0);
+                    });
+                }
             }
             let service = match tauri::async_runtime::block_on(connect_service(app.handle())) {
                 Ok(service) => service,
@@ -247,6 +254,9 @@ fn main() {
                     },
                 );
             if resume.is_some() || autostart {
+                if let Some(ids) = &resume {
+                    session::begin_restore(ids);
+                }
                 tauri::async_runtime::spawn(async move {
                     if let Some(ids) = resume {
                         for id in ids {
@@ -256,6 +266,7 @@ fn main() {
                             {
                                 service.log("ERROR", &error).await;
                             }
+                            session::finish_restore(&id);
                         }
                     } else if let Err(error) = service
                         .request("ingress/start-all", "POST", json!({}))

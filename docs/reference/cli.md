@@ -387,7 +387,7 @@ Read subscriptions get first. subscriptions set replaces enabled and refreshMinu
 | Linux state | `${XDG_STATE_HOME:-$HOME/.local/state}/agent-remote-control` |
 | Linux environment file | `${XDG_CONFIG_HOME:-$HOME/.config}/agent-remote-control/environment` |
 | Explicit instance | ARC_STATE_DIR; Desktop also accepts `--state-dir <path>` |
-| Desktop development (`npm run dev`) | `agent-remote-control-dev` under the platform state base; passed to its Vite child |
+| Desktop development (`npm run dev`) | Installed state directory; the supervisor quits the installed Desktop, hands off Core ownership, and restores it on exit |
 | Standalone Dev Web (`npm run dev:ui`) | Installed app state directory; connects to its existing Core and shares its data |
 | Isolated preview | Set ARC_STATE_DIR to `agent-remote-control-preview` under that base |
 | Build version | ARC_BUILD_VERSION; otherwise nearest reachable v-tag, then 0.0.0 |

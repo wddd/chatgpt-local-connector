@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import path from 'node:path';
-import { webStateDir } from './tooling/dev-state.mjs';
+import { stateDir } from './tooling/dev-state.mjs';
 
-const stateRoot = webStateDir;
+const stateRoot = stateDir;
 const packageVersion = buildVersion();
 type Endpoint = { port: number; token: string };
 export default defineConfig({
@@ -28,9 +28,15 @@ export default defineConfig({
             if (response.ok && (await response.json()).instance === info.instance) return info;
           }
         } catch { /* The selected owner may still be starting or restarting. */ }
-        throw new Error('The backend is not ready. Start the installed app. When ARC_STATE_DIR is set, start the corresponding instance.');
+        throw new Error('Core is restarting or unavailable. Run npm run dev, or start the installed app when using npm run dev:ui.');
       }
       server.middlewares.use((request, response, next) => {
+        if (request.url === '/__arc_dev' && request.method === 'GET' && request.headers.host === '127.0.0.1:5187') {
+          response.setHeader('Cache-Control', 'no-store');
+          response.setHeader('Content-Type', 'application/json');
+          response.end(JSON.stringify({ project: fileURLToPath(new URL('.', import.meta.url)), stateDirectory: stateRoot }));
+          return;
+        }
         if (!request.url?.startsWith('/api/')) return next();
         response.setHeader('Cache-Control', 'no-store');
         if (request.headers.host !== '127.0.0.1:5187'

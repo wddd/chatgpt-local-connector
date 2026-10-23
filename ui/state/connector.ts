@@ -89,6 +89,7 @@ export async function run(label: string, action: () => Promise<unknown>) {
 }
 export function startConnector() {
   let stopped = false;
+  let lastSnapshot = 0;
   let stream: EventSource | undefined;
   const read = () => {
     if (!stopped) void refreshConnector().catch(() => {});
@@ -99,15 +100,16 @@ export function startConnector() {
     stream.addEventListener("snapshot", (event) => {
       try {
         accept(JSON.parse((event as MessageEvent).data));
+        lastSnapshot = Date.now();
         read();
       } catch {
         read();
       }
     });
-    stream.onerror = read;
+    stream.onerror = () => { lastSnapshot = 0; read(); };
   }
   const timer = setInterval(() => {
-    if (isDesktop || stream?.readyState !== EventSource.OPEN) read();
+    if (isDesktop || stream?.readyState !== EventSource.OPEN || connector.get().error || Date.now() - lastSnapshot > 5000) read();
   }, 2000);
   return () => {
     stopped = true;

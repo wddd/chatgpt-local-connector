@@ -10,21 +10,17 @@ Use Node.js 24.12+ and Rust. Install dependencies with npm ci.
 npm run dev
 ```
 
-The development desktop uses an isolated agent-remote-control-dev state directory. ARC_STATE_DIR explicitly overrides it. Vite and the development desktop share the same directory and Core owner.
+Development uses the installed data directory. The launcher builds Core and Desktop before quitting the installed Desktop through its authenticated management API. It waits for Core to exit and release its state lock before starting the development build. Configuration, source identities, history, and connection state stay in place. Development writes affect installed data.
+
+The supervisor watches native and desktop sources, embedded native resources, Cargo manifests, and desktop configuration. A successful build restarts development Desktop and Core together. Compile failures leave the current build running. Vite stays available across Core restarts, and DEV WEB reconnects to the new owner automatically. Saving another source change retries a failed build. Queued connection restoration survives another rebuild during startup. Quitting development Desktop or pressing Ctrl+C stops development and restores the installed Desktop if it was running before takeover.
 
 ```sh
 npm run dev:ui
 ```
 
-Standalone Dev Web connects to the existing installed-state Core by default. It shares installed data and directly operates the installed backend. Start the installed App first. Without an owner it reports backend unavailable rather than starting another Core.
+This starts only DEV WEB at `http://127.0.0.1:5187/`. It uses installed data and connects to the running Core. It never starts, stops, or builds Core. Start the installed App first. An existing DEV WEB from the same checkout and state directory can remain open when `npm run dev` takes over.
 
-Dev Web uses isolated data only with an explicit ARC_STATE_DIR. For the macOS development backend started by npm run dev:
-
-```sh
-ARC_STATE_DIR="$HOME/.local/state/agent-remote-control-dev" npm run dev:ui
-```
-
-Custom isolated previews MUST give Core and Dev Web the same ARC_STATE_DIR. npm run dev still defaults to the development directory and passes it to Vite. Do not point development Desktop or another Core at active production state.
+Both commands honor an explicit ARC_STATE_DIR for temporary acceptance instances. There is no separate default development data directory. Do not manually launch a development binary against an active installed instance. The supervisor preserves the single-Core lock and build-identity checks. Other local CLI/MCP clients must release Core before takeover or restart; the launcher reports an actionable error instead of terminating those clients. Core restarts temporarily interrupt connections and ARC-owned execution processes.
 
 ## Existing checks
 
