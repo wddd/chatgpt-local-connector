@@ -1,7 +1,7 @@
-import { topologyTuningEnabled } from "../state/topology";
+import { navigation } from "../state/navigation";
 import { notificationsPreference } from "../state/store";
-import { useEffect, useState } from "react";
-import { Monitor, Sun, Moon } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Monitor, Sun, Moon, ChevronRight } from "lucide-react";
 import { t, language, languageOptions, setLanguage } from "../i18n";
 import { theme, themeColor, themeColors, type Theme } from "../theme";
 import { api } from "../api";
@@ -9,11 +9,22 @@ import { isDesktop } from "../platform";
 import { connector, run, notify, refreshConnector } from "../state/connector";
 import { useInterval } from "../state/hooks";
 import type { Service } from "../state/types";
-import { Button, Group, Row, Switch, SingleChoice, Input, Field } from "./ui";
-import RelayHostingSettings from "./RelaySettings";
+import { Button, Group, Row, Switch, SingleChoice, Input, Field, Icon, HoverScope } from "./ui";
+import SettingsExtras from "./SettingsExtras";
 import { AppUpdate } from "./AppUpdate";
 export default function SettingsPage() {
   const { status, busy } = connector.use();
+  const { settingsExtras } = navigation.use();
+  const wasExtras = useRef(false);
+  useLayoutEffect(() => {
+    if (settingsExtras) {
+      document.querySelector<HTMLElement>(".capsule-title")?.focus({ preventScroll: true });
+      document.querySelector(".workspace")?.scrollTo({ top: 0 });
+    } else if (wasExtras.current) {
+      document.getElementById("settings-extras-entry")?.focus();
+    }
+    wasExtras.current = !!settingsExtras;
+  }, [settingsExtras]);
   const currentTheme = theme.use(),
     color = themeColor.use(),
     currentLanguage = language.use();
@@ -28,7 +39,7 @@ export default function SettingsPage() {
     }),
     [appearanceReady, setAppearanceReady] = useState(false),
     [service, setService] = useState<Service>();
-  const notifications = notificationsPreference.use(), tuning = topologyTuningEnabled.use();
+  const notifications = notificationsPreference.use();
   const mac = isDesktop && navigator.platform.toLowerCase().includes("mac");
   useEffect(() => {
     if (mac)
@@ -87,6 +98,7 @@ export default function SettingsPage() {
       await refreshConnector();
     });
   }
+  if (settingsExtras) return <SettingsExtras />;
   return (
     <div className="settings-page">
       <Group title={t("behavior")}>
@@ -253,12 +265,9 @@ export default function SettingsPage() {
           </Field>
         )}
       </Group>
-      <Group title={t("topology.experimental")}>
-        <Row title={t("topology.tuning")} description={t("topology.settingDescription")}>
-          <Switch label={t("topology.tuning")} checked={tuning} onChange={topologyTuningEnabled.set} />
-        </Row>
-      </Group>
-      <RelayHostingSettings />
+      <HoverScope><Button data-hover-target="extras" id="settings-extras-entry" variant="ghost" className="settings-extras-entry" onClick={() => navigation.set(old => ({ ...old, settingsExtras: true }))}>
+        <span>{t("extras.title")}</span><Icon icon={ChevronRight} />
+      </Button></HoverScope>
       <AppUpdate />
     </div>
   );

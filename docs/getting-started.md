@@ -23,7 +23,7 @@ Choose **Claude Code** or **Claude Desktop**, then **Local** and **Continue**. A
 
 **Remote link** lists each source separately. Open a source to change its label or product, copy its connection address, view its dispatches, or disconnect it. **All / By platform** changes grouping. The Connections section includes unused connections; open a dedicated tunnel there to edit it. Custom addresses and **Send to Codex** are under **Advanced** in step two of the add flow.
 
-Relay owners manage sharing, members, and deletion under **Settings → Relay hosting**. Joined relays have **Leave** in their connection detail. The deployer can technically inspect relayed traffic in the Cloudflare dashboard; only join someone you trust.
+Relay owners manage sharing, members, and deletion under **Settings → Extras → Relay hosting**. Joined relays have **Leave** in their connection detail. The deployer can technically inspect relayed traffic in the Cloudflare dashboard; only join someone you trust.
 
 ### 3. Dispatch and receive a notification
 

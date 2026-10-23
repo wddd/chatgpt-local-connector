@@ -24,7 +24,7 @@ Start with **Add control source** and choose a product, then an existing connect
 
 Provider credentials connect the tunnel; MCP authentication controls access through it. They are separate fields. A fixed domain must already be assigned in your provider account.
 
-The homepage and Remote link source detail show recent Codex dispatches for that source ID. Open a running row to switch to the Agent task detail. Source details also let you edit the label or product and disconnect with confirmation. Relay-owner sharing, member management, and deletion are in **Settings → Relay hosting**; joined relays can be left from their connection detail.
+The homepage and Remote link source detail show recent Codex dispatches for that source ID. Open a running row to switch to the Agent task detail. Source details also let you edit the label or product and disconnect with confirmation. Relay-owner sharing, member management, and deletion are in **Settings → Extras → Relay hosting**; joined relays can be left from their connection detail.
 
 ## Use a custom reverse proxy
 
@@ -37,3 +37,11 @@ For daily use, choose a fixed address. If a temporary address changes, update th
 ## Limits
 
 ARC uses Streamable HTTP, not a standalone legacy SSE endpoint. LocalXpose temporary mode is unavailable because the first request is redirected. Provider accounts, domains, quotas, and outbound connectivity remain your responsibility. Choosing None authentication lets anyone who can reach the endpoint use its allowed tools.
+
+## Host a relay for others
+
+Open **Settings → Extras → Relay hosting** and choose **Deploy new relay**. Sign in to Cloudflare and wait for deployment and connection to finish. Use **Copy invite link** to invite another computer. **Reset** invalidates the old invite link without disconnecting devices that already joined.
+
+**Connected devices** shows device names, joined time, and last seen. **This computer** identifies the local instance and has no Remove action. Removing another device disconnects its relay link; it can join again with a valid invite link. **Delete…** at the bottom disconnects every device, including this computer, and deletes the hosted relay. These actions require confirmation.
+
+Joined relays never appear here. Manage their connections in **Remote link → Connections**. The homepage topology switch is under **Settings → Extras → Experimental**.

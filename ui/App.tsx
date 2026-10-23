@@ -225,6 +225,8 @@ export default function App() {
           e.preventDefault();
           if (page === "remote" && (nav.remoteConnectionId || nav.remoteSourceId)) {
             navigation.set(old => old.remoteConnectionId ? { ...old, remoteConnectionId: undefined } : { ...old, remoteSourceId: undefined });
+          } else if (page === "settings" && nav.settingsExtras) {
+            navigation.set(old => ({ ...old, settingsExtras: undefined }));
           } else void closeSheet();
         }
         if (e.key === "Tab" && page !== "overview" && !layers.length) {
@@ -287,9 +289,11 @@ export default function App() {
         >
           <div className="page-sheet-content">
             <header className="sheet-header">
+              {page === "settings" && nav.settingsExtras && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsExtras: undefined }))} />}
               {page === "remote" && (nav.remoteSourceId || nav.remoteConnectionId) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => old.remoteConnectionId ? { ...old, remoteConnectionId: undefined } : { ...old, remoteSourceId: undefined })} />}
               <h1 className="capsule-title" tabIndex={-1}>
                 {page === "remote" ? status?.ingresses.find(i => i.id === nav.remoteConnectionId)?.name ?? connector.get().sources.find(s => s.id === nav.remoteSourceId)?.label ?? t("source.title") : pages.find((item) => item.id === page)?.label}
+                {page === "settings" && nav.settingsExtras && <><span className="settings-breadcrumb-divider" aria-hidden="true"> / </span><span>{t("extras.title")}</span></>}
                 {page === "logs" && (
                   <span className="muted small records-count">
                     {t("recentRecords", { count: status?.logs.length ?? 0 })}

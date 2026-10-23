@@ -142,7 +142,7 @@ async fn execute(
         // Retain a recoverable record even if cancellation races remote registration.
         save(&directory(&relay_id)?.join("config.json"), &config)?;
         // Invitation is used only for registration, never persisted on a member machine.
-        transport::control(&client().await?, &url, &instance, json!({"op":"register","publicKey":instance.public_key(),"name":config["name"],"token":token})).await?;
+        transport::control(&client().await?, &url, &instance, json!({"op":"register","publicKey":instance.public_key(),"name":crate::device_name().await,"token":token})).await?;
         save(&directory(&relay_id)?.join("config.json"), &config)?;
         return connect(&service, &mut config, &status).await;
     }
@@ -228,7 +228,7 @@ async fn execute(
         &client,
         &url,
         &owner,
-        json!({"op":"register","publicKey":instance.public_key(),"name":config["name"]}),
+        json!({"op":"register","publicKey":instance.public_key(),"name":crate::device_name().await}),
     )
     .await?;
     let secrets_path = directory(string(&config, "id"))?.join("secrets.json");
@@ -269,7 +269,7 @@ fn draft(existing: Option<Value>, body: &Value) -> Result<Value> {
     Ok(config)
 }
 fn label(body: &Value) -> Result<String> {
-    let name = body["name"].as_str().unwrap_or("共享中继").trim();
+    let name = body["name"].as_str().unwrap_or("Shared relay").trim();
     if name.is_empty() || name.len() > 120 || name.chars().any(char::is_control) {
         return Err("Invalid relay display name".into());
     }
@@ -371,7 +371,16 @@ pub(crate) fn request<'a>(
                 Ok(json!({"left":true}))
             }
             "instances" => {
-                transport::control(&client, url, &owner(&config)?, json!({"op":"list"})).await
+                let mut members =
+                    transport::control(&client, url, &owner(&config)?, json!({"op":"list"}))
+                        .await?;
+                let own_id = Identity::instance()?.id();
+                if let Some(rows) = members.as_array_mut() {
+                    for member in rows {
+                        member["isSelf"] = json!(member["id"] == own_id);
+                    }
+                }
+                Ok(members)
             }
             "remove" => {
                 let result = transport::control(

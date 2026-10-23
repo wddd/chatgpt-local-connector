@@ -15,7 +15,7 @@ interface Column<T> {
 export function DataTable<T extends { id: string }>({ rows, columns, onOpen, empty }: {
   rows: T[];
   columns: Column<T>[];
-  onOpen: (row: T) => void;
+  onOpen?: (row: T) => void;
   empty: ReactNode;
 }) {
   return (
@@ -27,7 +27,7 @@ export function DataTable<T extends { id: string }>({ rows, columns, onOpen, emp
           </tr>
         </thead>
         <tbody>
-          {rows.map(row => <tr key={row.id} className="data-table-row" tabIndex={-1} onClick={event => { event.currentTarget.focus({ preventScroll: true }); onOpen(row); }}>
+          {rows.map(row => <tr key={row.id} className={onOpen ? "data-table-row" : undefined} tabIndex={onOpen ? -1 : undefined} onClick={onOpen ? event => { event.currentTarget.focus({ preventScroll: true }); onOpen(row); } : undefined}>
             {columns.map(column => <td key={column.key} style={{ textAlign: column.align }}>{column.render(row)}</td>)}
           </tr>)}
           {!rows.length && <tr><td colSpan={columns.length}>{empty}</td></tr>}

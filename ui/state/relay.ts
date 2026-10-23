@@ -4,13 +4,14 @@ export type Relay = { id: string; url: string; name: string; owner: boolean; ing
 export type RelayProgress = { phase: "idle" | "login" | "deploying" | "connecting" | "ready" | "failed"; jobId?: string; action?: string; relayId?: string; ingressId?: string; loginUrl?: string; reason?: string; cancelled?: boolean; failedPhase?: string; accounts?: { id: string; name: string }[]; result?: { relayId?: string; ingressId?: string; url?: string; deleted?: boolean } };
 export function useRelays() {
   const [data, setData] = useState<{ relays: Relay[]; version: string }>({ relays: [], version: "" });
-  const [error, setError] = useState("");
+  const [error, setError] = useState(""), [loaded, setLoaded] = useState(false);
   const refresh = useCallback(async () => {
     try { const value = await api<typeof data>("relay/list"); setData(value); setError(""); return value; }
     catch (e) { setError(String(e)); throw e; }
+    finally { setLoaded(true); }
   }, []);
   useEffect(() => { void refresh().catch(() => {}); }, [refresh]);
-  return { ...data, error, refresh };
+  return { ...data, error, loaded, refresh };
 }
 export function useRelayProgress(active: boolean, onReady: (value: RelayProgress) => void) {
   const [progress, updateProgress] = useState<RelayProgress>({ phase: "idle" });

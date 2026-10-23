@@ -2022,7 +2022,7 @@
           "body"
         ]
       },
-      "description": "Start creation via managed Wrangler browser OAuth, deploy bundled Worker with management public key secret, register this instance and connect. Returns job snapshot; read relay.progress. Installs an isolated Node.js/Wrangler deployment tool when needed; ordinary relay traffic stays native.",
+      "description": "Start creation via managed Wrangler browser OAuth, deploy bundled Worker with management public key secret, register this instance with the computer device name and connect. Returns job snapshot; read relay.progress. Installs an isolated Node.js/Wrangler deployment tool when needed; ordinary relay traffic stays native.",
       "localOnly": true
     },
     {
@@ -2089,7 +2089,7 @@
           "body"
         ]
       },
-      "description": "Join a shared relay and connect. The invitation token is consumed for registration and not stored on member machines. Returns a progress job.",
+      "description": "Join a shared relay using this computer's device name and connect. The optional name labels the local connection. The invitation token is consumed for registration and not stored on member machines. Returns a progress job.",
       "localOnly": true
     },
     {
@@ -2227,7 +2227,7 @@
           "body"
         ]
       },
-      "description": "Owner signature only: list relay instances, display names, join times, last online and online status.",
+      "description": "Owner signature only: list relay instances, display names, join times, last online, online status, and isSelf (matched locally by instance ID).",
       "localOnly": true
     },
     {

@@ -60,6 +60,31 @@ pub type Result<T> = std::result::Result<T, String>;
 pub fn now() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
+pub(crate) async fn device_name() -> &'static str {
+    static NAME: tokio::sync::OnceCell<String> = tokio::sync::OnceCell::const_new();
+    NAME.get_or_init(|| async {
+        #[cfg(target_os = "macos")]
+        if let Ok(name) = output("/usr/sbin/scutil", &["--get", "ComputerName"]).await {
+            if !name.trim().is_empty() {
+                return name.trim().to_owned();
+            }
+        }
+        for key in ["COMPUTERNAME", "HOSTNAME"] {
+            if let Ok(name) = std::env::var(key) {
+                if !name.trim().is_empty() {
+                    return name.trim().to_owned();
+                }
+            }
+        }
+        output("hostname", &[])
+            .await
+            .ok()
+            .filter(|name| !name.trim().is_empty())
+            .map(|name| name.trim().to_owned())
+            .unwrap_or_else(|| "This computer".into())
+    })
+    .await
+}
 pub fn id() -> String {
     uuid::Uuid::new_v4().to_string()
 }

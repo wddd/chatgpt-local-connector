@@ -69,7 +69,7 @@ export function Button({
   disabled,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost" | "danger";
+  variant?: "primary" | "secondary" | "ghost" | "danger" | "danger-outline";
   busy?: boolean;
   ref?: Ref<HTMLButtonElement>;
 }) {
@@ -324,6 +324,7 @@ export function SingleChoice({
   swatches = false,
   compact = false,
   cards = false,
+  navigation = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -333,6 +334,7 @@ export function SingleChoice({
   swatches?: boolean;
   compact?: boolean;
   cards?: boolean;
+  navigation?: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const measure = useRef<HTMLDivElement>(null);
@@ -357,7 +359,7 @@ export function SingleChoice({
     <div
       ref={container}
       style={compact ? { width: contentWidth } : undefined}
-      className={`choice ${swatches ? "choice-swatches" : ""} ${cards ? "choice-cards" : ""}`}
+      className={`choice ${swatches ? "choice-swatches" : ""} ${cards ? "choice-cards" : ""} ${navigation ? "choice-navigation" : ""}`}
     >
       {!swatches && options.length <= 5 && (
         <div ref={measure} className="choice-measure" aria-hidden="true">
@@ -368,13 +370,13 @@ export function SingleChoice({
           ))}
         </div>
       )}
-      {cards || swatches || (options.length <= 5 && fits) ? (
+      {navigation || cards || swatches || (options.length <= 5 && fits) ? (
         <RadioGroup.Root
           value={value}
           onValueChange={onChange}
           disabled={disabled}
           aria-label={label}
-          orientation={cards ? "vertical" : "horizontal"}
+          orientation={cards || navigation ? "vertical" : "horizontal"}
           className="choice-radio"
         >
           {options.map((option) => (
@@ -382,6 +384,7 @@ export function SingleChoice({
               key={option.value}
               value={option.value}
               className="choice-option"
+              data-hover-target={navigation ? option.value : undefined}
               aria-label={option.label}
               style={
                 option.color
@@ -395,7 +398,7 @@ export function SingleChoice({
                 <>
                   {option.graphic}
                   {option.icon && <Icon icon={option.icon} />}
-                  <span>{option.label}{cards && option.description && <small>{option.description}</small>}</span>
+                  <span>{option.label}{(cards || navigation) && option.description && <small>{option.description}</small>}</span>
                 </>
               )}
             </RadioGroup.Item>

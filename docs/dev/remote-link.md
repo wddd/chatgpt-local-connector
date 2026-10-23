@@ -109,9 +109,9 @@ Welcome contains Codex login readiness, permissions readiness, and Add your firs
 
 ### Settings: Extras
 
-Settings shows one entry row for Extras. Extras opens its own workspace page for features outside ARC's core loop. It contains Relay hosting and Experimental topology controls.
+Settings shows one entry row for Extras. Extras opens a nested view inside the Settings workspace, with a Settings / Extras header and back navigation. A 200px sub-navigation selects Relay hosting or Experimental topology controls and stacks above the content below 640px.
 
-Relay hosting lists relays this computer deployed. Each relay shows state, Worker version with Update when outdated, Delete, the invite link with Copy and Reset, and member devices with joined time, last seen, and Remove. This computer is marked and cannot be removed from its own relay.
+Relay hosting lists only relays this computer deployed. Cards show the hostname, state, Worker version with Update when outdated, and an invite footer with Copy and Reset. Full tokenized URLs are never rendered. Reset invalidates the old invitation without disconnecting existing devices. Member tables show device names, compact joined and last-seen times, and Remove with confirmation. This computer uses status.deviceName, is marked This computer, and has no Remove action. Create and join register the device name. Delete is a separate bottom danger zone with confirmation that every connected device loses its relay connection. Deploy new relay reuses the deployment progress flow.
 
 ## Phases
 
