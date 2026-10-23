@@ -82,7 +82,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const sources = status?.ingresses ?? [];
   const controlSources = orderedSources().filter(s => s.state !== "revoked" && !isPendingSource(s, sources));
   const agents = orderedAgents()
-    .filter((a) => a.installed)
+    .filter((a) => a.installed && a.enabled === true)
     .filter((a, index) => index < ([4, 6, 8, 10].includes(max) ? max : 4) || a.agent === selection?.agent);
   const running = sources.some((i) => i.running),
     progressing =

@@ -105,7 +105,6 @@ export default function ElasticPanel({
   >(undefined);
   const layers = panelLayers.use(),
     recessed = !!node && layers.includes(node) && layers.at(-1) !== node;
-  const previousView = useRef({ recessed, depthOffset });
   const previousExpanded = useRef(expanded), dockFrame = useRef<SurfaceRect | null>(null);
   const latest = useRef({ onClose, onDismiss, busy, depthOffset });
   latest.current = { onClose, onDismiss, busy, depthOffset };
@@ -208,16 +207,6 @@ export default function ElasticPanel({
     }
     if (!motion.current?.running) { dockFrame.current = rect; onPanelFrame?.(rect); }
   }, [node, position, dock, expanded, width, onPanelFrame]);
-  useLayoutEffect(() => {
-    const returned = previousView.current.recessed && !recessed;
-    const stepped = previousView.current.depthOffset !== depthOffset;
-    previousView.current = { recessed, depthOffset };
-    if (node && !recessed && (returned || stepped) && !reduced()) {
-      const content = node.firstElementChild;
-      const animation = content ? animate(content, { opacity: [0, 1] }, { duration: 0.18 }) : undefined;
-      return () => { animation?.stop(); };
-    }
-  }, [node, recessed, depthOffset]);
   async function close(replacement?: HTMLElement, dismiss = false) {
     if (latest.current.busy || closing.current || !node) return;
     if (latest.current.depthOffset > 0 && !dismiss) {
@@ -256,9 +245,12 @@ export default function ElasticPanel({
     try {
       await (dismiss ? latest.current.onDismiss ?? latest.current.onClose : latest.current.onClose)();
     } finally {
-      // An asynchronous close may retain the dialog to show an operation error.
       closing.current = false;
-      if (parent && node.isConnected && node.firstElementChild) (node.firstElementChild as HTMLElement).style.opacity = "1";
+      // Let React remove the closed child before restoring a dialog retained
+      // after an operation error. Restoring it immediately flashes the child.
+      if (parent) requestAnimationFrame(() => {
+        if (node.isConnected && node.firstElementChild) (node.firstElementChild as HTMLElement).style.opacity = "1";
+      });
     }
     if (replacement)
       requestAnimationFrame(() => {

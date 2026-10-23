@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { t, locale } from "../i18n";
 import { subscriptions } from "../state/subscriptions";
+import { agents } from "../state/agents";
 import type { Page } from "../state/navigation";
 import QuotaBubble from "./QuotaBubble";
 import { Button, Empty, Loading, Notice } from "../components/ui";
 export default function UsageOverview({ onNavigate }: { onNavigate: (page: Page) => void }) {
   locale.use();
   const { snapshot, error: subscriptionError } = subscriptions.use();
+  const inventory = agents.use();
+  const enabled = new Set(inventory.items.filter(agent => agent.installed && agent.enabled === true).map(agent => agent.agent));
   const providers = snapshot?.settings.enabled
-    ? snapshot.providers.filter((p) => p.eligible)
+    ? snapshot.providers.filter((p) => p.eligible && (p.agentIds?.length ? p.agentIds : [p.agentId]).some(agent => enabled.has(agent)))
     : [];
   const [dismissKey, setDismissKey] = useState(0);
   return (
