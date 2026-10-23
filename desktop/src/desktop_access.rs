@@ -67,7 +67,6 @@ pub async fn request(app: &tauri::AppHandle, operation: DesktopRequest) -> Resul
                     .state::<std::sync::Arc<arc_core::runtime::Client>>()
                     .inner()
                     .clone();
-                crate::session::remember(&service).await?;
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(300)).await;

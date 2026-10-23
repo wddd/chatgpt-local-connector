@@ -198,16 +198,17 @@ pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Va
         .clone();
     // Download and signature verification finish before any connection is stopped.
     let current = service.request("status", "GET", json!({})).await?;
-    let running: Vec<_> = current["ingresses"]
+    let running: Vec<String> = current["ingresses"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|i| i["running"] == true)
         .filter_map(|i| i["id"].as_str().map(str::to_owned))
         .collect();
+    let connections = crate::session::restore().unwrap_or(running);
     arc_core::save(
         &resume_path(),
-        &json!({"version":version,"ingresses":running}),
+        &json!({"version":version,"ingresses":connections}),
     )?;
     // Drain auxiliary work even when the tunnel is already disconnected.
     let installed = async {
@@ -219,7 +220,7 @@ pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Va
         let _ = std::fs::remove_file(resume_path());
         service.resume().await;
         let restored = async {
-            for id in &running {
+            for id in &connections {
                 service
                     .request(&format!("ingress/{id}/start"), "POST", json!({}))
                     .await?;

@@ -68,8 +68,9 @@ kernel::results stores immutable large-result snapshots with UTF-16 pagination. 
 - Connect starts the selected ingress and provider. Agent execution connections initialize on demand.
 - Disconnect stops ingress processes and forwarding. Background task lifecycle is unchanged.
 - Closing the window hides it. Tray and connections continue.
-- Quit saves the running ingress set and releases the Desktop lease. Other leases may keep Core alive.
-- Reopening restores previously running ingresses. Previously disconnected ones remain disconnected.
+- Core persists explicit connection start and stop intent in desktop-session.json. Runtime cleanup and failed restoration do not overwrite that intent.
+- Quit releases the Desktop lease. Other leases may keep Core alive.
+- Reopening restores requested connections, including interrupted or failed startup attempts. Explicitly disconnected, disabled, and deleted connections remain disconnected.
 - Update verifies signatures, requires other entry points to exit, drains requests, suspends auto-start, and waits for the Core file lock before installation. Failure restores clients and connections.
 
 Tray left-click opens the main window. Right-click opens a native menu without another WebView. Platform implementations own screen capture and native windows. Linux returns explicit unsupported results.

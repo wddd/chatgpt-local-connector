@@ -31,15 +31,18 @@ pub(super) struct Subscription {
     pub until: Option<i64>,
 }
 impl Subscription {
-    pub fn matches(&self, b: &Binding, d: &Delivery) -> bool {
-        let event = event(b, d);
+    pub fn matches(&self, b: &Binding) -> bool {
+        let agent = !b.agent.is_empty() && b.agent != "codex";
         !self.source_id.is_empty()
             && self.source_id == b.source_id
             && self.op == "task_status"
             && self.turn.as_ref().is_none_or(|t| *t == b.turn_id)
-            && ["threadId", "taskId"]
-                .iter()
-                .all(|k| self.args[*k].as_str().is_none_or(|v| event[*k] == v))
+            && self.args["threadId"]
+                .as_str()
+                .is_none_or(|id| !agent && id == b.thread_id)
+            && self.args["taskId"]
+                .as_str()
+                .is_none_or(|id| agent && id == b.thread_id)
     }
     pub fn active(&self, now_ms: i64) -> bool {
         self.expires_at.is_none_or(|at| at > now_ms)
@@ -144,7 +147,7 @@ pub(super) fn route(state: &State, bindings: &mut [Binding], now: i64) {
                 continue;
             }
             for source in &sources {
-                if !sub.matches(b, source)
+                if !sub.matches(b)
                     || source.status == "resolved"
                     || source.interaction["resolved"] == true
                 {

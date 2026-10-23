@@ -4,6 +4,25 @@ use crate::{control::Control, ingress::Ingress, *};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU16, Ordering};
 
+fn remember_connection(id: &str, connected: bool) -> Result<()> {
+    // Core is the single writer. Internal shutdown and restart cleanup must not
+    // turn a transient failure into a persistent request to disconnect.
+    static WRITER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = WRITER.lock().unwrap();
+    let path = root().join("desktop-session.json");
+    let mut ids: std::collections::BTreeSet<String> = if path.exists() {
+        serde_json::from_value(load(&path)?).map_err(|error| error.to_string())?
+    } else {
+        Default::default()
+    };
+    if connected {
+        ids.insert(id.to_owned());
+    } else {
+        ids.remove(id);
+    }
+    save(&path, &json!(ids))
+}
+
 pub struct Service {
     pub runtime: crate::runtime::State,
     pub subscriptions: Arc<crate::subscriptions::SubscriptionService>,
@@ -424,7 +443,7 @@ impl Service {
                 .store(self.port.load(Ordering::SeqCst), Ordering::SeqCst);
             let action = action.to_owned();
             jobs.spawn(async move {
-                let result = ingress.request(&action, "POST", json!({})).await;
+                let result = Self::set_connection(&ingress, action == "start").await;
                 json!({"id":ingress.id,"ok":result.is_ok(),"error":result.err()})
             });
         }
@@ -434,6 +453,22 @@ impl Service {
         }
         results.sort_by(|a, b| string(a, "id").cmp(string(b, "id")));
         Ok(json!({"results":results}))
+    }
+    async fn set_connection(ingress: &Arc<Ingress>, connected: bool) -> Result<Value> {
+        let _runtime = ingress.operation.lock().await;
+        if ingress.retired.load(Ordering::SeqCst) {
+            return Err("ingress removed or replaced".into());
+        }
+        if connected && ingress.meta.lock().await["enabled"] != true {
+            return Err("ingress disabled".into());
+        }
+        remember_connection(&ingress.id, connected)?;
+        if connected {
+            ingress.start().await?;
+        } else {
+            ingress.stop().await?;
+        }
+        Ok(json!({"ok":true}))
     }
     async fn discard_draft(&self, id: &str) -> Result<()> {
         if let Some((draft, _, task)) = self.drafts.lock().await.remove(id) {
@@ -1047,6 +1082,7 @@ impl Service {
             if method == "DELETE" && action.is_empty() {
                 let _runtime = i.operation.lock().await;
                 i.stop().await?;
+                remember_connection(id, false)?;
                 i.retired.store(true, Ordering::SeqCst);
                 let mut oauth = i.oauth.lock().await;
                 crate::sources::remove_connection(
@@ -1073,6 +1109,7 @@ impl Service {
                 if i.meta.lock().await["enabled"] != true {
                     return Err("ingress disabled".into());
                 }
+                remember_connection(id, true)?;
                 i.stop().await?;
                 i.port
                     .store(self.port.load(Ordering::SeqCst), Ordering::SeqCst);
@@ -1126,6 +1163,9 @@ impl Service {
                     }
                     return Err(error);
                 }
+                if entry["enabled"] != true {
+                    remember_connection(id, false)?;
+                }
                 let next = Ingress::new(entry.clone(), self.execution.clone(), self.token.clone())?;
                 let identity_changed = crate::ingress::config::binding(&previous["config"])
                     != crate::ingress::config::binding(&entry["config"])
@@ -1145,7 +1185,7 @@ impl Service {
                     .lock()
                     .await
                     .insert(id.to_owned(), next.clone());
-                if restart {
+                if restart && entry["enabled"] == true {
                     next.port
                         .store(self.port.load(Ordering::SeqCst), Ordering::SeqCst);
                     next.start().await?;
@@ -1168,6 +1208,9 @@ impl Service {
             }
             i.port
                 .store(self.port.load(Ordering::SeqCst), Ordering::SeqCst);
+            if matches!(action, "start" | "stop") {
+                return Self::set_connection(&i, action == "start").await;
+            }
             return i.request(action, method, body).await;
         }
         if [

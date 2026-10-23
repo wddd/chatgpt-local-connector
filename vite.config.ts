@@ -16,19 +16,34 @@ export default defineConfig({
   plugins: [react(), {
     name: 'connector-native-preview',
     configureServer(server) {
+      let checking: { owner: string; promise: Promise<Endpoint> } | undefined;
       function ownerIdentity() {
         try { return readFileSync(path.join(stateRoot, 'app/native.json'), 'utf8'); }
         catch { return ''; }
       }
       async function endpoint(): Promise<Endpoint> {
+        const owner = ownerIdentity();
+        if (checking?.owner === owner) return checking.promise;
+        const probe = probeEndpoint(owner);
+        checking = { owner, promise: probe };
+        try { return await probe; }
+        finally { if (checking?.promise === probe) checking = undefined; }
+      }
+      async function probeEndpoint(owner: string): Promise<Endpoint> {
         try {
-          const info = JSON.parse(readFileSync(path.join(stateRoot, 'app/native.json'), 'utf8'));
-          if (Number.isInteger(info.port) && info.port > 0 && info.port <= 65535 && typeof info.token === 'string') {
-            const response = await fetch(`http://127.0.0.1:${info.port}/healthz`, { headers: { Authorization: `Bearer ${info.token}` }, signal: AbortSignal.timeout(500) });
-            if (response.ok && (await response.json()).instance === info.instance) return info;
+          if (!owner) throw new Error('No Core owner is registered. Run npm run dev, or start the installed app when using npm run dev:ui.');
+          const info = JSON.parse(owner);
+          if (!Number.isInteger(info.port) || info.port < 1 || info.port > 65535 || typeof info.token !== 'string' || typeof info.instance !== 'string') {
+            throw new Error('Invalid Core owner metadata. Restart Core and inspect core.log if this persists.');
           }
-        } catch { /* The selected owner may still be starting or restarting. */ }
-        throw new Error('Core is restarting or unavailable. Run npm run dev, or start the installed app when using npm run dev:ui.');
+          const response = await fetch(`http://127.0.0.1:${info.port}/healthz`, { headers: { Authorization: `Bearer ${info.token}` }, signal: AbortSignal.timeout(2000) });
+          if (!response.ok) throw new Error(`Core health check returned HTTP ${response.status}.`);
+          if ((await response.json()).instance !== info.instance || ownerIdentity() !== owner) throw new Error('Core ownership changed. Reconnect to the current Core.');
+          return info;
+        } catch (error) {
+          if (error instanceof Error && error.name === 'TimeoutError') throw new Error('Core health check timed out after 2 seconds. Core may be busy; retry and inspect core.log if this persists.');
+          throw error;
+        }
       }
       server.middlewares.use((request, response, next) => {
         if (request.url === '/__arc_dev' && request.method === 'GET' && request.headers.host === '127.0.0.1:5187') {
@@ -73,7 +88,11 @@ export default defineConfig({
             if (ownerIdentity() !== owner) { upstream.destroy(); response.end(); }
           }, 1000) : undefined;
           response.on('close', () => { clearInterval(watchOwner); upstream.destroy(); }); upstream.end(body);
-        }).catch(error => { response.writeHead(503, { 'Content-Type': 'application/json' }); response.end(JSON.stringify({ error: error.message })); });
+        }).catch(error => {
+          if (response.destroyed) return;
+          response.writeHead(503, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({ error: error.message }));
+        });
       });
     },
   }],

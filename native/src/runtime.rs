@@ -176,7 +176,7 @@ pub(crate) async fn owner(build: &str) -> Result<Option<Value>> {
         .map_err(|e| e.to_string())?
         .get(format!("http://127.0.0.1:{port}/healthz"))
         .bearer_auth(string(&info, "token"))
-        .timeout(Duration::from_millis(800))
+        .timeout(Duration::from_secs(2))
         .send()
         .await;
     let Ok(response) = response else {
@@ -231,6 +231,7 @@ impl Client {
             match client.ensure().await {
                 Err(error)
                     if (error.starts_with("CORE_BUILD_MISMATCH")
+                        || error.starts_with("CORE_UNAVAILABLE")
                         || error == "core shutting down")
                         && Instant::now() < deadline =>
                 {
@@ -277,6 +278,23 @@ impl Client {
         let _startup = self.startup.lock().await;
         let current = owner(&self.build).await?;
         if current.is_none() {
+            // A slow health response does not release ownership. Never launch
+            // another process while the existing Core still owns the state.
+            match File::options()
+                .read(true)
+                .write(true)
+                .open(root().join("core.lock"))
+            {
+                Ok(lock) => match lock.try_lock() {
+                    Ok(()) => drop(lock),
+                    Err(std::fs::TryLockError::WouldBlock) => {
+                        return Err("CORE_UNAVAILABLE: The existing Core still owns the state directory but did not answer its health check. Retry after it becomes responsive; inspect core.log if this persists.".into());
+                    }
+                    Err(error) => return Err(error.to_string()),
+                },
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.to_string()),
+            }
             private_dir(&root())?;
             let log = std::fs::OpenOptions::new()
                 .create(true)

@@ -1847,6 +1847,9 @@ fn task_details(operation: &str, args: &Value) -> Result<Option<Value>> {
     ))
 }
 pub(crate) fn dispatch_title(args: &Value) -> String {
+    static PREFIX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"^\s*(?:(?:[#>]+|[-*+]|[0-9]+[.)])\s+)*").unwrap()
+    });
     let explicit = string(args, "title").trim();
     if !explicit.is_empty() {
         return explicit
@@ -1872,8 +1875,7 @@ pub(crate) fn dispatch_title(args: &Value) -> String {
         .lines()
         .find(|line| !line.trim().is_empty())
         .unwrap_or("");
-    regex::Regex::new(r"^\s*(?:(?:[#>]+|[-*+]|[0-9]+[.)])\s+)*")
-        .unwrap()
+    PREFIX
         .replace(line, "")
         .trim()
         .chars()

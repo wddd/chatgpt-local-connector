@@ -12,13 +12,15 @@ npm run dev
 
 Development uses the installed data directory. The launcher builds Core and Desktop before quitting the installed Desktop through its authenticated management API. It waits for Core to exit and release its state lock before starting the development build. Configuration, source identities, history, and connection state stay in place. Development writes affect installed data.
 
-The supervisor watches native and desktop sources, embedded native resources, Cargo manifests, and desktop configuration. A successful build restarts development Desktop and Core together. Compile failures leave the current build running. Vite stays available across Core restarts, and DEV WEB reconnects to the new owner automatically. Saving another source change retries a failed build. Queued connection restoration survives another rebuild during startup. Quitting development Desktop or pressing Ctrl+C stops development and restores the installed Desktop if it was running before takeover.
+The supervisor watches native and desktop sources, embedded native resources, Cargo manifests, and desktop configuration. A successful build restarts development Desktop and Core together. Compile failures leave the current build running. Vite stays available across Core restarts, and DEV WEB reconnects to the new owner automatically. Saving another source change retries a failed build. Core persists explicit connection intent before starting or stopping an ingress. Interrupted and failed startup attempts remain scheduled for restoration on the next launch. Quitting development Desktop or pressing Ctrl+C stops development and restores the installed Desktop if it was running before takeover.
 
 ```sh
 npm run dev:ui
 ```
 
 This starts only DEV WEB at `http://127.0.0.1:5187/`. It uses installed data and connects to the running Core. It never starts, stops, or builds Core. Start the installed App first. An existing DEV WEB from the same checkout and state directory can remain open when `npm run dev` takes over.
+
+Concurrent DEV WEB requests share an in-flight health probe for the same Core owner. A probe waits up to two seconds and reports missing ownership, timeout, identity change, or HTTP failure separately. Desktop checks the Core state lock before attempting recovery after a failed probe. A slow Core is not treated as permission to launch another owner. Development has the same control-source support as installed builds. Grok and Grok Bot share their configured ingress.
 
 Both commands honor an explicit ARC_STATE_DIR for temporary acceptance instances. There is no separate default development data directory. Do not manually launch a development binary against an active installed instance. The supervisor preserves the single-Core lock and build-identity checks. Other local CLI/MCP clients must release Core before takeover or restart; the launcher reports an actionable error instead of terminating those clients. Core restarts temporarily interrupt connections and ARC-owned execution processes.
 

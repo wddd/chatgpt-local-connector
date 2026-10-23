@@ -254,9 +254,6 @@ fn main() {
                     },
                 );
             if resume.is_some() || autostart {
-                if let Some(ids) = &resume {
-                    session::begin_restore(ids);
-                }
                 tauri::async_runtime::spawn(async move {
                     if let Some(ids) = resume {
                         for id in ids {
@@ -266,7 +263,6 @@ fn main() {
                             {
                                 service.log("ERROR", &error).await;
                             }
-                            session::finish_restore(&id);
                         }
                     } else if let Err(error) = service
                         .request("ingress/start-all", "POST", json!({}))
@@ -322,9 +318,6 @@ fn main() {
                 {
                     if let Some(service) = app.try_state::<Arc<Service>>() {
                         tauri::async_runtime::block_on(async {
-                            if let Err(error) = session::remember(service.inner()).await {
-                                service.log("ERROR", &error).await;
-                            }
                             service.close().await;
                         });
                     }
