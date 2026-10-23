@@ -75,6 +75,11 @@ export const name = (agent: Agent) =>
   builtins.find((entry) => entry.id === agent.agent)?.displayName ||
   ({ codex: "Codex", pi: "Pi", antigravity: "Antigravity" })[agent.agent] ||
   agent.agent;
+export function compactAgentVersion(value?: string | null): string {
+  if (!value) return "";
+  return value.match(/\b[vV]?(\d+(?:\.\d+){1,3}(?:-(?:alpha|beta|rc|dev|preview|canary|nightly)[\w.-]*)?)\b/i)?.[1]
+    ?? value.trim().split(/\r?\n/)[0]!;
+}
 const order = preference<string[]>("arc.agent-order", []);
 function cachedAgents(): Agent[] {
   try {

@@ -26,6 +26,7 @@ struct Operation {
     job: tokio::task::JoinHandle<()>,
 }
 use driver::{AgentDriver, Manifest};
+pub(crate) use process::launch_command;
 use process::Process;
 
 pub struct AgentHost {

@@ -390,7 +390,7 @@ fn agent_command(binary: &Path, args: &[String]) -> Result<tokio::process::Comma
     Ok(c)
 }
 
-fn launch_command(binary: &Path, args: &[String]) -> Result<tokio::process::Command> {
+pub(crate) fn launch_command(binary: &Path, args: &[String]) -> Result<tokio::process::Command> {
     let mut c = agent_command(binary, args)?;
     let mut paths = super::driver::search_paths();
     if let Some(parent) = binary.parent() {

@@ -9,11 +9,11 @@ ARC reads native provider login and upstream responses. Quota monitoring runs in
 | Source | Quota / plan |
 | --- | --- |
 | Codex / ChatGPT | Native account quota windows, plan, reset credits |
-| Claude | Native login, quota windows, reset grants, product shares |
+| Claude | Native Claude Code `/usage` quota windows |
 | OpenCode Go | Existing OpenCode subscription response |
 | Cursor | Desktop login, billing-cycle quota, X Pass |
 | Antigravity | Running language server; macOS login fallback |
-| Grok | Native login, reported plan/quota, X Pass |
+| Grok | Native login, CLI billing quota and reported plan |
 | Kimi | Saved API key and membership/quota response |
 
 Display grouping puts Cursor Agent under Cursor and Grok CLI/Build under Grok. Antigravity readings belong to Antigravity and are not attached to Gemini CLI. A standalone Antigravity installation can contribute readings to the quota overview without an ARC execution adapter. Execution adapters and authentication remain separate. Missing quota is unknown; a provider can return a plan without quota values.
@@ -22,7 +22,7 @@ Display grouping puts Cursor Agent under Cursor and Grok CLI/Build under Grok. A
 
 Successful quota readings persist in private ARC state. Startup restores them as stale while refresh runs. Failed requests retain the last reading and retry with backoff; 401/403 remain upstream errors. Readings become stale after 15 minutes; expired windows are hidden. Disabling an Agent or monitoring or explicitly removing credentials clears its quota cache.
 
-Codex obtains a native account reader on refresh. Cursor prefers its desktop token, falling back to Keychain when absent. Antigravity token renewal belongs to Antigravity.
+Codex obtains a native account reader on refresh. Claude runs the installed CLI's built-in `/usage` command without tools, project settings, MCP servers or a persisted session. Claude Code owns its login and renewal. Cursor prefers its desktop token, falling back to Keychain when absent. Antigravity token renewal belongs to Antigravity. Grok reads `GROK_HOME/auth.json`, defaulting to its native home, and requests `/v1/billing?format=credits`. After an upstream 401, ARC rereads the login, asks the installed `grok models` command to renew it when unchanged, then retries once. ARC never exchanges a rotating refresh token itself. Interrupted JSON writes are reread before reporting a failure. Both native commands honor ARC's network proxy setting.
 
 ## Display and controls
 
@@ -38,7 +38,7 @@ Consumption pace is used quota divided by elapsed reset-window time. The forecas
 
 Green indicates at least 10% projected remaining at reset; amber indicates less. Red requires strictly under 25% remaining and projected exhaustion before reset. An even-pace tick follows Remaining/Used display. Upstream exhaustion/blocking is reported separately.
 
-Claude reset counts show currently usable grants and expiry; ARC does not redeem them. Claude and X Pass product shares preserve upstream fractions rather than normalizing to 100%. Independent refreshes can capture different times; missing breakdowns are not inferred from another provider's login.
+Provider-reported reset counts show currently usable grants and expiry; ARC does not redeem them. X Pass product shares preserve upstream fractions rather than normalizing to 100%. Independent refreshes can capture different times; missing breakdowns are not inferred from another provider's login. Claude Code `/usage` does not expose the former HTTP response's reset grants or product breakdown; new CLI readings contain only reported quota windows.
 
 ## Limits
 

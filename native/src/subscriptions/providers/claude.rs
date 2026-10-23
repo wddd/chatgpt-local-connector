@@ -1,134 +1,196 @@
+// Native /usage strategy and line formats follow magpie (Copyright (c) 2026
+// yetone). See licenses/magpie-LICENSE.txt. Authentication belongs to Claude Code.
 use super::*;
-pub async fn credential() -> std::result::Result<Credential, Failure> {
-    #[cfg(target_os = "macos")]
-    let v = {
-        let result = tokio::time::timeout(
-            Duration::from_secs(5),
-            crate::command("/usr/bin/security")
-                .args([
-                    "find-generic-password",
-                    "-s",
-                    "Claude Code-credentials",
-                    "-w",
-                ])
-                .output(),
-        )
-        .await
-        .map_err(|_| Failure::from("credential-access-denied"))?
-        .map_err(|_| Failure::from("credential-access-denied"))?;
-        if result.status.success() {
-            serde_json::from_slice::<Value>(&result.stdout)
-                .map_err(|_| Failure::from("invalid-response"))?
-        } else if result.status.code() == Some(44) {
-            // CLI file is the same login source when no Keychain item exists.
-            // Access denial/timeout does not fall through to another source.
-            file(
-                &std::env::var_os("CLAUDE_CONFIG_DIR")
-                    .map(PathBuf::from)
-                    .unwrap_or(home()?.join(".claude"))
-                    .join(".credentials.json"),
-            )?
-        } else {
-            return Err("credential-access-denied".into());
-        }
-    };
-    #[cfg(not(target_os = "macos"))]
-    let v = file(
-        &std::env::var_os("CLAUDE_CONFIG_DIR")
-            .map(std::path::PathBuf::from)
-            .unwrap_or(home()?.join(".claude"))
-            .join(".credentials.json"),
-    )?;
-    let oauth = &v["claudeAiOauth"];
-    Credential::new(
-        oauth["accessToken"].as_str().unwrap_or("").into(),
-        "claude-login",
+use chrono::{Datelike, TimeZone};
+
+pub async fn read() -> std::result::Result<Reading, Failure> {
+    let output = native_cli(
+        "claude",
+        &[
+            "-p",
+            "/usage",
+            "--output-format",
+            "json",
+            "--tools",
+            "",
+            "--strict-mcp-config",
+            "--setting-sources",
+            "",
+            "--no-session-persistence",
+        ],
     )
-}
-pub async fn read(
-    client: &reqwest::Client,
-    c: &Credential,
-) -> std::result::Result<Reading, Failure> {
-    // Reset grants are opt-in and gated on the native CLI client version.
-    let version = tokio::time::timeout(
-        Duration::from_secs(5),
-        crate::command("claude")
-            .arg("--version")
-            .kill_on_drop(true)
-            .output(),
-    )
-    .await
-    .ok()
-    .and_then(|r| r.ok())
-    .filter(|r| r.status.success())
-    .and_then(|r| String::from_utf8(r.stdout).ok())
-    .and_then(|s| s.split_whitespace().next().map(str::to_owned));
-    let mut request = client
-        .get("https://api.anthropic.com/api/oauth/usage")
-        .query(&[("cedar_ember", "1")])
-        .bearer_auth(&c.secret)
-        .header("anthropic-beta", "oauth-2025-04-20")
-        .header("x-app", "cli");
-    if let Some(version) = version {
-        request = request.header(
-            "User-Agent",
-            format!("claude-cli/{version} (external, cli) agent-remote-control"),
-        );
+    .await?;
+    let value: Value = serde_json::from_slice(&output.stdout).map_err(|_| Failure {
+        code: "request-failed",
+        message: Some("Claude Code did not return a /usage result. Check `claude auth status`, then refresh usage.".into()),
+        retry_at: None,
+    })?;
+    let result = if let Some(messages) = value.as_array() {
+        messages.iter().rev().find(|v| v["type"] == "result")
+    } else {
+        Some(&value)
     }
-    let v = get(request).await?;
+    .ok_or(Failure::from("invalid-response"))?;
+    let text = result["result"]
+        .as_str()
+        .ok_or(Failure::from("invalid-response"))?;
+    if !output.status.success() || result["is_error"] == true {
+        return Err(Failure {
+            code: "request-failed",
+            message: Some(format!(
+                "Claude Code /usage: {}",
+                text.chars().take(400).collect::<String>()
+            )),
+            retry_at: None,
+        });
+    }
+    parse_usage(text, chrono::Utc::now())
+}
+
+pub(super) fn parse_usage(
+    text: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> std::result::Result<Reading, Failure> {
+    let ansi = regex::Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]").unwrap();
+    let text = ansi.replace_all(text, "");
+    let line = regex::Regex::new(
+        r"^Current (session|week(?: \(([^)]+)\))?):\s*([0-9.]+)% used(?:\s*·\s*resets (.+))?$",
+    )
+    .unwrap();
     let mut windows = vec![];
-    if let Some(limits) = v["limits"].as_array() {
-        for q in limits {
-            let kind = q["kind"].as_str().unwrap_or("");
-            if !["session", "weekly_all", "weekly_scoped"].contains(&kind) {
-                continue;
-            }
-            let scope = q["scope"]["model"]["display_name"].as_str();
-            let pool = scope.unwrap_or("subscription");
-            if let Some(mut w) = window(
-                &format!("{kind}/{pool}"),
-                pool,
-                kind,
-                number(&q["percent"]),
-                date(&q["resets_at"]),
-            ) {
-                w.scope = scope.map(str::to_owned);
-                w.exhausted = if q.get("locked_reason").is_some_and(|v| !v.is_null()) {
-                    Some(true)
-                } else {
-                    None
-                };
-                windows.push(w)
-            }
+    for row in text.lines() {
+        let Some(captures) = line.captures(row.trim()) else {
+            continue;
+        };
+        let session = &captures[1] == "session";
+        let scope = captures
+            .get(2)
+            .map(|m| m.as_str())
+            .filter(|s| !s.eq_ignore_ascii_case("all models"));
+        let label = if session { "five_hour" } else { "seven_day" };
+        let pool = scope.unwrap_or("subscription");
+        let id = format!("{label}/{pool}");
+        if windows.iter().any(|w: &QuotaWindow| w.id == id) {
+            continue;
+        }
+        if let Some(mut w) = window(
+            &id,
+            pool,
+            label,
+            captures[3].parse().ok(),
+            captures
+                .get(4)
+                .and_then(|m| reset_time(m.as_str(), now, if session { 5 } else { 168 })),
+        ) {
+            w.scope = scope.map(str::to_owned);
+            windows.push(w);
         }
     }
     if windows.is_empty() {
-        for id in [
-            "five_hour",
-            "seven_day",
-            "seven_day_sonnet",
-            "seven_day_opus",
-            "seven_day_oauth_apps",
+        return Err(Failure {
+            code: "no-limits-reported",
+            message: Some("Claude Code /usage returned no quota windows. Open Claude Code and run /usage, then refresh here.".into()),
+            retry_at: None,
+        });
+    }
+    Reading::new(windows, json!({"cliUsage": text.as_ref()}))
+}
+
+// The child runs with TZ=UTC. Unknown zones stay unknown instead of being
+// interpreted in the host's zone, including on Windows without a tz database.
+fn reset_time(text: &str, now: chrono::DateTime<chrono::Utc>, hours: i64) -> Option<String> {
+    let text = text.trim();
+    let text = if text.ends_with(')') {
+        let (text, zone) = text.rsplit_once(" (")?;
+        if !["UTC)", "Etc/UTC)", "GMT)"].contains(&zone) {
+            return None;
+        }
+        text
+    } else {
+        text
+    };
+    let text = text.replace("AM", "am").replace("PM", "pm");
+    let earliest = now - chrono::Duration::days(1);
+    let latest = now + chrono::Duration::hours(hours + 2);
+    let mut dates = vec![];
+    for format in [
+        "%b %e, %Y at %I:%M%P",
+        "%b %e, %Y at %I%P",
+        "%b %e, %Y, %I:%M%P",
+        "%b %e, %Y, %I%P",
+    ] {
+        if let Ok(date) = chrono::NaiveDateTime::parse_from_str(&text, format) {
+            return Some(chrono::Utc.from_utc_datetime(&date).to_rfc3339());
+        }
+    }
+    for year in now.year() - 1..=now.year() + 1 {
+        for format in [
+            "%Y %b %e at %I:%M%P",
+            "%Y %b %e at %I%P",
+            "%Y %b %e, %I:%M%P",
+            "%Y %b %e, %I%P",
         ] {
-            let q = &v[id];
-            let pool = if ["five_hour", "seven_day"].contains(&id) {
-                "subscription"
-            } else {
-                id
-            };
-            if let Some(mut w) = window(
-                id,
-                pool,
-                id,
-                number(&q["utilization"]),
-                date(&q["resets_at"]),
-            ) {
-                if pool != "subscription" {
-                    w.scope = Some(id.into())
-                }
-                windows.push(w)
+            if let Ok(date) =
+                chrono::NaiveDateTime::parse_from_str(&format!("{year} {text}"), format)
+            {
+                dates.push(chrono::Utc.from_utc_datetime(&date));
             }
         }
     }
-    Reading::new(windows, v)
+    for format in ["%I:%M%P", "%I%P"] {
+        if let Ok(time) = chrono::NaiveTime::parse_from_str(&text, format) {
+            for day in -1..=1 {
+                let date = now.date_naive() + chrono::Duration::days(day);
+                dates.push(chrono::Utc.from_utc_datetime(&date.and_time(time)));
+            }
+        }
+    }
+    dates.sort();
+    dates
+        .iter()
+        .find(|date| **date >= now && **date <= latest)
+        .or_else(|| {
+            dates
+                .iter()
+                .rev()
+                .find(|date| **date >= earliest && **date <= latest)
+        })
+        .map(chrono::DateTime::to_rfc3339)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_usage_preserves_reported_windows_and_reset_times() {
+        // Regression: direct Claude quota requests returned 401 while the native CLI owned login renewal.
+        let now = chrono::DateTime::parse_from_rfc3339("2025-12-31T23:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let reading = parse_usage("Current session: 13% used · resets 1am (UTC)\nCurrent week (all models): 4% used · resets Jan 3, 2pm (UTC)\nCurrent week (Sonnet): 9% used", now).unwrap_or_else(|_| panic!("native usage should parse"));
+        assert_eq!(reading.windows.len(), 3);
+        let session = &reading.windows[0];
+        assert_eq!(session.used_percent, 13.);
+        assert_eq!(
+            session.resets_at.as_deref(),
+            Some("2026-01-01T01:00:00+00:00")
+        );
+        assert_eq!(
+            reading.windows[1].resets_at.as_deref(),
+            Some("2026-01-03T14:00:00+00:00")
+        );
+        assert_eq!(reading.windows[2].scope.as_deref(), Some("Sonnet"));
+        assert_eq!(reading.windows[2].resets_at, None);
+    }
+
+    #[test]
+    fn native_usage_without_readings_stays_unknown() {
+        // Regression: Claude /usage can succeed with a billing notice and no quota values.
+        let reading = parse_usage(
+            "You are currently using your subscription to power your Claude Code usage.",
+            chrono::Utc::now(),
+        );
+        assert!(matches!(reading, Err(error) if error.code == "no-limits-reported"));
+    }
 }

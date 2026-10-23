@@ -88,10 +88,9 @@ pub async fn credential(id: &str) -> std::result::Result<Credential, Failure> {
     }
     match id {
         "opencode-go" => opencode_go::credential(),
-        "claude-code" => claude::credential().await,
         "cursor" => cursor::credential().await,
         "antigravity" => antigravity::credential().await,
-        "grok" => grok::credential(),
+        "grok" => grok::credential().await,
         "kimi-code" => Err("credentials-missing".into()),
         _ => Err("invalid-response".into()),
     }
@@ -103,11 +102,13 @@ pub async fn read(
     if id == "codex" {
         return codex::read(control).await.map(|r| (r, "codex-account"));
     }
+    if id == "claude-code" {
+        return claude::read().await.map(|r| (r, "claude-login"));
+    }
     let c = credential(id).await?;
     let client = client().await?;
     let reading = match id {
         "opencode-go" => opencode_go::read(&client, &c).await,
-        "claude-code" => claude::read(&client, &c).await,
         "cursor" => cursor::read(&client, &c).await,
         "antigravity" => antigravity::read(&client, &c).await,
         "grok" => grok::read(&client, &c).await,
@@ -117,11 +118,7 @@ pub async fn read(
     Ok((reading, c.source))
 }
 async fn client() -> std::result::Result<reqwest::Client, Failure> {
-    let settings = load(&root().join("app/preferences.json"))
-        .unwrap_or(json!({"proxyMode":"system","proxyUrl":""}));
-    let proxy = crate::proxy::NetworkProxy::resolve(&settings)
-        .await
-        .map_err(|_| Failure::from("network-error"))?;
+    let proxy = network_proxy().await?;
     let client = proxy
         .client(
             reqwest::Client::builder()
@@ -131,6 +128,99 @@ async fn client() -> std::result::Result<reqwest::Client, Failure> {
         .build()
         .map_err(|_| Failure::from("network-error"))?;
     Ok(client)
+}
+async fn network_proxy() -> std::result::Result<crate::proxy::NetworkProxy, Failure> {
+    let settings = load(&root().join("app/preferences.json"))
+        .unwrap_or(json!({"proxyMode":"system","proxyUrl":""}));
+    crate::proxy::NetworkProxy::resolve(&settings)
+        .await
+        .map_err(|_| Failure::from("network-error"))
+}
+
+// Native CLIs own login renewal. Quota reads never rotate their tokens themselves.
+async fn native_cli(
+    agent: &str,
+    args: &[&str],
+) -> std::result::Result<std::process::Output, Failure> {
+    use tokio::io::AsyncReadExt;
+    let binary = crate::agents::driver::discover(agent).ok_or(Failure {
+        code: "credentials-missing",
+        message: Some(format!(
+            "Install {agent} and sign in with its native CLI, then refresh usage."
+        )),
+        retry_at: None,
+    })?;
+    let mut command = crate::agents::launch_command(
+        &binary,
+        &args.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+    )
+    .map_err(|_| Failure::from("request-failed"))?;
+    network_proxy().await?.apply(&mut command);
+    let directory = std::env::temp_dir().join(format!("arc-quota-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).map_err(|_| Failure::from("request-failed"))?;
+    struct Directory(PathBuf);
+    impl Drop for Directory {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let directory = Directory(directory);
+    command
+        .current_dir(&directory.0)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    if agent == "claude" {
+        // /usage is a built-in command; no project settings, tools or saved turn.
+        command
+            .env("TZ", "UTC")
+            .env("LC_ALL", "C")
+            .env("DISABLE_TELEMETRY", "1")
+            .env("DISABLE_ERROR_REPORTING", "1")
+            .env("DISABLE_AUTOUPDATER", "1")
+            .env_remove("CLAUDECODE")
+            .env_remove("CLAUDE_CODE_ENTRYPOINT")
+            .env_remove("CLAUDE_CODE_OAUTH_TOKEN")
+            .env_remove("ANTHROPIC_API_KEY")
+            .env_remove("ANTHROPIC_AUTH_TOKEN")
+            .env_remove("ANTHROPIC_BASE_URL")
+            .env_remove("NODE_OPTIONS")
+            .env_remove("BUN_OPTIONS");
+    }
+    let result = tokio::time::timeout(Duration::from_secs(45), async {
+        let mut child = command
+            .spawn()
+            .map_err(|_| Failure::from("request-failed"))?;
+        let stdout = child.stdout.take().ok_or(Failure::from("request-failed"))?;
+        let stderr = child.stderr.take().ok_or(Failure::from("request-failed"))?;
+        let read = async |stream: tokio::process::ChildStdout| {
+            let mut bytes = Vec::new();
+            stream.take(1024 * 1024 + 1).read_to_end(&mut bytes).await?;
+            Ok::<_, std::io::Error>(bytes)
+        };
+        let err = async {
+            let mut bytes = Vec::new();
+            stderr.take(1024 * 1024 + 1).read_to_end(&mut bytes).await?;
+            Ok::<_, std::io::Error>(bytes)
+        };
+        let (stdout, stderr) =
+            tokio::try_join!(read(stdout), err).map_err(|_| Failure::from("request-failed"))?;
+        if stdout.len() > 1024 * 1024 || stderr.len() > 1024 * 1024 {
+            return Err("invalid-response".into());
+        }
+        let status = child
+            .wait()
+            .await
+            .map_err(|_| Failure::from("request-failed"))?;
+        Ok(std::process::Output {
+            status,
+            stdout,
+            stderr,
+        })
+    })
+    .await
+    .map_err(|_| Failure::from("network-error"))?;
+    result
 }
 
 async fn get(request: reqwest::RequestBuilder) -> std::result::Result<Value, Failure> {

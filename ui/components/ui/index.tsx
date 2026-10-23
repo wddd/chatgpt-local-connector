@@ -239,6 +239,7 @@ export function Row({
   controlId,
   id,
   onNavigate,
+  highlight = true,
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -246,8 +247,9 @@ export function Row({
   controlId?: string;
   id?: string;
   onNavigate?: () => void;
+  highlight?: boolean;
 }) {
-  if (onNavigate) return <HoverScope className="settings-row-hover">
+  if (onNavigate) return <HoverScope className="settings-row-hover" activeKey={highlight ? undefined : ""}>
     <Button id={id} variant="ghost" className="settings-row settings-row-navigation" data-hover-target="navigation" onClick={onNavigate}>
       <span className="row-copy">
         <span className="row-title">{title}</span>

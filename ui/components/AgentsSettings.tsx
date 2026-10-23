@@ -9,6 +9,7 @@ import {
   moveAgent,
   reorderAgents,
   name,
+  compactAgentVersion,
   agentLinks,
   toggleAgent,
   refreshAgents,
@@ -96,7 +97,7 @@ export function AgentDetails({
         <AgentQuotaIcon agent={agent.agent} />
         <div>
           <strong>{name(agent)}</strong>
-          {agent.installed !== undefined && <p>{agent.installed ? agent.version : t("agentNotInstalled")}</p>}
+          {agent.installed !== undefined && <p title={agent.version || undefined}>{agent.installed ? compactAgentVersion(agent.version) : t("agentNotInstalled")}</p>}
         </div>
       </div>
       {showOfficialLink && agentLinks[agent.agent] && <a href={agentLinks[agent.agent]} onClick={e => { e.preventDefault(); void openUrl(agentLinks[agent.agent]!); }}>{t("officialSetup")}</a>}
@@ -185,7 +186,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
                   <strong>{name(agent)}</strong>
                 )}
                 <span title={agent.version || undefined}>
-                  {agent.installed ? agent.version : t("agentNotInstalled")}
+                  {agent.installed ? compactAgentVersion(agent.version) : t("agentNotInstalled")}
                 </span>
               </div>
               {agent.installed && (

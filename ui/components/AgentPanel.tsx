@@ -7,7 +7,7 @@ import { api } from "../api";
 import { agentActivity } from "../state/activity";
 import { refreshSubscription, subscriptions } from "../state/subscriptions";
 import { useNow } from "../state/hooks";
-import { name, type Agent } from "../state/agents";
+import { compactAgentVersion, name, type Agent } from "../state/agents";
 import { connector } from "../state/connector";
 import { AgentQuotaIcon, agentQuotaWindows } from "../subscriptions/QuotaRing";
 import { quotaDisplay, quotaLabel, quotaPercent, quotaValue, resetDisplay } from "../subscriptions/displayPreferences";
@@ -108,13 +108,15 @@ function AgentView({ agent, onSettings, expanded, onToggleWidth, active }: {
     <header className="dialog-header agent-panel-header">
       <AgentQuotaIcon agent={agent.agent} dual />
       <div className="agent-panel-heading">
-        <h2 className="activity-panel-title" tabIndex={-1} title={name(agent)}>{name(agent)}</h2>
-        <span className="activity-panel-meta">{[agent.version, t("agentPanel.inProgress", { count: activity?.agents[agent.agent]?.sessions.length ?? 0 })].filter(Boolean).join(" · ")}</span>
+        <div className="agent-panel-title-row">
+          <h2 className="activity-panel-title" tabIndex={-1} title={name(agent)}>{name(agent)}</h2>
+          {agent.installed && status?.platform && status.platform !== "linux" && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
+            setError(""); void api("agents/open", "POST", { agent: agent.agent }).catch(error => setError(String(error)));
+          }} />}
+        </div>
+        <span className="activity-panel-meta" title={agent.version || undefined}>{[compactAgentVersion(agent.version), t("agentPanel.inProgress", { count: activity?.agents[agent.agent]?.sessions.length ?? 0 })].filter(Boolean).join(" · ")}</span>
       </div>
       <div className="actions">
-        {agent.installed && status?.platform && status.platform !== "linux" && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
-          setError(""); void api("agents/open", "POST", { agent: agent.agent }).catch(error => setError(String(error)));
-        }} />}
         <IconButton icon={Settings} label={t("agentDisplaySettings")} onClick={onSettings} />
         <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
           aria-pressed={expanded} onClick={onToggleWidth} />
