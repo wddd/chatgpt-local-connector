@@ -872,7 +872,6 @@
   "source.connections": "Connections",
   "source.count": "{count} sources",
   "source.unused": "Unused",
-  "source.callback": "Callback",
   "source.step.product": "Platform",
   "source.step.connection": "Connection",
   "source.step.address": "Configure",
@@ -999,8 +998,10 @@
   "switch.remaining": "The old grant on {connection} will be revoked after success. Sources remaining there: {names}.",
   "switch.none": "None",
   "switch.approve": "Approve and switch",
-  "switch.warning": "Update the address in {name} and authorize again. Name, history and notification settings stay. The old grant is revoked only after successful authorization on the new connection.",
+  "switch.warning": "Authorize again. Name, history and notification settings stay. The old grant is revoked only after successful authorization on the new connection.",
   "switch.expired": "This switch expired or was canceled. Go back to choose a connection and try again.",
   "switch.detached": "Former connection: {connection}. This source is disconnected; its name and history stay.",
-  "switch.retiredConnection": "This connection’s credential was retired. Remove it and create a new connection."
+  "switch.retiredConnection": "This connection’s credential was retired. Remove it and create a new connection.",
+  "switch.replaceConnector": "Remove the old ARC connector in {name} and add it again with this address. If the platform supports editing the URL, you can edit it instead.",
+  "switch.editAddress": "Update the ARC connector URL in {name} to this address, or remove the old connector and add it again."
 }

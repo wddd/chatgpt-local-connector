@@ -20,6 +20,7 @@ export default function ChangeConnection() {
   const source = sources.find(s => s.id === flow.sourceId);
   const entries = status?.ingresses ?? [], current = entries.find(i => i.id === source?.ingressId), target = entries.find(i => i.id === flow.ingressId);
   const info = controlSource(source?.product ?? "custom"), productName = info?.shortName ?? t("connect.other");
+  const addressInstruction = t(info?.setup?.editableUrl === true ? "switch.editAddress" : "switch.replaceConnector", { name: productName });
   const request = target?.oauth?.pending.find(p => p.id === flow.requestId || p.switchSourceId === source?.id && p.status === "pending");
   function reason(i: Ingress) {
     if (i.id === source?.ingressId) return t("switch.current");
@@ -72,12 +73,12 @@ export default function ChangeConnection() {
         <p>{t("switch.currentVia", { name: current?.name ?? source?.connectionName ?? t("source.connectionRemoved") })}</p>
         <SingleChoice cards label={t("source.connections")} value={flow.ingressId ?? ""} onChange={ingressId => connectionSwitch.set({ ...flow, ingressId })} disabled={busy} options={entries.map(i => ({ value: i.id, label: i.name, disabled: !!reason(i), description: reason(i) || [t(`source.kind.${connectionKind(i)}`), t(i.state === "ready" ? "connect.online" : "connect.offline"), sources.filter(s => s.ingressId === i.id && s.state !== "revoked" && !isPendingSource(s, entries)).map(s => s.label).join(", ")].filter(Boolean).join(" · ") }))} />
         <Button className="setup-new" data-add-connection disabled={busy} onClick={() => openConnectionSetup({ forSwitch: true, product: source?.product })}><Icon icon={Plus} /><span>{t("source.newConnection")}<small>{t("setup.newConnectionHint")}</small></span></Button>
-        <Notice tone="warning">{t("switch.warning", { name: productName })}</Notice>
+        <Notice tone="warning">{addressInstruction} {t("switch.warning")}</Notice>
       </> : <>
         {target ? <>
           <CopyField value={target.url || target.config.tunnelId} label={t("source.copyAddress")} />
           {credentials?.ingressId === target.id && <Field label={t("source.bearerHeader")}><CopyField password value={`Bearer ${credentials.bearerToken}`} label={t("source.bearerHeader")} /></Field>}
-          {flow.step === "address" && <><h3>{t("setup.configureProduct", { name: productName })}</h3><p>{info?.setup?.path[locale.get()] ?? t("connect.customPath")}</p>
+          {flow.step === "address" && <><p>{addressInstruction}</p><h3>{t("setup.configureProduct", { name: productName })}</h3><p>{info?.setup?.path[locale.get()] ?? t("connect.customPath")}</p>
             {info?.setup?.url && <Button onClick={() => void perform(() => openUrl(info.setup!.url))}>{t("connect.openSettings", { name: productName })}<Icon icon={ExternalLink} /></Button>}
             <p>{t(target.auth === "oauth" ? "setup.browserCode" : "source.noOAuthApproval")}</p>
             {target.state !== "ready" && <Button busy={busy} onClick={() => void perform(async () => { await api(`ingress/${target.id}/start`, "POST"); await refreshConnector(); })}>{t("retry")}</Button>}

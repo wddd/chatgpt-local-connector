@@ -84,6 +84,7 @@
       "https://claude.com/docs/connectors/building/authentication"
     ],
     "setup": {
+      "editableUrl": false,
       "path": {
         "en": "Settings › Connectors › Add custom connector",
         "zh-CN": "设置 › 连接器 › 添加自定义连接器"

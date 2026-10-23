@@ -1327,6 +1327,10 @@ test('source connection switching binds consent and preserves disconnected ident
     assert.equal((await readSource(sourceId)).ingressId, a.id);
     await management(`source/${sourceId}/switch`, 'POST', { ingressId: b.id });
     const next = await authorize(b);
+    assert.notEqual(next.client.client_id, first.client.client_id, 're-adding registers a new DCR client');
+    assert.notEqual(next.client.client_id, canceled.client.client_id);
+    assert.equal(next.pending.switchSourceId, sourceId, 'the target connection claims a new client for the pending switch');
+    assert.deepEqual(next.pending.sourceCandidates, []);
     assert.equal((await readSource(sourceId)).pendingSwitch.requestId, next.id);
     await management(`source/${next.pending.sourceId}/claim`, 'POST', { sourceId });
     assert.equal((await access(a, oldTokens.access_token)).status, 200, 'approval alone does not bypass PKCE');
