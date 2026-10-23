@@ -31,6 +31,7 @@
   --canvas: #fff;
   --surface: #fff;
   --surface-subtle: #f5f5f5;
+  --surface-soft: color-mix(in srgb, var(--surface-subtle) 50%, var(--surface));
   --surface-raised: #fff;
   --text: #171719;
   --text-secondary: #5d5d65;

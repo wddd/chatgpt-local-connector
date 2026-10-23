@@ -1012,10 +1012,11 @@ button.activity-bubble:active, .activity-bubble-shell:active { transform: scale(
 .timeline-item { min-width: 0; }
 .timeline-text { font-size: 14px; overflow-wrap: anywhere; min-width: 0; }
 .timeline-user { align-self: flex-end; width: fit-content; max-width: 92%; margin-left: auto; background: var(--surface-subtle); padding: 8px 12px; border-radius: 14px 14px 4px 14px; }
-.timeline-user-preview { line-height:1.65; }
-.timeline-user-preview:not([data-expanded]) { max-height:3lh; overflow:hidden; }
-.timeline-user-body { display:flow-root; }
+.timeline-user-content { position: relative; }
+.timeline-user-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; line-height: 1.65; }
+.timeline-user-preview[data-expanded] { position: absolute; inset: 0 0 auto; visibility: hidden; pointer-events: none; }
 .timeline-user-toggle.button { min-height:28px; margin-top:var(--space-1); padding:var(--space-1) 0; font-size:var(--text-xs); color:var(--text-secondary); }
+.timeline-user-toggle.button, .timeline-user-toggle.button:hover:not(:disabled), .timeline-earlier-steps.button, .timeline-earlier-steps.button:hover:not(:disabled) { background: transparent; }
 .timeline-meta { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .timeline-summary { display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 32px; width: 100%; padding: 5px 4px; box-sizing: border-box; text-align: left; color: inherit; }
 button.timeline-summary { appearance: none; background: transparent; border: 0; font: inherit; cursor: pointer; border-radius: 6px; }
@@ -1091,8 +1092,8 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .task-source-chip > span:not(.activity-source-badge), .timeline-turn-source > span:not(.activity-source-badge) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .task-source-chip .activity-source-badge, .timeline-turn-source .activity-source-badge { position: static; flex: none; }
 .task-source-where { color: var(--text-tertiary); }
-.timeline-turn { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-subtle); }
-.timeline-turn-header { appearance: none; position: sticky; top: -4px; z-index: 2; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 4px; background: var(--surface-subtle); color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.timeline-turn { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); }
+.timeline-turn-header { appearance: none; position: sticky; top: -4px; z-index: 2; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 4px; background: var(--surface-soft); color: inherit; text-align: left; font: inherit; cursor: pointer; }
 .timeline-turn-number { flex: none; font-size: var(--text-xs); font-weight: 600; }
 .timeline-turn-header .timeline-turn-source { max-width: 35%; }
 .timeline-turn-header > time { margin-left: auto; }

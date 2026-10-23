@@ -13,6 +13,7 @@ import { activityHeadline, filePathParts, interactionKey } from "../state/activi
 import { expandableTimelineEntry } from "../state/timelineModel";
 import { entryDuration, timelineGroups, turnDuration, turnEntries, workBlockOpen, workState } from "../state/timelineGroups";
 import { Button, Icon } from "./ui";
+import { AnimatedSize } from "./ui/AnimatedSize";
 import { dispatchSourceLabel, PhaseLabel, SourceBadge, SpecPill } from "./activity";
 import FilePath from "./FilePath";
 
@@ -58,15 +59,19 @@ function UserMessage({ text, truncated, open, onChange }: { text: string; trunca
   useLayoutEffect(() => {
     const node = content.current;
     if (!node) return;
-    const measure = () => setOverflow(node.scrollHeight > parseFloat(getComputedStyle(node).lineHeight) * 3 + 1);
+    const measure = () => {
+      if (node.clientWidth) setOverflow(node.scrollHeight > node.clientHeight + 1);
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
   }, [text]);
   return <article className="timeline-text timeline-user" aria-label={t("timeline.user")}>
-    <div id={id} className="timeline-user-preview" data-expanded={open || undefined}>
-      <div ref={content} className="timeline-user-body"><TimelineMarkdown text={text} />{truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}</div>
+    <div id={id} className="timeline-user-content">
+      <div ref={content} className="timeline-user-preview" data-expanded={open || undefined} aria-hidden={open || undefined}>{text}</div>
+      {open && <TimelineMarkdown text={text} />}
+      {truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}
     </div>
     {overflow && <Button variant="ghost" className="timeline-user-toggle" aria-expanded={open} aria-controls={id} onClick={() => onChange(!open)}>
       {t(open ? "timeline.showLess" : "timeline.showMore")}
@@ -174,22 +179,24 @@ export default function TimelineEntries({ entries, agent, session, now, running 
     return <Collapsible.Root key={group.id} open={turnOpen} onOpenChange={change(group.id)} asChild>
       <section className="timeline-item timeline-turn" data-timeline-id={group.id}>
         <Collapsible.Trigger type="button" className="timeline-turn-header">{header}</Collapsible.Trigger>
-        <Collapsible.Content className="timeline-turn-body">
-          {prompt && <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[`entry:${prompt.id}`] ?? false} onChange={change(`entry:${prompt.id}`)} />}
-          {!!workRows.length && <Fold className="timeline-work" open={workOpen} onChange={change(workId)} summary={<>
-            <span className="timeline-tool-icons">{state.kinds.map(kind => <span key={kind} data-phase={kind}><Icon icon={stepIcons[kind]} /></span>)}</span>
-            <span className="timeline-work-heading"><PhaseLabel phase={waiting ? "interaction" : "tool"} running={live && !waiting}>{label}</PhaseLabel>{stats && <span className="timeline-work-stats">{stats}</span>}</span>
-            {state.failed > 0 && <span className="timeline-failure">{t("timeline.failures", { count: state.failed })}</span>}
-          </>}><div className="timeline-group-entries">
-            {live && earlier > 0 && <Button variant="ghost" className="timeline-earlier-steps" onClick={() => change(earlierId)(!expanded[earlierId])}>{t(expanded[earlierId] ? "timeline.hideEarlierSteps" : "timeline.earlierSteps", { count: earlier })}</Button>}
-            {visibleWork.map(entry => <TimelineEntry key={entry.id} entry={entry} agent={agent} session={session} now={now} live={live} open={expanded[`entry:${entry.id}`] ?? false} onChange={change(`entry:${entry.id}`)} />)}
-          </div></Fold>}
-          {final && <article className="timeline-text timeline-final"><TimelineMarkdown text={final.text ?? ""} />{final.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}</article>}
-        </Collapsible.Content>
-        {!turnOpen && (prompt || final) && <div className="timeline-turn-preview">
-          {prompt && <span className="timeline-turn-prompt">{prompt.text}</span>}
-          {final && <span className="timeline-turn-answer">{final.text}</span>}
-        </div>}
+        <AnimatedSize>
+          <Collapsible.Content className="timeline-turn-body">
+            {prompt && <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[`entry:${prompt.id}`] ?? false} onChange={change(`entry:${prompt.id}`)} />}
+            {!!workRows.length && <Fold className="timeline-work" open={workOpen} onChange={change(workId)} summary={<>
+              <span className="timeline-tool-icons">{state.kinds.map(kind => <span key={kind} data-phase={kind}><Icon icon={stepIcons[kind]} /></span>)}</span>
+              <span className="timeline-work-heading"><PhaseLabel phase={waiting ? "interaction" : "tool"} running={live && !waiting}>{label}</PhaseLabel>{stats && <span className="timeline-work-stats">{stats}</span>}</span>
+              {state.failed > 0 && <span className="timeline-failure">{t("timeline.failures", { count: state.failed })}</span>}
+            </>}><div className="timeline-group-entries">
+              {live && earlier > 0 && <Button variant="ghost" className="timeline-earlier-steps" onClick={() => change(earlierId)(!expanded[earlierId])}>{t(expanded[earlierId] ? "timeline.hideEarlierSteps" : "timeline.earlierSteps", { count: earlier })}</Button>}
+              {visibleWork.map(entry => <TimelineEntry key={entry.id} entry={entry} agent={agent} session={session} now={now} live={live} open={expanded[`entry:${entry.id}`] ?? false} onChange={change(`entry:${entry.id}`)} />)}
+            </div></Fold>}
+            {final && <article className="timeline-text timeline-final"><TimelineMarkdown text={final.text ?? ""} />{final.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}</article>}
+          </Collapsible.Content>
+          {!turnOpen && (prompt || final) && <div className="timeline-turn-preview">
+            {prompt && <span className="timeline-turn-prompt">{prompt.text}</span>}
+            {final && <span className="timeline-turn-answer">{final.text}</span>}
+          </div>}
+        </AnimatedSize>
       </section>
     </Collapsible.Root>;
   })}</>;
