@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode, type ComponentProps } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, X } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import { displayMessage } from "../messages";
@@ -38,8 +38,10 @@ export default function IngressDialog({
   initialProduct,
   initialTransport,
   initialProvider,
+  connectionOnly = false,
   focusField,
   onClose,
+  onDismiss,
   onSaved,
   onRemoved,
   embedded = false,
@@ -48,11 +50,13 @@ export default function IngressDialog({
   initialProduct?: string;
   initialTransport?: "https" | "openai-tunnel";
   initialProvider?: "custom";
+  connectionOnly?: boolean;
   embedded?: boolean;
   onBusy?: (busy: boolean) => void;
   ingress?: Ingress;
   focusField?: string;
   onClose: () => void;
+  onDismiss?: () => void;
   onSaved: (ingress: Ingress) => void;
   onRemoved: () => void;
 }) {
@@ -67,7 +71,7 @@ export default function IngressDialog({
       : initialProduct ?? "",
   );
   const [source, setSource] = useState(ingress?.controlSource || initialProduct || ""),
-    [name, setName] = useState(ingress?.name || (initialProduct ? nextSourceName(initialProduct, status?.ingresses.map(i => i.name) ?? []) : "")),
+    [name, setName] = useState(ingress?.name || (connectionOnly ? nextSourceName(t(initialTransport === "openai-tunnel" ? "source.kind.openai" : initialProvider === "custom" ? "connect.customAddress" : "source.kind.tunnel"), status?.ingresses.map(i => i.name) ?? []) : initialProduct ? nextSourceName(initialProduct, status?.ingresses.map(i => i.name) ?? []) : "")),
     [form, setForm] = useState(() => {
       const f = connectionForm(ingress?.config);
       if (ingress)
@@ -121,7 +125,7 @@ export default function IngressDialog({
     provider = providers[form.httpsProvider],
     https = form.connectionMode === "https",
     allowTunnel =
-      selected === "chatgpt" || selected === "custom" && !initialProduct;
+      !connectionOnly && (selected === "chatgpt" || selected === "custom" && !initialProduct);
   function change<K extends keyof ConnectionForm>(
     key: K,
     value: ConnectionForm[K],
@@ -288,11 +292,12 @@ export default function IngressDialog({
   return (
     <Frame
       initialFocus={focusField ? `ingress-${focusField}` : undefined}
-      title={`${t(ingress ? "source.editConnection" : "source.newConnection")}${selected ? " · " + (preset?.displayName || t("customControlSource")) : ""}`}
+      title={connectionOnly ? t("source.newConnection") : `${t(ingress ? "source.editConnection" : "source.newConnection")}${selected ? " · " + (preset?.displayName || t("customControlSource")) : ""}`}
       onClose={() => !ingress && !initialProduct && selected ? setSelected("") : onClose()}
-      onDismiss={onClose}
+      onDismiss={onDismiss ?? onClose}
       depthOffset={!ingress && !initialProduct && selected ? 1 : 0}
-      leading={!ingress && !initialProduct && selected ? <IconButton icon={ChevronLeft} label={t("back")} disabled={working} onClick={() => setSelected("")} /> : undefined}
+      leading={connectionOnly ? null : !ingress && !initialProduct && selected ? <IconButton icon={ChevronLeft} label={t("back")} disabled={working} onClick={() => setSelected("")} /> : undefined}
+      actions={connectionOnly && onDismiss ? <IconButton icon={X} label={t("close")} disabled={working} onClick={onDismiss} /> : undefined}
       width={!selected ? 480 : undefined}
       busy={working}
       footer={
@@ -307,16 +312,17 @@ export default function IngressDialog({
                 {t("remove")}
               </Button>
             )}
-            <span className="spacer" />
-            {embedded ? <Button disabled={working} onClick={onClose}>{t("cancel")}</Button> : <DialogClose asChild>
+            {!connectionOnly && <span className="spacer" />}
+            {embedded ? <Button disabled={working} onClick={onClose}>{t(connectionOnly ? "back" : "cancel")}</Button> : <DialogClose asChild>
               <Button disabled={working}>{t("cancel")}</Button>
             </DialogClose>}
+            {connectionOnly && <span className="spacer" />}
             <Button
               variant="primary"
               busy={working}
               onClick={() => void save()}
             >
-              {t("save")}
+              {t(connectionOnly ? "source.next" : "save")}
             </Button>
           </>
         )
@@ -356,7 +362,7 @@ export default function IngressDialog({
           }}
           noValidate
         >
-          <p className="form-subtitle">{t(selected === "claude" ? "wakeClaude" : selected === "chatgpt" ? "wakeChatgpt" : "wakeOther")}</p>
+          {!connectionOnly && <p className="form-subtitle">{t(selected === "claude" ? "wakeClaude" : selected === "chatgpt" ? "wakeChatgpt" : "wakeOther")}</p>}
           {https &&
             auth === "bearer" &&
             preset &&
@@ -366,7 +372,7 @@ export default function IngressDialog({
           <Field
             id="ingress-name"
             label={t("sourceName")}
-            help={preset?.docs[0] && <a className="form-subtitle" href={preset.docs[0]} onClick={(e) => { e.preventDefault(); void openUrl(preset.docs[0]!).catch(e => setError(String(e))); }}>{t("officialSetup")}</a>}
+            help={!connectionOnly && preset?.docs[0] && <a className="form-subtitle" href={preset.docs[0]} onClick={(e) => { e.preventDefault(); void openUrl(preset.docs[0]!).catch(e => setError(String(e))); }}>{t("officialSetup")}</a>}
             error={errors.name}
           >
             <Input
@@ -381,7 +387,7 @@ export default function IngressDialog({
               disabled={working}
             />
           </Field>
-          {selected === "custom" && (
+          {selected === "custom" && !connectionOnly && (
             <Field
               id="ingress-source"
               label={t("controlSourceId")}
@@ -518,7 +524,7 @@ export default function IngressDialog({
   );
 }
 
-function IngressEditLayer({ title, children, footer, onClose, initialFocus, busy }: ComponentProps<typeof Dialog>) {
+function IngressEditLayer({ title, children, footer, onClose, initialFocus, busy, leading, actions }: ComponentProps<typeof Dialog>) {
   const root = useRef<HTMLElement>(null);
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -528,8 +534,8 @@ function IngressEditLayer({ title, children, footer, onClose, initialFocus, busy
     return () => cancelAnimationFrame(frame);
   }, [initialFocus]);
   return <section className="ingress-edit-layer side-panel-layer" ref={root}>
-    <header className="dialog-header"><IconButton icon={ChevronLeft} label={t("back")} disabled={busy} onClick={onClose} />
-      <h2 className="activity-panel-title" tabIndex={-1}>{title}</h2></header>
+    <header className="dialog-header" data-leading={leading === null ? "false" : "true"}>{leading === undefined ? <IconButton icon={ChevronLeft} label={t("back")} disabled={busy} onClick={onClose} /> : leading}
+      <h2 className="activity-panel-title" tabIndex={-1}>{title}</h2>{actions && <div className="actions">{actions}</div>}</header>
     <div className="side-panel-scroll">{children}</div><footer className="dialog-footer">{footer}</footer>
   </section>;
 }

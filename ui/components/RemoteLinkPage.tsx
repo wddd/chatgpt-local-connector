@@ -5,7 +5,7 @@ import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
 import { preference } from "../state/store";
 import { navigation } from "../state/navigation";
-import { openOnboarding } from "../state/onboarding";
+import { openOnboarding, openConnectionSetup } from "../state/onboarding";
 import { useRelays } from "../state/relay";
 import { connectionIcon, connectionKind, connectionProvider, isPendingSource, sourceCandidates } from "../sourcePresentation";
 import type { Ingress } from "../state/types";
@@ -44,7 +44,8 @@ export default function RemoteLinkPage() {
   }, [nav.remoteSourceId, nav.remoteConnectionId]);
   function add(connectionOnly = false) {
     navigation.set(old => ({ ...old, page: "overview" }));
-    openOnboarding(connectionOnly ? "connection" : "product");
+    if (connectionOnly) openConnectionSetup();
+    else openOnboarding();
   }
   const groups = group === "platform" ? [...new Set(visible.map(s => s.platform))].sort() : [""];
   return <div className="remote-link-page">

@@ -19,9 +19,9 @@ Claude on the web, mobile, and desktop can use the remote connector. Start with 
 
 ## Connect with a remote link
 
-Open **Add control source** in ARC and choose **Claude**. Select an existing connection or create/join a relay in step two. Copy its address in step three and paste it into Claude's **Settings → Connectors → Add custom connector**. Return to ARC in step four, compare the pairing codes, check the client name and callback, then approve. If the connection already carries Claude, choose a new source or reauthorize an existing one; reauthorization retains its history.
+Open **Add control source** in ARC and choose **Claude**. Select an existing connection in step two. Use **Add connection** if needed, then return and continue. Copy its address in step three and paste it into Claude's **Settings → Connectors → Add custom connector**. Return to ARC in step four, compare the pairing codes, check the client name and callback, then approve. If the connection already carries Claude, choose a new source or reauthorize an existing one; reauthorization retains its history.
 
-For local use, select **Claude Code** or **Claude Desktop** and then **Local** in the same flow. See [Getting started](../getting-started.md) for shared-relay trust boundaries. Edit existing dedicated connections under **Remote link → Connections**. Custom addresses are under **Advanced** in step two.
+For local use, select **Claude Code** or **Claude Desktop** and its local connection. If none exists, use **Add connection** to install it. See [Getting started](../getting-started.md) for shared-relay trust boundaries. Edit existing dedicated connections under **Remote link → Connections**. Use **Add connection → Own address** for a custom address.
 
 ## Start with current facts
 

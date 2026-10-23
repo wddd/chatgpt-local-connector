@@ -19,9 +19,8 @@ Choose local mode, or create/join a shared relay and add a control source. See
 [Getting started](getting-started.md). ChatGPT and Claude use the same remote link
 and local pairing-code approval flow.
 
-Own addresses, OpenAI Secure Tunnel, and **Send to Codex** are under **Remote link → Advanced**.
-The advanced Agent wizard follows the local protocol;
-you assist with login, passwords, 2FA, payment, or policy-required approvals.
+Open **Remote link → Connections → Add connection** to configure **Own address** or **OpenAI Secure Tunnel**. Then select that connection in **Add control source**. The connection-selection step also offers an **Add connection** shortcut.
+You assist with login, passwords, 2FA, payment, or policy-required approvals.
 
 ## Limits
 

@@ -6,22 +6,27 @@ Call `guide` first for this connection’s workflow, enabled ops, and examples. 
 
 ## Install and connect
 
-[Install ARC](installation.md), open it, and sign in to Codex. Use the status shortcuts to review permissions, then choose **Add your first control source**. Later, use the homepage left dot or **Remote link → Add control source**.
+[Install ARC](installation.md), open it, and sign in to Codex. Use the status shortcuts to review permissions, then choose **Add control source**. Later, use the homepage left dot or **Remote link → Add control source**.
 
 ### Add a control source
 
-1. Choose a product.
-2. Choose an existing connection, or create one. An existing relay link is recommended. **Create my relay** signs in to Cloudflare, deploys, and connects; **Paste relay link** joins a trusted shared relay. **Dedicated tunnel** opens provider configuration. ChatGPT also offers **OpenAI Secure Tunnel**.
-3. Copy the address and follow the product settings path shown in ARC. Use **Open settings** to open the product.
-4. Return to ARC, compare the four-character pairing codes and check the client name and callback. Choose **New source** or **Reauthorize** an existing source on that connection. Optionally name a new source, then approve. The browser returns automatically.
+1. Choose a platform in the centered panel.
+2. Select an existing connection. If needed, choose **Add connection**, complete that separate flow, and return with the new connection selected.
+3. Copy the address and follow the platform settings path shown in ARC. Use **Open settings** to open the platform.
+4. Return to ARC, compare the four-character pairing codes and check the client name and callback. Choose **New source** or **Reauthorize** an existing source. Optionally name a new source, then approve.
+5. ARC shows the added source. Choose **Done**.
+
+### Add a connection
+
+Open **Remote link → Connections → Add connection**. Choose **Create my relay**, **Paste relay link**, **Dedicated tunnel**, **Own address**, **OpenAI Secure Tunnel**, **Claude Code**, or **Claude Desktop**. Follow the chosen method's configuration and finish on the connection success screen. Creating a connection is separate from authorizing a control source.
 
 ### Local clients
 
-Choose **Claude Code** or **Claude Desktop**, then **Local** and **Continue**. ARC adds its dedicated configuration entry while preserving other entries. Restart Claude after installation. Local connections do not need network configuration or pairing-code approval.
+Choose **Claude Code** or **Claude Desktop** when adding a source, then select its local connection. If none exists, use **Add connection** to install it. ARC preserves other configuration entries. Restart Claude after installation. Local connections do not need network configuration or pairing-code approval; source setup waits for the client to connect.
 
 ### Manage sources and connections
 
-**Remote link** lists each source separately. Open a source to change its label or product, copy its connection address, view its dispatches, or disconnect it. **All / By platform** changes grouping. The Connections section includes unused connections; open a dedicated tunnel there to edit it. Custom addresses and **Send to Codex** are under **Advanced** in step two of the add flow.
+**Remote link** lists each source separately. Open a source to change its label or product, copy its connection address, view its dispatches, or disconnect it. **All / By platform** changes grouping. The Connections section includes unused connections; open a dedicated tunnel there to edit it. Use **Add connection** to configure an own address or OpenAI Secure Tunnel.
 
 Relay owners manage sharing, members, and deletion under **Settings → Extras → Relay hosting**. Joined relays have **Leave** in their connection detail. The deployer can technically inspect relayed traffic in the Cloudflare dashboard; only join someone you trust.
 

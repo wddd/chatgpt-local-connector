@@ -2,7 +2,7 @@
 
 **English** | [简体中文](../zh-CN/guides/connections.md)
 
-Start with **Add control source** and choose a product, then an existing connection or a new relay link or dedicated tunnel. ChatGPT also supports [Secure Tunnel](chatgpt.md). Each connection has its own provider, credentials, URL, and allowed tools; OAuth connections may carry multiple sources.
+Open **Remote link → Connections → Add connection** to create a connection. Then open **Add control source**, choose a platform, and select that connection. Connection selection also has an **Add connection** shortcut. ChatGPT also supports [Secure Tunnel](chatgpt.md). Each connection has its own provider, credentials, URL, and allowed tools; OAuth connections may carry multiple sources.
 
 | Provider | What to enter | Address |
 | --- | --- | --- |
@@ -16,11 +16,11 @@ Start with **Add control source** and choose a product, then an existing connect
 
 ## Connect
 
-1. To create a connection, choose **Dedicated tunnel** in step two of **Add control source**. To edit one, open **Remote link → Connections**, select it, and choose **Edit**.
+1. To create a connection, open **Remote link → Connections → Add connection** and choose **Dedicated tunnel** or **Own address**. To edit one, open **Remote link → Connections**, select it, and choose **Edit**.
 2. Choose the provider and enter the required fields. Use **Get token** links when offered.
 3. Select the client's authentication: OAuth for Claude, or Bearer for clients supporting the `Authorization` header. Keep the Default op list to begin.
-4. Save to return to the connection view and connect automatically. ARC downloads the provider component when needed and manages its process.
-5. Copy the displayed MCP URL into the client. For OAuth, return to ARC to compare the pairing code and approve. Choose a new source or reauthorize an existing source when prompted.
+4. Choose **Continue** to add the connection and connect automatically. When editing an existing connection, choose **Save**. ARC downloads the provider component when needed and manages its process.
+5. In **Add control source**, select the connection and copy its MCP URL into the client. For OAuth, return to ARC to compare the pairing code and approve. Choose a new source or reauthorize an existing source when prompted.
 
 Provider credentials connect the tunnel; MCP authentication controls access through it. They are separate fields. A fixed domain must already be assigned in your provider account.
 

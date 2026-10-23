@@ -286,7 +286,7 @@ test("control source dock preserves editing, new onboarding, field navigation an
     const config = { configured: true, httpsProvider: "cloudflare", cloudflareMode: "quick", httpsUrl: "", tunnelId: "tunnel_fixture", hasApiKey: true };
     const source = (id: string) => ({ id, sources: [{ id, ingressId: id, credential: { type: "oauth-grant", grantId: `grant-${id}`, clientId: `client-${id}` }, product: "claude", platform: "anthropic", label: `Source ${id}`, createdAt: "2026-01-01", connectedAt: 1, lastSeenAt: 1, state: "connected" }], name: `Source ${id}`, controlSource: "claude", enabled: true, running: true, state: "ready", auth: "oauth", transport: "https", error: "", config, url: "https://example.com/mcp" });
     const status = { ingresses: [source("one"), source("two")], core: { backendSession: "fixture", appServer: { state: "ready" } }, platform: "darwin", logs: [], autoOpenCodex: false };
-    connector.set({ status, sources: status.ingresses.flatMap(i => i.sources), loading: false, busy: "", error: "", feedback: { text: "", error: false } });
+    connector.set({ status, sources: status.ingresses.flatMap(i => i.sources), sourcesLoaded: true, loading: false, busy: "", error: "", feedback: { text: "", error: false } });
     agents.set({ items: [{ agent: "codex", installed: true, enabled: true, available: true, status: "ready" }], loading: false, error: "" });
     const session = { id: "thread", source: "codex-thread", title: "Dispatch fixture", phase: "command", headline: "Fixture", phaseSince: null, timeline: true };
     agentActivity.set({ snapshot: { observedAt: "2026-01-01", activeAgents: ["codex"], agents: { codex: { sessions: [session] } } }, error: "" });
@@ -333,10 +333,10 @@ test("control source dock preserves editing, new onboarding, field navigation an
     await click(document.querySelector('[role="switch"]'));
     assert.ok(calls.some(c => c.path === "ingress/one" && c.method === "PUT" && c.body.enabled === false));
     await click(document.querySelector('[role="switch"]'));
-    // Adding a control source replaces the current left dock without a backdrop.
+    // Adding a control source replaces the current dock with a centered dialog.
     await click(mount.querySelector(".hub-source"));
-    assert.equal(document.querySelector('[data-panel-dock]')?.getAttribute('data-panel-dock'), 'left');
-    assert.equal(document.querySelector('.elastic-backdrop'), null);
+    assert.equal(document.querySelector('[data-panel-dock]'), null);
+    assert.ok(document.querySelector('.elastic-backdrop'));
     assert.ok(document.querySelector('.source-product-list'));
     assert.equal(ingressPanel.get(), undefined);
     await escape();
@@ -381,10 +381,10 @@ test("control source dock preserves editing, new onboarding, field navigation an
     await click(document.querySelector(".source-panel-heading [data-ingress-edit]"));
     assert.equal(navigation.get().page, "remote"); assert.equal(ingressPanel.get(), undefined);
     await act(() => navigation.set({}));
-    // New source selection stays in the left dock; ChatGPT uses the same link flow.
+    // New source selection stays centered; ChatGPT uses the same link flow.
     for (const id of ["claude", "chatgpt", "custom"]) {
       await click(mount.querySelector(".hub-source"));
-      assert.equal(document.querySelector('[data-panel-dock]')?.getAttribute('data-panel-dock'), 'left');
+      assert.equal(document.querySelector('[data-panel-dock]'), null);
       assert.ok(document.querySelector('.source-product-list'));
       await click(document.querySelector(`.source-product-list [role="radio"][value="${id}"]`));
       await click(button(t("source.next")));

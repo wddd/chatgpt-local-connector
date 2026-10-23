@@ -6,12 +6,14 @@ import type { ControlSource, Ingress, Status } from "./types";
 export const connector = createStore<{
   status?: Status;
   sources: ControlSource[];
+  sourcesLoaded: boolean;
   busy: string;
   loading: boolean;
   error: string;
   feedback: { text: string; error: boolean; copy?: string };
 }>({
   sources: [],
+  sourcesLoaded: false,
   busy: "",
   loading: true,
   error: "",
@@ -50,7 +52,7 @@ let reading: Promise<void> | undefined;
 export function refreshConnector(): Promise<void> {
   if (reading) return reading;
   reading = preparePreferences().then(() => Promise.all([api<Status>("status"), api<{ sources: ControlSource[] }>("source")]))
-    .then(([status, result]) => { patch({ sources: result.sources }); accept(status); })
+    .then(([status, result]) => { patch({ sources: result.sources, sourcesLoaded: true }); accept(status); })
     .catch((e) => {
       patch({ error: String(e), loading: false });
       throw e;

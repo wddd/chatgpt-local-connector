@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
-import { openOnboarding } from "../state/onboarding";
+import { openConnectionSetup } from "../state/onboarding";
 import { navigation } from "../state/navigation";
 import { useRelayProgress, type Relay } from "../state/relay";
 import RelayProgress from "./RelayProgress";
@@ -44,7 +44,7 @@ export function RelaySettings({ relay, version, refresh }: { relay: Relay; versi
     {operation && <>
       {progressError && <Notice>{t("connect.readFailed")}</Notice>}
       <RelayProgress progress={progress} busy={!!busy} account={account} setAccount={setAccount} onCancel={() => void action("cancel").then(ok => { if (ok) setOperation(""); })} onRetry={() => {
-        if (operation === "join") { navigation.set(old => ({ ...old, page: "overview" })); openOnboarding("product", "join"); }
+        if (operation === "join") { navigation.set(old => ({ ...old, page: "overview" })); openConnectionSetup({ method: "join" }); }
         else void action(operation === "create" ? "redeploy" : operation, account ? { accountId: account } : {});
       }} />
     </>}

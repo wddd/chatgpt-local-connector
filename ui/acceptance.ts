@@ -7,7 +7,7 @@ import { acceptActivity } from './state/activity';
 import { api } from './api';
 import type { AgentActivitySnapshot } from './types';
 import { locale } from './i18n';
-import { onboarding } from './state/onboarding';
+import { onboarding, connectionSetup } from './state/onboarding';
 
 let topology: (() => unknown) | undefined;
 export function observeTopology(read: () => unknown) {
@@ -28,6 +28,7 @@ export type PanelRequest = { kind: 'agent' | 'source' | 'none'; id?: string };
 export function openSnapshotPanel(panel?: PanelRequest | null) {
   if (!panel) return;
   onboarding.set(undefined);
+  connectionSetup.set(undefined);
   if (panel.kind === 'none') { agentPanel.set(undefined); ingressPanel.set(undefined); return; }
   if (panel.kind === 'agent') {
     if (!agents.get().items.some(a => a.agent === panel.id)) throw new Error('SNAPSHOT_NODE_NOT_FOUND: agent');

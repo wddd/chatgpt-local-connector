@@ -89,15 +89,23 @@ The workspace subject is control sources and how each one connects.
 
 ### Add a control source
 
-One flow serves the left center dot, the Remote link workspace, and first-run onboarding.
+The left center dot, Remote link workspace, and Welcome open the same centered flow.
 
-1. Choose a product.
-2. Choose a connection. Existing connections are listed first. New options are Create relay, Paste relay link, Dedicated tunnel, OpenAI Secure Tunnel, and Local when the product supports it.
-3. Copy the address and add it in the product's settings.
-4. Compare the pairing code and approve. If the connection already carries a source of the same product, the approval asks whether this is a new source or a reauthorization.
-5. Optionally edit the label.
+1. Choose a platform.
+2. Choose a compatible existing connection. Add connection opens the separate connection flow and returns with the newly created connection selected.
+3. Copy the address and configure the platform.
+4. Compare the pairing code and approve. If the connection already carries a source of the same product, choose a new source or reauthorization. An optional label belongs to this approval.
+5. Show the added source.
 
-Send to Codex and manual custom addresses belong to step 2 as advanced options.
+Connection selection uses one full-width row per connection. Back and Continue share one row, aligned left and right. Non-OAuth sources use their configured authentication without pairing-code approval; success requires an observed client connection.
+
+### Add a connection
+
+Remote link's Connections section opens an independent centered flow without choosing a platform.
+
+1. Choose a connection method: create or join a relay, dedicated tunnel, own address, OpenAI Secure Tunnel, or local Claude Code/Desktop.
+2. Follow the selected method's configuration. Relay methods use the deployment progress view. Tunnel methods reuse the connection form. Local methods install the dedicated client configuration without overwriting unrelated entries.
+3. Show the added connection. When opened from source setup, return to connection selection and select it.
 
 ### Homepage
 
@@ -105,7 +113,7 @@ Each source is one node, including multiple sources on one connection. Grouping 
 
 ### First run
 
-Welcome contains Codex login readiness, permissions readiness, and Add your first control source, which opens the shared flow.
+Welcome is centered and contains Codex login readiness, permissions readiness, and Add control source. Automatic opening waits for a successful source-list read before deciding whether sources exist. An earlier status snapshot does not establish an empty source list. It does not replace an open setup or detail view.
 
 ### Settings: Extras
 
