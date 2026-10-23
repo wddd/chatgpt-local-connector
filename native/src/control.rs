@@ -1875,12 +1875,7 @@ pub(crate) fn dispatch_title(args: &Value) -> String {
         .lines()
         .find(|line| !line.trim().is_empty())
         .unwrap_or("");
-    PREFIX
-        .replace(line, "")
-        .trim()
-        .chars()
-        .take(120)
-        .collect()
+    PREFIX.replace(line, "").trim().chars().take(120).collect()
 }
 fn task_input(args: &Value) -> Result<Value> {
     desktop::input(

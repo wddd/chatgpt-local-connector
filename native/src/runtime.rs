@@ -278,7 +278,7 @@ impl Client {
         let _startup = self.startup.lock().await;
         let current = owner(&self.build).await?;
         if current.is_none() {
-            // A slow health response does not release ownership. Never launch
+            // A timed-out health probe does not release Core ownership. Never launch
             // another process while the existing Core still owns the state.
             match File::options()
                 .read(true)
