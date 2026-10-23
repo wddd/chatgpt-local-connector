@@ -1027,6 +1027,12 @@
             "type": "string",
             "minLength": 1,
             "description": "Root name, directory basename, or relative path ending at a registered root. Required when project roots are ambiguous."
+          },
+          "outputBudget": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 65536,
+            "description": "Optional combined UTF-8 byte budget for stdout and stderr in simple cmd or native exec responses. The complete output remains available through output.outputId and control_output. Omission preserves existing output behavior."
           }
         },
         "required": [],
@@ -1620,10 +1626,10 @@
             "maximum": 10000
           },
           "limit": {
-            "default": 2,
             "type": "integer",
             "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+            "maximum": 9007199254740991,
+            "description": "Omission reads the latest turn in compact view, or two turns in full view. Set limit and follow nextCursor to request history."
           },
           "includeImages": {
             "type": "boolean",
@@ -1645,6 +1651,10 @@
             ],
             "default": "compact",
             "description": "compact returns structured content. full retains all items, raw-text pagination, hashes, configuration, and other metadata."
+          },
+          "includeItemKeys": {
+            "type": "boolean",
+            "description": "Include stable itemKey on complete compact items for knownItemKeys on a later codex_items call."
           }
         },
         "required": [
@@ -1683,7 +1693,8 @@
         "statusOnly",
         "waitMs",
         "includeImages",
-        "view"
+        "view",
+        "includeItemKeys"
       ]
     },
     {
@@ -2405,6 +2416,10 @@
             "type": "boolean",
             "default": false,
             "description": "Include legacy public source attribution. Internal records always retain origin."
+          },
+          "knownNextHash": {
+            "type": "string",
+            "description": "Previously returned next.hash for this receipt. A match returns next:{hash,unchanged:true}; retain the cached next instructions."
           }
         },
         "required": [
@@ -2499,6 +2514,20 @@
             ],
             "default": "compact",
             "description": "compact returns structured content. full retains all items, raw-text pagination, hashes, configuration, and other metadata."
+          },
+          "includeItemKeys": {
+            "type": "boolean",
+            "description": "Include stable itemKey on complete compact items for knownItemKeys on a later codex_items call."
+          },
+          "knownItemKeys": {
+            "type": "array",
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "description": "Compact view only. Omit unchanged complete items previously returned with itemKey by codex_read/items. Continue nextCursor even when items is empty."
           }
         },
         "required": [
@@ -2540,7 +2569,9 @@
         "length",
         "expectedHash",
         "includeImages",
-        "view"
+        "view",
+        "includeItemKeys",
+        "knownItemKeys"
       ]
     },
     {

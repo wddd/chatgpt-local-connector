@@ -360,3 +360,14 @@ Authenticated calls resolve to a stable Core source before execution. Receipts a
 Notification bindings, subscriptions, inboxes, token buckets, notification controls, response tokens and dispatch queues use source IDs. Two OAuth grants on one connection are independent sources unless the owner explicitly reauthorizes an existing source at consent. Refresh rotation retains source identity. Grant revocation stops future delivery; existing task execution and shared task visibility remain unchanged. Migrated ingress-only history is attributed only when exactly one source exists on that ingress. Ambiguous history remains unattributed and cannot be claimed implicitly by a later caller.
 
 The `guide`, `query`, and `act` parameter schemas and the single `notification` event's `{op,args}` input remain frozen. Source management is available only through the [local API and CLI](cli.md#control-source-management).
+
+
+## Reducing repeated output
+
+`codex_read` compact view defaults to the latest turn. Explicit `limit` and `cursor` request history; full view retains its two-turn default. Pagination still returns `nextCursor`.
+
+Set `includeItemKeys:true` on compact `codex_read` or `codex_items` to receive `itemKey` on complete items. Pass those keys as `knownItemKeys` (maximum 100) to a later compact `codex_items` call. Unchanged complete items are omitted and counted in `omittedKnownItems`. Keys bind the native item content to its thread and turn. Changed items reappear. Truncated items receive no key, and full view cannot omit known compact items because it exposes additional metadata. Native data is still read to detect changes. Follow `nextCursor` even if every item in a page was omitted. Omission of these options preserves existing item responses.
+
+`command` accepts optional `outputBudget` (0–65536) for the combined UTF-8 bytes of stdout and stderr in simple cmd or native exec responses. Exit status remains inline. When truncated, use `output.outputId` with `control_output` from offset zero to reconstruct JSON containing the complete streams. Snapshots use the existing one-hour/64 MiB output cache. The budget does not alter execution timeout, native output capture, or receipt idempotency. Without a budget, existing output behavior remains.
+
+Dispatch receipt follow-ups retain `hint`, `via`, `op`, and `args`, with shorter hints. `next.hash` identifies the complete follow-up. Reuse it as `receipt.knownNextHash` to receive `next:{hash,unchanged:true}` while that follow-up is unchanged. Retain the previous full next object. A changed task, turn, notification workflow, or guidance returns full instructions. Without a known hash, every response retains full follow-up arguments.

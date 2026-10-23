@@ -52,6 +52,7 @@ const saveFixture = saved => {
   renameSync(temporary, fixtureState);
 };
 const counts = new Map();
+let sizeRevision=0;
 const emit = value => process.stdout.write(JSON.stringify(value) + '\\n');
 for await (const line of createInterface({ input: process.stdin })) {
   const { id, method, params, result } = JSON.parse(line);
@@ -66,6 +67,7 @@ for await (const line of createInterface({ input: process.stdin })) {
   const reply = () => {
     if (params?.fail) return emit({ id, error: { code: -32042, message: 'native fixture rejection', data: { retryable: false, detail: params.fail } } });
     if (method === 'initialize') return emit({ id, result: { userAgent: 'fixture' } });
+    if (method === 'fixture/change-size-item') {sizeRevision++;return emit({id,result:{revision:sizeRevision}});}
     if (method === 'fixture/counts') return emit({ id, result: Object.fromEntries(counts) });
     if (method === 'fixture/null') return emit({ id, result: null });
     if (method === 'fixture/array') return emit({ id, result: [null, 1, { native: true }] });
@@ -122,11 +124,20 @@ for await (const line of createInterface({ input: process.stdin })) {
     }
     if (params?.threadId === 'response-size') {
       const thread={id:'response-size',name:'Response size fixture',cwd:'/fixture/response-size',status:{type:'idle'},model:'fixture-model'};
-      const items=[{id:'user',type:'userMessage',content:[{type:'text',text:'Inspect this change and explain the result. '.repeat(3)}]},...Array.from({length:8},(_,i)=>({id:'reason-'+i,type:'reasoning',summary:[],content:[]})),{id:'command',type:'commandExecution',command:'git diff --stat',exitCode:0,aggregatedOutput:' src/example.rs | 4 ++--\\n'.repeat(12),status:'completed'},{id:'change',type:'fileChange',status:'completed',changes:[{path:'src/example.rs',kind:{type:'update'},diff:'@@ -1 +1 @@\\n-old\\n+new'}]},{id:'agent',type:'agentMessage',text:'The change is complete and the checks passed. '.repeat(9)}];
+      const items=[{id:'user',type:'userMessage',content:[{type:'text',text:'Inspect this change and explain the result. '.repeat(3)}]},...Array.from({length:8},(_,i)=>({id:'reason-'+i,type:'reasoning',summary:[],content:[]})),{id:'command',type:'commandExecution',command:'git diff --stat',exitCode:0,aggregatedOutput:' src/example.rs | 4 ++--\\n'.repeat(12),status:'completed'},{id:'change',type:'fileChange',status:'completed',changes:[{path:'src/example.rs',kind:{type:'update'},diff:'@@ -1 +1 @@\\n-old\\n+new'}]},{id:'agent',type:'agentMessage',text:'The change is complete and the checks passed. '.repeat(9)+(sizeRevision?'Changed':'')}];
       const turns=Array.from({length:6},(_,i)=>({id:'size-turn-'+i,status:'completed',items}));
       if(method==='thread/read')return emit({id,result:{thread}});
-      if(method==='thread/turns/list')return emit({id,result:{data:turns.slice(0,params.limit||6),nextCursor:null}});
-      if(method==='thread/items/list')return emit({id,result:{data:items.map(item=>({turnId:'size-turn-0',item})),nextCursor:null}});
+      if(method==='thread/turns/list') {
+        const rows=params.sortDirection==='desc'?[...turns].reverse():turns;
+        const offset=Number(params.cursor||0),end=offset+(params.limit||6);
+        return emit({id,result:{data:rows.slice(offset,end),nextCursor:end<rows.length?String(end):null}});
+      }
+      if(method==='thread/items/list') {
+        if ('knownItemKeys' in params || 'includeItemKeys' in params) return emit({id,error:{message:'ARC parameters leaked'}});
+        const rows=params.sortDirection==='desc'?[...items].reverse():items;
+        const offset=Number(params.cursor||0),end=offset+(params.limit||1);
+        return emit({id,result:{data:rows.slice(offset,end).map(item=>({turnId:params.turnId||'size-turn-0',item})),nextCursor:end<rows.length?String(end):null}});
+      }
     }
     if (params?.threadId === 'image-pagination' || params?.threadId === 'empty-images') {
       if (method === 'thread/turns/list') return emit({id,result:{data:params.threadId === 'empty-images' ? [] : [{id:'turn-latest',items:[]}],nextCursor:null}});
@@ -156,6 +167,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     }
     if (method === 'project/list' && existsSync(process.env.ARC_FIXTURE_DATA+'/projects-fixture.json')) return emit({id,result:{data:JSON.parse(readFileSync(process.env.ARC_FIXTURE_DATA+'/projects-fixture.json','utf8')),nextCursor:null}});
     if (method === 'model/list' || method === 'thread/list' || method === 'project/list') return emit({ id, result: { data: [], nextCursor: null } });
+    if (method === 'command/exec' && params.command?.at(-1)==='fixture-budget') return emit({id,result:{stdout:'é'.repeat(40),stderr:'err'.repeat(20),exitCode:0}});
     if (method === 'command/exec' && params.command?.at(-1)==='fixture-cwd') return emit({id,result:{stdout:params.cwd,stderr:'',exitCode:0}});
     if (method === 'process/spawn') {
       emit({ method: 'process/outputDelta', params: { processHandle: params.processHandle, stream: 'stdout', deltaBase64: 'b2s=' } });
@@ -1457,4 +1469,58 @@ test('minimal MCP text is opt-in per source and preserves structured results and
   const restored=await call('guide');
   assert.deepEqual(JSON.parse((restored.response.content[0] as any).text),restored.result);
   assert.equal(restored.result.guideHash,before.result.guideHash);
+});
+
+
+test('compact read defaults to the latest turn and item keys avoid duplicate complete items',async()=>{
+  // Regression: default history and repeated item reads duplicated already returned task content.
+  const read=(await call('codex_read',{threadId:'response-size',includeItemKeys:true})).result;
+  assert.equal(read.turns.length,1);assert.equal(read.turns[0].turnId,'size-turn-5');assert.ok(read.nextCursor);
+  const history=(await call('codex_read',{threadId:'response-size',limit:6})).result;
+  assert.equal(history.turns.length,6);
+  const next=(await call('codex_read',{threadId:'response-size',cursor:read.nextCursor})).result;
+  assert.equal(next.turns[0].turnId,'size-turn-4');
+  const keys=read.turns[0].items.map((i:any)=>i.itemKey);assert.ok(keys.every(Boolean));
+  const args={threadId:'response-size',turnId:read.turns[0].turnId,knownItemKeys:keys};
+  const skipped=(await call('codex_items',args)).result;
+  assert.deepEqual(skipped.items,[]);assert.equal(skipped.omittedKnownItems,1);assert.ok(skipped.nextCursor);
+  const all=(await call('codex_items',{...args,limit:50})).result;
+  assert.deepEqual(all.items,[]);assert.equal(all.omittedKnownItems,4);
+  const other=(await call('codex_items',{...args,turnId:'size-turn-4',limit:50})).result;
+  assert.equal(other.items.length,4);
+  await completed('codex_call',{method:'fixture/change-size-item',params:{},requestId:randomUUID()});
+  const changed=(await call('codex_items',{...args,includeItemKeys:true,limit:50})).result;
+  assert.equal(changed.items.length,1);assert.ok(!keys.includes(changed.items[0].itemKey));
+  const short=(await call('codex_items',{threadId:'response-size',limit:50,length:2,includeItemKeys:true})).result;
+  assert.ok(short.items.filter((i:any)=>i.truncated).every((i:any)=>!i.itemKey));
+  assert.equal((await call('codex_items',{...args,view:'full'})).result.error.code,'INVALID_ARGUMENTS');
+});
+
+test('command output budgets preserve complete stdout and stderr through control_output',async()=>{
+  // Contract: command receipts retain exit status and expose complete paged output when budgeted.
+  for(const args of [{cmd:'fixture-budget',cwd:directory},{action:'exec',params:{command:['fixture-budget'],cwd:directory}}]) {
+    const receipt=await completed('command',{...args,outputBudget:33,requestId:randomUUID()});
+    const r=receipt.result;assert.equal(receipt.state,'completed');assert.equal(r.exitCode,0);assert.equal(r.truncated,true);
+    assert.ok(Buffer.byteLength(r.stdout)+Buffer.byteLength(r.stderr)<=33);
+    let text='',offset:number|null=0;
+    while(offset!==null){const page=(await call('control_output',{outputId:r.output.outputId,offset,length:20})).result;text+=page.text;offset=page.nextOffset;}
+    const complete=JSON.parse(text);assert.equal(complete.stdout,'é'.repeat(40));assert.equal(complete.stderr,'err'.repeat(20));
+    const replay=(await call('receipt',{requestId:receipt.requestId})).result;
+    assert.equal(replay.result.output.outputId,r.output.outputId);
+  }
+  const legacy=await completed('command',{cmd:'fixture-budget',cwd:directory,requestId:randomUUID()});
+  assert.equal(legacy.result.stdout,'é'.repeat(40));assert.equal(legacy.result.truncated,false);
+  const zero=await completed('command',{cmd:'fixture-budget',cwd:directory,outputBudget:0,requestId:randomUUID()});
+  assert.equal(zero.result.stdout,'');assert.equal(zero.result.stderr,'');assert.ok(zero.result.output.outputId);
+});
+
+test('receipt next hashes omit repeated guidance only when explicitly supplied',async()=>{
+  // Contract: opt-in next caching keeps legacy receipt follow-up arguments available by default.
+  const created=await dispatchFixture('fixture-dispatch');
+  const first=(await call('receipt',{requestId:created.requestId})).result;
+  assert.ok(first.next.hash);assert.equal(first.next.op,'codex_wait');
+  const cached=(await call('receipt',{requestId:created.requestId,knownNextHash:first.next.hash})).result;
+  assert.equal(cached.next.unchanged,true);assert.equal(cached.next.op,undefined);assert.equal(cached.next.hash,first.next.hash);
+  const fresh=(await call('receipt',{requestId:created.requestId,knownNextHash:'outdated'})).result;
+  assert.deepEqual(fresh.next,first.next);
 });

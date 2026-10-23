@@ -53,15 +53,34 @@ pub async fn run(c: &control::Control, args: &Value) -> Result<Value> {
             timeout.saturating_add(5000),
         )
         .await?;
-    let mut result = json!({"stdout":output["stdout"],"stderr":output["stderr"],"exitCode":output["exitCode"],"durationMs":started.elapsed().as_millis() as u64,"truncated":false});
-    let paged = crate::kernel::results::page_output(result.clone(), 64 * 1024)?;
+    let result = json!({"stdout":output["stdout"],"stderr":output["stderr"],"exitCode":output["exitCode"],"durationMs":started.elapsed().as_millis() as u64,"truncated":false});
+    budget(result, args)
+}
+
+pub(crate) fn budget(mut result: Value, args: &Value) -> Result<Value> {
+    let budget = args["outputBudget"].as_u64().map(|n| n as usize);
+    let bytes = string(&result, "stdout")
+        .len()
+        .saturating_add(string(&result, "stderr").len());
+    let paged = crate::kernel::results::page_output(
+        result.clone(),
+        if budget.is_some_and(|n| bytes > n) {
+            0
+        } else {
+            64 * 1024
+        },
+    )?;
     if paged["outputId"].is_string() {
+        let mut remaining = budget.unwrap_or(usize::MAX);
         for key in ["stdout", "stderr"] {
             let text = string(&result, key);
-            let mut end = text.len().min(12000);
+            let mut end = text
+                .len()
+                .min(if budget.is_some() { remaining } else { 12000 });
             while !text.is_char_boundary(end) {
                 end -= 1;
             }
+            remaining = remaining.saturating_sub(end);
             result[key] = json!(&text[..end]);
         }
         result["truncated"] = json!(true);

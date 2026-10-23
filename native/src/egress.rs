@@ -723,7 +723,7 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
     wait_args["until"] = json!("terminal");
     wait_args["timeoutMs"] = json!(30000);
     let wait_tool = if agent { "agent_wait" } else { "codex_wait" };
-    let next = if value["state"] == "awaiting-approval" {
+    let mut next = if value["state"] == "awaiting-approval" {
         json!({"hint":"Inspect the original request, then decide according to user intent.","via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"}})
     } else if value["state"] == "interaction-required" {
         if agent {
@@ -760,9 +760,10 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
             json!({"hint":"You may end this turn and wait for an [ARC] notification; use guide for the review workflow."})
         } else {
             let minutes = crate::dispatch_policy::revisit_minutes(value);
-            let hint = match minutes {
-                Some(minutes) => format!("Notification channel unverified or unavailable; do not rely on proactive notifications. If you can schedule a return to this conversation, revisit in {minutes} minute(s), based on this Agent/model/reasoning configuration's historical median. Only short tasks should use segmented waits within this turn; on timeout follow next. Do not redispatch."),
-                None => "Notification channel unverified or unavailable; do not rely on proactive notifications. If you can schedule a later return to this conversation, do so and use these wait arguments. No matching duration samples are available. Only short tasks should use segmented waits within this turn; on timeout follow next. Do not redispatch.".into(),
+            let hint = if minutes.is_some() {
+                "No verified push; schedule a revisit using revisitAfterMinutes. Use brief waits only; do not redispatch."
+            } else {
+                "No verified push or duration estimate; schedule a revisit. Use brief waits only; do not redispatch."
             };
             let mut next = json!({"hint":hint,"via":"query","op":wait_tool,"args":wait_args});
             if let Some(minutes) = minutes {
@@ -773,6 +774,14 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
     } else {
         return;
     };
+    if value["requestId"].is_string() {
+        let digest = hash(next.to_string());
+        if args["knownNextHash"] == digest {
+            next = json!({"hash":digest,"unchanged":true});
+        } else {
+            next["hash"] = json!(digest);
+        }
+    }
     value["next"] = next;
 }
 

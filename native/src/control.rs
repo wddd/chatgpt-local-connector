@@ -1423,6 +1423,11 @@ impl Control {
         } else {
             self.request(&method, params, timeout).await?
         };
+        let result = if method == "command/exec" && args["outputBudget"].is_number() {
+            crate::shell_command::budget(result, args)?
+        } else {
+            result
+        };
         if result["turn"]["id"].is_string() {
             r["turnId"] = result["turn"]["id"].clone();
             if r["turnBaseline"].is_object() {
@@ -1496,6 +1501,11 @@ impl Control {
                     .await;
             }
             let mut native_args = json!({"method":method,"params":params,"requestId":args["requestId"],"timeoutMs":args["timeoutMs"].as_u64().unwrap_or(86400000),"waitMs":num(&args,"waitMs",25000)});
+            if name == "command" && action == "exec" {
+                if let Some(budget) = args.get("outputBudget") {
+                    native_args["outputBudget"] = budget.clone();
+                }
+            }
             if args["project"].is_string() {
                 native_args["project"] = args["project"].clone();
                 if let Some(root) = args.get("root") {
@@ -1631,7 +1641,7 @@ impl Control {
                     result["activeFlags"] = t["status"]["activeFlags"].clone();
                 }
                 if args["statusOnly"] != true {
-                    let page=self.request("thread/turns/list",json!({"threadId":id,"cursor":args["cursor"],"limit":num(&args,"limit",2),"sortDirection":"desc","itemsView":"full"}),60000).await?;
+                    let page=self.request("thread/turns/list",json!({"threadId":id,"cursor":args["cursor"],"limit":num(&args,"limit",if full {2} else {1}),"sortDirection":"desc","itemsView":"full"}),60000).await?;
                     result["nextCursor"] = page["nextCursor"].clone();
                     let mut turns = page["data"].as_array().cloned().unwrap_or_default();
                     turns.reverse();
@@ -1673,7 +1683,13 @@ impl Control {
                     };
                     result["turns"] = json!(page["data"].as_array().into_iter().flatten().map(|turn| {
                         let items: Vec<_> = turn["items"].as_array().into_iter().flatten()
-                            .filter_map(|i| if full {Some(item(i,0,600))} else {compact_item(i,600)}).collect();
+                            .filter_map(|i| if full {Some(item(i,0,600))} else {
+                                let mut out = compact_item(i,600)?;
+                                if args["includeItemKeys"]==true && out["truncated"]!=true {
+                                    out["itemKey"] = json!(item_key(id,string(turn,"id"),i));
+                                }
+                                Some(out)
+                            }).collect();
                         let mut row = json!({"origin":crate::sources::task_origin(id,turn["id"].as_str()),"turnId":turn["id"],"recordedStatus":turn["status"],
                             "items":items.iter().skip(items.len().saturating_sub(15)).collect::<Vec<_>>(),
                             "externalUserInputs":crate::external_inputs::inputs(id, turn["id"].as_str()).unwrap_or(json!([]))});
@@ -1717,6 +1733,16 @@ impl Control {
                         "Use view:full for offset/expectedHash text pagination.",
                     ));
                 }
+                if full && args["knownItemKeys"].is_array() {
+                    return Err(crate::egress::invalid_arguments("codex_items","/knownItemKeys","Use compact view to omit known compact items; full view retains all metadata."));
+                }
+                let known: std::collections::HashSet<&str> = args["knownItemKeys"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .collect();
+                let mut omitted = 0;
                 let latest = args["latest"] == true;
                 let mut params = args.clone();
                 params["sortDirection"] = json!(if latest { "desc" } else { "asc" });
@@ -1745,6 +1771,8 @@ impl Control {
                     "maxImages",
                     "latest",
                     "view",
+                    "knownItemKeys",
+                    "includeItemKeys",
                 ] {
                     params.as_object_mut().unwrap().remove(key);
                 }
@@ -1754,6 +1782,20 @@ impl Control {
                     .into_iter()
                     .flatten()
                     .filter_map(|r| {
+                        let key = if !full && (!known.is_empty() || args["includeItemKeys"] == true)
+                        {
+                            Some(item_key(
+                                string(&args, "threadId"),
+                                string(r, "turnId"),
+                                &r["item"],
+                            ))
+                        } else {
+                            None
+                        };
+                        if key.as_deref().is_some_and(|k| known.contains(k)) {
+                            omitted += 1;
+                            return None;
+                        }
                         let mut i = if full {
                             item(
                                 &r["item"],
@@ -1763,6 +1805,9 @@ impl Control {
                         } else {
                             compact_item(&r["item"], num(&args, "length", 6000))?
                         };
+                        if !full && args["includeItemKeys"] == true && i["truncated"] != true {
+                            i["itemKey"] = json!(key);
+                        }
                         i["turnId"] = r["turnId"].clone();
                         Some(i)
                     })
@@ -1773,6 +1818,9 @@ impl Control {
                     }
                 }
                 let mut result = json!({"threadId":args["threadId"],"items":items,"nextCursor":page["nextCursor"],"observedAt":now()});
+                if omitted > 0 {
+                    result["omittedKnownItems"] = json!(omitted);
+                }
                 if latest {
                     result["turnId"] = turn_id;
                 }
@@ -2006,6 +2054,10 @@ pub(crate) fn summary(t: &Value) -> Value {
     }
     summary
 }
+fn item_key(thread: &str, turn: &str, item: &Value) -> String {
+    hash(json!([thread, turn, item]).to_string())
+}
+
 fn compact_item(v: &Value, length: usize) -> Option<Value> {
     let mut out = json!({"type":v["type"]});
     let mut truncated = false;
