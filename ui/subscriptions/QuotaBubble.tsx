@@ -16,7 +16,7 @@ import { windowLabel, subscriptionLabel } from "./labels";
 import {
   brandIcon,
   quotaColor,
-  resetText,
+  compactAge,
   compactReset,
   preciseTime,
   errorLabels,
@@ -25,6 +25,7 @@ import { quotaPace } from "./pace";
 import { usageLink } from "./usageLinks";
 import type { ProviderSnapshot } from "./types";
 import UsageHistory from "./UsageHistory";
+import ResetCreditDetails from "./ResetCreditDetails";
 import "./bubble.css";
 export default function QuotaBubble({
   provider,
@@ -54,12 +55,7 @@ export default function QuotaBubble({
   for (const w of provider.windows)
     if (w.exhausted || provider.blockedPoolIds.includes(w.poolId))
       notices.push(`${windowLabel(w.label)}: ${t("usagePoolBlocked")}`);
-  const timestamp = Date.parse(provider.observedAt ?? ""),
-    age = Number.isFinite(timestamp)
-      ? Math.max(0, Math.floor((now - timestamp) / 60000))
-      : undefined;
-  const ageText = age === undefined ? "" : age < 1 ? t("justNow") :
-    new Intl.RelativeTimeFormat(locale.get()).format(-Math.floor(age < 60 ? age : age < 1440 ? age / 60 : age / 1440), age < 60 ? "minute" : age < 1440 ? "hour" : "day");
+  const ageText = compactAge(provider.observedAt, now);
   async function refresh() {
     setRequesting(true);
     setError("");
@@ -113,24 +109,7 @@ export default function QuotaBubble({
             ))}
         </>
       );
-    if (key === "resets")
-      return (
-        <>
-          {provider.resetCredits?.length
-            ? provider.resetCredits.map((credit, index) => (
-                <div key={index}>
-                <div className="history-period expiry-row">
-                  <span>
-                    <span className="credit-number">{credit.count ?? index + 1}</span>
-                    {preciseTime(credit.expiresAt) || t("usageExpiryUnknown")}
-                  </span>
-                  <span>{resetText(credit.expiresAt, now)}</span>
-                </div>
-                </div>
-              ))
-            : t("usageExpiryUnknown")}
-        </>
-      );
+    if (key === "resets") return <ResetCreditDetails credits={provider.resetCredits} now={now} />;
     return null;
   }
   return (

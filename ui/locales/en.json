@@ -321,7 +321,6 @@
   "permissionState.granted": "Ready",
   "permissionState.missing": "Needs attention",
   "permissionState.unknown": "Unknown",
-  "permissionUse.ingress": "Run the verification prompt in the corresponding client.",
   "permissionsSystem": "System permissions",
   "permissionsEnvironment": "Environment",
   "permissionsConnections": "Connections",

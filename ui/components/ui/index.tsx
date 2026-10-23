@@ -91,7 +91,7 @@ export function IconButton({
   icon,
   label,
   busy = false,
-  size = 20,
+  size = 16,
   className = "",
   ...props
 }: Omit<Parameters<typeof Button>[0], "children" | "title"> & {

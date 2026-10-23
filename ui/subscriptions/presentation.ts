@@ -21,6 +21,12 @@ export function surfaceStatus(rows:ProviderSnapshot[],now=Date.now()){return row
 export function duration(minutes:number,showMinutes=true){const total=Math.max(0,Math.floor(minutes)),d=Math.floor(total/1440),h=Math.floor(total%1440/60),min=total%60;return [d?`${d}${t('durationDays')}`:'',h?`${h}${t('durationHours')}`:'',showMinutes&&min?`${min}${t('durationMinutes')}`:''].filter(Boolean).join(' ')||`0${t(showMinutes?'durationMinutes':'durationHours')}`;}
 export function resetText(value:string|undefined,now:number,showMinutes=false){if(!value)return '—';const minutes=Math.ceil((Date.parse(value)-now)/60000);return Number.isFinite(minutes)?duration(Math.max(0,minutes),showMinutes):'—';}
 export const preciseTime=(value?:string)=>value?new Date(value).toLocaleString(locale.get()):'';
+export function compactAge(value: string | undefined, now: number) {
+  const minutes = Math.max(0, Math.floor((now - Date.parse(value ?? "")) / 60000));
+  if (!Number.isFinite(minutes)) return "—";
+  return minutes < 1 ? "<1m ago" : minutes < 60 ? `${minutes}m ago`
+    : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`;
+}
 export const errorLabels:Record<string,string>={'credentials-missing':'usageCredentialsMissing','authentication-failed':'usageAuthenticationFailed','request-forbidden':'usageRequestForbidden','request-failed':'usageRequestFailed','credential-access-denied':'usageCredentialDenied','no-subscription':'usageNoSubscription','no-limits-reported':'usageNoLimits','rate-limited':'usageRateLimited','network-error':'usageNetworkError','invalid-response':'usageInvalidResponse','unsupported-platform':'usageUnsupported'};
 
 export function compactReset(value: string | undefined, now: number) {

@@ -321,7 +321,6 @@
   "permissionState.granted": "已就绪",
   "permissionState.missing": "需处理",
   "permissionState.unknown": "未知",
-  "permissionUse.ingress": "在对应客户端运行验证提示。",
   "permissionsSystem": "系统权限",
   "permissionsEnvironment": "运行环境",
   "permissionsConnections": "连接",

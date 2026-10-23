@@ -83,7 +83,7 @@ export default function PermissionsPage() {
         {connections.length === 0 && <p className="permission-hint">{t("permissionsNoConnections")}</p>}
         {connections.map(({entry, state}) => <div className="permission-row" key={entry.id}>
           <span className="permission-symbol"><SourceIcon platform={entry.controlSource} /></span>
-          <div className="permission-copy"><h3>{entry.name}</h3><p>{t("permissionUse.ingress")}</p></div>
+          <div className="permission-copy"><h3>{entry.name}</h3></div>
           <div className="permission-actions">{badge(state, false, true)}{state !== "granted" && <Button onClick={() => setDetails(entry)}>{t("permissionsViewConnection")}</Button>}</div>
         </div>)}
       </Group>
