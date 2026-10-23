@@ -1226,7 +1226,6 @@ button.timeline-summary:focus-visible { outline: 2px solid var(--accent); outlin
 .source-detail, .connection-detail { animation:source-detail-enter 160ms var(--ease); }
 @media (prefers-reduced-motion:reduce) { .source-detail, .connection-detail { animation:none; } }
 
-.settings-extras-entry { width: 100%; justify-content: space-between; }
 .settings-breadcrumb-divider { color: var(--text-tertiary); margin-inline: var(--space-2); font-weight: 400; }
 .settings-extras { container-type: inline-size; }
 .extras-layout { display: grid; grid-template-columns: var(--settings-nav-width) minmax(0, 1fr); gap: var(--space-6); }

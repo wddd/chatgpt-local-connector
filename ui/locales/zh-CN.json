@@ -928,5 +928,7 @@
   "hosting.deleteTitle": "删除此中继",
   "hosting.deleteDescription": "所有已连接的设备都会断开，包括本机的中继连接。",
   "hosting.delete": "删除…",
-  "hosting.remove": "移除"
+  "hosting.remove": "移除",
+  "extras.entryTitle": "中继托管与实验性功能",
+  "extras.entryDescription": "你为他人托管的中继、首页拓扑调参"
 }

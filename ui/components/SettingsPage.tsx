@@ -1,7 +1,7 @@
 import { navigation } from "../state/navigation";
 import { notificationsPreference } from "../state/store";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Monitor, Sun, Moon, ChevronRight } from "lucide-react";
+import { Monitor, Sun, Moon } from "lucide-react";
 import { t, language, languageOptions, setLanguage } from "../i18n";
 import { theme, themeColor, themeColors, type Theme } from "../theme";
 import { api } from "../api";
@@ -9,7 +9,7 @@ import { isDesktop } from "../platform";
 import { connector, run, notify, refreshConnector } from "../state/connector";
 import { useInterval } from "../state/hooks";
 import type { Service } from "../state/types";
-import { Button, Group, Row, Switch, SingleChoice, Input, Field, Icon, HoverScope } from "./ui";
+import { Button, Group, Row, Switch, SingleChoice, Input, Field } from "./ui";
 import SettingsExtras from "./SettingsExtras";
 import { AppUpdate } from "./AppUpdate";
 export default function SettingsPage() {
@@ -265,9 +265,10 @@ export default function SettingsPage() {
           </Field>
         )}
       </Group>
-      <HoverScope><Button data-hover-target="extras" id="settings-extras-entry" variant="ghost" className="settings-extras-entry" onClick={() => navigation.set(old => ({ ...old, settingsExtras: true }))}>
-        <span>{t("extras.title")}</span><Icon icon={ChevronRight} />
-      </Button></HoverScope>
+      <Group title={t("extras.title")}>
+        <Row id="settings-extras-entry" title={t("extras.entryTitle")} description={t("extras.entryDescription")}
+          onNavigate={() => navigation.set(old => ({ ...old, settingsExtras: true }))} />
+      </Group>
       <AppUpdate />
     </div>
   );

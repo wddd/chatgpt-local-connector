@@ -26,6 +26,7 @@ import {
   X,
   Check,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   LoaderCircle,
   Copy,
@@ -236,12 +237,25 @@ export function Row({
   description,
   children,
   controlId,
+  id,
+  onNavigate,
 }: {
   title: ReactNode;
   description?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
   controlId?: string;
+  id?: string;
+  onNavigate?: () => void;
 }) {
+  if (onNavigate) return <HoverScope className="settings-row-hover">
+    <Button id={id} variant="ghost" className="settings-row settings-row-navigation" data-hover-target="navigation" onClick={onNavigate}>
+      <span className="row-copy">
+        <span className="row-title">{title}</span>
+        {description && <span className="row-description">{description}</span>}
+      </span>
+      <Icon icon={ChevronRight} />
+    </Button>
+  </HoverScope>;
   return (
     <div className="settings-row">
       <div className="row-copy">

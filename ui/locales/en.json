@@ -928,5 +928,7 @@
   "hosting.deleteTitle": "Delete this relay",
   "hosting.deleteDescription": "Every connected device disconnects, including this computer’s relay link.",
   "hosting.delete": "Delete…",
-  "hosting.remove": "Remove"
+  "hosting.remove": "Remove",
+  "extras.entryTitle": "Relay hosting & experimental",
+  "extras.entryDescription": "Relays you host for others and homepage topology tuning"
 }

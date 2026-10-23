@@ -52,7 +52,7 @@ The left center dot opens the shared Add a control source flow. Welcome appears 
 
 ## Settings Extras
 
-The Extras row opens a nested view in the Settings workspace. Its header keeps the width and close controls, adds a back arrow, and reads Settings / Extras. Back or Escape returns to Settings and restores focus to the Extras entry. Content switches without morphing the workspace shell.
+The Extras group sits directly before About and uses the same Group and Row spacing as Network. Its single Relay hosting & experimental row includes a muted description and right chevron. The shared Row navigation variant makes the entire row a keyboard-focusable button with HoverScope feedback. It opens a nested view in the Settings workspace. Its header keeps the width and close controls, adds a back arrow, and reads Settings / Extras. Back or Escape returns to Settings and restores focus to the Extras entry. Content switches without morphing the workspace shell.
 
 Extras uses a 200px left sub-navigation with SingleChoice entries for Relay hosting and Experimental, each with one muted description. Below 640px of content width, navigation stacks above the content. Semantic tokens cover both themes.
 
