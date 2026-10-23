@@ -134,13 +134,20 @@ test("expired timeline cursor discards old state and retries once without after"
   // Regression: TIMELINE_CURSOR_EXPIRED requires a fresh timeline without stale entries.
   const { refreshTimeline } = await import("../ui/state/timelineModel.ts");
   const restored = timeline([entry("restored", 1, "restored", 0)]);
-  const result = await refreshTimeline(timeline([entry("old", 50, "stale", 0)]), async after => {
-    if (after !== undefined) throw new Error("TIMELINE_CURSOR_EXPIRED: fetch again without after");
-    return restored;
+  const stale = timeline([entry("old", 50, "stale", 0)]);
+  let expired = false;
+  const result = await refreshTimeline(stale, async after => {
+    if (after === stale.cursor) { expired = true; throw new Error("TIMELINE_CURSOR_EXPIRED: fetch again without after"); }
+    if (after === undefined && expired) return restored;
+    throw new Error("Invalid timeline resume cursor");
   });
   assert.equal(result, restored);
   assert.deepEqual(result.entries.map(e => e.id), ["restored"]);
-  await assert.rejects(refreshTimeline(restored, async () => { throw new Error("offline"); }), /offline/);
+  let available = false;
+  await assert.rejects(refreshTimeline(restored, async () => {
+    if (!available) { available = true; throw new Error("offline"); }
+    return restored;
+  }), /offline/);
 });
 
 test("scroll follows live snapshots until upward movement, resumes at bottom, and leaves finished history still", async () => {
@@ -363,7 +370,9 @@ test("incremental timeline merge retains tool group ids through updates and appe
   assert.equal(new Set(split.map(g => g.id)).size, split.length, "splitting a group never duplicates ids");
   assert.equal(split[2].id, previous[0].id);
   const withText = mergeTimeline(merged, timeline([entry("text", 4, "Answer", 3), { ...entry("next", 5, "", 4), type: "tool" }]));
-  assert.equal(timelineGroups(withText.entries)[0].id, previous[0].id);
+  const appended = timelineGroups(withText.entries);
+  assert.equal(appended[0].id, previous[0].id);
+  assert.deepEqual(appended.map(group => group.entries.map(item => item.id)), [["first", "second"], ["text"], ["next"]]);
 });
 
 

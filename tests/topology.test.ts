@@ -1,7 +1,7 @@
 import { arcPath, grownWire } from "../ui/topology/geometry.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULTS, PARAMETERS, PARAMETER_GROUPS, distribute, extentOf, solve, LABEL_W, NODE_R, type Scene } from "../ui/topology/solve.ts";
+import { DEFAULTS, PARAMETERS, PARAMETER_GROUPS, distribute, extentOf, solve, LABEL_W, NODE_R, BUBBLE_W, BUBBLE_H, PANEL_ARC_GAP, type Scene } from "../ui/topology/solve.ts";
 import { clampParameter, emptyParameters, importParameters, loadParameters, parameterDiff } from "../ui/topology/parameters.ts";
 
 const entities = (prefix: string, counts: number[]) => counts.map((count, i) => ({ id: `${prefix}${i}`,
@@ -17,32 +17,37 @@ const fixtures: Record<string, Scene> = {
 };
 for (const [name, scene] of Object.entries(fixtures)) test(`topology lab: ${name}`, () => {
   // Property: `topology lab: each population`.
-  const frozen = JSON.stringify(scene), layout = solve(scene), [left, right] = layout.wings;
-  assert.equal(JSON.stringify(scene), frozen);
-  assert.ok(layout.sceneH >= scene.vh);
-  assert.equal(layout.hub.y, layout.sceneH / 2);
-  for (const wing of layout.wings) {
-    assert.equal(wing.nodes.length, (wing.side === -1 ? scene.left : scene.right).length);
-    for (let i = 1; i < wing.nodes.length; i++) assert.ok(wing.nodes[i].port - wing.nodes[i - 1].port >= DEFAULTS.earSep - 1e-9);
-    for (const node of wing.nodes) {
-      if (wing.side === -1) { assert.equal(node.scale, node.active ? DEFAULTS.activeScale : 1); assert.equal(node.opacity, 1); }
-      const tasks = wing.tasks.filter(t => t.parent === node.id);
-      for (let i = 1; i < tasks.length; i++) {
-        assert.ok(tasks[i].y > tasks[i - 1].y);
-        assert.ok(tasks[i].port - tasks[i - 1].port >= 9 - 1e-9);
+  for (const pitch of [DEFAULTS.pitch, PARAMETERS.find(p => p.key === "pitch")!.min, PARAMETERS.find(p => p.key === "pitch")!.max]) {
+    const parameters = { ...DEFAULTS, pitch };
+    const frozen = JSON.stringify(scene), layout = solve(scene, parameters), [left, right] = layout.wings;
+    assert.equal(JSON.stringify(scene), frozen);
+    assert.ok(layout.sceneH >= scene.vh);
+    assert.equal(layout.hub.y, layout.sceneH / 2);
+    for (const wing of layout.wings) {
+      assert.equal(wing.nodes.length, (wing.side === -1 ? scene.left : scene.right).length);
+      for (let i = 1; i < wing.nodes.length; i++) assert.ok(wing.nodes[i].port - wing.nodes[i - 1].port >= DEFAULTS.earSep - 1e-9);
+      for (const node of wing.nodes) {
+        if (wing.side === -1) { assert.equal(node.scale, node.active ? DEFAULTS.activeScale : 1); assert.equal(node.opacity, 1); }
+        const tasks = wing.tasks.filter(t => t.parent === node.id);
+        for (let i = 1; i < tasks.length; i++) {
+          assert.equal(tasks[i].y - tasks[i - 1].y, parameters.pitch);
+          assert.ok(tasks[i].port - tasks[i - 1].port >= 9 - 1e-9);
+        }
       }
     }
-  }
-  for (const wing of layout.wings) {
-    const extent = extentOf(wing, layout.hub.x, layout.hub.Re);
-    for (const node of [...wing.nodes, ...wing.tasks]) {
-      assert.ok(node.y >= 0 && node.y <= layout.sceneH);
-      assert.ok(extent.full >= Math.abs(node.x - layout.hub.x) + ("size" in node ? node.size * node.scale / 2 : 0));
+    for (const wing of layout.wings) {
+      const extent = extentOf(wing, layout.hub.x, layout.hub.Re);
+      for (const node of [...wing.nodes, ...wing.tasks]) {
+        const halfHeight = "size" in node ? node.size * node.scale / 2 : BUBBLE_H / 2;
+        const outerWidth = "size" in node ? LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 : BUBBLE_W;
+        assert.ok(node.y - halfHeight >= DEFAULTS.margin && node.y + halfHeight <= layout.sceneH - DEFAULTS.margin);
+        assert.ok(extent.full >= Math.abs(node.x - layout.hub.x) + outerWidth);
+      }
     }
+    const l = extentOf(left, layout.hub.x, layout.hub.Re), r = extentOf(right, layout.hub.x, layout.hub.Re);
+    assert.ok(layout.hub.x - l.full >= DEFAULTS.margin - 1e-9);
+    if (l.full + r.full <= scene.vw - 2 * DEFAULTS.margin) assert.ok(layout.hub.x + r.full <= scene.vw - DEFAULTS.margin + 1e-9);
   }
-  const l = extentOf(left, layout.hub.x, layout.hub.Re), r = extentOf(right, layout.hub.x, layout.hub.Re);
-  assert.ok(layout.hub.x - l.full >= DEFAULTS.margin - 1e-9);
-  if (l.full + r.full <= scene.vw - 2 * DEFAULTS.margin) assert.ok(layout.hub.x + r.full <= scene.vw - DEFAULTS.margin + 1e-9);
 });
 test("right activity moves the hub left without compressing or dimming sources", () => {
   // Property: right activity moves the hub left without compressing or dimming sources.
@@ -68,8 +73,16 @@ test("column compression exhausts the left column before the right; overflow cli
 });
 test("ports fit the arc and drag is confined to its wing and item", () => {
   // Property: ports fit the arc and drag is confined to its wing and item.
-  const crowded = distribute(Array(30).fill(80), 0.7, 7, 42);
-  assert.ok(crowded.every(port => port >= -42 && port <= 42 + 1e-9));
+  const { earFollow: follow, earSep: sep, earMax: max } = DEFAULTS;
+  for (const raw of [[], [0], [0, 0, 0], [-max, 0, max], [max, 0, -max], Array(30).fill(80)]) {
+    const ports = distribute(raw, follow, sep, max);
+    assert.equal(ports.length, raw.length);
+    assert.ok(ports.every(port => port >= -max - 1e-9 && port <= max + 1e-9));
+    for (let i = 1; i < ports.length; i++) {
+      assert.ok(ports[i] >= ports[i - 1]);
+      if ((ports.length - 1) * sep <= 2 * max) assert.ok(ports[i] - ports[i - 1] >= sep - 1e-9);
+    }
+  }
   const sc = fixtures.bilateral, base = solve(sc);
   const dragged = solve(sc, DEFAULTS, { kind: "task", side: -1, id: "source0/task0", x: base.wings[0].tasks[0].x, y: 123 });
   assert.equal(dragged.wings[0].tasks[0].y, 123);
@@ -180,7 +193,7 @@ test("Agent dock reserves its width and label clearance without reordering or mo
       assert.equal(docked.sceneH, base.sceneH);
       assert.deepEqual(docked.wings.map(w => w.nodes.map(n => [n.id, n.y])), base.wings.map(w => w.nodes.map(n => [n.id, n.y])));
       const node = docked.wings[1].nodes.find(n => n.id === selected)!;
-      assert.ok(node.x + LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 <= edge + 1e-6);
+      assert.ok(node.x + LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 <= edge - PANEL_ARC_GAP + 1e-6);
       assert.ok(node.x - node.size * node.scale / 2 >= 0);
       assert.ok(node.scale <= Math.max(1, DEFAULTS.activeScale));
       assert.ok(docked.hub.x < base.hub.x);
@@ -199,7 +212,7 @@ test("narrow docks retain arc clearance at minimum width and mirror the left doc
     const layout = solve({ ...fixtures.bilateral, vw, panel: { side, selected, edge, narrow: true } });
     const node = layout.wings.find(w => w.side === side)!.nodes.find(n => n.id === selected)!;
     const radius = node.arc?.R ?? node.size * node.scale / 2 + DEFAULTS.arcGap;
-    assert.ok(side === 1 ? node.x + radius < edge : node.x - radius > edge);
+    assert.ok(side === 1 ? node.x + radius <= edge - PANEL_ARC_GAP : node.x - radius >= edge + PANEL_ARC_GAP);
     assert.ok(Number.isFinite(layout.hub.x));
   }
 });
@@ -213,7 +226,7 @@ test("source dock moves the scene right, clears labels and keeps Agent bubbles i
       assert.ok(docked.hub.x > base.hub.x);
       assert.deepEqual(docked.wings.map(w => w.nodes.map(n => [n.id, n.y])), base.wings.map(w => w.nodes.map(n => [n.id, n.y])));
       const node = docked.wings[0].nodes.find(n => n.id === selected)!;
-      assert.ok(node.x - LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 >= 416 - 1e-6);
+      assert.ok(node.x - LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 >= 416 + PANEL_ARC_GAP - 1e-6);
       assert.ok(docked.wings[1].tasks.every(t => !t.hidden));
       assert.deepEqual(docked.wings[1].tasks.map(t => [t.id, t.y]), base.wings[1].tasks.map(t => [t.id, t.y]));
     }

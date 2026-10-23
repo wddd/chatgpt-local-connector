@@ -107,7 +107,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         if (row.model === 'fixture-dispatch-uncertain') return process.exit(0);
         return emit({id,result:{turn:row.turns.at(-1)}});
       }
-      if (method === 'turn/steer') { row.steers=(row.steers||0)+1;saveFixture(saved);return emit({id,result:{turnId:row.turns.at(-1).id}}); }
+      if (method === 'turn/steer') { row.turns.at(-1).input.push(...params.input);saveFixture(saved);return emit({id,result:{turnId:row.turns.at(-1).id}}); }
       if (method === 'fixture/finish-turn') { row.turns.at(-1).status=params.status||'completed';saveFixture(saved);return emit({id,result:{}}); }
       if (method === 'thread/turns/list') {
         const rows = [...row.turns];
@@ -782,6 +782,7 @@ test('creation starts its first turn without legacy history reads, cleans defini
     input: [{type:'text', text:'original input', text_elements:[]}], context:true, intent:'ignored', requestId:randomUUID()});
   assert.equal(sent.state, 'completed');
   const rows = await fixtureRows();
+  assert.deepEqual(rows[accepted.threadId].turns[0].input, [{type:'text', text:'ping', text_elements:[]}]);
   assert.deepEqual(rows[accepted.threadId].turns[1].input, [{type:'text', text:'original input', text_elements:[]}]);
   assert.equal(accepted.state, 'completed');
   assert.ok(accepted.threadId && accepted.turnId);
@@ -846,6 +847,7 @@ test('FIFO queue never steers, pauses on failures, supports cancellation/resume 
   // Regression: queued input must survive restart and remain blocked after a failed predecessor.
   const created=await dispatchFixture('fixture-dispatch-queue');
   const steered=await completed('codex_send',{threadId:created.threadId,prompt:'steer',requestId:randomUUID()});assert.equal(steered.dispatchMode,'steered');assert.equal(steered.turnId,created.turnId);
+  const activeInput = (await fixtureRows())[created.threadId].turns[0].input;
   const enqueue=async(prompt:string)=>completed('codex_send',{threadId:created.threadId,prompt,sendMode:'queue',purpose:'self-test',requestId:randomUUID()});
   const a=await enqueue('first'),b=await enqueue('cancel-me'),c=await enqueue('third');assert.equal(a.dispatchMode,'queued');assert.ok(a.queueId);
   await new Promise(r=>setTimeout(r,1200));assert.equal((await fixtureRows())[created.threadId].turns.length,1);
@@ -861,6 +863,7 @@ test('FIFO queue never steers, pauses on failures, supports cancellation/resume 
   assert.equal((await call('codex_queue_control',{threadId:created.threadId,action:'resume'})).result.changed,1);
   await eventually(fixtureRows,v=>v[created.threadId].turns.length===3);
   const rows=await fixtureRows();assert.equal(rows[created.threadId].turns[2].input[0].text,'third');
+  assert.deepEqual(rows[created.threadId].turns[0].input, activeInput, 'queued input never changes the running turn');
   await completed('codex_call',{method:'fixture/finish-turn',params:{threadId:created.threadId},requestId:randomUUID()});
 });
 
@@ -894,7 +897,7 @@ test('task overview defaults to compact live evidence and full view retains prev
   assert.ok(paged.outputId);let text=paged.text,offset=paged.nextOffset;
   while(offset!==null){const page=(await call('control_output',{outputId:paged.outputId,offset,length:30000})).result;text+=page.text;offset=page.nextOffset;}
   const full=JSON.parse(text);
-  assert.equal(full.tasks[0].preview,'x'.repeat(77000));assert.equal(full.nextCursor,'native-cursor');
+  assert.ok(full.tasks[0].configuration);assert.equal(full.tasks[0].preview,'x'.repeat(77000));assert.equal(full.nextCursor,'native-cursor');
 });
 
 test('Git change queries retain attribution and page through every commit',async()=>{
@@ -947,12 +950,23 @@ test('wait omits repeated nonterminal text and retains complete terminal replies
   assert.equal(repeated.changed,false);assert.equal(repeated.finalResponse.text,'pong');assert.equal(repeated.finalResponseUnchanged,undefined);
 });
 
-test('inbox_wait filters unread events, isolates ingress and cooperates with ack', async () => {
-  // Contract: inbox wait filters unread events, isolates ingress and cooperates with ack.
-  const unwanted = await dispatchFixture('fixture-dispatch-completed');
+test('inbox_wait filters unread events before limiting, isolates ingress and cooperates with ack', async () => {
+  // Contract: inbox wait filters unread events before limiting, isolates ingress and cooperates with ack.
+  await completed('notification_ack', {all:true});
+  const unrelated: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    const task = await dispatchFixture('fixture-dispatch-completed');
+    await eventually(async () => (await call('inbox_wait',{timeoutMs:100,threadIds:[task.threadId]})).result, r => r.state === 'events');
+    unrelated.push(task.threadId);
+  }
+  const backlog = (await call('inbox_wait',{timeoutMs:100,threadIds:unrelated})).result;
+  assert.equal(backlog.unread, unrelated.length);
+  assert.ok(backlog.events.length < backlog.unread, 'unrelated unread events exceed the response limit');
   const wanted = await dispatchFixture('fixture-dispatch-completed');
   const args = {timeoutMs:100,threadIds:[wanted.threadId],eventTypes:['completed']};
   const first = await eventually(async () => (await call('inbox_wait',args)).result, r => r.state === 'events');
+  assert.equal(first.events.length, 1);
+  assert.equal(first.unread, 1);
   assert.ok(first.events.every((e:any) => e.threadId === wanted.threadId && e.kind === 'completed'));
   assert.deepEqual((await call('inbox_wait',args)).result.events,first.events);
   const eventIds = first.events.map((e:any) => e.eventId);
@@ -967,7 +981,12 @@ test('inbox_wait filters unread events, isolates ingress and cooperates with ack
   assert.equal((await completed('notification_ack',{eventIds})).markedRead,eventIds.length);
   const timeout=(await call('inbox_wait',args)).result;
   assert.equal(timeout.state,'timeout');assert.deepEqual(timeout.events,[]);assert.deepEqual(timeout.next.args,args);
-  assert.ok((await call('inbox_wait',{timeoutMs:100,threadIds:[unwanted.threadId]})).result.events.length);
+  assert.equal((await call('inbox_wait',{timeoutMs:100,threadIds:unrelated})).result.unread, unrelated.length);
+  assert.equal((await call('inbox_wait',{timeoutMs:1,threadIds:unrelated,eventTypes:['interrupted']})).result.state, 'timeout');
+  const late = await dispatchFixture('fixture-dispatch-queue');
+  const waiting = fetch(`http://127.0.0.1:${endpoint.port}/mcp/default`, {method:'POST', headers:{Authorization:`Bearer ${endpoint.token}`,'Content-Type':'application/json'}, body:JSON.stringify({jsonrpc:'2.0',id:'late-inbox',method:'tools/call',params:{name:'query',arguments:{op:'inbox_wait',args:{timeoutMs:15000,threadIds:[late.threadId],eventTypes:['completed']}}}})}).then(r => r.json());
+  await completed('codex_call',{method:'fixture/finish-turn',params:{threadId:late.threadId},requestId:randomUUID()});
+  assert.equal((await waiting).result.structuredContent.result.events[0].threadId, late.threadId);
 });
 
 test('HTTP and HTTPS ingress wait streaming keeps final result intact and releases request IDs on disconnect', async () => {
@@ -1134,6 +1153,17 @@ test('Desktop seed is named before independent metadata read even with null roll
 
 test('item and search pagination reconstruct the complete result', async () => {
   // Contract: item and search pagination reconstruct the complete result.
+  const read = (await call('codex_read',{threadId:'response-size',limit:6})).result;
+  assert.equal(read.turns.length, 6);
+  for (const turn of read.turns) {
+    assert.equal(turn.items.length, 4);
+    assert.ok(Array.isArray(turn.items[0].content));
+    assert.equal(turn.items[1].command, 'git diff --stat');
+    assert.equal(turn.items[1].exitCode, 0);
+    assert.ok(Array.isArray(turn.items[2].changes));
+  }
+  const fullRead = (await call('codex_read',{threadId:'response-size',limit:6,view:'full'})).result;
+  assert.ok(fullRead.turns[0].items.some((item:any) => item.type === 'reasoning'));
   const first=(await call('codex_items',{threadId:'image-pagination',latest:true,length:3,view:'full'})).result;
   const continued=(await call('codex_items',{threadId:'image-pagination',latest:true,turnId:first.turnId,view:'full',offset:first.items[0].nextOffset,expectedHash:first.items[0].textHash})).result;
   assert.equal(first.items[0].text+continued.items[0].text,'latest last');
@@ -1193,8 +1223,12 @@ test('ACP task tracking keeps approvals active and projects context, SSE and inc
   const created=(await call('agent_create',{agent:'tracking-example',cwd:directory,prompt:'Check example',title:'Example task',requestId,approval:'approved',purpose:'self-test',waitMs:1})).result;
   assert.ok(created.taskId,JSON.stringify(created));
   const taskId=created.taskId;
+  const agentInbox = await eventually(async () => (await call('inbox_wait',{timeoutMs:100,taskIds:[taskId],eventTypes:['needs-input']})).result, r => r.state === 'events');
+  assert.ok(agentInbox.events.length > 0);
+  assert.ok(agentInbox.events.every((event:any) => event.taskId === taskId && event.kind === 'needs-input'));
   const wait=(await call('agent_wait',{agent:'tracking-example',taskId,timeoutMs:10000})).result;
   assert.equal(wait.state,'interaction-required',JSON.stringify(wait));
+
   const activity=await management('agents/activity');
   assert.ok(activity.activeAgents.includes('tracking-example'));
   const transcripts=activity.agents.claude.sessions.filter((r: any)=>transcriptIds.includes(r.id));

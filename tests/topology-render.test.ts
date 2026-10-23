@@ -220,10 +220,39 @@ test("control source dock preserves editing, field navigation and cross-side dis
     await click(first()); await click(within(page.getByRole("dialog")).getByRole("button", { name: /Dispatch fixture/ }));
     assert.equal(ingressPanel.get(), undefined); assert.equal(agentPanel.get().session.id, "thread");
     await click(first()); assert.equal(agentPanel.get(), undefined); assert.ok(ingressPanel.get());
+    await escape();
+    const { onboarding } = await server.ssrLoadModule("/ui/state/onboarding.ts");
+    const { controlSource } = await server.ssrLoadModule("/ui/controlSources.ts");
+    for (const id of ["claude", "chatgpt", "custom"]) {
+      await click(button(t("addControlSource")));
+      await click(page.getByRole("radio", { name: id === "custom" ? t("setup.otherClient") : controlSource(id).displayName, exact: true }));
+      await click(button(t("source.next")));
+      await click(button(t("source.next")));
+      assert.equal(onboarding.get().step, "address");
+      assert.ok(page.getByDisplayValue("https://example.com/mcp"));
+      await click(button(t("back"))); await click(button(t("back")));
+      assert.equal(onboarding.get().step, "product");
+      assert.equal(page.getByRole("radio", { name: id === "custom" ? t("setup.otherClient") : controlSource(id).displayName, exact: true }).getAttribute("aria-checked"), "true");
+      await escape();
+    }
+    await click(first());
     await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
     await click(button(t("remove")));
     assert.equal(ingressPanel.get(), undefined); assert.equal(page.queryByRole("dialog"), null);
     assert.equal(page.queryByRole("button", { name: /Source one/ }), null);
+    const { default: RecordsPage } = await server.ssrLoadModule("/ui/components/RecordsPage.tsx");
+    await act(() => {
+      connector.set({ ...connector.get(), status: { ...status, ingresses: [source("one"), source("two")], logs: [
+        JSON.stringify({ ingressId: "one", msg: "Request processed: fixture-one" }),
+        JSON.stringify({ ingressId: "two", msg: "Request processed: fixture-two" }),
+      ] } });
+      navigation.set({ recordsSource: "one" }); root.render(h(UiProvider, null, h(RecordsPage)));
+    });
+    await flush();
+    assert.ok(page.getByRole("cell", { name: /fixture-one/ }));
+    assert.equal(page.queryByRole("cell", { name: /fixture-two/ }), null);
+    assert.ok(page.getByRole("button", { name: /Dispatch fixture/ }));
+
   } finally {
     await act(() => root.unmount()); globalThis.fetch = originalFetch;
     await server.close(); await window.happyDOM.close();
@@ -262,6 +291,7 @@ test("timeline disclosures preserve choices through incremental grouping and ren
     const tool = () => page.getByRole("button", { name: /npm test/ });
     const group = () => page.getByRole("button", { name: name => name.includes(t("timeline.group.readOne", { count: 1 })) });
     await render([first]);
+    assert.equal(page.getAllByRole("img", { name: t("timeline.status.running") }).length, 1);
     await click(tool());
     assert.equal(tool().getAttribute("aria-expanded"), "true");
     await render([first, second]);
@@ -269,26 +299,49 @@ test("timeline disclosures preserve choices through incremental grouping and ren
     assert.equal(tool().getAttribute("aria-expanded"), "true");
     await click(group());
     assert.equal(group().getAttribute("aria-expanded"), "false");
+    assert.ok(page.getByText(first.command));
     await click(group());
     await render([{ ...first, status: "failed", durationMs: 4000, exitCode: 1 }, second]);
     assert.equal(group().getAttribute("aria-expanded"), "true");
+    assert.ok(page.getByRole("img", { name: t("timeline.status.failed") }));
+    assert.ok(page.getByText(first.output.text));
     await render([{ ...first, id: "automatic" }, { ...second, id: "automatic-file" }]);
     assert.equal(group().getAttribute("aria-expanded"), "true");
     await render([{ ...first, id: "automatic", status: "completed" }, { ...second, id: "automatic-file" }]);
     assert.equal(group().getAttribute("aria-expanded"), "false");
     const thinking = { ...base, id: "thinking", type: "thinking", status: "completed", durationMs: 2000, text: "Reasoning detail" };
-    const text = { ...base, id: "text", type: "text", status: "completed", text: '| Name | Value |\n| --- | --- |\n| A | B |\n\n- [x] Done\n\n[Docs](https://example.com/docs)' };
+    const text = { ...base, id: "text", type: "text", status: "completed", text: '| Name | Value |\n| --- | --- |\n| A | B |\n\n- [x] Done\n\n[Docs](https://example.com/docs)\n\n```js\nconst value = 1;\n```\n\n<script>window.bad = true</script>' };
     await render([thinking, text]);
     const disclosure = () => page.getByRole("button", { name: t("timeline.thought", { duration: t("activity.seconds", { count: 2 }) }) });
+    assert.equal(disclosure().getAttribute("aria-expanded"), "false");
     await click(disclosure());
     await render([{ ...thinking, text: "Updated reasoning" }, text]);
     assert.equal(disclosure().getAttribute("aria-expanded"), "true");
     assert.ok(page.getByText("Updated reasoning"));
     assert.ok(page.getByRole("cell", { name: "B" }));
+    assert.ok(page.getByText("const value = 1;"));
+    assert.equal(page.queryByText("window.bad = true"), null);
     assert.equal((page.getByRole("checkbox") as HTMLInputElement).disabled, true);
     let opened = ""; window.open = ((url: string) => { opened = url; return null; }) as typeof window.open;
     await click(page.getByRole("link", { name: "Docs" }));
     assert.equal(opened, "https://example.com/docs");
+    const { activityApprovals } = await server.ssrLoadModule("/ui/state/activity.ts");
+    const { interactionKey } = await server.ssrLoadModule("/ui/state/activityModel.ts");
+    const interaction = { kind: "question", summary: "Choose an option", respond: { op: "agent_respond", args: { agent: "claude", taskId: "example", interactionId: 1 } } };
+    const pending = { ...base, id: "interaction", type: "interaction", status: "pending", interaction };
+    await render([pending]);
+    const receipt = (key: string) => page.getByText(t(key), { exact: false });
+    assert.ok(receipt("timeline.waitingApproval"));
+    const key = interactionKey("claude", { ...session, phaseSince: base.startedAt, interaction });
+    for (const [decision, label] of [["answer", "timeline.answered"], ["deny", "timeline.denied"]]) {
+      await act(() => activityApprovals.set({ [key]: { status: "submitted", decision, requestId: "fixture" } }));
+      assert.ok(receipt(label));
+      assert.equal(page.queryByText(t("timeline.waitingApproval"), { exact: false }), null);
+    }
+    await act(() => activityApprovals.set({}));
+    await render([{ ...pending, status: "completed" }]);
+    assert.ok(receipt("timeline.resolved"));
+
   } finally {
     await act(() => root.unmount()); await server.close(); window.happyDOM.abort(); mount.remove();
   }

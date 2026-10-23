@@ -2163,6 +2163,11 @@ mod tests {
         persist(dir, &b).unwrap();
         b
     }
+    fn delivery_status(dir: &Path, thread: &str) -> String {
+        binding(dir, thread, "turn-1").unwrap().unwrap().deliveries[0]
+            .status
+            .clone()
+    }
     #[tokio::test]
     async fn empty_async_completion_is_suppressed_and_changes_stay_out_of_message() {
         // Regression: de629dd; empty async completion is suppressed and changes stay out of message.
@@ -2235,6 +2240,9 @@ mod tests {
             Some("token-wait")
         );
         flush(&fake, &dir.0, &lock, 159, 30, &s).await.unwrap();
+        assert_eq!(delivery_status(&dir.0, "approval"), "pending");
+        assert_eq!(delivery_status(&dir.0, "completed"), "pending");
+        assert_eq!(State::load(&dir.0).unwrap().targets[0].batches.len(), 1);
         flush(&fake, &dir.0, &lock, 160, 30, &s).await.unwrap();
 
         let state = State::load(&dir.0).unwrap();
@@ -2267,6 +2275,10 @@ mod tests {
         let event = b.deliveries[0].event_id.clone();
         flush(&failed, &dir.0, &lock, 100, 30, &s).await.unwrap();
         flush(&failed, &dir.0, &lock, 109, 30, &s).await.unwrap();
+        let waiting = binding(&dir.0, "retry", "turn-1").unwrap().unwrap();
+        assert_eq!(waiting.deliveries[0].failures, 1);
+        assert_eq!(waiting.deliveries[0].next_attempt_at, 110);
+        assert_eq!(waiting.deliveries[0].status, "pending");
 
         flush(&failed, &dir.0, &lock, 111, 30, &s).await.unwrap();
 
@@ -2330,6 +2342,12 @@ mod tests {
         .unwrap();
         flush(&fake, &dir.0, &lock, 100, 0, &s).await.unwrap();
         flush(&fake, &dir.0, &lock, 200, 0, &s).await.unwrap();
+        assert_eq!(delivery_status(&dir.0, "blocked"), "pending");
+        assert!(State::load(&dir.0).unwrap().targets[0].escalated);
+        assert_eq!(
+            State::load(&dir.0).unwrap().targets[0].anomaly(200, true, &s),
+            None
+        );
 
         assert!(fake.fallbacks.lock().unwrap()[0].contains("blocked"));
         governance::control_in(
@@ -2341,13 +2359,22 @@ mod tests {
         )
         .unwrap();
         flush(&fake, &dir.0, &lock, 201, 0, &s).await.unwrap();
+        assert_eq!(delivery_status(&dir.0, "blocked"), "delivered");
+        assert!(!State::load(&dir.0).unwrap().targets[0].escalated);
 
         enqueue(&dir.0, "starved", interaction(json!(2)), 202).await;
         flush(&fake, &dir.0, &lock, 202, 0, &s).await.unwrap();
         flush(&fake, &dir.0, &lock, 1101, 0, &s).await.unwrap();
+        assert_eq!(delivery_status(&dir.0, "starved"), "pending");
+        assert!(!State::load(&dir.0).unwrap().targets[0].escalated);
 
         flush(&fake, &dir.0, &lock, 1102, 0, &s).await.unwrap();
         flush(&fake, &dir.0, &lock, 1103, 0, &s).await.unwrap();
+        assert!(State::load(&dir.0).unwrap().targets[0].escalated);
+        assert_eq!(
+            State::load(&dir.0).unwrap().targets[0].anomaly(1103, true, &s),
+            None
+        );
 
         flush(&fake, &dir.0, &lock, 3801, 0, &s).await.unwrap();
         assert!(!State::load(&dir.0).unwrap().targets[0].escalated);
@@ -2360,6 +2387,7 @@ mod tests {
         )
         .unwrap();
         flush(&fake, &dir.0, &lock, 3802, 0, &s).await.unwrap();
+        assert!(State::load(&dir.0).unwrap().targets[0].escalated);
     }
     #[tokio::test]
     async fn notification_controls_are_scoped_persistent_and_reversible() {
@@ -2386,8 +2414,10 @@ mod tests {
         )
         .unwrap();
         flush(&fake, &dir.0, &lock, 3699, 0, &s).await.unwrap();
+        assert_eq!(delivery_status(&dir.0, "thread"), "pending");
 
         flush(&fake, &dir.0, &lock, 3700, 0, &s).await.unwrap();
+        assert_eq!(delivery_status(&dir.0, "thread"), "digested");
 
         assert_eq!(
             State::load(&dir.0).unwrap().targets[0].batches[0].kinds["needs-input"],
@@ -2591,6 +2621,39 @@ mod tests {
         )
         .unwrap());
         assert_eq!(event(&b, &b.deliveries[0])["interaction"], request);
+        for (state, kind) in [
+            ("completed", "completed"),
+            ("failed", "failed"),
+            ("cancelled", "interrupted"),
+            ("interaction-required", "needs-input"),
+        ] {
+            b.deliveries[0].task_state = state.into();
+            b.deliveries[0].final_response = json!("SECRET_OUTPUT");
+            b.deliveries[0].task_error = json!("SECRET_ERROR");
+            assert!(!message(&b).contains("SECRET"));
+            let payload = event(&b, &b.deliveries[0]);
+            assert_eq!(payload["kind"], kind);
+            assert_eq!(payload["finalResponse"], "SECRET_OUTPUT");
+        }
+        b.thread_title = "Existing thread title".into();
+        let dispatch_title = "Prompt-derived dispatch title";
+        b.deliveries[0].dispatches = json!([{"turnId":b.turn_id,"title":dispatch_title}]);
+        assert!(message(&b).contains(dispatch_title));
+        b.deliveries[0].dispatches[0]["title"] = Value::Null;
+        let prompt_title = "Legacy prompt title";
+        b.deliveries[0].dispatches[0]["prompt"] = json!(format!("## {prompt_title}\nDetails"));
+        assert!(message(&b).contains(prompt_title));
+        b.deliveries[0].dispatches[0]["prompt"] = Value::Null;
+        assert!(message(&b).contains(&b.thread_title));
+        b.deliveries[0]
+            .dispatches
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"turnId":"other-turn","title":"Other turn title"}));
+        assert!(message(&b).contains(&b.thread_title));
+        assert!(!message(&b).contains("Other turn title"));
+        b.thread_title.clear();
+        assert!(message(&b).contains(&b.project));
     }
     #[tokio::test]
     async fn quiet_receipts_health_and_ack_distinguish_consumed_events() {
@@ -2863,10 +2926,12 @@ mod tests {
         flush(&fake, &dir.0, &lock, 101, 30, &settings)
             .await
             .unwrap();
+        assert_eq!(delivery_status(&dir.0, "single"), "pending");
 
         flush(&fake, &dir.0, &lock, 102, 30, &settings)
             .await
             .unwrap();
+        assert_eq!(delivery_status(&dir.0, "single"), "delivered");
 
         enqueue(
             &dir.0,
@@ -2885,10 +2950,17 @@ mod tests {
         flush(&fake, &dir.0, &lock, 112, 30, &settings)
             .await
             .unwrap();
+        assert_eq!(delivery_status(&dir.0, "burst-a"), "pending");
+        assert_eq!(delivery_status(&dir.0, "burst-b"), "pending");
 
         flush(&fake, &dir.0, &lock, 113, 30, &settings)
             .await
             .unwrap();
+        assert_eq!(delivery_status(&dir.0, "burst-a"), "delivered");
+        let a = binding(&dir.0, "burst-a", "turn-1").unwrap().unwrap();
+        let b = binding(&dir.0, "burst-b", "turn-1").unwrap().unwrap();
+        assert!(!a.deliveries[0].batch.is_empty());
+        assert_eq!(a.deliveries[0].batch, b.deliveries[0].batch);
 
         assert_eq!(
             binding(&dir.0, "burst-a", "turn-1")
@@ -3219,6 +3291,8 @@ mod tests {
             }
 
             assert_eq!(b.deliveries[0].status, "pending");
+            assert_eq!(b.deliveries[0].failures, 1);
+            assert!(!State::load(&dir.0).unwrap().targets[0].escalated);
             assert_eq!(b.deliveries[0].state, "failed");
         }
     }
