@@ -1,0 +1,13 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "remoteLink": {
+    "switching": true,
+    "disconnected": true
+  },
+  "page": "remote"
+}

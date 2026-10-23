@@ -1306,3 +1306,90 @@ test('ACP task tracking keeps approvals active and projects context, SSE and inc
   assert.ok(!context.coverage.missing.includes('STRUCTURED_COMMAND_EVIDENCE_UNSUPPORTED'));
   assert.ok(!(await management('agents/activity')).activeAgents.includes('tracking-example'));
 });
+
+// Local protocol acceptance uses production OAuth and management routes, without a provider.
+test('source connection switching binds consent and preserves disconnected identities', async () => {
+  const create = (id: string, auth = 'oauth') => management('ingress', 'POST', { id, name: id, controlSource: 'claude', transport: 'https', auth, ...(auth === 'bearer' ? { bearerToken: 'fixture-switch-token'.padEnd(40, 'x') } : {}), toolPolicy: 'all', config: { httpsProvider: 'custom', httpsUrl: `https://${id}.example/mcp` } });
+  const a = await create('switch-old'), b = await create('switch-next'), occupied = await create('switch-occupied', 'bearer');
+  const url = (i: any, route: string) => `http://127.0.0.1:${i.config.httpsPort}${route}`;
+  const resource = (i: any) => `https://${i.id}.example/mcp`;
+  const readSource = async (id: string) => (await management('source')).sources.find((s: any) => s.id === id);
+  const authorize = async (i: any) => {
+    const registration = await fetch(url(i, '/oauth/register'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'Claude', redirect_uris: ['https://client.example/callback'], token_endpoint_auth_method: 'none' }) });
+    assert.equal(registration.status, 201);
+    const client = await registration.json();
+    const verifier = randomUUID().replaceAll('-', '').padEnd(64, 'v');
+    const query = new URLSearchParams({ client_id: client.client_id, redirect_uri: 'https://client.example/callback', response_type: 'code', resource: resource(i), state: randomUUID(), code_challenge_method: 'S256', code_challenge: createHash('sha256').update(verifier).digest('base64url') });
+    const response = await fetch(url(i, `/oauth/authorize?${query}`), { redirect: 'manual' });
+    assert.equal(response.status, 303);
+    const id = new URL(response.headers.get('location')!).searchParams.get('request')!;
+    const pending = (await management(`ingress/${i.id}/oauth`)).pending.find((p: any) => p.id === id);
+    return { id, client, verifier, pending };
+  };
+  const exchange = async (i: any, request: Awaited<ReturnType<typeof authorize>>) => {
+    const response = await fetch(url(i, `/oauth/continue?request=${request.id}`), { redirect: 'manual' });
+    assert.equal(response.status, 303);
+    const code = new URL(response.headers.get('location')!).searchParams.get('code')!;
+    const token = await fetch(url(i, '/oauth/token'), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code, code_verifier: request.verifier, client_id: request.client.client_id, redirect_uri: 'https://client.example/callback', resource: resource(i) }) });
+    const result = await token.json(); assert.equal(token.status, 200, JSON.stringify(result)); return result;
+  };
+  const access = (i: any, token: string) => fetch(url(i, '/mcp'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+  try {
+    await management(`ingress/${a.id}/start`, 'POST'); await management(`ingress/${b.id}/start`, 'POST');
+    const first = await authorize(a);
+    await management(`source/${first.pending.sourceId}/claim`, 'POST', { sourceId: 'new' });
+    const oldTokens = await exchange(a, first), sourceId = first.pending.sourceId;
+    await management(`source/${sourceId}`, 'PUT', { label: 'Retained account' });
+    const original = await readSource(sourceId);
+    const peer = await authorize(a);
+    await management(`source/${peer.pending.sourceId}/claim`, 'POST', { sourceId: 'new' });
+    const peerTokens = await exchange(a, peer);
+    await assert.rejects(() => management(`source/${sourceId}/switch`, 'POST', { ingressId: occupied.id }), /CONNECTION_OCCUPIED/);
+    await management(`source/${sourceId}/switch`, 'POST', { ingressId: b.id });
+    const denied = await authorize(b);
+    assert.equal(denied.pending.switchSourceId, sourceId);
+    assert.deepEqual(denied.pending.sourceCandidates, []);
+    await assert.rejects(() => management(`source/${denied.pending.sourceId}/claim`, 'POST', { sourceId: 'new' }), /INVALID_SWITCH_CLAIM/);
+    await management(`ingress/${b.id}/oauth/decision`, 'POST', { id: denied.id, allow: false });
+    assert.equal((await readSource(sourceId)).ingressId, a.id);
+    assert.equal((await readSource(sourceId)).pendingSwitch, undefined);
+    assert.equal((await access(a, oldTokens.access_token)).status, 200);
+    await management(`source/${sourceId}/switch`, 'POST', { ingressId: b.id });
+    const canceled = await authorize(b);
+    await management(`source/${sourceId}/switch`, 'DELETE');
+    await assert.rejects(() => management(`source/${canceled.pending.sourceId}/claim`, 'POST', { sourceId }), /INVALID_SWITCH_CLAIM|expired/);
+    assert.equal((await readSource(sourceId)).ingressId, a.id);
+    await management(`source/${sourceId}/switch`, 'POST', { ingressId: b.id });
+    const next = await authorize(b);
+    assert.equal((await readSource(sourceId)).pendingSwitch.requestId, next.id);
+    await management(`source/${next.pending.sourceId}/claim`, 'POST', { sourceId });
+    assert.equal((await access(a, oldTokens.access_token)).status, 200, 'approval alone does not bypass PKCE');
+    const newTokens = await exchange(b, next);
+    const moved = await readSource(sourceId);
+    for (const key of ['id', 'label', 'product', 'platform', 'createdAt', 'connectedAt']) assert.deepEqual(moved[key], original[key], key);
+    assert.equal(moved.ingressId, b.id); assert.equal(moved.pendingSwitch, undefined);
+    assert.equal((await access(a, oldTokens.access_token)).status, 401);
+    const refresh = await fetch(url(a, '/oauth/token'), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: oldTokens.refresh_token, client_id: first.client.client_id, resource: resource(a) }) });
+    assert.equal(refresh.status, 400);
+    assert.equal((await access(a, peerTokens.access_token)).status, 200);
+    assert.equal((await access(b, newTokens.access_token)).status, 200);
+    await management(`ingress/${b.id}`, 'DELETE');
+    const detached = await readSource(sourceId);
+    assert.equal(detached.state, 'disconnected'); assert.equal(detached.connectionRemoved, true); assert.equal(detached.label, original.label);
+    await management(`source/${sourceId}/switch`, 'POST', { ingressId: a.id });
+    const reattach = await authorize(a);
+    await management(`source/${reattach.pending.sourceId}/claim`, 'POST', { sourceId });
+    await exchange(a, reattach);
+    assert.equal((await readSource(sourceId)).ingressId, a.id);
+    assert.equal((await readSource(sourceId)).connectionRemoved, undefined);
+    await management(`source/${peer.pending.sourceId}/disconnect`, 'POST');
+    await management(`ingress/${a.id}`, 'DELETE');
+    assert.equal((await readSource(peer.pending.sourceId)).state, 'revoked');
+    assert.equal((await readSource(sourceId)).state, 'disconnected');
+    await client.close(); await connectFixture();
+    assert.equal((await readSource(sourceId)).state, 'disconnected', 'removal survives restart');
+    assert.equal((await readSource(peer.pending.sourceId)).state, 'revoked');
+  } finally {
+    for (const i of [a, b, occupied]) if ((await management('status')).ingresses.some((row: any) => row.id === i.id)) await management(`ingress/${i.id}`, 'DELETE');
+  }
+});

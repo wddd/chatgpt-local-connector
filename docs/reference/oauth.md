@@ -71,3 +71,9 @@ is only a visual comparison aid; request identity, PKCE, consent, expiry and tok
 validation continue to authorize the connection. A retry of the same pending request
 keeps its code. Pairing codes do not select or merge source identity. ARC displays consent inline during
 control-source setup, or in a dialog for other requests, and notifies in the background.
+
+## Change connection
+
+Run `cli source switch <sourceId> <ingressId>` before reconnecting the client at the new address. The next new authorization on the target connection exposes `switchSourceId`; consent must claim that source, never `new`. The source list exposes `pendingSwitch` with the target, expiry, and bound request ID. Use `cli source switch <sourceId> --cancel` to cancel. Expectations last 300 seconds and do not survive Core restart. Denial, cancellation, and expiry preserve the old connection. The source anchor moves only after approval and successful PKCE exchange. It immediately invalidates the former grant for access, refresh, and events; the old OAuth store prunes that grant on its next access. Source identity and all source-keyed records remain unchanged.
+
+Connection removal revokes credentials and retains established sources as disconnected. Their stored names and history remain available, and a later switch reattaches them. Already revoked records remain revoked. See [CLI](cli.md#control-source-management) for request shapes and non-OAuth boundaries.

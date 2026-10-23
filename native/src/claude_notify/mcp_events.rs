@@ -184,7 +184,8 @@ async fn authorized(s: &crate::ingress::Ingress, principal: &str) -> bool {
             .await
             .event_grant_active(principal, &resource)
     } else {
-        self::principal(s, None).await.is_ok_and(|p| p == principal)
+        !crate::sources::ingress_retired(&s.id)
+            && self::principal(s, None).await.is_ok_and(|p| p == principal)
     }
 }
 pub(crate) fn list() -> Value {

@@ -53,6 +53,8 @@ const COMMANDS: &[&str] = &[
     "source update <id> --stdin",
     "source disconnect <id>",
     "source claim <pending-source-id> --stdin",
+    "source switch <sourceId> <ingressId>",
+    "source switch <sourceId> --cancel",
     "ingress list",
     "ingress presets",
     "ingress add --stdin",
@@ -571,6 +573,8 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         ["source", "list"] => forward_request("source", "GET", json!({})).await,
         ["source", "update", id, "--stdin"] => forward_request(&format!("source/{id}"), "PUT", stdin_json()?).await,
         ["source", "disconnect", id] => forward_request(&format!("source/{id}/disconnect"), "POST", json!({})).await,
+        ["source", "switch", id, "--cancel"] => forward_request(&format!("source/{id}/switch"), "DELETE", json!({})).await,
+        ["source", "switch", id, ingress] => forward_request(&format!("source/{id}/switch"), "POST", json!({"ingressId":ingress})).await,
         ["source", "claim", id, "--stdin"] => forward_request(&format!("source/{id}/claim"), "POST", stdin_json()?).await,
         ["storage", "compact"] => {
             // Refuse mixed old/new writers before changing the archive layout.
@@ -589,7 +593,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
                 {"commands":"app snapshot [--out <directory>] [--stdin]; install-shim","description":"Export the live UI and a macOS WebView PNG; install the macOS CLI symlink."},
                 {"commands":"setup next|apply|wait|playbook|reset; skill install --target codex|claude-code","description":"Configure ARC with an Agent; follow the returned step and nextAction."},
                 {"commands":"status; doctor; onboarding; context --stdin","description":"Read current state, diagnostics and onboarding evidence."},
-                {"commands":"source list; source update <id> --stdin; source disconnect <id>; source claim <pending-source-id> --stdin","description":"Manage source identity; claim accepts sourceId=new or an existing source ID."},
+                {"commands":"source list; source update <id> --stdin; source disconnect <id>; source claim <pending-source-id> --stdin; source switch <sourceId> <ingressId>; source switch <sourceId> --cancel","description":"Manage source identity; claim accepts sourceId=new or an existing source ID; a switch request can only claim its bound source."},
                 {"commands":"ingress list|presets|add|update|remove|start|stop|restart|probe|doctor|verify","description":"Manage and diagnose a selected connection; add/update accept JSON on stdin."},
                 {"commands":"ingress oauth list|request|decision|register|revoke; ingress token rotate","description":"Manage this connection's OAuth access and bearer token."},
                 {"commands":"app start|status|quit|restart; uninstall [--purge]","description":"Control the installed application; uninstall to Trash, or permanently with --purge."},

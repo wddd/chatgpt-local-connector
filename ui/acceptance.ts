@@ -8,7 +8,7 @@ import { api } from './api';
 import type { AgentActivitySnapshot } from './types';
 import { locale } from './i18n';
 import { navigation } from './state/navigation';
-import { onboarding, connectionSetup } from './state/onboarding';
+import { onboarding, connectionSetup, connectionSwitch } from './state/onboarding';
 
 let topology: (() => unknown) | undefined;
 export function observeTopology(read: () => unknown) {
@@ -22,7 +22,7 @@ export function viewModel(layoutSettled = false) {
     theme: document.documentElement.dataset.theme, language: locale.get(),
     topology: topology?.() ?? null,
     panels: { agent: agentPanel.get() ?? null, source: ingressPanel.get()?.client?.id ?? null,
-      onboarding: onboarding.get()?.step ?? null, connectionSetup: connectionSetup.get() ?? null, remoteConnectionId: navigation.get().remoteConnectionId ?? null, page: localStorage.getItem('arc-page') ?? 'overview' },
+      onboarding: onboarding.get()?.step ?? null, connectionSetup: connectionSetup.get() ?? null, connectionSwitch: connectionSwitch.get() ?? null, remoteSourceId: navigation.get().remoteSourceId ?? null, remoteConnectionId: navigation.get().remoteConnectionId ?? null, page: localStorage.getItem('arc-page') ?? 'overview' },
   };
 }
 export type PanelRequest = { kind: 'agent' | 'source' | 'none'; id?: string };
@@ -30,6 +30,7 @@ export function openSnapshotPanel(panel?: PanelRequest | null) {
   if (!panel) return;
   onboarding.set(undefined);
   connectionSetup.set(undefined);
+  connectionSwitch.set(undefined);
   if (panel.kind === 'none') { agentPanel.set(undefined); ingressPanel.set(undefined); return; }
   if (panel.kind === 'agent') {
     if (!agents.get().items.some(a => a.agent === panel.id)) throw new Error('SNAPSHOT_NODE_NOT_FOUND: agent');

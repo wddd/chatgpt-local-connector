@@ -4,7 +4,7 @@ import { api } from "../api";
 import { controlSource } from "../controlSources";
 import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
-import { onboarding, openOnboarding, type ConnectionSetup, type ConnectionMethod } from "../state/onboarding";
+import { onboarding, openOnboarding, connectionSwitch, type ConnectionSetup, type ConnectionMethod } from "../state/onboarding";
 import { connectionKind, isPendingSource } from "../sourcePresentation";
 import { useRelayProgress, type RelayProgress as Progress } from "../state/relay";
 import IngressDialog from "./IngressDialog";
@@ -83,15 +83,15 @@ export default function AddConnection({ options, onClose, onAdded }: { options: 
   const editing = step === "address" && !operation && ["https", "openai-tunnel"].includes(method);
   const waiting = !!operation && progress.phase !== "failed";
   const flow = onboarding.get();
-  const parentTitle = flow?.source ? t("setup.addProduct", { name: flow.localTarget === "code" ? "Claude Code" : flow.localTarget === "desktop" ? t("setup.claudeDesktop") : controlSource(flow.source)?.shortName ?? t("setup.otherClient") }) : t("addControlSource");
+  const parentTitle = options.forSwitch ? t("switch.sourceTitle", { name: sources.find(s => s.id === connectionSwitch.get()?.sourceId)?.label ?? "" }) : flow?.source ? t("setup.addProduct", { name: flow.localTarget === "code" ? "Claude Code" : flow.localTarget === "desktop" ? t("setup.claudeDesktop") : controlSource(flow.source)?.shortName ?? t("setup.otherClient") }) : t("addControlSource");
   return <SetupDialog title={t("source.newConnection")} steps={[{ label: t("connectionMethod"), value: methodName }, { label: t("source.step.address") }, { label: t("setup.ready") }]}
-    active={steps.indexOf(step)} done={step === "success"} stacked={options.forSource} parentTitle={parentTitle} busy={busy || configBusy} onClose={onClose}
+    active={steps.indexOf(step)} done={step === "success"} stacked={(options.forSource || options.forSwitch)} parentTitle={parentTitle} busy={busy || configBusy} onClose={onClose}
     footer={<>
       {step !== "success" && <Button disabled={busy || configBusy || waiting} variant="ghost" onClick={() => step === "method" ? onClose() : (setError(""), setStep("method"))}>{t("back")}</Button>}
       {step === "method" && <Button variant="primary" disabled={!!reason(method)} onClick={() => { setError(""); setStep("address"); if (method === "create") void startRelay(); }}>{t(method === "create" ? "setup.deploy" : "source.next")}{method === "create" && <Icon icon={ExternalLink} />}</Button>}
       {step === "address" && !operation && <Button type="submit" form={formId} variant="primary" busy={busy || configBusy} disabled={!!reason(method) || !!target && (!local || !local[target === "code" ? "codeAvailable" : "desktopAvailable"] || revoked)}>{t(editing ? "setup.saveStart" : method === "create" ? "setup.deploy" : "source.next")}</Button>}
       {waiting && <Loading label={t("connect.inProgress")} />}
-      {step === "success" && <>{!options.forSource && <Button onClick={onClose}>{t("source.done")}</Button>}<span className="spacer" /><Button variant="primary" disabled={!created || busy} onClick={() => { if (!createdId) return; onAdded(createdId); if (!options.forSource) openOnboarding("product", { ingressId: createdId, fixedConnection: true }); }}>{t(options.forSource ? "setup.continueConnection" : "setup.addSourceForConnection")}</Button></>}
+      {step === "success" && <>{!(options.forSource || options.forSwitch) && <Button onClick={onClose}>{t("source.done")}</Button>}<span className="spacer" /><Button variant="primary" disabled={!created || busy} onClick={() => { if (!createdId) return; onAdded(createdId); if (!(options.forSource || options.forSwitch)) openOnboarding("product", { ingressId: createdId, fixedConnection: true }); }}>{t((options.forSource || options.forSwitch) ? "setup.continueConnection" : "setup.addSourceForConnection")}</Button></>}
     </>}>
     <div className="setup-content">
       {error && <Notice>{error}</Notice>}

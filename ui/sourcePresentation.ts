@@ -13,7 +13,7 @@ export function connectionProvider(ingress: Ingress) {
   return ingress.transport === "https" ? ingress.config.httpsProvider : t(`source.kind.${connectionKind(ingress)}`);
 }
 export function isPendingSource(source: ControlSource, ingresses: Ingress[]) {
-  return source.credential.type === "oauth-grant" && ingresses.some(i => i.id === source.ingressId && i.oauth?.pending.some(p => p.sourceId === source.id));
+  return !!source.switchSourceId || source.credential.type === "oauth-grant" && ingresses.some(i => i.id === source.ingressId && i.oauth?.pending.some(p => p.sourceId === source.id));
 }
 export function sourceCandidates(sources: ControlSource[], ingresses: Ingress[], ingressId: string, product: string, pendingId?: string) {
   return sources.filter(s => s.id !== pendingId && s.ingressId === ingressId && s.product === product && s.credential.type === "oauth-grant" && !isPendingSource(s, ingresses)

@@ -143,7 +143,7 @@ impl Ingress {
             if meta["auth"] == "oauth" {
                 return Err("OAuth principal required".into());
             }
-            crate::sources::ensure_ingress(&meta).await?
+            crate::sources::connect_ingress(&meta).await?
         };
         crate::sources::touch(&source, string(&meta, "auth")).await
     }
@@ -170,7 +170,8 @@ impl Ingress {
             || meta["auth"] == "bearer"
                 && !string(&meta, "bearerToken").is_empty()
                 && hash(header) == hash(format!("Bearer {}", string(&meta, "bearerToken")));
-        allowed.then(|| json!({"type":"ingress","ingressId":self.id}))
+        (allowed && !crate::sources::ingress_retired(&self.id))
+            .then(|| json!({"type":"ingress","ingressId":self.id}))
     }
     pub(crate) async fn observe_request(&self, field: &str) -> Result<()> {
         let mut verification = self.verification.lock().await;

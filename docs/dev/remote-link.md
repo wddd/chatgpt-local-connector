@@ -74,7 +74,7 @@ One-time migration runs at Core startup after the state lock.
 
 ### Management surface
 
-Local management adds `source list`, `source update` (label, product), `source disconnect`, and `source claim` for pending reauthorization. The CLI mirrors them under `cli source`. Control-source tools stay frozen. Receipts and task reads expose `origin.sourceId` and the source label.
+Local management adds `source list`, `source update` (label, product), `source disconnect`, and `source claim` for pending reauthorization. `source switch <sourceId> <ingressId>` registers an expected cross-connection claim; `source switch <sourceId> --cancel` cancels it. The CLI mirrors them under `cli source`. Control-source tools stay frozen. Receipts and task reads expose `origin.sourceId` and the source label.
 
 ## UI
 
@@ -157,7 +157,7 @@ Relay hosting lists only relays this computer deployed. Cards show the hostname,
 
 Source identity covers OAuth grants, non-OAuth ingresses, and local clients. Two clients sharing one Bearer token or one OpenAI Secure Tunnel are one source. Platform aggregation is a display grouping and never an isolation boundary.
 
-P3 uses the existing removal API: it revokes grants and preserves source records and history, but marks sources revoked. P4 changes that state to disconnected and adds connection switching; P3 does not offer a switch action after removal.
+Switch expectations last 300 seconds, allow one source per target at a time, and are canceled on Core restart. Approval retains the existing PKCE boundary: the source moves after successful code exchange, not merely after clicking Approve. The source anchor immediately invalidates old access, refresh, and event credentials; the former OAuth store prunes them on its next access. Existing revoked records stay revoked. Local connections are not switch targets. Non-OAuth connections carrying any source cannot be targets; an empty target completes only on an authenticated client request. A former non-OAuth connection must be removed and recreated before its credentials can establish another source.
 
 Local configuration installation currently supports Claude Code and Claude Desktop. Other MCP client uses manual HTTPS configuration. The registry has no settings URL for every product, so Configure shows the generic MCP settings instruction when a product has no setup metadata.
 

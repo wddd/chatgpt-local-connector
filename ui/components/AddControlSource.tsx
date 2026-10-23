@@ -57,7 +57,7 @@ export default function AddControlSource() {
       onboarding.set(old => old && { ...old, step: "address", ingressId: id, requestId: undefined, sourceId: undefined, baseline: (entry.oauth?.pending ?? []).map(p => p.id) });
     });
   }
-  const pending = current?.oauth?.pending.filter(p => p.status === "pending") ?? [];
+  const pending = current?.oauth?.pending.filter(p => p.status === "pending" && !p.switchSourceId) ?? [];
   const waiting = current?.oauth?.pending.find(p => p.id === flow.requestId);
   useEffect(() => {
     if (flow.step !== "address" || current?.auth !== "oauth") return;

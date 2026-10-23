@@ -173,6 +173,16 @@ impl OAuth {
             self.stored.resource = resource.to_owned();
             self.persist()?;
         }
+        // A moved source immediately invalidates its former grant on every surface.
+        // Prune those credentials durably when this OAuth instance is next accessed.
+        let ingress = self.ingress_id().to_owned();
+        let count = self.stored.grants.len();
+        self.stored
+            .grants
+            .retain(|g| crate::sources::grant_active(&ingress, &g.id));
+        if self.stored.grants.len() != count {
+            self.persist()?;
+        }
         let now = clock();
         self.revoke_sources(
             self.pending
@@ -199,7 +209,12 @@ impl OAuth {
         self.stored
             .grants
             .iter()
-            .find(|g| g.resource == resource && g.access == digest && g.access_expires > clock())
+            .find(|g| {
+                g.resource == resource
+                    && g.access == digest
+                    && g.access_expires > clock()
+                    && crate::sources::grant_active(self.ingress_id(), &g.id)
+            })
             .map(|g| json!({"type":"oauth-grant","grantId":g.id,"clientId":g.client}))
     }
     pub(crate) fn event_principal(&self, header: &str) -> Option<String> {
@@ -207,14 +222,19 @@ impl OAuth {
         self.stored
             .grants
             .iter()
-            .find(|g| g.access == digest && g.access_expires > clock())
+            .find(|g| {
+                g.access == digest
+                    && g.access_expires > clock()
+                    && crate::sources::grant_active(self.ingress_id(), &g.id)
+            })
             .map(|g| g.id.clone())
     }
     pub(crate) fn event_grant_active(&self, principal: &str, resource: &str) -> bool {
-        self.stored
-            .grants
-            .iter()
-            .any(|g| g.id == principal && (resource.is_empty() || g.resource == resource))
+        self.stored.grants.iter().any(|g| {
+            g.id == principal
+                && (resource.is_empty() || g.resource == resource)
+                && crate::sources::grant_active(self.ingress_id(), &g.id)
+        })
     }
     pub async fn register(
         &mut self,
@@ -420,6 +440,9 @@ impl OAuth {
     pub fn resource(&self) -> &str {
         &self.stored.resource
     }
+    pub(crate) fn pending_ids(&self) -> Vec<String> {
+        self.pending.keys().cloned().collect()
+    }
     fn grant_ids(&self) -> Vec<String> {
         self.stored.grants.iter().map(|g| g.id.clone()).collect()
     }
@@ -433,13 +456,22 @@ impl OAuth {
                 if let Ok(source) = crate::sources::for_grant(self.ingress_id(), key) {
                     status["sourceId"] = source["id"].clone();
                     status["product"] = source["product"].clone();
-                    status["sourceCandidates"] =
-                        json!(crate::sources::candidates(&source, &self.grant_ids())?);
+                    status["switchSourceId"] = source["switchSourceId"].clone();
+                    status["sourceCandidates"] = if source["switchSourceId"].is_string() {
+                        json!([])
+                    } else {
+                        json!(crate::sources::candidates(&source, &self.grant_ids())?)
+                    };
                 }
                 Ok(status)
             })
             .collect::<Result<_>>()?;
-        let mut grants: Vec<_> = self.stored.grants.iter().collect();
+        let mut grants: Vec<_> = self
+            .stored
+            .grants
+            .iter()
+            .filter(|g| crate::sources::grant_active(self.ingress_id(), &g.id))
+            .collect();
         grants.sort_by_key(|g| {
             std::cmp::Reverse(
                 g.connected_at
@@ -480,7 +512,8 @@ impl OAuth {
         let choice = if allow {
             let choice = choice
                 .map(str::to_owned)
-                .or_else(|| self.pending.get(key).and_then(|p| p.source_choice.clone()));
+                .or_else(|| self.pending.get(key).and_then(|p| p.source_choice.clone()))
+                .or_else(|| source["switchSourceId"].as_str().map(str::to_owned));
             let choice = match choice {
                 Some(c) => c,
                 None if crate::sources::candidates(&source, &self.grant_ids())?.is_empty() => "new".into(),
@@ -514,7 +547,7 @@ impl OAuth {
             p.expires = clock() + 60;
         }
         if !allow {
-            crate::sources::disconnect(string(&source, "id")).await?;
+            self.revoke_sources(vec![key.to_owned()]).await?;
         }
         Ok(())
     }

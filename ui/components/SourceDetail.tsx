@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { locale, t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
+import { connectionSwitch } from "../state/onboarding";
 import type { ControlSource } from "../state/types";
 import { connectionKind, isPendingSource } from "../sourcePresentation";
 import SourceProductChoice from "./SourceProductChoice";
@@ -50,11 +51,15 @@ export default function SourceDetail({ source, onConnection }: { source: Control
       <Button variant="danger" disabled={busy || source.state === "revoked"} onClick={() => setConfirm(true)}>{t("source.disconnect")}</Button>
     </div>
     {error && !confirm && <Notice>{error}</Notice>}
-    {ingress ? <section className="source-connection-card">
+    <section className="source-connection-card">
+      <div className="source-section-heading"><span className="muted">{t("source.connections")}</span><Button data-change-connection disabled={source.state === "revoked" || busy} onClick={() => connectionSwitch.set({ sourceId: source.id, step: source.pendingSwitch ? source.pendingSwitch.requestId ? "approval" : "address" : "connection", ingressId: source.pendingSwitch?.ingressId, requestId: source.pendingSwitch?.requestId })}>{t("switch.title")}</Button></div>
+      {source.pendingSwitch && <Status tone="warning">{t("switch.pending")}</Status>}
+      {ingress ? <>
       <div className="source-section-heading"><Button variant="ghost" data-source-connection onClick={() => onConnection(ingress.id)}>{ingress.name}</Button><span className="muted">{t(`source.kind.${connectionKind(ingress)}`)}</span></div>
       {others.length > 0 && <p className="muted">{t("source.alsoCarries", { names: others.map(s => s.label).join(", ") })}</p>}
       {ingress.url && <CopyField value={ingress.url} label={t("source.copyAddress")} />}
-    </section> : <Notice tone="warning">{t("source.connectionRemoved")}</Notice>}
+      </> : <Notice tone="warning">{source.connectionName ? `${source.connectionName} · ` : ""}{t("source.connectionRemoved")}</Notice>}
+    </section>
     <dl className="source-facts">
       <div><dt>{t("source.authorizedAt")}</dt><dd>{date(source.connectedAt)}</dd></div>
       <div><dt>{t("source.lastSeen")}</dt><dd>{date(source.lastSeenAt)}</dd></div>

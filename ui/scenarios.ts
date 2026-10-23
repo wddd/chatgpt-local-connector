@@ -1,4 +1,4 @@
-import { onboarding, connectionSetup, type SourceSetup, type ConnectionSetup } from './state/onboarding';
+import { onboarding, connectionSetup, connectionSwitch, type ConnectionSwitch, type SourceSetup, type ConnectionSetup } from './state/onboarding';
 import { navigation, type Page } from './state/navigation';
 import type { RelayProgress } from './state/relay';
 import { connector } from './state/connector';
@@ -13,7 +13,7 @@ import type { AgentActivitySnapshot, AgentActivitySession } from './types';
 import type { Status } from './state/types';
 import config from '../native/src/ingress/config.json';
 
-type Fixture = { theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean }; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
+type Fixture = { theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 export function scenarioResponse(path: string, method: string): unknown {
@@ -50,6 +50,33 @@ export async function installScenario(name: string) {
     ];
     if (remote.local) status.ingresses = [{ ...base, id: 'local-claude-code', name: 'Claude Code', sources: [{ ...base.sources![0], id: 'local-source', ingressId: 'local-claude-code', connectedAt: null, lastSeenAt: null }] }];
   }
+  const sources = status.ingresses.flatMap(i => i.sources ?? []);
+  if (fixture.remoteLink?.switching || fixture.remoteLink?.disconnected) {
+    const old = status.ingresses[0], source = sources.find(s => s.id === 'source-personal')!;
+    const target = { ...old, id: 'tunnel-next', name: 'Cloudflare Tunnel', transport: 'https', url: 'https://tunnel.example.com/mcp', sources: [], oauth: { pending: [], grants: [] } } as typeof old;
+    const peer = { ...source, id: 'source-bot', label: 'Grok Bot', product: 'grok-bot', platform: 'xai', credential: { type: 'oauth-grant' as const, grantId: 'grant-bot' } };
+    sources.push(peer); old.sources!.push(peer);
+    const occupied = status.ingresses.find(i => i.id === 'secure-tunnel')!;
+    occupied.sources = [{ ...source, id: 'source-secure', ingressId: occupied.id, label: 'ChatGPT', product: 'chatgpt', platform: 'openai', credential: { type: 'ingress' } }];
+    sources.push(...occupied.sources);
+    status.ingresses.push(target);
+    if (fixture.switchFlow && fixture.switchFlow.step !== 'connection') {
+      source.pendingSwitch = { ingressId: target.id, expiresAt: Math.floor(Date.now() / 1000) + 300, ...(fixture.switchFlow.step === 'approval' ? { requestId: 'request-switch' } : {}) };
+      if (fixture.switchFlow.step === 'approval') {
+        const pending = { ...source, id: 'source-switch', switchSourceId: source.id, ingressId: target.id, credential: { type: 'oauth-grant' as const, grantId: 'request-switch' }, pendingSwitch: undefined, connectedAt: null, lastSeenAt: null, state: 'disconnected' as const };
+        sources.push(pending); target.sources = [pending];
+        target.oauth!.pending = [{ id: 'request-switch', sourceId: pending.id, switchSourceId: source.id, product: source.product, clientName: 'Claude', redirectUri: 'https://claude.ai/api/mcp/auth_callback', resource: target.url, pairingCode: '4F7K', status: 'pending' }];
+      }
+    }
+    if (fixture.remoteLink?.switched) {
+      old.sources = old.sources!.filter(s => s.id !== source.id);
+      source.ingressId = target.id; target.sources = [source];
+    }
+    if (fixture.remoteLink?.disconnected) {
+      for (const s of sources.filter(s => s.ingressId === old.id)) { s.state = 'disconnected'; s.connectionRemoved = true; s.connectionName = old.name; }
+      status.ingresses = status.ingresses.filter(i => i.id !== old.id);
+    }
+  }
   const inventory: Agent[] = fixture.agents.map(agent => ({ agent, installed: true, available: true, enabled: true, status: 'ready', version: 'fixture' }));
   const activity: AgentActivitySnapshot = { observedAt: now, activeAgents: fixture.agents, agents: Object.fromEntries(fixture.agents.map(a => [a, { sessions: [] }])) };
   fixture.tasks.forEach((task, index) => {
@@ -62,17 +89,18 @@ export async function installScenario(name: string) {
     origin: { ingressId: 'fixture-source', sourceId: 'fixture-source' }, approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } }));
   const permissionData = { items: [], observedAt: now };
   const subscriptionData = { instanceId: 'fixture', revision: 1, settings: { enabled: false, refreshMinutes: 30, agentProviders: {} }, providers: [] };
-  responses = { status, source: { sources: status.ingresses.flatMap(i => i.sources ?? []) }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
-  connector.set({ status, sources: status.ingresses.flatMap(i => i.sources ?? []), sourcesLoaded: true, busy: '', loading: false, error: '', feedback: { text: '', error: false } });
+  responses = { status, source: { sources }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
+  connector.set({ status, sources, sourcesLoaded: true, busy: '', loading: false, error: '', feedback: { text: '', error: false } });
   agents.set({ items: inventory, loaded: true, loading: false, saving: '', error: '' });
   acceptActivity(activity); tasks.set({ records, loading: false, error: '' });
   permissions.set({ data: permissionData, loading: false, error: '' });
   subscriptions.set({ snapshot: subscriptionData, error: '' });
   return async () => {
     openSnapshotPanel(fixture.panel);
+    if (fixture.switchFlow) connectionSwitch.set(fixture.switchFlow);
     if (fixture.sourceSetup) onboarding.set(fixture.sourceSetup);
     if (fixture.connectionSetup) connectionSetup.set(fixture.connectionSetup);
-    if (fixture.page) navigation.set({ page: fixture.page, remoteConnectionId: fixture.remoteConnectionId });
+    if (fixture.page) navigation.set({ page: fixture.page, remoteConnectionId: fixture.remoteConnectionId, remoteSourceId: fixture.remoteSourceId });
     await settledViewModel();
     document.documentElement.dataset.scenarioReady = name;
   };

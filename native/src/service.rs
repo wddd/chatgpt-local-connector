@@ -517,6 +517,44 @@ impl Service {
             if action.is_empty() && method == "PUT" {
                 return crate::sources::update(id, &body).await;
             }
+            if action == "switch" && method == "POST" {
+                if let Ok(current) = self.ingress(string(&source, "ingressId")).await {
+                    if current
+                        .oauth
+                        .lock()
+                        .await
+                        .pending_ids()
+                        .iter()
+                        .any(|id| source["credential"]["grantId"] == *id)
+                    {
+                        return Err(
+                            "SOURCE_NOT_SWITCHABLE: approve the pending source first".into()
+                        );
+                    }
+                }
+                let i = self.ingress(string(&body, "ingressId")).await?;
+                let _runtime = i.operation.lock().await;
+                if i.retired.load(Ordering::SeqCst) {
+                    return Err("Connection removed; select another connection".into());
+                }
+                let entry = i.meta.lock().await.clone();
+                let _oauth = i.oauth.lock().await;
+                return crate::sources::begin_switch(id, &entry).await;
+            }
+            if action == "switch" && method == "DELETE" {
+                if let Ok(i) = self
+                    .ingress(string(&source["pendingSwitch"], "ingressId"))
+                    .await
+                {
+                    let _runtime = i.operation.lock().await;
+                    let mut oauth = i.oauth.lock().await;
+                    let current = crate::sources::get(id)?;
+                    if let Some(request) = current["pendingSwitch"]["requestId"].as_str() {
+                        oauth.revoke(request).await?;
+                    }
+                }
+                return crate::sources::cancel_switch(id).await;
+            }
             if action == "disconnect" && method == "POST" {
                 if source["credential"]["type"] == "oauth-grant" {
                     if let Ok(i) = self.ingress(string(&source, "ingressId")).await {
@@ -1001,13 +1039,14 @@ impl Service {
                 let _runtime = i.operation.lock().await;
                 i.stop().await?;
                 i.retired.store(true, Ordering::SeqCst);
-                i.oauth.lock().await.reset().await?;
-                for source in crate::sources::list()?
-                    .iter()
-                    .filter(|s| s["ingressId"] == id)
-                {
-                    crate::sources::disconnect(string(source, "id")).await?;
-                }
+                let mut oauth = i.oauth.lock().await;
+                crate::sources::remove_connection(
+                    &i.meta.lock().await.clone(),
+                    oauth.pending_ids(),
+                )
+                .await?;
+                oauth.reset().await?;
+                drop(oauth);
                 let mut entries = self.ingresses.lock().await;
                 let ids: Vec<_> = entries.keys().filter(|k| *k != id).cloned().collect();
                 save(&root().join("ingresses/index.json"), &json!(ids))?;

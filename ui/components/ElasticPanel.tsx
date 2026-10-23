@@ -55,7 +55,7 @@ export default function ElasticPanel({
   onPanelFrame,
 }: {
   open?: boolean;
-  onClose: () => void;
+  onClose: () => void | Promise<void>;
   onDismiss?: () => void;
   title: ReactNode;
   children: ReactNode;
@@ -253,7 +253,13 @@ export default function ElasticPanel({
 
     }
     if (parent && !reduced()) await animate(node.firstElementChild!, { opacity: 0 }, { duration: 0.14 });
-    (dismiss ? latest.current.onDismiss ?? latest.current.onClose : latest.current.onClose)();
+    try {
+      await (dismiss ? latest.current.onDismiss ?? latest.current.onClose : latest.current.onClose)();
+    } finally {
+      // An asynchronous close may retain the dialog to show an operation error.
+      closing.current = false;
+      if (parent && node.isConnected && node.firstElementChild) (node.firstElementChild as HTMLElement).style.opacity = "1";
+    }
     if (replacement)
       requestAnimationFrame(() => {
         replacement.focus({ preventScroll: true });

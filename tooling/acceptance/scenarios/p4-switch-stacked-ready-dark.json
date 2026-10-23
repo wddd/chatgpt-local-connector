@@ -1,0 +1,24 @@
+{
+  "theme": "dark",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "remoteLink": {
+    "switching": true
+  },
+  "page": "remote",
+  "remoteSourceId": "source-personal",
+  "switchFlow": {
+    "sourceId": "source-personal",
+    "step": "connection",
+    "ingressId": "tunnel-next"
+  },
+  "connectionSetup": {
+    "forSwitch": true,
+    "product": "claude",
+    "step": "success",
+    "createdId": "tunnel-next"
+  }
+}

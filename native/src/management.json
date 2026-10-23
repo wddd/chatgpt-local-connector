@@ -2478,7 +2478,7 @@
         "properties": {},
         "additionalProperties": false
       },
-      "description": "List persistent control sources, including revoked and pending sources.",
+      "description": "List persistent sources, including disconnected, revoked and pending sources. pendingSwitch contains ingressId, expiresAt (Unix seconds), and requestId once bound; expired expectations are omitted.",
       "localOnly": true
     },
     {
@@ -2567,7 +2567,61 @@
           "body"
         ]
       },
-      "description": "Approve a pending source: sourceId=new or an existing source ID on the same connection and product. The anchor moves after token exchange.",
+      "description": "Approve a pending source. Ordinary consent accepts sourceId=new or an existing source of the same product on the same connection. Switch consent requires its switchSourceId. The anchor moves after token exchange.",
+      "localOnly": true
+    },
+    {
+      "name": "source.switch",
+      "method": "POST",
+      "route": "source/{id}/switch",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "ingressId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "ingressId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Expect the next OAuth request on ingressId to claim this source. Expires in 300 seconds; one expectation per source and target. Occupied non-OAuth targets are rejected. An empty non-OAuth target completes on an observed authenticated request.",
+      "localOnly": true
+    },
+    {
+      "name": "source.switch.cancel",
+      "method": "DELETE",
+      "route": "source/{id}/switch",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Cancel the pending switch and its bound authorization request. The original connection remains unchanged.",
       "localOnly": true
     }
   ]

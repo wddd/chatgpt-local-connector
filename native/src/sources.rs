@@ -153,10 +153,16 @@ async fn transaction<T: Send + 'static>(
 }
 pub fn list() -> Result<Vec<Value>> {
     let cache = cache()?.read().map_err(|e| e.to_string())?;
-    Ok(cache.current["sources"]
+    let mut rows = cache.current["sources"]
         .as_array()
         .ok_or("Invalid source store")?
-        .clone())
+        .clone();
+    for source in &mut rows {
+        if !switch_live(source) {
+            clear_switch(source);
+        }
+    }
+    Ok(rows)
 }
 pub fn get(id: &str) -> Result<Value> {
     list()?
@@ -221,7 +227,116 @@ fn make(
         "product":product_id,"platform":p["platform"],"label":crate::control_sources::default_name(product_id,&names),
         "createdAt":now(),"connectedAt":connected,"lastSeenAt":null,"state":"disconnected"})
 }
+fn switch_live(s: &Value) -> bool {
+    s["pendingSwitch"]["expiresAt"]
+        .as_i64()
+        .is_some_and(|at| at > chrono::Utc::now().timestamp())
+}
+fn clear_switch(s: &mut Value) {
+    s.as_object_mut().unwrap().remove("pendingSwitch");
+}
+/// One owner-initiated expectation per source and per target connection.
+pub async fn begin_switch(source_id: &str, entry: &Value) -> Result<Value> {
+    let source_id = source_id.to_owned();
+    let entry = entry.clone();
+    change(move |rows| {
+        let source = rows.iter().find(|s| s["id"] == source_id).ok_or("SOURCE_NOT_FOUND")?;
+        if source["state"] == "revoked" || source["switchSourceId"].is_string() {
+            return Err("SOURCE_NOT_SWITCHABLE: select a connected or disconnected source".into());
+        }
+        if source["ingressId"] == entry["id"] {
+            return Err("SAME_CONNECTION: select another connection".into());
+        }
+        let preset = crate::control_sources::preset(string(source, "product"));
+        if entry["transport"] == "local"
+            || (entry["transport"] == "openai-tunnel" && source["product"] != "chatgpt")
+            || !preset["supportedAuth"].as_array().is_some_and(|auth| auth.contains(&entry["auth"]))
+        {
+            return Err("INCOMPATIBLE_CONNECTION: select a connection supported by this product".into());
+        }
+        if rows.iter().any(|s| switch_live(s) && (s["id"] == source_id || s["pendingSwitch"]["ingressId"] == entry["id"])) {
+            return Err("SWITCH_PENDING: cancel the existing switch first".into());
+        }
+        if entry["auth"] != "oauth" && rows.iter().any(|s| s["ingressId"] == entry["id"] || s["retiredIngressIds"].as_array().is_some_and(|ids| ids.contains(&entry["id"]))) {
+            return Err("CONNECTION_OCCUPIED: non-OAuth connections carry exactly one source; select another connection".into());
+        }
+        let source = rows.iter_mut().find(|s| s["id"] == source_id).unwrap();
+        source["pendingSwitch"] = json!({"ingressId":entry["id"],"expiresAt":chrono::Utc::now().timestamp()+300});
+        Ok(source.clone())
+    }).await
+}
+pub async fn cancel_switch(source_id: &str) -> Result<Value> {
+    let source_id = source_id.to_owned();
+    change(move |rows| {
+        let source = rows
+            .iter_mut()
+            .find(|s| s["id"] == source_id)
+            .ok_or("SOURCE_NOT_FOUND")?;
+        clear_switch(source);
+        Ok(source.clone())
+    })
+    .await
+}
+/// Removal preserves established identities, including those already disconnected.
+pub async fn remove_connection(entry: &Value, pending: Vec<String>) -> Result<()> {
+    let entry = entry.clone();
+    change(move |rows| {
+        for s in rows {
+            if s["pendingSwitch"]["ingressId"] == entry["id"] || s["ingressId"] == entry["id"] {
+                clear_switch(s);
+            }
+            if s["ingressId"] == entry["id"] && s["state"] != "revoked" {
+                if pending.iter().any(|id| s["credential"]["grantId"] == *id) {
+                    s["state"] = json!("revoked");
+                } else {
+                    s["state"] = json!("disconnected");
+                    s["connectionRemoved"] = json!(true);
+                    s["connectionName"] = entry["name"].clone();
+                }
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+fn move_connection(source: &mut Value, ingress: &Value, credential: Value) {
+    if source["credential"]["type"] != "oauth-grant" {
+        let old = source["ingressId"].clone();
+        if !source["retiredIngressIds"].is_array() {
+            source["retiredIngressIds"] = json!([]);
+        }
+        source["retiredIngressIds"]
+            .as_array_mut()
+            .unwrap()
+            .push(old);
+    }
+    source["ingressId"] = ingress.clone();
+    source["credential"] = credential;
+    source.as_object_mut().unwrap().remove("connectionRemoved");
+    source.as_object_mut().unwrap().remove("connectionName");
+    clear_switch(source);
+}
+/// The source anchor is also the revocation boundary for access, refresh and event grants.
+pub fn ingress_retired(ingress: &str) -> bool {
+    list().map_or(true, |rows| {
+        rows.iter().any(|s| {
+            s["retiredIngressIds"]
+                .as_array()
+                .is_some_and(|ids| ids.iter().any(|id| id == ingress))
+        })
+    })
+}
+pub fn grant_active(ingress: &str, grant: &str) -> bool {
+    for_grant(ingress, grant)
+        .is_ok_and(|s| s["state"] != "revoked" && s["connectionRemoved"] != true)
+}
 pub async fn ensure_ingress(entry: &Value) -> Result<Value> {
+    ensure_ingress_inner(entry, false).await
+}
+pub async fn connect_ingress(entry: &Value) -> Result<Value> {
+    ensure_ingress_inner(entry, true).await
+}
+async fn ensure_ingress_inner(entry: &Value, observed: bool) -> Result<Value> {
     let entry = entry.clone();
     change(move |rows| {
         if let Some(s) = rows
@@ -230,8 +345,17 @@ pub async fn ensure_ingress(entry: &Value) -> Result<Value> {
         {
             return Ok(s.clone());
         }
-        let credential =
-            json!({"type":if entry["transport"] == "local" { "local" } else { "ingress" }});
+        if let Some(source) = rows.iter().find(|s| s["retiredIngressIds"].as_array().is_some_and(|ids| ids.contains(&entry["id"]))) {
+            if !observed { return Ok(source.clone()); }
+            return Err("CONNECTION_RETIRED: the source changed connection; remove this connection and create a new one".into());
+        }
+        let credential = json!({"type":if entry["transport"] == "local" { "local" } else { "ingress" }});
+        if let Some(source) = rows.iter_mut().find(|s| switch_live(s) && s["pendingSwitch"]["ingressId"] == entry["id"]) {
+            if !observed { return Ok(source.clone()); }
+            move_connection(source, &entry["id"], credential);
+            source["state"] = json!("connected");
+            return Ok(source.clone());
+        }
         let source = make(
             rows,
             &entry,
@@ -261,13 +385,31 @@ pub async fn pending(entry: &Value, grant: &str, client: &str, name: &str) -> Re
         } else {
             normalized(string(&entry, "controlSource")).into()
         };
-        let s = make(
+        let expected = rows.iter_mut().find(|s| {
+            switch_live(s)
+                && s["pendingSwitch"]["ingressId"] == entry["id"]
+                && s["pendingSwitch"]["requestId"].is_null()
+        });
+        let claim = expected.map(|source| {
+            source["pendingSwitch"]["requestId"] = json!(grant);
+            (
+                source["id"].clone(),
+                source["product"].clone(),
+                source["platform"].clone(),
+            )
+        });
+        let mut s = make(
             rows,
             &entry,
             json!({"type":"oauth-grant","grantId":grant,"clientId":client}),
             &product,
             Value::Null,
         );
+        if let Some((id, product, platform)) = claim {
+            s["switchSourceId"] = id;
+            s["product"] = product;
+            s["platform"] = platform;
+        }
         rows.push(s.clone());
         Ok(s)
     })
@@ -323,6 +465,7 @@ pub fn candidates(source: &Value, grants: &[String]) -> Result<Vec<Value>> {
         .into_iter()
         .filter(|s| {
             s["id"] != source["id"]
+                && !s["switchSourceId"].is_string()
                 && s["ingressId"] == source["ingressId"]
                 && s["product"] == source["product"]
                 && s["credential"]["type"] == "oauth-grant"
@@ -333,6 +476,20 @@ pub fn candidates(source: &Value, grants: &[String]) -> Result<Vec<Value>> {
         .collect())
 }
 pub fn validate_claim(pending: &Value, target: &str, grants: &[String]) -> Result<()> {
+    if let Some(expected) = pending["switchSourceId"].as_str() {
+        let source = get(expected)?;
+        return if target == expected
+            && switch_live(&source)
+            && source["pendingSwitch"]["ingressId"] == pending["ingressId"]
+            && source["pendingSwitch"]["requestId"] == pending["credential"]["grantId"]
+            && source["state"] != "revoked"
+            && pending["state"] != "revoked"
+        {
+            Ok(())
+        } else {
+            Err("INVALID_SWITCH_CLAIM: this request can only claim its expected source; restart source switch if canceled or expired".into())
+        };
+    }
     if target == "new" {
         return Ok(());
     }
@@ -375,14 +532,28 @@ pub async fn connect(
             .iter_mut()
             .find(|s| s["id"] == chosen)
             .ok_or("SOURCE_NOT_FOUND")?;
-        if s["product"] != pending["product"]
+        let switching = pending["switchSourceId"] == target;
+        if switching {
+            if !switch_live(s)
+                || s["state"] == "revoked"
+                || s["pendingSwitch"]["ingressId"] != pending["ingressId"]
+                || s["pendingSwitch"]["requestId"] != pending["credential"]["grantId"]
+            {
+                return Err("SWITCH_CHANGED: restart source switch".into());
+            }
+        } else if s["product"] != pending["product"]
             || s["ingressId"] != pending["ingressId"]
             || s["credential"]["type"] != "oauth-grant"
         {
             return Err("SOURCE_CHANGED: retry consent".into());
         }
-        let old = (target != "new").then(|| string(&s["credential"], "grantId").to_owned());
-        s["credential"] = pending["credential"].clone();
+        let old = (target != "new" && s["ingressId"] == pending["ingressId"])
+            .then(|| string(&s["credential"], "grantId").to_owned());
+        if switching {
+            move_connection(s, &pending["ingressId"], pending["credential"].clone());
+        } else {
+            s["credential"] = pending["credential"].clone();
+        }
         if s["connectedAt"].is_null() {
             s["connectedAt"] = json!(chrono::Utc::now().timestamp());
         }
@@ -402,7 +573,14 @@ pub async fn revoke_grants(ingress: &str, grants: &[String]) -> Result<()> {
     let grants = grants.to_vec();
     change(move |rows| {
         for s in rows {
-            if s["ingressId"] == ingress && grants.iter().any(|g| s["credential"]["grantId"] == *g)
+            if s["pendingSwitch"]["ingressId"] == ingress
+                && grants.iter().any(|g| s["pendingSwitch"]["requestId"] == *g)
+            {
+                clear_switch(s);
+            }
+            if s["ingressId"] == ingress
+                && s["connectionRemoved"] != true
+                && grants.iter().any(|g| s["credential"]["grantId"] == *g)
             {
                 s["state"] = json!("revoked");
             }
@@ -419,6 +597,7 @@ pub async fn disconnect(id: &str) -> Result<Value> {
             .find(|s| s["id"] == id)
             .ok_or("SOURCE_NOT_FOUND")?;
         s["state"] = json!("revoked");
+        clear_switch(s);
         Ok(s.clone())
     })
     .await
@@ -429,6 +608,7 @@ pub async fn connection_state(ingress: &str, connected: bool) -> Result<()> {
         for s in rows {
             if s["ingressId"] == ingress
                 && s["state"] != "revoked"
+                && s["connectionRemoved"] != true
                 && (s["credential"]["type"] != "oauth-grant" || !s["connectedAt"].is_null())
             {
                 s["state"] = json!(if connected {
@@ -459,7 +639,11 @@ pub async fn touch(source: &Value, auth: &str) -> Result<Value> {
             .iter_mut()
             .find(|s| s["id"] == source_id)
             .ok_or("SOURCE_NOT_FOUND")?;
-        if s["state"] == "revoked" || s["credential"] != source["credential"] {
+        if s["state"] == "revoked"
+            || s["connectionRemoved"] == true
+            || s["ingressId"] != source["ingressId"]
+            || s["credential"] != source["credential"]
+        {
             return Err("SOURCE_REVOKED".into());
         }
         // Telemetry is immediately visible, even while a durable mutation is in flight.
@@ -479,7 +663,11 @@ pub async fn touch(source: &Value, auth: &str) -> Result<Value> {
             .iter_mut()
             .find(|s| s["id"] == source["id"])
             .ok_or("SOURCE_NOT_FOUND")?;
-        if s["state"] == "revoked" || s["credential"] != source["credential"] {
+        if s["state"] == "revoked"
+            || s["connectionRemoved"] == true
+            || s["ingressId"] != source["ingressId"]
+            || s["credential"] != source["credential"]
+        {
             return Err("SOURCE_REVOKED".into());
         }
         s["state"] = json!("connected");
@@ -898,7 +1086,11 @@ fn migrate_file(path: &Path, rows: &[Value]) -> Result<()> {
 
 fn reconcile(rows: &mut Vec<Value>) -> Result<()> {
     for s in rows {
-        if s["credential"]["type"] == "oauth-grant" && s["state"] != "revoked" {
+        clear_switch(s); // OAuth pending requests do not survive a Core restart.
+        if s["credential"]["type"] == "oauth-grant"
+            && s["state"] != "revoked"
+            && s["connectionRemoved"] != true
+        {
             let path = root()
                 .join("ingresses")
                 .join(string(s, "ingressId"))
