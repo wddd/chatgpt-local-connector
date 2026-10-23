@@ -125,6 +125,8 @@ Reserved panel space shifts/compresses the scene without vertical reorder, prese
 
 Details have Back, task title, native link, width toggle, status, project, and duration. The title omits the Agent name; the metadata row retains it. Agent and task layers share the default 400px or viewport-minus-32px width. Forward/back slide slightly in opposite directions over 160ms without shell resizing. Activity-snapshot membership means ongoing, including external sessions whose completion is snapshot removal rather than old item status. Timelines scroll internally with jump-to-latest.
 
+Opening Codex details reads tasks/runtime/{threadId} once for the native task title without loading conversation items or resuming the thread. This title takes precedence over activity/selection titles because bounded transcript tails may omit the original user input. Metadata read failure retains the snapshot title. Other Agents retain their activity/selection titles.
+
 ARC first reads fully, then polls after each completed read plus ~1s with after, without overlap. Expired cursors force full reload. External read-only snapshots refresh fully about every 5s. Leaving details stops polling. Partial coverage is disclosed. Later errors preserve acquired entries.
 
 External Codex uses app-server thread/read includeTurns without ownership/resume/approval registration. Claude transcripts project user/text/thinking/tool/results by stable tool ID, reading at most the last 8 MiB and reporting partial truncation. External responses include readOnly and use full snapshots rather than after. Missing/failed timelines show phase/recent content and a localized explanation directing complete-record inspection to the native Agent. Verified open appears in the header. External sessions offer no approval actions.
@@ -137,7 +139,7 @@ Existing local respond forwarding, submission locks, stable requestId, and recei
 
 ### Entry rendering
 
-User messages are right-aligned light bubbles with 14/14/4/14px corners. Text/thinking use react-markdown/remark-gfm for tables, links, tasks, and code, skipping raw HTML. Links use platform opening. No syntax-highlighting dependency is added. Existing plainMarkdown and other-page rendering remain.
+User messages are right-aligned light bubbles with 14/14/4/14px corners. They default to a three-line preview. Only overflowing messages show Show more / Show less, with disclosure state retained by entry ID during timeline updates. Overflow is measured again when text or panel width changes. Text/thinking use react-markdown/remark-gfm for tables, links, tasks, and code, skipping raw HTML. Links use platform opening. No syntax-highlighting dependency is added. Existing plainMarkdown and other-page rendering remain.
 
 Thinking starts collapsed. Reliable duration yields a localized duration label, otherwise completed thinking or active thinking. Known durations below one second display in milliseconds for thinking, tools, and tool groups, including native zero values as 0ms. Durations of at least one second display in whole seconds. Missing timing remains unknown. Only active labels shimmer. Expanded content uses a pale-purple left rule and secondary text.
 

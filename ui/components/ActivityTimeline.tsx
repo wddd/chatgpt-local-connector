@@ -11,6 +11,7 @@ import TimelineEntries from "./TimelineEntries";
 import ActivityInteraction from "./ActivityInteraction";
 import FilePath from "./FilePath";
 import { activityHeadline, interactionKey, type TrackedActivity } from "../state/activityModel";
+import type { TaskRuntime } from "../state/tasks";
 
 import { name, orderedAgents } from "../state/agents";
 
@@ -21,6 +22,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const submissions = activityApprovals.use(), cardId = useId();
   const [atLatest, setAtLatest] = useState(true);
   const [timeline, setTimeline] = useState<AgentTimeline>();
+  const [taskTitle, setTaskTitle] = useState("");
   const [error, setError] = useState(""), [openError, setOpenError] = useState("");
   const [now, setNow] = useState(Date.now);
   const viewport = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null);
@@ -36,6 +38,15 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const followAllowed = useRef(true);
   followAllowed.current = running;
   useInterval(() => setNow(Date.now()), running ? 1000 : null);
+  useEffect(() => {
+    setTaskTitle("");
+    if (agent !== "codex") return;
+    let stopped = false;
+    void api<TaskRuntime>(`tasks/runtime/${encodeURIComponent(session.id)}`).then(task => {
+      if (!stopped) setTaskTitle(task.title?.trim() ?? "");
+    }).catch(() => { /* Retain the snapshot title when native metadata is unavailable. */ });
+    return () => { stopped = true; };
+  }, [agent, session.id]);
   useEffect(() => {
     if (!session.timeline) return;
     let stopped = false, timer: ReturnType<typeof setTimeout>, current: AgentTimeline | undefined;
@@ -95,7 +106,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   return <section className="agent-panel-layer task-detail-layer">
     <header className="dialog-header">
       <IconButton icon={ArrowLeft} label={t("back")} onClick={onBack} />
-      <h2 className="activity-panel-title">{nativeSession.title || session.title || t("timeline.title")}</h2>
+      <h2 className="activity-panel-title">{taskTitle || nativeSession.title || session.title || t("timeline.title")}</h2>
       <div className="actions">
         {nativeSession.open && <Tooltip text={t("activity.open")}><IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
           setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));

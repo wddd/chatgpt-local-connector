@@ -545,6 +545,8 @@
   "timeline.open": "打开执行时间线",
   "timeline.external": "该会话不是由 ARC 派发，完整记录请在 Agent 中查看",
   "timeline.thinking": "思考",
+  "timeline.showMore": "展开更多",
+  "timeline.showLess": "收起",
   "timeline.thought": "已思考 {duration}",
   "timeline.cwd": "工作目录",
   "timeline.path": "路径",

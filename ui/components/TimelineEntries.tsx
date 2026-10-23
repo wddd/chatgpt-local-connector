@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertCircle, Check, ChevronRight, Circle, FileText, ListChecks, LoaderCircle, Minus, ShieldAlert, Terminal, Wrench, X } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import { AnimatePresence, motion } from "motion/react";
@@ -12,7 +12,7 @@ import { activityApprovals } from "../state/activity";
 import { activityHeadline, filePathParts, interactionKey } from "../state/activityModel";
 import { expandableTimelineEntry, visibleTimelineEntries } from "../state/timelineModel";
 import { currentTimelineTool, entryDuration, isTimelineTool, timelineGroups, toolGroupOpen, toolGroupState, currentToolPresentation, type TimelineGroup } from "../state/timelineGroups";
-import { Icon } from "./ui";
+import { Button, Icon } from "./ui";
 import { PhaseLabel, PhaseTile } from "./activity";
 import FilePath from "./FilePath";
 
@@ -48,6 +48,27 @@ const TimelineMarkdown = memo(function TimelineMarkdown({ text }: { text: string
     table: ({ children }) => <div className="timeline-table"><table>{children}</table></div>,
   }}>{text}</ReactMarkdown></div>;
 });
+function UserMessage({ text, open, onChange }: { text: string; open: boolean; onChange: (open: boolean) => void }) {
+  const id = useId(), content = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  useLayoutEffect(() => {
+    const node = content.current;
+    if (!node) return;
+    const measure = () => setOverflow(node.scrollHeight > parseFloat(getComputedStyle(node).lineHeight) * 3 + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [text]);
+  return <article className="timeline-text timeline-user" aria-label={t("timeline.user")}>
+    <div id={id} className="timeline-user-preview" data-expanded={open || undefined}>
+      <div ref={content} className="timeline-user-body"><TimelineMarkdown text={text} /></div>
+    </div>
+    {overflow && <Button variant="ghost" className="timeline-user-toggle" aria-expanded={open} aria-controls={id} onClick={() => onChange(!open)}>
+      {t(open ? "timeline.showLess" : "timeline.showMore")}
+    </Button>}
+  </article>;
+}
 function ToolTitle({ entry, project }: { entry: AgentTimelineEntry; project?: string | null }) {
   return <span className="timeline-entry-title mono" title={entry.command || entry.path || entry.title}>
     {entry.path && !entry.command ? <FilePath path={entry.path} project={project || entry.cwd} /> : entry.command || entry.title || t(`activity.phase.${entry.type}`)}
@@ -71,7 +92,8 @@ function TimelineEntry({ entry, agent, session, now, open, onChange, current = f
 }) {
   const submissions = activityApprovals.use();
   const duration = entryDuration(entry, now);
-  if (entry.type === "text" || entry.type === "user") return <article className={`timeline-text ${entry.type === "user" ? "timeline-user" : ""}`} aria-label={entry.type === "user" ? t("timeline.user") : undefined}>
+  if (entry.type === "user") return <UserMessage text={entry.text ?? ""} open={open} onChange={onChange} />;
+  if (entry.type === "text") return <article className="timeline-text">
     <TimelineMarkdown text={entry.text ?? ""} />
   </article>;
   if (entry.type === "thinking") return <Fold open={open} onChange={onChange} className="timeline-thinking" summary={<>

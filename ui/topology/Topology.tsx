@@ -49,6 +49,7 @@ export default function Topology({ left, right, brand, boundary, panelExpanded =
     const a = animator.current, h = a.values("hub"), root = graph.current;
     if (!h || !root) return;
     root.style.height = `${a.values("scene")!.height}px`;
+    boundary.current?.style.setProperty("--topology-hub-x", `${h.x}px`);
     if (hub.current) {
       const size = h.Re * 240 / 130; // Preserve the ARC mark's existing earmuff clearance.
       hub.current.style.width = hub.current.style.height = `${size}px`;
@@ -75,7 +76,7 @@ export default function Topology({ left, right, brand, boundary, panelExpanded =
     svg.current?.style.setProperty("--topology-time-scale", latest.current.slow ? "4" : "1");
     painter.current?.paint(a, latest.current.nodes, latest.current.allTasks, rect,
       latest.current.guides ? layout.current : null);
-  }, []);
+  }, [boundary]);
   const tick = useCallback((time: number) => {
     frame.current = 0;
     const dt = Math.min(0.064, lastTime.current ? (time - lastTime.current) / 1000 : 1 / 60);

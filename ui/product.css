@@ -269,7 +269,7 @@
 .home-workspace .core-toggle {
   position: absolute;
   top: clamp(48px, 8dvh, 68px);
-  left: 50%;
+  left: var(--topology-hub-x, 50%);
   transform: translateX(-50%);
 }
 .home-workspace .connection-graph {
@@ -993,6 +993,10 @@
 .timeline-item { min-width: 0; }
 .timeline-text { font-size: 14px; overflow-wrap: anywhere; min-width: 0; }
 .timeline-user { align-self: flex-end; width: fit-content; max-width: 92%; margin-left: auto; background: var(--surface-subtle); padding: 8px 12px; border-radius: 14px 14px 4px 14px; }
+.timeline-user-preview { line-height:1.65; }
+.timeline-user-preview:not([data-expanded]) { max-height:3lh; overflow:hidden; }
+.timeline-user-body { display:flow-root; }
+.timeline-user-toggle.button { min-height:28px; margin-top:var(--space-1); padding:var(--space-1) 0; font-size:var(--text-xs); color:var(--text-secondary); }
 .timeline-meta { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .timeline-summary { display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 32px; width: 100%; padding: 5px 4px; box-sizing: border-box; text-align: left; color: inherit; }
 button.timeline-summary { appearance: none; background: transparent; border: 0; font: inherit; cursor: pointer; border-radius: 6px; }
