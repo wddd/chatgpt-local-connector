@@ -135,6 +135,11 @@ test("control source dock preserves editing, field navigation and cross-side dis
     cancelAnimationFrame: (id: number) => frames.delete(id),
   });
   Object.defineProperty(globalThis, "innerWidth", { configurable: true, value: 1280 });
+  // Happy DOM has no layout engine; expose a visible viewport for dock sizing.
+  Object.defineProperties(window.HTMLElement.prototype, {
+    clientWidth: { configurable: true, get() { return globalThis.innerWidth; } },
+    clientHeight: { configurable: true, get() { return globalThis.innerHeight; } },
+  });
   window.matchMedia = () => media as unknown as MediaQueryList;
   window.HTMLElement.prototype.getBoundingClientRect = function () {
     return this.getAttribute("role") === "dialog" ? new window.DOMRect(16, 16, 400, 768) : new window.DOMRect(550, 260, 44, 44);
