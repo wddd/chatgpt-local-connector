@@ -168,7 +168,7 @@ export default function TasksPage() {
       <div className="task-focus-content">
         {selected.first.executionOwner === "connector" && (
           <p className="muted small">
-            {t("codexExternalTaskRestartHint")}
+            {t("connectorRunsThisTaskInTheBackgroundDisconnecting")} {t("codexExternalTaskRestartHint")}
           </p>
         )}
         {[...selected.records].reverse().map((r) => (
