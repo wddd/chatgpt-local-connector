@@ -38,7 +38,10 @@ const powershell = (host, script) => runCommand('ssh', [...sshOptions, host,
 export async function prepareWindowsWorker({ timer }) {
   const runtime = JSON.parse(capture('enjoy', ['runtime']));
   const fleet = JSON.parse(await readFile(path.join(runtime.profileRoot, 'fleet/targets.json'))).targets;
-  const builds = JSON.parse(await readFile(path.join(runtime.profileRoot, 'client/client-build-targets.json')));
+  const work = runtime.packages.find(pkg => pkg.identity.name === '@whzxc/work');
+  if (!work) throw new Error('Windows release requires the installed @whzxc/work package; inspect enjoy runtime.');
+  const workProfile = path.join(work.root, path.relative(runtime.packageRoot, runtime.profileRoot));
+  const builds = JSON.parse(await readFile(path.join(workProfile, 'client/client-build-targets.json')));
   const target = builds.targets[builds.windowsTarget];
   const host = target.ssh;
   const owner = `arc-${randomUUID()}`;

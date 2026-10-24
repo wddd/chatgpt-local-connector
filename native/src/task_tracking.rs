@@ -975,6 +975,8 @@ impl Timeline {
                 }
             }
         }
+        self.entries
+            .sort_by_key(|row| row["position"].as_u64().unwrap_or(u64::MAX));
         self.bytes = self.entries.iter().map(|r| r.to_string().len()).sum();
         if self.info.is_null() {
             self.info = json!({"id":thread["id"],"title":thread["name"],"project":thread["cwd"]});
