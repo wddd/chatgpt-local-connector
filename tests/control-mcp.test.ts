@@ -297,7 +297,10 @@ test('MCP lists frozen tools and guide exposes existing ops and native domains w
   const inboxSchema = operations.find(tool => tool.name === 'inbox_wait')!.inputSchema;
   const validateInbox = new AjvJsonSchemaValidator().getValidator(inboxSchema);
   assert.equal(validateInbox({timeoutMs:1800000}).valid,true);
-  for(const timeoutMs of [0,1800001])assert.equal(validateInbox({timeoutMs}).valid,false);
+  for(const timeoutMs of [-1,1800001])assert.equal(validateInbox({timeoutMs}).valid,false);
+  const immediateInbox=await call('inbox_wait',{timeoutMs:0});
+  assert.equal(immediateInbox.response.isError,false);
+  assert.ok(['events','timeout'].includes(immediateInbox.result.state));
   const agentWaitSchema = operations.find(tool => tool.name === 'agent_wait')!.inputSchema;
   const validateAgentWait = new AjvJsonSchemaValidator().getValidator(agentWaitSchema);
   assert.equal(validateAgentWait({agent:'tracking-example',taskId:'fixture',timeoutMs:1800000}).valid,true);
