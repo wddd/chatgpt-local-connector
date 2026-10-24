@@ -450,3 +450,7 @@ Use the same authenticated control source throughout this flow:
 5. Read `query({op:"notify_status",args:{target:"<session>"}})` and confirm the matching `targets[]` row has `reachability:"verified"`, `reason:"handshake-confirmed"`. Sending the challenge alone does not prove delivery.
 
 On delivery failure or expiry, inspect status and delivery records, correct the destination or delivery failure, then request a new challenge. Bind each new continuation explicitly. Verification does not answer interactions or approve tasks.
+
+## Operation outcome
+
+MCP `isError:true` and CLI `ok:false` / exit 1 reflect failed, rejected, cancelled, not-executed, unconfirmed, and rolled-back operation results, including nested receipts and nonzero command exit codes. The top-level error preserves the nested reason; receipt IDs and the result remain available for reconciliation. Pending/reserved receipts indicate acceptance only. A failed historical turn inside a list does not make that list request fail. Unconfirmed means the effect is unknown, not permission to replay.

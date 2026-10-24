@@ -863,6 +863,10 @@ pub async fn run(args: Vec<String>) -> i32 {
     }
     match execute(&args).await {
         Ok(result) => {
+            if let Some(error) = crate::egress::outcome_error(&result) {
+                print_output(json!({"schemaVersion":1,"ok":false,"error":error,"result":result}));
+                return 1;
+            }
             let replacing = matches!(words.as_slice(), ["app", "replace", path, ..] if *path != "--status")
                 || matches!(words.as_slice(), ["call", "app.replace", ..]);
             let id = crate::app_replace::acknowledgment_id(

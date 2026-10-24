@@ -189,8 +189,10 @@ async fn respond(request: Value, output: Arc<tokio::sync::Mutex<tokio::io::Stdou
                 _ => Err("UNKNOWN_TOOL".into()),
             };
             Ok(match value {
-                Ok(value) => {
-                    json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":{"result":value},"isError":false})
+                Ok(mut value) => {
+                    let error = crate::egress::outcome_error(&value);
+                    if let Some(reason) = &error { value["error"] = reason.clone(); }
+                    json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":{"result":value},"isError":error.is_some()})
                 }
                 Err(error) => {
                     json!({"content":[{"type":"text","text":error}],"structuredContent":{"error":{"code":error_code(&error),"message":error}},"isError":true})

@@ -190,6 +190,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     }
     if (method === 'project/list' && existsSync(process.env.ARC_FIXTURE_DATA+'/projects-fixture.json')) return emit({id,result:{data:JSON.parse(readFileSync(process.env.ARC_FIXTURE_DATA+'/projects-fixture.json','utf8')),nextCursor:null}});
     if (method === 'model/list' || method === 'thread/list' || method === 'project/list') return emit({ id, result: { data: [], nextCursor: null } });
+    if (method === 'command/exec' && params.command?.at(-1)==='fixture-failed-command') return emit({id,result:{stdout:'',stderr:'failed check',exitCode:7}});
     if (method === 'command/exec' && params.command?.at(-1)==='fixture-budget') return emit({id,result:{stdout:'é'.repeat(40),stderr:'err'.repeat(20),exitCode:0}});
     if (method === 'command/exec' && params.command?.at(-1)==='fixture-cwd') return emit({id,result:{stdout:params.cwd,stderr:'',exitCode:0}});
     if (method === 'process/spawn') {
@@ -1931,4 +1932,25 @@ test('AX unbound cloud-session verification explains binding and its next call',
   assert.deepEqual(error.bind.args.notify,{channel:'claude-session',target});
   assert.deepEqual(error.next.args,{action:'verify',target});
   assert.equal(error.guide.arguments.topic,'notify');
+});
+
+test('AX2 failed receipts report failure through MCP and CLI without losing identity', async () => {
+  // Regression: a failed receipt returned CLI exit zero and ok:true while only its nested state showed failure.
+  const requestId = randomUUID();
+  const params = {path:path.join(directory,'bad-transfer'),dataBase64:'aGk=',expectedSha256:'0'.repeat(64)};
+  const response = await call('fs',{action:'writeFile',params,requestId});
+  assert.equal(response.response.isError,true);
+  assert.equal(response.result.state,'failed');
+  assert.equal(response.result.requestId,requestId);
+  assert.match(response.result.error.message,/SHA256_MISMATCH/);
+  let failure: any;
+  try { execFileSync(fixtureCommand,['cli','control','receipt','--stdin'],{env:fixtureEnv,input:JSON.stringify({requestId}),encoding:'utf8',stdio:['pipe','pipe','pipe']}); }
+  catch (error) { failure=error; }
+  assert.equal(failure.status,1);
+  const envelope=JSON.parse(failure.stdout);
+  assert.equal(envelope.ok,false);
+  assert.equal(envelope.result.requestId,requestId);
+  assert.match(envelope.error.message,/SHA256_MISMATCH/);
+  const command=await completed('command',{cmd:'fixture-failed-command',cwd:directory,requestId:randomUUID()});
+  assert.equal(command.error.exitCode,7);
 });

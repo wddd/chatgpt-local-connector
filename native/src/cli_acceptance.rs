@@ -126,7 +126,7 @@ pub(crate) async fn control(op: &str, args: Value) -> Result<Value> {
     let response =
         transport::forward_request("cli/control", "POST", json!({"op":op,"args":&args})).await?;
     let value = response["structuredContent"]["result"].clone();
-    if response["isError"] == true {
+    if response["isError"] == true && crate::egress::outcome_error(&value).is_none() {
         let mut error = value["error"].clone();
         if error.is_object() {
             let guide_op = if op == "guide" {

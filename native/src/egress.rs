@@ -1,6 +1,34 @@
 //! Pure MCP output projection. Storage and execution live outside this module.
 use crate::*;
-pub fn tool(mut value: Value, error: bool) -> Value {
+/// Classify the returned operation, never errors embedded in history arrays or user text.
+pub fn outcome_error(value: &Value) -> Option<Value> {
+    let mut current = value;
+    for _ in 0..8 {
+        let state = string(current, "state");
+        let failed = matches!(state, "failed" | "rejected" | "not-executed" | "cancelled" | "unconfirmed" | "rolled-back");
+        let exit = current["exitCode"].as_i64().filter(|code| *code != 0);
+        if failed || exit.is_some() || current["ok"] == false {
+            let reason = current.get("error").filter(|v| !v.is_null())
+                .or_else(|| current["result"].get("error").filter(|v| !v.is_null()));
+            let mut error = match reason {
+                Some(value) if value.is_object() => value.clone(),
+                Some(value) if value.is_string() => json!({"message":value}),
+                Some(value) => json!({"message":value.to_string()}),
+                None => json!({"message":current["reason"].as_str().map(str::to_owned).unwrap_or_else(|| if let Some(code) = exit { format!("Command exited with code {code}") } else {format!("Operation outcome: {state}")})}),
+            };
+            if !error["code"].is_string() { error["code"] = json!(if state == "unconfirmed" { "OPERATION_UNCONFIRMED" } else { "OPERATION_FAILED" }); }
+            error["outcome"] = json!(state);
+            if let Some(code) = exit { error["exitCode"] = json!(code); }
+            return Some(error);
+        }
+        let Some(next) = current.get("result").or_else(|| current.get("lastResult")) else { break; };
+        current = next;
+    }
+    None
+}
+
+pub fn tool(mut value: Value, mut error: bool) -> Value {
+    if let Some(reason) = outcome_error(&value) { value["error"] = reason; error = true; }
     if !value.is_object() {
         value = json!({"value":value});
     }
