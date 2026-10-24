@@ -4,6 +4,7 @@ import { buildEnv } from './build-env.mjs';
 import { releaseSigningEnv } from './release-signing.mjs';
 import { macosSigningIdentity } from './macos-signing.mjs';
 import { compileIcon, requireXcode } from './macos-icons.mjs';
+import { stageTimer } from './release-support.mjs';
 const root = new URL('../', import.meta.url);
 const args = [fileURLToPath(new URL('node_modules/@tauri-apps/cli/tauri.js', root)), 'build'];
 if (process.platform === 'win32') args.push('--config', 'tauri.windows.conf.json');
@@ -43,13 +44,17 @@ const prune = fileURLToPath(new URL('tooling/prune-build-cache.mjs', root));
 execFileSync(process.execPath, [prune, `--keep=target/${target || profile}`], { cwd: fileURLToPath(root), env, stdio: 'inherit' });
 execFileSync(process.execPath, [fileURLToPath(new URL('tooling/prepare-desktop.mjs', root)), ...buildArgs],
   { cwd: fileURLToPath(root), env, stdio: 'inherit' });
-execFileSync(process.execPath, args, { cwd: fileURLToPath(new URL('desktop/', root)), env, stdio: 'inherit' });
-if (process.platform === 'darwin' && !buildArgs.includes('--no-bundle')) {
-  execFileSync(process.execPath, [fileURLToPath(new URL('tooling/check-package.mjs', root)),
-    `target/aarch64-apple-darwin/${profile}/bundle/macos/Agent Remote Control.app`],
-  { cwd: fileURLToPath(root), env, stdio: 'inherit' });
-  execFileSync('uv', ['run', '--script', fileURLToPath(new URL('tooling/build-dmg.py', root)),
-    profile], { cwd: fileURLToPath(root), env, stdio: 'inherit' });
-}
-execFileSync(process.execPath, [prune, `--keep=target/${target || profile}`],
-  { cwd: fileURLToPath(root), env, stdio: 'inherit' });
+const packageDesktop = async () => {
+  execFileSync(process.execPath, args, { cwd: fileURLToPath(new URL('desktop/', root)), env, stdio: 'inherit' });
+  if (process.platform === 'darwin' && !buildArgs.includes('--no-bundle')) {
+    execFileSync(process.execPath, [fileURLToPath(new URL('tooling/check-package.mjs', root)),
+      `target/aarch64-apple-darwin/${profile}/bundle/macos/Agent Remote Control.app`],
+    { cwd: fileURLToPath(root), env, stdio: 'inherit' });
+    execFileSync('uv', ['run', '--script', fileURLToPath(new URL('tooling/build-dmg.py', root)),
+      profile], { cwd: fileURLToPath(root), env, stdio: 'inherit' });
+  }
+  execFileSync(process.execPath, [prune, `--keep=target/${target || profile}`],
+    { cwd: fileURLToPath(root), env, stdio: 'inherit' });
+};
+if (process.env.ARC_RELEASE_TIMINGS_FILE) await stageTimer().run('Rust Desktop build/sign', packageDesktop);
+else await packageDesktop();

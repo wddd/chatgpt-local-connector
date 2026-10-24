@@ -52,15 +52,39 @@ npm run release -- --platforms mac
 npm run release -- --platforms mac,linux
 # CI platforms only:
 npm run release -- --platforms windows,linux
+# Continue a failed publication using its verified local artifacts:
+npm run release -- --resume release-artifacts/vX.Y.Z-<suffix>
 ```
 
 The flow checks signing, workspace, branch, and gh permissions, fetches remote main/tags, selects a version after the previous public release, and builds the current feature commit. npm test runs by default. ARC_BUILD_VERSION injects the version into frontend, Core, Desktop, and installer. Source placeholders remain 0.0.0.
 
-A unique release-artifacts/v<version>-<suffix> directory holds artifacts, latest.json, release-notes.md, Cask, and SHA256SUMS.txt. Notes derive from the previous formal ancestor tag through the current commit. With mac selected, local build/signature checks precede tagging and an atomic main/tag push. --platforms defaults to mac,windows,linux and accepts a nonduplicated comma-separated subset. Windows/Linux selections trigger release.yml for that tag using only selected jobs. mac-only releases never trigger CI. CI never creates or publishes Releases. The local flow waits for the matching SHA's selected CI jobs, downloads selected artifacts, computes checksums, uploads a draft with gh, and publishes it.
+A unique release-artifacts/v<version>-<suffix> directory holds artifacts, latest.json, release-notes.md, Cask, and SHA256SUMS.txt. Notes derive from the previous formal ancestor tag through the current commit. With mac selected, local build/signature checks precede tagging and an atomic main/tag push. --platforms defaults to mac,windows,linux and accepts a nonduplicated comma-separated subset. Windows/Linux selections trigger release.yml for that tag using only selected jobs. mac-only releases never trigger CI. CI never creates or publishes Releases. The local flow waits for the matching SHA's selected CI jobs, downloads selected artifacts, verifies the complete selected platform set and checksums, uploads a draft with gh, verifies remote assets, publishes it, and reads back public latest.json.
 
 latest.json includes only this build's macOS/Windows updater entries. It never reuses unselected platforms or versions. Linux packages and installer scripts are separate assets outside Tauri updater platforms. Linux-only manifests have empty platforms. Cask is generated only with mac. Partial-platform publication still uses a new version without appending to existing public releases. Unpublished platforms stay on their prior version. Desktop treats a missing platform in the latest manifest as no update. Linux installation selects the latest formal release containing the current architecture's tarball.
 
-CI/upload failure stops the flow while preserving local artifacts and pushed tags. Inspect the failure before recovery. Do not automatically retrigger or publish incomplete platform sets. Existing tags MUST identify the same source. Draft artifacts may be completed at the same version. Public versions cannot be overwritten. Source changes require a new version. Do not create version-only commits or a source CHANGELOG.
+CI/upload failure stops the flow while preserving local artifacts and pushed tags. Do not automatically retrigger CI or publish incomplete platform sets. Existing tags MUST identify the same source. Public versions cannot be overwritten. Source changes require a new version. Do not create version-only commits or a source CHANGELOG.
+
+## Resume publication
+
+After local verification succeeds, release-state.json records the version, source commit, selected platforms, and every upload's size and SHA-256 digest. Keep this file with the original artifacts. On an upload, remote-verification, publish, or readback failure, the script prints the exact resume command:
+
+```sh
+npm run release -- --resume release-artifacts/vX.Y.Z-<suffix>
+```
+
+Resume requires a clean main checkout at the original source commit and its matching release tag. Version and platforms come from the checkpoint; explicit --version or --platforms values must match it. It checks the original files and complete platform inventory again. It skips tests, builds, signing, tagging, pushing, and CI. No macOS private signing keys are needed for this path. It does not regenerate metadata or change artifact bytes. --resume cannot be combined with --dry-run.
+
+The script queries the exact release tag and reuses its draft, or creates the draft if the initial create request never succeeded. Assets upload individually with at most three transfers in flight. Each transfer has a ten-minute timeout and four attempts with 2/4/8-second backoff. gh transfers set GODEBUG=http2client=0. A matching uploaded size and, when available, GitHub digest skips the transfer. A mismatched draft asset is replaced. Remote verification requires the exact expected asset inventory and sizes, then checks GitHub SHA-256 digests or downloads and hashes assets whose digest is unavailable. Publication only follows successful verification.
+
+The checkpoint records the draft ID and publish intent before publishing. If publication succeeded but its response or public readback failed, resume verifies that same public release and retries public latest.json readback without mutating it. Other public releases are rejected. Readback compares the public latest.json bytes with the local digest and size. A different release becoming latest causes readback to fail instead of changing public history.
+
+Resume starts at the publication boundary. It requires release-state.json from a completed verification; dry runs, older artifact directories without a checkpoint, and interrupted builds or CI downloads cannot be resumed this way. Resolve build/CI failures before starting another release. Never manufacture or edit a verification checkpoint to bypass source or integrity checks.
+
+## Stage timings
+
+Each stage prints START and END lines with its result and elapsed seconds. Stages cover checks, tests, frontend build, Rust Core build/sign, Rust Desktop build/sign, macOS staging verification, tag/source push, CI wait, CI artifact download, local verification, upload, remote verification, publish, and public readback. Resume and platform selections mark unneeded stages as skipped. Local build timers separate frontend, Core, and Desktop work; CI compilation time is included in CI wait.
+
+Every run prints a final timing table, including failed stages, and the path to release-artifacts/.timings-<suffix>/stages.jsonl. Timings are local metadata and are never uploaded. Publication failures retain both artifacts and timings for the next resume attempt.
 
 ## Dry runs and stages
 

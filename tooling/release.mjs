@@ -1,4 +1,4 @@
-import { readFile, writeFile, readdir, mkdir, copyFile, mkdtemp } from 'node:fs/promises';
+import { readFile, writeFile, readdir, mkdir, copyFile, mkdtemp, stat, rename, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { buildVersion, stableVersion } from './version.mjs';
 import { releaseSigningEnv } from './release-signing.mjs';
 import { macosSigningIdentity, verifyMacosReleaseSignature } from './macos-signing.mjs';
+import { gh, ghTransfer, releaseByTag, publishedTags, fileDigest, assetMatches, publicationStages,
+  validateResume, validateRemoteAssets, validateArtifactInventory, platformAssetNames, retry, boundedMap, stageTimer } from './release-support.mjs';
 process.chdir(fileURLToPath(new URL('../', import.meta.url)));
 let version = buildVersion();
 const repo = 'whzxc/agent-remote-control';
@@ -79,8 +81,7 @@ function compare(a, b) {
   return 0;
 }
 function previousPublished() {
-  const tags=execFileSync('gh',['api',`repos/${repo}/releases`,'--paginate','--jq','.[] | select(.draft == false and .prerelease == false) | .tag_name'],{encoding:'utf8'}).trim();
-  return tags ? tags.split('\n').map(tag=>tag.replace(/^v/,'')).filter(value => compare(value, version) < 0).sort(compare).at(-1) : undefined;
+  return publishedTags(repo).map(stableVersion).filter(value => compare(value, version) < 0).sort(compare).at(-1);
 }
 function changesSince(previous) {
   const range=previous ? `refs/tags/v${previous}..HEAD` : 'HEAD';
@@ -108,101 +109,228 @@ async function notes() {
   return `${changes}\n\n## Upgrading from CLC\n\nDisable the old login item and quit ARC before installing/opening this update. On macOS/Linux, move existing state once (existing destinations are left untouched):\n\n\`\`\`sh\n${migration}\n\`\`\`\n\nOn Windows, move %LOCALAPPDATA%/chatgpt-local-connector to %LOCALAPPDATA%/agent-remote-control (and the -dev/-preview variants) before opening the new app. Re-enable login items and grant macOS permissions to the new app identity. Maintainers: move ~/.tauri/local-connector.key to ~/.tauri/agent-remote-control.key. No automatic migration is performed.\n`;
 }
 if (mode === 'release') {
-  const options = { version: undefined, platforms: 'mac,windows,linux' };
-  const flags = [];
+  const options = {};
+  const flags = new Set();
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
-    if (option === '--version' || option === '--platforms') {
+    if (['--version', '--platforms', '--resume'].includes(option)) {
       const key = option.slice(2);
-      if (!args[i + 1] || args[i + 1].startsWith('--') || (key === 'version' ? options.version !== undefined : flags.includes('--platforms'))) throw new Error(`Invalid or repeated ${option}`);
+      if (!args[i + 1] || args[i + 1].startsWith('--') || options[key] !== undefined) throw new Error(`Invalid or repeated ${option}`);
       options[key] = args[++i];
-      if (key === 'platforms') flags.push('--platforms');
-    } else if (['--skip-tests', '--dry-run'].includes(option)) flags.push(option);
-    else throw new Error('release [--dry-run] [--skip-tests] [--version X.Y.Z] [--platforms mac,windows,linux]');
+    } else if (['--skip-tests', '--dry-run'].includes(option) && !flags.has(option)) flags.add(option);
+    else throw new Error('release [--dry-run] [--skip-tests] [--version X.Y.Z] [--platforms mac,windows,linux] [--resume <artifact-dir>]');
   }
-  const requested = options.version === undefined ? undefined : stableVersion(options.version);
-  const platforms = options.platforms.split(',');
+  const resume = options.resume !== undefined;
+  const dryRun = flags.has('--dry-run');
+  if (resume && dryRun) throw new Error('--resume cannot be combined with --dry-run');
+  const saved = resume ? await json(path.join(options.resume, 'release-state.json')) : undefined;
+  const requested = options.version === undefined ? saved?.version : stableVersion(options.version);
+  const platforms = (options.platforms ?? saved?.platforms?.join(',') ?? 'mac,windows,linux').split(',');
   if (new Set(platforms).size !== platforms.length || platforms.some(value => !['mac', 'windows', 'linux'].includes(value))) throw new Error('--platforms accepts a nonempty comma-separated selection of mac,windows,linux');
   const mac = platforms.includes('mac');
   const ciPlatforms = platforms.filter(value => value !== 'mac');
-  const dryRun = flags.includes('--dry-run');
   if (dryRun && !mac) throw new Error('--dry-run requires mac; CI platforms are only built during release');
-  if (mac && (process.platform !== 'darwin' || process.arch !== 'arm64')) throw new Error('macOS releases require a local build and signing on an Apple Silicon Mac');
-  // Fail before compilation, and pass credentials only in the environment.
-  const env = mac ? releaseSigningEnv(true) : { ...process.env };
-  let sourceSha;
-  if (mac) macosSigningIdentity(env, { release: true });
-  const run = (script, ...options) => execFileSync(process.execPath, [script, ...options], { env, stdio: 'inherit' });
-  if (!dryRun) {
-    if (git('branch', '--show-current') !== 'main') throw new Error('Run release from main');
-    if (git('status', '--porcelain')) throw new Error('Commit or set aside existing changes before release');
-    execFileSync('gh', ['auth', 'status'], { stdio: 'ignore' });
-    git('fetch', 'origin', 'main', '--tags');
-    git('merge-base', '--is-ancestor', 'origin/main', 'HEAD');
-    const published = execFileSync('gh', ['api', `repos/${repo}/releases`, '--paginate', '--jq', '.[] | select(.draft == false and .prerelease == false) | .tag_name'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean).map(stableVersion).sort(compare);
-    const latest = published.at(-1);
-    version = requested ?? (latest ? [...parts(latest).slice(0, 2), parts(latest)[2] + 1n].join('.') : '0.1.0');
-    if (latest && compare(version, latest) <= 0) throw new Error('Version is already published or older than the latest release; use a new version');
-    const tag = `v${version}`;
-    if (git('tag', '--list', tag) && git('rev-parse', `${tag}^{commit}`) !== git('rev-parse', 'HEAD')) throw new Error(`${tag} belongs to another commit`);
-    sourceSha = git('rev-parse', 'HEAD');
-    console.log(`Release ${tag} from ${sourceSha}; no version commit`);
-    if (!args.includes('--skip-tests')) execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['test'], { env: { ...env, ARC_BUILD_VERSION: version }, stdio: 'inherit', shell: process.platform === 'win32' });
-  } else version = requested ?? version;
-  parts(version);
-  env.ARC_BUILD_VERSION = version;
-  process.env.ARC_BUILD_VERSION = version;
-  base = `https://github.com/${repo}/releases/download/v${version}`;
-  if (mac) run('tooling/desktop-build.mjs', '--release', '--target', 'aarch64-apple-darwin');
   await mkdir('release-artifacts', { recursive: true });
-  const output = await mkdtemp(path.join('release-artifacts', `v${version}-`));
-  if (mac) run('tooling/release.mjs', 'stage', 'darwin-aarch64', 'target/aarch64-apple-darwin/release/bundle', output);
-  if (mac) run('tooling/release.mjs', 'finalize', output);
-  console.log(`Release artifacts: ${path.resolve(output)}`);
-  if (!dryRun) {
+  const timingDir = await mkdtemp(path.join('release-artifacts', '.timings-'));
+  const timingFile = path.resolve(timingDir, 'stages.jsonl');
+  await writeFile(timingFile, '');
+  const timer = stageTimer(timingFile);
+  let output = resume ? path.resolve(options.resume) : undefined;
+  let state = saved;
+  let sourceSha;
+  let env;
+  const run = (script, ...args) => execFileSync(process.execPath, [script, ...args], { env, stdio: 'inherit' });
+  const assertSource = () => {
     if (git('status', '--porcelain') || git('rev-parse', 'HEAD') !== sourceSha) throw new Error('Source changed during release; refusing to tag or publish');
-    if (!git('tag', '--list', `v${version}`)) git('tag', `v${version}`);
-    git('push', '--atomic', 'origin', 'main', `refs/tags/v${version}`);
     const tag = `v${version}`;
-    // CI builds only selected platforms from the same immutable tag.
-    if (ciPlatforms.length) {
-      const listRuns = () => JSON.parse(execFileSync('gh', ['run', 'list', '--workflow', 'release.yml', '--branch', tag,
-        '--event', 'workflow_dispatch', '--json', 'databaseId,headSha', '--limit', '20'], { encoding: 'utf8' }));
-      const previousRuns = new Set(listRuns().map(item => item.databaseId));
-      execFileSync('gh', ['workflow', 'run', 'release.yml', '--ref', tag, '-f', `tag=${tag}`, '-f', `platforms=${ciPlatforms.join(',')}`], { stdio: 'inherit' });
-      let build;
-      for (let attempt = 0; attempt < 20; attempt++) {
-        build = listRuns().find(item => !previousRuns.has(item.databaseId) && item.headSha === sourceSha);
-        if (build) break;
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      }
-      if (!build) throw new Error('CI started but its run could not be found. Check the workflow. Do not start another release.');
-      const runId = String(build.databaseId);
-      console.log(`Waiting for ${ciPlatforms.join('/')} CI: ${runId}`);
-      execFileSync('gh', ['run', 'watch', runId, '--exit-status', '--interval', '15'], { stdio: 'inherit' });
-      const artifacts = [
-        ...(platforms.includes('windows') ? ['desktop-windows-x86_64'] : []),
-        ...(platforms.includes('linux') ? ['linux-x86_64', 'linux-aarch64'] : []),
-      ];
-      for (const name of artifacts) {
-        execFileSync('gh', ['run', 'download', runId, '--name', name, '--dir', output], { stdio: 'inherit' });
-      }
-      if (platforms.includes('windows')) await readFile(path.join(output, 'windows-x86_64.json'));
-      if (platforms.includes('linux')) {
-        for (const arch of ['x86_64', 'aarch64']) {
-          await readFile(path.join(output, `agent-remote-control-${tag}-linux-${arch}.tar.gz`));
+    if (git('tag', '--list', tag) && git('rev-parse', `${tag}^{commit}`) !== sourceSha) throw new Error(`${tag} belongs to another commit`);
+  };
+  const saveState = async () => {
+    const file = path.join(output, 'release-state.json');
+    await writeJson(file + '.tmp', state);
+    await rename(file + '.tmp', file);
+  };
+  const transferRetry = (name, operation) => retry(operation, {
+    onRetry: (error, attempt, delay) => console.error(`${name}: attempt ${attempt} failed (${error.message}); retrying in ${delay / 1000}s`),
+  });
+  try {
+    await timer.run('checks', async () => {
+      if (!resume && mac && (process.platform !== 'darwin' || process.arch !== 'arm64')) throw new Error('macOS releases require a local build and signing on an Apple Silicon Mac');
+      env = !resume && mac ? releaseSigningEnv(true) : { ...process.env };
+      env.ARC_RELEASE_TIMINGS_FILE = timingFile;
+      if (!resume && mac) macosSigningIdentity(env, { release: true });
+      sourceSha = git('rev-parse', 'HEAD');
+      if (!dryRun) {
+        if (git('branch', '--show-current') !== 'main') throw new Error('Run release from main');
+        if (git('status', '--porcelain')) throw new Error('Commit or set aside existing changes before release');
+        gh(['auth', 'status'], { stdio: 'ignore' });
+        git('fetch', 'origin', 'main', '--tags');
+        git('merge-base', '--is-ancestor', 'origin/main', 'HEAD');
+        if (resume) {
+          version = requested;
+          validateResume(state, { version, sourceSha, platforms });
+          if (!git('tag', '--list', `v${version}`)) throw new Error('Resume requires the original release tag');
+        } else {
+          const latest = publishedTags(repo).map(stableVersion).sort(compare).at(-1);
+          version = requested ?? (latest ? [...parts(latest).slice(0, 2), parts(latest)[2] + 1n].join('.') : '0.1.0');
+          if (latest && compare(version, latest) <= 0) throw new Error('Version is already published or older than the latest release; use a new version');
+          const existing = releaseByTag(repo, `v${version}`);
+          if (existing && !existing.draft) throw new Error('Public versions cannot be overwritten');
         }
-        await copyFile('tooling/install-agent-remote-control.sh', path.join(output, 'install-agent-remote-control.sh'));
+        assertSource();
+      } else version = requested ?? version;
+      parts(version);
+      env.ARC_BUILD_VERSION = version;
+      process.env.ARC_BUILD_VERSION = version;
+      base = `https://github.com/${repo}/releases/download/v${version}`;
+      console.log(`Release v${version} from ${sourceSha}; no version commit`);
+    });
+    if (resume || dryRun || flags.has('--skip-tests')) timer.skip('tests');
+    else await timer.run('tests', async () => {
+      execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['test'], { env, stdio: 'inherit', shell: process.platform === 'win32' });
+    });
+    if (resume) {
+      for (const name of ['frontend build', 'Rust Core build/sign', 'Rust Desktop build/sign', 'CI wait', 'CI artifact download']) timer.skip(name);
+    } else {
+      if (mac) run('tooling/desktop-build.mjs', '--release', '--target', 'aarch64-apple-darwin');
+      else for (const name of ['frontend build', 'Rust Core build/sign', 'Rust Desktop build/sign']) timer.skip(name);
+      output = await mkdtemp(path.join('release-artifacts', `v${version}-`));
+      if (mac) await timer.run('macOS staging verification', async () => {
+        run('tooling/release.mjs', 'stage', 'darwin-aarch64', 'target/aarch64-apple-darwin/release/bundle', output);
+      });
+      console.log(`Release artifacts: ${path.resolve(output)}`);
+      if (!dryRun) {
+        assertSource();
+        await timer.run('tag/source push', async () => {
+          if (!git('tag', '--list', `v${version}`)) git('tag', `v${version}`);
+          git('push', '--atomic', 'origin', 'main', `refs/tags/v${version}`);
+        });
       }
+      let runId;
+      if (!dryRun && ciPlatforms.length) {
+        await timer.run('CI wait', async () => {
+          const tag = `v${version}`;
+          const listRuns = () => JSON.parse(gh(['run', 'list', '--repo', repo, '--workflow', 'release.yml', '--branch', tag,
+            '--event', 'workflow_dispatch', '--json', 'databaseId,headSha', '--limit', '20']));
+          const previousRuns = new Set(listRuns().map(item => item.databaseId));
+          gh(['workflow', 'run', 'release.yml', '--repo', repo, '--ref', tag, '-f', `tag=${tag}`, '-f', `platforms=${ciPlatforms.join(',')}`], { stdio: 'inherit' });
+          let build;
+          for (let attempt = 0; attempt < 20; attempt++) {
+            build = listRuns().find(item => !previousRuns.has(item.databaseId) && item.headSha === sourceSha);
+            if (build) break;
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+          if (!build) throw new Error('CI started but its run could not be found. Check the workflow. Do not start another release.');
+          runId = String(build.databaseId);
+          console.log(`Waiting for ${ciPlatforms.join('/')} CI: ${runId}`);
+          gh(['run', 'watch', runId, '--repo', repo, '--exit-status', '--interval', '15'], { stdio: 'inherit', timeout: 0 });
+        });
+        await timer.run('CI artifact download', async () => {
+          const artifacts = [
+            ...(platforms.includes('windows') ? ['desktop-windows-x86_64'] : []),
+            ...(platforms.includes('linux') ? ['linux-x86_64', 'linux-aarch64'] : []),
+          ];
+          for (const name of artifacts) await transferRetry(name, () => ghTransfer(['run', 'download', runId, '--repo', repo, '--name', name, '--dir', output]));
+          if (platforms.includes('linux')) await copyFile('tooling/install-agent-remote-control.sh', path.join(output, 'install-agent-remote-control.sh'));
+        });
+      } else { timer.skip('CI wait'); timer.skip('CI artifact download'); }
     }
-    if (ciPlatforms.length) run('tooling/release.mjs', 'finalize', output);
-    if (git('status', '--porcelain') || git('rev-parse', 'HEAD') !== sourceSha) throw new Error('Source changed while waiting for CI; refusing to publish');
-    const assets = (await files(output)).filter(file => !['darwin-aarch64.json', 'windows-x86_64.json'].includes(path.basename(file)));
-    const existing = JSON.parse(execFileSync('gh', ['api', `repos/${repo}/releases`, '--paginate', '--slurp'], { encoding: 'utf8' })).flat().find(release => release.tag_name === tag);
-    if (existing && !existing.draft) throw new Error('Release already published');
-    if (!existing) execFileSync('gh', ['release', 'create', tag, '--draft', '--verify-tag', '--notes-file', path.join(output, 'release-notes.md')], { stdio: 'inherit' });
-    execFileSync('gh', ['release', 'upload', tag, ...assets, '--clobber'], { stdio: 'inherit' });
-    execFileSync('gh', ['release', 'edit', tag, '--draft=false', '--latest', '--notes-file', path.join(output, 'release-notes.md')], { stdio: 'inherit' });
+    await timer.run('verification', async () => {
+      // Dry runs deliberately contain only the locally built macOS platform.
+      const selected = dryRun ? ['mac'] : platforms;
+      if (!resume) run('tooling/release.mjs', 'finalize', output);
+      const manifest = await json(path.join(output, 'latest.json'));
+      await validateManifest(manifest, output);
+      const names = platformAssetNames(manifest, version, selected);
+      const assets = await Promise.all(names.map(async name => ({ name, size: (await stat(path.join(output, name))).size, digest: await fileDigest(path.join(output, name)) })));
+      // Checksums must describe exactly the payloads about to be uploaded.
+      validateArtifactInventory(assets, await readFile(path.join(output, 'SHA256SUMS.txt'), 'utf8'), resume ? state.assets : undefined);
+      if (!resume && !dryRun) {
+        state = { schema: 1, version, sourceSha, platforms, verified: true, assets };
+        await saveState();
+      }
+    });
+    if (!dryRun) {
+      assertSource();
+      const tag = `v${version}`;
+      let release = releaseByTag(repo, tag);
+      if (state.releaseId && release?.id !== state.releaseId) throw new Error('Original release was removed or replaced; refusing to resume');
+      const stages = publicationStages(state, release);
+      const requireDraft = () => {
+        const current = releaseByTag(repo, tag);
+        if (!current?.draft || current.id !== state.releaseId) throw new Error('Original draft changed; refusing to upload or publish');
+        return current;
+      };
+      if (stages.includes('upload')) await timer.run('upload', async () => {
+        if (!release) {
+          gh(['release', 'create', tag, '--repo', repo, '--draft', '--verify-tag', '--notes-file', path.join(output, 'release-notes.md')], { stdio: 'inherit' });
+          release = releaseByTag(repo, tag);
+        }
+        if (!release?.draft) throw new Error('Expected a draft release');
+        state.releaseId = release.id;
+        await saveState();
+        await boundedMap(state.assets, asset => transferRetry(asset.name, async () => {
+          const current = requireDraft();
+          if (assetMatches(asset, current.assets.find(remote => remote.name === asset.name))) {
+            console.log(`Already uploaded: ${asset.name}`);
+            return;
+          }
+          await ghTransfer(['release', 'upload', tag, path.join(output, asset.name), '--repo', repo, '--clobber']);
+          console.log(`Uploaded: ${asset.name}`);
+        }));
+      });
+      else {
+        timer.skip('upload');
+        state.releaseId = release.id;
+        await saveState();
+      }
+      await timer.run('remote verification', async () => {
+        release = releaseByTag(repo, tag);
+        if (!release || release.id !== state.releaseId) throw new Error('Original release changed');
+        validateRemoteAssets(state.assets, release.assets);
+        await boundedMap(state.assets, async asset => {
+          const remote = release.assets.find(item => item.name === asset.name);
+          if (!remote.digest) {
+            // Older GitHub assets have no digest: download and hash without buffering binaries in gh.
+            const temp = await mkdtemp(path.join(timingDir, 'verify-'));
+            try {
+              await transferRetry(asset.name, () => ghTransfer(['release', 'download', tag, '--repo', repo, '--pattern', asset.name, '--dir', temp, '--clobber']));
+              const file = path.join(temp, asset.name);
+              if ((await stat(file)).size !== asset.size || await fileDigest(file) !== asset.digest) throw new Error(`Remote checksum mismatch: ${asset.name}`);
+            } finally { await rm(temp, { recursive: true, force: true }); }
+          }
+        });
+      });
+      if (stages.includes('publish')) await timer.run('publish', async () => {
+        assertSource();
+        validateRemoteAssets(state.assets, requireDraft().assets);
+        // Persist before the request: a lost publish response must resume as read-only readback.
+        state.publishAttempted = true;
+        await saveState();
+        gh(['release', 'edit', tag, '--repo', repo, '--draft=false', '--latest', '--notes-file', path.join(output, 'release-notes.md')], { stdio: 'inherit' });
+      });
+      else timer.skip('publish');
+      await timer.run('readback', async () => {
+        await transferRetry('public latest.json', async () => {
+          const current = releaseByTag(repo, tag);
+          if (!current || current.draft || current.id !== state.releaseId) throw new Error('Release is not public');
+          const response = await fetch(`https://github.com/${repo}/releases/latest/download/latest.json`, { signal: AbortSignal.timeout(60_000), cache: 'no-store' });
+          if (!response.ok) throw new Error(`Public latest.json returned HTTP ${response.status}`);
+          const bytes = Buffer.from(await response.arrayBuffer());
+          const expected = state.assets.find(asset => asset.name === 'latest.json');
+          if (bytes.length !== expected.size || `sha256:${hash(bytes)}` !== expected.digest) throw new Error('Public latest.json does not match this release');
+        });
+        state.complete = true;
+        await saveState();
+      });
+    } else for (const name of ['upload', 'remote verification', 'publish', 'readback']) timer.skip(name);
+  } catch (error) {
+    if (state?.verified && output) console.error(`Resume after resolving the failure: npm run release -- --resume ${JSON.stringify(path.resolve(output))}`);
+    throw error;
+  } finally {
+    const rows = (await readFile(timingFile, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);
+    console.log(`Stage timings: ${timingFile}`);
+    console.table(rows);
   }
 } else if (mode === 'stage') {
   const [target, input, output] = args;
