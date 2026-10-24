@@ -9,14 +9,36 @@ const state = { schema: 1, verified: true, version: '1.2.3', sourceSha: 'source'
 
 test('exact release lookup treats only GitHub HTTP 404 as an absent tag', () => {
   // Regression: historical release listing exhausted the synchronous gh output buffer before upload.
-  assert.deepEqual(releaseByTag('owner/repo', 'v1.2.3', args => {
-    assert.deepEqual(args, ['api', 'repos/owner/repo/releases/tags/v1.2.3']);
-    return JSON.stringify({ id: 42, draft: true });
-  }), { id: 42, draft: true });
-  assert.equal(releaseByTag('owner/repo', 'v1.2.3', () => { throw Object.assign(new Error(), { status: 1, stderr: 'gh: Not Found (HTTP 404)' }); }), undefined);
+  assert.deepEqual(releaseByTag('owner/repo', 'v1.2.3', () => JSON.stringify({ id: 42, draft: false })), { id: 42, draft: false });
+  assert.equal(releaseByTag('owner/repo', 'v1.2.3', args => {
+    if (args[1].includes('/tags/')) throw Object.assign(new Error(), { status: 1, stderr: 'gh: Not Found (HTTP 404)' });
+    return JSON.stringify({ count: 0, matches: [] });
+  }), undefined);
   for (const error of [Object.assign(new Error(), { status: 1, stderr: 'gh: Forbidden (HTTP 403)' }), Object.assign(new Error(), { code: 'ENOBUFS' })]) {
     assert.throws(() => releaseByTag('owner/repo', 'v1.2.3', () => { throw error; }), error);
   }
+});
+
+test('release lookup recovers a draft omitted by the tag endpoint across bounded pages', () => {
+  // Regression: v0.9.29 created a draft, then stopped with Expected a draft release because its tag endpoint returned HTTP 404.
+  const draft = { id: 42, tag_name: 'v1.2.3', draft: true, assets: [remote] };
+  const result = releaseByTag('owner/repo', 'v1.2.3', args => {
+    if (args[1].includes('/tags/')) throw Object.assign(new Error(), { status: 1, stderr: 'gh: Not Found (HTTP 404)' });
+    if (args[1].endsWith('/42')) return JSON.stringify(draft);
+    return JSON.stringify(args[1].endsWith('page=1') ? { count: 100, matches: [] } : { count: 1, matches: [{ id: 42 }] });
+  });
+  assert.deepEqual(result, draft);
+});
+
+test('release lookup refuses ambiguous drafts and preserves fallback permission failures', () => {
+  // Regression: a missing tag response must not create another draft when authenticated draft lookup fails or is ambiguous.
+  const lookup = operation => () => releaseByTag('owner/repo', 'v1.2.3', args => {
+    if (args[1].includes('/tags/')) throw Object.assign(new Error(), { status: 1, stderr: 'gh: Not Found (HTTP 404)' });
+    return operation();
+  });
+  assert.throws(lookup(() => JSON.stringify({ count: 2, matches: [{ id: 42 }, { id: 43 }] })));
+  const forbidden = Object.assign(new Error('Forbidden'), { status: 1, stderr: 'gh: Forbidden (HTTP 403)' });
+  assert.throws(lookup(() => { throw forbidden; }), forbidden);
 });
 
 test('release history uses bounded pages and retains only public stable tags', () => {

@@ -15,8 +15,19 @@ export const ghTransfer = args => execute('gh', args, transferOptions);
 export function releaseByTag(repo, tag, query = gh) {
   try { return JSON.parse(query(['api', `repos/${repo}/releases/tags/${encodeURIComponent(tag)}`])); }
   catch (error) {
-    if (error.status === 1 && /\(HTTP 404\)/.test(String(error.stderr))) return undefined;
-    throw error;
+    if (error.status !== 1 || !/\(HTTP 404\)/.test(String(error.stderr))) throw error;
+  }
+  // GitHub's tag endpoint omits drafts. Filter pages before buffering,
+  // then fetch the matching release by ID with its full asset inventory.
+  let id;
+  for (let page = 1; ; page++) {
+    const result = JSON.parse(query(['api', `repos/${repo}/releases?per_page=100&page=${page}`, '--jq',
+      `{count: length, matches: [.[] | select(.tag_name == ${JSON.stringify(tag)}) | {id}]}`]));
+    for (const match of result.matches) {
+      if (id !== undefined) throw new Error(`Multiple releases match ${tag}; resolve duplicate drafts before resuming`);
+      id = match.id;
+    }
+    if (result.count < 100) return id === undefined ? undefined : JSON.parse(query(['api', `repos/${repo}/releases/${id}`]));
   }
 }
 
