@@ -63,6 +63,7 @@ mod sources;
 pub mod subscriptions;
 pub mod transport;
 pub mod waiter;
+pub mod writer;
 pub type Result<T> = std::result::Result<T, String>;
 pub fn now() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)

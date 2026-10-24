@@ -333,7 +333,7 @@ impl Ipc {
             self.alive.store(false, std::sync::atomic::Ordering::SeqCst);
             return Err(submitted_error(e));
         }
-        let out = tokio::time::timeout(Duration::from_secs(30), rx).await;
+        let out = tokio::time::timeout(Duration::from_secs(if method == "thread-owner-discovery" { 1 } else { 30 }), rx).await;
         self.pending.lock().await.remove(&request_id);
         out.map_err(|_| format!("DESKTOP_REQUEST_TIMEOUT: {method}"))
             .and_then(|v| v.map_err(|_| "DESKTOP_DISCONNECTED".to_string()))

@@ -88,6 +88,7 @@ pub fn failure(e: &str) -> Value {
                     | "DESKTOP_STEER_UNAVAILABLE"
                     | "ARCHIVE_ACTIVE_TURN"
                     | "ARCHIVE_WRITER_BUSY"
+                    | "THREAD_WRITER_BUSY"
             )
         ) {
             return value;

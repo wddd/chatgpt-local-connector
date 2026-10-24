@@ -494,3 +494,7 @@ Read `error.code`, `error.message`, and `next` from the public result (the CLI e
 ## First-use accessibility readiness
 
 `screen({action:"tree",bundleId,pid,readyTimeoutMs:2000})` automatically re-reads a chrome-only AX tree while the app activates its accessibility content. `ready:true` confirms content beyond window chrome; `ready:false` includes `incompleteReason` and a same-window retry. `truncated:false` alone does not prove readiness. A deliberately chrome-only window can remain incomplete. Use `readyTimeoutMs:0` for a single read.
+
+## Fast writer diagnosis
+
+`codex_owner({threadId})` probes the native thread writer lock without creating, deleting, or rewriting a lock file. A free lock is acquired nonblocking and immediately released. Held locks are classified as connector, Desktop follower owner, or external; Desktop discovery is bounded. Sends and loads reject confirmed external occupancy before navigation. `codex_read({threadId,statusOnly:true})` retains that diagnosis in `ownership` and `reason:"external-writer-held"`. An unheld probe is only a point-in-time observation; native submission still enforces ownership. Unknown probes never imply that a write is safe.

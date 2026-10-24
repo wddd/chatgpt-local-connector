@@ -341,6 +341,23 @@ impl Control {
         }
         result
     }
+    pub(crate) async fn writer_ownership(&self, thread: &str) -> Value {
+        let mut result = crate::writer::probe(thread);
+        result["threadId"] = json!(thread);
+        if result["state"] != "held" { return result; }
+        if self.background(thread).unwrap_or(false) {
+            let read = tokio::time::timeout(Duration::from_millis(1500), async { self.utility().await?.call("thread/read",json!({"threadId":thread,"includeTurns":false}),1000).await }).await;
+            if let Ok(Ok(metadata)) = read {
+                if matches!(metadata["thread"]["status"]["type"].as_str(),Some("active"|"idle")) { result["owner"] = json!("connector"); return result; }
+            }
+        }
+        let owner = tokio::time::timeout(Duration::from_millis(1800), async { self.ipc().await?.owner(thread).await }).await;
+        match owner {
+            Ok(Ok(client)) => {result["owner"] = json!("desktop");result["clientId"] = json!(client);}
+            _ => {result["owner"] = json!("external"); result["reason"] = json!("native-writer-held-without-desktop-follower-owner");}
+        }
+        result
+    }
     // Only an explicit write may load a persisted thread. Never retry a turn
     // submission on another owner: its acceptance may already be unknown.
     async fn prepare_thread(&self, thread: &str) -> Result<()> {
@@ -1088,6 +1105,13 @@ impl Control {
             None
         };
 
+        if operation == "send" || (operation == "native" && matches!(string(args,"method"),"thread/resume"|"turn/start"|"turn/steer")) {
+            let ownership = self.writer_ownership(thread_key).await;
+            if ownership["state"] == "held" && ownership["owner"] == "external" {
+                r["threadId"] = json!(thread_key);
+                return Err(crate::writer::busy(thread_key, ownership).to_string());
+            }
+        }
         if operation == "archive" {
             let thread = string(args,"threadId");
             r["threadId"] = json!(thread);
@@ -1618,6 +1642,7 @@ impl Control {
             "codex_send" => self.mutate("send", args).await,
             "codex_queue" => crate::dispatch_queue::query(&args).await,
             "codex_queue_control" => crate::dispatch_queue::control(self, &args).await,
+            "codex_owner" => Ok(self.writer_ownership(string(&args,"threadId")).await),
             "codex_archive" => self.mutate("archive", args).await,
             "codex_interrupt" => self.mutate("interrupt", args).await,
             "codex_call" => self.mutate("native", args).await,
@@ -1689,6 +1714,10 @@ impl Control {
             "codex_wait" => crate::waiter::codex_wait(self, &args).await,
             "codex_read" => {
                 let id = string(&args, "threadId");
+                let ownership = self.writer_ownership(id).await;
+                if args["statusOnly"] == true && ownership["state"] == "held" && ownership["owner"] == "external" {
+                    return Ok(json!({"threadId":id,"turns":null,"state":"unconfirmed","stateScope":"turn","runtimeStatus":"unknown","reason":"external-writer-held","ownership":ownership,"error":crate::writer::busy(id,ownership.clone())}));
+                }
                 let mut t = self
                     .request(
                         "thread/read",
