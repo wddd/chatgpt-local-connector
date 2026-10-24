@@ -53,7 +53,7 @@ const packageDesktop = async () => {
   const tauriOptions = { cwd: fileURLToPath(new URL('desktop/', root)), env, stdio: 'inherit' };
   const common = args.slice(2).filter(value => value !== '--no-bundle');
   await timed('Rust Desktop/Core build', async () => execFileSync(process.execPath,
-    [args[0], 'build', ...common, '--features', 'core-bin', '--no-bundle', '--', '--bins'], tauriOptions));
+    [args[0], 'build', ...common, '--features', 'core-bin', '--no-bundle'], tauriOptions));
   await timed('Core staging/sign', () => buildNative({ release: !debug, target, bundled: true, stageOnly: true }));
   if (!buildArgs.includes('--no-bundle')) await timed(process.platform === 'win32' ? 'NSIS bundle' : 'macOS app bundle/sign', async () => {
     // Core is already packaged as a resource; keep it out of the installer's root binary list.
