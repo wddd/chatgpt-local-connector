@@ -55,3 +55,14 @@ test('Held external writers are diagnosed before Desktop read discovery', {skip:
     }
   } finally {await fixture.close();writer.stdin.end();await new Promise(resolve=>writer.once('exit',resolve));await rm(directory,{recursive:true,force:true});}
 });
+
+
+test('Releasing an already unheld writer is a no-op before archive',async()=>{
+  // Regression: codex_archive release:true refused a confirmed unheld non-connector thread.
+  const fixture=await nativeControl(`import{createInterface}from'node:readline';for await(const line of createInterface({input:process.stdin})){const{id,method,params}=JSON.parse(line);if(id===undefined)continue;const result=method==='thread/read'?{thread:{id:params.threadId,status:{type:'idle'}}}:{};process.stdout.write(JSON.stringify({id,result})+'\\n');}`);
+  try {
+    const threadId='00000000-0000-4000-8000-000000000003';
+    const release=await fixture.completed('codex_release',{threadId});assert.equal(release.result.alreadyUnheld,true);assert.equal(release.result.released,true);
+    const archive=await fixture.completed('codex_archive',{threadId,release:true});assert.equal(archive.state,'completed',JSON.stringify(archive));assert.equal(archive.result.archived,true);
+  }finally{await fixture.close();}
+});

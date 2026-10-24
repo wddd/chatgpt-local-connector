@@ -360,6 +360,7 @@ impl Control {
     }
     async fn release_writer(&self, thread: &str) -> Result<Value> {
         let mut ownership = self.writer_ownership(thread).await;
+        if ownership["state"] == "unheld" {return Ok(json!({"threadId":thread,"released":true,"alreadyUnheld":true,"ownership":ownership,"state":"completed"}));}
         if ownership["state"] == "held" { ownership["processes"] = crate::writer::processes(thread).await; }
         if !self.background(thread)? || (ownership["state"] == "held" && ownership["owner"] != "connector") {
             return Err(json!({"code":"WRITER_RELEASE_REQUIRES_OWNER","message":"This writer is not owned by ARC's connector. The Desktop follower protocol exposes no safe per-thread release request. Use the exact owner step; ARC will not close another session.","ownership":ownership,"next":crate::writer::release_step(thread)}).to_string());
