@@ -56,6 +56,8 @@ Build recompiles the frontend and creates native packages without installing or 
 
 Packages contain Desktop, standalone Core, static frontend, icons, and licenses. Tunnel Client is prepared on demand from official sources. External Agents use native installations. The Claude ACP adapter is prepared separately after explicit enablement. Build scripts remap Rust source paths to avoid embedding maintainer paths.
 
+Packaged production-identity builds support automatic updates even when built with the debug profile. The separate development bundle identity does not install production updates.
+
 For a fast signed local macOS package, use `npm run desktop:build -- --debug`. This builds without installing. Check the bundle under `target/aarch64-apple-darwin/debug/bundle/macos/Agent Remote Control.app`.
 
 Install only when local replacement is authorized. From an ARC-dispatched task, use the candidate CLI so the first upgrade also works with an older installed Core:

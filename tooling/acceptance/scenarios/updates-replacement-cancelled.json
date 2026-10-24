@@ -1,0 +1,20 @@
+{
+  "theme": "light",
+  "language": "zh-CN",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "panel": {
+    "kind": "none"
+  },
+  "replacement": {
+    "id": "fixture-replacement",
+    "state": "cancelled",
+    "source": "/workspace/candidate.app",
+    "package": {
+      "version": "1.2.3"
+    },
+    "error": "REPLACE_TASKS_BUSY: no shutdown performed; inspect cli app replace --status for blocking work and retry when it is idle"
+  }
+}

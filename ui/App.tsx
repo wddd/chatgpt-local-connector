@@ -51,6 +51,7 @@ import RecordsPage from "./components/RecordsPage";
 import SettingsPage from "./components/SettingsPage";
 import RemoteLinkPage from "./components/RemoteLinkPage";
 import { AppUpdateDialogs } from "./components/AppUpdate";
+import { replacementActive } from "./state/updateModel";
 import { Button, Icon, IconButton, Notice, HoverScope } from "./components/ui";
 import { api } from "./api";
 import PermissionsPage from "./components/PermissionsPage";
@@ -61,7 +62,7 @@ export default function App() {
   const [oauthRequest, setOauthRequest] = useState<{ id: string }>();
   const { feedback, status } = connector.use(),
     taskState = tasks.use();
-  updates.use();
+  const updateState = updates.use();
   const permissionState = permissions.use();
   const ready = !!status && permissionsReady(status.ingresses);
   useEffect(() => {
@@ -360,6 +361,7 @@ export default function App() {
               className="update-shortcut"
               icon={Download}
               label={t("viewUpdate")}
+              disabled={updateState.requesting || updateState.checking || updateState.phase !== "idle" || replacementActive(updateState.replacement)}
               onClick={() => void installDirect()}
             />
           )}{" "}

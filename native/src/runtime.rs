@@ -362,10 +362,9 @@ impl Client {
         crate::transport::forward_request(route, method, body).await
     }
     pub async fn network_proxy(&self) -> Result<crate::proxy::NetworkProxy> {
-        crate::proxy::NetworkProxy::resolve(
-            &load(&root().join("app/preferences.json")).unwrap_or_else(|_| json!({})),
-        )
-        .await
+        // Core owns effective network settings, including first-launch defaults.
+        // Reading its backing file directly discarded those defaults in fresh state.
+        crate::proxy::NetworkProxy::resolve(&self.request("network", "GET", json!({})).await?).await
     }
     pub async fn subscriptions(&self) -> Result<Value> {
         self.request("subscriptions", "GET", json!({})).await

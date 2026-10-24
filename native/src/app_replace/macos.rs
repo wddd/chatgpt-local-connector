@@ -30,6 +30,9 @@ fn phase(path: &Path, receipt: &mut Value, state: &str, error: Option<&str>) -> 
     if let Some(error) = error {
         receipt["error"] = json!(error);
     }
+    if let Some(next) = terminal_next(state) {
+        receipt["next"] = json!(next);
+    }
     save(&path.join("status.json"), receipt)?;
     eprintln!("{} {state} {}", now(), error.unwrap_or(""));
     Ok(())
@@ -163,17 +166,76 @@ async fn wait_idle(path: &Path, receipt: &mut Value) -> Result<()> {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
     let mut quiet = 0;
     loop {
-        let health = request("health", "GET").await?;
-        let app = request("app", "GET").await?;
-        if health["instance"] != receipt["coreInstance"] || app["pid"] != receipt["desktopPid"] {
-            return Err("REPLACE_OWNER_CHANGED: retry against the current owner".into());
+        if tokio::time::Instant::now() >= deadline {
+            return Err("REPLACE_TASKS_BUSY: no shutdown performed; inspect cli app replace --status for blocking work and retry when it is idle".into());
         }
-        let activity = request("agents/activity", "GET").await?;
-        let status = request("status", "GET").await?;
-        let tasks = request("tasks", "GET")
-            .await
-            .unwrap_or_else(|error| json!({"error":error}));
+        let owner = async {
+            Ok::<_, String>((
+                request("health", "GET").await?,
+                request("app", "GET").await?,
+                request("agents/activity", "GET").await?,
+                request("status", "GET").await?,
+                request("tasks", "GET")
+                    .await
+                    .unwrap_or_else(|error| json!({"error":error})),
+                request("updates", "GET").await?,
+            ))
+        }
+        .await;
+        let (health, app, activity, status, tasks, update) = match owner {
+            Ok(owner) => owner,
+            Err(error) => {
+                quiet = 0;
+                receipt["waiting"] = json!({"idle":false,"reason":"owner-unavailable","error":error,"observedAt":now()});
+                receipt["updatedAt"] = json!(now());
+                save(&path.join("status.json"), receipt)?;
+                // Closing a debug Desktop window used to cancel the handoff.
+                // Restore only the validated original package; never adopt unknown code.
+                let target = PathBuf::from(string(receipt, "target"));
+                let desktop = target.join("Contents/MacOS/agent-remote-control-desktop");
+                let processes = output("/bin/ps", &["-axo", "comm="]).await?;
+                if !alive(pid(receipt, "desktopPid")?)
+                    && !processes
+                        .lines()
+                        .any(|command| command.trim() == desktop.to_string_lossy())
+                {
+                    if crate::runtime::build_id(&target.join("Contents/Resources/bin/arc"))?
+                        != receipt["oldPackage"]["coreBuild"]
+                        || crate::runtime::build_id(&desktop)?
+                            != receipt["oldPackage"]["desktopBuild"]
+                    {
+                        return Err(
+                            "REPLACE_OWNER_CHANGED: installed bytes changed during handoff".into(),
+                        );
+                    }
+                    crate::package::signature(
+                        &target,
+                        string(&receipt["oldPackage"], "identifier"),
+                    )
+                    .await?;
+                    launch(&target, &receipt["oldPackage"]).await?;
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                continue;
+            }
+        };
+        if health["instance"] != receipt["coreInstance"] || app["pid"] != receipt["desktopPid"] {
+            if !same_package_owner(receipt, &health, &app)
+                || bundle(string(&app, "executable"))? != PathBuf::from(string(receipt, "target"))
+            {
+                return Err("REPLACE_OWNER_CHANGED: the running package changed; retry against the current owner".into());
+            }
+            receipt["coreInstance"] = health["instance"].clone();
+            receipt["corePid"] = health["pid"].clone();
+            receipt["desktopPid"] = app["pid"].clone();
+            receipt["ownerReconnectedAt"] = json!(now());
+            quiet = 0;
+        }
         receipt["waiting"] = waiting(&activity, &status, &tasks);
+        receipt["waiting"]["updatePhase"] = update["phase"].clone();
+        if update["phase"] != "idle" {
+            receipt["waiting"]["idle"] = json!(false);
+        }
         receipt["waiting"]["observedAt"] = json!(now());
         receipt["updatedAt"] = json!(now());
         save(&path.join("status.json"), receipt)?;
@@ -397,6 +459,7 @@ pub async fn run_worker(id: &str) -> Result<()> {
         // Give the command executor time to deliver its own receipt to the calling turn.
         tokio::time::sleep(Duration::from_secs(10)).await;
         wait_idle(&path, &mut receipt).await?;
+        phase(&path, &mut receipt, "verifying", None)?;
         crate::package::check(&staged).await?;
         if crate::runtime::build_id(&target.join("Contents/Resources/bin/arc"))?
             != receipt["oldPackage"]["coreBuild"]

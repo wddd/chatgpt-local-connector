@@ -18,8 +18,7 @@ impl Default for UpdateState {
         Self {
             install: Mutex::new(()),
             status: std::sync::Mutex::new(
-                arc_core::load(&arc_core::root().join("update-status.json"))
-                    .unwrap_or(json!({"phase":"idle"})),
+                json!({"phase":"idle","revision":0,"update":null,"error":null,"errorStage":null,"downloaded":0,"total":null,"checkedAt":null}),
             ),
             downloaded: Mutex::new(None),
             cancel: watch::channel(false).0,
@@ -53,7 +52,7 @@ pub fn take_resume() -> Option<Vec<String>> {
     resume
 }
 async fn updater(app: &tauri::AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
-    if cfg!(debug_assertions) {
+    if app.config().identifier != "com.whzxc.agent-remote-control" {
         return Err("This app does not support automatic updates. Get the installer from the download page.".into());
     }
     let service = app
@@ -76,13 +75,52 @@ async fn check(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_updater::Up
         Err(error) => Err(error.to_string()),
     }
 }
+fn update_result(update: &tauri_plugin_updater::Update, ready: bool) -> Value {
+    json!({"available":true,"version":update.version,"notes":update.body,"date":update.date.map(|d|d.to_string()),"ready":ready})
+}
+fn current_result(app: &tauri::AppHandle) -> Result<Value, String> {
+    let status = snapshot(app);
+    if let Some(error) = status["error"].as_str() {
+        return Err(error.into());
+    }
+    Ok(status
+        .get("update")
+        .filter(|v| v.is_object())
+        .cloned()
+        .unwrap_or(json!({"available":false})))
+}
+fn failed(app: &tauri::AppHandle, stage: &str, error: String) -> String {
+    let mut status = json!({"phase":"idle","error":error,"errorStage":stage});
+    if stage == "check" {
+        status["checkedAt"] = json!(arc_core::now());
+    }
+    progress(app, status);
+    error
+}
+fn allow_update() -> Result<(), String> {
+    if arc_core::app_replace::active(&arc_core::app_replace::status()?) {
+        return Err(
+            "An app replacement is in progress. Wait for its outcome before updating.".into(),
+        );
+    }
+    Ok(())
+}
+
 pub async fn check_update(app: tauri::AppHandle) -> Result<Value, String> {
+    allow_update()?;
     let state = app.state::<UpdateState>();
-    let _guard = state
-        .install
-        .try_lock()
-        .map_err(|_| "An update is already in progress")?;
-    progress(&app, json!({"phase":"checking","error":null}));
+    let observed = snapshot(&app)["revision"].clone();
+    let _guard = state.install.lock().await;
+    allow_update()?;
+    // Join the operation that owned the lock instead of reporting a busy error
+    // or checking again between an automatic check and its download.
+    if snapshot(&app)["revision"] != observed {
+        return current_result(&app);
+    }
+    progress(
+        &app,
+        json!({"phase":"checking","update":null,"error":null,"errorStage":null,"downloaded":0,"total":null}),
+    );
     if let Some(service) = app.try_state::<std::sync::Arc<arc_core::runtime::Client>>() {
         let _ = service
             .request(
@@ -92,28 +130,30 @@ pub async fn check_update(app: tauri::AppHandle) -> Result<Value, String> {
             )
             .await;
     }
-    let update = match check(&app).await {
-        Ok(value) => value,
-        Err(error) => {
-            progress(&app, json!({"phase":"idle","error":error}));
-            return Err(error);
-        }
-    };
+    let update = check(&app)
+        .await
+        .map_err(|error| failed(&app, "check", error))?;
+    progress(&app, json!({"checkedAt":arc_core::now()}));
     let mut cached = state.downloaded.lock().await;
     if cached.as_ref().map(|(u, _)| &u.version) != update.as_ref().map(|u| &u.version) {
         *cached = None;
     }
-    let result = match update {
-        Some(u) => {
-            json!({"available":true,"version":u.version,"notes":u.body,"date":u.date.map(|d|d.to_string()),"ready":cached.is_some()})
-        }
-        None => json!({"available":false}),
+    if let Some((update, _)) = cached.as_ref() {
+        let result = update_result(update, true);
+        progress(&app, json!({"phase":"idle","update":result}));
+        return Ok(result);
+    }
+    drop(cached);
+    let Some(update) = update else {
+        let result = json!({"available":false});
+        progress(&app, json!({"phase":"idle","update":result}));
+        return Ok(result);
     };
-    progress(
-        &app,
-        json!({"phase":"idle","update":result,"checkedAt":arc_core::now()}),
-    );
-    Ok(result)
+    let version = update.version.clone();
+    let downloaded = download(&app, &version, Some(update))
+        .await
+        .map_err(|error| failed(&app, "download", error))?;
+    complete_download(&app, downloaded).await
 }
 pub fn cancel_update(app: tauri::AppHandle) {
     let state = app.state::<UpdateState>();
@@ -124,6 +164,7 @@ pub fn cancel_update(app: tauri::AppHandle) {
 async fn download(
     app: &tauri::AppHandle,
     version: &str,
+    known: Option<tauri_plugin_updater::Update>,
 ) -> Result<Option<(tauri_plugin_updater::Update, Vec<u8>)>, String> {
     let state = app.state::<UpdateState>();
     if let Some(cached) = state.downloaded.lock().await.take() {
@@ -131,17 +172,25 @@ async fn download(
             return Ok(Some(cached));
         }
     }
-    let state = app.state::<UpdateState>();
     let mut cancel = state.cancel.subscribe();
     state.cancel.send_replace(false);
     cancel.borrow_and_update();
     state.downloading.store(true, Ordering::SeqCst);
+    let offer = known
+        .as_ref()
+        .map(|update| update_result(update, false))
+        .unwrap_or_else(|| snapshot(app)["update"].clone());
+    progress(
+        app,
+        json!({"phase":"downloading","update":offer,"error":null,"errorStage":null,"downloaded":0,"total":null}),
+    );
     let result = tokio::select! {
         result = async {
-            let Some(update) = check(app).await? else {
+            let Some(update) = (match known { Some(update) => Some(update), None => check(app).await? }) else {
                 return Ok(None);
             };
             if update.version != version {
+                progress(app, json!({"update":null}));
                 return Err("The available version changed. Check for updates again.".to_owned());
             }
             let mut downloaded = 0usize;
@@ -154,32 +203,49 @@ async fn download(
         _ = cancel.changed() => Err("UPDATE_CANCELLED".into()),
     };
     state.downloading.store(false, Ordering::SeqCst);
-    progress(app, json!({"phase":"idle","error":result.as_ref().err()}));
     result
 }
-pub async fn download_update(app: tauri::AppHandle, version: String) -> Result<Value, String> {
-    let state = app.state::<UpdateState>();
-    let _guard = state
-        .install
-        .try_lock()
-        .map_err(|_| "An update is already in progress")?;
-    let result = download(&app, &version).await?;
-    let response = match &result {
-        Some((u, _)) => json!({"available":true,"version":u.version,"notes":u.body,"ready":true}),
-        None => json!({"available":false}),
-    };
-    *state.downloaded.lock().await = result;
-    progress(&app, json!({"phase":"idle","update":response}));
+async fn complete_download(
+    app: &tauri::AppHandle,
+    downloaded: Option<(tauri_plugin_updater::Update, Vec<u8>)>,
+) -> Result<Value, String> {
+    let response = downloaded
+        .as_ref()
+        .map(|(u, _)| update_result(u, true))
+        .unwrap_or(json!({"available":false}));
+    *app.state::<UpdateState>().downloaded.lock().await = downloaded;
+    progress(
+        app,
+        json!({"phase":"idle","update":response,"error":null,"errorStage":null}),
+    );
     Ok(response)
 }
-pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Value, String> {
+pub async fn download_update(app: tauri::AppHandle, version: String) -> Result<Value, String> {
+    allow_update()?;
     let state = app.state::<UpdateState>();
-    let _guard = state
-        .install
-        .try_lock()
-        .map_err(|_| "An update is already in progress")?;
-    let Some((update, bytes)) = download(&app, &version).await? else {
-        return Ok(json!({"available":false}));
+    let _guard = state.install.lock().await;
+    allow_update()?;
+    if state.installing.load(Ordering::SeqCst) {
+        return Ok(json!({"available":true,"version":version,"restarting":true}));
+    }
+    let downloaded = download(&app, &version, None)
+        .await
+        .map_err(|error| failed(&app, "download", error))?;
+    complete_download(&app, downloaded).await
+}
+pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Value, String> {
+    allow_update()?;
+    let state = app.state::<UpdateState>();
+    let _guard = state.install.lock().await;
+    allow_update()?;
+    if state.installing.load(Ordering::SeqCst) {
+        return Ok(json!({"available":true,"version":version,"restarting":true}));
+    }
+    let Some((update, bytes)) = download(&app, &version, None)
+        .await
+        .map_err(|error| failed(&app, "download", error))?
+    else {
+        return complete_download(&app, None).await;
     };
     state.installing.store(true, Ordering::SeqCst);
     struct Reset<'a>(&'a UpdateState);
@@ -191,55 +257,67 @@ pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Va
         }
     }
     let _reset = Reset(&state);
-    progress(&app, json!({"phase":"installing"}));
-    let service = app
-        .state::<std::sync::Arc<arc_core::runtime::Client>>()
-        .inner()
-        .clone();
-    // Download and signature verification finish before any connection is stopped.
-    let current = service.request("status", "GET", json!({})).await?;
-    let running: Vec<String> = current["ingresses"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|i| i["running"] == true)
-        .filter_map(|i| i["id"].as_str().map(str::to_owned))
-        .collect();
-    let connections = crate::session::restore().unwrap_or(running);
-    arc_core::save(
-        &resume_path(),
-        &json!({"version":version,"ingresses":connections}),
-    )?;
-    // Drain auxiliary work even when the tunnel is already disconnected.
-    let installed = async {
-        service.shutdown().await?;
-        update.install(bytes).map_err(|error| error.to_string())
-    }
-    .await;
-    if let Err(error) = installed {
-        let _ = std::fs::remove_file(resume_path());
-        service.resume().await;
-        let restored = async {
-            for id in &connections {
-                service
-                    .request(&format!("ingress/{id}/start"), "POST", json!({}))
-                    .await?;
-            }
-            Ok::<_, String>(json!({}))
+    progress(
+        &app,
+        json!({"phase":"installing","update":update_result(&update, true),"error":null,"errorStage":null}),
+    );
+    let retry_update = update_result(&update, false);
+    let installation = async {
+        let service = app
+            .state::<std::sync::Arc<arc_core::runtime::Client>>()
+            .inner()
+            .clone();
+        // Download and signature verification finish before any connection is stopped.
+        let current = service.request("status", "GET", json!({})).await?;
+        let running: Vec<String> = current["ingresses"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|i| i["running"] == true)
+            .filter_map(|i| i["id"].as_str().map(str::to_owned))
+            .collect();
+        let connections = crate::session::restore().unwrap_or(running);
+        arc_core::save(
+            &resume_path(),
+            &json!({"version":version,"ingresses":connections}),
+        )?;
+        // Drain auxiliary work even when the tunnel is already disconnected.
+        let installed = async {
+            service.shutdown().await?;
+            update.install(bytes).map_err(|error| error.to_string())
         }
         .await;
-        return Err(match restored {
-            Ok(_) => format!("Update failed: {error}. Retry or download manually."),
-            Err(restore) => {
-                format!("Update failed: {error}. Connection recovery failed: {restore}")
+        if let Err(error) = installed {
+            let _ = std::fs::remove_file(resume_path());
+            service.resume().await;
+            let restored = async {
+                for id in &connections {
+                    service
+                        .request(&format!("ingress/{id}/start"), "POST", json!({}))
+                        .await?;
+                }
+                Ok::<_, String>(json!({}))
             }
-        });
+            .await;
+            return Err(match restored {
+                Ok(_) => format!("Update failed: {error}. Retry or download manually."),
+                Err(restore) => {
+                    format!("Update failed: {error}. Connection recovery failed: {restore}")
+                }
+            });
+        }
+        // restart() never returns on a runtime worker. Let this command finish and
+        // release its guards before the event loop completes the restart instead.
+        state.restarting.store(true, Ordering::SeqCst);
+        app.request_restart();
+        Ok(json!({"available":true,"version":version,"restarting":true}))
     }
-    // restart() never returns on a runtime worker. Let this command finish and
-    // release its guards before the event loop completes the restart instead.
-    state.restarting.store(true, Ordering::SeqCst);
-    app.request_restart();
-    Ok(json!({"available":true,"version":version,"restarting":true}))
+    .await;
+    if let Err(error) = installation {
+        progress(&app, json!({"update":retry_update}));
+        return Err(failed(&app, "install", error));
+    }
+    installation
 }
 
 pub fn snapshot(app: &tauri::AppHandle) -> Value {
@@ -251,9 +329,9 @@ fn progress(app: &tauri::AppHandle, patch: Value) {
     for (k, v) in patch.as_object().unwrap() {
         status[k] = v.clone();
     }
+    status["revision"] = json!(status["revision"].as_u64().unwrap_or(0) + 1);
     status["observedAt"] = json!(arc_core::now());
-    let _ = arc_core::save(&arc_core::root().join("update-status.json"), &status);
-    let _ = app.emit("update-progress", patch);
+    let _ = app.emit("update-progress", status.clone());
 }
 
 fn chrono_now_millis() -> String {
@@ -264,18 +342,9 @@ fn chrono_now_millis() -> String {
         .to_string()
 }
 pub fn start(app: tauri::AppHandle) {
-    // Persisted progress is historical; downloads and installation cannot survive this process.
-    {
-        let state = app.state::<UpdateState>();
-        let mut status = state.status.lock().unwrap();
-        if status["phase"] != "idle" {
-            status["interrupted"] = json!(true);
-        }
-        status["phase"] = json!("idle");
-        if status["update"].is_object() {
-            status["update"]["ready"] = json!(false);
-        }
-    }
+    // Old progress files cannot represent this process's update or byte cache.
+    let _ = std::fs::remove_file(arc_core::root().join("update-status.json"));
+    progress(&app, json!({"phase":"idle"}));
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         loop {
@@ -286,14 +355,8 @@ pub fn start(app: tauri::AppHandle) {
                 .parse::<u128>()
                 .unwrap_or(0);
             let current = chrono_now_millis().parse::<u128>().unwrap_or(0);
-            if current.saturating_sub(previous) >= 3600000 {
-                if let Ok(update) = check_update(app.clone()).await {
-                    if update["available"] == true && update["ready"] != true {
-                        if let Some(version) = update["version"].as_str() {
-                            let _ = download_update(app.clone(), version.into()).await;
-                        }
-                    }
-                }
+            if current.saturating_sub(previous) >= 3600000 && allow_update().is_ok() {
+                let _ = check_update(app.clone()).await;
             }
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
         }

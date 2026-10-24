@@ -1,0 +1,22 @@
+{
+  "theme": "light",
+  "language": "zh-CN",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "panel": {
+    "kind": "none"
+  },
+  "replacement": {
+    "id": "fixture-replacement",
+    "state": "failed",
+    "source": "/workspace/candidate.app",
+    "package": {
+      "version": "1.2.3"
+    },
+    "error": "Automatic rollback could not start the previous app.",
+    "backupMoved": true,
+    "backup": "/workspace/Agent Remote Control.app.backup-example"
+  }
+}

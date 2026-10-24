@@ -19,7 +19,20 @@ pub fn status() -> Result<Value> {
         return Ok(json!({"state":"none"}));
     }
     let latest = load(&latest)?;
-    load(&job(string(&latest, "id"))?.join("status.json"))
+    let mut receipt = load(&job(string(&latest, "id"))?.join("status.json"))?;
+    if let Some(next) = terminal_next(string(&receipt, "state")) {
+        receipt["next"] = json!(next);
+    }
+    Ok(receipt)
+}
+pub fn terminal_next(state: &str) -> Option<&'static str> {
+    match state {
+        "succeeded" => Some("Replacement succeeded. Read cli app status to confirm the running version and build."),
+        "cancelled" => Some("Replacement cancelled before installation. The previous app is unchanged. Read error and waiting, resolve the blocker, then retry cli app replace with the original candidate."),
+        "rolled-back" => Some("Installation failed and the previous app was restored. Read error and logPath before retrying cli app replace."),
+        "failed" => Some("Replacement failed. Read error, backupMoved and logPath. Preserve the recorded backup; do not start another replacement while recovery is required."),
+        _ => None,
+    }
 }
 pub fn acknowledge(id: &str) -> Result<Value> {
     let path = job(id)?;
@@ -36,21 +49,37 @@ pub fn acknowledgment_id<'a>(operation: &str, value: &'a Value) -> Option<&'a st
         .flatten()
 }
 
+pub fn same_package_owner(receipt: &Value, health: &Value, app: &Value) -> bool {
+    receipt["oldPackage"]["coreBuild"]
+        .as_str()
+        .is_some_and(|build| health["build"] == build)
+        && receipt["oldPackage"]["desktopBuild"]
+            .as_str()
+            .is_some_and(|build| app["build"] == build)
+        && health["instance"].is_string()
+        && health["pid"].as_u64().is_some_and(|pid| pid > 1)
+        && app["pid"].as_u64().is_some_and(|pid| pid > 1)
+}
+
 /// Fail closed for new dispatch while a helper waits for existing turns to finish.
 pub(crate) fn check_dispatch() -> Result<()> {
     let value = status()?;
-    if matches!(
-        string(&value, "state"),
+    if active(&value) {
+        return Err("REPLACE_PENDING: finish the current turn; resume dispatch after app.replace.status is terminal".into());
+    }
+    Ok(())
+}
+pub fn active(value: &Value) -> bool {
+    matches!(
+        string(value, "state"),
         "awaiting-receipt"
             | "waiting-for-turns"
+            | "verifying"
             | "stopping"
             | "installing"
             | "starting"
             | "rolling-back"
-    ) {
-        return Err("REPLACE_PENDING: finish the current turn; resume dispatch after app.replace.status is terminal".into());
-    }
-    Ok(())
+    )
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -140,6 +169,41 @@ pub fn waiting(activity: &Value, status: &Value, tasks: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn replacement_reconnects_only_to_the_same_original_package() {
+        // Regression: a Desktop restart cancelled replacement even when the original signed package was unchanged.
+        let receipt =
+            json!({"oldPackage":{"coreBuild":"core-build","desktopBuild":"desktop-build"}});
+        let health = json!({"build":"core-build","pid":42,"instance":"new-instance"});
+        let app = json!({"build":"desktop-build","pid":43});
+        assert!(same_package_owner(&receipt, &health, &app));
+        assert!(!same_package_owner(
+            &receipt,
+            &json!({"build":"other","pid":42,"instance":"new-instance"}),
+            &app
+        ));
+        assert!(!same_package_owner(
+            &receipt,
+            &health,
+            &json!({"build":"other","pid":43})
+        ));
+        assert!(!same_package_owner(&receipt, &Value::Null, &app));
+    }
+    #[test]
+    fn terminal_replacement_outcomes_explain_recovery_instead_of_waiting_for_a_receipt() {
+        // Regression: cancelled replacements kept telling clients to end their turn instead of reporting the failed installation.
+        for state in ["cancelled", "rolled-back", "failed", "succeeded"] {
+            assert!(terminal_next(state).is_some());
+        }
+        for state in [
+            "none",
+            "awaiting-receipt",
+            "waiting-for-turns",
+            "installing",
+        ] {
+            assert!(terminal_next(state).is_none());
+        }
+    }
     #[test]
     fn reading_replacement_status_does_not_acknowledge_delivery() {
         // Regression: status polling acknowledged an unread replacement receipt and armed shutdown.

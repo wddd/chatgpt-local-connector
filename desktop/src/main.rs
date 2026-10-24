@@ -150,7 +150,6 @@ fn main() {
             windows_frame::set_windows_appearance
         ])
         .setup(|app| {
-            updates::start(app.handle().clone());
             #[cfg(debug_assertions)]
             if std::env::var_os("ARC_DEV_SUPERVISED").is_some() {
                 let handle = app.handle().clone();
@@ -205,6 +204,7 @@ fn main() {
                 }
             };
             app.manage(service.clone());
+            updates::start(app.handle().clone());
             let handle = app.handle().clone();
             let subscription_client = service.clone();
             tauri::async_runtime::spawn(async move {

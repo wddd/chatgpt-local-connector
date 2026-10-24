@@ -1,0 +1,23 @@
+{
+  "theme": "light",
+  "language": "zh-CN",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "panel": {
+    "kind": "none"
+  },
+  "update": {
+    "revision": 3,
+    "phase": "idle",
+    "update": {
+      "available": true,
+      "version": "1.2.3",
+      "notes": "- Improve connection recovery\n- Fix update coordination",
+      "ready": false
+    },
+    "error": "Service unavailable",
+    "errorStage": "check"
+  }
+}

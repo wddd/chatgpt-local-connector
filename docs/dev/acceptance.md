@@ -92,3 +92,9 @@ arc cli wait --op status --until '/core/desktop/state=="ready"' --timeout 20
 ```
 
 Multiple --until conditions are ANDed. JSON Pointer supports ==, !=, and exists. String comparison values need JSON double quotes. On timeout, read error.lastResult. Waiting never cancels or redispatches tasks. Read full parameters through cli schema and cli control guide <op>.
+
+## Native update and replacement regression acceptance
+
+Run `npm run accept:updates -- /path/to/verified-release-artifacts` on an Apple Silicon Mac with the normal package-signing prerequisites. The directory must contain a published `latest.json` and its signed macOS updater archive. The runner builds a debug package with a loopback-only updater fixture, verifies real signed download bytes, exercises concurrent checks/downloads and failure recovery, and replaces a disposable app with different Desktop/Core build fingerprints after interrupting its Desktop. It uses a private state directory and never installs the published payload or replaces the user's installed app.
+
+The fixture build enables the upstream single-instance plugin's semver namespace at versions `0.0.0` and `0.0.1` so it can run alongside the installed app. This feature is limited to the acceptance build; product build configuration is unchanged. Successful runs remove the disposable app and state. Failed runs retain their temporary directory for diagnosis. Reports and build logs live under `output/acceptance/updates-*`.
