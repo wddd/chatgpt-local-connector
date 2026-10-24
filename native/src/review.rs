@@ -167,3 +167,87 @@ pub(crate) async fn turn(c: &control::Control, thread: &str, turn: &Value) -> Va
         .collect();
     json!({"turnId":turn["id"],"recordedStatus":turn["status"],"finalResponse":message,"files":files,"checks":checks})
 }
+
+/// Compact native evidence for revisits; command exit codes retain their batch semantics.
+pub fn progress_from_turn(turn: &Value, pending_count: Option<usize>) -> Value {
+    let items = turn["items"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let message = items
+        .iter()
+        .rev()
+        .find(|i| i["type"] == "agentMessage")
+        .and_then(|i| i["text"].as_str());
+    let mut checks: Vec<_> = items.iter().rev()
+        .filter(|i| i["type"] == "commandExecution")
+        .filter_map(|i| Some(json!({"command":check_command(i)?.chars().take(240).collect::<String>(),"exitCode":i["exitCode"],"status":i["status"],"summary":check_summary(i)})))
+        .take(3).collect();
+    checks.reverse();
+    json!({"turnId":turn["id"],"latestAgentMessage":message.map(|s|s.chars().take(480).collect::<String>()),
+        "messageTruncated":message.is_some_and(|s|s.chars().count()>480),"latestChecks":checks,
+        "pendingInteractionCount":pending_count,"commits":null,"elapsedMs":null,"observedAt":now()})
+}
+
+pub(crate) async fn progress(c: &control::Control, thread: &str) -> Value {
+    // Cache only compact projections, never another copy of multi-hour native histories.
+    type Cache = std::collections::HashMap<String, (std::time::Instant, Value)>;
+    static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
+    let key = format!("{}:{thread}", c.session);
+    {
+        let cache = CACHE.get_or_init(Default::default).lock().await;
+        if let Some((at, value)) = cache.get(&key).filter(|(at, _)| at.elapsed().as_secs() < 5) {
+            let mut value = value.clone();
+            value["cacheAgeMs"] = json!(at.elapsed().as_millis() as u64);
+            return value;
+        }
+    }
+    let read = c.request(
+        "thread/turns/list",
+        json!({"threadId":thread,"limit":1,"sortDirection":"desc","itemsView":"full"}),
+        2000,
+    );
+    let mut result = match tokio::time::timeout(std::time::Duration::from_secs(2), read).await {
+        Ok(Ok(page)) => {
+            let events = c.events.lock().await;
+            let turn = &page["data"][0];
+            let count = events
+                .pending
+                .values()
+                .filter(|r| {
+                    r["params"]["threadId"] == thread
+                        && (r["params"]["turnId"].is_null() || r["params"]["turnId"] == turn["id"])
+                })
+                .count();
+            progress_from_turn(turn, Some(count))
+        }
+        _ => {
+            json!({"turnId":null,"latestAgentMessage":null,"latestChecks":[],"pendingInteractionCount":null,"commits":null,"elapsedMs":null,"observedAt":now(),"unavailable":"native-progress-read-timeout-or-unavailable"})
+        }
+    };
+    enrich_progress(thread, &mut result).await;
+    let mut cache = CACHE.get_or_init(Default::default).lock().await;
+    cache.retain(|_, (at, _)| at.elapsed().as_secs() < 5);
+    if cache.len() >= 128 {
+        cache.clear();
+    }
+    cache.insert(key, (std::time::Instant::now(), result.clone()));
+    result
+}
+
+pub(crate) async fn enrich_progress(thread: &str, progress: &mut Value) {
+    let turn = string(progress, "turnId").to_owned();
+    let evidence = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        crate::changes::progress(thread, &turn),
+    )
+    .await;
+    match evidence {
+        Ok(evidence) => {
+            progress["commits"] = evidence["commits"].clone();
+            progress["elapsedMs"] = evidence["elapsedMs"].clone();
+            progress["baseline"] = evidence["baseline"].clone();
+            if let Some(reason) = evidence.get("unavailable") {
+                progress["gitUnavailable"] = reason.clone();
+            }
+        }
+        Err(_) => progress["gitUnavailable"] = json!("git-progress-timeout"),
+    }
+}

@@ -248,3 +248,36 @@ pub(crate) async fn notification(c: &control::Control, thread: &str, turn: &str)
         }
     }
 }
+
+/// Read bounded commit evidence without diffs, status scans, or a second native task read.
+pub(crate) async fn progress(thread: &str, turn: &str) -> Value {
+    let baseline = match load(&path(thread, turn)) {
+        Ok(baseline) => baseline,
+        Err(_) => {
+            return json!({"commits":null,"elapsedMs":null,"baseline":null,"unavailable":"turn-baseline-unavailable"})
+        }
+    };
+    let elapsed = baseline["capturedAt"]
+        .as_str()
+        .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+        .map(|at| (chrono::Utc::now().timestamp_millis() - at.timestamp_millis()).max(0));
+    let mut out = json!({"commits":null,"elapsedMs":elapsed,"baseline":baseline["capturedAt"]});
+    let Some(head) = baseline["head"].as_str() else {
+        out["unavailable"] = json!("turn-baseline-has-no-commit");
+        return out;
+    };
+    let cwd = string(&baseline, "root");
+    let range = format!("{head}..HEAD");
+    let read = async {
+        let count = git(cwd, &["rev-list", "--count", &range]).await?.trim().parse::<u64>().map_err(|e|e.to_string())?;
+        let log = git(cwd, &["log", "-5", "--format=%H%x00%s", &range]).await?;
+        let recent: Vec<_> = log.lines().filter_map(|line| line.split_once('\0'))
+            .map(|(sha, title)|json!({"sha":sha,"title":title.chars().take(160).collect::<String>()})).collect();
+        Ok::<_,String>(json!({"count":count,"recent":recent,"scope":"workspace-since-turn-baseline"}))
+    }.await;
+    match read {
+        Ok(commits) => out["commits"] = commits,
+        Err(error) => out["unavailable"] = json!(error),
+    }
+    out
+}

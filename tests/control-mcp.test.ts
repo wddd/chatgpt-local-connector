@@ -1806,3 +1806,33 @@ test('AX omitted request IDs return reusable receipts', async () => {
   assert.equal(detail.retry.callerGenerated,false);
   assert.ok(!detail.inputSchema.required.includes('requestId'));
 });
+
+test('AX status revisits and wait timeouts expose bounded progress evidence', async () => {
+  // Regression: statusOnly hid all progress during multi-hour tasks and wait timeouts offered no commit/check evidence.
+  const reviewed = (await call('codex_read',{threadId:'review-outcomes',statusOnly:true})).result;
+  assert.equal(reviewed.turns,null);
+  assert.equal(reviewed.progress.latestAgentMessage,'After final commentary');
+  assert.deepEqual(reviewed.progress.latestChecks.map((c:any)=>c.exitCode),[1,0]);
+  assert.equal(reviewed.progress.commits,null);
+  assert.ok(!JSON.stringify(reviewed.progress).includes('PRIVATE_COMMAND_OUTPUT'));
+  const project = path.join(directory,'progress-project');
+  await mkdir(project);
+  const git = (args:string[]) => execFileSync('git',['-c','commit.gpgsign=false','-c','user.name=Fixture','-c','user.email=fixture@example.invalid',...args],{cwd:project,encoding:'utf8'}).trim();
+  git(['init','--quiet']); git(['commit','--allow-empty','-m','baseline']);
+  const task = await completed('codex_create',{project,prompt:'harmless fixture',thread:{model:'fixture-dispatch-queue'},purpose:'self-test',notify:null,requestId:randomUUID()});
+  assert.equal(task.state,'completed');
+  git(['commit','--allow-empty','-m','progress']);
+  const commit = git(['rev-parse','HEAD']);
+  const status = (await call('codex_read',{threadId:task.threadId,statusOnly:true})).result;
+  assert.equal(status.progress.turnId,task.turnId);
+  assert.equal(status.progress.latestAgentMessage,'pong');
+  assert.equal(status.progress.commits.count,1);
+  assert.equal(status.progress.commits.recent[0].sha,commit);
+  assert.equal(status.progress.pendingInteractionCount,0);
+  assert.ok(status.progress.elapsedMs >= 0);
+  const wait = (await call('codex_wait',{threadId:task.threadId,turnId:task.turnId,timeoutMs:200})).result;
+  assert.equal(wait.state,'timeout');
+  assert.equal(wait.progress.latestAgentMessage,'pong');
+  assert.equal(wait.progress.commits.count,1);
+  await call('codex_call',{method:'fixture/finish-turn',params:{threadId:task.threadId},requestId:randomUUID()});
+});

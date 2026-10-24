@@ -1629,10 +1629,15 @@ impl Control {
                         .await?["thread"]
                         .clone();
                 }
-                if args["view"] == "review" {
-                    if args["statusOnly"] == true {
-                        return Ok(json!({"threadId":id,"runtimeStatus":t["status"]["type"]}));
+                if args["statusOnly"] == true {
+                    let mut progress = crate::review::progress(self, id).await;
+                    if t["status"]["activeFlags"].as_array().is_some_and(|flags| flags.iter().any(|flag| matches!(flag.as_str(), Some("waitingOnApproval" | "waitingOnUserInput")))) && progress["pendingInteractionCount"] == 0 {
+                        progress["pendingInteractionCount"] = Value::Null;
+                        progress["interactionRequired"] = json!(true);
                     }
+                    return Ok(json!({"threadId":id,"runtimeStatus":t["status"]["type"],"turns":null,"observedAt":now(),"progress":progress}));
+                }
+                if args["view"] == "review" {
                     let page = self.request("thread/turns/list",json!({"threadId":id,"cursor":args["cursor"],"limit":num(&args,"limit",1),"sortDirection":"desc","itemsView":"full"}),60000).await?;
                     let mut turns = Vec::new();
                     for turn in page["data"].as_array().into_iter().flatten() {
