@@ -512,3 +512,5 @@ Desktop follower IPC currently exposes no per-thread release/archive request. `W
 Example: `echo '{"threadId":"<self-test-thread-id>","mode":"placeholder"}' | arc cli --state-dir <isolated-state> control acceptance_fault --stdin`.
 
 `placeholder` overlays a null-ID active turn on the real Desktop follower read path, exercising the existing steering guard without changing native history. Use a Desktop-owned self-test thread. `read-rejection` rejects native thread reads at the normal request boundary, exercising public error and recovery projection. Responses identify injected evidence. These switches validate ARC behavior, not an upstream provider failure. Faults expire after five minutes by default (maximum ten), disappear on restart, and can be cleared explicitly. Clear before normal cleanup or archive.
+
+A bounded Desktop owner-discovery timeout does not reject a fresh, confirmed unheld thread. Explicit creation may reveal that same thread and wait for its owner; write-submission timeouts remain unconfirmed and are never treated as permission to resubmit.

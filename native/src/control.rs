@@ -387,7 +387,7 @@ impl Control {
         let ipc = self.ipc().await?;
         match ipc.owner(thread).await {
             Ok(_) => return Ok(()),
-            Err(e) if desktop::owner_missing(&e) => (),
+            Err(e) if desktop::owner_missing(&e) || (desktop::owner_discovery_pending(&e) && crate::writer::probe(thread)["state"] == "unheld") => (),
             Err(e) => return Err(e),
         }
         // Validate existence before navigation; metadata needs no history API.

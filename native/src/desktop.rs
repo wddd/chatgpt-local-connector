@@ -644,12 +644,16 @@ pub async fn reveal(ipc: &Ipc, thread: &str) -> Result<Value> {
                     json!({"state":"owner-confirmed","sharedBackend":false,"url":opened["url"]}),
                 )
             }
-            Err(e) if owner_missing(&e) && tokio::time::Instant::now() < deadline => {
+            Err(e) if owner_discovery_pending(&e) && tokio::time::Instant::now() < deadline => {
                 tokio::time::sleep(Duration::from_millis(250)).await
             }
             Err(e) => return Err(e),
         }
     }
+}
+
+pub fn owner_discovery_pending(error: &str) -> bool {
+    owner_missing(error) || error == "DESKTOP_REQUEST_TIMEOUT: thread-owner-discovery"
 }
 
 pub(crate) fn owner_missing(error: &str) -> bool {
@@ -660,6 +664,11 @@ pub async fn open_app() -> Result<()> {
     open_url(None).await
 }
 pub(crate) async fn open_url(url: Option<&str>) -> Result<()> {
+    #[cfg(feature="test-fixture")]
+    if let Some(path) = std::env::var_os("ARC_FIXTURE_OPEN_FILE") {
+        std::fs::write(path, url.unwrap_or("codex://")).map_err(|e|e.to_string())?;
+        return Ok(());
+    }
     if cfg!(target_os = "linux") {
         return Err("DESKTOP_UNSUPPORTED: headless Linux has no Codex Desktop.".into());
     }

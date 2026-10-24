@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Socket } from 'node:net';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -12,6 +12,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
   // Regression: Desktop optimistic turns caused NO_ACTIVE_TURN, follower steering timeouts and FIFO THREAD_ADVANCED failures.
   const directory = await mkdtemp(path.join(tmpdir(), 'arc-owner-'));
   const dataFile = path.join(directory, 'native.json');
+  const openFile = path.join(directory, "opened-url");
   const desktopThread = randomUUID(), desktopTurn = randomUUID();
   const read = () => JSON.parse(readFileSync(dataFile, 'utf8'));
   const save = (data: any) => { writeFileSync(dataFile + '.tmp', JSON.stringify(data)); renameSync(dataFile + '.tmp', dataFile); };
@@ -38,7 +39,10 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
         if (method === 'thread-stream-following-changed') { snapshot(socket, thread); continue; }
         let result: unknown = {};
         if (method === 'initialize') result = { clientId: 'fixture-follower' };
-        else if (method === 'thread-owner-discovery') result = {};
+        else if (method === 'thread-owner-discovery') {
+          if (thread !== desktopThread && (!existsSync(openFile) || !readFileSync(openFile,'utf8').endsWith(thread))) continue;
+          result = {};
+        }
         else if (method === 'thread-follower-update-thread-settings') result = { applied: true };
         else if (method === 'thread-follower-start-turn') {
           const data = read(), turn = { id: randomUUID(), status: 'inProgress', items: [], input: params.turnStart.request.input };
@@ -68,7 +72,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       if(method==='turn/steer'){row.turns.at(-1).input.push(...params.input);save(data);result={turnId:row.turns.at(-1).id};}
       process.stdout.write(JSON.stringify({id,result})+'\\n');
     }
-  `, { CODEX_HOME: directory, ARC_OWNER_DATA: dataFile, ARC_FIXTURE_DESKTOP: '1', ARC_DEV_INSTANCE_ID: 'ax3-fault-test' });
+  `, { CODEX_HOME: directory, ARC_OWNER_DATA: dataFile, ARC_FIXTURE_DESKTOP: '1', ARC_FIXTURE_OPEN_FILE:openFile, ARC_DEV_INSTANCE_ID: 'ax3-fault-test' });
   const waitQueue = async (threadId: string, queueId: string, state: string) => {
     const deadline = Date.now() + 7000;
     while (Date.now() < deadline) {
@@ -79,6 +83,9 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
     throw new Error(JSON.stringify(await fixture.call('codex_queue', {threadId, queueId})));
   };
   try {
+    const fresh = await fixture.completed('codex_create',{prompt:'Fresh Desktop turn',thread:{cwd:directory}});
+    assert.equal(fresh.state,'completed',JSON.stringify(fresh));
+    assert.equal((await fixture.call('codex_query',{method:'thread/read',params:{threadId:fresh.threadId,includeTurns:true}})).thread.turns.length,1);
     assert.equal((await fixture.completed('codex_send', {threadId:desktopThread,prompt:'Establish self-test dispatch',sendMode:'steer'})).state, 'completed');
     const queued = await fixture.completed('codex_send', { threadId: desktopThread, prompt: 'After completion', sendMode: 'next' });
     assert.equal(queued.dispatchMode, 'queued');
