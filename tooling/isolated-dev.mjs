@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { developmentConfig } from './dev-identity.mjs';
+import { developmentConfig, isolatedStatus } from './dev-identity.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtemp, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -19,6 +19,7 @@ const identity = developmentConfig(env);
 console.log(JSON.stringify({ event: 'isolated-starting', stateDirectory, bundleId: identity.identifier, appName: identity.productName }));
 const child = spawn(process.execPath, [path.join(root, 'tooling/desktop-dev.mjs')], { cwd: root, env, stdio: 'inherit' });
 let ended = false;
+let reported = "";
 const done = new Promise(resolve => {
   child.once('error', error => { ended = true; console.error(error.message); resolve(1); });
   child.once('exit', code => { ended = true; resolve(code ?? 1); });
@@ -37,16 +38,19 @@ try {
           child.kill('SIGTERM');
           throw new Error('Isolated Desktop identity is outside this checkout target directory.');
         }
-        console.log(JSON.stringify({ event: 'isolated-ready', stateDirectory, port: endpoint.port, instance: endpoint.instance,
-          desktopPid: desktop.pid, corePid: endpoint.pid, screen: { action: 'tree', bundleId: identity.identifier, pid: desktop.pid }, bundleId: identity.identifier, appName: identity.productName,
-          cli: [path.join(root, 'dist/native', process.platform === 'win32' ? 'arc.exe' : 'arc'), 'cli', '--state-dir', stateDirectory] }));
-        break;
+        const status=isolatedStatus(identity,endpoint,desktop);
+        const signature=JSON.stringify(status);
+        if (signature !== reported) {
+          console.log(JSON.stringify({event:reported ? 'isolated-restarted' : 'isolated-ready',stateDirectory,...status,
+            cli:[path.join(root,'dist/native',process.platform==='win32'?'arc.exe':'arc'),'cli','--state-dir',stateDirectory]}));
+          reported=signature;
+        }
       }
     } catch (error) {
       if (error.message.startsWith('Isolated Desktop identity')) throw error;
       // Startup can publish Core metadata before Desktop attaches.
     }
-    await delay(250);
+    await delay(1000);
   }
   process.exitCode = await done;
 } catch (error) {

@@ -95,8 +95,9 @@ pub async fn capture(app: &tauri::AppHandle, body: &Value) -> Result<Value, Stri
     .await;
     state.pending.lock().map_err(|e| e.to_string())?.take();
     let model = model?;
+    let instance=json!({"desktopPid":std::process::id(),"bundleId":app.config().identifier,"appName":app.config().product_name,"version":env!("ARC_BUILD_VERSION")});
     if body["modelOnly"] == true {
-        return Ok(json!({"model":model}));
+        return Ok(json!({"model":model,"instance":instance}));
     }
     let model_path = out.join("view-model.json");
     arc_core::save(&model_path, &model)?;
@@ -111,7 +112,7 @@ pub async fn capture(app: &tauri::AppHandle, body: &Value) -> Result<Value, Stri
             json!({"ok":false,"code":if cfg!(target_os="macos") {"SNAPSHOT_FAILED"} else {"NOT_SUPPORTED"},"message":error})
         }
     };
-    Ok(json!({"directory":out,"viewModel":model_path,"png":png}))
+    Ok(json!({"directory":out,"viewModel":model_path,"png":png,"instance":instance}))
 }
 #[cfg(not(target_os = "macos"))]
 async fn capture_png(_: &tauri::AppHandle) -> Result<Vec<u8>, String> {
