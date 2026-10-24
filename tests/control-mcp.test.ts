@@ -1158,7 +1158,7 @@ test('wait omits repeated nonterminal text and retains complete terminal replies
   updated[threadId].turns[0].status='completed';
   await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(updated));
   const terminal=(await call('codex_wait',{...args,timeoutMs:300000,expectedHash:metadata.snapshotHash})).result;
-  assert.equal(terminal.state,'completed');assert.equal(terminal.finalResponse.text,'pong');
+  assert.equal(terminal.state,'completed');assert.ok(terminal.finalResponse,JSON.stringify(terminal));assert.equal(terminal.finalResponse.text,'pong');
   const repeated=(await call('codex_wait',{...args,expectedHash:terminal.snapshotHash})).result;
   assert.equal(repeated.changed,false);assert.equal(repeated.finalResponse.text,'pong');assert.equal(repeated.finalResponseUnchanged,undefined);
 });
@@ -1284,7 +1284,7 @@ test('argument errors are short, field-specific and leave unread inbox untouched
       assert.equal(result.error.field,field);if(reason)assert.match(result.error.message,reason);
       assert.equal(result.error.inputSchema,undefined);assert.equal(result.arcInbox,undefined);
       const text=(response.content as any[])[0].text;
-      assert.ok(text.startsWith('{"error":'));assert.doesNotMatch(text,/private-input|private-command/);
+      assert.deepEqual(JSON.parse(text).error,result.error);assert.doesNotMatch(text,/private-input|private-command/);
       assert.equal(result.error.guide.arguments.args.op,name);
     }
     const envelope=await client.callTool({name:'query',arguments:{op:'read',args:{},extra:'private-value'}});
@@ -1340,7 +1340,7 @@ test('multi-root projects preserve legacy selection and resolve project cwd alte
   const cwd=path.join(directory,'multi-root','plain');
   const ambiguous=await completed('command',{cmd:'fixture',project:'many',requestId:randomUUID()});
   assert.equal(ambiguous.state,'failed');
-  assert.ok(JSON.stringify(ambiguous.result.error).includes('plain'));assert.ok(JSON.stringify(ambiguous.result.error).includes('other'));
+  assert.ok(ambiguous.error.message.includes('plain'));assert.ok(ambiguous.error.message.includes('other'));
   for (const root of ['primary','plain','multi-root/plain']) {
     const args={cmd:'fixture-cwd',project:'many',root,requestId:randomUUID()};
     const result=await completed('command',args);
@@ -1430,7 +1430,14 @@ test('large Git diff is bounded and its immutable output pages retain text and f
   git('add','.');git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgSign=false','commit','-m','fixture');
   const content=Array.from({length:1800},(_,i)=>`line ${i}: 中文 bounded diff output`).join('\n')+'\n';
   await writeFile(path.join(project,'large.txt'),content);await writeFile(path.join(project,'small.txt'),'after\n');
-  const response=await call('git',{project,action:'diff',includeSource:true});const data=response.result.data;
+  const response=await call('git',{project,action:'diff',includeSource:true});
+  let result=response.result;
+  if(result.outputId){
+    let text='',offset:number|null=0;
+    while(offset!==null){const page=(await call('control_output',{outputId:result.outputId,offset,length:12000})).result;text+=page.text;offset=page.nextOffset;}
+    result=JSON.parse(text);
+  }
+  const data=result.data;
   assert.equal(response.response.isError,false);assert.equal(data.truncated,true);
   assert.deepEqual(data.files.map((f:any)=>[f.path,f.added,f.removed]),[['large.txt',1800,1],['small.txt',1,1]]);
   assert.equal(data.coverage.state,'partial');assert.ok(data.output.outputId);
@@ -1467,9 +1474,9 @@ test('external terminal reviews retain provenance, replay, rework links and sepa
   const again=(await call('codex_review',args)).result;
   assert.deepEqual(again.result.review,review);
   const running=(await call('codex_review',{threadId,turnId:activeTurnId,verdict:'pass',requestId:randomUUID()})).result;
-  assert.equal(running.state,'failed');assert.match(running.result.error.message,/REVIEW_REQUIRES_TERMINAL_TURN/);
+  assert.equal(running.state,'failed');assert.match(running.error.message,/REVIEW_REQUIRES_TERMINAL_TURN/);
   const missing=(await call('codex_review',{threadId,turnId:randomUUID(),verdict:'pass',requestId:randomUUID()})).result;
-  assert.equal(missing.state,'failed');assert.match(missing.result.error.message,/REVIEW_TERMINAL_TURN_NOT_FOUND/);
+  assert.equal(missing.state,'failed');assert.match(missing.error.message,/REVIEW_TERMINAL_TURN_NOT_FOUND/);
   const unknown=(await call('codex_review',{threadId:randomUUID(),verdict:'pass',requestId:randomUUID()})).result;
   assert.equal(unknown.state,'failed');
   const invalid=await call('codex_review',{threadId,turnId,verdict:'invalid',requestId:randomUUID()});
@@ -1832,7 +1839,7 @@ test('AX binary transfers verify bytes and reject duplicate append offsets', asy
   assert.equal((await write({dataBase64:first.toString('base64'),expectedSha256:sha(first)})).result.sha256, sha(first));
   const bad = await write({dataBase64:second.toString('base64'),append:true,offset:first.length,expectedSha256:sha(first)});
   assert.equal(bad.state, 'failed');
-  assert.match(JSON.stringify(bad.result.error), /SHA256_MISMATCH/);
+  assert.match(bad.error.message, /SHA256_MISMATCH/);
   assert.deepEqual(await readFile(file), first);
   const params = {dataBase64:second.toString('base64'),append:true,offset:first.length,expectedSha256:sha(joined)};
   const request = randomUUID();
@@ -1844,7 +1851,7 @@ test('AX binary transfers verify bytes and reject duplicate append offsets', asy
   assert.deepEqual(await readFile(file), joined);
   const invalid = await completed('fs', {action:'fetchFile', params:{path:file,url:'http://example.invalid/file'}, requestId:randomUUID()});
   assert.equal(invalid.state, 'failed');
-  assert.match(JSON.stringify(invalid.result.error), /INVALID_URL/);
+  assert.match(invalid.error.message, /INVALID_URL/);
   const guide = (await call('guide')).result;
   assert.ok(guide.ops.some((op: any) => op.op === 'write'));
   assert.ok(guide.ops.some((op: any) => op.op === 'fs'));

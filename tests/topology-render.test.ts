@@ -436,9 +436,13 @@ test("timeline UI and agent navigation restore follow mode and focus", async () 
   let top = 0, height = 3482, latestLabel = "";
   const media = Object.assign(new window.EventTarget(), { matches: true });
   window.matchMedia = () => media as unknown as MediaQueryList;
-  class Observer { observe() {} disconnect() {} }
+  class Observer { observe() {} unobserve() {} disconnect() {} }
   Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
-    Node: window.Node, localStorage: window.localStorage, ResizeObserver: Observer, matchMedia: window.matchMedia,
+    Node: window.Node, DocumentFragment: window.DocumentFragment, MutationObserver: window.MutationObserver,
+    NodeFilter: window.NodeFilter, HTMLInputElement: window.HTMLInputElement, HTMLFormElement: window.HTMLFormElement,
+    HTMLSelectElement: window.HTMLSelectElement, Event: window.Event, CustomEvent: window.CustomEvent,
+    DOMRect: window.DOMRect, CSS: window.CSS, localStorage: window.localStorage,
+    ResizeObserver: Observer, matchMedia: window.matchMedia,
     getComputedStyle: window.getComputedStyle.bind(window), IS_REACT_ACT_ENVIRONMENT: true });
   Object.defineProperties(window.HTMLElement.prototype, {
     clientHeight: { configurable: true, get() { return this.getAttribute("aria-label") ? 754 : 0; } },
