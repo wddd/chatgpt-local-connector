@@ -27,11 +27,30 @@ pub fn outcome_error(value: &Value) -> Option<Value> {
     None
 }
 
+/// One public failure per operation; arrays remain historical data.
+pub fn compact_failure(value: &mut Value) {
+    let Some(mut error) = outcome_error(value).or_else(||value.get("error").filter(|v|v.is_object()).cloned()) else { return; };
+    if value["next"].is_null() && error["next"].is_object() { value["next"] = error["next"].clone(); }
+    error.as_object_mut().map(|e|e.remove("next"));
+    if error["rpcError"]["message"].is_string() {
+        error["message"] = error["rpcError"]["message"].clone();
+        error["rpcError"].as_object_mut().map(|e|e.remove("message"));
+    }
+    fn strip(value: &mut Value, code: &Value, depth: usize) {
+        if depth == 0 { return; }
+        if value["error"]["code"] == *code { value.as_object_mut().map(|v|v.remove("error")); }
+        for key in ["result", "lastResult"] { if let Some(v) = value.get_mut(key) { strip(v, code, depth-1); } }
+    }
+    for key in ["result", "lastResult"] { if let Some(v) = value.get_mut(key) { strip(v, &error["code"], 8); } }
+    value["error"] = error;
+}
+
 pub fn tool(mut value: Value, mut error: bool) -> Value {
     if let Some(reason) = outcome_error(&value) { value["error"] = reason; error = true; }
     if !value.is_object() {
         value = json!({"value":value});
     }
+    if error { compact_failure(&mut value); }
     value["arcVersion"] = json!(arc_version());
     let text = value.to_string();
     json!({"content":[{"type":"text","text":text}],"structuredContent":{"result":value},"isError":error})

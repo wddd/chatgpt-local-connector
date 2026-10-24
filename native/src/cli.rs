@@ -872,9 +872,12 @@ pub async fn run(args: Vec<String>) -> i32 {
         }
     }
     match execute(&args).await {
-        Ok(result) => {
-            if let Some(error) = crate::egress::outcome_error(&result) {
-                print_output(json!({"schemaVersion":1,"ok":false,"error":error,"result":result}));
+        Ok(mut result) => {
+            if crate::egress::outcome_error(&result).is_some() {
+                crate::egress::compact_failure(&mut result);
+                let error = result.as_object_mut().unwrap().remove("error").unwrap();
+                let next = result.as_object_mut().unwrap().remove("next");
+                print_output(json!({"schemaVersion":1,"ok":false,"error":error,"next":next,"result":result}));
                 return 1;
             }
             let replacing = matches!(words.as_slice(), ["app", "replace", path, ..] if *path != "--status")

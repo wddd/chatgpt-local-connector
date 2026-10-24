@@ -392,10 +392,12 @@ test('native errors retain code/message/data for both direct reads and mutation 
   const rpcError = { code: -32042, message: 'native fixture rejection', data: { retryable: false, detail: 'bad argument' } };
   const read = await call('codex_query', { method: 'project/list', params: { fail: 'bad argument' } });
   assert.equal(read.response.isError, true);
-  assert.deepEqual(read.result.error.rpcError, rpcError);
+  assert.equal(read.result.error.message, rpcError.message);
+  assert.deepEqual(read.result.error.rpcError, {code:rpcError.code,data:rpcError.data});
   const write = await completed('process', { action: 'spawn', params: { fail: 'bad argument' }, requestId: randomUUID() });
   assert.equal(write.state, 'rejected');
-  assert.deepEqual(write.result.error.rpcError, rpcError);
+  assert.equal(write.error.message, rpcError.message);
+  assert.deepEqual(write.error.rpcError, {code:rpcError.code,data:rpcError.data});
   assert.equal((await completed('codex_call', { method: 'fixture/null', params: null, requestId: randomUUID() })).result, null);
   assert.deepEqual((await completed('codex_call', { method: 'fixture/array', requestId: randomUUID() })).result, [null, 1, { native: true }]);
   assert.equal((await call('codex_tasks')).result.tasks.length, 0);
@@ -1935,7 +1937,7 @@ test('AX unbound cloud-session verification explains binding and its next call',
   assert.equal(error.code,'NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE');
   assert.deepEqual(error.bind.ops,['codex_create','codex_send']);
   assert.deepEqual(error.bind.args.notify,{channel:'claude-session',target});
-  assert.deepEqual(error.next.args,{action:'verify',target});
+  assert.deepEqual(response.result.next.args,{action:'verify',target});
   assert.equal(error.guide.arguments.topic,'notify');
 });
 
@@ -1958,6 +1960,8 @@ test('AX2 failed receipts report failure through MCP and CLI without losing iden
   assert.equal(envelope.ok,false);
   assert.equal(envelope.result.requestId,requestId);
   assert.match(envelope.error.message,/SHA256_MISMATCH/);
+  assert.equal(envelope.result.error,undefined);assert.equal(envelope.result.result.error,undefined);
+  assert.equal(response.result.result.error,undefined);
   const command=await completed('command',{cmd:'fixture-failed-command',cwd:directory,requestId:randomUUID()});
   assert.equal(command.error.exitCode,7);
 });

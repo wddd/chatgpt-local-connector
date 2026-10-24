@@ -25,8 +25,8 @@ test('native writer conflicts retain recovery guidance through send, load and re
       const error = value.error ?? value.result?.error;
       assert.equal(error?.code, 'THREAD_WRITER_BUSY', JSON.stringify(value));
       assert.equal(error.retryable, false);
-      assert.equal(error.next.op, 'codex_read');
-      assert.ok(error.next.hint);
+      assert.equal(value.next.op, 'codex_read');
+      assert.ok(value.next.hint);
       assert.match(error.nativeError, /already has an active writer/);
     }
   } finally { await fixture.close(); }

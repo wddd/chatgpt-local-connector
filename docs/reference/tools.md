@@ -486,3 +486,7 @@ The task composer has a Purpose choice: Follow thread, Task, or Self-test. Self-
 ## Stable history revisits
 
 `task_timeline({agent:"codex",id,expectedHash})` suppresses unchanged entries with `unchanged:true`. A history refresh preserves entry timestamps, positions, cursor, and `snapshotHash` when native content is unchanged. `after` remains the incremental cursor. Unsubscribe still reports partial coverage until a real subscription resumes; history refresh does not claim live observation.
+
+## Failure projection
+
+Read `error.code`, `error.message`, and `next` from the public result (the CLI envelope for CLI calls). Repeated receipt errors are omitted from nested results. Native RPC code/data remain in `error.rpcError`; its message is promoted to `error.message`. Historical errors inside arrays remain untouched. Receipt identities and original outcomes are preserved.
