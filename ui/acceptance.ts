@@ -1,3 +1,4 @@
+import { scenarioReadiness } from "./state/scenarioReadiness";
 // On-demand observation of the real renderer. No alternate layout or state model.
 import { taskPanelSnapshot, controlTaskPanel, type TaskPanelRequest } from "./state/taskPanel";
 import { agentPanel, ingressPanel, selectAgentPanel, selectIngressPanel } from './state/overviewPanels';
@@ -17,12 +18,14 @@ export function observeTopology(read: () => unknown) {
   return () => { if (topology === read) topology = undefined; };
 }
 export function viewModel(layoutSettled = false) {
+  const detail = taskPanelSnapshot();
   return {
+    scenario: scenarioReadiness(detail),
     schemaVersion: 1, layoutSettled, capturedAt: new Date().toISOString(),
     window: { width: innerWidth, height: innerHeight, devicePixelRatio },
     theme: document.documentElement.dataset.theme, language: locale.get(),
     topology: topology?.() ?? null,
-    taskDetail: taskPanelSnapshot(),
+    taskDetail: detail,
     panels: { agent: agentPanel.get() ?? null, source: ingressPanel.get()?.client?.id ?? null,
       onboarding: onboarding.get()?.step ?? null, connectionSetup: connectionSetup.get() ?? null, connectionSwitch: connectionSwitch.get() ?? null, remoteSourceId: navigation.get().remoteSourceId ?? null, remoteConnectionId: navigation.get().remoteConnectionId ?? null, page: localStorage.getItem('arc-page') ?? 'overview' },
   };

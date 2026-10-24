@@ -11,4 +11,4 @@ createRoot(document.getElementById("app")!).render(
   </UiProvider>,
 );
 
-if (ready) requestAnimationFrame(() => { void ready(); });
+if (ready) requestAnimationFrame(() => { void ready().catch(async error => { (await import("./state/scenarioReadiness")).finishScenario(String(error)); }); });

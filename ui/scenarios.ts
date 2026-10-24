@@ -1,3 +1,4 @@
+import { beginScenario, finishScenario } from "./state/scenarioReadiness";
 import { updates, acceptUpdateSnapshot } from './state/updates';
 import type { UpdateSnapshot, Replacement } from './state/updateModel';
 import { onboarding, connectionSetup, connectionSwitch, type ConnectionSwitch, type SourceSetup, type ConnectionSetup } from './state/onboarding';
@@ -48,6 +49,7 @@ export function scenarioResponse(path: string, method: string, body?: unknown): 
   throw new Error(`SCENARIO_ROUTE_UNAVAILABLE: ${path}`);
 }
 export async function installScenario(name: string) {
+  beginScenario(name);
   const load = fixtures[`../tooling/acceptance/scenarios/${name}.json`];
   if (!load) throw new Error(`Unknown acceptance scenario: ${name}`);
   const fixture = await load() as Fixture;
@@ -206,6 +208,7 @@ export async function installScenario(name: string) {
     openSnapshotPanel(fixture.panel);
     if (fixture.detailTask !== undefined) {
       await settledViewModel();
+      beginScenario(name, `fixture-task-${fixture.detailTask}`);
       const task = fixture.tasks[fixture.detailTask];
       const session = activity.agents[task.agent].sessions.find(session => session.id === `fixture-task-${fixture.detailTask}`)!;
       selectAgentPanel({ type: 'task', agent: task.agent, session: { ...session, orderAt: Date.parse(session.startedAt!) } });
@@ -217,6 +220,7 @@ export async function installScenario(name: string) {
     if (fixture.update) { acceptUpdateSnapshot(fixture.update); updates.set(old => ({...old, dialogOpen: true})); }
     if (fixture.replacement) updates.set(old => ({...old, replacement: fixture.replacement, replacementOpen: true}));
     await settledViewModel();
+    finishScenario();
     document.documentElement.dataset.scenarioReady = name;
   };
 }
