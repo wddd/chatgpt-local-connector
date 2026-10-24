@@ -44,6 +44,7 @@ pub fn failure(e: &str) -> Value {
                     | "UNKNOWN_OP"
                     | "OP_UNAVAILABLE"
                     | "WRONG_TOOL"
+                    | "NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE"
             )
         ) {
             return value;

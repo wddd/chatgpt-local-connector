@@ -50,7 +50,14 @@ pub(super) async fn verify(source_id: &str, args: &Value) -> Result<Value> {
                     && b.channel == Channel::ClaudeSession
                     && b.target.as_deref() == Some(&target)
             })
-            .ok_or("NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE")?;
+            .ok_or_else(|| json!({
+                "code":"NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE",
+                "message":"Bind this Claude cloud-session target to an authorized task from this same control source before verification. Pass notify.channel=claude-session and notify.target on codex_create or codex_send, wait for its dispatch receipt, then retry notify_control(action:verify,target). Binding is turn-scoped. Do not create or resend work solely to verify notifications.",
+                "target":target,
+                "bind":{"via":"act","ops":["codex_create","codex_send"],"args":{"notify":{"channel":"claude-session","target":target}}},
+                "next":{"via":"act","op":"notify_control","args":{"action":"verify","target":target},"after":"successful task binding"},
+                "guide":{"tool":"guide","arguments":{"topic":"notify"}}
+            }).to_string())?;
         let settings = settings()?;
         if settings["notificationsEnabled"] == false {
             return Err("NOTIFICATIONS_DISABLED".into());

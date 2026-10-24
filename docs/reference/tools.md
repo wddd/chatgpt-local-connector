@@ -409,3 +409,15 @@ Status revisits read at most the latest native turn and cache its compact projec
 `guide({topic:"notify"})` returns notification guidance and only the relevant enabled operations. `review` and `approvals` are scoped similarly; the default `loop` view lists common operations, including text and binary file transfer. `indexScope` identifies `topic`, `common`, or `full`.
 
 Use `query({op:"guide",args:{topic:"notify",view:"full"}})` for a complete enabled operation index alongside that topic. Retain its `guideHash` and send the same topic/view with `knownGuideHash` to receive only `unchanged:true` when content has not changed. A hash from a different topic/view does not suppress the requested content. Use `query guide` for these op arguments; the frozen `guide` tool shape remains `topic`/`op` only.
+
+## Verify a Claude cloud-session destination
+
+Use the same authenticated control source throughout this flow:
+
+1. Obtain the current conversation's cloud-session ID (`session_...` or `cse_...`) or its `https://claude.ai/code/<session>` URL.
+2. Bind it while starting or continuing an authorized task: `act({op:"codex_send",args:{threadId:"<existing-thread>",prompt:"<authorized continuation>",notify:{channel:"claude-session",target:"<session>"}}})`. `codex_create` accepts the same `notify` object. Confirm the binding in the dispatch receipt; thread-only creation cannot bind a turn. Do not submit duplicate work solely to bind. An existing binding owned by this source can instead be changed with `notify_control({action:"rebind",threadId,target})`.
+3. Request a challenge with `act({op:"notify_control",args:{action:"verify",target:"<session>"}})`. An unbound target returns `NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE`, the binding arguments, and the retry operation.
+4. After receiving the code in that target conversation, call `act({op:"notification_ack",args:{target:"<session>",code:"<received-code>"}})` within five minutes. The same source must acknowledge it; receipts and status never expose the code.
+5. Read `query({op:"notify_status",args:{target:"<session>"}})` and confirm the matching `targets[]` row has `reachability:"verified"`, `reason:"handshake-confirmed"`. Sending the challenge alone does not prove delivery.
+
+On delivery failure or expiry, inspect status and delivery records, correct the destination or delivery failure, then request a new challenge. Bind each new continuation explicitly. Verification does not answer interactions or approve tasks.

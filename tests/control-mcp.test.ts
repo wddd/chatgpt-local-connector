@@ -1868,3 +1868,16 @@ test('AX topic guides return relevant operations and cache each view separately'
     assert.equal((await guide({topic,view:'full',knownGuideHash:full.guideHash})).unchanged,true);
   }
 });
+
+test('AX unbound cloud-session verification explains binding and its next call', async () => {
+  // Regression: notify_control verify returned a bare target-not-bound error with no usable recovery flow.
+  const target = 'session_ax_unbound';
+  const response = await call('notify_control',{action:'verify',target});
+  assert.equal(response.response.isError,true);
+  const error = response.result.error;
+  assert.equal(error.code,'NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE');
+  assert.deepEqual(error.bind.ops,['codex_create','codex_send']);
+  assert.deepEqual(error.bind.args.notify,{channel:'claude-session',target});
+  assert.deepEqual(error.next.args,{action:'verify',target});
+  assert.equal(error.guide.arguments.topic,'notify');
+});
