@@ -17,6 +17,21 @@ if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('ARC_BUILD_VERSION must be
 const output = path.resolve('release-artifacts/windows');
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
+// SSH does not inherit the interactive Rust/MSVC developer shell.
+process.env.PATH = `${path.join(homedir(), '.cargo/bin')};${process.env.PATH}`;
+const vswhere = path.join(process.env['ProgramFiles(x86)'], 'Microsoft Visual Studio/Installer/vswhere.exe');
+const installation = execFileSync(vswhere, ['-latest', '-products', '*', '-requires',
+  'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], { encoding: 'utf8' }).trim();
+if (!installation) throw new Error('Windows worker requires Visual Studio C++ x64 build tools');
+const setup = path.join(output, 'toolchain.cmd');
+try {
+  await writeFile(setup, `@echo off\r\ncall "${installation}\\VC\\Auxiliary\\Build\\vcvars64.bat" >nul\r\nif errorlevel 1 exit /b %errorlevel%\r\nset\r\n`);
+  const values = execFileSync('cmd.exe', ['/d', '/c', setup], { encoding: 'utf8' });
+  for (const line of values.split(/\r?\n/)) {
+    const separator = line.indexOf('=');
+    if (separator > 0) process.env[line.slice(0, separator)] = line.slice(separator + 1);
+  }
+} finally { await rm(setup, { force: true }); }
 process.env.ARC_RELEASE_TIMINGS_FILE = path.join(output, 'windows-stages.jsonl');
 process.env.ARC_RELEASE_PLATFORM = 'windows';
 const timer = stageTimer();

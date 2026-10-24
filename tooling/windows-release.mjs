@@ -31,7 +31,7 @@ const psQuote = value => `'${value.replaceAll("'", "''")}'`;
 const shellQuote = value => `'${value.replaceAll("'", "'\"'\"'")}'`;
 const sshOptions = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15'];
 const powershell = (host, script) => runCommand('ssh', [...sshOptions, host,
-  `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${Buffer.from(script, 'utf16le').toString('base64')}`]);
+  `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${Buffer.from("$ProgressPreference='SilentlyContinue'\n" + script, 'utf16le').toString('base64')}`]);
 
 export async function buildWindows({ sourceSha, version, output, env, timer }) {
   const runtime = JSON.parse(capture('enjoy', ['runtime']));
