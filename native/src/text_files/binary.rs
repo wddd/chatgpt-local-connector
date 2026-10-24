@@ -38,6 +38,18 @@ pub async fn transfer(method: &str, args: &Value) -> Result<Value> {
     }
     let locks = crate::kernel::receipts::RequestLocks;
     let _guard = locks.lock(&format!("file:{}", path.display())).await;
+    if args.get("append").is_some_and(|value| !value.is_boolean()) {
+        return Err("INVALID_ARGUMENT: append must be a boolean".into());
+    }
+    if args.get("offset").is_some() && args["append"] != true {
+        return Err("INVALID_ARGUMENT: offset requires append:true".into());
+    }
+    if args
+        .get("maxBytes")
+        .is_some_and(|value| !value.as_u64().is_some_and(|n| (1..=MAX_FILE).contains(&n)))
+    {
+        return Err("INVALID_ARGUMENT: maxBytes must be an integer from 1 to 536870912".into());
+    }
     let append = args["append"] == true;
     if append && method != "fs/writeFile" {
         return Err("INVALID_ARGUMENT: append is only supported by fs writeFile".into());

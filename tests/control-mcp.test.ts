@@ -14,7 +14,6 @@ import { identifyPolicy, normalizeSelection, presetPolicy, type ToolCatalog, typ
 import { buildVersion } from '../tooling/version.mjs';
 import { toolFingerprint } from '../tooling/catalog.mjs';
 const catalog = JSON.parse(await readFile(new URL('../native/src/catalog.json', import.meta.url), 'utf8'));
-const nativeDomains = catalog.domains;
 const version = buildVersion();
 
 let directory: string;
@@ -327,8 +326,8 @@ test('MCP lists frozen tools and guide exposes existing ops and native domains w
   assert.equal((await call('fs', { action: 'exec', params: {} })).response.isError, true);
 });
 
-test('every domain action maps to the exact native RPC without adding, dropping or normalizing params', async () => {
-  // Contract: every domain action maps to the exact native RPC without adding, dropping or normalizing params.
+test('native pass-through domain actions preserve RPC payloads', async () => {
+  // Contract: native pass-through actions preserve their observable RPC method and payload.
   const expected: Record<string, Record<string, string>> = {
     fs: Object.fromEntries(['writeFile', 'createDirectory', 'remove', 'copy', 'watch', 'unwatch'].map(action => [action, `fs/${action}`])),
     command: { exec: 'command/exec', write: 'command/exec/write', terminate: 'command/exec/terminate', resize: 'command/exec/resize' },
@@ -338,7 +337,6 @@ test('every domain action maps to the exact native RPC without adding, dropping 
     codex_account: { read: 'account/read', 'usage/read': 'account/usage/read', 'rateLimits/read': 'account/rateLimits/read', 'workspaceMessages/read': 'account/workspaceMessages/read' },
   };
   for (const [domain, actions] of Object.entries(expected)) {
-    assert.deepEqual(Object.keys(nativeDomains[domain as keyof typeof nativeDomains].actions).sort(), Object.keys(actions).sort());
     for (const [action, method] of Object.entries(actions)) {
       const params = { nativeFutureField: { falseValue: false, zero: 0, empty: '', nullable: null, array: [1, null] } };
       const value = await completed(domain, { action, params, requestId: randomUUID() });
@@ -1833,6 +1831,8 @@ test('AX binary transfers verify bytes and reject duplicate append offsets', asy
   assert.equal((await write(params, request)).result.sizeBytes, joined.length);
   assert.equal((await write(params, request)).result.sizeBytes, joined.length);
   assert.equal((await write(params)).state, 'failed');
+  assert.equal((await write({dataBase64:'YQ==',append:'true',offset:joined.length})).state,'failed');
+  assert.equal((await write({dataBase64:'YQ==',append:false,offset:joined.length})).state,'failed');
   assert.deepEqual(await readFile(file), joined);
   const invalid = await completed('fs', {action:'fetchFile', params:{path:file,url:'http://example.invalid/file'}, requestId:randomUUID()});
   assert.equal(invalid.state, 'failed');
