@@ -1141,5 +1141,15 @@
   "detail.openRequest": "Open",
   "detail.later": "Later",
   "detail.taskActions": "Task actions",
-  "detail.skipped": "Skipped"
+  "detail.skipped": "Skipped",
+  "detail.sendOptions": "Send options",
+  "detail.queueState.queued": "Queued",
+  "detail.queueState.blocked": "Blocked",
+  "detail.queueState.dispatching": "Sending",
+  "detail.queueState.steering": "Steering",
+  "detail.queueState.steered": "Steered",
+  "detail.queueState.cancelled": "Cancelled",
+  "detail.queueState.failed": "Failed",
+  "detail.queueState.sent": "Sent",
+  "detail.queueState.unconfirmed": "Submission unconfirmed"
 }

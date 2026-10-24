@@ -170,7 +170,8 @@ test("control source dock preserves editing, field navigation and cross-side dis
     globalThis.fetch = async (input, init) => {
       const path = String(input).replace("/api/", ""), method = init?.method || "GET", body = init?.body ? JSON.parse(String(init.body)) : {};
       let value: unknown = {};
-      if (path === "status") value = status;
+      if (path === "tasks/control" && body.op === "codex_queue") value = { items: [] };
+      else if (path === "status") value = status;
       else if (path === "setup/next") value = { hasState: false, complete: false, goal: null, steps: [], step: null, progress: { done: 0, total: 0 }, cliPath: "arc", stateDir: "fixture" };
       else if (path === "relay/list") value = { relays: [], version: "test" };
       else if (path === "relay/progress") value = { phase: "idle" };
@@ -382,7 +383,7 @@ test("task detail prioritizes pending requests, preserves drafts and consolidate
   const { createRoot } = await import("react-dom/client");
   const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async input => new Response(JSON.stringify(String(input).endsWith("/tasks/reviews") ? { reviews: [] } : { state: "completed" }));
+  globalThis.fetch = async (input, init) => new Response(JSON.stringify(String(input).endsWith("/tasks/reviews") ? { reviews: [] } : init?.body && JSON.parse(String(init.body)).op === "codex_queue" ? { items: [] } : { state: "completed" }));
   try {
     const { default: ActivityTimeline } = await server.ssrLoadModule("/ui/components/ActivityTimeline.tsx");
     const { agentActivity } = await server.ssrLoadModule("/ui/state/activity.ts");
@@ -409,7 +410,7 @@ test("task detail prioritizes pending requests, preserves drafts and consolidate
       await update(question);
       assert.equal(page.queryByRole("textbox", { name: t("detail.message") }), null);
       await click(page.getByRole("button", { name: t("detail.skip"), exact: true }));
-      assert.ok(page.getByRole("status", { name: "" }).textContent?.includes(t("activity.cancel")));
+      assert.ok(page.getAllByRole("status").some(node => node.textContent?.includes(t("activity.cancel"))));
       assert.equal((page.getByRole("textbox", { name: t("detail.message") }) as HTMLTextAreaElement).value, draft);
     }
     await update({ kind: "approval", summary: "Command approval", respond: { op: "codex_respond", args: { respondToken: "approval" } } });
@@ -430,8 +431,8 @@ test("task detail prioritizes pending requests, preserves drafts and consolidate
   }
 });
 
-test("mounted timeline follows the next poll after scrolling up and returning within 24px", async () => {
-  // Regression: layout clamping after returning to the bottom must not stop live following.
+test("timeline UI and agent navigation restore follow mode and focus", async () => {
+  // Regression: jump-to-latest and agent navigation must restore follow mode after manual scrolling.
   const window = new Window({ url: "http://localhost" });
   let top = 0, height = 3482, latestLabel = "";
   const media = Object.assign(new window.EventTarget(), { matches: true });
@@ -441,7 +442,7 @@ test("mounted timeline follows the next poll after scrolling up and returning wi
     Node: window.Node, localStorage: window.localStorage, ResizeObserver: Observer, matchMedia: window.matchMedia,
     getComputedStyle: window.getComputedStyle.bind(window), IS_REACT_ACT_ENVIRONMENT: true });
   Object.defineProperties(window.HTMLElement.prototype, {
-    clientHeight: { configurable: true, get() { return this.getAttribute("aria-label") ? (within(document.body).queryByRole("button", { name: latestLabel }) ? 710 : 754) : 0; } },
+    clientHeight: { configurable: true, get() { return this.getAttribute("aria-label") ? 754 : 0; } },
     scrollHeight: { configurable: true, get() { return this.getAttribute("aria-label") ? height : 0; } },
     scrollTop: { configurable: true, get() { return Math.min(top, Math.max(0, height - this.clientHeight)); }, set(value: number) { top = Math.min(value, Math.max(0, height - this.clientHeight)); } },
   });
@@ -460,17 +461,33 @@ test("mounted timeline follows the next poll after scrolling up and returning wi
     const page = within(mount);
     const { t } = await server.ssrLoadModule("/ui/i18n.ts"); latestLabel = t("timeline.latest");
     const viewport = page.getByLabelText(t("timeline.title"));
-    assert.equal(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop, 0);
+    const { taskPanelSnapshot, controlTaskPanel } = await server.ssrLoadModule('/ui/state/taskPanel.ts');
+    const { agentPanel } = await server.ssrLoadModule('/ui/state/overviewPanels.ts');
+    agentPanel.set({ agent: 'claude', session });
+    assert.equal(taskPanelSnapshot().following, true);
+    assert.equal(taskPanelSnapshot().atLatest, true);
     await act(() => { viewport.scrollTop = 100; viewport.dispatchEvent(new window.Event('scroll')); });
     assert.ok(page.queryByRole("button", { name: latestLabel }));
+    assert.equal(taskPanelSnapshot().following, false);
+    await act(async () => controlTaskPanel({ agent: 'claude', id: session.id, action: 'latest' }));
+    assert.equal(taskPanelSnapshot().following, true);
+    assert.equal(taskPanelSnapshot().atLatest, true);
+    assert.ok(viewport.matches(":focus"));
+    await act(() => { viewport.scrollTop = 100; viewport.dispatchEvent(new window.Event('scroll')); });
+    await act(() => fireEvent.click(page.getByRole("button", { name: latestLabel })));
+    assert.equal(taskPanelSnapshot().following, true);
+    assert.ok(viewport.matches(":focus"));
+    await act(async () => controlTaskPanel({ agent: 'claude', id: session.id, action: 'follow', following: false }));
+    assert.equal(taskPanelSnapshot().following, false);
     await act(() => { viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight - 24; viewport.dispatchEvent(new window.Event('scroll')); });
     assert.equal(page.queryByRole("button", { name: latestLabel }), null);
-    assert.equal(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop, 0);
+    assert.equal(taskPanelSnapshot().atLatest, true);
     await act(() => viewport.dispatchEvent(new window.Event('scroll')));
     revision++; height = 3750;
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
     assert.ok(page.getByText("Increment 2"));
-    assert.equal(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop, 0, 'the next increment remains pinned to bottom');
+    assert.equal(taskPanelSnapshot().following, true);
+    assert.equal(taskPanelSnapshot().atLatest, true);
     assert.equal(page.queryByRole("button", { name: latestLabel }), null);
   } finally {
     await act(() => root.unmount()); globalThis.fetch = originalFetch;

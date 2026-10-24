@@ -57,7 +57,7 @@ export function useTaskControl(agent: string, id: string, turnId: string | undef
     if (!review || undoBusy) return;
     setUndoBusy(true); setReviewError("");
     try {
-      await api("tasks/reviews/undo", "POST", { id, turnId, reviewRequestId: review.requestId });
+      await api("tasks/control", "POST", { op: "task_review_undo", args: { id, turnId, reviewRequestId: review.requestId } });
       await reloadReview();
     } catch (error) { setReviewError(String(error)); } finally { setUndoBusy(false); }
   };

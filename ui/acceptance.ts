@@ -1,4 +1,5 @@
 // On-demand observation of the real renderer. No alternate layout or state model.
+import { taskPanelSnapshot, controlTaskPanel, type TaskPanelRequest } from "./state/taskPanel";
 import { agentPanel, ingressPanel, selectAgentPanel, selectIngressPanel } from './state/overviewPanels';
 import { connector, refreshConnector } from './state/connector';
 import { agents, refreshAgents } from './state/agents';
@@ -21,6 +22,7 @@ export function viewModel(layoutSettled = false) {
     window: { width: innerWidth, height: innerHeight, devicePixelRatio },
     theme: document.documentElement.dataset.theme, language: locale.get(),
     topology: topology?.() ?? null,
+    taskDetail: taskPanelSnapshot(),
     panels: { agent: agentPanel.get() ?? null, source: ingressPanel.get()?.client?.id ?? null,
       onboarding: onboarding.get()?.step ?? null, connectionSetup: connectionSetup.get() ?? null, connectionSwitch: connectionSwitch.get() ?? null, remoteSourceId: navigation.get().remoteSourceId ?? null, remoteConnectionId: navigation.get().remoteConnectionId ?? null, page: localStorage.getItem('arc-page') ?? 'overview' },
   };
@@ -56,11 +58,12 @@ export async function settledViewModel() {
   }
   return { ...viewModel(), layoutSettled: false };
 }
-export async function captureRequest(request: { id: string; panel?: PanelRequest }, navigate: () => void) {
+export async function captureRequest(request: { id: string; panel?: PanelRequest; taskPanel?: TaskPanelRequest }, navigate: () => void) {
   const { invoke } = await import('@tauri-apps/api/core');
   try {
     await Promise.all([refreshConnector(), refreshAgents(), refreshTasks(), api<AgentActivitySnapshot>('agents/activity').then(acceptActivity)]);
     if (request.panel) { navigate(); openSnapshotPanel(request.panel); }
+    if (request.taskPanel) { if (request.taskPanel.action === "open") navigate(); await controlTaskPanel(request.taskPanel); }
     const model = await settledViewModel();
     await invoke('snapshot_ready', { id: request.id, model, error: null });
   } catch (error) { await invoke('snapshot_ready', { id: request.id, model: null, error: String(error) }); }

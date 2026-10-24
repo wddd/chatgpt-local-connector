@@ -1,3 +1,6 @@
+import { observeTaskPanel } from "../state/taskPanel";
+import { useTaskQueue } from "../state/taskQueue";
+import TaskQueuedMessages from "./TaskQueuedMessages";
 import TaskControls from "./TaskControls";
 import { useTaskControl } from "../state/taskControl";
 import "./TaskDetail.css";
@@ -122,6 +125,38 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const state = taskState(timeline?.status, running, showCard);
   const turnId = nativeSession.turnId || groups.at(-1)?.turnId;
   const control = useTaskControl(agent, session.id, turnId, timeline?.status, !external && !timeline?.readOnly);
+  const queue = useTaskQueue(external || timeline?.readOnly ? "" : agent, session.id, control.operation?.receipt);
+  const latest = () => {
+    const node = viewport.current;
+    if (!node) return;
+    manualDisclosure.current = false; following.current = true;
+    node.scrollTop = node.scrollHeight; previousTop.current = node.scrollTop;
+    setAtLatest(true); node.focus({ preventScroll: true });
+  };
+  const disclosureIds = useRef(new WeakMap<Element, string>());
+  useEffect(() => observeTaskPanel({ agent, id: session.id,
+    read: () => {
+      const disclosures = [...(detail.current?.querySelectorAll<HTMLButtonElement>("button[aria-expanded]") ?? [])].map(button => {
+        let id = disclosureIds.current.get(button);
+        if (!id) { id = crypto.randomUUID(); disclosureIds.current.set(button, id); }
+        return { id, label: button.getAttribute("aria-label") || button.textContent, expanded: button.getAttribute("aria-expanded") === "true", disabled: button.disabled };
+      });
+      return { agent, id: session.id, following: following.current, atLatest, expanded, state, turnId, timeline, queue: queue.items, review: control.review, operation: control.operation, disclosures };
+    },
+    act: request => {
+      if (request.action === "latest") latest();
+      else if (request.action === "follow") {
+        if (typeof request.following !== "boolean") throw new Error("FOLLOW_REQUIRED: supply following:true or false");
+        if (request.following) latest(); else following.current = false;
+      } else if (request.action === "width") onToggleWidth();
+      else if (request.action === "back") onBack();
+      else if (request.action === "disclose") {
+        const button = [...(detail.current?.querySelectorAll<HTMLButtonElement>("button[aria-expanded]") ?? [])].find(node => disclosureIds.current.get(node) === request.target);
+        if (!button || button.disabled) throw new Error("DISCLOSURE_CHANGED: read task_panel again");
+        button.focus({ preventScroll: true }); button.click();
+      }
+    },
+  }));
   const plan = projectTurn(groups.at(-1)?.entries ?? [], state).plan?.plan ?? [];
   const doneSteps = plan.filter(step => step.status === "completed").length;
   const title = taskTitle || nativeSession.title || session.title || t("timeline.title");
@@ -171,13 +206,11 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           </section>}
           {timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
           <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} turnTimings={timeline?.turnTimings} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries} control={!external && !timeline?.readOnly ? control : undefined} />
+          <TaskQueuedMessages queue={queue} running={running} restoreFocus={() => viewport.current?.focus({ preventScroll: true })} />
           </>}
         </div>
       </div>
-      {!atLatest && <Button variant="ghost" className="timeline-latest" onClick={() => {
-        const node = viewport.current;
-        if (node) { manualDisclosure.current = false; node.scrollTop = node.scrollHeight; following.current = true; setAtLatest(true); }
-      }}>{t("timeline.latest")}</Button>}
+      {!atLatest && <Button variant="secondary" className="timeline-latest" onClick={latest}>{t("timeline.latest")}</Button>}
     </div>
     {!external && !timeline?.readOnly && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} onPending={setShowCard} narrow={narrow} /><div hidden={showCard}><TaskControls agent={agent} state={state} control={control} turnId={turnId || undefined} /></div></footer>}
   </section>;

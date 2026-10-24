@@ -1141,5 +1141,15 @@
   "detail.openRequest": "打开",
   "detail.later": "稍后",
   "detail.taskActions": "任务操作",
-  "detail.skipped": "已跳过"
+  "detail.skipped": "已跳过",
+  "detail.sendOptions": "发送选项",
+  "detail.queueState.queued": "已排队",
+  "detail.queueState.blocked": "已暂停",
+  "detail.queueState.dispatching": "正在发送",
+  "detail.queueState.steering": "正在插入",
+  "detail.queueState.steered": "已插入当前轮次",
+  "detail.queueState.cancelled": "已取消",
+  "detail.queueState.failed": "发送失败",
+  "detail.queueState.sent": "已发送",
+  "detail.queueState.unconfirmed": "提交结果待确认"
 }
