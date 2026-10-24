@@ -1,3 +1,15 @@
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+struct SnapshotDesktop(AtomicUsize);
+impl arc_core::transport::DesktopAccess for SnapshotDesktop {
+    fn check_write(&self) -> arc_core::Result<()> {Ok(())}
+    fn request(&self, request: arc_core::transport::DesktopRequest) -> std::pin::Pin<Box<dyn std::future::Future<Output=arc_core::Result<serde_json::Value>>+Send>> {
+        let ready=self.0.fetch_add(1,Ordering::SeqCst)>0;
+        Box::pin(async move {match request {
+            arc_core::transport::DesktopRequest::Route(route,method,body) if route=="app/snapshot" && method=="POST" && body["modelOnly"]==true => Ok(serde_json::json!({"model":{"scenario":{"ready":ready}}})),
+            _ => Err("FIXTURE_DESKTOP_UNSUPPORTED".into())
+        }})
+    }
+}
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[tokio::main]
 async fn main() {
@@ -11,7 +23,7 @@ async fn main() {
     let service =
         arc_core::service::Service::fixture(std::env::var("ARC_FIXTURE_BINARY").unwrap().into())
             .unwrap();
-    let _listener = arc_core::transport::listen(service.clone(), None)
+    let _listener = arc_core::transport::listen(service.clone(), std::env::var_os("ARC_FIXTURE_SNAPSHOT").map(|_|Arc::new(SnapshotDesktop(AtomicUsize::new(0))) as Arc<dyn arc_core::transport::DesktopAccess>))
         .await
         .unwrap();
     if std::env::args().nth(1).as_deref() == Some("http") {

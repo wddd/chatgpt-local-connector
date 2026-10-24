@@ -182,7 +182,9 @@ pub(crate) async fn wait(args: &[&str]) -> Result<Value> {
         }
     } else {
         let (_, method, _) = crate::management::resolve(&options.op, &input)?;
-        if method != "GET" && !["state.wait", "logs.query"].contains(&options.op.as_str()) {
+        let snapshot_read = options.op == "app.snapshot" && input["body"]["modelOnly"] == true
+            && input["body"].as_object().is_some_and(|body|body.keys().all(|key|key == "modelOnly"));
+        if method != "GET" && !snapshot_read && !["state.wait", "logs.query"].contains(&options.op.as_str()) {
             return Err("INVALID_ARGUMENT: wait requires a read-only op".into());
         }
     }

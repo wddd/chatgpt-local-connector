@@ -1,4 +1,5 @@
-import { execFileSync, spawn } from 'node:child_process';
+import {promisify} from 'node:util';
+import { execFile, execFileSync, spawn } from 'node:child_process';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { tmpdir } from 'node:os';
@@ -40,7 +41,12 @@ export async function nativeControl(script: string, extraEnv: Record<string, str
     }
     return result;
   };
-  return { api, call, completed, async close() {
+  const shell = async (command: string) => {
+    const binary=path.join(target,'debug',process.platform === 'win32' ? 'contract-fixture.exe' : 'contract-fixture');
+    const quoted="'"+binary.replaceAll("'","'\\''")+"'";
+    return promisify(execFile)('/bin/sh',['-c',command.replace('arc cli',`${quoted} cli`)],{env:{...process.env,ARC_STATE_DIR:path.join(directory,'state')}});
+  };
+  return { api, call, completed, shell, async close() {
     processHandle.stdin.end('\n');
     await new Promise<void>(resolve => processHandle.once('exit', () => resolve()));
     lines.close(); await rm(directory, { recursive: true, force: true });
