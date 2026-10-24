@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+import { developmentConfig } from './dev-identity.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtemp, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -11,8 +13,9 @@ if (process.argv.length !== 2) throw new Error('Usage: npm run dev:isolated. A n
 if (!['darwin', 'win32'].includes(process.platform)) throw new Error('Desktop isolation requires macOS or Windows; use ARC_STATE_DIR with headless arc start on Linux.');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const stateDirectory = await realpath(await mkdtemp(path.join(tmpdir(), 'arc-isolated-')));
-const env = { ...process.env, ARC_STATE_DIR: stateDirectory };
-console.log(JSON.stringify({ event: 'isolated-starting', stateDirectory, bundleId: 'com.whzxc.agent-remote-control.dev' }));
+const env = { ...process.env, ARC_STATE_DIR: stateDirectory, ARC_DEV_INSTANCE_ID: randomBytes(6).toString('hex') };
+const identity = developmentConfig(env);
+console.log(JSON.stringify({ event: 'isolated-starting', stateDirectory, bundleId: identity.identifier, appName: identity.productName }));
 const child = spawn(process.execPath, [path.join(root, 'tooling/desktop-dev.mjs')], { cwd: root, env, stdio: 'inherit' });
 let ended = false;
 const done = new Promise(resolve => {
@@ -34,7 +37,7 @@ try {
           throw new Error('Isolated Desktop identity is outside this checkout target directory.');
         }
         console.log(JSON.stringify({ event: 'isolated-ready', stateDirectory, port: endpoint.port, instance: endpoint.instance,
-          desktopPid: desktop.pid, corePid: endpoint.pid, bundleId: 'com.whzxc.agent-remote-control.dev',
+          desktopPid: desktop.pid, corePid: endpoint.pid, screen: { action: 'tree', bundleId: identity.identifier, pid: desktop.pid }, bundleId: identity.identifier, appName: identity.productName,
           cli: [path.join(root, 'dist/native', process.platform === 'win32' ? 'arc.exe' : 'arc'), 'cli', '--state-dir', stateDirectory] }));
         break;
       }

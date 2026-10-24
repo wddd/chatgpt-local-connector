@@ -103,7 +103,7 @@ async function rebuildGeneration() {
         app = child(process.execPath, ['tooling/macos-dev-app.mjs', binary], { stdio: ['pipe', 'inherit', 'inherit'] });
       } else {
         // Windows locks running executables. Keep Cargo's outputs separate from the running generation.
-        const directory = path.join(root, 'target/dev-app');
+        const directory = path.join(root, 'target/dev-app', env.ARC_DEV_INSTANCE_ID || 'default');
         await mkdir(directory, { recursive: true });
         const executable = path.join(directory, path.basename(binary));
         cpSync(binary, executable);
@@ -190,7 +190,7 @@ try {
   if (existing && (existing.project !== root || existing.stateDirectory !== stateDir)) throw new Error('Port 5187 belongs to another checkout or state directory. Stop its DEV WEB before starting dev.');
   if (!existing) { server = await createServer({ configFile: path.join(root, 'vite.config.ts') }); await server.listen(); }
   const sourceDirectories = ['native/src', 'desktop/src', 'skills/arc-setup'];
-  const sourceFiles = ['Cargo.toml', 'Cargo.lock', 'native/Cargo.toml', 'native/build.rs', 'native/screen/main.swift', 'desktop/Cargo.toml', 'desktop/build.rs', 'desktop/tauri.conf.json', 'desktop/tauri.dev.conf.json', 'desktop/tauri.windows.conf.json', 'tooling/build-version.rs', 'tooling/build-native.mjs', 'tooling/macos-dev-app.mjs', 'docs/reference/cli.md'];
+  const sourceFiles = ['Cargo.toml', 'Cargo.lock', 'native/Cargo.toml', 'native/build.rs', 'native/screen/main.swift', 'desktop/Cargo.toml', 'desktop/build.rs', 'desktop/tauri.conf.json', 'desktop/tauri.dev.conf.json', 'desktop/tauri.windows.conf.json', 'tooling/build-version.rs', 'tooling/build-native.mjs', 'tooling/macos-dev-app.mjs', 'tooling/dev-identity.mjs', 'docs/reference/cli.md'];
   function fingerprint() {
     const digest = createHash('sha256');
     function include(file) {

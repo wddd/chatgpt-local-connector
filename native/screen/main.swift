@@ -55,7 +55,7 @@ struct Window {
     let onScreen: Bool
     var json: [String: Any] {
         ["windowId": id, "app": app.localizedName ?? "", "bundleId": app.bundleIdentifier ?? "",
-         "pid": app.processIdentifier, "title": title, "frame": rectJSON(bounds),
+         "pid": app.processIdentifier, "bundlePath": app.bundleURL?.path ?? "", "title": title, "frame": rectJSON(bounds),
          "onScreen": onScreen, "frontmost": isFront(self), "appActive": app.isActive]
     }
 }
@@ -70,6 +70,7 @@ func windows(_ args: [String: Any]) -> [Window] {
         let title = row[kCGWindowName as String] as? String ?? ""
         let rect = CGRect(x: bounds["X"] ?? 0, y: bounds["Y"] ?? 0, width: bounds["Width"] ?? 0, height: bounds["Height"] ?? 0)
         guard rect.width > 1 && rect.height > 1 else { return nil }
+        if let targetPid = args["pid"] as? Int32, pid != targetPid { return nil }
         if let name = args["app"] as? String, !(app.localizedName ?? "").localizedCaseInsensitiveContains(name) { return nil }
         if let bundle = args["bundleId"] as? String, app.bundleIdentifier != bundle { return nil }
         if let text = args["title"] as? String, !title.localizedCaseInsensitiveContains(text) { return nil }
@@ -88,15 +89,15 @@ func root(_ app: NSRunningApplication) -> AXUIElement {
     return root
 }
 func target(_ args: [String: Any]) throws -> Window {
-    guard ["app", "bundleId", "title", "windowId"].contains(where: { args[$0] != nil }) else {
-        try fail("SCREEN_TARGET_REQUIRED: Specify app, bundleId, title or windowId.")
+    guard ["app", "bundleId", "pid", "title", "windowId"].contains(where: { args[$0] != nil }) else {
+        try fail("SCREEN_TARGET_REQUIRED: Specify app, bundleId, pid, title or windowId.")
     }
     if args["title"] != nil { try requireRecording() }
     let matches = windows(args)
     guard let first = matches.first else { try fail("WINDOW_NOT_FOUND") }
     let apps = Set(matches.map { $0.app.processIdentifier })
     let app = matches.first(where: { $0.app.isActive })?.app ?? first.app
-    if apps.count > 1 && !app.isActive { try fail("AMBIGUOUS_APP: Specify bundleId or windowId.") }
+    if apps.count > 1 && !app.isActive { try fail("AMBIGUOUS_APP: Specify bundleId, pid or windowId.") }
     let candidates = matches.filter { $0.app.processIdentifier == app.processIdentifier }
     if candidates.count > 1 && AXIsProcessTrusted(),
        let main = attribute(root(app), kAXMainWindowAttribute) {
@@ -177,6 +178,11 @@ struct Entry {
         return value
     }
 }
+func elementLabel(_ element: AXUIElement) -> String {
+    var seen = Set<String>()
+    return [string(element, kAXTitleAttribute), string(element, kAXDescriptionAttribute), string(element, kAXValueAttribute)]
+        .filter { !$0.isEmpty && seen.insert($0).inserted }.joined(separator: " | ")
+}
 func tree(_ window: Window, text: Bool, limit: Int) throws -> ([Entry], Bool) {
     let start = try axWindow(window)
     var entries: [Entry] = [], visited = 0, truncated = false
@@ -187,9 +193,7 @@ func tree(_ window: Window, text: Bool, limit: Int) throws -> ([Entry], Bool) {
         if entries.count >= limit || visited >= 5000 || depth > 60 || Date() > deadline { truncated = true; return }
         visited += 1
         let role = string(element, kAXRoleAttribute)
-        let parts = [string(element, kAXTitleAttribute), string(element, kAXDescriptionAttribute), string(element, kAXValueAttribute)]
-        var seen = Set<String>()
-        let label = parts.filter { !$0.isEmpty && seen.insert($0).inserted }.joined(separator: " | ")
+        let label = elementLabel(element)
         if roles.contains(role) || (role == "AXGroup" && !string(element, kAXDescriptionAttribute).isEmpty) || (text && role == "AXStaticText") {
             entries.append(Entry(element: element, ref: path, role: role, label: String(label.prefix(2000))))
         }
@@ -213,7 +217,7 @@ func find(_ args: [String: Any], _ window: Window) throws -> Entry {
             guard index >= 0 && index < children.count else { try fail("ELEMENT_NOT_FOUND: Read tree again.") }
             element = children[index]
         }
-        return Entry(element: element, ref: ref, role: string(element, kAXRoleAttribute), label: string(element, kAXTitleAttribute))
+        return Entry(element: element, ref: ref, role: string(element, kAXRoleAttribute), label: String(elementLabel(element).prefix(2000)))
     }
     guard let label = args["label"] as? String, !label.isEmpty else { try fail("ELEMENT_TARGET_REQUIRED: Specify ref or label.") }
     let (entries, truncated) = try tree(window, text: false, limit: 1000)
@@ -305,6 +309,8 @@ func run(_ args: [String: Any]) throws -> [String: Any] {
         try key(args["key"] as? String ?? "")
     case "press", "show":
         let entry = try find(args, window)
+        if let expected = args["expectedLabel"] as? String, entry.label != expected { try fail("STALE_ELEMENT_REF: Label changed. Read screen tree again for this bundleId/pid before acting.") }
+        if let expected = args["expectedRole"] as? String, entry.role != expected { try fail("STALE_ELEMENT_REF: Role changed. Read screen tree again for this bundleId/pid before acting.") }
         let status = AXUIElementPerformAction(entry.element, (action == "press" ? kAXPressAction : "AXScrollToVisible") as CFString)
         result["element"] = entry.json
         if status == .success { result["method"] = action == "press" ? "AXPress" : "AXScrollToVisible" }

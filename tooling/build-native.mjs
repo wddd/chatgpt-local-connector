@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, copyFile, rm, readFile } from 'node:fs/promises';
+import { mkdir, copyFile, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { developmentConfig } from './dev-identity.mjs';
 import { buildEnv } from './build-env.mjs';
 import { macosSigningIdentity, macosSigningArgs } from './macos-signing.mjs';
 
@@ -16,7 +17,7 @@ export async function buildNative({ release = false, target, bundled = release, 
   const identity = macosSigningIdentity(env, { release: release || bundled });
   // The Core is itself a desktop resource, so its build must not copy resources
   // that have not been produced yet (notably on a clean Actions checkout).
-  const config = developmentDesktop ? JSON.parse(await readFile(path.join(root, 'desktop/tauri.dev.conf.json'), 'utf8')) : {};
+  const config = developmentDesktop ? developmentConfig(env) : {};
   env.TAURI_CONFIG = JSON.stringify({ ...config, version: env.ARC_BUILD_VERSION, bundle: { ...config.bundle, resources: [] } });
   execFileSync(process.execPath, [path.join(root, 'tooling/prune-build-cache.mjs'), `--keep=target/${target || (release ? 'release' : 'debug')}`], { cwd: root, stdio: 'inherit' });
   try { if (!stageOnly) execFileSync('cargo', args, { cwd: root, env, stdio: 'inherit' }); }

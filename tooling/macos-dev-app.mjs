@@ -1,3 +1,4 @@
+import { developmentConfig } from './dev-identity.mjs';
 import { buildVersion } from './version.mjs';
 import { execFileSync, spawn } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync } from 'node:fs';
@@ -8,7 +9,8 @@ import { macosSigningIdentity, macosSigningArgs } from './macos-signing.mjs';
 // Cargo's target runner receives the freshly built executable and app arguments.
 const root = fileURLToPath(new URL('../', import.meta.url));
 const binary = path.resolve(process.argv[2]);
-const contents = path.join(path.dirname(binary), 'bundle/macos/Agent Remote Control Dev.app/Contents');
+const config = developmentConfig();
+const contents = path.join(path.dirname(binary), 'bundle/macos', `${config.productName}.app`, 'Contents');
 const resources = path.join(contents, 'Resources');
 mkdirSync(path.join(contents, 'MacOS'), { recursive: true });
 mkdirSync(resources, { recursive: true });
@@ -17,7 +19,6 @@ cpSync(path.join(root, 'dist/native'), path.join(resources, 'bin'), { recursive:
 cpSync(path.join(root, 'skills/arc-setup'), path.join(resources, 'skills/arc-setup'), { recursive: true });
 const executable = path.join(contents, 'MacOS', path.basename(binary));
 cpSync(binary, executable);
-const config = JSON.parse(readFileSync(path.join(root, 'desktop/tauri.dev.conf.json'), 'utf8'));
 const base = JSON.parse(readFileSync(path.join(root, 'desktop/tauri.conf.json'), 'utf8'));
 const plist = path.join(contents, 'Info.plist');
 cpSync(path.join(root, 'desktop/Info.plist'), plist);
@@ -30,8 +31,8 @@ const values = {
 for (const [key, value] of Object.entries(values)) {
   execFileSync('/usr/libexec/PlistBuddy', ['-c', `Add :${key} string ${value}`, plist]);
 }
-// Keep the development bundle's URL handlers aligned with the shipped bundle.
-const schemes = base.plugins?.['deep-link']?.desktop?.schemes || [];
+// Ordinary development keeps URL handlers; isolated apps must not claim installed links.
+const schemes = process.env.ARC_DEV_INSTANCE_ID ? [] : base.plugins?.['deep-link']?.desktop?.schemes || [];
 if (schemes.length) {
   const add = value => execFileSync('/usr/libexec/PlistBuddy', ['-c', value, plist]);
   add('Add :CFBundleURLTypes array');

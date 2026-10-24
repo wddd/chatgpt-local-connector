@@ -1,3 +1,4 @@
+import { developmentConfig } from './dev-identity.mjs';
 import { verifyMacosReleaseSignature } from './macos-signing.mjs';
 import { buildVersion } from './version.mjs';
 import { readFile } from 'node:fs/promises';
@@ -26,7 +27,7 @@ for (const file of ['SKILL.md', ...(await readdir(new URL('../skills/arc-setup/p
 }
 if (process.platform === 'darwin' && root.endsWith('.app')) {
   const identifier = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', path.join(root, 'Contents', 'Info.plist')], { encoding: 'utf8' }).trim();
-  if (!['com.whzxc.agent-remote-control', 'com.whzxc.agent-remote-control.dev'].includes(identifier)) throw new Error('Incorrect package bundle identifier.');
+  if (!['com.whzxc.agent-remote-control', developmentConfig().identifier].includes(identifier)) throw new Error('Incorrect package bundle identifier.');
   if (identifier === 'com.whzxc.agent-remote-control') {
     verifyMacosReleaseSignature(root, identifier);
     verifyMacosReleaseSignature(path.join(root, 'Contents/Resources/bin/arc'), `${identifier}.core`);
