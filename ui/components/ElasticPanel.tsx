@@ -39,6 +39,7 @@ export default function ElasticPanel({
   leading,
   headerDetail,
   centered = false,
+  sheet = false,
   stepBar,
   wide = false,
   busy = false,
@@ -66,6 +67,7 @@ export default function ElasticPanel({
   leading?: ReactNode;
   headerDetail?: ReactNode;
   centered?: boolean;
+  sheet?: boolean;
   stepBar?: ReactNode;
   wide?: boolean;
   busy?: boolean;
@@ -99,6 +101,22 @@ export default function ElasticPanel({
   const origin = useRef<DOMRect | undefined>(undefined);
   const parentPanel = useRef<HTMLElement | undefined>(undefined);
   const [baseDepth, setBaseDepth] = useState(1);
+  const [sheetFrame, setSheetFrame] = useState({ left: innerWidth / 2, bottom: 8, width: Math.min(width ?? 360, innerWidth - 16) });
+  useLayoutEffect(() => {
+    if (!sheet || !open || !node) return;
+    const host = trigger.current?.closest<HTMLElement>("[data-panel-dock]");
+    const measure = () => {
+      const rect = host?.getBoundingClientRect();
+      setSheetFrame({ left: rect ? rect.left + rect.width / 2 : innerWidth / 2,
+        bottom: rect ? Math.max(8, innerHeight - rect.bottom + 8) : 8,
+        width: Math.min(width ?? 360, (rect?.width ?? innerWidth) - 16) });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (host) observer.observe(host);
+    window.addEventListener("resize", measure);
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, [sheet, open, node, width]);
   const closing = useRef(false),
     motion = useRef<ReturnType<typeof surfaceMotion> | null>(null),
     backdropPressed = useRef(false);
@@ -147,20 +165,20 @@ export default function ElasticPanel({
       (initialFocus ? node.querySelector<HTMLElement>(`#${CSS.escape(initialFocus)}`) ?? node : node).focus({ preventScroll: true }),
     );
     let rect = node.getBoundingClientRect();
-    if (parent && source && !centered) {
+    if (parent && source && !centered && !sheet) {
       const x = Math.max(-(innerWidth - rect.width) / 2 + 20, Math.min((innerWidth - rect.width) / 2 - 20, source.x + source.width / 2 - innerWidth / 2));
       const y = Math.max(-(innerHeight - rect.height) / 2 + 20, Math.min((innerHeight - rect.height) / 2 - 20, source.y + source.height / 2 - innerHeight / 2));
       setPosition({ x, y });
       rect = new DOMRect((innerWidth - rect.width) / 2 + x, (innerHeight - rect.height) / 2 + y, rect.width, rect.height);
     }
     const surface = surfaceMotion(node, () => ({
-      transform: `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
-    }), frame => { dockFrame.current = frame; onMotion?.(); onPanelFrame?.(frame); }, !dock);
+      transform: sheet ? "translateX(-50%)" : `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
+    }), frame => { dockFrame.current = frame; onMotion?.(); onPanelFrame?.(frame); }, !dock && !sheet);
     dockFrame.current = rect;
     onPanelFrame?.(rect);
     motion.current = surface;
     const fades: AnimationPlaybackControlsWithThen[] = [];
-    const morphOrigin = !!visualOrigin.current && (centered || !!visualOrigin.current.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]"));
+    const morphOrigin = !sheet && !!visualOrigin.current && (centered || !!visualOrigin.current.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]"));
     if (!reduced() && source && rect.width && !parent && morphOrigin) {
       const visual = visualOrigin.current;
       void surface.to({ ...frameAt(rect, 1, getComputedStyle(node).borderRadius), ...surfaceOf(node) }, {
@@ -237,7 +255,7 @@ export default function ElasticPanel({
     clearGhost.current?.();
     const from = node.getBoundingClientRect(),
       to = parent?.getBoundingClientRect() ?? visual?.rect ?? origin.current;
-    if (!replacement && to && !parent && visual && (centered || visual.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]")) && !reduced()) {
+    if (!sheet && !replacement && to && !parent && visual && (centered || visual.trigger.closest(".graph-node, .hub-entry, [data-timeline-anchor]")) && !reduced()) {
       const style = getComputedStyle(node);
       const current = { ...frameAt(from, Number(style.opacity), style.borderRadius), ...surfaceOf(node) };
       const destination = dock ? () => ({ ...frameAt(visual.visual.isConnected ? visual.visual.getBoundingClientRect() : to, 1, "50%"), ...visual.surface })
@@ -318,14 +336,16 @@ export default function ElasticPanel({
           ref={attach}
           className={`dialog elastic-panel ${wide ? "dialog-wide" : ""} ${unframed ? "unframed" : ""} ${headerless ? "headerless" : ""} ${dock ? "activity-panel" : ""} ${centered ? "setup-dialog" : ""}`}
           data-panel-dock={dock}
+          data-sheet={sheet || undefined}
           data-recessed={recessed || undefined}
           inert={recessed || undefined}
           data-panel-depth={baseDepth + depthOffset}
           aria-describedby={undefined}
           style={
             {
+              ...(sheet ? { top: "auto", left: sheetFrame.left, bottom: sheetFrame.bottom, width: sheetFrame.width } : {}),
               "--preferred-width": dock && expanded ? "calc(100vw - 32px)" : `${width ?? (wide ? 880 : 800)}px`,
-              transform: `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
+              transform: sheet ? "translateX(-50%)" : `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
               zIndex: (dock ? 102 : 101) + Math.max(0, layers.indexOf(node!)) * 2,
             } as CSSProperties
           }
@@ -370,7 +390,7 @@ export default function ElasticPanel({
                 data-leading={leading ? "true" : "false"}
                 onPointerDown={(e) => {
                   if (
-                    centered || dock || e.button !== 0 ||
+                    centered || sheet || dock || e.button !== 0 ||
                     !e.isPrimary ||
                     (e.target as Element).closest("button") ||
                     motion.current?.running

@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId } from "react";
 import type { AgentActivitySession } from "../types";
 import { t } from "../i18n";
 import { activityApprovals, submitActivityResponse } from "../state/activity";
@@ -8,11 +8,10 @@ import { Button, Checkbox, Field, Input, SingleChoice } from "./ui";
 
 function QuestionField({ question, value, onChange, disabled }: { question: Question; value: string[]; onChange: (value: string[]) => void; disabled: boolean }) {
   const id = useId();
-  const [other, setOther] = useState("");
-  const [custom, setCustom] = useState(false);
+  const other = value.find(answer => !question.options.some(option => option.label === answer)) ?? "";
+  const custom = !!other;
   const pick = (label: string) => {
     if (disabled) return;
-    setCustom(false);
     onChange(question.multiple ? value.includes(label) ? value.filter(v => v !== label) : [...value, label] : [label]);
   };
   return <fieldset className="task-question-field" disabled={disabled} onKeyDown={event => {
@@ -22,11 +21,10 @@ function QuestionField({ question, value, onChange, disabled }: { question: Ques
   }}><legend>{question.text}</legend>
     {question.multiple ? question.options.map((option, index) => <div className="task-multi-option" key={option.label}><Checkbox checked={value.includes(option.label)} onChange={() => pick(option.label)} disabled={disabled}>{option.label}</Checkbox>{option.description && <small>{option.description}</small>}<kbd>{index + 1}</kbd></div>)
       : !!question.options.length && <SingleChoice cards label={question.text} value={custom ? "" : value[0] ?? ""} onChange={pick} disabled={disabled} options={question.options.map((option, index) => ({ value: option.label, label: option.label, description: option.description, graphic: <kbd>{index + 1}</kbd> }))} />}
-    {(question.other || !question.options.length) && <Field id={id} label={t(question.options.length ? "detail.other" : "timeline.answer")}><Input id={id} type={question.secret ? "password" : "text"} value={other} onFocus={() => { setCustom(true); onChange(other ? [other] : []); }} onChange={event => { setOther(event.target.value); setCustom(true); onChange([event.target.value]); }} disabled={disabled} /></Field>}
+    {(question.other || !question.options.length) && <Field id={id} label={t(question.options.length ? "detail.other" : "timeline.answer")}><Input id={id} type={question.secret ? "password" : "text"} value={other} onFocus={() => { if (!question.multiple) onChange(other ? [other] : []); }} onChange={event => onChange([...(question.multiple ? value.filter(answer => question.options.some(option => option.label === answer)) : []), event.target.value])} disabled={disabled} /></Field>}
   </fieldset>;
 }
-export default function TaskQuestion({ agent, session }: { agent: string; session: AgentActivitySession }) {
-  const [answers, setAnswers] = useState<Record<string, string[]>>({});
+export default function TaskQuestion({ agent, session, answers, onAnswersChange }: { agent: string; session: AgentActivitySession; answers: Record<string, string[]>; onAnswersChange: (answers: Record<string, string[]>) => void }) {
   const submissions = activityApprovals.use();
   const submission = submissions[interactionKey(agent, session)];
   const interaction = session.interaction!;
@@ -38,7 +36,7 @@ export default function TaskQuestion({ agent, session }: { agent: string; sessio
     if (payload) void submitActivityResponse(agent, session, skip ? "cancel" : "answer", payload);
   };
   return <form className="task-question" onSubmit={event => { event.preventDefault(); send(false); }}>
-    {questions.map(question => <QuestionField key={question.id} question={question} value={answers[question.id] ?? []} onChange={value => setAnswers(old => ({ ...old, [question.id]: value }))} disabled={locked || !supported} />)}
+    {questions.map(question => <QuestionField key={question.id} question={question} value={answers[question.id] ?? []} onChange={value => onAnswersChange({ ...answers, [question.id]: value })} disabled={locked || !supported} />)}
     {!supported && <p className="timeline-meta">{t("timeline.responseUnavailable")}</p>}
     {submission?.status === "unconfirmed" && <p role="status">{t("activity.unconfirmed")}</p>}
     {submission?.status === "failed" && <p role="alert">{submission.error}</p>}

@@ -1132,7 +1132,12 @@
   "detail.verdict.bypass": "Bypassed",
   "detail.verdict.reject": "Rejected",
   "detail.tools.search": "{count} searches",
+  "detail.tools.list": "{count} directory listings",
   "detail.sendWhenIdle": "This agent accepts new input after the current turn ends.",
   "detail.skippedAnswer": "Skipped by the user.",
-  "detail.sourceUnknown": "source not recorded"
+  "detail.sourceUnknown": "source not recorded",
+  "detail.openRequest": "Open",
+  "detail.later": "Later",
+  "detail.taskActions": "Task actions",
+  "detail.skipped": "Skipped"
 }

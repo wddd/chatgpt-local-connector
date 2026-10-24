@@ -44,20 +44,21 @@ export function projectTurn(entries: readonly AgentTimelineEntry[], state: TaskS
     actions: work.filter(entry => ["command", "file", "tool"].includes(entry.type)).length,
   };
 }
-export function toolCounts(entries: readonly AgentTimelineEntry[]) {
+export function toolCounts(entries: readonly AgentTimelineEntry[], live = true) {
   const counts = workState(entries).counts;
   const actions = entries.flatMap(entry => entry.commandActions ?? []);
   const reads = new Set(actions.filter(action => action.type === "read" && action.path).map(action => action.path));
   const commands = entries.filter(entry => entry.type === "command" && (!entry.commandActions?.length || entry.commandActions.some(action => !["read", "search", "listFiles"].includes(action.type))));
-  const running = commands.filter(entry => entry.status === "running").length;
+  const running = live ? commands.filter(entry => entry.status === "running").length : 0;
   return { read: counts.read + reads.size, search: actions.filter(action => action.type === "search").length,
+    list: actions.filter(action => action.type === "listFiles").length,
     edit: counts.write, file: counts.file, command: commands.length - running, running, tool: counts.tool };
 }
 export function changedFiles(entries: readonly AgentTimelineEntry[]) {
   const files = new Map<string, { path: string; added?: number; removed?: number }>();
   for (const entry of entries) {
-    if (entry.status !== "completed") continue;
-    const changes: NonNullable<AgentTimelineEntry["changes"]> = entry.changes ?? (entry.type === "file" && entry.path && entry.operation && entry.operation !== "read" ? [{ path: entry.path }] : []);
+    if (entry.status !== "completed" || entry.operation === "read") continue;
+    const changes: NonNullable<AgentTimelineEntry["changes"]> = entry.changes ?? (entry.type === "file" && entry.path && entry.operation ? [{ path: entry.path }] : []);
     for (const change of changes) {
       const previous = files.get(change.path);
       files.set(change.path, { path: change.path,

@@ -287,42 +287,31 @@ test("timeline turn disclosures preserve choices through incremental work and re
     const first = { ...base, id: "first", type: "command", status: "running", command: "npm test", cwd: "/project", output: { text: "example output" } };
     const second = { ...base, id: "second", type: "file", operation: "read", status: "completed", path: "/project/src/file.ts", durationMs: 1000, changes: [{ path: "/project/src/file.ts", operation: "edit" }] };
     const session = { id: "example", source: "arc-task", phase: "command", phaseSince: null, headline: "npm test", timeline: true, project: "/project" };
-    const render = async (entries: unknown[], now = Date.parse("2026-01-01T00:00:03Z")) => {
-      await act(async () => { root.render(h(TimelineEntries, { entries, session, agent: "claude", now })); });
+    const render = async (entries: { status: string }[], now = Date.parse("2026-01-01T00:00:03Z")) => {
+      await act(async () => { root.render(h(TimelineEntries, { entries, session, agent: "claude", now, running: entries.some(e => ["running", "pending"].includes(e.status)), status: entries.some(e => e.status === "failed") ? "failed" : entries.some(e => ["running", "pending"].includes(e.status)) ? "running" : "completed" })); });
     };
     const click = async (element: Element) => { await act(async () => { fireEvent.click(element); }); };
     const page = within(mount);
     const { t } = await server.ssrLoadModule("/ui/i18n.ts");
-    const tool = () => page.getByRole("button", { name: /npm test/ });
-    const group = () => page.getByRole("button", { name: name => name.includes(t("timeline.group.readOne", { count: 1 })) });
-    await render([first]);
-    assert.equal(page.getAllByRole("img", { name: t("timeline.status.running") }).length, 1);
-    await click(tool());
-    assert.equal(tool().getAttribute("aria-expanded"), "true");
+    const group = () => page.getByRole("button", { name: name => name.includes(t("detail.tools.read", { count: 1 })) });
     await render([first, second]);
-    assert.equal(group().getAttribute("aria-expanded"), "true");
-    assert.equal(tool().getAttribute("aria-expanded"), "true");
+    assert.ok(page.getAllByText(first.output.text).length > 0);
     await click(group());
     assert.equal(group().getAttribute("aria-expanded"), "false");
-    assert.equal(page.queryByRole("button", { name: /npm test/ }), null);
-    await click(group());
-    await render([{ ...first, status: "failed", durationMs: 4000, exitCode: 1 }, second]);
-    assert.equal(group().getAttribute("aria-expanded"), "true");
-    assert.ok(page.getByRole("img", { name: t("timeline.status.failed") }));
-    assert.ok(page.getByText(first.output.text));
-    await render([{ ...first, id: "automatic", turnId: "automatic" }, { ...second, id: "automatic-file", turnId: "automatic" }]);
-    assert.equal(group().getAttribute("aria-expanded"), "true");
-    await render([{ ...first, id: "automatic", turnId: "automatic", status: "completed" }, { ...second, id: "automatic-file", turnId: "automatic" }]);
+    await render([first, second, { ...second, id: "third", path: "/project/src/other.ts" }]);
     assert.equal(group().getAttribute("aria-expanded"), "false");
-    const thinking = { ...base, id: "thinking", type: "thinking", status: "completed", durationMs: 2000, text: "Reasoning detail" };
-    const text = { ...base, id: "text", type: "text", status: "completed", text: '| Name | Value |\n| --- | --- |\n| A | B |\n\n- [x] Done\n\n[Docs](https://example.com/docs)\n\n```js\nconst value = 1;\n```\n\n<script>window.bad = true</script>' };
+    assert.equal(page.queryByText(first.output.text), null);
+    await click(group());
+    await render([{ ...first, status: "failed", exitCode: 1 }, second]);
+    const process = () => page.getByRole("button", { name: name => name.startsWith(t("detail.process", { updates: 0, answers: 0, actions: 2 })) });
+    assert.equal(process().getAttribute("aria-expanded"), "true");
+    assert.ok(page.getAllByText(first.output.text).length > 0);
+    await render([{ ...first, status: "completed" }, second]);
+    assert.equal(process().getAttribute("aria-expanded"), "false");
+    const thinking = { ...base, id: "thinking", type: "thinking", status: "completed", text: "Reasoning detail" };
+    const text = { ...base, id: "text", type: "text", status: "completed", phase: "final_answer", text: '| Name | Value |\n| --- | --- |\n| A | B |\n\n- [x] Done\n\n[Docs](https://example.com/docs)\n\n```js\nconst value = 1;\n```\n\n<script>window.bad = true</script>' };
     await render([thinking, text]);
-    const disclosure = (summary = thinking.text) => page.getByRole("button", { name: name => name.includes(summary) });
-    assert.equal(disclosure().getAttribute("aria-expanded"), "false");
-    await click(disclosure());
-    await render([{ ...thinking, text: "Updated reasoning" }, text]);
-    assert.equal(disclosure("Updated reasoning").getAttribute("aria-expanded"), "true");
-    assert.ok(page.getAllByText("Updated reasoning").length > 0);
+    assert.equal(page.queryByText(thinking.text), null);
     assert.ok(page.getByRole("cell", { name: "B" }));
     assert.ok(page.getByText("const value = 1;"));
     assert.equal(page.queryByText("window.bad = true"), null);
@@ -335,17 +324,18 @@ test("timeline turn disclosures preserve choices through incremental work and re
     const interaction = { kind: "question", summary: "Choose an option", respond: { op: "agent_respond", args: { agent: "claude", taskId: "example", interactionId: 1 } } };
     const pending = { ...base, id: "interaction", type: "interaction", status: "pending", interaction };
     await render([pending]);
-    const receipt = (key: string) => page.getByText(t(key), { exact: false });
-    assert.ok(receipt("timeline.waitingApproval"));
+    assert.ok(page.getByText(t("detail.needsYou")));
     const key = interactionKey("claude", { ...session, phaseSince: base.startedAt, interaction });
-    for (const [decision, label] of [["answer", "timeline.answered"], ["deny", "timeline.denied"]]) {
-      await act(() => activityApprovals.set({ [key]: { status: "submitted", decision, requestId: "fixture" } }));
-      assert.ok(receipt(label));
-      assert.equal(page.queryByText(t("timeline.waitingApproval"), { exact: false }), null);
+    for (const [decision, label] of [["answer", "timeline.answered"], ["deny", "detail.verdict.reject"]]) {
+      await act(() => activityApprovals.set({ [key]: { status: "submitted", decision, payload: { op: "agent_respond", args: { value: "A" } } } }));
+      assert.ok(page.getByText(t(label)));
+      assert.equal(page.queryByText(t("detail.needsYou")), null);
     }
     await act(() => activityApprovals.set({}));
     await render([{ ...pending, status: "completed" }]);
-    assert.ok(receipt("timeline.resolved"));
+    const folded = page.getByRole("button", { name: name => name.startsWith(t("detail.process", { updates: 0, answers: 1, actions: 0 })) });
+    await click(folded);
+    assert.ok(page.getByText(t("detail.resolvedElsewhere")));
 
   } finally {
     await act(() => root.unmount()); await server.close(); window.happyDOM.abort(); mount.remove();
@@ -378,7 +368,7 @@ test("mounted timeline follows the next poll after scrolling up and returning wi
     const { agentActivity } = await server.ssrLoadModule('/ui/state/activity.ts');
     const session = { id: 'follow', turnId: 'turn', source: 'arc-task', phase: 'text', headline: 'Response', phaseSince: null, timeline: true, orderAt: 0 };
     agentActivity.set({ error: '', snapshot: { observedAt: '', activeAgents: ['claude'], agents: { claude: { sessions: [session] } } } });
-    await act(async () => { root.render(h(ActivityTimeline, { agent: 'claude', session, onClose() {}, onBack() {} })); });
+    await act(async () => { root.render(h(ActivityTimeline, { agent: 'claude', session, expanded: false, onToggleWidth() {}, onBack() {} })); });
     const page = within(mount);
     const { t } = await server.ssrLoadModule("/ui/i18n.ts"); latestLabel = t("timeline.latest");
     const viewport = page.getByLabelText(t("timeline.title"));

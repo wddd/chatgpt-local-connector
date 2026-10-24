@@ -101,7 +101,7 @@ function InteractionAnchor({ entry, agent, session }: { entry: AgentTimelineEntr
   const submissions = activityApprovals.use();
   const receipt = submissions[interactionKey(agent, { ...session, phaseSince: entry.startedAt, interaction: entry.interaction })];
   const resolved = receipt?.status === "submitted" || entry.status === "completed";
-  const verdict = receipt?.decision === "deny" ? "detail.reject" : receipt?.decision === "allow" ? "detail.approve" : "timeline.answered";
+  const verdict = receipt?.status !== "submitted" ? "timeline.resolved" : receipt.decision === "deny" ? "detail.verdict.reject" : receipt.decision === "allow" ? "detail.verdict.approved" : receipt.decision === "cancel" ? "detail.skipped" : "timeline.answered";
   return <div className="task-interaction-anchor" data-pending={!resolved || undefined}>
     <Icon icon={resolved ? Check : ShieldAlert} /><div><strong>{resolved ? t(verdict) : t("detail.needsYou")}</strong>
       <span>{entry.interaction?.summary}</span>{receipt?.status === "submitted" && answerLabel(receipt.payload) && <span>{answerLabel(receipt.payload)}</span>}
@@ -122,7 +122,7 @@ function ToolRun({ entries, live }: { entries: AgentTimelineEntry[]; live: boole
   const failed = entries.some(entry => entry.status === "failed");
   const active = live && entries.some(entry => entry.status === "running");
   const [manual, setManual] = useState<boolean>();
-  const counts = toolCounts(entries);
+  const counts = toolCounts(entries, live);
   const stats = Object.entries(counts).filter(([kind, count]) => count && (kind !== "running" || live)).map(([kind, count]) => <span key={kind} className="task-tool-count">{t(`detail.tools.${kind}`, { count })}</span>);
   return <Fold className="task-tool-run" open={failed || (manual ?? active)} onChange={setManual} summary={<span className="task-tool-counts">{stats}</span>}>
     <div className="task-tool-rows">{entries.map(entry => <div key={entry.id} className="task-tool-row" data-failed={entry.status === "failed" || undefined}>

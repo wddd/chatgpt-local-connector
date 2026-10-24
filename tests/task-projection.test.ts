@@ -77,4 +77,7 @@ test("native command action metadata counts searches and reads without guessing 
   assert.equal(counts.search, 1);
   assert.equal(counts.running, 1);
   assert.equal(counts.command, 0);
+  assert.equal(toolCounts([entry("list", "command", { commandActions: [{ type: "listFiles" }] })]).list, 1);
+  assert.equal(toolCounts([entry("stale", "command", { status: "running" })], false).command, 1);
+  assert.equal(toolCounts([entry("stale", "command", { status: "running" })], false).running, 0);
 });

@@ -108,3 +108,58 @@
 .task-detail-layer.agent-panel-layer > .task-detail-footer { flex-wrap: nowrap; justify-content: flex-start; max-height: 60%; min-height: 0; overflow: hidden; }
 .task-needs-you { flex: 1 1 auto; min-height: 0; }
 .task-controls { flex: none; }
+.task-needs-banner.button { width: 100%; height: auto; min-height: 52px; justify-content: space-between; text-align: left; border: 1.5px solid var(--task-attention-ring); border-radius: 16px; padding: 10px 12px; box-shadow: 0 8px 20px -12px var(--warning); }
+.task-needs-banner > span:first-child { display: grid; gap: 4px; min-width: 0; }
+.task-needs-banner strong { color: var(--warning); font-size: 11px; }
+.task-needs-banner > span:first-child > span { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; font-size: 12px; }
+.dialog.elastic-panel[data-sheet] { max-height: min(82dvh, 760px); border: 1.5px solid var(--task-attention-ring); border-radius: 22px; box-shadow: 0 -10px 30px -12px color-mix(in srgb, var(--text) 30%, transparent); }
+.dialog[data-sheet] > .elastic-panel-content { max-height: min(82dvh, 760px); }
+.dialog[data-sheet] .dialog-header { padding: 12px; cursor: default; }
+.dialog[data-sheet] .dialog-body { padding: 0 10px; }
+.dialog[data-sheet] .dialog-footer { padding: 8px 12px; }
+.task-input-sheet .task-needs-you { border: 0; box-shadow: none; padding: 4px 2px 12px; max-height: none; overflow: visible; }
+.task-input-sheet .task-needs-you > header > strong { display: none; }
+.task-input-sheet .task-needs-you > header { justify-content: flex-end; }
+@container (max-width: 360px) {
+  .task-detail-layer > .task-detail-header.dialog-header { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px 6px; padding: 10px 12px; }
+  .task-detail-navigation { display: contents; }
+  .task-detail-navigation > .button { grid-column: 1; grid-row: 1; width: 28px; padding: 4px; }
+  .task-detail-navigation > .button > span, .task-detail-navigation > .actions { display: none; }
+  .task-detail-header .activity-panel-title { grid-column: 2; grid-row: 1; display: block; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; font-size: 14.5px; }
+  .task-detail-chips { grid-column: 1 / -1; flex-wrap: nowrap; gap: 6px; }
+  .task-state { flex: none; font-size: 11.5px; padding: 3px 8px; }
+  .task-detail-meta { flex: 1; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; font-size: 11.5px; }
+  .task-detail-meta .activity-spec, .task-detail-meta .task-source-chip { border: 0; background: none; padding: 0; border-radius: 0; font-size: 11.5px; }
+  .task-detail-meta .activity-spec { flex-shrink: 1; overflow: hidden; min-width: 0; }
+  .task-detail-meta .activity-spec > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+  .task-detail-meta .activity-source-badge, .task-source-where, .task-detail-chips > .timeline-meta { display: none; }
+  .task-detail-chips > .task-review-status { display: none; }
+  .task-progress { grid-column: 1 / -1; }
+  .task-detail-layer .timeline-entries { padding: 12px; gap: 12px; }
+  .task-agent-mark { display: none; }
+  .task-phase { font-size: 13.5px; }
+  .task-prompt .timeline-user { max-width: 90%; padding: 8px 12px; font-size: 13px; }
+  .task-tool-count { border-radius: 999px; background: var(--surface-subtle); padding: 2px 7px; font-size: 11px; }
+  .task-tool-count + .task-tool-count::before { content: none; }
+  .task-final { padding: 12px; }
+  .task-detail-layer.agent-panel-layer > .task-detail-footer { padding: 8px; max-height: 42%; }
+  .task-compose-row { flex-wrap: wrap; gap: 6px; }
+  .task-compose-row > .field { flex-basis: 100%; }
+  .task-compose-row > .button { flex: 1; }
+  .task-review-dock { flex-wrap: wrap; }
+  .task-process > .timeline-summary { flex-wrap: wrap; }
+  .task-receipt-anchor { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-input-sheet *, .task-input-sheet *::before { animation: none !important; transition: none !important; }
+}
+@container (max-width: 360px) {
+  .task-detail-layer > .task-detail-header.dialog-header { grid-template-columns: 28px minmax(0, 1fr) 28px; }
+  .task-narrow-menu { grid-column: 3; grid-row: 1; }
+}
+.task-detail-meta > .activity-spec { padding: 3px 9px; font-size: 12px; line-height: 18px; background: var(--surface-subtle); border: 0; }
+.task-question-field .choice-cards .choice-option { min-height: 44px; padding: 8px 12px; }
+@container (max-width: 360px) {
+  .task-detail-meta > .activity-spec { padding: 0; background: none; font-size: 11.5px; }
+  .task-detail-meta > .activity-spec:not(:last-child)::after { content: "·"; padding-left: 3px; }
+}
