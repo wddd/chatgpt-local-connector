@@ -1077,7 +1077,7 @@ impl Control {
             .or_else(|| args["params"]["threadId"].as_str())
             .unwrap_or("");
         let _thread_guard = if !thread_key.is_empty()
-            && (matches!(operation, "send" | "interrupt" | "review")
+            && (matches!(operation, "send" | "interrupt" | "review" | "archive")
                 || (operation == "native"
                     && matches!(
                         string(args, "method"),
@@ -1088,6 +1088,23 @@ impl Control {
             None
         };
 
+        if operation == "archive" {
+            let thread = string(args,"threadId");
+            r["threadId"] = json!(thread);
+            let rpc = self.utility().await?;
+            let native = rpc.call("thread/read", json!({"threadId":thread,"includeTurns":false}), 10000).await?;
+            if native["thread"]["status"]["type"] == "active" || self.events.lock().await.pending.values().any(|v| v["params"]["threadId"] == thread) {
+                return Err(json!({"code":"ARCHIVE_ACTIVE_TURN","message":"The thread is active or has a pending interaction. Finish it, or explicitly interrupt it, before archiving.","next":{"via":"query","op":"codex_read","args":{"threadId":thread,"statusOnly":true}}}).to_string());
+            }
+            r["state"] = json!("submitting"); self.checkpoint(r)?;
+            if let Err(error) = rpc.call("thread/archive", json!({"threadId":thread}), 10000).await {
+                if error.contains("active writer") {
+                    return Err(json!({"code":"ARCHIVE_WRITER_BUSY","message":"Native archival is blocked by the owning session. Close or archive this exact thread in its owner, then retry with a new requestId after confirming ownership was released. ARC cannot release another session's writer lock.","nativeError":error,"retryable":false,"next":{"via":"query","op":"codex_read","args":{"threadId":thread,"statusOnly":true}}}).to_string());
+                }
+                return Err(error);
+            }
+            return Ok(json!({"threadId":thread,"archived":true,"nativeMethod":"thread/archive"}));
+        }
         if operation == "review" {
             r["threadId"] = args["threadId"].clone();
             return crate::dispatch_policy::review(self, args).await;
@@ -1601,6 +1618,7 @@ impl Control {
             "codex_send" => self.mutate("send", args).await,
             "codex_queue" => crate::dispatch_queue::query(&args).await,
             "codex_queue_control" => crate::dispatch_queue::control(self, &args).await,
+            "codex_archive" => self.mutate("archive", args).await,
             "codex_interrupt" => self.mutate("interrupt", args).await,
             "codex_call" => self.mutate("native", args).await,
             "codex_query" => {

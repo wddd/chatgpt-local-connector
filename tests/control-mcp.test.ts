@@ -127,6 +127,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         return emit({id,result:{data:rows.slice(offset,offset+1),nextCursor:offset+1<rows.length?String(offset+1):null}});
       }
       if (method === 'thread/archive') {
+        if(row.model.includes('archive-busy')) return emit({id,error:{code:-32600,message:'thread '+params.threadId+' already has an active writer'}});
         row.archived=true;saveFixture(saved);
         return emit({id,result:{}});
       }
@@ -2027,4 +2028,21 @@ test('AX2 pending progress and flat answered history expose question content', a
   assert.equal(history.total,1);assert.equal(history.interactions[0].questions[0].question,'2+2?');
   assert.deepEqual(history.interactions[0].response.result.answers.q.answers,['4']);
   assert.ok(history.interactions[0].response.origin.controlSource);
+});
+
+
+test('AX2 archive supports ended ARC threads and explains active or external writer blocks', async () => {
+  // Regression: Desktop-created self-test threads had no ARC archival path and writer errors did not explain cleanup recovery.
+  const task=await dispatchFixture('fixture-dispatch');
+  const archived=await completed('codex_archive',{threadId:task.threadId,requestId:randomUUID()});
+  assert.equal(archived.state,'completed');assert.equal(archived.result.archived,true);
+  const busy=await dispatchFixture('fixture-dispatch-archive-busy');
+  const blocked=await call('codex_archive',{threadId:busy.threadId});
+  assert.equal(blocked.response.isError,true);assert.equal(blocked.result.error.code,'ARCHIVE_WRITER_BUSY');
+  assert.equal(blocked.result.next.args.threadId,busy.threadId);
+  const active=await dispatchFixture('fixture-dispatch-queue');
+  const rejected=await call('codex_archive',{threadId:active.threadId});
+  assert.equal(rejected.result.error.code,'ARCHIVE_ACTIVE_TURN');
+  await completed('codex_interrupt',{threadId:active.threadId,requestId:randomUUID()});
+  assert.equal((await completed('codex_archive',{threadId:active.threadId,requestId:randomUUID()})).result.archived,true);
 });

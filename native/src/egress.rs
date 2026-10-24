@@ -74,6 +74,8 @@ pub fn failure(e: &str) -> Value {
                     | "WRONG_TOOL"
                     | "NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE"
                     | "DESKTOP_STEER_UNAVAILABLE"
+                    | "ARCHIVE_ACTIVE_TURN"
+                    | "ARCHIVE_WRITER_BUSY"
             )
         ) {
             return value;
