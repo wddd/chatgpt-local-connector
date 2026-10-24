@@ -179,6 +179,6 @@ export interface AgentTimeline {
   sessionId: string;
   entries: AgentTimelineEntry[];
   cursor: number;
-  coverage: { state: "complete" | "partial"; truncated: boolean };
+  coverage: { state: "complete" | "partial"; truncated: boolean; reason?: string };
   executionEvidence: boolean | "partial";
 }

@@ -271,12 +271,19 @@ pub(crate) struct Timeline {
     #[serde(skip)]
     pub history_loaded: bool,
     #[serde(skip)]
+    pub observation_lost: bool,
+    #[serde(skip)]
     chunk: Option<(String, String, String)>,
     pi_message: u64,
     #[serde(skip)]
     buffers: HashMap<String, String>,
 }
 impl Timeline {
+    pub fn lose_observation(&mut self) {
+        self.observation_lost = true;
+        self.history_loaded = false;
+        self.status = "unknown".into();
+    }
     fn record_turn_status(&mut self) {
         if self.turn.is_empty() {
             return;
@@ -1144,6 +1151,12 @@ impl Timeline {
                 || row["output"]["truncated"] == true
         });
         let mut result = json!({"sessionId":session,"status":self.status,"entries":self.entries.iter().enumerate().filter(|(_,r)|r["cursor"].as_u64().unwrap_or(0)>after).map(|(i,r)| { let mut row=r.clone(); if row.get("position").is_none() { row["position"]=json!(i); } row }).collect::<Vec<_>>(),"cursor":self.revision,"coverage":{"state":if self.partial {"partial"} else {"complete"},"truncated":truncated},"executionEvidence":self.execution_evidence()});
+        if self.observation_lost {
+            result["coverage"]["state"] = json!("partial");
+            result["coverage"]["reason"] = json!(
+                "native-observation-lost; refreshed history does not restore a live subscription"
+            );
+        }
         let mut prompt_sources = HashMap::new();
         for mut record in crate::dispatch_policy::records(session).unwrap_or_default() {
             if record["dispatchMode"] != "new-turn" {

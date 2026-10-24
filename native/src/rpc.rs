@@ -129,10 +129,8 @@ impl Rpc {
             let mut events = events.lock().await;
             events.pending.retain(|_, r| r["owner"] == "desktop");
             for timeline in events.timelines.values_mut() {
-                if timeline.info["runtimeSource"] == "connector-app-server"
-                    && matches!(timeline.status.as_str(), "running" | "inProgress")
-                {
-                    timeline.finish("unknown", &now());
+                if timeline.info["runtimeSource"] == "connector-app-server" {
+                    timeline.lose_observation();
                 }
             }
             events.wake.notify_waiters();
@@ -208,6 +206,20 @@ impl Rpc {
             .map_err(|_| format!("RPC_TIMEOUT: {method}"))
             .and_then(|v| v.map_err(|_| "TRANSPORT_CLOSED".to_string()))
             .and_then(|v| v);
+        if result.is_ok() && matches!(method, "thread/unsubscribe" | "thread/resume") {
+            let mut events = self.events.lock().await;
+            let timeline = events
+                .timelines
+                .entry(string(&params, "threadId").into())
+                .or_default();
+            if method == "thread/unsubscribe" {
+                timeline.lose_observation();
+            } else {
+                timeline.observation_lost = false;
+                timeline.history_loaded = false;
+            }
+            events.wake.notify_waiters();
+        }
         result.map_err(|e| submission_error(method, e))
     }
     pub async fn close(&self) {
