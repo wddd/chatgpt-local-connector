@@ -4,8 +4,9 @@ impl arc_core::transport::DesktopAccess for SnapshotDesktop {
     fn check_write(&self) -> arc_core::Result<()> {Ok(())}
     fn request(&self, request: arc_core::transport::DesktopRequest) -> std::pin::Pin<Box<dyn std::future::Future<Output=arc_core::Result<serde_json::Value>>+Send>> {
         let ready=self.0.fetch_add(1,Ordering::SeqCst)>0;
+        let scenario=std::env::var("ARC_FIXTURE_SNAPSHOT").as_deref()!=Ok("native");
         Box::pin(async move {match request {
-            arc_core::transport::DesktopRequest::Route(route,method,body) if route=="app/snapshot" && method=="POST" && body["modelOnly"]==true => Ok(serde_json::json!({"model":{"scenario":{"ready":ready},"taskDetail":if body["taskPanel"].is_object() {serde_json::json!({"agent":body["taskPanel"]["agent"],"id":body["taskPanel"]["id"],"purpose":"self-test","following":true,"atLatest":true,"expanded":true,"state":"running","timeline":{"status":"running","entries":[{"text":"x".repeat(150000)}]},"queue":[],"disclosures":[]})} else {serde_json::Value::Null}}})),
+            arc_core::transport::DesktopRequest::Route(route,method,body) if route=="app/snapshot" && method=="POST" && body["modelOnly"]==true => Ok(serde_json::json!({"model":{"layoutSettled":ready,"scenario":if scenario {serde_json::json!({"ready":ready})}else{serde_json::Value::Null},"taskDetail":if body["taskPanel"].is_object() {serde_json::json!({"agent":body["taskPanel"]["agent"],"id":body["taskPanel"]["id"],"purpose":"self-test","following":true,"atLatest":true,"expanded":true,"state":"running","timeline":{"status":"running","entries":[{"text":"x".repeat(150000)}]},"queue":[],"disclosures":[]})} else {serde_json::Value::Null}}})),
             _ => Err("FIXTURE_DESKTOP_UNSUPPORTED".into())
         }})
     }
