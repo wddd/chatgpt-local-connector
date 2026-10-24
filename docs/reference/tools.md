@@ -453,7 +453,7 @@ On delivery failure or expiry, inspect status and delivery records, correct the 
 
 ## Operation outcome
 
-MCP `isError:true` and CLI `ok:false` / exit 1 reflect failed, rejected, cancelled, not-executed, unconfirmed, and rolled-back operation results, including nested receipts and nonzero command exit codes. The top-level error preserves the nested reason; receipt IDs and the result remain available for reconciliation. Pending/reserved receipts indicate acceptance only. A failed historical turn inside a list does not make that list request fail. Unconfirmed means the effect is unknown, not permission to replay.
+MCP `isError:true` and CLI `ok:false` / exit 1 reflect failed, rejected, cancelled, not-executed, unconfirmed, and rolled-back operation results, including nested receipts and nonzero command exit codes. The top-level error preserves the nested reason; receipt IDs, next steps, and the result remain available in both MCP text and structured output for reconciliation. Pending/reserved receipts indicate acceptance only. A failed historical turn inside a list does not make that list request fail. Unconfirmed means the effect is unknown, not permission to replay.
 
 ## Response size and inbox revisits
 

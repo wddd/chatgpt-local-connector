@@ -33,14 +33,7 @@ pub fn tool(mut value: Value, mut error: bool) -> Value {
         value = json!({"value":value});
     }
     value["arcVersion"] = json!(arc_version());
-    let text = if error {
-        format!(
-            "{{\"error\":{},\"arcVersion\":{}}}",
-            value["error"], value["arcVersion"]
-        )
-    } else {
-        value.to_string()
-    };
+    let text = value.to_string();
     json!({"content":[{"type":"text","text":text}],"structuredContent":{"result":value},"isError":error})
 }
 /// Opted-in clients read structuredContent; images and other content stay intact.

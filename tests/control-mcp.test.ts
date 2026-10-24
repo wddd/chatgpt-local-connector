@@ -1944,6 +1944,8 @@ test('AX2 failed receipts report failure through MCP and CLI without losing iden
   assert.equal(response.response.isError,true);
   assert.equal(response.result.state,'failed');
   assert.equal(response.result.requestId,requestId);
+  const visible=JSON.parse((response.response.content[0] as any).text);
+  assert.equal(visible.requestId,requestId);assert.equal(visible.next.op,'receipt');
   assert.match(response.result.error.message,/SHA256_MISMATCH/);
   let failure: any;
   try { execFileSync(fixtureCommand,['cli','control','receipt','--stdin'],{env:fixtureEnv,input:JSON.stringify({requestId}),encoding:'utf8',stdio:['pipe','pipe','pipe']}); }
