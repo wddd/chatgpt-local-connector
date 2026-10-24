@@ -49,6 +49,9 @@ pub fn failure(e: &str) -> Value {
             return value;
         }
     }
+    if e.contains("thread already has an active writer") {
+        return json!({"code":"THREAD_WRITER_BUSY","message":"Codex rejected the write because another native session owns this thread. ARC runtimeStatus=notLoaded only describes ARC observation, not global writer ownership.","nativeError":e,"retryable":false,"next":{"via":"query","op":"codex_read","requiredArgs":["threadId"],"statusOnly":true,"hint":"Read the original receipt and thread status. Continue in the owning ChatGPT/Codex session, or explicitly close that session before retrying this same thread. Do not delete writer locks, auto-retry, or create a replacement thread."}});
+    }
     let rpc = e
         .strip_prefix("RPC_REJECTED:")
         .and_then(|s| serde_json::from_str::<Value>(s).ok());
@@ -829,6 +832,16 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn writer_rejection_explains_owner_and_recovery() {
+        // Regression: native active-writer rejection gave control sources no reason or safe next step.
+        let error = failure("RPC_REJECTED:{\"message\":\"thread already has an active writer\"}");
+        assert_eq!(error["code"], "THREAD_WRITER_BUSY");
+        assert_eq!(error["retryable"], false);
+        assert_eq!(error["next"]["op"], "codex_read");
+        assert!(error["nativeError"].is_string());
+    }
 
     #[test]
     fn protocol_version_tracks_visible_contract_not_internal_catalog_metadata() {
