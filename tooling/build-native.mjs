@@ -5,7 +5,7 @@ import path from 'node:path';
 import { buildEnv } from './build-env.mjs';
 import { macosSigningIdentity, macosSigningArgs } from './macos-signing.mjs';
 
-export async function buildNative({ release = false, target, bundled = release, developmentDesktop = false } = {}) {
+export async function buildNative({ release = false, target, bundled = release, developmentDesktop = false, stageOnly = false } = {}) {
   const root = fileURLToPath(new URL('../', import.meta.url));
   if (release && !target) target = process.platform === 'darwin' ? 'aarch64-apple-darwin' : process.platform === 'win32' ? 'x86_64-pc-windows-msvc' : undefined;
   const args = ['build', '--locked', '--manifest-path', 'desktop/Cargo.toml', ...(developmentDesktop ? ['--bins'] : ['--bin', 'arc']), '--features', bundled ? 'core-bin,tauri/custom-protocol' : 'core-bin'];
@@ -18,7 +18,7 @@ export async function buildNative({ release = false, target, bundled = release, 
   const config = developmentDesktop ? JSON.parse(await readFile(path.join(root, 'desktop/tauri.dev.conf.json'), 'utf8')) : {};
   env.TAURI_CONFIG = JSON.stringify({ ...config, version: env.ARC_BUILD_VERSION, bundle: { ...config.bundle, resources: [] } });
   execFileSync(process.execPath, [path.join(root, 'tooling/prune-build-cache.mjs'), `--keep=target/${target || (release ? 'release' : 'debug')}`], { cwd: root, stdio: 'inherit' });
-  try { execFileSync('cargo', args, { cwd: root, env, stdio: 'inherit' }); }
+  try { if (!stageOnly) execFileSync('cargo', args, { cwd: root, env, stdio: 'inherit' }); }
   finally {
     execFileSync(process.execPath, [path.join(root, 'tooling/prune-build-cache.mjs'), `--keep=target/${target || (release ? 'release' : 'debug')}`], { cwd: root, stdio: 'inherit' });
   }

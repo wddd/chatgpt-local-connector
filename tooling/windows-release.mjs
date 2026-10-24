@@ -3,6 +3,7 @@ import { readFile, writeFile, rm, copyFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileDigest, dependencyEnv } from './release-support.mjs';
+import { installDependencies } from './build-cache.mjs';
 
 export function runCommand(file, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -30,10 +31,11 @@ const capture = (file, args) => execFileSync(file, args, { encoding: 'utf8', max
 const psQuote = value => `'${value.replaceAll("'", "''")}'`;
 const shellQuote = value => `'${value.replaceAll("'", "'\"'\"'")}'`;
 const sshOptions = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15'];
+const workerEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(TAURI_SIGNING_|APPLE_|CSC_|WIN_CSC_)/.test(key)));
 const powershell = (host, script) => runCommand('ssh', [...sshOptions, host,
-  `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${Buffer.from("$ProgressPreference='SilentlyContinue'\n" + script, 'utf16le').toString('base64')}`]);
+  `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${Buffer.from("$ProgressPreference='SilentlyContinue'\n" + script, 'utf16le').toString('base64')}`], { env: workerEnv() });
 
-export async function buildWindows({ sourceSha, version, output, env, timer }) {
+export async function prepareWindowsWorker({ timer }) {
   const runtime = JSON.parse(capture('enjoy', ['runtime']));
   const fleet = JSON.parse(await readFile(path.join(runtime.profileRoot, 'fleet/targets.json'))).targets;
   const builds = JSON.parse(await readFile(path.join(runtime.profileRoot, 'client/client-build-targets.json')));
@@ -45,16 +47,24 @@ export async function buildWindows({ sourceSha, version, output, env, timer }) {
     const { promisify } = await import('node:util');
     const result = await promisify(execFile)('enjoy', ['infra', 'execute', '--operation', `proxmox.worker.${action}`,
       '--target', 'k12', '--args-json', JSON.stringify(action === 'inspect' ? { worker: 'windows' } : { worker: 'windows', owner }),
-      '--fresh', ...(action === 'inspect' ? [] : ['--idempotency-key', `${owner}-${action}`])], { timeout: 180000, maxBuffer: 1024 ** 2 });
+      '--fresh', ...(action === 'inspect' ? [] : ['--idempotency-key', `${owner}-${action}`])], { timeout: 180000, maxBuffer: 1024 ** 2, env: workerEnv() });
     const receipt = JSON.parse(result.stdout);
     if (receipt.outcome !== 'ok' || receipt.data?.ok !== true) throw new Error(`Worker ${action} failed; inspect owner ${owner}`);
     return receipt.data;
   };
   const initial = await operation('inspect');
-  const bundle = path.join(output, 'source.bundle');
   const remoteRoot = 'C:/Build/arc-release';
   console.log(`Windows worker owner: ${owner}`);
   let claimed = false;
+  const cleanup = async () => {
+    if (claimed) await timer.run('Windows worker cleanup', async () => {
+      const current = await operation('inspect');
+      if (canStopWorker(initial, current, owner)) {
+        const stopped = await operation('stop');
+        if (stopped.status !== 'stopped' || stopped.owner) throw new Error(`Worker cleanup unconfirmed: ${owner}`);
+      } else if (current.owner === owner) throw new Error(`Worker cleanup requires inspection: ${owner}`);
+    });
+  };
   try {
     await timer.run('Windows worker readiness', async () => {
       // The source checkout lock also covers SCNet jobs which have not started their guest yet.
@@ -79,9 +89,20 @@ $busy = Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(node|ca
 if ($busy) { throw 'SCNet build process exists' }
 New-Item -ItemType Directory -Force ${psQuote(remoteRoot + '/release-artifacts')} | Out-Null`);
     });
+    return { host, remoteRoot, cleanup };
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
+}
+
+export async function buildWindows({ sourceSha, version, output, env, timer, worker, onCollected }) {
+  const { host, remoteRoot } = await worker;
+  const bundle = path.join(output, 'source.bundle');
+  try {
     await timer.run('Windows source transfer', async () => {
       await runCommand('git', ['bundle', 'create', bundle, 'HEAD']);
-      await runCommand('scp', [...sshOptions, bundle, `${host}:${remoteRoot}/release-artifacts/source.bundle`]);
+      await runCommand('scp', [...sshOptions, bundle, `${host}:${remoteRoot}/release-artifacts/source.bundle`], { env: workerEnv() });
     });
     await timer.run('Windows checkout/dependencies/build', async () => {
       await powershell(host, `$ErrorActionPreference='Stop'
@@ -100,10 +121,11 @@ node tooling/windows-build.mjs; checked`);
     await timer.run('Windows artifact collection/sign', async () => {
       const name = `agent-remote-control_${version}_x64-setup.exe`;
       for (const file of [name, 'windows-receipt.json', 'windows-stages.jsonl']) {
-        await runCommand('scp', [...sshOptions, `${host}:${remoteRoot}/source/release-artifacts/windows/${file}`, path.join(output, file)]);
+        await runCommand('scp', [...sshOptions, `${host}:${remoteRoot}/source/release-artifacts/windows/${file}`, path.join(output, file)], { env: workerEnv() });
       }
       const receipt = JSON.parse(await readFile(path.join(output, 'windows-receipt.json')));
       validateWindowsReceipt(receipt, { version, sourceSha, digest: await fileDigest(path.join(output, name)) });
+      onCollected();
       await runCommand(process.execPath, ['node_modules/@tauri-apps/cli/tauri.js', 'signer', 'sign', path.join(output, name)], { env });
       const signature = (await readFile(path.join(output, name + '.sig'), 'utf8')).trim();
       const value = { signature, url: `https://github.com/whzxc/agent-remote-control/releases/download/v${version}/${name}` };
@@ -112,13 +134,7 @@ node tooling/windows-build.mjs; checked`);
     });
   } finally {
     await rm(bundle, { force: true });
-    if (claimed) await timer.run('Windows worker cleanup', async () => {
-      const current = await operation('inspect');
-      if (canStopWorker(initial, current, owner)) {
-        const stopped = await operation('stop');
-        if (stopped.status !== 'stopped' || stopped.owner) throw new Error(`Worker cleanup unconfirmed: ${owner}`);
-      } else if (current.owner === owner) throw new Error(`Worker cleanup requires inspection: ${owner}`);
-    });
+    onCollected();
   }
 }
 
@@ -135,7 +151,7 @@ export async function buildMac({ sourceSha, output, env, timer }) {
     if (capture('git', ['-C', source, 'rev-parse', 'HEAD']) !== sourceSha) {
       await runCommand('git', ['-C', source, 'checkout', '--detach', sourceSha]);
     }
-    await runCommand('npm', ['ci'], { cwd: source, env: dependencyEnv(env) });
+    await installDependencies(source, () => runCommand('npm', ['ci'], { cwd: source, env: dependencyEnv(env) }));
   });
   await runCommand(process.execPath, ['tooling/desktop-build.mjs', '--release', '--target', 'aarch64-apple-darwin'], { cwd: source, env: { ...env, ARC_RELEASE_PLATFORM: 'mac' } });
   await timer.run('macOS staging verification', async () => {

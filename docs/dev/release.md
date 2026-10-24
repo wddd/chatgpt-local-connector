@@ -2,107 +2,90 @@
 
 [Development](development.md) · [Installation](../installation.md)
 
-Public source and artifacts live in whzxc/agent-remote-control. Git tags define formal versions. GitHub Releases holds installers, updater archives, latest.json, Homebrew Cask, and checksums. No public npm package is published. Commit/push as needed for the task while respecting explicit restrictions. Tags, uploads, and public Releases require user authorization.
+Public source and artifacts live in whzxc/agent-remote-control. Formal Git tags and GitHub Releases hold installers, updater archives, latest.json, Homebrew Cask, and checksums. No public npm package is published. Commit/push as authorized; tags, uploads, and Releases require explicit authorization. Building does not require a tag or remote commit.
 
-## Build and signing prerequisites
+## Prerequisites and signing
 
-Default releases cover all platforms. Build macOS locally on Apple Silicon. The on-demand Windows worker builds x64 NSIS installers. release.yml builds Linux x86_64/aarch64 only. Local macOS requires Node.js 24.12+, Rust, full Xcode 26+, uv, npm dependencies, and authenticated gh. Any release containing Windows requires the Mac coordinator and updater key. Linux-only releases need no signing environment.
+The default release builds macOS ARM64 and both Linux architectures on the Apple Silicon Mac coordinator, plus Windows x64 on the exclusive on-demand worker. GitHub Actions is not used for release builds. The coordinator requires Node.js 24.12+, Rust from rust-toolchain.toml, full Xcode 26+, uv, npm dependencies, and authenticated gh for formal publication. Linux-only builds do not require signing keys.
 
 Updater Minisign keys MUST match desktop/tauri.conf.json's public key. Lookup order:
 
-1. TAURI_SIGNING_PRIVATE_KEY: key contents or an existing file path.
+1. TAURI_SIGNING_PRIVATE_KEY: contents or an existing file path.
 2. TAURI_SIGNING_PRIVATE_KEY_FILE: an existing key file.
 3. ~/.tauri/agent-remote-control.key.
 
-Encrypted keys also use TAURI_SIGNING_PRIVATE_KEY_PASSWORD. Keys stay outside the repository. Scripts only read them and never generate, move, or print them. Ordinary desktop:build may omit updater signing. Releases and dry runs containing mac or windows require it on the Mac coordinator.
+Encrypted keys also use TAURI_SIGNING_PRIVATE_KEY_PASSWORD. Keys stay outside the repository and on the Mac. Scripts never generate, move, or print them. Releases and rehearsals containing mac or windows require the updater key. Windows builds unsigned NSIS installers and rejects signing secrets; the Mac signs the collected EXE. Authenticode is not configured. Minisign is independent of macOS code signing.
 
-Packaged macOS builds, including debug desktop:build, release, dry-run, and release:stage, use the repository's fixed self-signed identity from tooling/macos-signing.mjs. APPLE_SIGNING_IDENTITY is optional but may only select that identity or its fingerprint. Selection uses the fingerprint. Missing certificate/private key, ad-hoc selection, or another identity fails immediately without choosing a company Team. Package checks validate Desktop/Core/screen-helper certificates and identifiers. stage rejects other identities.
+Packaged macOS builds use the fixed self-signed identity from tooling/macos-signing.mjs. APPLE_SIGNING_IDENTITY may select only that identity or its fingerprint. Missing certificate/private key, ad-hoc selection, or another identity fails without selecting a company Team. Package checks validate Desktop/Core/screen-helper certificates and identifiers. Keep the original certificate and private key in the Mac keychain; do not regenerate a same-name certificate or export it to workers or GitHub Secrets. Hardened runtime is enabled; Apple notarization and timestamping are not used. First-launch Gatekeeper restrictions are described in Installation.
 
-Private keys remain in the build machine's keychain. Another build machine MUST securely import the same certificate and private key. A regenerated same-name certificate does not preserve authorization identity. Packages enable hardened runtime without Apple notarization or timestamping and clear unrelated APPLE_* credentials from child environments. Self-signing is not Developer ID or notarization. First launch may be blocked by Gatekeeper as described in Installation. npm run dev/build retain separate explicit APPLE_SIGNING_IDENTITY configuration and default to ad-hoc.
+Production identifiers are com.whzxc.agent-remote-control, .core, and .screen; development uses .dev. Recheck system permissions after identity changes. Updater signatures do not establish OS code-signing identity.
 
-macOS packages are built and signed locally. Do not export the certificate/private key to GitHub Secrets. The Windows worker does not hold updater keys, code-signing certificates, or upload credentials. The previous CI installer step only created updater Minisign signatures; it did not perform Authenticode signing. The Mac signs the collected Windows EXE using TAURI_SIGNING_PRIVATE_KEY and, if encrypted, its password. Updater Minisign and macOS code-signing identities are independent.
-
-Bundle identifiers are com.whzxc.agent-remote-control for production App, .dev for development, .core for Core, and .screen for the Swift helper. Recheck system permissions after identity changes. Updater signatures do not establish system code-signing identity.
-
-## Local checks and build
+## Local Linux prerequisites
 
 ```sh
-npm run check
-npm run check:format
-npm test
-npm run desktop:build
-npm run check:package
+npm run release:linux:setup
 ```
 
-Run npm run cache:prune after direct Cargo builds/tests. Artifacts stay in build directories. Building does not replace the installed App. Check embedded versions, signatures, icons, absence of Node/npm runtime, and updater verification. Report platform acceptance separately. macOS success does not prove Windows/Linux runtime behavior.
+This installs pinned cargo-zigbuild/Zig and Lima under release-artifacts/.linux-tools, installs the two GNU Rust targets without changing the pinned Rust channel, and creates the project-local Ubuntu 24.04 validation VM. Rosetta must already be installed through macOS; setup does not accept a license. Lima state is under release-artifacts/.l and mounts only release-artifacts/.linux-validation. The VM has x64 glibc cross-runtime libraries and readelf. Linux builds run on the Mac, not inside the VM. The VM runs ARM64 binaries directly and x64 binaries through Rosetta's Linux translator. Version and CLI-help execution checks use the actual compiled ELF binaries. A stopped project VM is started for validation and stopped afterward only if that run started it. An already-running validator is preserved.
 
-## Release commands
+Linux uses the same native manifest, locked dependencies, release profile, archive names, executable, LICENSE, skills/arc-setup, licenses, and installer-script inputs as the former CI jobs. cargo-zigbuild targets GNU/Linux with an explicit GLIBC 2.28 baseline; ELF architecture, executable type, required GLIBC symbol versions, actual --version, and CLI help are checked before packaging. This preserves the GNU installer contract and supports an older glibc baseline than Ubuntu 24.04 native linking. Artifact bytes differ from native CI builds; byte-for-byte reproducibility is not claimed. Both architectures run clippy with Zig's C toolchain.
 
-After authorization, use a clean main branch that is not behind its remote:
+Cargo targets live beneath the real path of the existing target cache: target/linux-x86_64 and target/linux-aarch64. The target symlink/cache configuration remains authoritative, including external SSD placement. Architectures have separate host/build locks so they compile concurrently. Existing cache pruning covers these nested directories. Setup tools, ordinary source clones, and compiler caches persist across rehearsals.
+
+## Tests and passing-result cache
+
+```sh
+npm test
+```
+
+A successful npm test automatically records a pass outside release. It runs policy checks, the Rust library suite, the Node suites including release logic, and cache pruning before recording. Dirty-source tests still run but never create a reusable pass. A failing command never records a pass.
+
+The cache is keyed by HEAD's Git tree, a clean-worktree check before and after tests, actual Node/npm/Rust/Cargo versions, host/SDK, toolchain and lockfiles, installed dependency lock metadata, compiler environment, and hashed user/project build configuration. A different commit with an identical tree may reuse a pass; any changed input invalidates it. Secrets from configuration are only hashed, never stored in receipts. Tests use the fixed development version 0.0.0 inside and outside release; packaging overrides cannot change the test environment. Artifact validation separately checks the requested release version.
+
+Passes are local JSON receipts under release-artifacts/test-cache/. npm run release automatically skips tests only when the exact inputs already passed. Otherwise it runs and records them. --skip-tests remains an explicit override and never manufactures a pass. Tests and platform builds run concurrently, all settle before verification/publication, and any failure blocks publication. Resume uses its verified publication checkpoint and does not run tests or builds.
+
+## Commands and publication boundaries
 
 ```sh
 npm run release
-# When the corresponding checks already passed:
-npm run release -- --skip-tests
-# Explicit version:
 npm run release -- --version X.Y.Z
-# macOS only, without CI:
+npm run release -- --skip-tests
 npm run release -- --platforms mac
-# macOS and Linux:
-npm run release -- --platforms mac,linux
-# Windows worker and Linux CI:
 npm run release -- --platforms windows,linux
-# Continue a failed publication using its verified local artifacts:
 npm run release -- --resume release-artifacts/vX.Y.Z-<suffix>
 ```
 
-The flow checks signing, workspace, branch, and gh permissions, fetches remote main/tags, selects a version after the previous public release, and builds the current feature commit. npm test runs by default. ARC_BUILD_VERSION injects the version into frontend, Core, Desktop, and installer. Source placeholders remain 0.0.0.
+Use a clean main checkout that is not behind its remote. Preflight validates source, signing, branch, and publication permissions and selects a version newer than public releases. ARC_BUILD_VERSION injects it into frontend, Core, Desktop, and installers; source placeholders remain 0.0.0. No version-only commit is created.
 
-A unique release-artifacts/v<version>-<suffix> directory holds artifacts, platform receipts, latest.json, release-notes.md, Cask, and SHA256SUMS.txt. Notes derive from the previous formal ancestor tag through the current commit. --platforms defaults to mac,windows,linux and accepts a nonduplicated comma-separated subset.
+The coordinator freezes the same full SHA for all ordinary clean source clones. Windows readiness starts at the beginning of preflight and overlaps tests and local builds. macOS, Windows, and both Linux architectures build concurrently. Source changes during the run fail closed. A unique release-artifacts/v<version>-<suffix> directory holds artifacts and receipts. The coordinator verifies the complete selected platform set, embedded versions, updater signatures, and checksums before tagging or pushing. Formal publication then atomically pushes main/tag, uploads a draft, checks its exact remote inventory and digests, publishes, and reads back public latest.json. A rehearsal never enters these mutation stages.
 
-After checks and tests, the coordinator freezes the full source SHA and atomically pushes main and the release tag. macOS builds/signs in a clean ordinary local clone, Windows builds on the exclusive worker, and Linux runs on GitHub Actions concurrently. All tasks settle before any error is returned; successful artifacts are retained. The Linux workflow accepts source_sha and version without requiring a tag, checks the full checkout SHA, and never creates Releases. The coordinator matches the workflow run's head SHA and downloads both Linux architectures. Verification, draft upload, --resume, publish, and public readback retain their existing boundaries.
+Windows connection/SCNet checkout declarations come from the installed Enjoy profile returned by enjoy runtime. Before acquisition, check SCNet source locks and require both mutually exclusive workers to be stopped and unowned. Preserve and report an occupied or already-running worker. Use enjoy infra execute with proxmox.worker.start/inspect/stop, target k12, a unique owner, and --fresh. Poll until both ssh_reachable and ready are true before Windows SSH. Check guest SCNet locks and build processes again before building. Shutdown requires this run's initial stopped state and retained ownership, including ambiguous start responses.
 
-Windows worker connections and the SCNet checkout come from the installed Enjoy profile returned by enjoy runtime. Before acquiring the worker, the coordinator checks SCNet source locks and requires both workers to be stopped and unowned. A busy or already-running worker is preserved and reported, never taken over. Start/inspect/stop use enjoy infra execute with proxmox.worker operations, target k12, a unique owner, and --fresh. Poll inspect until both ssh_reachable and ready are true before any Windows SSH. Check SCNet guest locks and build processes again before building. Shutdown is allowed only when this invocation started the worker and still owns it; ambiguous start responses require ownership readback before cleanup.
+Transfer a Git bundle into the dedicated clean ordinary Windows checkout, detach at the exact SHA, and preserve Cargo target/cache. npm ci is skipped only with a successful installation receipt matching package-lock, package.json, Node/npm versions, platform, and architecture, plus installed lock metadata. Failed installs invalidate the receipt. macOS uses the same dependency receipt rule. Windows returns EXE, version/SHA/architecture/SHA-256 receipt, and stage timings. The Mac validates the downloaded digest before signing. Once artifacts are collected, shutdown starts asynchronously; verification and formal uploads may proceed while it shuts down. The coordinator waits for cleanup and reports its result at the end, including failures. Shutdown is excluded from the artifact critical path.
 
-Transfer a Git bundle of the frozen commit into the dedicated ordinary worker checkout. Refuse a dirty checkout, fetch and detach at the exact full SHA, run npm ci, and retain the checkout's target directory and Cargo cache between runs. Preserve unchanged HEAD metadata and create packed-refs when initializing the worker checkout: Cargo watches these paths for build-version changes, so rewriting or omitting them invalidates warm builds. Remove stale installer outputs only. Windows builds with --unsigned-updater, rejects signing secrets, checks the x64 PE and embedded Core version, and returns the EXE plus windows-receipt.json (version, sourceSha, arch, filename, SHA-256). The Mac validates the receipt and downloaded hash, signs the EXE locally, and verifies both updater signatures against the embedded public key during finalize. macOS uses a separate persistent ordinary clone under release-artifacts/.macos-source, also detached at the same SHA. Neither build modifies the original working tree or installs the app.
+Desktop/Core compile together in one Tauri build using one configuration and dependency graph. The bundler owns external resources; re-signing a Core/helper does not invalidate Rust compilation. Generated frontend files retain their timestamps when bytes are unchanged. Explicit build versions do not watch unrelated Git metadata. Compile, resource signing, bundling, and DMG creation have separate timers. Windows NSIS uses ZLIB instead of solid LZMA to reduce packaging CPU time at the cost of a larger EXE. Runtime content and installation behavior remain unchanged; measure size and upload impact when comparing release timings.
 
-latest.json includes only this build's macOS/Windows updater entries. It never reuses unselected platforms or versions. Linux packages and installer scripts are separate assets outside Tauri updater platforms. Linux-only manifests have empty platforms. Cask is generated only with mac. Partial-platform publication still uses a new version without appending to existing public releases. Unpublished platforms stay on their prior version. Desktop treats a missing platform in the latest manifest as no update. Linux installation selects the latest formal release containing the current architecture's tarball.
+latest.json contains only the selected desktop platforms from this build. Linux archives and install script are separate assets. Missing updater platforms stay on their prior releases. --platforms accepts a nonduplicated subset of mac,windows,linux; partial publication requires its own new version. Never append to or overwrite a public version, substitute old platform bytes, or publish an incomplete selection. No CI release workflow remains.
 
-CI/upload failure stops the flow while preserving local artifacts and pushed tags. Do not automatically retrigger CI or publish incomplete platform sets. Existing tags MUST identify the same source. Public versions cannot be overwritten. Source changes require a new version. Do not create version-only commits or a source CHANGELOG.
+## Resume
 
-## Resume publication
+After verification, release-state.json records schema, version, source SHA, selected platforms, and every upload's size and SHA-256. Keep it with the original files. Resume requires a clean main checkout at the original source SHA and matching release tag. Explicit version/platform options must match the checkpoint. It rechecks original artifact bytes/inventory and skips tests, builds, signing, tagging, and pushing. It does not regenerate metadata and needs no signing keys. Dry runs and interrupted builds cannot be resumed for publication; never manufacture or edit a checkpoint.
 
-After local verification succeeds, release-state.json records the version, source commit, selected platforms, and every upload's size and SHA-256 digest. Keep this file with the original artifacts. On an upload, remote-verification, publish, or readback failure, the script prints the exact resume command:
+The exact-tag lookup recovers drafts via bounded filtered pages when GitHub's tag endpoint omits them. Duplicate matching drafts stop publication. Assets upload individually with at most three transfers, ten-minute transfer timeouts, and four attempts using 2/4/8-second backoff. gh transfers disable HTTP/2. Matching uploaded sizes and available digests skip transfer; mismatched draft assets may be replaced. Verification requires the exact complete inventory, sizes, and SHA-256, downloading/hashing assets when GitHub omits their digest.
 
-```sh
-npm run release -- --resume release-artifacts/vX.Y.Z-<suffix>
-```
+The checkpoint saves draft ID and publish intent before publishing. A lost publish response permits read-only recovery only for that original public release. Resume verifies its inventory and public latest.json bytes without mutating public history. Other public versions are rejected. Artifacts and timings survive failures.
 
-Resume requires a clean main checkout at the original source commit and its matching release tag. Version and platforms come from the checkpoint; explicit --version or --platforms values must match it. It checks the original files and complete platform inventory again. It skips tests, builds, signing, tagging, pushing, and CI. No macOS private signing keys are needed for this path. It does not regenerate metadata or change artifact bytes. --resume cannot be combined with --dry-run.
-
-The script queries the exact release tag and reuses its draft, or creates the draft if the initial create request never succeeded. GitHub's tag endpoint omits drafts, so a 404 triggers bounded, filtered release-list pages followed by a lookup by release ID. Ambiguous matching drafts stop publication. Assets upload individually with at most three transfers in flight. Each transfer has a ten-minute timeout and four attempts with 2/4/8-second backoff. gh transfers set GODEBUG=http2client=0. A matching uploaded size and, when available, GitHub digest skips the transfer. A mismatched draft asset is replaced. Remote verification requires the exact expected asset inventory and sizes, then checks GitHub SHA-256 digests or downloads and hashes assets whose digest is unavailable. Publication only follows successful verification.
-
-The checkpoint records the draft ID and publish intent before publishing. If publication succeeded but its response or public readback failed, resume verifies that same public release and retries public latest.json readback without mutating it. Other public releases are rejected. Readback compares the public latest.json bytes with the local digest and size. A different release becoming latest causes readback to fail instead of changing public history.
-
-Resume starts at the publication boundary. It requires release-state.json from a completed verification; dry runs, older artifact directories without a checkpoint, and interrupted builds or CI downloads cannot be resumed this way. Resolve build/CI failures before starting another release. Never manufacture or edit a verification checkpoint to bypass source or integrity checks.
-
-## Stage timings
-
-Each stage prints START/END, status, seconds, and timestamped JSONL records. Platform wall stages include checkout/dependencies, worker startup, compilation, staging, collection/signing, and cleanup. The platform critical path measures the concurrent group rather than adding platform times. The final overall wall time includes checks, tests, tagging, the parallel group, verification, upload, publish, and readback. Nested stages overlap and MUST NOT be summed. Windows returns windows-stages.jsonl with frontend, Core, Desktop, and dependency timings. macOS records its component stages in the coordinator's timing file.
-
-Every run prints its timing table and release-artifacts/.timings-<suffix>/stages.jsonl path, including failures. Timings and receipts are local metadata and are not release uploads. Resume retains verified artifacts and skips build/worker/CI work.
-
-## Non-publishing rehearsal
+## Timings and non-publishing rehearsal
 
 ```sh
-npm run release -- --dry-run --version X.Y.Z --platforms mac,windows
+npm run release -- --dry-run --version X.Y.Z
 ```
 
-Run twice at the same clean committed HEAD and version to compare cold and warm persistent caches. A dry run actually builds the selected desktop platforms in parallel, collects their artifacts and receipts, signs Windows on the Mac, verifies updater signatures, and generates local checksums and metadata. It never tests automatically, creates tags/drafts/releases, pushes, uploads, or replaces the installed app. It writes no resumable publication checkpoint. The worker lifecycle rules remain identical. Temporary source bundles and staging folders stay under release-artifacts/; ordinary source clones and compilation caches persist for the next run.
+Run twice at the same final clean HEAD and version. The first uncached test run records a pass; the second automatically reuses it. Both build every selected platform, collect receipts, verify Linux runtime behavior, verify Mac package signatures, sign Windows on the Mac, verify updater signatures, and generate the complete local manifest and checksums. No tag, push, draft, release, upload, app installation, or replacement occurs. No publication checkpoint is created. --skip-tests explicitly bypasses tests when requested.
 
-Dry runs skip Linux CI because CI artifact uploads are outside the no-upload boundary. For an explicitly authorized Linux build-only rehearsal, the source_sha/version workflow can build a pushed commit without tags or releases; its artifact upload still requires authorization. If that workflow is not available at the frozen commit on the remote, skip it and report the latest measured Linux job time separately. Never substitute older Linux bytes into the rehearsal's verified artifact set.
+Each stage prints START/END, status, seconds, and timestamped JSONL under release-artifacts/.timings-<suffix>/. Platform wall and platform critical-path timers cover concurrent builds; build/test critical path includes concurrent tests. Worker readiness overlaps preflight/work, and cleanup is a separate background stage. Nested durations must not be added. Overall wall includes final cleanup; formal publication timings include tagging, upload, verification, publish, and readback. Windows sends its detailed dependency/Rust/NSIS timers back to the coordinator. Receipts/timings/test caches are not public assets.
 
-stage/finalize organize and verify existing artifacts. finalize builds the manifest from platform fragments and Linux packages in the same directory. Complete all selected artifacts before publication; download URLs, signatures, checksums, and embedded versions MUST agree.
+stage/finalize verify existing staged inputs and create metadata. Download URLs, manifest versions, signatures, checksums, and embedded versions must agree. Building is separate from installed-app acceptance.
 
 ## Identity migration
 

@@ -5,6 +5,7 @@ import { releaseSigningEnv } from './release-signing.mjs';
 import { macosSigningIdentity } from './macos-signing.mjs';
 import { compileIcon, requireXcode } from './macos-icons.mjs';
 import { stageTimer } from './release-support.mjs';
+import { buildNative } from './build-native.mjs';
 const root = new URL('../', import.meta.url);
 const args = [fileURLToPath(new URL('node_modules/@tauri-apps/cli/tauri.js', root)), 'build'];
 if (process.platform === 'win32') args.push('--config', 'tauri.windows.conf.json');
@@ -47,14 +48,23 @@ const prune = fileURLToPath(new URL('tooling/prune-build-cache.mjs', root));
 execFileSync(process.execPath, [prune, `--keep=target/${target || profile}`], { cwd: fileURLToPath(root), env, stdio: 'inherit' });
 execFileSync(process.execPath, [fileURLToPath(new URL('tooling/prepare-desktop.mjs', root)), ...buildArgs],
   { cwd: fileURLToPath(root), env, stdio: 'inherit' });
+const timed = (name, operation) => process.env.ARC_RELEASE_TIMINGS_FILE ? stageTimer().run(name, operation) : operation();
 const packageDesktop = async () => {
-  execFileSync(process.execPath, args, { cwd: fileURLToPath(new URL('desktop/', root)), env, stdio: 'inherit' });
+  const tauriOptions = { cwd: fileURLToPath(new URL('desktop/', root)), env, stdio: 'inherit' };
+  const common = args.slice(2).filter(value => value !== '--no-bundle');
+  await timed('Rust Desktop/Core build', async () => execFileSync(process.execPath,
+    [args[0], 'build', ...common, '--features', 'core-bin', '--no-bundle', '--', '--bins'], tauriOptions));
+  await timed('Core staging/sign', () => buildNative({ release: !debug, target, bundled: true, stageOnly: true }));
+  if (!buildArgs.includes('--no-bundle')) await timed(process.platform === 'win32' ? 'NSIS bundle' : 'macOS app bundle/sign', async () => {
+    // Core is already packaged as a resource; keep it out of the installer's root binary list.
+    execFileSync(process.execPath, [args[0], 'bundle', ...common], tauriOptions);
+  });
   if (process.platform === 'darwin' && !buildArgs.includes('--no-bundle')) {
     execFileSync(process.execPath, [fileURLToPath(new URL('tooling/check-package.mjs', root)),
       `target/aarch64-apple-darwin/${profile}/bundle/macos/Agent Remote Control.app`],
     { cwd: fileURLToPath(root), env, stdio: 'inherit' });
-    execFileSync('uv', ['run', '--script', fileURLToPath(new URL('tooling/build-dmg.py', root)),
-      profile], { cwd: fileURLToPath(root), env, stdio: 'inherit' });
+    await timed('macOS DMG', async () => execFileSync('uv', ['run', '--script', fileURLToPath(new URL('tooling/build-dmg.py', root)),
+      profile], { cwd: fileURLToPath(root), env, stdio: 'inherit' }));
   }
   execFileSync(process.execPath, [prune, `--keep=target/${target || profile}`],
     { cwd: fileURLToPath(root), env, stdio: 'inherit' });

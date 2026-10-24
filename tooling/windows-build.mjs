@@ -5,6 +5,7 @@ import { mkdir, rm, copyFile, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileDigest, stageTimer, dependencyEnv } from './release-support.mjs';
+import { installDependencies } from './build-cache.mjs';
 if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('Windows x64 worker required');
 if (Object.keys(process.env).some(key => /^(TAURI_SIGNING_|CSC_|WIN_CSC_)/.test(key))
     || existsSync(path.join(homedir(), '.tauri/agent-remote-control.key'))) throw new Error('Signing secrets must not be present on the Windows worker');
@@ -35,7 +36,7 @@ try {
 process.env.ARC_RELEASE_TIMINGS_FILE = path.join(output, 'windows-stages.jsonl');
 process.env.ARC_RELEASE_PLATFORM = 'windows';
 const timer = stageTimer();
-await timer.run('Windows dependencies', async () => execFileSync('cmd.exe', ['/d', '/s', '/c', 'npm ci'], { stdio: 'inherit', env: dependencyEnv(process.env) }));
+await timer.run('Windows dependencies', () => installDependencies(process.cwd(), async () => execFileSync('cmd.exe', ['/d', '/s', '/c', 'npm ci'], { stdio: 'inherit', env: dependencyEnv(process.env) })));
 await rm('target/x86_64-pc-windows-msvc/release/bundle', { recursive: true, force: true });
 await timer.run('Windows desktop build', async () => run(process.execPath, ['tooling/desktop-build.mjs', '--unsigned-updater', '--target', 'x86_64-pc-windows-msvc']));
 if (git('status', '--porcelain') || git('rev-parse', 'HEAD') !== sourceSha) throw new Error('Windows build changed source');

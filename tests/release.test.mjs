@@ -3,6 +3,54 @@ import assert from 'node:assert/strict';
 import { assetMatches, boundedMap, ghOptions, transferOptions, platformAssetNames, publicationStages,
   publishedTags, releaseByTag, retry, stageTimer, validateResume, validateRemoteAssets, validateArtifactInventory, parallelPlatforms, dependencyEnv } from '../tooling/release-support.mjs';
 import { workerReady, canStopWorker, validateWindowsReceipt } from '../tooling/windows-release.mjs';
+import { inputKey, dependenciesMatch } from '../tooling/build-cache.mjs';
+import { testPassMatches, testEnvironment } from '../tooling/test-cache.mjs';
+import { validateLinuxElf } from '../tooling/linux-release.mjs';
+
+test('test passes require the exact source tree toolchain lockfiles and execution flags', () => {
+  // Property: a changed test input or an unclean source never reuses a passing result.
+  const inputs = { tree: 'tree', node: '24', rustc: '1.96', cargo: '1.96', files: { lock: 'abc' }, flags: 'flags', platform: 'darwin', arch: 'arm64' };
+  const receipt = { schema: 1, status: 'passed', key: inputKey(inputs) };
+  assert.equal(testPassMatches(receipt, JSON.parse(JSON.stringify(inputs))), true);
+  for (const [key, value] of Object.entries(inputs)) {
+    assert.equal(testPassMatches(receipt, { ...inputs, [key]: typeof value === 'string' ? value + '-changed' : { lock: 'other' } }), false);
+  }
+  assert.equal(testPassMatches(receipt, undefined), false);
+  assert.equal(testPassMatches({ ...receipt, status: 'failed' }, inputs), false);
+  assert.equal(testPassMatches(undefined, inputs), false);
+});
+
+test('test execution has the same version-independent environment inside and outside release', () => {
+  // Property: packaging overrides cannot contaminate the source-tree test cache or mutate its caller.
+  const env = { ARC_BUILD_VERSION: '1.2.3', TAURI_CONFIG: '{}', ARC_RELEASE_TIMINGS_FILE: 'timings', ARC_RELEASE_PLATFORM: 'mac', RUSTFLAGS: '-C opt-level=1', PATH: '/tools' };
+  assert.deepEqual(testEnvironment(env), { ARC_BUILD_VERSION: '0.0.0', RUSTFLAGS: '-C opt-level=1', PATH: '/tools' });
+  assert.equal(env.ARC_BUILD_VERSION, '1.2.3');
+});
+
+test('dependency passes invalidate on lock manifest runtime or platform changes', () => {
+  // Property: dependency installation is reusable only for identical effective inputs.
+  const inputs = { lock: 'lock', manifest: 'manifest', node: '24', npm: '11', platform: 'win32', arch: 'x64' };
+  const receipt = { schema: 1, key: inputKey(inputs) };
+  assert.equal(dependenciesMatch(receipt, inputs), true);
+  for (const key of Object.keys(inputs)) assert.equal(dependenciesMatch(receipt, { ...inputs, [key]: 'changed' }), false);
+  assert.equal(dependenciesMatch(undefined, inputs), false);
+});
+
+test('Linux artifacts require an executable ELF64 matching the requested architecture', () => {
+  // Property: architecture class endianness and executable type are all bound to each Linux artifact.
+  const binary = Buffer.alloc(64);
+  Buffer.from('7f454c46', 'hex').copy(binary);
+  binary[4] = 2; binary[5] = 1; binary.writeUInt16LE(3, 16); binary.writeUInt16LE(62, 18);
+  assert.doesNotThrow(() => validateLinuxElf(binary, 'x86_64'));
+  assert.throws(() => validateLinuxElf(binary, 'aarch64'));
+  for (const [offset, value] of [[0, 0], [4, 1], [5, 2], [16, 1]]) {
+    const invalid = Buffer.from(binary); invalid[offset] = value;
+    assert.throws(() => validateLinuxElf(invalid, 'x86_64'));
+  }
+  assert.throws(() => validateLinuxElf(binary.subarray(0, 32), 'x86_64'));
+  binary.writeUInt16LE(183, 18);
+  assert.doesNotThrow(() => validateLinuxElf(binary, 'aarch64'));
+});
 
 const asset = { name: 'latest.json', size: 120, digest: 'sha256:abc' };
 const remote = { ...asset, state: 'uploaded' };

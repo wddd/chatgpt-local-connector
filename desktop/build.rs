@@ -6,6 +6,9 @@ fn main() {
             .expect("Invalid TAURI_CONFIG");
     config["version"] = version.into();
     println!("cargo:rustc-env=TAURI_CONFIG={config}");
+    // External resources belong to the bundler, not Rust compilation. Core and
+    // helper signatures must not invalidate the Desktop crate on the next run.
+    config["bundle"]["resources"] = serde_json::json!([]);
     std::env::set_var("TAURI_CONFIG", config.to_string());
     tauri_build::build();
 }

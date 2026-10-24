@@ -3,7 +3,9 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildWindows, buildMac, runCommand } from './windows-release.mjs';
+import { buildWindows, buildMac, runCommand, prepareWindowsWorker } from './windows-release.mjs';
+import { buildLinux } from './linux-release.mjs';
+import { cachedTestPass, testEnvironment } from './test-cache.mjs';
 import { buildVersion, stableVersion } from './version.mjs';
 import { releaseSigningEnv } from './release-signing.mjs';
 import { macosSigningIdentity, verifyMacosReleaseSignature } from './macos-signing.mjs';
@@ -131,7 +133,6 @@ if (mode === 'release') {
   const mac = platforms.includes('mac');
   const windows = platforms.includes('windows');
   const linux = platforms.includes('linux');
-  if (dryRun && !mac && !windows) throw new Error('--dry-run requires a desktop platform');
   await mkdir('release-artifacts', { recursive: true });
   const timingDir = await mkdtemp(path.join('release-artifacts', '.timings-'));
   const timingFile = path.resolve(timingDir, 'stages.jsonl');
@@ -142,6 +143,14 @@ if (mode === 'release') {
   let state = saved;
   let sourceSha;
   let env;
+  let workerPreparation, workerCleanup;
+  const releaseWorker = () => {
+    if (workerPreparation && !workerCleanup) {
+      workerCleanup = workerPreparation.then(worker => worker.cleanup());
+      workerCleanup.catch(() => {});
+    }
+    return workerCleanup;
+  };
   const run = (script, ...args) => execFileSync(process.execPath, [script, ...args], { env, stdio: 'inherit' });
   const assertSource = () => {
     if (git('status', '--porcelain') || git('rev-parse', 'HEAD') !== sourceSha) throw new Error('Source changed during release; refusing to tag or publish');
@@ -164,11 +173,15 @@ if (mode === 'release') {
       if (!resume && mac) macosSigningIdentity(env, { release: true });
       sourceSha = git('rev-parse', 'HEAD');
       if (git('status', '--porcelain')) throw new Error('Release builds require a clean committed source');
+      if (!resume && windows) {
+        workerPreparation = prepareWindowsWorker({ timer });
+        workerPreparation.catch(() => {});
+      }
       if (!dryRun) {
         if (git('branch', '--show-current') !== 'main') throw new Error('Run release from main');
         if (git('status', '--porcelain')) throw new Error('Commit or set aside existing changes before release');
-        gh(['auth', 'status'], { stdio: 'ignore' });
-        git('fetch', 'origin', 'main', '--tags');
+        await runCommand('gh', ['auth', 'status'], { stdio: 'ignore' });
+        await runCommand('git', ['fetch', 'origin', 'main', '--tags']);
         git('merge-base', '--is-ancestor', 'origin/main', 'HEAD');
         if (resume) {
           version = requested;
@@ -189,59 +202,31 @@ if (mode === 'release') {
       base = `https://github.com/${repo}/releases/download/v${version}`;
       console.log(`Release v${version} from ${sourceSha}; no version commit`);
     });
-    if (resume || dryRun || flags.has('--skip-tests')) timer.skip('tests');
-    else await timer.run('tests', async () => {
-      execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['test'], { env, stdio: 'inherit', shell: process.platform === 'win32' });
-    });
     if (resume) {
-      for (const name of ['frontend build', 'Rust Core build/sign', 'Rust Desktop build/sign', 'CI wait', 'CI artifact download']) timer.skip(name);
+      for (const name of ['tests', 'macOS wall', 'Windows wall', 'Linux wall', 'platform critical path']) timer.skip(name);
     } else {
       output = path.resolve(await mkdtemp(path.join('release-artifacts', `v${version}-`)));
       console.log(`Release artifacts: ${output}`);
-      if (!dryRun) {
-        assertSource();
-        await timer.run('tag/source push', async () => {
-          if (!git('tag', '--list', `v${version}`)) git('tag', `v${version}`);
-          git('push', '--atomic', 'origin', 'main', `refs/tags/v${version}`);
-        });
-      } else timer.skip('tag/source push');
-      await timer.run('platform critical path', () => parallelPlatforms([
-        ...(mac ? [() => timer.run('macOS wall', () => buildMac({ sourceSha, output, env, timer }))] : []),
-        ...(windows ? [() => timer.run('Windows wall', () => buildWindows({ sourceSha, version, output, env, timer }))] : []),
-        ...(linux && !dryRun ? [() => timer.run('Linux wall', async () => {
-          let runId;
-          await timer.run('CI wait', async () => {
-            const listRuns = () => JSON.parse(gh(['run', 'list', '--repo', repo, '--workflow', 'release.yml', '--branch', 'main',
-              '--event', 'workflow_dispatch', '--json', 'databaseId,headSha', '--limit', '20']));
-            const previousRuns = new Set(listRuns().map(item => item.databaseId));
-            gh(['workflow', 'run', 'release.yml', '--repo', repo, '--ref', 'main',
-              '-f', `source_sha=${sourceSha}`, '-f', `version=${version}`], { stdio: 'inherit' });
-            let build;
-            for (let attempt = 0; attempt < 20; attempt++) {
-              build = listRuns().find(item => !previousRuns.has(item.databaseId) && item.headSha === sourceSha);
-              if (build) break;
-              await new Promise(resolve => setTimeout(resolve, 3000));
-            }
-            if (!build) throw new Error('CI started but its run could not be found. Do not start another release.');
-            runId = String(build.databaseId);
-            await runCommand('gh', ['run', 'watch', runId, '--repo', repo, '--exit-status', '--interval', '15']);
-          });
-          await timer.run('CI artifact download', async () => {
-            for (const name of ['linux-x86_64', 'linux-aarch64']) {
-              await transferRetry(name, () => ghTransfer(['run', 'download', runId, '--repo', repo, '--name', name, '--dir', output]));
-            }
-            await copyFile('tooling/install-agent-remote-control.sh', path.join(output, 'install-agent-remote-control.sh'));
-          });
-        })] : []),
+      const cached = !flags.has('--skip-tests') && await cachedTestPass();
+      const tests = async () => {
+        if (flags.has('--skip-tests') || cached) {
+          console.log(cached ? `Tests cached for tree ${cached.inputs.tree}` : 'Tests explicitly skipped.');
+          timer.skip('tests');
+        } else await timer.run('tests', () => runCommand('npm', ['test'], { env: testEnvironment(env) }));
+      };
+      await timer.run('build/test critical path', () => parallelPlatforms([
+        tests,
+        () => timer.run('platform critical path', () => parallelPlatforms([
+          ...(mac ? [() => timer.run('macOS wall', () => buildMac({ sourceSha, output, env, timer }))] : []),
+          ...(windows ? [() => timer.run('Windows wall', () => buildWindows({ sourceSha, version, output, env, timer,
+            worker: workerPreparation, onCollected: releaseWorker }))] : []),
+          ...(linux ? [() => timer.run('Linux wall', () => buildLinux({ sourceSha, version, output, timer }))] : []),
+        ])),
       ]));
-      if (linux && dryRun) {
-        console.log('Linux skipped: dry run does not dispatch the remote tag-only workflow or upload CI artifacts.');
-        timer.skip('Linux wall');
-      }
       assertSource();
     }
     await timer.run('verification', async () => {
-      const selected = dryRun ? platforms.filter(value => value !== 'linux') : platforms;
+      const selected = platforms;
       if (!resume) run('tooling/release.mjs', 'finalize', output);
       const manifest = await json(path.join(output, 'latest.json'));
       await validateManifest(manifest, output);
@@ -256,6 +241,10 @@ if (mode === 'release') {
     });
     if (!dryRun) {
       assertSource();
+      if (!resume) await timer.run('tag/source push', async () => {
+        if (!git('tag', '--list', `v${version}`)) git('tag', `v${version}`);
+        git('push', '--atomic', 'origin', 'main', `refs/tags/v${version}`);
+      });
       const tag = `v${version}`;
       let release = releaseByTag(repo, tag);
       if (state.releaseId && release?.id !== state.releaseId) throw new Error('Original release was removed or replaced; refusing to resume');
@@ -327,11 +316,13 @@ if (mode === 'release') {
         state.complete = true;
         await saveState();
       });
-    } else for (const name of ['upload', 'remote verification', 'publish', 'readback']) timer.skip(name);
+    } else for (const name of ['tag/source push', 'upload', 'remote verification', 'publish', 'readback']) timer.skip(name);
   } catch (error) {
     if (state?.verified && output) console.error(`Resume after resolving the failure: npm run release -- --resume ${JSON.stringify(path.resolve(output))}`);
     throw error;
   } finally {
+    try { await releaseWorker(); }
+    catch (error) { console.error(`Windows worker cleanup failed: ${error.message}`); process.exitCode = 1; }
     const rows = (await readFile(timingFile, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);
     console.log(`Stage timings: ${timingFile}`);
     console.table(rows);

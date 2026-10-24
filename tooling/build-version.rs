@@ -4,11 +4,17 @@ pub fn build_version() -> String {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap();
-    for name in ["HEAD", "refs", "packed-refs"] {
-        println!(
-            "cargo:rerun-if-changed={}",
-            root.join(".git").join(name).display()
-        );
+    if std::env::var("ARC_BUILD_VERSION")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .is_none()
+    {
+        for name in ["HEAD", "refs", "packed-refs"] {
+            let file = root.join(".git").join(name);
+            if file.exists() {
+                println!("cargo:rerun-if-changed={}", file.display());
+            }
+        }
     }
     println!(
         "cargo:rerun-if-changed={}",
