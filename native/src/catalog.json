@@ -5329,7 +5329,7 @@
     },
     {
       "name": "task_timeline",
-      "description": "Read the task detail projection, including persisted answers and answering sources. This is the same data used by the panel. Never answers or approves interactions.",
+      "description": "Read the task detail projection, including persisted answers and answering sources. This is the same data used by the panel. Never answers or approves interactions. Silent command entries expose empty output.text; a literal null is shown only when the command actually printed it.",
       "inputSchema": {
         "type": "object",
         "properties": {

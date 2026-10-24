@@ -1046,7 +1046,11 @@ impl Timeline {
                 for k in ["command", "cwd"] {
                     row[k] = json!(cut(&redact(string(item, k)), SUMMARY).0);
                 }
-                row["output"] = summary(&item["aggregatedOutput"]);
+                row["output"] = if item["aggregatedOutput"].is_null() {
+                    summary(&json!(""))
+                } else {
+                    summary(&item["aggregatedOutput"])
+                };
                 if item["commandActions"].is_array() {
                     row["commandActions"] = sanitize(&item["commandActions"]);
                 }
@@ -1416,6 +1420,20 @@ pub(crate) fn observe(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn silent_command_output_is_empty_without_hiding_literal_null() {
+        // Regression: silent native commands rendered a JSON null as the literal text null in task panels.
+        for (output, expected) in [(None, ""), (Some(Value::Null), ""), (Some(json!("")), ""), (Some(json!("null")), "null")] {
+            let mut timeline = Timeline::default();
+            let mut item = json!({"id":"silent","type":"commandExecution","command":"sleep 1","exitCode":0});
+            if let Some(output) = output { item["aggregatedOutput"] = output; }
+            timeline.codex("item/completed", &json!({"item":item}), "2026-01-01T00:00:00Z");
+            let response = timeline.response("example", 0);
+            assert_eq!(response["entries"][0]["output"]["text"], expected);
+            assert_eq!(response["entries"][0]["exitCode"], 0);
+        }
+    }
     const AT: &str = "2026-01-01T00:00:00.000Z";
     const LATER: &str = "2026-01-01T00:00:01.000Z";
     #[test]
