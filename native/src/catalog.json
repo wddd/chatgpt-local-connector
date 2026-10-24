@@ -6984,6 +6984,13 @@
         ],
         "tier": "default",
         "conditional": false
+      },
+      "acceptance_fault": {
+        "group": "host",
+        "presets": [],
+        "requires": [],
+        "tier": "advanced",
+        "conditional": false
       }
     }
   },
