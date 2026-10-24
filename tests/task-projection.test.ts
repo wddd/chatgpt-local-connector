@@ -40,3 +40,24 @@ test("changed files omit failed writes and never invent missing counts", () => {
   const files = changedFiles([entry("edit", "file", { changes: [{ path: "a", added: 2, removed: 1 }] }), entry("edit2", "file", { changes: [{ path: "a", added: 3, removed: 0 }, { path: "b" }] })]);
   assert.deepEqual(files, [{ path: "a", added: 5, removed: 1 }, { path: "b", added: undefined, removed: undefined }]);
 });
+
+test("questions preserve all IDs and explicit multi choice answers through the native respond path", async () => {
+  // Property: one synchronous question response covers every question ID and never dispatches a new task.
+  const { inputResponse, interactionQuestions } = await import("../ui/state/taskInteractions.ts");
+  const interaction = { kind: "question" as const, summary: "Choose", method: "item/tool/requestUserInput", questions: [{ id: "one", question: "First", multiSelect: true, options: [{ label: "A" }, { label: "B" }] }, { id: "two", question: "Second" }], respond: { op: "codex_respond" as const, args: { respondToken: "example" } } };
+  assert.equal(interactionQuestions(interaction)[0].multiple, true);
+  assert.equal(inputResponse(interaction, { one: ["A"] }), undefined);
+  assert.deepEqual(inputResponse(interaction, { one: ["A", "B"], two: ["Custom"] }), { op: "codex_respond", args: { respondToken: "example", result: { answers: { one: { answers: ["A", "B"] }, two: { answers: ["Custom"] } } } } });
+  assert.equal(inputResponse({ ...interaction, canRespond: false }, {}, true), undefined);
+  assert.equal(inputResponse({ ...interaction, method: "unsupported" }, {}, true), undefined);
+});
+test("asynchronous questions and Pi selectors keep distinct native answer formats", async () => {
+  // Property: asynchronous text and Pi choices retain their owner's response schema and selection constraints.
+  const { inputResponse } = await import("../ui/state/taskInteractions.ts");
+  const question = { kind: "question" as const, summary: "Choose", method: "request_user_input_async", respond: { op: "codex_respond" as const, args: { id: "question" } } };
+  assert.deepEqual(inputResponse(question, { answer: ["Custom"] })?.args.result, { answer: "Custom" });
+  const pi = { ...question, method: "select", options: ["A"], respond: { op: "agent_respond" as const, args: { agent: "pi", interactionId: "question" } } };
+  assert.equal(inputResponse(pi, { answer: ["Other"] }), undefined);
+  assert.equal(inputResponse(pi, { answer: ["A"] })?.args.value, "A");
+  assert.equal(inputResponse(pi, {}, true)?.args.cancelled, true);
+});

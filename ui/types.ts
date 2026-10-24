@@ -75,7 +75,11 @@ export interface AgentInteraction {
   title?: string | null;
   options?: unknown;
   canRespond?: boolean;
-  method?: "select" | "confirm" | "input" | "editor";
+  method?: string;
+  reason?: string;
+  cwd?: string;
+  preview?: string;
+  questions?: { id: string; question: string; isOther?: boolean; isSecret?: boolean; multiSelect?: boolean; options?: { label: string; description?: string }[] }[];
 }
 export interface AgentActivitySession {
   turnCount?: number;

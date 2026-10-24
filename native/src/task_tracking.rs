@@ -633,7 +633,7 @@ impl Timeline {
                 item.map(|r| string(r, "command"))
                     .unwrap_or("Interaction required")
             });
-            self.put(json!({"id":id,"type":"interaction","status":"pending","interaction":{"kind":if string(req,"method").contains("Approval") {"permission"} else {"question"},"summary":cut(&redact(summary_text),SUMMARY).0,"request":summary(params),"respond":req["next"],"canRespond":req["canRespond"]}}),at);
+            self.put(json!({"id":id,"type":"interaction","status":"pending","interaction":{"kind":if string(req,"method").contains("Approval") {"permission"} else {"question"},"summary":cut(&redact(summary_text),SUMMARY).0,"request":summary(params),"method":req["method"],"questions":sanitize(&params["questions"]),"options":sanitize(&params["options"]),"command":sanitize(&params["command"]),"path":sanitize(&params["path"]),"cwd":sanitize(&params["cwd"]),"reason":sanitize(&params["reason"]),"preview":sanitize(&params["diff"]),"respond":req["next"],"canRespond":req["canRespond"]}}),at);
         }
         let resolved: Vec<_> = self
             .entries

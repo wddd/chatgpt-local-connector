@@ -53,6 +53,8 @@ dispatchSummary optionally describes the latest turn with controlSource (id, lab
 
 turnStartedAt is dispatch time for ARC Agents and observed turn-start time for Codex app-server. External Codex uses latest task_started. Claude uses latest readable user input. Missing trustworthy starts remain null rather than using phase/session start. External start tracking is independent of the 128 KiB summary tail: first scan locates the current turn, subsequent reads use byte offsets, truncation resets scanning, and incomplete last lines wait for the next read.
 
+Interaction projections retain native method, question IDs/options, command/diff preview, cwd, and reason when supplied. The detail dock responds with the existing callback arguments and a stable request ID. Synchronous Codex questions submit one answers map; asynchronous questions submit answer text. Unsupported native forms remain actionable in their owner. ARC dispatch receipts use approve/bypass/reject; native permissions retain their own allow/deny semantics and do not offer an invented bypass. Resolved requests without responder provenance are labeled as resolved elsewhere.
+
 Pending interactions, including waiting-permission, remain active and separately marked. timeline:true permits a request but does not guarantee complete coverage. fallbackHeadline uses latest readable text/thinking/command/file, then title/latest user message. recentContent provides three readable summaries. Neither changes phase/headline semantics. open is present only for verified navigation. Activity pushes throttle around one second through Tauri/SSE with GET fallback.
 
 ### Timeline API

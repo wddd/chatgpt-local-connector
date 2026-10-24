@@ -60,6 +60,7 @@ export type ApprovalPayload = { op: "agent_respond" | "codex_respond"; args: Rec
 export function permissionResponse(interaction: AgentInteraction, decision: "allow" | "deny"): ApprovalPayload | undefined {
   const { op, args } = interaction.respond;
   if (interaction.kind !== "permission" || interaction.canRespond === false || !op || !args) return;
+  if (op === "codex_respond" && interaction.method && !["item/commandExecution/requestApproval", "item/fileChange/requestApproval"].includes(interaction.method)) return;
   if (op === "codex_respond") return { op, args: { ...args, result: { decision: decision === "allow" ? "accept" : "decline" } } };
   if (args.agent === "pi") return { op, args: { ...args, confirmed: decision === "allow" } };
   const options = Array.isArray(interaction.options) ? interaction.options as { kind?: string; optionId?: string }[] : [];

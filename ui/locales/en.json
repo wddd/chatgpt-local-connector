@@ -1084,5 +1084,15 @@
   "detail.tools.file": "{count} files",
   "detail.tools.command": "{count} commands",
   "detail.tools.running": "running {count} commands",
-  "detail.tools.tool": "{count} tools"
+  "detail.tools.tool": "{count} tools",
+  "detail.other": "Other",
+  "detail.skip": "Skip",
+  "detail.sendAnswer": "Send answer",
+  "detail.pager": "{current} of {total}",
+  "detail.previousRequest": "Previous request",
+  "detail.nextRequest": "Next request",
+  "detail.bypass": "Bypass",
+  "detail.routed": "Also routed to {source} · first answer wins",
+  "detail.firstAnswer": "First answer wins",
+  "detail.nativeBypassUnavailable": "Bypass applies to ARC dispatch receipts. This native permission supports only its listed decisions."
 }

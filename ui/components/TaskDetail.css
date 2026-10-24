@@ -63,3 +63,22 @@
 @media (prefers-reduced-motion: reduce) {
   .task-detail-layer *, .task-detail-layer *::before { animation: none !important; transition: none !important; }
 }
+.task-detail-footer.dialog-footer { display: flex; flex-direction: column; align-items: stretch; padding: 10px 12px 12px; gap: 8px; }
+.task-detail-footer:empty { display: none; }
+.task-needs-you { display: grid; gap: 10px; padding: 12px; border: 1.5px solid var(--task-attention-ring); border-radius: 18px; background: var(--surface); box-shadow: 0 8px 20px -12px var(--warning); max-height: min(58dvh, 560px); overflow: auto; overscroll-behavior: contain; animation: task-dock-in 180ms var(--task-spring); overflow-wrap: anywhere; }
+.task-needs-you > header { display: flex; align-items: center; justify-content: space-between; color: var(--warning); font-size: 12px; gap: 6px; }
+.task-needs-you > small { color: var(--text-secondary); font-size: 11px; }
+.task-needs-you pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 var(--font-mono); background: var(--surface-subtle); padding: 10px; border-radius: 12px; max-height: 180px; overflow: auto; }
+.task-question { display: grid; gap: 12px; }
+.task-question-field { margin: 0; padding: 0; border: 0; display: grid; gap: 8px; min-width: 0; }
+.task-question-field legend { padding: 0; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+.task-question-field .choice-option, .task-multi-option { min-height: 44px; border-radius: 14px; transition: background 180ms var(--task-spring), transform 180ms var(--task-spring); }
+.task-question-field .choice-option[data-state=checked] { transform: scale(1.01); }
+.task-multi-option { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); padding: 8px 12px; }
+.task-multi-option .checkbox-label { flex: 1; min-height: 44px; }
+.task-multi-option small { color: var(--text-secondary); }
+.task-question kbd { font: 11px var(--font-mono); color: var(--text-tertiary); }
+.task-needs-you .activity-actions { flex-wrap: wrap; }
+.task-needs-you .activity-once { flex-basis: 100%; }
+.task-dock-resolved { padding: 8px 12px; color: var(--success); font-size: 12px; }
+@keyframes task-dock-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

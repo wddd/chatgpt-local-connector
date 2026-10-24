@@ -1,10 +1,10 @@
 import "./TaskDetail.css";
-import { useEffect, useLayoutEffect, useRef, useState, useId } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { AgentTimeline } from "../types";
-import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
+import { agentActivity, openActivitySession } from "../state/activity";
 import { followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
 import { useInterval } from "../state/hooks";
 import { Button, Icon, IconButton, LoadingIndicator } from "./ui";
@@ -13,9 +13,8 @@ import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
 import { connector } from "../state/connector";
 import { projectTurn, taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
-import ActivityInteraction from "./ActivityInteraction";
-import FilePath from "./FilePath";
-import { activityHeadline, interactionKey, type TrackedActivity } from "../state/activityModel";
+import TaskNeedsYou from "./TaskNeedsYou";
+import { activityHeadline, type TrackedActivity } from "../state/activityModel";
 import type { TaskRuntime } from "../state/tasks";
 
 import { name, orderedAgents } from "../state/agents";
@@ -25,7 +24,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
 }) {
   const { snapshot } = agentActivity.use();
   const connection = connector.use();
-  const submissions = activityApprovals.use(), cardId = useId();
+  const [showCard, setShowCard] = useState(false);
   const [atLatest, setAtLatest] = useState(true);
   const [timeline, setTimeline] = useState<AgentTimeline>();
   const [taskTitle, setTaskTitle] = useState("");
@@ -96,14 +95,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     return () => observer.disconnect();
   }, []);
   const nativeSession = live ?? { ...session, interaction: undefined };
-  const pendingSession = !external && !timeline?.readOnly && live?.interaction ? live : undefined;
-  const submission = pendingSession ? submissions[interactionKey(agent, pendingSession)] : undefined;
-  const showCard = !!pendingSession && submission?.status !== "submitted";
   const agentName = name(orderedAgents().find(a => a.agent === agent) ?? { agent });
   const duration = timelineDuration(timeline?.entries ?? [], now, running, nativeSession.turnId, timeline?.turnTimings, nativeSession.turnStartedAt);
-  useEffect(() => {
-    if (showCard) document.getElementById(cardId)?.focus({ preventScroll: true });
-  }, [showCard, pendingSession?.phaseSince, cardId]);
   const project = timeline?.projectName || nativeSession.projectName || session.projectName
     || session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
   const latestSummary = live ? live.dispatchSummary : timeline?.dispatchSummary ?? nativeSession.dispatchSummary;
@@ -116,13 +109,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const plan = projectTurn(groups.at(-1)?.entries ?? [], state).plan?.plan ?? [];
   const doneSteps = plan.filter(step => step.status === "completed").length;
   const title = taskTitle || nativeSession.title || session.title || t("timeline.title");
-  const footer = showCard && <section className="activity-approval-card" id={cardId} tabIndex={-1} aria-label={t("activity.needsAttention")}>
-    <strong>{t("detail.needsYou")}</strong>
-    <p className="mono">{pendingSession.interaction?.path
-      ? <FilePath path={pendingSession.interaction.path} project={pendingSession.project} />
-      : pendingSession.interaction?.command || pendingSession.interaction?.summary}</p>
-    <ActivityInteraction key={interactionKey(agent, pendingSession)} agent={agent} session={pendingSession} questions />
-  </section>;
   return <section className="agent-panel-layer task-detail-layer">
     <header className="dialog-header task-detail-header">
       <div className="task-detail-navigation"><Button variant="ghost" onClick={onBack}><Icon icon={ArrowLeft} />{agentName}{project && ` · ${project}`}</Button>
@@ -172,6 +158,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
         if (node) { manualDisclosure.current = false; node.scrollTop = node.scrollHeight; following.current = true; setAtLatest(true); }
       }}>{t("timeline.latest")}</Button>}
     </div>
-    {footer && <footer className="dialog-footer">{footer}</footer>}
+    {!external && !timeline?.readOnly && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={source && dispatchSourceLabel(source)} onPending={setShowCard} /></footer>}
   </section>;
 }

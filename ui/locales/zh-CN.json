@@ -1084,5 +1084,15 @@
   "detail.tools.file": "{count} 个文件",
   "detail.tools.command": "{count} 条命令",
   "detail.tools.running": "{count} 条命令运行中",
-  "detail.tools.tool": "{count} 项工具调用"
+  "detail.tools.tool": "{count} 项工具调用",
+  "detail.other": "其他",
+  "detail.skip": "跳过",
+  "detail.sendAnswer": "发送回答",
+  "detail.pager": "{current} / {total}",
+  "detail.previousRequest": "上一个请求",
+  "detail.nextRequest": "下一个请求",
+  "detail.bypass": "绕过",
+  "detail.routed": "同时路由至 {source} · 首次回答生效",
+  "detail.firstAnswer": "首次回答生效",
+  "detail.nativeBypassUnavailable": "绕过适用于 ARC 派发回执。原生权限请求只支持其提供的决定。"
 }

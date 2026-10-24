@@ -10,6 +10,7 @@ import { filePathParts, interactionKey } from "../state/activityModel";
 import { timelineGroups, turnDuration } from "../state/timelineGroups";
 import { Button, Icon, IconButton } from "./ui";
 import { dispatchSourceLabel } from "./activity";
+import { answerLabel } from "../state/taskInteractions";
 import { copyText } from "../platform";
 import { changedFiles, processOpen, projectTurn, taskState, toolCounts, type ProcessRow } from "../state/taskProjection";
 import FilePath from "./FilePath";
@@ -109,7 +110,7 @@ function InteractionAnchor({ entry, agent, session }: { entry: AgentTimelineEntr
   const verdict = receipt?.decision === "deny" ? "detail.reject" : receipt?.decision === "allow" ? "detail.approve" : "timeline.answered";
   return <div className="task-interaction-anchor" data-pending={!resolved || undefined}>
     <Icon icon={resolved ? Check : ShieldAlert} /><div><strong>{resolved ? t(verdict) : t("detail.needsYou")}</strong>
-      <span>{entry.interaction?.summary}</span>
+      <span>{entry.interaction?.summary}</span>{receipt?.status === "submitted" && answerLabel(receipt.payload) && <span>{answerLabel(receipt.payload)}</span>}
       {resolved && <small>{receipt?.status === "submitted" ? t("detail.byARC") : t("detail.resolvedElsewhere")}</small>}
     </div>
   </div>;
