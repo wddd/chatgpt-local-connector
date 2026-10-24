@@ -78,8 +78,8 @@ pub fn failure(e: &str) -> Value {
             return value;
         }
     }
-    if e.contains("thread already has an active writer") {
-        return json!({"code":"THREAD_WRITER_BUSY","message":"Codex rejected the write because another native session owns this thread. ARC runtimeStatus=notLoaded only describes ARC observation, not global writer ownership.","nativeError":e,"retryable":false,"next":{"via":"query","op":"codex_read","requiredArgs":["threadId"],"statusOnly":true,"hint":"Read the original receipt and thread status. Continue in the owning ChatGPT/Codex session, or explicitly close that session before retrying this same thread. Do not delete writer locks, auto-retry, or create a replacement thread."}});
+    if e.contains("already has an active writer") {
+        return json!({"code":"THREAD_WRITER_BUSY","message":"Codex rejected the operation because another native session owns this thread. ARC runtimeStatus=notLoaded only describes ARC observation, not global writer ownership.","nativeError":e,"retryable":false,"next":{"via":"query","op":"codex_read","requiredArgs":["threadId"],"statusOnly":true,"hint":"Read the original receipt and thread status. Continue in the owning ChatGPT/Codex session, or explicitly close that session before retrying this same thread. Do not delete writer locks, auto-retry, or create a replacement thread."}});
     }
     let rpc = e
         .strip_prefix("RPC_REJECTED:")
@@ -862,11 +862,17 @@ mod tests {
     #[test]
     fn writer_rejection_explains_owner_and_recovery() {
         // Regression: native active-writer rejection gave control sources no reason or safe next step.
-        let error = failure("RPC_REJECTED:{\"message\":\"thread already has an active writer\"}");
-        assert_eq!(error["code"], "THREAD_WRITER_BUSY");
-        assert_eq!(error["retryable"], false);
-        assert_eq!(error["next"]["op"], "codex_read");
-        assert!(error["nativeError"].is_string());
+        for native in [
+            "RPC_REJECTED:{\"message\":\"thread already has an active writer\"}",
+            "RPC_REJECTED:{\"code\":-32600,\"message\":\"thread 00000000-0000-4000-8000-000000000001 already has an active writer\"}",
+            "THREAD_LOAD_FAILED: desktop=DESKTOP_REJECTED:\"no-client-found\"; app-server=RPC_REJECTED:{\"message\":\"thread 00000000-0000-4000-8000-000000000001 already has an active writer\"}",
+        ] {
+            let error = failure(native);
+            assert_eq!(error["code"], "THREAD_WRITER_BUSY");
+            assert_eq!(error["retryable"], false);
+            assert_eq!(error["next"]["op"], "codex_read");
+            assert_eq!(error["nativeError"], native);
+        }
     }
 
     #[test]

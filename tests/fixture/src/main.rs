@@ -14,6 +14,12 @@ async fn main() {
     let _listener = arc_core::transport::listen(service.clone(), None)
         .await
         .unwrap();
+    if std::env::args().nth(1).as_deref() == Some("http") {
+        println!("{}", serde_json::json!({"port":service.port.load(std::sync::atomic::Ordering::SeqCst),"token":service.token}));
+        let _ = BufReader::new(tokio::io::stdin()).lines().next_line().await;
+        service.control.close().await;
+        return;
+    }
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
     let mut out = tokio::io::stdout();
     while let Some(line) = lines.next_line().await.unwrap() {
