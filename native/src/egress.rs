@@ -820,7 +820,7 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
     wait_args["until"] = json!("terminal");
     wait_args["timeoutMs"] = json!(30000);
     let wait_tool = if agent { "agent_wait" } else { "codex_wait" };
-    let mut next = if value["next"]["op"].is_string() {value["next"].clone()} else if value["state"] == "awaiting-approval" {
+    let mut next = if value["next"]["op"].is_string() || (value["next"].get("op") == Some(&Value::Null) && value["next"]["hint"].is_string()) {value["next"].clone()} else if value["state"] == "awaiting-approval" {
         json!({"hint":"Inspect the original request, then decide according to user intent.","via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"}})
     } else if value["state"] == "interaction-required" {
         if agent {
@@ -884,7 +884,7 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
     };
     if value["requestId"].is_string() {
         let digest = hash(next.to_string());
-        if args["knownNextHash"] == digest {
+        if args["knownNextHash"] == digest && outcome_error(value).is_none() && !value["error"].is_object() {
             next = json!({"hash":digest,"unchanged":true});
         } else {
             next["hash"] = json!(digest);
@@ -907,6 +907,7 @@ mod tests {
                     let args=json!({"agent":"pi","threadId":"00000000-0000-4000-8000-000000000001","taskId":"00000000-0000-4000-8000-000000000003","turnId":turn});
                     let mut value=args.clone();value["state"]=json!(state);value["requestId"]=json!("00000000-0000-4000-8000-000000000002");
                     next(&mut value,name,&args,false);
+                    if outcome_error(&value).is_some() { assert!(value["next"].is_object(), "Missing failure continuation: {name}/{state}"); }
                     if let Some(op)=value["next"]["op"].as_str() {
                         let spec=catalog["ops"].as_array().unwrap().iter().find(|o|o["name"]==op).unwrap();
                         assert!(crate::validator("next-regression",op,&spec["inputSchema"]).unwrap().is_valid(&value["next"]["args"]),"{name}/{state}: {}",value["next"]);

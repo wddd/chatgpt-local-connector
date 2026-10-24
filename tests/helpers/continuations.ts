@@ -5,6 +5,20 @@ const catalog=JSON.parse(readFileSync(new URL('../../native/src/catalog.json',im
 const engine=new AjvJsonSchemaValidator();
 const validators=new Map<string,ReturnType<typeof engine.getValidator>>();
 export function assertNextCalls(value: any): void {
+  // Only the operation outcome is a failure boundary; historical rows are data.
+  const root=value && Object.keys(value).length===1 && value.result ? value.result : value;
+  let outcome=root;
+  for(let depth=0;outcome && depth<8;depth++) {
+    if(outcome.ok===false || outcome.error?.code || ['failed','rejected','cancelled','not-executed','unconfirmed','rolled-back'].includes(outcome.state) || (typeof outcome.exitCode==='number' && outcome.exitCode!==0)) {
+      assert.ok(root.next && typeof root.next==='object','Failure response is missing next');
+      assert.ok(typeof root.next.op==='string' || (root.next.op===null && typeof root.next.hint==='string' && root.next.hint.trim()),'Failure next must name an operation or explicitly describe human recovery');
+      break;
+    }
+    outcome=outcome.result??outcome.lastResult;
+  }
+  validateNextCalls(value);
+}
+function validateNextCalls(value: any): void {
   if(!value || typeof value!=='object')return;
   const next=value.next;
   if(next && typeof next==='object' && next.op) {
@@ -14,5 +28,5 @@ export function assertNextCalls(value: any): void {
     const result=validators.get(next.op)!(next.args??{});
     assert.equal(result.valid,true,`Invalid next ${JSON.stringify(next)}: ${JSON.stringify(result)}`);
   }
-  for(const child of Object.values(value))assertNextCalls(child);
+  for(const child of Object.values(value))validateNextCalls(child);
 }

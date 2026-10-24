@@ -62,7 +62,7 @@ provided in that object where the op schema supports it. The existing
 control dispatcher chooses guide/query/act, validates the same schemas and
 returns the same projected result in the CLI `schemaVersion: 1` envelope.
 Control errors retain the remote error object (including code and correction
-hints) under `error`; they do not add a CLI usage field.
+hints) under `error`, with a sibling `next`. Every failure includes a schema-valid `next` operation and args, or `next:{op:null,hint}` when recovery requires a human action. Control errors do not add a CLI usage field.
 
 ```sh
 arc cli control guide

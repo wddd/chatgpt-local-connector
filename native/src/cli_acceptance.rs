@@ -125,7 +125,7 @@ pub(crate) fn control_hint(op: &str) -> String {
 pub(crate) async fn control(op: &str, args: Value) -> Result<Value> {
     let response =
         transport::forward_request("cli/control", "POST", json!({"op":op,"args":&args})).await?;
-    let value = response["structuredContent"]["result"].clone();
+    let mut value = response["structuredContent"]["result"].clone();
     if response["isError"] == true && crate::egress::outcome_error(&value).is_none() {
         let mut error = value["error"].clone();
         if error.is_object() {
@@ -136,7 +136,8 @@ pub(crate) async fn control(op: &str, args: Value) -> Result<Value> {
             };
             error["cliHint"] = json!(control_hint(guide_op));
         }
-        return Err(error.to_string());
+        value["error"] = error;
+        value["ok"] = json!(false);
     }
     Ok(value)
 }

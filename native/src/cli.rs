@@ -485,7 +485,7 @@ fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
         ));
         error["example"] = json!({"enabled":false});
     }
-    print_output(json!({"schemaVersion":1,"ok":false,"error":error}));
+    print_output(json!({"schemaVersion":1,"ok":false,"error":error,"next":{"via":"query","op":"guide","args":{},"hint":format!("Correct the command using {usage}, then retry.")}}));
     1
 }
 
@@ -875,6 +875,8 @@ pub async fn run(args: Vec<String>) -> i32 {
         Ok(mut result) => {
             if crate::egress::outcome_error(&result).is_some() {
                 crate::egress::compact_failure(&mut result);
+                if result["next"].is_null() && result["lastResult"]["next"].is_object() { result["next"] = result["lastResult"]["next"].clone(); }
+                crate::egress::next(&mut result, words.get(1).copied().unwrap_or(""), &json!({}), false);
                 let error = result.as_object_mut().unwrap().remove("error").unwrap();
                 let next = result.as_object_mut().unwrap().remove("next");
                 print_output(json!({"schemaVersion":1,"ok":false,"error":error,"next":next,"result":result}));
@@ -901,7 +903,10 @@ pub async fn run(args: Vec<String>) -> i32 {
         Err(message) => {
             if matches!(words.first(), Some(&"control" | &"wait")) {
                 if let Ok(error) = serde_json::from_str::<Value>(&message) {
-                    print_output(json!({"schemaVersion":1,"ok":false,"error":error}));
+                    let mut failure = json!({"error":error});
+                    crate::egress::next(&mut failure, words.get(1).copied().unwrap_or(""), &json!({}), false);
+                    crate::egress::compact_failure(&mut failure);
+                    print_output(json!({"schemaVersion":1,"ok":false,"error":failure["error"],"next":failure["next"]}));
                     return 1;
                 }
             }
