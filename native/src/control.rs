@@ -1627,6 +1627,7 @@ impl Control {
             "notify_control" => crate::claude_notify::notify_control(&args).await,
             "inbox_wait" => crate::claude_notify::inbox_wait(self, &args).await,
             "notification_ack" => crate::claude_notify::acknowledge(&args).await,
+            "codex_interactions" => crate::egress::interaction_history(&args),
             "codex_pending" => {
                 if let Some(thread) = args["threadId"].as_str() {
                     if !self.background(thread)? {
@@ -1653,6 +1654,7 @@ impl Control {
                 let origin = crate::kernel::origin::current_origin();
                 for request in &mut requests {
                     crate::respond_tokens::issue(string(&origin, "sourceId"), request)?;
+                    request["questionSummary"] = crate::egress::interaction_preview(request);
                 }
                 Ok(json!({"backendSession":self.session,"requests":requests}))
             }

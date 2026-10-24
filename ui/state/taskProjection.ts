@@ -36,8 +36,9 @@ export function processOpen(state: TaskState, manual?: boolean) {
 export function projectTurn(entries: readonly AgentTimelineEntry[], state: TaskState) {
   const live = state === "running" || state === "needsYou";
   const { prompt, final, work } = turnEntries(entries, live, state === "done");
-  const rows = processRows(work);
-  return { prompt, final, rows, plan: [...entries].reverse().find(entry => entry.type === "plan"),
+  const answeredInteractions = work.filter(entry => entry.type === "interaction" && (entry.status === "completed" || !!entry.response));
+  const rows = processRows(work.filter(entry => !answeredInteractions.includes(entry)));
+  return { prompt, final, rows, answeredInteractions, plan: [...entries].reverse().find(entry => entry.type === "plan"),
     thinking: live ? [...entries].reverse().find(entry => entry.type === "thinking" && entry.text?.trim()) : undefined,
     updates: work.filter(entry => entry.type === "text").length,
     answers: work.filter(entry => entry.type === "interaction" && entry.status === "completed").length,

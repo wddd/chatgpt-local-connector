@@ -692,7 +692,7 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
             full || name == "guide" || match topic {
                 "notify" => matches!(name, "notify_status" | "notify_control" | "notification_ack" | "inbox_wait" | "codex_create" | "codex_send" | "codex_read" | "agent_create" | "agent_send" | "agent_read"),
                 "review" => matches!(name, "codex_review" | "agent_review" | "codex_read" | "agent_read" | "codex_wait" | "agent_wait" | "agent_events" | "codex_changes" | "codex_items" | "codex_send" | "agent_send" | "receipt" | "task_reviews"),
-                "approvals" => matches!(name, "receipt" | "codex_pending" | "codex_respond" | "agent_pending" | "agent_respond" | "codex_read" | "agent_read"),
+                "approvals" => matches!(name, "receipt" | "codex_pending" | "codex_interactions" | "codex_respond" | "agent_pending" | "agent_respond" | "codex_read" | "agent_read"),
                 _ => matches!(name, "dispatch_policy" | "command" | "read" | "write" | "edit" | "fs" | "git" | "codex_create" | "codex_send" | "codex_read" | "codex_wait" | "receipt" | "agent_create" | "agent_send" | "agent_read" | "agent_wait"),
             }
         })
@@ -939,4 +939,36 @@ mod tests {
             );
         }
     }
+}
+
+/// Compact question content without replacing the original native request.
+pub fn interaction_preview(request: &Value) -> Value {
+    let params = request.get("params").unwrap_or(request);
+    let questions = params["questions"].as_array();
+    let mut rows: Vec<Value> = questions.into_iter().flatten().take(6).map(|q| {
+        json!({"id":q["id"],"question":string(q,"question").chars().take(480).collect::<String>(),
+            "options":q["options"].as_array().into_iter().flatten().take(8).map(|o| {
+                json!({"label":o.as_str().unwrap_or_else(||string(o,"label")).chars().take(120).collect::<String>(),"description":string(o,"description").chars().take(160).collect::<String>()})
+            }).collect::<Vec<_>>()})
+    }).collect();
+    if rows.is_empty() {
+        let prompt = ["question", "prompt", "message", "summary"].iter().find_map(|key| params[*key].as_str().filter(|v| !v.is_empty()));
+        if let Some(prompt) = prompt { rows.push(json!({"question":prompt.chars().take(480).collect::<String>(),"options":params["options"].as_array().into_iter().flatten().take(8).cloned().collect::<Vec<_>>()})); }
+    }
+    json!({"questions":rows,"summary":rows.iter().filter_map(|q|q["question"].as_str()).collect::<Vec<_>>().join("; "),"questionCount":questions.map(Vec::len).unwrap_or(rows.len()),"responseId":request.get("responseId").unwrap_or(&request["id"]),"turnId":params["turnId"],"backendSession":request["backendSession"]})
+}
+
+pub fn interaction_history(args: &Value) -> Result<Value> {
+    let thread = string(args, "threadId");
+    let mut timeline = crate::task_tracking::Timeline::default();
+    crate::interaction_responses::project(&mut timeline, thread)?;
+    let snapshot = timeline.response(thread, 0);
+    let mut rows: Vec<_> = snapshot["entries"].as_array().into_iter().flatten().filter(|e| e["type"] == "interaction" && e["response"].is_object()).map(|e| {
+        let mut row = interaction_preview(&e["interaction"]);
+        row["id"] = e["id"].clone(); row["turnId"] = e["turnId"].clone();
+        row["response"] = e["response"].clone(); row["status"] = json!("answered"); row
+    }).collect();
+    rows.reverse();
+    let total = rows.len(); let offset = num(args,"offset",0); let end = offset.saturating_add(num(args,"limit",20).min(100)).min(total);
+    Ok(json!({"threadId":thread,"interactions":rows.into_iter().skip(offset).take(end.saturating_sub(offset)).collect::<Vec<_>>(),"total":total,"nextOffset":if end < total {Some(end)} else {None}}))
 }

@@ -15,7 +15,7 @@ import { timelineGroups, turnDuration } from "../state/timelineGroups";
 import { Button, Icon, IconButton } from "./ui";
 import { dispatchSourceLabel } from "./activity";
 import { icons } from "../state/agents";
-import { answerLabel } from "../state/taskInteractions";
+import { answerLabel, interactionSummary } from "../state/taskInteractions";
 import { copyText } from "../platform";
 import { processOpen, projectTurn, taskState, toolCounts, type ProcessRow } from "../state/taskProjection";
 import FilePath from "./FilePath";
@@ -111,7 +111,7 @@ function InteractionAnchor({ entry, agent, session }: { entry: AgentTimelineEntr
     : receipt?.decision === "deny" ? "detail.verdict.reject" : receipt?.decision === "allow" ? "detail.verdict.approved" : receipt?.decision === "cancel" ? "detail.skipped" : "timeline.answered";
   return <div className="task-interaction-anchor" data-pending={!resolved || undefined}>
     <Icon icon={resolved ? Check : ShieldAlert} /><div><strong>{resolved ? t(verdict) : t("detail.needsYou")}</strong>
-      <span>{entry.interaction?.summary}</span>{answer && <span>{answer}</span>}
+      <span>{interactionSummary(entry.interaction)}</span>{answer && <span>{answer}</span>}
       {resolved && <small>{saved ? saved.origin.controlSource === "ARC" ? t("detail.byARC") : saved.origin.sourceLabel || saved.origin.controlSource || t("detail.sourceUnknown") : own ? t("detail.byARC") : t("detail.resolvedElsewhere")}</small>}
     </div>
   </div>;
@@ -163,6 +163,7 @@ export default function TimelineEntries({ entries, agent, session, now, running 
       {!latest && <Button variant="ghost" className="task-previous-turn" aria-expanded={turnOpen} onClick={() => change(group.id)(!turnOpen)}>
         <Icon icon={ChevronRight} /><span>{t("detail.previousTurn", { count: index + 1, actions: projection.actions })}{duration !== undefined && ` · ${durationText(duration)}`}<span>{final?.text?.split("\n")[0] || prompt?.text?.split("\n")[0]}</span></span>
       </Button>}
+      {projection.answeredInteractions.map(entry => <InteractionAnchor key={entry.id} entry={entry} agent={agent} session={session} />)}
       {turnOpen && <div className="task-turn-content">
         {prompt && <div className="task-prompt"><small>{t("timeline.user")}{` · ${source ? t("detail.via", { source: dispatchSourceLabel(source) }) : t("detail.sourceUnknown")}`}{prompt.startedAt && ` · ${new Date(prompt.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small>
           <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[prompt.id] ?? false} onChange={change(prompt.id)} /></div>}

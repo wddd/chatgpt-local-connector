@@ -2013,3 +2013,18 @@ test('AX2 interrupt resolves the active turn and preserves explicit IDs and retr
   const explicit=await completed('codex_interrupt',{threadId:other.threadId,turnId:other.turnId,requestId:randomUUID()});
   assert.equal(explicit.turnId,other.turnId);
 });
+
+
+test('AX2 pending progress and flat answered history expose question content', async () => {
+  // Regression: interaction previews only said Interaction required and answered history required nested expansion.
+  const created=await dispatchFixture('fixture-dispatch-question');
+  const pending=await eventually(async()=>(await call('codex_pending',{threadId:created.threadId})).result,r=>r.requests?.length>0);
+  const request=pending.requests[0];assert.equal(request.questionSummary.questions[0].question,'2+2?');
+  const status=(await call('codex_read',{threadId:created.threadId,statusOnly:true})).result;
+  assert.equal(status.progress.pendingInteractions[0].questions[0].question,'2+2?');
+  await completed('codex_respond',{id:request.responseId,backendSession:request.backendSession,result:{answers:{q:{answers:['4']}}},requestId:randomUUID()});
+  const history=(await call('codex_interactions',{threadId:created.threadId})).result;
+  assert.equal(history.total,1);assert.equal(history.interactions[0].questions[0].question,'2+2?');
+  assert.deepEqual(history.interactions[0].response.result.answers.q.answers,['4']);
+  assert.ok(history.interactions[0].response.origin.controlSource);
+});

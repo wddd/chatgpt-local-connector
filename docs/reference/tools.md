@@ -466,3 +466,7 @@ Receipt `stateScope:"operation"` describes submission, not task completion. `cod
 ## Interrupt the active turn
 
 Use `act({op:"codex_interrupt",args:{threadId:"<id>"}})` to interrupt the currently active native turn. ARC resolves it under the thread lock and records `turnId` in the receipt before submitting. Explicit `turnId` keeps native stale-turn protection. `NO_ACTIVE_TURN` means ARC could not confirm an active turn; read status before trying again. Replay the returned requestId to reconcile the same attempt rather than selecting a later turn.
+
+## Questions and answered history
+
+`codex_pending` requests include `questionSummary`; `codex_read({statusOnly:true})` and `codex_wait` progress include `pendingInteractions`; inbox events include `questionSummary`. These bounded previews contain question text and option labels. Use the original pending request to respond. Read `query({op:"codex_interactions",args:{threadId:"<id>"}})` for flat answered records with questions/options, response, answering source, and timestamp. Follow `nextOffset` for older records. Task panels display answered questions outside both turn and process disclosures.

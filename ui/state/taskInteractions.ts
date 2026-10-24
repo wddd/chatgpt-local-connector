@@ -36,3 +36,9 @@ export function pendingSessions(session: import("../types.ts").AgentActivitySess
   if (session.interaction && !pending.some(p => JSON.stringify(p.interaction?.respond) === JSON.stringify(session.interaction?.respond))) pending.push(session);
   return pending;
 }
+
+export function interactionSummary(interaction: AgentInteraction | undefined): string {
+  if (!interaction) return "";
+  const questions = interactionQuestions(interaction);
+  return questions.length ? questions.map(q => `${q.text}${q.options.length ? ` (${q.options.map(o => o.label).join(" / ")})` : ""}`).join("; ") : interaction.summary;
+}

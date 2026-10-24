@@ -86,3 +86,13 @@ test("native command action metadata counts searches and reads without guessing 
   assert.equal(toolCounts([entry("stale", "command", { status: "running" })], false).command, 1);
   assert.equal(toolCounts([entry("stale", "command", { status: "running" })], false).running, 0);
 });
+
+
+test('answered questions remain available outside collapsed process rows', async () => {
+  // Regression: answered questions and selected options were hidden behind both turn and process expansion.
+  const { interactionSummary }=await import('../ui/state/taskInteractions.ts');
+  const interaction={kind:'question' as const,summary:'Interaction required',respond:{},questions:[{id:'q',question:'Pick one',options:[{label:'A'},{label:'B'}]}]};
+  const result=projectTurn([entry('answer','interaction',{status:'completed',interaction})],'done');
+  assert.equal(result.answeredInteractions.length,1);assert.equal(result.rows.length,0);
+  assert.match(interactionSummary(interaction),/Pick one.*A.*B/);
+});
