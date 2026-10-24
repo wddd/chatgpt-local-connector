@@ -3,9 +3,11 @@ use crate::*;
 use tokio::time::{timeout_at, Duration, Instant};
 pub(crate) async fn list(c: &Arc<control::Control>, args: &Value) -> Result<Value> {
     let full = args["view"] == "full";
+    let enrich = args["enrich"].as_bool().unwrap_or(args["archived"] != true);
     let mut params = args.clone();
     params.as_object_mut().unwrap().remove("project");
     params.as_object_mut().unwrap().remove("view");
+    params.as_object_mut().unwrap().remove("enrich");
     params["sortKey"] = json!("updated_at");
     params["sortDirection"] = json!("desc");
     if params.get("limit").is_none() {
@@ -16,6 +18,18 @@ pub(crate) async fn list(c: &Arc<control::Control>, args: &Value) -> Result<Valu
     }
     let page = c.request("thread/list", params, 60000).await?;
     let rows = page["data"].as_array().ok_or("NATIVE_TASKS_MISSING")?;
+    if !enrich {
+        let tasks: Vec<_> = rows.iter().map(|row| {
+            let mut task = control::summary(row);
+            task["archived"] = args["archived"].clone();
+            task["runtimeStatus"] = Value::Null;
+            task["status"] = json!(if args["archived"] == true {"archived"} else {"not-observed"});
+            task["runtimeSource"] = json!("not-requested");
+            task["enriched"] = json!(false);
+            task
+        }).collect();
+        return Ok(json!({"tasks":tasks,"nextCursor":page["nextCursor"],"enriched":false,"observedAt":now()}));
+    }
     let queues = crate::dispatch_queue::counts().await?;
     let deadline = Instant::now() + Duration::from_secs(8);
     let slots = Arc::new(tokio::sync::Semaphore::new(32));

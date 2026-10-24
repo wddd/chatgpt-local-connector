@@ -478,3 +478,7 @@ Use `act({op:"codex_archive",args:{threadId:"<id>"}})` for ended self-test or ot
 ## Self-test UI follow-ups
 
 The task composer has a Purpose choice: Follow thread, Task, or Self-test. Self-test submits `purpose:"self-test", notify:null` through the existing task operation. Agents can set the same choice after opening the panel: `act({op:"task_panel_control",args:{agent:"codex",id:"<thread-id>",action:"purpose",purpose:"self-test"}})`. Read `task_panel` to confirm `purpose`. The selection applies to subsequent UI sends for that task until changed or the renderer reloads. Follow thread inherits persisted Codex self-test purpose; explicit Task starts a normal task turn. The local `tasks.control` bridge also accepts `purpose:"self-test"` and suppresses implicit notification binding.
+
+## Task list cost
+
+`codex_tasks({archived:true,searchTerm:"probe",enrich:false})` returns native list metadata without per-thread reads. Archived lists default to `enrich:false`; other lists preserve live enrichment by default. The compact signature lists both archive and search filters. Metadata-only rows expose `runtimeStatus:null`, `runtimeSource:"not-requested"`; use `codex_read` on a selected thread for live status.
