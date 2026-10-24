@@ -17,7 +17,7 @@ export async function nativeControl(script: string, extraEnv: Record<string, str
   const target = process.env.CARGO_TARGET_DIR || path.resolve('target');
   execFileSync('cargo', ['build', '--locked', '--quiet', '-p', 'contract-fixture', '--target-dir', target], { stdio: 'inherit' });
   const processHandle = spawn(path.join(target, 'debug', `contract-fixture${process.platform === 'win32' ? '.exe' : ''}`), ['http'], {
-    env: { ...process.env, ARC_STATE_DIR: path.join(directory, 'state'), ARC_FIXTURE_SCRIPT: fixture, ARC_FIXTURE_BINARY: process.execPath, ...extraEnv }, stdio: ['pipe', 'pipe', 'inherit'],
+    env: { ...process.env, ARC_STATE_DIR: path.join(directory, 'state'), CODEX_HOME:path.join(directory,'codex'), ARC_FIXTURE_SCRIPT: fixture, ARC_FIXTURE_BINARY: process.execPath, ...extraEnv }, stdio: ['pipe', 'pipe', 'inherit'],
   });
   const lines = createInterface({ input: processHandle.stdout });
   const endpoint = JSON.parse((await lines[Symbol.asyncIterator]().next()).value!);

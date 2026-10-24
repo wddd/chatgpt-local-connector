@@ -16,11 +16,14 @@ pub(crate) async fn list(c: &Arc<control::Control>, args: &Value) -> Result<Valu
     if let Some(p) = args["project"].as_str() {
         params["cwd"] = json!([crate::projects::resolve(c, p).await?["root"]]);
     }
-    let page = c.request("thread/list", params, 60000).await?;
+    let indexed=if args["archived"]==true && !enrich && args["cursor"].as_str().is_none_or(|s|s.starts_with("archive-index:")) {
+        let params=params.clone();tokio::task::spawn_blocking(move||crate::archive_index::list(&params)).await.map_err(|e|e.to_string())??
+    }else{None};
+    let page=match indexed {Some(page)=>page,None=>c.request("thread/list",params,60000).await?};
     let rows = page["data"].as_array().ok_or("NATIVE_TASKS_MISSING")?;
     if !enrich {
         let tasks: Vec<_> = rows.iter().map(|row| {
-            let mut task = control::summary(row);
+            let mut task = if full {control::summary(row)} else {json!({"threadId":row["id"],"title":row["name"],"project":row["cwd"],"updatedAt":row["updatedAt"]})};
             task["archived"] = args["archived"].clone();
             task["runtimeStatus"] = Value::Null;
             task["status"] = json!(if args["archived"] == true {"archived"} else {"not-observed"});
@@ -28,7 +31,7 @@ pub(crate) async fn list(c: &Arc<control::Control>, args: &Value) -> Result<Valu
             task["enriched"] = json!(false);
             task
         }).collect();
-        return Ok(json!({"tasks":tasks,"nextCursor":page["nextCursor"],"enriched":false,"observedAt":now()}));
+        return Ok(json!({"tasks":tasks,"nextCursor":page["nextCursor"],"enriched":false,"metadataSource":page["metadataSource"].as_str().unwrap_or("native-app-server"),"observedAt":now()}));
     }
     let queues = crate::dispatch_queue::counts().await?;
     let deadline = Instant::now() + Duration::from_secs(8);
