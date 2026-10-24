@@ -73,3 +73,15 @@ ARC-owned Codex app-server processes use parent-owned stdin/stdout RPC pipes, pe
 Receipt flush proves delivery to the caller's transport, not that a human read it. The additional task drain prevents the dispatching turn from being killed during ordinary completion. Busy or unobservable tasks cancel installation instead of being forcibly interrupted.
 
 The user must have a logged-in macOS GUI launchd domain and permission to write beside the installed app. The helper does not request elevation. Logout, reboot, forced worker termination, disk failure, and incompatible user-state migrations are not transactional recovery guarantees. A nonterminal status after such an interruption requires checking its log, job, and backup before manual recovery. Do not run another installer or manually relaunch ARC during the handoff.
+
+## Continue after recovery
+
+Pass a continuation through stdin when preparing replacement:
+
+```sh
+printf '%s' '{"continuation":{"threadId":"<existing-thread>","prompt":"Continue the original task from its recorded state."}}' | arc cli app replace /absolute/Candidate.app --stdin
+```
+
+Use `--check --stdin` to validate the same input without installing or sending. Optional continuation fields are `model`, `turn` and `notify`, using the `codex_send` contract. ARC validates the existing thread before staging, records a generated continuation `requestId`, and queues the explicit message in that same thread only after the new Core and Desktop fingerprints pass the existing health check. Existing queue approval and prior-turn failure rules still apply; queue acceptance does not claim the next turn has begun or finished.
+
+The replacing turn MUST end after receiving its replacement receipt. No control-source polling is needed to trigger the continuation. `cli app replace --status` exposes `continuationState`, the original `continuation.requestId`, and `continuationReceipt` or `continuationError`. If submission is uncertain, read that ID with `cli control receipt --stdin`; do not submit another message with a new ID. A worker crash after recording submission intent may require reconciliation through that receipt. Continuation failure does not roll back a healthy installation. Cancelled, failed and rolled-back replacements do not deliver the continuation.

@@ -51,6 +51,7 @@ async fn inspect(source: &Path) -> Result<Value> {
 }
 
 pub async fn prepare(body: Value) -> Result<Value> {
+    let continuation = continuation_request(&body, &id())?;
     let source = Path::new(string(&body, "path"));
     if !source.is_absolute() || source.extension().is_none_or(|e| e != "app") {
         return Err("INVALID_ARGUMENT: path must be an absolute .app directory".into());
@@ -58,6 +59,13 @@ pub async fn prepare(body: Value) -> Result<Value> {
     let source = io(source.canonicalize())?;
     let app = crate::transport::forward_request("app", "GET", json!({})).await?;
     let target = bundle(string(&app, "executable"))?;
+    if let Some(args) = &continuation {
+        crate::cli_acceptance::control(
+            "codex_read",
+            json!({"threadId":args["threadId"],"statusOnly":true}),
+        )
+        .await?;
+    }
     if source == target || source.starts_with(&target) || target.starts_with(&source) {
         return Err("INVALID_ARGUMENT: source and installed bundle must be separate".into());
     }
@@ -111,6 +119,10 @@ pub async fn prepare(body: Value) -> Result<Value> {
         target.file_name().unwrap().to_string_lossy()
     ));
     let mut receipt = json!({"replacementReceipt":true,"id":id,"state":"preparing","source":source,"target":target,"backup":backup,"staged":staged,"backupMoved":false,"package":expected,"oldPackage":{"coreBuild":old_core,"desktopBuild":old_desktop,"identifier":identifier},"desktopPid":app["pid"],"corePid":core["pid"],"coreInstance":core["instance"],"service":service,"createdAt":now(),"statusPath":path.join("status.json"),"logPath":path.join("worker.log"),"next":"End this turn after the receipt. Do not continue work depending on ARC. Query app replace --status after reconnecting."});
+    if let Some(args) = continuation {
+        receipt["continuation"] = args;
+        receipt["continuationState"] = json!("waiting-for-recovery");
+    }
     save(&path.join("status.json"), &receipt)?;
     let prepared: Result<()> = async {
         // Stage before acknowledging: source cleanup by the caller cannot race installation.
@@ -519,6 +531,16 @@ pub async fn run_worker(id: &str) -> Result<()> {
                 }
             }
             phase(&path, &mut receipt, "cancelled", Some(&error))?;
+        }
+    }
+    if receipt["state"] == "succeeded" {
+        // Continuation failures do not roll back a healthy replacement.
+        if let Err(error) = deliver_continuation(&path, &mut receipt).await {
+            crate::logs::record(
+                "ERROR",
+                &format!("Replacement continuation persistence failed: {error}"),
+                None,
+            );
         }
     }
     // Backups are deliberately retained; no user state or previous backup is pruned.

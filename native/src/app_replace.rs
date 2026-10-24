@@ -6,6 +6,70 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::{prepare, run_worker, worker};
 
+/// Continuations are explicit local instructions with one durable dispatch identity.
+pub fn continuation_request(body: &Value, request_id: &str) -> Result<Option<Value>> {
+    let Some(continuation) = body.get("continuation") else {
+        return Ok(None);
+    };
+    let mut args = continuation.clone();
+    if !args.is_object()
+        || string(&args, "threadId").is_empty()
+        || string(&args, "prompt").trim().is_empty()
+    {
+        return Err(
+            "INVALID_ARGUMENT: continuation requires threadId and a nonempty prompt".into(),
+        );
+    }
+    if args
+        .as_object()
+        .unwrap()
+        .keys()
+        .any(|key| !["threadId", "prompt", "model", "turn", "notify"].contains(&key.as_str()))
+    {
+        return Err(
+            "INVALID_ARGUMENT: continuation accepts threadId, prompt, model, turn and notify"
+                .into(),
+        );
+    }
+    args["requestId"] = json!(request_id);
+    args["sendMode"] = json!("queue");
+    args["waitMs"] = json!(0);
+    let spec = catalog()["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|op| op["name"] == "codex_send")
+        .unwrap();
+    crate::egress::validate_op(spec, &args)?;
+    Ok(Some(args))
+}
+
+#[cfg(target_os = "macos")]
+async fn deliver_continuation(path: &Path, receipt: &mut Value) -> Result<()> {
+    let Some(args) = receipt
+        .get("continuation")
+        .filter(|args| args.is_object())
+        .cloned()
+    else {
+        return Ok(());
+    };
+    // Persist intent before submission. A crash is reconciled by this ID, never by a new send.
+    receipt["continuationState"] = json!("submitting");
+    save(&path.join("status.json"), receipt)?;
+    match crate::cli_acceptance::control("codex_send", args).await {
+        Ok(result) => {
+            receipt["continuationState"] = json!("receipt-returned");
+            receipt["continuationReceipt"] = result;
+        }
+        Err(error) => {
+            receipt["continuationState"] = json!("unconfirmed");
+            receipt["continuationError"] = json!(error);
+        }
+    }
+    receipt["next"] = json!("ARC recovered. Read continuationReceipt or the original continuation.requestId through cli control receipt. A dispatch receipt is not task completion. Never resend with a new ID after an uncertain result.");
+    save(&path.join("status.json"), receipt)
+}
+
 fn directory() -> PathBuf {
     root().join("app-replacements")
 }
@@ -20,7 +84,9 @@ pub fn status() -> Result<Value> {
     }
     let latest = load(&latest)?;
     let mut receipt = load(&job(string(&latest, "id"))?.join("status.json"))?;
-    if let Some(next) = terminal_next(string(&receipt, "state")) {
+    if let Some(next) =
+        terminal_next(string(&receipt, "state")).filter(|_| receipt["continuationState"].is_null())
+    {
         receipt["next"] = json!(next);
     }
     Ok(receipt)
@@ -290,5 +356,27 @@ mod tests {
         assert_eq!(unavailable["idle"], false);
         assert_eq!(unavailable["blockingTurns"][0]["executionOwner"], "unknown");
         assert_eq!(unavailable["ownershipError"], "unavailable");
+    }
+}
+
+#[cfg(test)]
+mod continuation_tests {
+    use super::*;
+    #[test]
+    fn continuation_keeps_thread_identity_and_replay_key_without_steering() {
+        // Regression: replacing ARC ended the calling turn without a durable continuation in the original thread.
+        let request = "11111111-1111-4111-8111-111111111111";
+        let body = json!({"continuation":{"threadId":"original-thread","prompt":"Continue"}});
+        let args = continuation_request(&body, request).unwrap().unwrap();
+        assert_eq!(args["threadId"], "original-thread");
+        assert_eq!(args["requestId"], request);
+        assert_eq!(args["sendMode"], "queue");
+        assert_eq!(continuation_request(&body, request).unwrap(), Some(args));
+        assert!(continuation_request(
+            &json!({"continuation":{"threadId":"original-thread","prompt":" "}}),
+            request
+        )
+        .is_err());
+        assert!(continuation_request(&json!({}), request).unwrap().is_none());
     }
 }

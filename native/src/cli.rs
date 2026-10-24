@@ -21,6 +21,8 @@ const COMMANDS: &[&str] = &[
     "app restart",
     "app replace <path>",
     "app replace <path> --check",
+    "app replace <path> --stdin",
+    "app replace <path> --check --stdin",
     "app replace --status",
     "storage compact",
     "subscriptions get",
@@ -603,7 +605,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
                 {"commands":"source list; source update <id> --stdin; source disconnect <id>; source claim <pending-source-id> --stdin; source switch <sourceId> <ingressId>; source switch <sourceId> --cancel","description":"Manage source identity; claim accepts sourceId=new or an existing source ID; a switch request can only claim its bound source."},
                 {"commands":"ingress list|presets|add|update|remove|start|stop|restart|probe|doctor|verify","description":"Manage and diagnose a selected connection; add/update accept JSON on stdin."},
                 {"commands":"ingress oauth list|request|decision|register|revoke; ingress token rotate","description":"Manage this connection's OAuth access and bearer token."},
-                {"commands":"app start|status|quit|restart; app replace <path> [--check]; app replace --status; uninstall [--purge]","description":"Control the installed application. On macOS, replace validates and hands off to launchd; end the turn after its receipt. --check validates without installation."},
+                {"commands":"app start|status|quit|restart; app replace <path> [--check] [--stdin]; app replace --status; uninstall [--purge]","description":"Control the installed application. On macOS, replace validates and hands off to launchd; end the turn after its receipt. --check validates without installation. --stdin accepts continuation:{threadId,prompt,model?,turn?,notify?}, queued into the same thread after verified recovery."},
                 {"commands":"subscriptions get|set|refresh|open","description":"Read or refresh subscription usage; set accepts JSON on stdin."},
                 {"commands":"stats control [--since <duration>]; logs [--stdin|--follow|--offline]; watch; storage compact","description":"Inspect logs, watch changes or compact local storage."},
                 {"commands":"configure --stdin; network --stdin; connect; disconnect; verify [--fresh]","description":"Configure and control the primary connection."},
@@ -737,6 +739,19 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         }
         ["app", "replace", "--status"] => crate::management::call("app.replace.status", json!({})).await,
         ["app", "replace", path] => crate::management::call("app.replace", json!({"body":{"path":path}})).await,
+        ["app", "replace", path, "--stdin"] => {
+            let mut body = stdin_json()?;
+            if !body.is_object() { return Err("INVALID_ARGUMENT: replacement stdin must be an object".into()); }
+            body["path"] = json!(path);
+            crate::management::call("app.replace", json!({"body":body})).await
+        },
+        ["app", "replace", path, "--check", "--stdin"] => {
+            let mut body = stdin_json()?;
+            if !body.is_object() { return Err("INVALID_ARGUMENT: replacement stdin must be an object".into()); }
+            body["path"] = json!(path);
+            body["check"] = json!(true);
+            crate::management::call("app.replace", json!({"body":body})).await
+        },
         ["app", "replace", path, "--check"] => crate::management::call("app.replace", json!({"body":{"path":path,"check":true}})).await,
         ["configure", "--stdin"] => forward_request("config/tunnel", "PATCH", stdin_json()?).await,
         ["network", "--stdin"] => forward_request("network", "PUT", stdin_json()?).await,
@@ -821,7 +836,7 @@ pub async fn run(args: Vec<String>) -> i32 {
     }
     match execute(&args).await {
         Ok(result) => {
-            let replacing = matches!(words.as_slice(), ["app", "replace", path] if *path != "--status")
+            let replacing = matches!(words.as_slice(), ["app", "replace", path, ..] if *path != "--status")
                 || matches!(words.as_slice(), ["call", "app.replace", ..]);
             let id = crate::app_replace::acknowledgment_id(
                 if replacing { "app.replace" } else { "" },

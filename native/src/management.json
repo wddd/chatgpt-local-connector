@@ -219,6 +219,37 @@
                 "type": "boolean",
                 "default": false,
                 "description": "Validate only; do not stage, launch a worker, or stop ARC."
+              },
+              "continuation": {
+                "type": "object",
+                "properties": {
+                  "threadId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65536
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "turn": {
+                    "type": "object"
+                  },
+                  "notify": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "threadId",
+                  "prompt"
+                ],
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
@@ -226,7 +257,7 @@
         },
         "additionalProperties": false
       },
-      "description": "macOS only. Validate and stage a same-identity package, then bootstrap a detached launchd worker. Returns a durable replacement receipt before shutdown. CLI and local management MCP acknowledge after flushing output; raw HTTP clients MUST call app.replace.ack after receiving it. End the dispatching turn immediately after receipt. The helper waits up to five minutes for active turns, then replaces and verifies Core health, rolling back on failure. Read app.replace.status after reconnecting.",
+      "description": "macOS only. Validate and stage a same-identity package, then bootstrap a detached launchd worker. Returns a durable replacement receipt before shutdown. CLI and local management MCP acknowledge after flushing output; raw HTTP clients MUST call app.replace.ack after receiving it. End the dispatching turn immediately after receipt. The helper waits up to five minutes for active turns, then replaces and verifies Core health, rolling back on failure. Read app.replace.status after reconnecting. Optional continuation {threadId,prompt,model?,turn?,notify?} is persisted before shutdown and submitted once through codex_send(sendMode:queue) after verified success. Its requestId and dispatch receipt remain in replacement status; reconcile that original ID after an uncertain submission. Failed or rolled-back replacements do not send it.",
       "localOnly": true
     },
     {
