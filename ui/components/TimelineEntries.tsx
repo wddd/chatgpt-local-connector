@@ -77,7 +77,7 @@ function UserMessage({ text, truncated, open, onChange }: { text: string; trunca
 }
 function ToolTitle({ entry, project }: { entry: AgentTimelineEntry; project?: string | null }) {
   return <span className="timeline-entry-title mono" title={entry.command || entry.path || entry.title}>
-    {entry.path && !entry.command ? <FilePath path={entry.path} project={project || entry.cwd} /> : entry.command || entry.title || t(`activity.phase.${entry.type}`)}
+    {entry.path && !entry.command ? <FilePath path={entry.path} project={project || entry.cwd} /> : entry.command || entry.title || t(entry.type === "command" ? "activity.phase.command" : entry.type === "file" ? "activity.phase.file" : "activity.phase.tool")}
   </span>;
 }
 function ToolDetails({ entry, project }: { entry: AgentTimelineEntry; project?: string | null }) {
@@ -123,7 +123,7 @@ function ToolRun({ entries, live }: { entries: AgentTimelineEntry[]; live: boole
   const active = live && entries.some(entry => entry.status === "running");
   const [manual, setManual] = useState<boolean>();
   const counts = toolCounts(entries, live);
-  const stats = Object.entries(counts).filter(([kind, count]) => count && (kind !== "running" || live)).map(([kind, count]) => <span key={kind} className="task-tool-count">{t(`detail.tools.${kind}`, { count })}</span>);
+  const stats = (Object.keys(counts) as (keyof typeof counts)[]).filter(kind => counts[kind] && (kind !== "running" || live)).map(kind => <span key={kind} className="task-tool-count">{t(`detail.tools.${kind}`, { count: counts[kind] })}</span>);
   return <Fold className="task-tool-run" open={failed || (manual ?? active)} onChange={setManual} summary={<span className="task-tool-counts">{stats}</span>}>
     <div className="task-tool-rows">{entries.map(entry => <div key={entry.id} className="task-tool-row" data-failed={entry.status === "failed" || undefined}>
       <div><Icon icon={stepIcons[entry.type]} /><ToolTitle entry={entry} /><span>{entry.exitCode !== undefined && t("timeline.exitCode", { code: entry.exitCode })}</span></div>

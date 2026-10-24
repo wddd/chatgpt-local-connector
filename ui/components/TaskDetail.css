@@ -3,7 +3,8 @@
 .task-detail-navigation { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
 .task-detail-navigation > .button { min-width: 0; overflow: hidden; text-overflow: ellipsis; justify-content: flex-start; color: var(--text-secondary); }
 .task-detail-header .activity-panel-title { font-size: 17px; line-height: 1.35; margin: 0; }
-.task-detail-chips, .task-detail-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.task-detail-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.task-detail-meta { display: contents; }
 .task-state { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; color: var(--text-secondary); background: var(--surface-subtle); }
 .task-state::before { content: ""; width: 7px; height: 7px; background: currentColor; border-radius: 50%; }
 .task-state[data-state=running] { color: var(--accent); background: var(--task-live-soft); }
@@ -124,11 +125,11 @@
   .task-detail-layer > .task-detail-header.dialog-header { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px 6px; padding: 10px 12px; }
   .task-detail-navigation { display: contents; }
   .task-detail-navigation > .button { grid-column: 1; grid-row: 1; width: 28px; padding: 4px; }
-  .task-detail-navigation > .button > span, .task-detail-navigation > .actions { display: none; }
+  .task-detail-navigation > .button > span { display: none; }
   .task-detail-header .activity-panel-title { grid-column: 2; grid-row: 1; display: block; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; font-size: 14.5px; }
   .task-detail-chips { grid-column: 1 / -1; flex-wrap: nowrap; gap: 6px; }
   .task-state { flex: none; font-size: 11.5px; padding: 3px 8px; }
-  .task-detail-meta { flex: 1; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; font-size: 11.5px; }
+  .task-detail-meta { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; font-size: 11.5px; }
   .task-detail-meta .activity-spec, .task-detail-meta .task-source-chip { border: 0; background: none; padding: 0; border-radius: 0; font-size: 11.5px; }
   .task-detail-meta .activity-spec { flex-shrink: 1; overflow: hidden; min-width: 0; }
   .task-detail-meta .activity-spec > span:first-child { overflow: hidden; text-overflow: ellipsis; }

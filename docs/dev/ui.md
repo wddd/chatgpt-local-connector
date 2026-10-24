@@ -135,6 +135,6 @@ Check light/dark, narrow windows, long Chinese/English text, keyboard traversal,
 
 ## Task detail projection
 
-Task details prioritize pending decisions, final replies, phase prose, the latest plan, merged tool activity, and one live thinking line. Successful turns fold their process; failed and interrupted turns retain expanded evidence. Previous turns start collapsed. Prompt source labels use recorded provenance and never infer an external sender.
+Task details prioritize pending decisions, final replies, phase prose, the latest plan, merged tool activity, and one live thinking line. Successful turns fold their process; failed and interrupted turns start expanded and honor subsequent disclosure choices. Previous turns start collapsed. Pending requests hide the composer until resolved without discarding its draft. Prompt source labels use recorded provenance and never infer an external sender. Identical source and connection labels appear only once.
 
 At 360px of panel width or below, the header uses a single-line title, status and compact metadata. Tool counts become chips and the narrative drops its avatar column. Pending requests remain visible as an amber banner that opens the shared modal Dialog as a bottom sheet anchored to the Agent panel. Closing the sheet preserves selection and free-text drafts. Escape dismisses only that layer and restores focus. The overflow menu retains native-open and width controls. Dark theme and reduced motion use shared semantic tokens.

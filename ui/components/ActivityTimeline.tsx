@@ -114,6 +114,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     || session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
   const latestSummary = live ? live.dispatchSummary : timeline?.dispatchSummary ?? nativeSession.dispatchSummary;
   const source = latestSummary?.controlSource;
+  const sourceLabel = source && dispatchSourceLabel(source);
   const knownSource = source?.id ? connection.sources.find(item => item.id === source.id) : undefined;
   const where = knownSource ? connection.status?.ingresses.find(item => item.id === knownSource.ingressId)?.name || knownSource.connectionName : undefined;
   const groups = timelineGroups(timeline?.entries ?? []);
@@ -127,8 +128,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   return <section ref={detail} className="agent-panel-layer task-detail-layer" data-narrow={narrow || undefined}>
     <header className="dialog-header task-detail-header">
       <div className="task-detail-navigation"><Button variant="ghost" aria-label={t("back")} title={`${agentName}${project ? ` · ${project}` : ""}`} onClick={onBack}><Icon icon={ArrowLeft} /><span>{agentName}{project && ` · ${project}`}</span></Button>
-        <div className="actions">{nativeSession.open && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); }} />}
-          <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} /></div>
+        {!narrow && <div className="actions">{nativeSession.open && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); }} />}
+          <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} /></div>}
       </div>
       {narrow && <div className="task-narrow-menu"><Menu label={t("detail.taskActions")} trigger={<IconButton icon={MoreHorizontal} label={t("detail.taskActions")} />} items={[
         ...(nativeSession.open ? [{ label: t("activity.open"), action: () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } }] : []),
@@ -137,10 +138,10 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       <h2 className="activity-panel-title" title={title}>{title}</h2>
       <div className="task-detail-chips"><span className="task-state" data-state={state}>{t(`detail.state.${state}`)}</span>
         {state === "done" && <span className="task-review-status" data-verdict={control.review?.verdict}>{t(control.review?.verdict === "pass" ? "detail.reviewPassed" : control.review?.verdict === "rework" ? "detail.reviewRework" : "detail.awaitingReview")}</span>}
-        <div className="task-detail-meta">{latestSummary?.model && <span className="activity-spec">{shortModelLabel(latestSummary.model)}</span>}{latestSummary?.effort && <span className="activity-spec">{latestSummary.effort}</span>}{latestSummary?.serviceTier === "priority" && <span className="activity-spec"><Icon icon={Zap} />{t("activity.fast")}</span>}{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: dispatchSourceLabel(source) })}</span>{where && <span className="task-source-where">{where}</span>}</span>}</div>
+        <div className="task-detail-meta">{latestSummary?.model && <span className="activity-spec">{shortModelLabel(latestSummary.model)}</span>}{latestSummary?.effort && <span className="activity-spec">{latestSummary.effort}</span>}{latestSummary?.serviceTier === "priority" && <span className="activity-spec"><Icon icon={Zap} />{t("activity.fast")}</span>}{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span>{where && where.trim().toLowerCase() !== sourceLabel?.trim().toLowerCase() && <span className="task-source-where">{where}</span>}</span>}</div>
         {duration !== undefined && <span className="timeline-meta">{durationText(duration)}</span>}
       </div>
-      {turnCount > 0 && <div className="task-progress"><div>{plan.map((step, index) => <span key={index} data-state={step.status} />)}</div><span>{t("timeline.turn", { count: turnCount })}{plan.length > 0 && ` · ${t("detail.planProgress", { done: doneSteps, total: plan.length })}`}</span></div>}
+      {!narrow && turnCount > 0 && <div className="task-progress"><div>{plan.map((step, index) => <span key={index} data-state={step.status} />)}</div><span>{t("timeline.turn", { count: turnCount })}{plan.length > 0 && ` · ${t("detail.planProgress", { done: doneSteps, total: plan.length })}`}</span></div>}
     </header>
     <div className="task-timeline" aria-busy={loading}>
       {(error || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}
@@ -178,6 +179,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
         if (node) { manualDisclosure.current = false; node.scrollTop = node.scrollHeight; following.current = true; setAtLatest(true); }
       }}>{t("timeline.latest")}</Button>}
     </div>
-    {!external && !timeline?.readOnly && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={source && dispatchSourceLabel(source)} onPending={setShowCard} narrow={narrow} /><TaskControls agent={agent} state={state} control={control} turnId={turnId || undefined} /></footer>}
+    {!external && !timeline?.readOnly && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} onPending={setShowCard} narrow={narrow} /><div hidden={showCard}><TaskControls agent={agent} state={state} control={control} turnId={turnId || undefined} /></div></footer>}
   </section>;
 }

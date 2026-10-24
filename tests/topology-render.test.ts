@@ -287,8 +287,8 @@ test("timeline turn disclosures preserve choices through incremental work and re
     const first = { ...base, id: "first", type: "command", status: "running", command: "npm test", cwd: "/project", output: { text: "example output" } };
     const second = { ...base, id: "second", type: "file", operation: "read", status: "completed", path: "/project/src/file.ts", durationMs: 1000, changes: [{ path: "/project/src/file.ts", operation: "edit" }] };
     const session = { id: "example", source: "arc-task", phase: "command", phaseSince: null, headline: "npm test", timeline: true, project: "/project" };
-    const render = async (entries: { status: string }[], now = Date.parse("2026-01-01T00:00:03Z")) => {
-      await act(async () => { root.render(h(TimelineEntries, { entries, session, agent: "claude", now, running: entries.some(e => ["running", "pending"].includes(e.status)), status: entries.some(e => e.status === "failed") ? "failed" : entries.some(e => ["running", "pending"].includes(e.status)) ? "running" : "completed" })); });
+    const render = async (entries: { status: string }[], now = Date.parse("2026-01-01T00:00:03Z"), status?: string) => {
+      await act(async () => { root.render(h(TimelineEntries, { entries, session, agent: "claude", now, running: entries.some(e => ["running", "pending"].includes(e.status)), status: status ?? (entries.some(e => e.status === "failed") ? "failed" : entries.some(e => ["running", "pending"].includes(e.status)) ? "running" : "completed") })); });
     };
     const click = async (element: Element) => { await act(async () => { fireEvent.click(element); }); };
     const page = within(mount);
@@ -306,6 +306,16 @@ test("timeline turn disclosures preserve choices through incremental work and re
     const process = () => page.getByRole("button", { name: name => name.startsWith(t("detail.process", { updates: 0, answers: 0, actions: 2 })) });
     assert.equal(process().getAttribute("aria-expanded"), "true");
     assert.ok(page.getAllByText(first.output.text).length > 0);
+    await click(process());
+    assert.equal(process().getAttribute("aria-expanded"), "false");
+    await click(process());
+    assert.equal(process().getAttribute("aria-expanded"), "true");
+    await render([{ ...first, status: "completed" }, second], undefined, "interrupted");
+    assert.equal(process().getAttribute("aria-expanded"), "true");
+    await click(process());
+    assert.equal(process().getAttribute("aria-expanded"), "false");
+    await click(process());
+    assert.equal(process().getAttribute("aria-expanded"), "true");
     await render([{ ...first, status: "completed" }, second]);
     assert.equal(process().getAttribute("aria-expanded"), "false");
     const thinking = { ...base, id: "thinking", type: "thinking", status: "completed", text: "Reasoning detail" };
@@ -339,6 +349,84 @@ test("timeline turn disclosures preserve choices through incremental work and re
 
   } finally {
     await act(() => root.unmount()); await server.close(); window.happyDOM.abort(); mount.remove();
+  }
+});
+
+test("task detail prioritizes pending requests, preserves drafts and consolidates header actions", async () => {
+  // Regression: pending docks retained the composer, Skip leaked a key and compact headers duplicated actions and source names.
+  const window = new Window({ url: "http://localhost" });
+  const media = Object.assign(new window.EventTarget(), { matches: true });
+  window.matchMedia = () => media as unknown as MediaQueryList;
+  let panelWidth = 480, expanded = false;
+  const observers = new Set<Observer>();
+  class Observer {
+    constructor(callback: (entries: { target: Element }[]) => void) { this.callback = callback; }
+    callback: (entries: { target: Element }[]) => void;
+    targets = new Set<Element>();
+    observe(target: Element) { this.targets.add(target); observers.add(this); }
+    unobserve(target: Element) { this.targets.delete(target); if (!this.targets.size) observers.delete(this); }
+    disconnect() { this.targets.clear(); observers.delete(this); }
+    notify() { this.callback([...this.targets].map(target => ({ target }))); }
+  }
+  Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
+    Node: window.Node, DocumentFragment: window.DocumentFragment, MutationObserver: window.MutationObserver,
+    NodeFilter: window.NodeFilter, HTMLInputElement: window.HTMLInputElement, HTMLFormElement: window.HTMLFormElement,
+    HTMLSelectElement: window.HTMLSelectElement, Event: window.Event, CSS: window.CSS, innerHeight: 800,
+    CustomEvent: window.CustomEvent, DOMRect: window.DOMRect, localStorage: window.localStorage,
+    ResizeObserver: Observer, matchMedia: window.matchMedia, getComputedStyle: window.getComputedStyle.bind(window),
+    requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0),
+    cancelAnimationFrame: clearTimeout, IS_REACT_ACT_ENVIRONMENT: true });
+  Object.defineProperty(globalThis, "innerWidth", { configurable: true, value: 1280 });
+  Object.defineProperty(window.HTMLElement.prototype, "clientWidth", { configurable: true, get: () => panelWidth });
+  const server = await createServer({ configFile: false, server: { middlewareMode: true, watch: null, ws: false } });
+  const { createRoot } = await import("react-dom/client");
+  const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => new Response(JSON.stringify(String(input).endsWith("/tasks/reviews") ? { reviews: [] } : { state: "completed" }));
+  try {
+    const { default: ActivityTimeline } = await server.ssrLoadModule("/ui/components/ActivityTimeline.tsx");
+    const { agentActivity } = await server.ssrLoadModule("/ui/state/activity.ts");
+    const { connector } = await server.ssrLoadModule("/ui/state/connector.ts");
+    const { TooltipProvider } = await server.ssrLoadModule("/ui/components/ui/index.tsx");
+    const { t, locale } = await server.ssrLoadModule("/ui/i18n.ts");
+    const source = { id: "example-source", kind: "claude", label: "Example source" };
+    const session = { id: "detail", turnId: "turn", source: "arc-task", phase: "text", headline: "Response", phaseSince: null,
+      timeline: false, orderAt: 0, dispatchSummary: { controlSource: source } };
+    const update = async (interaction?: object) => act(() => agentActivity.set({ error: "", snapshot: { observedAt: "", activeAgents: ["codex"], agents: { codex: { sessions: [{ ...session, interaction }] } } } }));
+    connector.set({ ...connector.get(), sources: [{ id: source.id, connectionName: source.label }] });
+    await update();
+    await act(() => root.render(h(TooltipProvider, null, h(ActivityTimeline, { agent: "codex", session, expanded, onToggleWidth: () => { expanded = !expanded; }, onBack() {} }))));
+    const page = within(document.body);
+    const click = async (element: Element) => act(async () => { fireEvent.click(element); });
+    const draft = "Keep this follow-up draft";
+    await act(() => fireEvent.change(page.getByRole("textbox", { name: t("detail.message") }), { target: { value: draft } }));
+    for (const language of ["en", "zh-CN"]) {
+      await act(() => locale.set(language));
+      await update();
+      assert.ok(page.getByText(t("detail.via", { source: source.label })));
+      assert.equal(page.queryByText(source.label, { exact: true }), null);
+      const question = { kind: "question", summary: "Question", method: "item/tool/requestUserInput", questions: [{ id: "choice", question: "Choose", options: [{ label: "A" }] }], respond: { op: "codex_respond", args: { respondToken: language } } };
+      await update(question);
+      assert.equal(page.queryByRole("textbox", { name: t("detail.message") }), null);
+      await click(page.getByRole("button", { name: t("detail.skip"), exact: true }));
+      assert.ok(page.getByRole("status", { name: "" }).textContent?.includes(t("activity.cancel")));
+      assert.equal((page.getByRole("textbox", { name: t("detail.message") }) as HTMLTextAreaElement).value, draft);
+    }
+    await update({ kind: "approval", summary: "Command approval", respond: { op: "codex_respond", args: { respondToken: "approval" } } });
+    assert.equal(page.queryByRole("textbox", { name: t("detail.message") }), null);
+    await update();
+    assert.equal((page.getByRole("textbox", { name: t("detail.message") }) as HTMLTextAreaElement).value, draft);
+    await act(() => connector.set({ ...connector.get(), sources: [{ id: source.id, connectionName: "Separate connection" }] }));
+    assert.ok(page.getByText("Separate connection"));
+    assert.ok(page.getByRole("button", { name: t("expandPanelWidth") }));
+    await act(() => { panelWidth = 320; [...observers].forEach(observer => observer.notify()); });
+    assert.equal(page.queryByRole("button", { name: t("expandPanelWidth") }), null);
+    await act(() => fireEvent.keyDown(page.getByRole("button", { name: t("detail.taskActions") }), { key: "Enter" }));
+    await click(page.getByRole("menuitem", { name: t("expandPanelWidth") }));
+    assert.equal(expanded, true);
+  } finally {
+    await act(() => root.unmount()); globalThis.fetch = originalFetch;
+    await server.close(); await window.happyDOM.close();
   }
 });
 

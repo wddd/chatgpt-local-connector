@@ -178,7 +178,7 @@ Navigation support requires actual session readback, not command existence/help.
 
 ### Task detail controls
 
-The detail projection merges consecutive tool activity, keeps the latest plan in place, and removes thinking at turn end. Successful process groups fold behind their summary; failed and interrupted process groups stay expanded. Native unified diff hunks supply per-file line counts and bounded diff excerpts. Missing diff evidence remains unknown. The first prompt may carry controlSource from the original new-turn dispatch; a later steering dispatch never rewrites that prompt's attribution. Unattributed native inputs stay explicitly unattributed.
+The detail projection merges consecutive tool activity, keeps the latest plan in place, and removes thinking at turn end. Successful process groups fold behind their summary; failed and interrupted process groups start expanded and remain manually collapsible. Native unified diff hunks supply per-file line counts and bounded diff excerpts. Missing diff evidence remains unknown. The first prompt may carry controlSource from the original new-turn dispatch; a later steering dispatch never rewrites that prompt's attribution. Unattributed native inputs stay explicitly unattributed.
 
 POST tasks/control bridges a fixed allowlist of existing send, interrupt, review and receipt operations through their execution owners. It records local ARC provenance and uses stable request IDs. Codex queue uses sendMode:queue; steer uses auto. Other Agents accept input after settling because agent_send rejects active turns. A successful interrupt receipt only confirms the request; timeline state confirms interruption. Unconfirmed requests require receipt readback before another write.
 

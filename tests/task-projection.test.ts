@@ -20,8 +20,8 @@ test("only the latest plan and live thinking survive projection", () => {
   assert.equal(projectTurn(entries, "done").thinking, undefined);
   assert.equal(projectTurn(entries, "done").final?.id, "answer");
 });
-test("terminal state and process folding do not mistake a failed command for a failed turn", () => {
-  // Property: authoritative turn state governs folding and failed or interrupted processes stay visible.
+test("terminal state and process folding preserve explicit disclosure choices", () => {
+  // Regression: failed and interrupted process disclosures ignored user clicks after starting expanded.
   assert.equal(taskState("completed", false), "done");
   assert.equal(taskState("failed", false), "failed");
   assert.equal(taskState("cancelled", false), "interrupted");
@@ -30,8 +30,12 @@ test("terminal state and process folding do not mistake a failed command for a f
   assert.equal(taskState("running", true, true), "needsYou");
   assert.equal(processOpen("done"), false);
   assert.equal(processOpen("done", true), true);
-  assert.equal(processOpen("failed", false), true);
-  assert.equal(processOpen("interrupted", false), true);
+  for (const state of ["failed", "interrupted"] as const) {
+    assert.equal(processOpen(state), true);
+    assert.equal(processOpen(state, false), false);
+    assert.equal(processOpen(state, true), true);
+  }
+  assert.equal(processOpen("needsYou", false), true);
   assert.equal(projectTurn([entry("failed-command", "command", { status: "failed" }), entry("final", "text")], "done").final?.id, "final");
 });
 test("changed files omit failed writes and never invent missing counts", () => {

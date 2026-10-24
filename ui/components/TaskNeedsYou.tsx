@@ -69,7 +69,7 @@ export default function TaskNeedsYou({ agent, session, entries, source, onPendin
       </>}
     </>}
     {receipt && <><strong>{receipt.task.title || receipt.task.prompt}</strong><pre>{receipt.task.prompt}</pre>{(receipt.task.directory || receipt.task.project) && <div className="mono">{t("timeline.cwd")} · {receipt.task.directory || receipt.task.project}</div>}
-      <div className="actions">{["reject", "bypass", "approve"].map(action => <Button key={action} variant={action === "approve" ? "primary" : "secondary"} disabled={busy} onClick={() => void decide(action)}>{t(`detail.${action}`)}</Button>)}</div></>}
+      <div className="actions">{(["reject", "bypass", "approve"] as const).map(action => <Button key={action} variant={action === "approve" ? "primary" : "secondary"} disabled={busy} onClick={() => void decide(action)}>{t(`detail.${action}`)}</Button>)}</div></>}
     {error && <p role="alert">{error}</p>}
     <small>{source ? t("detail.routed", { source }) : t("detail.firstAnswer")}</small>
   </section>;
@@ -83,6 +83,6 @@ export function TaskReceiptHistory({ agent, id, turnId, latest }: { agent: strin
   const { records } = tasks.use();
   const rows = taskReceipts(records, agent, id).filter(record => record.approval && ["approved", "bypass", "reject"].includes(record.approval.decision) && (record.turnId ? record.turnId === turnId : latest));
   return <>{rows.map(record => <div className="task-receipt-anchor" key={record.requestId}>
-    <strong data-verdict={record.approval.decision}>{t(`detail.verdict.${record.approval.decision}`)}</strong><span>{record.task.title || record.task.prompt}</span><small>{record.approval.source === "local" ? t("detail.byARC") : record.origin?.sourceLabel || record.approval.source}</small>
+    <strong data-verdict={record.approval.decision}>{t(record.approval.decision === "approved" ? "detail.verdict.approved" : record.approval.decision === "bypass" ? "detail.verdict.bypass" : "detail.verdict.reject")}</strong><span>{record.task.title || record.task.prompt}</span><small>{record.approval.source === "local" ? t("detail.byARC") : record.origin?.sourceLabel || record.approval.source}</small>
   </div>)}</>;
 }

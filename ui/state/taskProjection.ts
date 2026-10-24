@@ -31,7 +31,7 @@ export function processRows(entries: readonly AgentTimelineEntry[]): ProcessRow[
   return rows;
 }
 export function processOpen(state: TaskState, manual?: boolean) {
-  return state === "failed" || state === "interrupted" || state === "needsYou" || (manual ?? state === "running");
+  return state === "needsYou" || (manual ?? ["running", "failed", "interrupted"].includes(state));
 }
 export function projectTurn(entries: readonly AgentTimelineEntry[], state: TaskState) {
   const live = state === "running" || state === "needsYou";

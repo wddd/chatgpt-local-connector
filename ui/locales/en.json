@@ -531,6 +531,8 @@
   "activity.noEntry": "No native session entry is available",
   "activity.allow": "Allow",
   "activity.deny": "Deny",
+  "activity.cancel": "Skipped",
+  "activity.answer": "Answered",
   "activity.submitted": "Response sent",
   "activity.unconfirmed": "Unconfirmed · check in Agent",
   "activity.checkResult": "Check result",

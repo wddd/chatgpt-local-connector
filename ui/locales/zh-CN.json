@@ -531,6 +531,8 @@
   "activity.noEntry": "此会话暂无原生打开入口",
   "activity.allow": "允许",
   "activity.deny": "拒绝",
+  "activity.cancel": "已跳过",
+  "activity.answer": "已回答",
   "activity.submitted": "已提交",
   "activity.unconfirmed": "结果未确认，请在 Agent 中查看",
   "activity.checkResult": "查询结果",
