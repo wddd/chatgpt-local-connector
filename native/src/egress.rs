@@ -17,7 +17,7 @@ pub fn outcome_error(value: &Value) -> Option<Value> {
                 None => json!({"message":current["reason"].as_str().map(str::to_owned).unwrap_or_else(|| if let Some(code) = exit { format!("Command exited with code {code}") } else {format!("Operation outcome: {state}")})}),
             };
             if !error["code"].is_string() { error["code"] = json!(if state == "unconfirmed" { "OPERATION_UNCONFIRMED" } else { "OPERATION_FAILED" }); }
-            error["outcome"] = json!(state);
+            if !state.is_empty() {error["outcome"] = json!(state);}
             if let Some(code) = exit { error["exitCode"] = json!(code); }
             return Some(error);
         }
@@ -98,7 +98,7 @@ pub fn failure(e: &str) -> Value {
         }
     }
     if e.contains("already has an active writer") {
-        return json!({"code":"THREAD_WRITER_BUSY","message":"Codex rejected the operation because another native session owns this thread. ARC runtimeStatus=notLoaded only describes ARC observation, not global writer ownership.","nativeError":e,"retryable":false,"next":{"via":"query","op":"guide","args":{"op":"codex_owner"},"hint":"Read the original receipt and thread status. Continue in the owning ChatGPT/Codex session, or explicitly close that session before retrying this same thread. Do not delete writer locks, auto-retry, or create a replacement thread."}});
+        return json!({"code":"THREAD_WRITER_BUSY","message":"Codex rejected the operation because another native session owns this thread. ARC runtimeStatus=notLoaded only describes ARC observation, not global writer ownership.","retryable":false,"next":{"via":"query","op":"guide","args":{"op":"codex_owner"},"hint":"Read the original receipt and thread status. Continue in the owning ChatGPT/Codex session, or explicitly close that session before retrying this same thread. Do not delete writer locks, auto-retry, or create a replacement thread."}});
     }
     let rpc = e
         .strip_prefix("RPC_REJECTED:")
@@ -820,7 +820,7 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
     wait_args["until"] = json!("terminal");
     wait_args["timeoutMs"] = json!(30000);
     let wait_tool = if agent { "agent_wait" } else { "codex_wait" };
-    let mut next = if value["state"] == "awaiting-approval" {
+    let mut next = if value["next"]["op"].is_string() {value["next"].clone()} else if value["state"] == "awaiting-approval" {
         json!({"hint":"Inspect the original request, then decide according to user intent.","via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"}})
     } else if value["state"] == "interaction-required" {
         if agent {
@@ -876,6 +876,9 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
         json!({"via":"query","op":if agent {"agent_read"} else {"codex_read"},"args":if agent {json!({"agent":wait_args["agent"],"taskId":task})} else {json!({"threadId":thread,"statusOnly":true})},"hint":"Runtime ownership or progress is unknown. Inspect the owning session and this original task. Do not redispatch; notLoaded does not prove no native writer exists."})
     } else if value["requestId"].is_string() && matches!(string(value,"state"),"failed"|"rejected"|"cancelled"|"not-executed"|"unconfirmed") {
         json!({"via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"},"hint":"Inspect the surfaced failure and original receipt. Resolve its cause before a new authorized attempt; an unconfirmed effect must be reconciled without replay."})
+    } else if value["error"].is_object() || value["ok"] == false {
+        let known=catalog()["ops"].as_array().unwrap().iter().any(|op|op["name"]==name);
+        json!({"via":"query","op":"guide","args":if known {json!({"op":name})} else {json!({})},"hint":"Read the current operation contract, correct the reported cause, then retry only when its outcome is known."})
     } else {
         return;
     };
@@ -925,7 +928,7 @@ mod tests {
             assert_eq!(error["code"], "THREAD_WRITER_BUSY");
             assert_eq!(error["retryable"], false);
             assert_eq!(error["next"]["op"], "guide");
-            assert_eq!(error["nativeError"], native);
+            assert!(error.get("nativeError").is_none());
         }
     }
 

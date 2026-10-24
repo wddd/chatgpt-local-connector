@@ -2101,7 +2101,7 @@ mod tests {
         let visible=governance::status_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
         assert_eq!(visible["targets"][0]["verificationAttempts"],1);
         let failed=reachability::verify_in(&dir.0,"source-a",&args,&settings,&Fake::new(Err("offline".into()))).await.unwrap();
-        assert_eq!(failed["ok"],false);assert_eq!(failed["verificationAttempts"],2);assert_eq!(failed["deliveryStatus"],"failed");
+        assert_eq!(failed["ok"],false);assert_eq!(failed["verificationAttempts"],2);assert_eq!(failed["deliveryStatus"],"failed");assert_eq!(failed["next"]["op"],"notify_control");assert_eq!(failed["next"]["args"]["action"],"verify");
         assert!(governance::status_in(&dir.0,"source-b",&args,chrono::Utc::now().timestamp(),&settings).unwrap()["targets"].as_array().unwrap().is_empty());
     }
     struct Fake {

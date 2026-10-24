@@ -363,7 +363,7 @@ impl Control {
         if ownership["state"] == "unheld" {return Ok(json!({"threadId":thread,"released":true,"alreadyUnheld":true,"ownership":ownership,"state":"completed"}));}
         if ownership["state"] == "held" { ownership["processes"] = crate::writer::processes(thread).await; }
         if !self.background(thread)? || (ownership["state"] == "held" && ownership["owner"] != "connector") {
-            return Err(json!({"code":"WRITER_RELEASE_REQUIRES_OWNER","message":"This writer is not owned by ARC's connector. The Desktop follower protocol exposes no safe per-thread release request. Use the exact owner step; ARC will not close another session.","ownership":ownership,"next":crate::writer::release_step(thread)}).to_string());
+            return Err(json!({"code":"WRITER_RELEASE_REQUIRES_OWNER","message":"This writer is not owned by ARC's connector. The Desktop follower protocol exposes no safe per-thread release request. Use the exact owner step; ARC will not close another session.","ownership":ownership,"next":crate::writer::release_step(thread,&ownership)}).to_string());
         }
         let rpc=self.utility().await?;
         let metadata=rpc.call("thread/read",json!({"threadId":thread,"includeTurns":false}),3000).await?;
@@ -1166,7 +1166,7 @@ impl Control {
             if let Err(error) = rpc.call("thread/archive", json!({"threadId":thread}), 10000).await {
                 if error.contains("active writer") {
                     let mut ownership=self.writer_ownership(thread).await;ownership["processes"]=crate::writer::processes(thread).await;
-                    return Err(json!({"code":"ARCHIVE_WRITER_BUSY","message":"Native archival requires the owning session to release or archive this exact thread.","nativeError":error,"ownership":ownership,"retryable":false,"next":crate::writer::release_step(thread)}).to_string());
+                    return Err(json!({"code":"ARCHIVE_WRITER_BUSY","message":"Native archival requires the owning session to release or archive this exact thread.","nativeCode":error.strip_prefix("RPC_REJECTED:").and_then(|s|serde_json::from_str::<Value>(s).ok()).map(|v|v["code"].clone()),"ownership":ownership,"retryable":false,"next":crate::writer::release_step(thread,&ownership)}).to_string());
                 }
                 return Err(error);
             }
@@ -1687,7 +1687,7 @@ impl Control {
             "codex_queue_control" => crate::dispatch_queue::control(self, &args).await,
             "acceptance_fault" => crate::acceptance_fault::control(&args),
             "codex_release" => self.mutate("release", args).await,
-            "codex_owner" => { let mut owner=self.writer_ownership(string(&args,"threadId")).await; if owner["state"] == "held" {owner["processes"]=crate::writer::processes(string(&args,"threadId")).await;owner["next"]=crate::writer::release_step(string(&args,"threadId"));} Ok(owner) },
+            "codex_owner" => { let mut owner=self.writer_ownership(string(&args,"threadId")).await; if owner["state"] == "held" {owner["processes"]=crate::writer::processes(string(&args,"threadId")).await;owner["next"]=crate::writer::release_step(string(&args,"threadId"),&owner);} Ok(owner) },
             "codex_archive" => self.mutate("archive", args).await,
             "codex_interrupt" => self.mutate("interrupt", args).await,
             "codex_call" => self.mutate("native", args).await,

@@ -59,6 +59,7 @@ pub(crate) async fn processes(thread: &str) -> Value {
     }
     json!([])
 }
-pub(crate) fn release_step(thread: &str) -> Value {
+pub(crate) fn release_step(thread: &str, ownership: &Value) -> Value {
+    if ownership["owner"] != "desktop" {return json!({"via":"query","op":"codex_owner","args":{"threadId":thread},"hint":"End only the exact owning terminal/session normally using the reported process evidence, then re-probe this thread. ARC cannot release another owner; do not open it in Desktop, kill a shared app-server, or delete locks."});}
     json!({"via":"act","op":"task_open","args":{"agent":"codex","id":thread},"hint":"In the owning ChatGPT/Codex app, select this exact thread and choose Archive from its thread menu. Closing the ARC panel or unsubscribing ARC does not release a Desktop writer. If the owner is an external terminal, end that exact native session normally. Do not kill a shared app-server or delete locks. Re-probe codex_owner before retrying archive."})
 }

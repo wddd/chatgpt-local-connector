@@ -106,8 +106,8 @@ pub(super) async fn verify_in(dir: &Path, source_id: &str, args: &Value, setting
         t.reachability.delivery_status=sent.into();
         if sent == "failed" {t.reachability.fail("handshake-delivery-failed");}
     }
-    let mut result = json!({"target":target,"reachability":t.reachability.state,"reason":t.reachability.reason,"expiresAt":t.reachability.expires_at,"verificationAttempts":t.reachability.attempts,"deliveryStatus":sent,"hint":"Confirm only with the code received in the target conversation via notification_ack. A successful send alone does not verify reachability."});
-    if sent == "failed" {result["ok"]=json!(false);result["error"]=json!({"code":"NOTIFICATION_DELIVERY_FAILED","message":"The verification message could not be delivered. Inspect notification logs, correct the destination or transport, and retry notify_control action:verify. Binding remains registered."});}
+    let mut result = json!({"target":target,"reachability":t.reachability.state,"reason":t.reachability.reason,"expiresAt":t.reachability.expires_at,"verificationAttempts":t.reachability.attempts,"deliveryStatus":sent,"next":{"via":"query","op":"notify_status","args":{"target":target}},"hint":"Confirm only with the code received in the target conversation via notification_ack. A successful send alone does not verify reachability."});
+    if sent == "failed" {result["next"]=json!({"via":"act","op":"notify_control","args":{"action":"verify","target":target},"hint":"Correct the reported delivery failure before retrying verification. Binding is retained."});result["ok"]=json!(false);result["error"]=json!({"code":"NOTIFICATION_DELIVERY_FAILED","message":"The verification message could not be delivered. Inspect notification logs, correct the destination or transport, and retry notify_control action:verify. Binding remains registered."});}
     state.save(&dir)?;
     Ok(result)
 }

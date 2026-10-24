@@ -2055,7 +2055,9 @@ test('AX2 archive supports ended ARC threads and explains active or external wri
   const busy=await dispatchFixture('fixture-dispatch-archive-busy');
   const blocked=await call('codex_archive',{threadId:busy.threadId});
   assert.equal(blocked.response.isError,true);assert.equal(blocked.result.error.code,'ARCHIVE_WRITER_BUSY');
-  assert.equal(blocked.result.next.args.id,busy.threadId);
+  assert.equal(blocked.result.next.args.threadId,busy.threadId);
+  assert.equal(blocked.result.error.nativeError,undefined);
+  assert.equal(blocked.result.error.nativeCode,-32600);
   const active=await dispatchFixture('fixture-dispatch-queue');
   const rejected=await call('codex_archive',{threadId:active.threadId});
   assert.equal(rejected.result.error.code,'ARCHIVE_ACTIVE_TURN');
@@ -2108,4 +2110,18 @@ test('AX3 cloud binding is discoverable before dispatch and repairs an unbound t
     assert.match(attempted.result.error.message,/NOTIFICATIONS_DISABLED/);
     assert.equal((await call('notify_status',{target:'session_ax3_disabled'})).result.targets[0].registered,true);
   } finally {await management('task-settings','PUT',settings);}
+});
+
+
+test('Public failures provide a usable next without serialized duplicate reasons',async()=>{
+  // Regression: verify failures emitted next:null and archive errors repeated serialized RPC errors.
+  const target='session_ax_failure_next';
+  const saved=await management('task-settings');
+  try {
+    await call('notify_control',{action:'bind',target,verify:false});
+    await management('task-settings','PUT',{notificationsEnabled:false});
+    const failed=await call('notify_control',{action:'verify',target});
+    assert.equal(failed.response.isError,true);assert.ok(failed.result.next.op);assertNextCalls(failed.result);
+    const guide=await call(failed.result.next.op,failed.result.next.args);assert.equal(guide.response.isError,false);
+  }finally{await management('task-settings','PUT',saved);}
 });
