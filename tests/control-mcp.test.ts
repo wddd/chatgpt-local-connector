@@ -1968,3 +1968,14 @@ test('AX2 CLI guides accept full views and subcommands expose help without execu
     const help=cli([...command,'--help']);assert.equal(help.ok,true);assert.ok(help.result.commands.length>0);
   }
 });
+
+
+test('AX2 oversized results retain identity and can be completely continued', async () => {
+  // Regression: large native responses flooded compact calls instead of yielding a bounded continuation.
+  const response=await call('codex_call',{method:'fixture/large-response',params:{body:'x'.repeat(30000)},requestId:randomUUID()});
+  const result=response.result;
+  assert.ok(result.outputId);assert.ok(Buffer.byteLength(JSON.stringify(result))<12000);
+  let text='',offset:number|null=0;
+  while(offset!==null){const page=(await call('control_output',{outputId:result.outputId,offset,length:8192})).result;text+=page.text;offset=page.nextOffset;}
+  assert.ok(JSON.parse(text).result.echoedParams.body.length===30000);
+});

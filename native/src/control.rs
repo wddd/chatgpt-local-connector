@@ -682,7 +682,7 @@ impl Control {
             if params.is_null() {
                 params = json!({"type":"null"})
             }
-            params["definitions"] = root["definitions"].clone();
+            params = crate::kernel::results::schema_closure(params, &root["definitions"]);
             return Ok(
                 json!({"method":method,"direction":direction,"description":b["description"],"paramsSchema":params,"responseSchema":data["responses"][method]}),
             );

@@ -454,3 +454,7 @@ On delivery failure or expiry, inspect status and delivery records, correct the 
 ## Operation outcome
 
 MCP `isError:true` and CLI `ok:false` / exit 1 reflect failed, rejected, cancelled, not-executed, unconfirmed, and rolled-back operation results, including nested receipts and nonzero command exit codes. The top-level error preserves the nested reason; receipt IDs and the result remain available for reconciliation. Pending/reserved receipts indicate acceptance only. A failed historical turn inside a list does not make that list request fail. Unconfirmed means the effect is unknown, not permission to replay.
+
+## Response size and inbox revisits
+
+Default control results above 12 KiB return a short preview, identity/status summary, and `outputId`. Read `control_output({outputId,offset:0,length:8192})` and follow `nextOffset` to reconstruct the full immutable JSON. Guide and explicit output pages are exempt; supported `view:"full"` requests use a 64 KiB inline threshold. Native method schemas include only transitively referenced definitions. Compact automatic `arcInbox` attachments suppress unchanged event bodies and retain `unchangedEvents` references and unread counts. `inbox_wait({timeoutMs:0})` returns full unread events; deduplication does not acknowledge them.

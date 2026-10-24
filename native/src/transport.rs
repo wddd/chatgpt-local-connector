@@ -601,7 +601,7 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
             }
             let outcome = crate::egress::outcome_error(&value);
             if let Some(reason) = &outcome { value["error"] = reason.clone(); }
-            let mut paged = crate::kernel::results::page_output(value.clone(), 64 * 1024)?;
+            let mut paged = if matches!(name, "guide" | "control_output") { value.clone() } else { crate::kernel::results::page_output(value.clone(), if args["view"] == "full" { 64 * 1024 } else { 12 * 1024 })? };
             if outcome.is_some() && paged["outputId"].is_string() {
                 for key in ["requestId", "state", "error", "threadId", "turnId"] {
                     if let Some(field) = value.get(key) { paged[key] = field.clone(); }
@@ -673,7 +673,7 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
         if !value.is_object() {
             value = json!({"value":value});
         }
-        value["arcInbox"] = inbox;
+        value["arcInbox"] = crate::kernel::results::page_output(inbox, 4096)?;
     }
     let mut result = crate::egress::tool(value, error);
     result["content"].as_array_mut().unwrap().extend(images);

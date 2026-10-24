@@ -1011,6 +1011,7 @@ fn inbox_select(
     let mut acknowledged = false;
     let mut events = Vec::new();
     let mut unread = 0;
+    let mut repeated = Vec::new();
     for row in rows.as_array_mut().ok_or("INVALID_INBOX")? {
         let bound = bindings.iter().find(|b| {
             b.source_id == source_id
@@ -1080,12 +1081,22 @@ fn inbox_select(
             continue;
         }
         unread += 1;
+        let mut visible = row.clone();
+        visible.as_object_mut().unwrap().remove("attached");
+        visible.as_object_mut().unwrap().remove("attachedHash");
+        let fingerprint = hash(visible.to_string());
+        if filters.is_none() && !claude && row["attachedHash"] == fingerprint {
+            if repeated.len() < 5 { repeated.push(json!({"eventId":row["eventId"],"kind":row["kind"],"threadId":row["threadId"],"taskId":row["taskId"],"turnId":row["turnId"]})); }
+            continue;
+        }
         if events.len() < 5 {
+            if filters.is_none() { row["attachedHash"] = json!(fingerprint); }
             if incremental {
                 row["attached"] = json!(true);
             }
             let mut event = row.clone();
             event.as_object_mut().unwrap().remove("attached");
+            event.as_object_mut().unwrap().remove("attachedHash");
             events.push(event);
         }
     }
@@ -1095,10 +1106,10 @@ fn inbox_select(
     if acknowledged {
         state.save(dir)?;
     }
-    Ok(if events.is_empty() {
+    Ok(if events.is_empty() && repeated.is_empty() {
         Value::Null
     } else {
-        json!({"unread":unread,"events":events})
+        json!({"unread":unread,"events":events,"unchangedEvents":repeated,"next":{"via":"query","op":"inbox_wait","args":{"timeoutMs":0},"hint":"Explicit inbox_wait returns complete unread events without acknowledging them."}})
     })
 }
 /// Explicit inbox polling never attaches or acknowledges an event. Existing
@@ -2761,10 +2772,12 @@ mod tests {
             inbox_in(&dir.0, "chatgpt", &[], false, None).unwrap()["unread"],
             1
         );
-        assert_eq!(
-            inbox_in(&dir.0, "chatgpt", &[], false, None).unwrap()["unread"],
-            1
-        );
+        let compact = inbox_in(&dir.0, "chatgpt", &[], false, None).unwrap();
+        assert_eq!(compact["unread"], 1);
+        assert_eq!(compact["events"], json!([]));
+        assert_eq!(compact["unchangedEvents"].as_array().unwrap().len(), 1);
+        let full = inbox_select(&dir.0, "chatgpt", &[], false, None, Some(&json!({}))).unwrap();
+        assert_eq!(full["events"].as_array().unwrap().len(), 1);
     }
     #[tokio::test]
     async fn inbox_matches_caller_target_and_defers_subscribed_mcp_events() {
