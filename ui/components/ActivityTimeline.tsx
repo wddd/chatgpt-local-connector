@@ -212,6 +212,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       </div>
       {!atLatest && <Button variant="secondary" className="timeline-latest" onClick={latest}>{t("timeline.latest")}</Button>}
     </div>
-    {!external && !timeline?.readOnly && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} onPending={setShowCard} narrow={narrow} /><div hidden={showCard}><TaskControls agent={agent} state={state} control={control} turnId={turnId || undefined} /></div></footer>}
+    {!external && !timeline?.readOnly && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} onPending={setShowCard} narrow={narrow} /><div hidden={showCard}><TaskControls agent={agent} taskId={session.id} state={state} control={control} turnId={turnId || undefined} /></div></footer>}
   </section>;
 }

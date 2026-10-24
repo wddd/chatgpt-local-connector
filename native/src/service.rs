@@ -734,6 +734,12 @@ impl Service {
         }
         if route == "tasks/control" && method == "POST" {
             crate::management::resolve("tasks.control", &json!({"body":body}))?;
+            let mut args = body["args"].clone();
+            if body["op"] == "codex_send" && args.get("purpose").is_none() {
+                let records = crate::dispatch_policy::records(string(&args,"threadId"))?;
+                if records.last().is_some_and(|r| r["purpose"] == "self-test") { args["purpose"] = json!("self-test"); }
+            }
+            if matches!(string(&body,"op"),"codex_send"|"agent_send") && args["purpose"] == "self-test" && args.get("notify").is_none() { args["notify"] = Value::Null; }
             // This local bridge exposes only existing task operations. Their owners
             // still validate arguments, receipts, permissions and task boundaries.
             return crate::kernel::origin::ORIGIN
@@ -741,7 +747,7 @@ impl Service {
                     crate::sources::panel_origin().await?,
                     self.execution.call(
                         string(&body, "op"),
-                        body["args"].clone(),
+                        args,
                         crate::kernel::policy::default_policy(),
                     ),
                 )

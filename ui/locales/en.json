@@ -1151,5 +1151,9 @@
   "detail.queueState.cancelled": "Cancelled",
   "detail.queueState.failed": "Failed",
   "detail.queueState.sent": "Sent",
-  "detail.queueState.unconfirmed": "Submission unconfirmed"
+  "detail.queueState.unconfirmed": "Submission unconfirmed",
+  "detail.purpose": "Purpose",
+  "detail.purposeInherit": "Follow thread",
+  "detail.purposeTask": "Task",
+  "detail.purposeSelfTest": "Self-test"
 }

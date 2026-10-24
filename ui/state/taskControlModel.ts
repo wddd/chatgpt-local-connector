@@ -6,3 +6,7 @@ export function taskControlPayload(agent: string, id: string, turnId: string | u
     ...(intent === "review" ? {} : { approval: "approved" }), ...args, requestId,
   } };
 }
+
+export function taskPurposeArgs(purpose: "inherit" | "task" | "self-test"): Record<string, unknown> {
+  return purpose === "inherit" ? {} : purpose === "self-test" ? { purpose, notify: null } : { purpose };
+}

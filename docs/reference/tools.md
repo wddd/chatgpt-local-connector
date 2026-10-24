@@ -474,3 +474,7 @@ Use `act({op:"codex_interrupt",args:{threadId:"<id>"}})` to interrupt the curren
 ## Archive ended threads
 
 Use `act({op:"codex_archive",args:{threadId:"<id>"}})` for ended self-test or other explicitly selected native threads. ARC submits native `thread/archive` through its app-server and retains an idempotent receipt, including for Desktop-created history. It does not interrupt running work. `ARCHIVE_ACTIVE_TURN` requires completion or an explicit interrupt first. `ARCHIVE_WRITER_BUSY` preserves the native reason and requires releasing or archiving that exact thread from its owning session. The current Desktop follower protocol has no archive/release request, so ARC cannot release another owner's writer. Never remove lock files, move rollouts manually, close unrelated sessions, or repeatedly replay a blocked archive.
+
+## Self-test UI follow-ups
+
+The task composer has a Purpose choice: Follow thread, Task, or Self-test. Self-test submits `purpose:"self-test", notify:null` through the existing task operation. Agents can set the same choice after opening the panel: `act({op:"task_panel_control",args:{agent:"codex",id:"<thread-id>",action:"purpose",purpose:"self-test"}})`. Read `task_panel` to confirm `purpose`. The selection applies to subsequent UI sends for that task until changed or the renderer reloads. Follow thread inherits persisted Codex self-test purpose; explicit Task starts a normal task turn. The local `tasks.control` bridge also accepts `purpose:"self-test"` and suppresses implicit notification binding.

@@ -96,3 +96,12 @@ test('answered questions remain available outside collapsed process rows', async
   assert.equal(result.answeredInteractions.length,1);assert.equal(result.rows.length,0);
   assert.match(interactionSummary(interaction),/Pick one.*A.*B/);
 });
+
+
+test('self-test UI follow-ups retain purpose and suppress notification binding', async () => {
+  // Regression: the task composer could not mark self-test follow-ups and polluted task history.
+  const { taskControlPayload, taskPurposeArgs }=await import('../ui/state/taskControlModel.ts');
+  const send=taskControlPayload('codex','thread',undefined,'send',{prompt:'probe',...taskPurposeArgs('self-test')},'request');
+  assert.equal(send.args.purpose,'self-test');assert.equal(send.args.notify,null);
+  assert.deepEqual(taskPurposeArgs('inherit'),{});assert.deepEqual(taskPurposeArgs('task'),{purpose:'task'});
+});

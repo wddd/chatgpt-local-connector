@@ -1151,5 +1151,9 @@
   "detail.queueState.cancelled": "已取消",
   "detail.queueState.failed": "发送失败",
   "detail.queueState.sent": "已发送",
-  "detail.queueState.unconfirmed": "提交结果待确认"
+  "detail.queueState.unconfirmed": "提交结果待确认",
+  "detail.purpose": "用途",
+  "detail.purposeInherit": "沿用线程",
+  "detail.purposeTask": "任务",
+  "detail.purposeSelfTest": "自测"
 }

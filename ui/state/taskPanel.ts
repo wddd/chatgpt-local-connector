@@ -1,3 +1,4 @@
+import { taskPurposes, taskPurposeKey, setTaskPurpose, type TaskPurpose } from "./taskPurpose";
 import { api } from "../api";
 import { agentPanel, selectAgentPanel } from "./overviewPanels";
 import { agentActivity } from "./activity";
@@ -5,7 +6,8 @@ import type { AgentTimeline } from "../types";
 
 export interface TaskPanelRequest {
   agent: string; id: string;
-  action?: "open" | "latest" | "follow" | "width" | "back" | "disclose";
+  action?: "open" | "latest" | "follow" | "width" | "back" | "disclose" | "purpose";
+  purpose?: TaskPurpose;
   following?: boolean; target?: string;
 }
 interface Observer {
@@ -18,7 +20,7 @@ export function observeTaskPanel(next: Observer) {
   observer = next;
   return () => { if (observer === next) observer = undefined; };
 }
-export function taskPanelSnapshot() { return observer?.read() ?? null; }
+export function taskPanelSnapshot() { return observer ? { ...observer.read(), purpose: taskPurposes.get()[taskPurposeKey(observer.agent, observer.id)] ?? "inherit" } : null; }
 export async function controlTaskPanel(request: TaskPanelRequest) {
   if (request.action === "open") {
     const timeline = await api<AgentTimeline>("agents/conversations/timeline", "POST", { agent: request.agent, id: request.id });
@@ -30,5 +32,8 @@ export async function controlTaskPanel(request: TaskPanelRequest) {
     for (let i = 0; i < 120 && (observer?.id !== request.id || observer.agent !== request.agent); i++) await new Promise(requestAnimationFrame);
   }
   if (observer?.id !== request.id || observer.agent !== request.agent || agentPanel.get()?.session?.id !== request.id) throw new Error("TASK_PANEL_NOT_OPEN: use task_panel_control action:open for this task first");
-  if (request.action && request.action !== "open") observer.act(request);
+  if (request.action === "purpose") {
+    if (!request.purpose || !["inherit", "task", "self-test"].includes(request.purpose)) throw new Error("PURPOSE_REQUIRED: supply inherit, task, or self-test");
+    setTaskPurpose(request.agent, request.id, request.purpose);
+  } else if (request.action && request.action !== "open") observer.act(request);
 }

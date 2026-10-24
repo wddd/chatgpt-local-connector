@@ -2046,3 +2046,15 @@ test('AX2 archive supports ended ARC threads and explains active or external wri
   await completed('codex_interrupt',{threadId:active.threadId,requestId:randomUUID()});
   assert.equal((await completed('codex_archive',{threadId:active.threadId,requestId:randomUUID()})).result.archived,true);
 });
+
+
+test('AX2 local follow-ups accept self-test purpose and inherit it without binding notifications', async () => {
+  // Regression: UI follow-ups lost self-test purpose and could create normal dispatch samples or notification bindings.
+  const created=await dispatchFixture('fixture-dispatch');
+  for(const purpose of ['self-test',undefined]) {
+    const sent=await management('tasks/control','POST',{op:'codex_send',args:{threadId:created.threadId,prompt:'local self-test',sendMode:'next',purpose,requestId:randomUUID()}});
+    assert.equal(sent.state,'completed');assert.equal(sent.arguments.purpose,'self-test');assert.equal(sent.arguments.notify,null);
+  }
+  const guide=(await call('guide',{op:'task_panel_control'})).result;
+  assert.ok(guide.inputSchema.properties.action.enum.includes('purpose'));
+});

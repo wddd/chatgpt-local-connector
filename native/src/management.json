@@ -2702,9 +2702,11 @@
                       "follow",
                       "width",
                       "back",
-                      "disclose"
+                      "disclose",
+                      "purpose"
                     ]
                   },
+                  "purpose": {"enum":["inherit","task","self-test"]},
                   "following": {
                     "type": "boolean"
                   },
