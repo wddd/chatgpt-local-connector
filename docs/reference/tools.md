@@ -458,3 +458,7 @@ MCP `isError:true` and CLI `ok:false` / exit 1 reflect failed, rejected, cancell
 ## Response size and inbox revisits
 
 Default control results above 12 KiB return a short preview, identity/status summary, and `outputId`. Read `control_output({outputId,offset:0,length:8192})` and follow `nextOffset` to reconstruct the full immutable JSON. Guide and explicit output pages are exempt; supported `view:"full"` requests use a 64 KiB inline threshold. Native method schemas include only transitively referenced definitions. Compact automatic `arcInbox` attachments suppress unchanged event bodies and retain `unchangedEvents` references and unread counts. `inbox_wait({timeoutMs:0})` returns full unread events; deduplication does not acknowledge them.
+
+## Status and stalled submissions
+
+Receipt `stateScope:"operation"` describes submission, not task completion. `codex_read` uses the same native turn classifier as `codex_wait`, with `stateScope:"turn"`, `recordedStatus`, and `runtimeStatus`. `notLoaded` is unknown ownership, not proof that no writer exists. Intermediate receipts expose `updatedAt`, `phaseAgeMs`, `progressStalled` after 30 seconds without a checkpoint, and an actionable `next`. Poll that original receipt until it returns a turn ID; for stalled submission inspect CLI logs/doctor and the owning app without redispatching. Running, blocked, failed, and unconfirmed responses also provide a next read or wait. CLI wait stops immediately on a failed operation and preserves its receipt and error.

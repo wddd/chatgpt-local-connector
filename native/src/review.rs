@@ -186,19 +186,7 @@ pub fn progress_from_turn(turn: &Value, pending_count: Option<usize>) -> Value {
         "pendingInteractionCount":pending_count,"commits":null,"elapsedMs":null,"observedAt":now()})
 }
 
-pub(crate) async fn progress(c: &control::Control, thread: &str) -> Value {
-    // Cache only compact projections, never another copy of multi-hour native histories.
-    type Cache = std::collections::HashMap<String, (std::time::Instant, Value)>;
-    static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
-    let key = format!("{}:{thread}", c.session);
-    {
-        let cache = CACHE.get_or_init(Default::default).lock().await;
-        if let Some((at, value)) = cache.get(&key).filter(|(at, _)| at.elapsed().as_secs() < 5) {
-            let mut value = value.clone();
-            value["cacheAgeMs"] = json!(at.elapsed().as_millis() as u64);
-            return value;
-        }
-    }
+pub(crate) async fn progress(c: &control::Control, thread: &str, metadata: &Value) -> Value {
     let read = c.request(
         "thread/turns/list",
         json!({"threadId":thread,"limit":1,"sortDirection":"desc","itemsView":"full"}),
@@ -208,27 +196,20 @@ pub(crate) async fn progress(c: &control::Control, thread: &str) -> Value {
         Ok(Ok(page)) => {
             let events = c.events.lock().await;
             let turn = &page["data"][0];
-            let count = events
-                .pending
-                .values()
-                .filter(|r| {
-                    r["params"]["threadId"] == thread
-                        && (r["params"]["turnId"].is_null() || r["params"]["turnId"] == turn["id"])
-                })
-                .count();
-            progress_from_turn(turn, Some(count))
+            let pending: Vec<_> = events.pending.values().filter(|r| r["params"]["threadId"] == thread).cloned().collect();
+            let mut native = metadata.clone();
+            native["turns"] = json!([turn]);
+            let snapshot = crate::waiter::classify(&json!({"thread":native,"pending":pending}), &mut None);
+            let mut progress = progress_from_turn(turn, snapshot["progress"]["pendingInteractionCount"].as_u64().map(|n|n as usize));
+            progress["status"] = json!({"state":snapshot["state"],"reason":snapshot["reason"],"turnId":snapshot["turnId"],"recordedStatus":snapshot["recordedStatus"],"runtimeStatus":snapshot["runtimeStatus"]});
+            progress
+
         }
         _ => {
             json!({"turnId":null,"latestAgentMessage":null,"latestChecks":[],"pendingInteractionCount":null,"commits":null,"elapsedMs":null,"observedAt":now(),"unavailable":"native-progress-read-timeout-or-unavailable"})
         }
     };
     enrich_progress(thread, &mut result).await;
-    let mut cache = CACHE.get_or_init(Default::default).lock().await;
-    cache.retain(|_, (at, _)| at.elapsed().as_secs() < 5);
-    if cache.len() >= 128 {
-        cache.clear();
-    }
-    cache.insert(key, (std::time::Instant::now(), result.clone()));
     result
 }
 

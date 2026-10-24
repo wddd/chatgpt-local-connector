@@ -1676,7 +1676,7 @@ impl Control {
                         .clone();
                 }
                 if args["statusOnly"] == true {
-                    let mut progress = crate::review::progress(self, id).await;
+                    let mut progress = crate::review::progress(self, id, &t).await;
                     if t["status"]["activeFlags"].as_array().is_some_and(|flags| {
                         flags.iter().any(|flag| {
                             matches!(
@@ -1689,9 +1689,13 @@ impl Control {
                         progress["pendingInteractionCount"] = Value::Null;
                         progress["interactionRequired"] = json!(true);
                     }
-                    return Ok(
-                        json!({"threadId":id,"runtimeStatus":t["status"]["type"],"turns":null,"observedAt":now(),"progress":progress}),
-                    );
+                    let mut status = progress.as_object_mut().unwrap().remove("status").unwrap_or_else(|| json!({"state":"unconfirmed","reason":"progress-unavailable","runtimeStatus":t["status"]["type"]}));
+                    status["threadId"] = json!(id);
+                    status["turns"] = Value::Null;
+                    status["stateScope"] = json!("turn");
+                    status["observedAt"] = json!(now());
+                    status["progress"] = progress;
+                    return Ok(status);
                 }
                 if args["view"] == "review" {
                     let page = self.request("thread/turns/list",json!({"threadId":id,"cursor":args["cursor"],"limit":num(&args,"limit",1),"sortDirection":"desc","itemsView":"full"}),60000).await?;
@@ -1722,6 +1726,12 @@ impl Control {
                     result["nextCursor"] = page["nextCursor"].clone();
                     let mut turns = page["data"].as_array().cloned().unwrap_or_default();
                     turns.reverse();
+                    let mut native = t.clone();
+                    native["turns"] = json!(turns);
+                    let pending = self.events.lock().await.pending.values().cloned().collect::<Vec<_>>();
+                    let status = crate::waiter::classify(&json!({"thread":native,"pending":pending}), &mut None);
+                    for key in ["state", "reason", "turnId", "recordedStatus"] { result[key] = status[key].clone(); }
+                    result["stateScope"] = json!("turn");
                     crate::external_inputs::observe(id, &turns, None)?;
                     let external = crate::external_inputs::inputs(id, None)?;
                     result["externalUserInputs"] = json!(external

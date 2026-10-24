@@ -195,7 +195,7 @@ fn finish(
     v["elapsedMs"] = json!(started.elapsed().as_millis() as u64);
     v
 }
-fn classify(observation: &Value, selected: &mut Option<String>) -> Value {
+pub(crate) fn classify(observation: &Value, selected: &mut Option<String>) -> Value {
     let t = &observation["thread"];
     let turns = t["turns"].as_array().cloned().unwrap_or_default();
     if selected.is_none() {

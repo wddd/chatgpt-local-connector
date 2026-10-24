@@ -97,6 +97,7 @@ pub fn receipt(value: Value) -> Value {
     for key in [
         "requestId",
         "createdAt",
+        "updatedAt",
         "dispatchMode",
         "queueId",
         "state",
@@ -132,6 +133,12 @@ pub fn receipt(value: Value) -> Value {
             }
         }
         out["origin"] = origin;
+    }
+    out["stateScope"] = json!("operation");
+    if let Some(updated) = value["updatedAt"].as_str().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()) {
+        let age = chrono::Utc::now().signed_duration_since(updated).num_milliseconds().max(0);
+        out["phaseAgeMs"] = json!(age);
+        if !matches!(string(&value, "state"), "completed" | "failed" | "cancelled" | "rejected" | "not-executed") { out["progressStalled"] = json!(age >= 30000); }
     }
     let result = &value["result"];
     if value["task"]["dispatch"].is_object() {
@@ -814,10 +821,10 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
             arguments["timeoutMs"] = timeout.clone();
         }
         json!({"hint":"Continue waiting with the same task and turn.","via":"query","op":wait_tool,"args":arguments})
-    } else if matches!(value["state"].as_str(), Some("pending" | "reserved"))
+    } else if matches!(value["state"].as_str(), Some("pending" | "reserved" | "thread-submitting" | "thread-created" | "turn-submitting" | "submitting" | "queued"))
         && value["requestId"].is_string()
     {
-        json!({"hint":"Read the dispatch receipt before waiting for the task.","via":"act","op":"receipt","args":{"requestId":value["requestId"]}})
+        json!({"hint":"Read this original receipt until submission resolves. A threadId alone does not mean a turn was submitted. If progressStalled is true, inspect CLI logs/doctor and the owning app; do not redispatch or generate a new requestId.","via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"},"retryAfterMs":1000})
     } else if (matches!(
         name,
         "codex_create" | "codex_send" | "agent_create" | "agent_send"
@@ -842,6 +849,14 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
             }
             next
         }
+    } else if value["error"]["next"].is_object() {
+        value["error"]["next"].clone()
+    } else if value["state"] == "running" && (thread.is_some() || task.is_some()) {
+        json!({"via":"query","op":wait_tool,"args":wait_args,"hint":"Wait on the same turn; do not submit another task."})
+    } else if value["state"] == "unconfirmed" && (thread.is_some() || task.is_some()) {
+        json!({"via":"query","op":if agent {"agent_read"} else {"codex_read"},"args":if agent {json!({"agent":wait_args["agent"],"taskId":task})} else {json!({"threadId":thread,"statusOnly":true})},"hint":"Runtime ownership or progress is unknown. Inspect the owning session and this original task. Do not redispatch; notLoaded does not prove no native writer exists."})
+    } else if value["requestId"].is_string() && matches!(string(value,"state"),"failed"|"rejected"|"cancelled"|"not-executed"|"unconfirmed") {
+        json!({"via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"},"hint":"Inspect the surfaced failure and original receipt. Resolve its cause before a new authorized attempt; an unconfirmed effect must be reconciled without replay."})
     } else {
         return;
     };

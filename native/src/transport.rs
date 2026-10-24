@@ -649,6 +649,7 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
         crate::egress::next(&mut value, name, &args, available);
     }
     if error {
+        crate::egress::next(&mut value, name, &args, false);
         return Ok(crate::egress::tool(value, true));
     }
     let inbox = if name == "inbox_wait" {

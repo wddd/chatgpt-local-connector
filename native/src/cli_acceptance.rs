@@ -231,6 +231,9 @@ pub(crate) async fn wait(args: &[&str]) -> Result<Value> {
                 _ => value.is_some_and(|v| v != &c.value),
             }
         });
+        if crate::egress::outcome_error(&last).is_some() {
+            return Ok(json!({"matched":matched,"reason":"operation-failed","lastResult":last,"elapsedMs":started.elapsed().as_millis() as u64}));
+        }
         if matched {
             let values: Vec<_> = options
                 .conditions

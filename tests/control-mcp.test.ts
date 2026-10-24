@@ -1979,3 +1979,21 @@ test('AX2 oversized results retain identity and can be completely continued', as
   while(offset!==null){const page=(await call('control_output',{outputId:result.outputId,offset,length:8192})).result;text+=page.text;offset=page.nextOffset;}
   assert.ok(JSON.parse(text).result.echoedParams.body.length===30000);
 });
+
+
+test('AX2 status reads agree with wait observations and nonterminal receipts have next steps', async () => {
+  // Regression: statusOnly omitted execution state while reserved and thread-created receipts had no actionable next.
+  assert.equal((await call('inbox_wait',{timeoutMs:0})).response.isError,false);
+  const task=await dispatchFixture('fixture-dispatch-queue');
+  const status=(await call('codex_read',{threadId:task.threadId,statusOnly:true})).result;
+  assert.equal(status.state,'running');assert.equal(status.stateScope,'turn');assert.equal(status.next.op,'codex_wait');
+  const wait=(await call('codex_wait',{threadId:task.threadId,turnId:task.turnId,timeoutMs:100})).result;
+  assert.equal(wait.runtimeStatus,status.runtimeStatus);assert.equal(wait.recordedStatus,status.recordedStatus);
+  const receipt=(await call('receipt',{requestId:task.requestId})).result;
+  assert.equal(receipt.stateScope,'operation');assert.equal(receipt.state,'completed');
+  const pending=await call('codex_call',{method:'fixture/slow-submission',params:{delay:300},waitMs:1,requestId:randomUUID()});
+  assert.equal(pending.result.next.op,'receipt');
+  const failure=await call('fs',{action:'writeFile',params:{path:path.join(directory,'stalled-failure'),dataBase64:'aGk=',expectedSha256:'0'.repeat(64)}});
+  assert.equal(failure.result.next.op,'receipt');
+  await completed('codex_call',{method:'fixture/finish-turn',params:{threadId:task.threadId},requestId:randomUUID()});
+});
