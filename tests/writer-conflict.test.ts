@@ -1,3 +1,7 @@
+import {spawn} from 'node:child_process';
+import {mkdtemp,mkdir,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { nativeControl } from './helpers/native-control.ts';
@@ -25,9 +29,29 @@ test('native writer conflicts retain recovery guidance through send, load and re
       const error = value.error ?? value.result?.error;
       assert.equal(error?.code, 'THREAD_WRITER_BUSY', JSON.stringify(value));
       assert.equal(error.retryable, false);
-      assert.equal(value.next.op, 'codex_read');
+      assert.equal(value.next.op, 'codex_owner');
       assert.ok(value.next.hint);
-      assert.match(error.nativeError, /already has an active writer/);
+      assert.equal(error.ownership.state,"held");
+      assert.equal(error.ownership.evidence,"native-writer-rejection");
     }
   } finally { await fixture.close(); }
+});
+
+
+test('Held external writers are diagnosed before Desktop read discovery', {skip:process.platform==='win32'}, async()=>{
+  // Regression: real external writer reads failed with a generic Desktop discovery timeout.
+  const directory=await mkdtemp(path.join(tmpdir(),'arc-external-writer-'));
+  const threadId='00000000-0000-4000-8000-000000000002';
+  await mkdir(path.join(directory,'thread-writer-locks'));
+  const writer=spawn('python3',['-c','import fcntl,sys; f=open(sys.argv[1],"w"); fcntl.flock(f,fcntl.LOCK_EX); print("ready",flush=True); sys.stdin.read()',path.join(directory,'thread-writer-locks',threadId+'.lock')]);
+  await new Promise<void>(resolve=>writer.stdout.once('data',()=>resolve()));
+  const fixture=await nativeControl('',{CODEX_HOME:directory,ARC_FIXTURE_DESKTOP:'1'});
+  try {
+    for(const statusOnly of [false,true]) {
+      const result=await fixture.call('codex_read',{threadId,statusOnly});
+      assert.equal(result.error.code,'THREAD_WRITER_BUSY',JSON.stringify(result));
+      assert.equal(result.error.ownership.owner,'external');assert.equal(result.error.ownership.state,'held');
+      if(process.platform==='darwin')assert.ok(result.error.ownership.processes.some((p:any)=>p.pid===writer.pid));
+    }
+  } finally {await fixture.close();writer.stdin.end();await new Promise(resolve=>writer.once('exit',resolve));await rm(directory,{recursive:true,force:true});}
 });

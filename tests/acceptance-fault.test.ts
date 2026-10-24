@@ -24,8 +24,8 @@ test('Isolated faults reject real reads, expire and require a self-test thread',
     assert.equal((await fixture.call('acceptance_fault',{threadId:created.threadId,mode:'read-rejection',durationMs:150})).injected,true);
     const args={method:'thread/read',params:{threadId:created.threadId,includeTurns:false}};
     const rejected=await fixture.call('codex_query',args);
-    assert.equal(rejected.error.code,'NATIVE_RPC_ERROR',JSON.stringify(rejected));
-    assert.equal(rejected.error.rpcError.data.injected,true);
+    assert.equal(rejected.error.code,'THREAD_WRITER_BUSY',JSON.stringify(rejected));
+    assert.equal(rejected.error.ownership.injected,true);
     await new Promise(resolve=>setTimeout(resolve,200));
     assert.equal((await fixture.call('codex_query',args)).thread.id,created.threadId);
   } finally {await fixture.close();}

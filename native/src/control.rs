@@ -599,7 +599,37 @@ impl Control {
         }
         self.request_native(method, args, timeout).await
     }
+    async fn writer_conflict(&self, thread: &str, error: Option<&str>) -> Value {
+        let mut ownership=self.writer_ownership(thread).await;
+        if ownership["state"] == "held" {ownership["processes"]=crate::writer::processes(thread).await;}
+        if let Some(error)=error {
+            let rpc=error.strip_prefix("RPC_REJECTED:").and_then(|s|serde_json::from_str::<Value>(s).ok());
+            ownership["lockObservation"]=ownership["state"].clone();
+            ownership["state"]=json!("held");
+            ownership["evidence"]=json!("native-writer-rejection");
+            if ownership["owner"].is_null() {ownership["owner"]=json!("external");}
+            if rpc.as_ref().is_some_and(|r|r["data"]["injected"]==true) {ownership["injected"]=json!(true);ownership["evidence"]=json!("isolated-native-writer-rejection");}
+        }
+        crate::writer::busy(thread,ownership)
+    }
     async fn request_native(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
+        let thread=string(&args,"threadId");
+        if matches!(method,"thread/read"|"thread/turns/list"|"thread/items/list") && crate::writer::probe(thread)["state"] == "held" {
+            let mut ownership=self.writer_ownership(thread).await;
+            if ownership["owner"] == "external" {ownership["processes"]=crate::writer::processes(thread).await;return Err(crate::writer::busy(thread,ownership).to_string());}
+        }
+        let result=self.request_native_raw(method,args.clone(),timeout).await;
+        if let Err(error)=&result {
+            if !thread.is_empty() && error.contains("already has an active writer") {
+                return Err(self.writer_conflict(thread,Some(error)).await.to_string());
+            }
+            if !thread.is_empty() && desktop::owner_discovery_pending(error) && crate::writer::probe(thread)["state"] == "held" {
+                return Err(self.writer_conflict(thread,None).await.to_string());
+            }
+        }
+        result
+    }
+    async fn request_native_raw(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
         crate::acceptance_fault::check_read(method, &args)?;
         #[cfg(feature = "test-fixture")]
         {
@@ -1733,10 +1763,6 @@ impl Control {
             "codex_wait" => crate::waiter::codex_wait(self, &args).await,
             "codex_read" => {
                 let id = string(&args, "threadId");
-                let ownership = self.writer_ownership(id).await;
-                if args["statusOnly"] == true && ownership["state"] == "held" && ownership["owner"] == "external" {
-                    return Ok(json!({"threadId":id,"turns":null,"state":"unconfirmed","stateScope":"turn","runtimeStatus":"unknown","reason":"external-writer-held","ownership":ownership,"error":crate::writer::busy(id,ownership.clone())}));
-                }
                 let mut t = self
                     .request(
                         "thread/read",

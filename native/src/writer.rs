@@ -21,7 +21,7 @@ pub(crate) fn probe(thread: &str) -> Value {
     lock_path(thread).map(|p|probe_path(&p)).unwrap_or(json!({"state":"unknown","reason":"lock-location-unavailable"}))
 }
 pub(crate) fn busy(thread: &str, ownership: Value) -> Value {
-    json!({"code":"THREAD_WRITER_BUSY","message":"The native thread writer is held by another owner. No turn was submitted. Inspect codex_owner; finish or archive this exact thread in its owning session before retrying.","retryable":false,"ownership":ownership,"next":{"via":"query","op":"codex_owner","args":{"threadId":thread}}})
+    json!({"code":"THREAD_WRITER_BUSY","message":"The native thread writer is held by another owner. The requested operation did not complete. Inspect codex_owner; finish or archive this exact thread in its owning session before retrying.","retryable":false,"ownership":ownership,"next":{"via":"query","op":"codex_owner","args":{"threadId":thread},"hint":"Inspect the current owner and follow its exact-thread handoff step before retrying."}})
 }
 #[cfg(test)]
 mod tests {

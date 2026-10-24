@@ -28,7 +28,7 @@ fn active(thread: &str, mode: &str) -> bool {
 }
 pub(crate) fn check_read(method: &str, args: &Value) -> Result<()> {
     if matches!(method,"thread/read"|"thread/turns/list"|"thread/items/list") && active(string(args,"threadId"),"read-rejection") {
-        return Err(format!("RPC_REJECTED:{}",json!({"code":-32600,"message":"Thread read rejected by isolated acceptance fault","data":{"injected":true,"mode":"read-rejection"}})));
+        return Err(format!("RPC_REJECTED:{}",json!({"code":-32600,"message":format!("thread {} already has an active writer",string(args,"threadId")),"data":{"injected":true,"mode":"read-rejection"}})));
     }
     Ok(())
 }
