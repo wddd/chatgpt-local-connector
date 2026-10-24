@@ -103,9 +103,11 @@ impl Execution {
             crate::egress::validate_op(spec, &args)?;
             return match name {
                 "task_timeline" => {
-                    self.agents
-                        .conversation_timeline(&self.control, &args)
-                        .await
+                    let mut result = self.agents.conversation_timeline(&self.control, &args).await?;
+                    if args["expectedHash"].is_string() && args["expectedHash"] == result["snapshotHash"] {
+                        result["entries"] = json!([]); result["unchanged"] = json!(true);
+                    }
+                    Ok(result)
                 }
                 "task_reviews" => {
                     Ok(json!({"reviews":crate::dispatch_policy::reviews(string(&args,"id"))?}))

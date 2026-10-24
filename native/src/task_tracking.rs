@@ -961,16 +961,14 @@ impl Timeline {
             }
             self.turn = history.turn;
         }
-        self.observed_events += 1;
-        self.entries.clear();
-        self.bytes = 0;
-        for mut row in history.entries {
+        for (position, mut row) in history.entries.into_iter().enumerate() {
             // Preserve explicit unknown times and ordering through the incremental API.
             let started = row["startedAt"].clone();
             let ended = row.get("endedAt").cloned();
-            row["position"] = json!(self.revision + 1);
+            row["position"] = json!(position);
+            let id = row["id"].clone();
             self.put(row, at);
-            if let Some(row) = self.entries.last_mut() {
+            if let Some(row) = self.entries.iter_mut().find(|row| row["id"] == id) {
                 row["startedAt"] = started;
                 if let Some(ended) = ended {
                     row["endedAt"] = ended;
@@ -1204,6 +1202,7 @@ impl Timeline {
         if !self.turn_timings.is_empty() {
             result["turnTimings"] = json!(self.turn_timings);
         }
+        result["snapshotHash"] = json!(hash(json!({"entries":self.entries,"status":self.status,"turnStatuses":self.turn_statuses,"turnTimings":self.turn_timings,"coverage":result["coverage"]}).to_string()));
         result
     }
     pub fn session(&self, info: &Value, source: &str, pending: Option<Value>) -> Value {

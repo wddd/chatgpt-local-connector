@@ -482,3 +482,7 @@ The task composer has a Purpose choice: Follow thread, Task, or Self-test. Self-
 ## Task list cost
 
 `codex_tasks({archived:true,searchTerm:"probe",enrich:false})` returns native list metadata without per-thread reads. Archived lists default to `enrich:false`; other lists preserve live enrichment by default. The compact signature lists both archive and search filters. Metadata-only rows expose `runtimeStatus:null`, `runtimeSource:"not-requested"`; use `codex_read` on a selected thread for live status.
+
+## Stable history revisits
+
+`task_timeline({agent:"codex",id,expectedHash})` suppresses unchanged entries with `unchanged:true`. A history refresh preserves entry timestamps, positions, cursor, and `snapshotHash` when native content is unchanged. `after` remains the incremental cursor. Unsubscribe still reports partial coverage until a real subscription resumes; history refresh does not claim live observation.

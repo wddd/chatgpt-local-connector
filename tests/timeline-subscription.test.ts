@@ -42,6 +42,11 @@ test('unsubscribed timelines refresh newer turns and disclose incomplete observa
       const activity = await fixture.api('agents/activity');
       assert.ok(!activity.agents.codex.sessions.some((session:any)=>session.id===threadId));
     }
+    const first=await fixture.call('task_timeline',{agent:'codex',id:threadId});
+    const same=await fixture.call('task_timeline',{agent:'codex',id:threadId});
+    assert.equal(same.cursor,first.cursor);assert.equal(same.snapshotHash,first.snapshotHash);assert.deepEqual(same.entries,first.entries);
+    const incremental=await fixture.call('task_timeline',{agent:'codex',id:threadId,after:first.cursor,expectedHash:first.snapshotHash});
+    assert.equal(incremental.unchanged,true);assert.deepEqual(incremental.entries,[]);
     const resume = await fixture.call('codex_call', {method:'thread/resume',params:{threadId},waitMs:1000});
     assert.equal(resume.state, 'completed');
     assert.equal((await fixture.call('task_timeline', {agent:'codex',id:threadId})).coverage.state,'complete');
