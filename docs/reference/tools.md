@@ -490,3 +490,7 @@ The task composer has a Purpose choice: Follow thread, Task, or Self-test. Self-
 ## Failure projection
 
 Read `error.code`, `error.message`, and `next` from the public result (the CLI envelope for CLI calls). Repeated receipt errors are omitted from nested results. Native RPC code/data remain in `error.rpcError`; its message is promoted to `error.message`. Historical errors inside arrays remain untouched. Receipt identities and original outcomes are preserved.
+
+## First-use accessibility readiness
+
+`screen({action:"tree",bundleId,pid,readyTimeoutMs:2000})` automatically re-reads a chrome-only AX tree while the app activates its accessibility content. `ready:true` confirms content beyond window chrome; `ready:false` includes `incompleteReason` and a same-window retry. `truncated:false` alone does not prove readiness. A deliberately chrome-only window can remain incomplete. Use `readyTimeoutMs:0` for a single read.

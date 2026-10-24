@@ -183,9 +183,9 @@ func elementLabel(_ element: AXUIElement) -> String {
     return [string(element, kAXTitleAttribute), string(element, kAXDescriptionAttribute), string(element, kAXValueAttribute)]
         .filter { !$0.isEmpty && seen.insert($0).inserted }.joined(separator: " | ")
 }
-func tree(_ window: Window, text: Bool, limit: Int) throws -> ([Entry], Bool) {
+func tree(_ window: Window, text: Bool, limit: Int) throws -> ([Entry], Bool, Bool) {
     let start = try axWindow(window)
-    var entries: [Entry] = [], visited = 0, truncated = false
+    var entries: [Entry] = [], visited = 0, truncated = false, contentReady = false
     let deadline = Date().addingTimeInterval(10)
     let roles: Set<String> = ["AXButton", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXTextField", "AXTextArea", "AXMenuItem", "AXLink", "AXDisclosureTriangle", "AXSlider", "AXIncrementor", "AXComboBox", "AXTab", "AXRow", "AXCell", "AXHeading", "AXWindow"]
     func walk(_ element: AXUIElement, _ path: String, _ depth: Int) {
@@ -194,6 +194,10 @@ func tree(_ window: Window, text: Bool, limit: Int) throws -> ([Entry], Bool) {
         visited += 1
         let role = string(element, kAXRoleAttribute)
         let label = elementLabel(element)
+        let subrole = string(element, kAXSubroleAttribute)
+        let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
+        let chrome = ["AXCloseButton", "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton"].contains(subrole)
+        if !chrome && ((role == "AXWebArea" && !children.isEmpty) || (roles.contains(role) && role != "AXWindow") || (role == "AXStaticText" && !label.isEmpty)) { contentReady = true }
         if roles.contains(role) || (role == "AXGroup" && !string(element, kAXDescriptionAttribute).isEmpty) || (text && role == "AXStaticText") {
             entries.append(Entry(element: element, ref: path, role: role, label: String(label.prefix(2000))))
         }
@@ -203,7 +207,7 @@ func tree(_ window: Window, text: Bool, limit: Int) throws -> ([Entry], Bool) {
         }
     }
     walk(start, "\(window.id):0", 0)
-    return (entries, truncated)
+    return (entries, truncated, contentReady)
 }
 func find(_ args: [String: Any], _ window: Window) throws -> Entry {
     if let ref = args["ref"] as? String {
@@ -220,7 +224,7 @@ func find(_ args: [String: Any], _ window: Window) throws -> Entry {
         return Entry(element: element, ref: ref, role: string(element, kAXRoleAttribute), label: String(elementLabel(element).prefix(2000)))
     }
     guard let label = args["label"] as? String, !label.isEmpty else { try fail("ELEMENT_TARGET_REQUIRED: Specify ref or label.") }
-    let (entries, truncated) = try tree(window, text: false, limit: 1000)
+    let (entries, truncated, _) = try tree(window, text: false, limit: 1000)
     let matches = entries.filter { $0.label.localizedCaseInsensitiveContains(label) }
     let nth = args["nth"] as? Int ?? 0
     guard nth >= 0 && nth < matches.count else { try fail("ELEMENT_NOT_FOUND: matches=\(matches.count), truncated=\(truncated)") }
@@ -297,8 +301,21 @@ func run(_ args: [String: Any]) throws -> [String: Any] {
     if action == "capture" { return try capture(window, args, focus) }
     try requireAX()
     if action == "tree" {
-        let (entries, truncated) = try tree(window, text: args["text"] as? Bool ?? false, limit: min(1000, max(1, args["limit"] as? Int ?? 300)))
-        return ["window": window.json, "elements": entries.map(\.json), "truncated": truncated]
+        let deadline = Date().addingTimeInterval(Double(args["readyTimeoutMs"] as? Int ?? 2000) / 1000)
+        var attempts = 0
+        while true {
+            attempts += 1
+            let (entries, truncated, ready) = try tree(window, text: args["text"] as? Bool ?? false, limit: min(1000, max(1, args["limit"] as? Int ?? 300)))
+            if ready || Date() >= deadline {
+                var result: [String: Any] = ["window":window.json,"elements":entries.map(\.json),"truncated":truncated,"ready":ready,"attempts":attempts]
+                if !ready {
+                    result["incompleteReason"] = truncated ? "tree-budget-exhausted-before-content" : "accessibility-content-not-ready"
+                    result["next"] = ["via":"query","op":"screen","args":["action":"tree","bundleId":window.app.bundleIdentifier ?? "","pid":window.app.processIdentifier,"windowId":window.id,"readyTimeoutMs":2000]]
+                }
+                return result
+            }
+            pause(0.15)
+        }
     }
     var result: [String: Any] = ["window": window.json, "action": action]
     switch action {
