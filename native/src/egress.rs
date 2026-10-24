@@ -711,7 +711,7 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
                 "notify" => matches!(name, "notify_status" | "notify_control" | "notification_ack" | "inbox_wait" | "codex_create" | "codex_send" | "codex_read" | "agent_create" | "agent_send" | "agent_read"),
                 "review" => matches!(name, "codex_review" | "agent_review" | "codex_read" | "agent_read" | "codex_wait" | "agent_wait" | "agent_events" | "codex_changes" | "codex_items" | "codex_send" | "agent_send" | "receipt" | "task_reviews"),
                 "approvals" => matches!(name, "receipt" | "codex_pending" | "codex_interactions" | "codex_respond" | "agent_pending" | "agent_respond" | "codex_read" | "agent_read"),
-                _ => matches!(name, "dispatch_policy" | "command" | "read" | "write" | "edit" | "fs" | "git" | "codex_create" | "codex_send" | "codex_read" | "codex_wait" | "receipt" | "agent_create" | "agent_send" | "agent_read" | "agent_wait"),
+                _ => matches!(name, "notify_control" | "notify_status" | "notification_ack" | "dispatch_policy" | "command" | "read" | "write" | "edit" | "fs" | "git" | "codex_create" | "codex_send" | "codex_read" | "codex_wait" | "receipt" | "agent_create" | "agent_send" | "agent_read" | "agent_wait"),
             }
         })
         .map(|op| {

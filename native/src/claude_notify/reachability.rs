@@ -6,6 +6,8 @@ use super::*;
 pub(super) struct Reachability {
     pub state: String,
     pub reason: String,
+    pub attempts: u64,
+    pub delivery_status: String,
     challenge_hash: String,
     source_id: String,
     expires_at: i64,
@@ -15,6 +17,8 @@ impl Default for Reachability {
         Self {
             state: "unverified".into(),
             reason: "handshake-required".into(),
+            attempts: 0,
+            delivery_status: "not-attempted".into(),
             challenge_hash: String::new(),
             source_id: String::new(),
             expires_at: 0,
@@ -36,29 +40,24 @@ impl Reachability {
 }
 
 pub(super) async fn verify(source_id: &str, args: &Value) -> Result<Value> {
+    verify_in(&directory(), source_id, args, &settings()?, &Cli {service:std::sync::Weak::new()}).await
+}
+pub(super) async fn verify_in(dir: &Path, source_id: &str, args: &Value, settings: &Value, executor: &impl Executor) -> Result<Value> {
     let target = session_id(string(args, "target"))?;
-    let dir = directory();
     let code = id();
     let digest = hash(&code);
     let now = chrono::Utc::now().timestamp();
-    let b = {
+    {
         let _guard = LOCK.lock().await;
-        let b = records(&dir)?
-            .into_iter()
-            .find(|b| {
-                b.source_id == source_id
-                    && b.channel == Channel::ClaudeSession
-                    && b.target.as_deref() == Some(&target)
-            })
-            .ok_or_else(|| json!({
-                "code":"NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE",
-                "message":"Bind this Claude cloud-session target to an authorized task from this same control source before verification. Pass notify.channel=claude-session and notify.target on codex_create or codex_send, wait for its dispatch receipt, then retry notify_control(action:verify,target). Binding is turn-scoped. Do not create or resend work solely to verify notifications.",
-                "target":target,
-                "bind":{"via":"act","ops":["codex_create","codex_send"],"args":{"notify":{"channel":"claude-session","target":target}}},
-                "next":{"via":"act","op":"notify_control","args":{"action":"verify","target":target},"after":"successful task binding"},
-                "guide":{"tool":"guide","arguments":{"topic":"notify"}}
-            }).to_string())?;
-        let settings = settings()?;
+        let bound = records(&dir)?.iter().any(|b| b.source_id == source_id && b.channel == Channel::ClaudeSession && b.target.as_deref() == Some(&target));
+        let registered=State::load(&dir)?.targets.iter().any(|t|t.registered && t.source_id==source_id && t.channel==Channel::ClaudeSession && t.target==target);
+        if !bound && !registered { return Err(json!({
+            "code":"NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE",
+            "message":"Call notify_control action:bind with this cloud-session target to register and verify it in one step. Optionally include an existing source-owned threadId to bind its wakeups without resending work. Future dispatches need the returned notify object.",
+            "target":target,
+            "next":{"via":"act","op":"notify_control","args":{"action":"bind","target":target}},
+            "guide":{"tool":"guide","arguments":{"topic":"notify"}}
+        }).to_string()); }
         if settings["notificationsEnabled"] == false {
             return Err("NOTIFICATIONS_DISABLED".into());
         }
@@ -70,27 +69,27 @@ pub(super) async fn verify(source_id: &str, args: &Value) -> Result<Value> {
         if t.tokens == 0 {
             return Err("NOTIFICATION_TOKEN_WAIT".into());
         }
+        t.reachability.expire(now);
         if !t.reachability.challenge_hash.is_empty() {
             return Err("HANDSHAKE_PENDING: receive the code or retry after expiry".into());
         }
         t.tokens -= 1;
         t.reachability = Reachability {
             reason: "handshake-pending".into(),
+            attempts: t.reachability.attempts + 1,
+            delivery_status: "sending".into(),
             challenge_hash: digest.clone(),
             source_id: source_id.into(),
             expires_at: now + 300,
             ..Default::default()
         };
         state.save(&dir)?;
-        b
-    };
+    }
     // The code exists only in the delivered message; receipts and status cannot confirm it.
     let body = format!("[ARC] Notification reachability check. Only after receiving this message in this conversation, call act with {}. This confirms delivery, not task acceptance.", json!({"op":"notification_ack","args":{"target":target,"code":code}}));
-    let sent = deliver_message(
-        &Cli {
-            service: std::sync::Weak::new(),
-        },
-        &b,
+    let sent = deliver_target(
+        executor,
+        &target,
         &body,
     )
     .await;
@@ -101,12 +100,14 @@ pub(super) async fn verify(source_id: &str, args: &Value) -> Result<Value> {
         Channel::ClaudeSession,
         &target,
         chrono::Utc::now().timestamp(),
-        &settings()?,
+        settings,
     );
-    if sent == "failed" && t.reachability.challenge_hash == digest {
-        t.reachability.fail("handshake-delivery-failed");
+    if t.reachability.challenge_hash == digest || t.reachability.state == "verified" {
+        t.reachability.delivery_status=sent.into();
+        if sent == "failed" {t.reachability.fail("handshake-delivery-failed");}
     }
-    let result = json!({"target":target,"reachability":t.reachability.state,"reason":t.reachability.reason,"expiresAt":now+300,"hint":"Confirm only with the code received in the target conversation via notification_ack. A successful send alone does not verify reachability."});
+    let mut result = json!({"target":target,"reachability":t.reachability.state,"reason":t.reachability.reason,"expiresAt":t.reachability.expires_at,"verificationAttempts":t.reachability.attempts,"deliveryStatus":sent,"hint":"Confirm only with the code received in the target conversation via notification_ack. A successful send alone does not verify reachability."});
+    if sent == "failed" {result["ok"]=json!(false);result["error"]=json!({"code":"NOTIFICATION_DELIVERY_FAILED","message":"The verification message could not be delivered. Inspect notification logs, correct the destination or transport, and retry notify_control action:verify. Binding remains registered."});}
     state.save(&dir)?;
     Ok(result)
 }

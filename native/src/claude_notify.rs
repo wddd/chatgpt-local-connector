@@ -705,7 +705,9 @@ impl Executor for Cli {
     }
 }
 async fn deliver_message(executor: &impl Executor, b: &Binding, body: &str) -> &'static str {
-    let session = b.target.as_deref().unwrap();
+    deliver_target(executor, b.target.as_deref().unwrap(), body).await
+}
+async fn deliver_target(executor: &impl Executor, session: &str, body: &str) -> &'static str {
     let result = executor
         .send(arguments(session, body))
         .await
@@ -724,8 +726,7 @@ async fn deliver_message(executor: &impl Executor, b: &Binding, body: &str) -> &
     crate::logs::record(
         "WARN",
         &format!(
-            "Claude notification delivery failed: thread={} turn={}: {error}",
-            b.thread_id, b.turn_id
+            "Claude notification delivery failed: {error}"
         ),
         None,
     );
@@ -2080,6 +2081,28 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+    #[tokio::test]
+    async fn registered_target_verifies_without_a_task_and_remains_source_scoped() {
+        // Regression: a cloud source with no turn binding could never start a reachability handshake.
+        let dir=Sandbox::new();let settings=json!({"notificationsEnabled":true});let args=json!({"target":"session_test"});
+        let bound=governance::bind_target_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
+        assert_eq!(bound["taskBound"],false);
+        let fake=Fake::success();
+        assert!(reachability::verify_in(&dir.0,"source-b",&args,&settings,&fake).await.unwrap_err().contains("NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE"));
+        let result=reachability::verify_in(&dir.0,"source-a",&args,&settings,&fake).await.unwrap();
+        assert_eq!(result["verificationAttempts"],1);assert_eq!(result["deliveryStatus"],"delivered");assert_ne!(result["reachability"],"verified");
+        let message=fake.calls.lock().unwrap()[0][1].clone();
+        let start=message.find('{').unwrap();let end=message.rfind('}').unwrap();
+        let delivered:Value=serde_json::from_str(&message[start..=end]).unwrap();
+        assert!(!result.to_string().contains(string(&delivered["args"],"code")));
+        assert!(reachability::acknowledge(&dir.0,"source-b",&delivered["args"]).is_err());
+        assert_eq!(reachability::acknowledge(&dir.0,"source-a",&delivered["args"]).unwrap()["reachability"],"verified");
+        let visible=governance::status_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
+        assert_eq!(visible["targets"][0]["verificationAttempts"],1);
+        let failed=reachability::verify_in(&dir.0,"source-a",&args,&settings,&Fake::new(Err("offline".into()))).await.unwrap();
+        assert_eq!(failed["ok"],false);assert_eq!(failed["verificationAttempts"],2);assert_eq!(failed["deliveryStatus"],"failed");
+        assert!(governance::status_in(&dir.0,"source-b",&args,chrono::Utc::now().timestamp(),&settings).unwrap()["targets"].as_array().unwrap().is_empty());
     }
     struct Fake {
         result: Result<Vec<u8>>,

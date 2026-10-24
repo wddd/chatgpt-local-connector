@@ -27,6 +27,8 @@ pub(super) struct Target {
     pub batches: Vec<Batch>,
     #[serde(default)]
     pub reachability: super::reachability::Reachability,
+    #[serde(default)]
+    pub registered: bool,
 }
 impl Target {
     pub fn refill(&mut self, now: i64, settings: &Value) {
@@ -178,6 +180,7 @@ impl State {
                     escalation_error: None,
                     batches: vec![],
                     reachability: Default::default(),
+                    registered: false,
                 });
                 self.targets.len() - 1
             });
@@ -328,7 +331,7 @@ pub(super) fn status_in(
                 }
             }
             let pending=bindings.iter().flat_map(|b|b.deliveries.iter().filter(|d|d.channel==channel && d.target==target && matches!(d.status.as_str(),"pending"|"sending")).map(|d|json!({"threadId":b.thread_id,"turnId":b.turn_id,"eventId":d.event_id,"kind":event(b,d)["kind"],"status":d.status,"createdAt":d.created_at,"nextAttemptAt":d.next_attempt_at,"timing":d.timing}))).collect::<Vec<_>>();
-            targets.push(json!({"channel":channel,"target":target,"reachability":t.reachability.state,"reason":t.reachability.reason,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"nextTokenAt":if t.tokens<capacity(settings){Some(t.refilled_at+refill_seconds(settings))}else{None},"breaker":t.breaker,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error,"pending":pending,"recentBatches":batches}));
+            targets.push(json!({"channel":channel,"target":target,"reachability":t.reachability.state,"reason":t.reachability.reason,"verificationAttempts":t.reachability.attempts,"lastVerificationDelivery":t.reachability.delivery_status,"registered":t.registered,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"nextTokenAt":if t.tokens<capacity(settings){Some(t.refilled_at+refill_seconds(settings))}else{None},"breaker":t.breaker,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error,"pending":pending,"recentBatches":batches}));
         }
         if !threads.iter().any(|v: &Value| v["threadId"] == b.thread_id) {
             let rule = state.rule(b);
@@ -373,7 +376,13 @@ pub(super) fn status_in(
             t["target"] == s.target && t["channel"] == serde_json::to_value(s.channel).unwrap()
         }) {
             let t = state.target(source_id, s.channel, &s.target, now, settings);
-            targets.push(json!({"channel":s.channel,"target":s.target,"reachability":t.reachability.state,"reason":t.reachability.reason,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"breaker":t.breaker,"pending":[],"recentBatches":t.batches,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error}));
+            targets.push(json!({"channel":s.channel,"target":s.target,"reachability":t.reachability.state,"reason":t.reachability.reason,"verificationAttempts":t.reachability.attempts,"lastVerificationDelivery":t.reachability.delivery_status,"registered":t.registered,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"breaker":t.breaker,"pending":[],"recentBatches":t.batches,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error}));
+        }
+    }
+    for t in state.targets.iter_mut().filter(|t| t.registered && t.source_id == source_id && args["threadId"].is_null() && args["target"].as_str().is_none_or(|v|v==t.target)) {
+        t.reachability.expire(now);
+        if !targets.iter().any(|v| v["target"] == t.target && v["channel"] == "claude-session") {
+            targets.push(json!({"channel":t.channel,"target":t.target,"registered":true,"reachability":t.reachability.state,"reason":t.reachability.reason,"verificationAttempts":t.reachability.attempts,"lastVerificationDelivery":t.reachability.delivery_status,"tokens":t.tokens,"breaker":t.breaker,"pending":[],"recentBatches":[]}));
         }
     }
     let deliveries=bindings.iter().flat_map(|b|b.deliveries.iter().filter(|d|args["target"].as_str().is_none_or(|t|d.target==t || d.subscription==t)).map(|d|json!({"subscriptionId":d.subscription,"channel":d.channel,"target":d.target,"op":"task_status","eventId":d.event_id,"kind":event(b,d)["kind"],"threadId":event(b,d)["threadId"],"taskId":event(b,d)["taskId"],"turnId":b.turn_id,"state":d.status,"attempts":d.failures+u32::from(matches!(d.status.as_str(),"sending"|"delivered"|"digested"|"callback-accepted")),"nextAttemptAt":d.next_attempt_at,"error":d.error,"timing":d.timing}))).collect::<Vec<_>>();
@@ -435,6 +444,22 @@ pub(super) fn status_in(
 }
 pub(crate) async fn notify_control(args: &Value) -> Result<Value> {
     let source_id = scope()?;
+    if args["action"] == "bind" {
+        let mut result = {
+            let _guard = LOCK.lock().await;
+            bind_target_in(&directory(), &source_id, args, chrono::Utc::now().timestamp(), &settings()?)?
+        };
+        if args["verify"] != false {
+            match super::reachability::verify(&source_id, args).await {
+                Ok(mut verification) => {
+                    if verification["ok"] == false { result["ok"]=json!(false);result["error"]=verification.as_object_mut().unwrap().remove("error").unwrap_or(Value::Null); }
+                    result["verification"] = verification;
+                }
+                Err(error) => { result["ok"]=json!(false); result["error"] = crate::egress::failure(&error); }
+            }
+        }
+        return Ok(result);
+    }
     if args["action"] == "verify" {
         return super::reachability::verify(&source_id, args).await;
     }
@@ -488,6 +513,7 @@ pub(super) fn control_in(
             .iter()
             .find(|s| s.source_id == source_id && s.target == target)
             .map(|s| s.channel)
+            .or_else(||state.targets.iter().find(|t|t.registered && t.source_id==source_id && t.target==target).map(|t|t.channel))
             .ok_or("NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE")?;
         let t = state.target(source_id, channel, &target, now, settings);
         let previous = t.breaker;
@@ -587,4 +613,16 @@ pub(super) fn apply_rebind(b: &mut Binding, rule: &Thread) {
             }
         }
     }
+}
+
+// Registration is source-scoped; it never becomes an implicit target for another conversation.
+pub(super) fn bind_target_in(dir: &Path, source_id: &str, args: &Value, now: i64, settings: &Value) -> Result<Value> {
+    let target=session_id(string(args,"target"))?;
+    if args["threadId"].is_string() {
+        control_in(dir, source_id, &json!({"action":"rebind","threadId":args["threadId"],"target":target}), now, settings)?;
+    }
+    let mut state=State::load(dir)?;
+    state.target(source_id,Channel::ClaudeSession,&target,now,settings).registered=true;
+    state.save(dir)?;
+    Ok(json!({"action":"bind","bound":true,"target":target,"threadId":args["threadId"],"taskBound":args["threadId"].is_string(),"notify":{"channel":"claude-session","target":target},"next":{"via":"act","op":"notify_control","args":{"action":"verify","target":target},"hint":"Binding persists if verification fails. Acknowledge only the code received in the target conversation. Pass the returned notify object on future dispatches; registration alone does not subscribe tasks."}}))
 }

@@ -1935,9 +1935,7 @@ test('AX unbound cloud-session verification explains binding and its next call',
   assert.equal(response.response.isError,true);
   const error = response.result.error;
   assert.equal(error.code,'NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE');
-  assert.deepEqual(error.bind.ops,['codex_create','codex_send']);
-  assert.deepEqual(error.bind.args.notify,{channel:'claude-session',target});
-  assert.deepEqual(response.result.next.args,{action:'verify',target});
+  assert.deepEqual(response.result.next.args,{action:'bind',target});
   assert.equal(error.guide.arguments.topic,'notify');
 });
 
@@ -2076,4 +2074,29 @@ test('AX3 release hands off an idle connector thread without closing another own
   assert.equal(release.result.released,true);
   const archive=await completed('codex_archive',{threadId:task.threadId,release:true,requestId:randomUUID()});
   assert.equal(archive.result.archived,true);
+});
+
+
+test('AX3 cloud binding is discoverable before dispatch and repairs an unbound task', async () => {
+  // Regression: cloud controls had no bound target or verification attempts and had to resubmit work to bind.
+  const guide=await call('guide',{});
+  assert.ok(guide.result.ops.some((o:any)=>o.op==='notify_control'));
+  const target='session_ax3_registered';
+  const bound=await call('notify_control',{action:'bind',target,verify:false});
+  assert.equal(bound.result.bound,true,JSON.stringify(bound.result));assert.equal(bound.result.taskBound,false);
+  const status=await call('notify_status',{target});
+  assert.equal(status.result.targets[0].registered,true);assert.equal(status.result.targets[0].verificationAttempts,0);
+  const created=await dispatchFixture('fixture-dispatch');
+  const repaired=await call('notify_control',{action:'bind',target,threadId:created.threadId,verify:false});
+  assert.equal(repaired.result.taskBound,true,JSON.stringify(repaired.result));
+  const task=await call('notify_status',{threadId:created.threadId});
+  assert.equal(task.result.threads[0].target,target);
+  const settings=await management('task-settings');
+  try {
+    await management('task-settings','PUT',{notificationsEnabled:false});
+    const attempted=await call('notify_control',{action:'bind',target:'session_ax3_disabled'});
+    assert.equal(attempted.response.isError,true);assert.equal(attempted.result.bound,true);
+    assert.match(attempted.result.error.message,/NOTIFICATIONS_DISABLED/);
+    assert.equal((await call('notify_status',{target:'session_ax3_disabled'})).result.targets[0].registered,true);
+  } finally {await management('task-settings','PUT',settings);}
 });
