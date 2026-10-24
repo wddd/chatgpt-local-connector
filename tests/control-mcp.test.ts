@@ -1764,3 +1764,30 @@ test('historical review file counts stop at the next clean turn baseline',async(
   assert.equal(previous.turns[0].turnId,created.turnId);
   assert.deepEqual(previous.turns[0].files,[{path:'first.txt',added:1,removed:1}]);
 });
+
+test('AX binary transfers verify bytes and reject duplicate append offsets', async () => {
+  // Regression: hand-copied base64 silently corrupted host files and append retries duplicated bytes.
+  const file = path.join(directory, 'binary-transfer.bin');
+  const sha = (data: Buffer) => createHash('sha256').update(data).digest('hex');
+  const first = Buffer.from([0, 255, 128, 10]);
+  const second = Buffer.from([42, 0, 1]);
+  const joined = Buffer.concat([first, second]);
+  const write = (params: Record<string, unknown>, requestId = randomUUID()) => completed('fs', {action:'writeFile',params:{path:file,...params},requestId});
+  assert.equal((await write({dataBase64:first.toString('base64'),expectedSha256:sha(first)})).result.sha256, sha(first));
+  const bad = await write({dataBase64:second.toString('base64'),append:true,offset:first.length,expectedSha256:sha(first)});
+  assert.equal(bad.state, 'failed');
+  assert.match(JSON.stringify(bad.result.error), /SHA256_MISMATCH/);
+  assert.deepEqual(await readFile(file), first);
+  const params = {dataBase64:second.toString('base64'),append:true,offset:first.length,expectedSha256:sha(joined)};
+  const request = randomUUID();
+  assert.equal((await write(params, request)).result.sizeBytes, joined.length);
+  assert.equal((await write(params, request)).result.sizeBytes, joined.length);
+  assert.equal((await write(params)).state, 'failed');
+  assert.deepEqual(await readFile(file), joined);
+  const invalid = await completed('fs', {action:'fetchFile', params:{path:file,url:'http://example.invalid/file'}, requestId:randomUUID()});
+  assert.equal(invalid.state, 'failed');
+  assert.match(JSON.stringify(invalid.result.error), /INVALID_URL/);
+  const guide = (await call('guide')).result;
+  assert.ok(guide.ops.some((op: any) => op.op === 'write'));
+  assert.ok(guide.ops.some((op: any) => op.op === 'fs'));
+});

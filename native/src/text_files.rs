@@ -1,5 +1,6 @@
 //! Atomic UTF-8 edits through the same receipt owner as other writes.
 use crate::*;
+pub(crate) mod binary;
 use std::io::Write;
 
 pub async fn write(c: &control::Control, operation: &str, args: &Value) -> Result<Value> {

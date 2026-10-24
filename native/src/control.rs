@@ -482,6 +482,9 @@ impl Control {
         Ok(timeline.response(thread, after))
     }
     pub async fn request(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
+        if method == "fs/fetchFile" || (method == "fs/writeFile" && ["expectedSha256", "append", "offset"].iter().any(|key| args.get(*key).is_some())) {
+            return crate::text_files::binary::transfer(method, &args).await;
+        }
         if method == "turn/start" {
             let thread = string(&args, "threadId");
             let baseline = if let Some(cwd) = args["cwd"].as_str() {
