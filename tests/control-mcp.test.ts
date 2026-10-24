@@ -1954,3 +1954,17 @@ test('AX2 failed receipts report failure through MCP and CLI without losing iden
   const command=await completed('command',{cmd:'fixture-failed-command',cwd:directory,requestId:randomUUID()});
   assert.equal(command.error.exitCode,7);
 });
+
+
+test('AX2 CLI guides accept full views and subcommands expose help without execution', async () => {
+  // Regression: CLI rejected query-guide view:full and treated subcommand --help as an invalid invocation.
+  const cli=(args:string[],input?:unknown)=>JSON.parse(execFileSync(fixtureCommand,['cli',...args],{env:fixtureEnv,input:input?JSON.stringify(input):undefined,encoding:'utf8',stdio:['pipe','pipe','pipe']}));
+  const full=cli(['control','guide','--stdin'],{view:'full'});
+  assert.equal(full.ok,true);
+  assert.ok(full.result.ops.some((op:any)=>op.op==='write'));
+  const cached=cli(['control','guide','--stdin'],{view:'full',knownGuideHash:full.result.guideHash});
+  assert.equal(cached.result.unchanged,true);
+  for(const command of [['app','replace'],['app','snapshot'],['wait'],['control'],['source','update']]) {
+    const help=cli([...command,'--help']);assert.equal(help.ok,true);assert.ok(help.result.commands.length>0);
+  }
+});

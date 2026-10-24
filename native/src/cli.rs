@@ -806,6 +806,16 @@ pub async fn run(args: Vec<String>) -> i32 {
         }
     }
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
+    if words.last() == Some(&"--help") && words.len() > 1 {
+        let prefix = &words[..words.len()-1];
+        let extras = ["wait --op <operation> [--control] [--stdin] --until <condition> [--timeout <seconds>]", "app snapshot [--out <directory>] [--stdin]", "control guide [op] [--stdin]"];
+        let commands: Vec<_> = COMMANDS.iter().chain(extras.iter()).filter(|command| {
+            let slots: Vec<_> = command.split_whitespace().collect();
+            prefix.iter().enumerate().all(|(index, arg)| slots.get(index).is_some_and(|slot| *slot == *arg || slot.starts_with(['<', '['])))
+        }).map(|command| format!("cli {command}")).collect();
+        if commands.is_empty() { return print_error("Unknown command", "cli help", &words); }
+        return print_output(json!({"schemaVersion":1,"ok":true,"result":{"commands":commands,"schema":"Use cli control guide <op> for control op arguments, or cli schema <operation> for management arguments. JSON arguments are read with --stdin."}}));
+    }
     let usage = match command_usage(&words) {
         Ok(usage) => usage,
         Err((message, usage)) => {

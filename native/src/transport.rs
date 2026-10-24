@@ -456,7 +456,7 @@ async fn local_control(s: &Arc<Service>, body: Value) -> Result<Value> {
     let source = ControlSource::Local(&s.execution);
     let name = string(&body, "op");
     let tool = if name == "guide" {
-        "guide"
+        "query"
     } else {
         catalog()["ops"]
             .as_array()

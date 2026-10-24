@@ -488,3 +488,7 @@ Wait for the launcher's `isolated-ready` JSON line. It is emitted only after Cor
 `--state-dir` is a global CLI option placed before the command. It requires an existing absolute directory and never falls back to the installed instance. It applies to `control`, `wait`, `app snapshot`, and other CLI commands. `ARC_STATE_DIR` remains available for subprocess environments. Stop the launcher with Ctrl-C; the existing supervisor drains its own Core and Desktop. The temporary state directory is retained for inspection.
 
 Only one development supervisor may use the development bundle identity and Vite port 5187 at a time. The production installation does not use that port. Close another development instance before starting this one. ARC state isolation does not clone or isolate the upstream Agent account/profile; select harmless projects and tasks explicitly. Local device permissions still apply. Linux supports explicit CLI state targeting for headless instances; the Desktop launcher requires macOS or Windows.
+
+## Scoped help and control guides
+
+Append `--help` to a command or command group, such as `cli app replace --help`, `cli wait --help`, or `cli control --help`. Help is local and does not execute the command. For the complete control index, use `printf '%s' '{"view":"full"}' | arc cli control guide --stdin`. This routes through the query `guide` op and also accepts `topic`, `op`, and `knownGuideHash`; `cli control guide codex_send` remains the single-op shortcut. The frozen MCP `guide` tool retains its original `topic`/`op` parameters.
