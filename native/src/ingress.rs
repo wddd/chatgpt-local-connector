@@ -24,6 +24,8 @@ pub struct Ingress {
     tunnel: Mutex<Option<Child>>,
     https: Mutex<Option<tokio::task::JoinHandle<()>>>,
     managed_tunnel: Mutex<Option<crate::https_tunnel::Tunnel>>,
+    supervisor: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    pub(crate) requests: Arc<crate::ingress_observation::Counters>,
     relay: Mutex<Option<crate::relay::transport::Runtime>>,
     pub(crate) mcp_url: Mutex<String>,
     starting: std::sync::atomic::AtomicBool,
@@ -33,11 +35,18 @@ pub struct Ingress {
     control_plane: Mutex<Value>,
     tunnel_dependency: Mutex<Value>,
     tunnel_error: Mutex<String>,
+    tunnel_error_at: Mutex<Option<String>>,
     pub(crate) operation: Mutex<()>,
     pub(crate) retired: std::sync::atomic::AtomicBool,
     pub connected: std::sync::atomic::AtomicBool,
     stopping: std::sync::atomic::AtomicBool,
-    ready_logged: std::sync::atomic::AtomicBool,
+}
+impl Drop for Ingress {
+    fn drop(&mut self) {
+        if let Some(supervisor) = self.supervisor.get_mut().take() {
+            supervisor.abort();
+        }
+    }
 }
 impl Ingress {
     pub fn new(
@@ -69,10 +78,11 @@ impl Ingress {
                 dir.file_name().and_then(|name| name.to_str()),
             )),
             stopping: std::sync::atomic::AtomicBool::new(false),
-            ready_logged: std::sync::atomic::AtomicBool::new(false),
             tunnel: Mutex::new(None),
             https: Mutex::new(None),
             managed_tunnel: Mutex::new(None),
+            supervisor: Mutex::new(None),
+            requests: Default::default(),
             relay: Mutex::new(None),
             mcp_url: Mutex::new(String::new()),
             starting: std::sync::atomic::AtomicBool::new(false),
@@ -82,15 +92,16 @@ impl Ingress {
             control_plane: Mutex::new(Value::Null),
             tunnel_dependency: Mutex::new(Value::Null),
             tunnel_error: Mutex::new(String::new()),
+            tunnel_error_at: Mutex::new(None),
             operation: Mutex::new(()),
             retired: std::sync::atomic::AtomicBool::new(false),
             connected: std::sync::atomic::AtomicBool::new(false),
         }))
     }
     pub(crate) async fn validate_draft_url(&self, url: &str) -> Result<()> {
-        let mut managed = self.managed_tunnel.lock().await;
-        let tunnel = managed.as_mut().ok_or("MCP URL is not ready")?;
-        if !tunnel.ready().await?
+        let managed = self.managed_tunnel.lock().await;
+        let tunnel = managed.as_ref().ok_or("MCP URL is not ready")?;
+        if tunnel.health["state"] != "ready"
             || url.is_empty()
             || !(tunnel.url == url || tunnel.urls.iter().any(|u| u == url))
         {
@@ -190,7 +201,7 @@ impl Ingress {
         let status = self.status().await?;
         let meta = self.meta.lock().await;
         let config = status["config"].clone();
-        let mut result = json!({"health":status["tunnel"]["health"],"controlPlane":status["tunnel"]["controlPlane"],"tunnelDependency":status["tunnel"]["dependency"],"tunnelError":status["tunnel"]["lastError"],"discoveredUrls":status["discoveredUrls"],"id":self.id,"name":meta["name"],"controlSource":meta["controlSource"],"transport":meta["transport"],"provider":config["httpsProvider"],"enabled":meta["enabled"],"auth":meta["auth"],"toolPolicy":meta["toolPolicy"],"config":config,"running":status["connection"]["running"],"state":status["tunnel"]["state"],"error":status["tunnel"]["error"],"url":status["connection"]["mcpUrl"],"verification":status["core"]["chatgpt"],"logs":status["logs"]});
+        let mut result = json!({"health":status["tunnel"]["health"],"controlPlane":status["tunnel"]["controlPlane"],"tunnelDependency":status["tunnel"]["dependency"],"tunnelError":if status["tunnel"]["state"]=="ready"{json!("")}else if status["tunnel"]["health"].is_object(){status["tunnel"]["error"].clone()}else{status["tunnel"]["lastError"].clone()},"lastTunnelError":status["tunnel"]["lastError"],"lastTunnelErrorAt":status["tunnel"]["lastErrorAt"],"requests":status["requests"],"discoveredUrls":status["discoveredUrls"],"id":self.id,"name":meta["name"],"controlSource":meta["controlSource"],"transport":meta["transport"],"provider":config["httpsProvider"],"enabled":meta["enabled"],"auth":meta["auth"],"toolPolicy":meta["toolPolicy"],"config":config,"running":status["connection"]["running"],"state":status["tunnel"]["state"],"error":status["tunnel"]["error"],"url":status["connection"]["mcpUrl"],"verification":status["core"]["chatgpt"],"logs":status["logs"]});
         if meta["auth"] == "oauth" {
             result["oauth"] = self.oauth.lock().await.snapshot()?;
         }
@@ -234,6 +245,7 @@ impl Ingress {
         drop(meta);
         if matches!(level, "WARN" | "WARNING" | "ERROR" | "FATAL" | "PANIC") {
             *self.tunnel_error.lock().await = msg.chars().take(1200).collect();
+            *self.tunnel_error_at.lock().await = Some(now());
         }
         let mut logs = self.logs.lock().await;
         logs.push(json!({"time":now(),"level":level,"msg":msg}).to_string());
@@ -242,26 +254,27 @@ impl Ingress {
         }
         crate::logs::record(level, &msg, Some(&self.id));
     }
-    pub async fn status(&self) -> Result<Value> {
-        // Cleanup must not race a start/stop operation; status remains readable during downloads.
-        let lifecycle = self.operation.try_lock().ok();
+    async fn refresh_health(&self) -> Result<()> {
+        // Only the ingress supervisor performs recovery; reads never restart providers.
+        let Ok(_lifecycle) = self.operation.try_lock() else {
+            return Ok(());
+        };
         let mut child = self.tunnel.lock().await;
         let exited = if let Some(c) = child.as_mut() {
             c.try_wait().map_err(|e| e.to_string())?.is_some()
         } else {
             false
         };
-        if exited && lifecycle.is_some() {
+        if exited {
             child.take();
             self.connected
                 .store(false, std::sync::atomic::Ordering::SeqCst);
 
             *self.failure.lock().await = "The connection process exited. Reconnect.".into();
         }
-        let tunnel_running = child.is_some();
         drop(child);
         let mut https = self.https.lock().await;
-        if lifecycle.is_some() && https.as_ref().is_some_and(|task| task.is_finished()) {
+        if https.as_ref().is_some_and(|task| task.is_finished()) {
             https.take();
             self.connected
                 .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -272,17 +285,15 @@ impl Ingress {
         drop(https);
         let starting = self.starting.load(std::sync::atomic::Ordering::SeqCst);
         let mut managed = self.managed_tunnel.lock().await;
-        if lifecycle.is_some() && !https_running && !starting {
+        if !https_running && !starting {
             if let Some(tunnel) = managed.take() {
                 tunnel.stop().await;
             }
             self.mcp_url.lock().await.clear();
         }
-        let mut health_error = String::new();
-        let managed_ready = if let Some(tunnel) = managed.as_mut() {
+        if let Some(tunnel) = managed.as_mut() {
             match tunnel.ready().await {
-                Ok(ready) => {
-                    health_error = tunnel.health_error.clone();
+                Ok(_) => {
                     let mut url = self.mcp_url.lock().await;
                     if *url != tunnel.url {
                         *url = tunnel.url.clone();
@@ -291,9 +302,8 @@ impl Ingress {
                         *v = json!({"binding":binding(&settings),"endpoint":*url,"code":id(),"verifiedAt":null});
                         save(&self.dir.join("verification.json"), &v)?;
                     }
-                    ready && !url.is_empty()
                 }
-                Err(error) if lifecycle.is_some() => {
+                Err(error) => {
                     *self.failure.lock().await = error;
                     self.connected
                         .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -304,13 +314,28 @@ impl Ingress {
                         task.abort();
                     }
                     self.mcp_url.lock().await.clear();
-                    false
                 }
-                Err(_) => false,
             }
-        } else {
-            true
-        };
+        }
+        Ok(())
+    }
+    pub async fn status(&self) -> Result<Value> {
+        let tunnel_running = self.tunnel.lock().await.is_some();
+        let https_running = self
+            .https
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|task| !task.is_finished());
+        let starting = self.starting.load(std::sync::atomic::Ordering::SeqCst);
+        let managed = self.managed_tunnel.lock().await;
+        let managed_ready = managed
+            .as_ref()
+            .is_none_or(|tunnel| tunnel.health["state"] == "ready");
+        let mut health_error = managed
+            .as_ref()
+            .map(|tunnel| tunnel.health_error.clone())
+            .unwrap_or_default();
         let urls = managed.as_ref().map(|t| t.urls.clone()).unwrap_or_default();
 
         let tunnel_health = managed
@@ -413,7 +438,6 @@ impl Ingress {
         } else {
             "starting"
         };
-        drop(lifecycle);
         let mut config = self.settings.lock().await.clone();
         config["configured"] = json!(configured(&config));
         for (key, flag) in secrets() {
@@ -424,20 +448,9 @@ impl Ingress {
         let v = self.verification.lock().await;
         let chat = json!({"ingressId":self.id,"controlSource":self.meta.lock().await["controlSource"],"code":v["code"],"verifiedAt":v["verifiedAt"],"challengeVerifiedAt":v["challengeVerifiedAt"],"firstOAuthRequestAt":v["firstOAuthRequestAt"],"firstMcpRequestAt":v["firstMcpRequestAt"],"lastProbe":v["lastProbe"]});
         let logs = self.logs.lock().await.clone();
-        if ready
-            && !self
-                .ready_logged
-                .swap(true, std::sync::atomic::Ordering::SeqCst)
-        {
-            self.log(
-                "INFO",
-                "Local ingress started; verify inbound access from the control source",
-            )
-            .await;
-        }
         let core = json!({"chatgpt":chat,"transport":{"state":state,"error":error}});
         Ok(
-            json!({"discoveredUrls":urls,"core":core,"connection":{"running":running,"updateAvailable":false,"mcpUrl":mcp_url},"config":config,"tunnel":{"state":state,"error":error,"health":tunnel_health,"controlPlane":control_plane,"dependency":self.tunnel_dependency.lock().await.clone(),"lastError":self.tunnel_error.lock().await.clone()},"connector":{"state":state},"logs":logs,"version":env!("ARC_BUILD_VERSION"),"platform":if cfg!(target_os="macos"){"darwin"}else if cfg!(windows){"win32"}else{"linux"},"deviceName":crate::device_name().await,"taskApprovalEnabled":self.execution.approval_mode()?,"autoOpenCodex":self.execution.auto_open_codex()?,"notificationsEnabled":crate::claude_notify::settings()?["notificationsEnabled"],"chatgptUrl":"https://chatgpt.com/plugins"}),
+            json!({"discoveredUrls":urls,"requests":self.requests.snapshot(),"core":core,"connection":{"running":running,"updateAvailable":false,"mcpUrl":mcp_url},"config":config,"tunnel":{"state":state,"error":error,"health":tunnel_health,"controlPlane":control_plane,"dependency":self.tunnel_dependency.lock().await.clone(),"lastError":self.tunnel_error.lock().await.clone(),"lastErrorAt":self.tunnel_error_at.lock().await.clone()},"connector":{"state":state},"logs":logs,"version":env!("ARC_BUILD_VERSION"),"platform":if cfg!(target_os="macos"){"darwin"}else if cfg!(windows){"win32"}else{"linux"},"deviceName":crate::device_name().await,"taskApprovalEnabled":self.execution.approval_mode()?,"autoOpenCodex":self.execution.auto_open_codex()?,"notificationsEnabled":crate::claude_notify::settings()?["notificationsEnabled"],"chatgptUrl":"https://chatgpt.com/plugins"}),
         )
     }
     pub(crate) async fn relay_ready(&self) -> Result<()> {
@@ -452,11 +465,13 @@ impl Ingress {
         crate::relay::transport::Runtime::ready(status).await
     }
     pub async fn stop(&self) -> Result<()> {
+        if let Some(supervisor) = self.supervisor.lock().await.take() {
+            supervisor.abort();
+            let _ = supervisor.await;
+        }
         crate::sources::connection_state(&self.id, false).await?;
         self.stopping
             .store(true, std::sync::atomic::Ordering::SeqCst);
-        self.ready_logged
-            .store(false, std::sync::atomic::Ordering::SeqCst);
         let was_connected = self
             .connected
             .swap(false, std::sync::atomic::Ordering::SeqCst);
@@ -507,6 +522,7 @@ impl Ingress {
         *self.failure.lock().await = String::new();
         *self.control_plane.lock().await = Value::Null;
         self.tunnel_error.lock().await.clear();
+        *self.tunnel_error_at.lock().await = None;
         if was_connected {
             self.log("INFO", "Connection closed").await;
         }
@@ -523,6 +539,27 @@ impl Ingress {
         }
         self.starting
             .store(false, std::sync::atomic::Ordering::SeqCst);
+        if result.is_ok() && self.supervisor.lock().await.is_none() {
+            let owner = Arc::downgrade(self);
+            *self.supervisor.lock().await = Some(tokio::spawn(async move {
+                let mut ticks = tokio::time::interval(Duration::from_secs(2));
+                ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                loop {
+                    ticks.tick().await;
+                    let Some(owner) = owner.upgrade() else {
+                        break;
+                    };
+                    if let Err(error) = owner.refresh_health().await {
+                        owner
+                            .log(
+                                "WARN",
+                                &format!("Ingress health observation failed: {error}"),
+                            )
+                            .await;
+                    }
+                }
+            }));
+        }
         result
     }
     async fn start_inner(self: &Arc<Self>) -> Result<()> {

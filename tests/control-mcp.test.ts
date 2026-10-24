@@ -9,6 +9,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
 import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createConnection } from 'node:net';
 import { identifyPolicy, normalizeSelection, presetPolicy, type ToolCatalog, type ToolPolicy } from '../ui/toolPolicy.ts';
 import { buildVersion } from '../tooling/version.mjs';
 import { toolFingerprint } from '../tooling/catalog.mjs';
@@ -847,6 +848,129 @@ async function dispatchFixture(model: string) {
   const r=await completed('codex_create',{project:directory,prompt:'harmless fixture',thread:{model},purpose:'self-test',requestId:randomUUID(),waitMs:1000});assert.equal(r.state,'completed');return r;
 }
 const fixtureRows = async () => JSON.parse(await readFile(path.join(directory,'dispatch-fixture.json'),'utf8'));
+
+test('guide exposes replay boundaries and durable writes survive concurrent retries and Core restart', async () => {
+  // Regression: a lost write response must not cause a repeated edit after concurrent retry or restart.
+  const guide = ((await client.callTool({name:'query',arguments:{op:'guide',args:{view:'full'}}})).structuredContent as {result:any}).result;
+  assert.ok(guide.ops.every((op:any) => ['read-only','receipt','original-receipt','read-back'].includes(op.retry.mode)));
+  assert.equal((await call('guide',{op:'edit'})).result.retry.mode,'receipt');
+  assert.equal((await call('guide',{op:'edit'})).result.retry.callerGenerated,true);
+  assert.equal((await call('guide',{op:'screen'})).result.retry.automaticRetry,false);
+  assert.equal((await call('guide',{op:'receipt'})).result.retry.mode,'original-receipt');
+  const file = path.join(directory, 'retry-edit.txt');
+  await writeFile(file, 'a');
+  const requestId = randomUUID();
+  const args = {path:file,edits:[{oldText:'a',newText:'aa'}],requestId};
+  const results = await Promise.all([completed('edit',args),completed('edit',args)]);
+  assert.ok(results.every(result => result.state === 'completed' && result.requestId === requestId));
+  assert.equal(await readFile(file,'utf8'),'aa');
+  // An independent writer changes the file after ARC's original operation.
+  await writeFile(file,'external change');
+  await client.close(); await connectFixture();
+  assert.equal((await completed('edit',args)).state,'completed');
+  assert.equal(await readFile(file,'utf8'),'external change');
+  const conflict = await call('edit',{...args,edits:[{oldText:'external change',newText:'overwritten'}]});
+  assert.equal(conflict.result.error.code,'REQUEST_ID_CONFLICT');
+  assert.equal(await readFile(file,'utf8'),'external change');
+});
+
+test('HTTP ingress observations correlate failures and dropped streams without retaining content or credentials', async () => {
+  // Regression: ingress failures before dispatch and disconnected waits were absent from control-call metrics.
+  const id = 'observed-http';
+  const token = `test-${id}`.padEnd(40,'x');
+  const ingress = await management('ingress','POST',{id,name:'Observed HTTP',controlSource:'custom',transport:'https',auth:'bearer',bearerToken:token,toolPolicy:'all',config:{httpsProvider:'custom',httpsUrl:'https://observed.example/mcp'}});
+  await management(`ingress/${id}/start`,'POST');
+  const port = ingress.config.httpsPort;
+  const url = `http://127.0.0.1:${port}/mcp`;
+  const ray = '0123456789abcdef-TEST';
+  try {
+    const unauthorized = await fetch(url,{headers:{'CF-Ray':ray}});
+    assert.equal(unauthorized.status,401); await unauthorized.text();
+    const invalid = await fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json','CF-Ray':ray},body:'PRIVATE_BODY_CONTENT'});
+    assert.equal(invalid.status,400); await invalid.text();
+    const ignoredRay = 'fedcba9876543210-TEST';
+    const ignoredFile = path.join(directory,'ignored-http-notification.txt');
+    const ignored = await fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json','CF-Ray':ignoredRay},body:JSON.stringify({jsonrpc:'2.0',method:'tools/call',params:{name:'act',arguments:{op:'write',args:{path:ignoredFile,content:'PRIVATE_IGNORED_CONTENT'}}}})});
+    assert.equal(ignored.status,202); await ignored.text();
+    await assert.rejects(()=>readFile(ignoredFile));
+    const timed = await new Promise<string>((resolve,reject) => {
+      const socket = createConnection({host:'127.0.0.1',port},() => socket.write(`POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nAuthorization: Bearer ${token}\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{`));
+      let response = '';
+      socket.setTimeout(20000,() => { socket.destroy(); reject(new Error('Body timeout response missing')); });
+      socket.on('data',data => response += data.toString());
+      socket.on('end',() => resolve(response)); socket.on('error',reject);
+    });
+    assert.ok(timed.startsWith('HTTP/1.1 408'));
+    const requestId = randomUUID();
+    const rpc = {jsonrpc:'2.0',id:randomUUID(),method:'tools/call',params:{name:'act',arguments:{op:'edit',requestId,args:{path:path.join(directory,'missing-observed.txt'),edits:[{oldText:'PRIVATE_ARGUMENT_CONTENT',newText:'x'}]}}}};
+    const mutation = await fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json','CF-Ray':ray},body:JSON.stringify(rpc)});
+    await mutation.json();
+    const abort = new AbortController();
+    const waiting = await fetch(url,{method:'POST',signal:abort.signal,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Accept:'application/json, text/event-stream','CF-Ray':ray},body:JSON.stringify({jsonrpc:'2.0',id:randomUUID(),method:'tools/call',params:{name:'query',arguments:{op:'inbox_wait',args:{timeoutMs:1800000,threadIds:['PRIVATE_WAIT_TARGET']}}}})});
+    await waiting.body!.getReader().read(); abort.abort();
+    const read = async () => (await call('logs',{ingressId:id,grep:'Ingress',limit:2000})).result.rows.filter((r:any)=>r.ingressId===id);
+    const rows:any[] = await eventually(read,rows=>rows.some((r:any)=>r.event==='response_dropped'));
+    assert.ok(rows.some(row=>row.event==='response_finished' && row.httpStatus===401 && row.cfRay===ray));
+    assert.ok(rows.some(row=>row.event==='response_finished' && row.httpStatus===408));
+    assert.ok(rows.some(row=>row.event==='request_dispatch' && row.op==='edit' && row.requestId===requestId));
+    assert.ok(rows.some(row=>row.event==='response_dropped' && row.op==='inbox_wait' && row.durationMs>=0));
+    assert.equal(rows.some(row=>row.event==='request_dispatch' && row.cfRay===ignoredRay),false);
+    const finished = rows.find(row=>row.event==='response_finished' && row.httpStatus===401);
+    assert.ok(rows.some(row=>row.event==='request_received' && row.traceId===finished.traceId && row.connectionId===finished.connectionId));
+    const correlated = (await call('logs',{ingressId:id,traceId:finished.traceId,limit:20})).result.rows;
+    assert.ok(correlated.every((row:any)=>row.traceId===finished.traceId && row.ingressId===id));
+    assert.ok(correlated.some((row:any)=>row.event==='request_received') && correlated.some((row:any)=>row.event==='response_finished'));
+    const serialized = JSON.stringify(rows);
+    for(const secret of [token,'PRIVATE_BODY_CONTENT','PRIVATE_ARGUMENT_CONTENT','PRIVATE_WAIT_TARGET','PRIVATE_IGNORED_CONTENT']) assert.equal(serialized.includes(secret),false);
+    const status = await management(`ingress/${id}`);
+    assert.equal(status.requests.inFlight,0);
+    assert.equal(status.requests.bodyTimeouts,1);
+    assert.ok(status.requests.responseDropped>=1);
+  } finally { await management(`ingress/${id}`,'DELETE'); }
+});
+
+test('managed Cloudflare recovers an exited provider without status polling and stops supervision on disconnect', {skip:process.platform==='win32'}, async () => {
+  // Regression: managed provider recovery depended on UI or status reads and stopped in unattended Core sessions.
+  const platform = process.platform === 'darwin' ? 'darwin' : 'linux';
+  const dependency = path.join(directory,'dependencies/cloudflare',`${platform}-${process.arch==='arm64'?'arm64':'amd64'}`);
+  await mkdir(dependency,{recursive:true});
+  const readyAddress = path.join(directory,'provider-ready-address.txt');
+  const script = `#!${process.execPath}
+const http = require('node:http'), fs = require('node:fs');
+const endpoint = process.argv[process.argv.indexOf('--metrics')+1];
+if(process.argv[process.argv.indexOf('--protocol')+1]!=='http2')process.exit(42);
+const server = http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({readyConnections:2}));});
+server.listen(Number(endpoint.split(':')[1]),'127.0.0.1',()=>fs.writeFileSync(${JSON.stringify(readyAddress)},'http://'+endpoint+'/ready'));
+`;
+  await writeFile(path.join(dependency,'cloudflared'),script); await chmod(path.join(dependency,'cloudflared'),0o700);
+  await writeFile(path.join(dependency,'installed.json'),JSON.stringify({sha256:createHash('sha256').update(script).digest('hex')}));
+  const id = 'supervised-cloudflare';
+  await management('ingress','POST',{id,name:'Supervised Cloudflare',controlSource:'claude',transport:'https',auth:'bearer',bearerToken:`test-${id}`.padEnd(40,'x'),toolPolicy:'all',config:{httpsProvider:'cloudflare',cloudflareMode:'named',cloudflareAuth:'token',cloudflareToken:'fixture-cloudflare-token',httpsUrl:'https://supervised.example/mcp',proxyMode:'direct'}});
+  try {
+    await management(`ingress/${id}/start`,'POST');
+    const initial = await management(`ingress/${id}`);
+    assert.equal(initial.state,'ready');
+    const ready = await readFile(readyAddress,'utf8');
+    process.kill(initial.health.pid,'SIGKILL');
+    // Poll only the provider's own loopback endpoint. ARC receives no reads during recovery.
+    await eventually(async()=>{try{return (await fetch(ready)).status;}catch{return 0;}},code=>code===200,80000);
+    const recovered = await eventually(()=>management(`ingress/${id}`),row=>row.health?.state==='ready' && row.health?.pid!==initial.health.pid);
+    assert.equal(recovered.health.restartCount,1);
+    assert.equal(recovered.health.readyConnections,2);
+    assert.ok(recovered.health.recoveredAt);
+    assert.equal(recovered.tunnelError,'');
+    assert.ok(recovered.lastTunnelErrorAt);
+    const rows = (await call('logs',{ingressId:id,grep:'Ingress provider',limit:2000})).result.rows.filter((r:any)=>r.ingressId===id);
+    assert.ok(rows.some((row:any)=>row.event==='provider_restart'));
+    assert.ok(recovered.health.lastDowntimeMs >= rows.find((row:any)=>row.event==='provider_restart').downtimeMs);
+    assert.ok(rows.some((row:any)=>row.event==='provider_health' && row.state==='degraded'));
+    assert.ok(rows.some((row:any)=>row.event==='provider_health' && row.previousState==='degraded' && row.state==='ready'));
+    await management(`ingress/${id}/stop`,'POST');
+    await new Promise(resolve=>setTimeout(resolve,2500));
+    assert.equal((await management(`ingress/${id}`)).state,'stopped');
+    await assert.rejects(()=>fetch(ready));
+  } finally { await management(`ingress/${id}`,'DELETE'); }
+});
 
 test('respond tokens preserve legacy responses, bind thread and reject reuse', async () => {
   // Regression: reused or wrong-thread response tokens are rejected.

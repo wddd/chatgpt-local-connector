@@ -1501,6 +1501,31 @@
               },
               "offline": {
                 "type": "boolean"
+              },
+              "grep": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "traceId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "requestId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "cfRay": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "event": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
               }
             },
             "additionalProperties": false

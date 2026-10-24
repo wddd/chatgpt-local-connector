@@ -564,6 +564,44 @@ pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -
     result
 }
 
+/// Explicit replay guarantees. An act envelope or an idempotentHint alone is not a receipt.
+pub fn retry_contract(op: &Value) -> Value {
+    let name = string(op, "name");
+    if op["annotations"]["readOnlyHint"] == true {
+        return json!({"mode":"read-only"});
+    }
+    if name == "receipt" {
+        return json!({"mode":"original-receipt","key":"requestId","instruction":"Read the original requestId. Do not replay approval or rejection blindly."});
+    }
+    if matches!(
+        name,
+        "codex_create"
+            | "codex_send"
+            | "codex_review"
+            | "codex_interrupt"
+            | "codex_respond"
+            | "codex_call"
+            | "agent_create"
+            | "agent_send"
+            | "agent_review"
+            | "agent_interrupt"
+            | "agent_respond"
+            | "command"
+            | "fs"
+            | "process"
+            | "mcp"
+            | "codex_thread"
+            | "edit"
+            | "write"
+            | "git_write"
+    ) {
+        return json!({"mode":"receipt","key":"requestId","callerGenerated":true,
+            "instruction":"Generate and retain a UUID before the first write. Reuse it with identical arguments. After timeout, read receipt; unconfirmed is not permission to submit again."});
+    }
+    json!({"mode":"read-back","automaticRetry":false,
+        "instruction":"No ARC receipt replay protection. Read current state or the upstream result before retrying a side effect. An outer act requestId does not add replay protection."})
+}
+
 fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> Value {
     let ops = ops
         .iter()
@@ -578,7 +616,7 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
             .unwrap();
         let spec = source_spec(spec, origin);
         let spec = &spec;
-        return json!({"op":name,"via":via(spec),"description":spec["description"],"inputSchema":spec["inputSchema"],"signature":signature(spec),"example":example(spec)});
+        return json!({"op":name,"via":via(spec),"description":spec["description"],"inputSchema":spec["inputSchema"],"signature":signature(spec),"example":example(spec),"retry":retry_contract(spec)});
     }
     let topic = args["topic"].as_str().unwrap_or("loop");
     let full = args["view"] == "full";
@@ -630,7 +668,7 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
                 )
         })
         .map(|op| {
-            let mut entry = json!({"op":op["name"],"via":via(op),"signature":signature(op)});
+            let mut entry = json!({"op":op["name"],"via":via(op),"signature":signature(op),"retry":{"mode":retry_contract(op)["mode"]}});
             if topic != "loop" {
                 entry["description"] = json!(op["description"]
                     .as_str()

@@ -37,6 +37,7 @@ pub mod https_tunnel;
 pub mod i18n;
 pub mod images;
 pub mod ingress;
+mod ingress_observation;
 pub mod kernel;
 pub mod local_access;
 pub mod logs;

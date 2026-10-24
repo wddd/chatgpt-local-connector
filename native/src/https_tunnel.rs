@@ -10,8 +10,10 @@ pub struct Tunnel {
     child: Child,
     command: tokio::process::Command,
     unhealthy_since: Option<Instant>,
+    degraded_since: Option<Instant>,
     stable_since: Option<Instant>,
     restart_attempts: u32,
+    restart_count: u64,
     ever_ready: bool,
     pub health: Value,
     owner: std::sync::Weak<crate::ingress::Ingress>,
@@ -50,17 +52,30 @@ impl Drop for Tunnel {
 }
 impl Tunnel {
     pub async fn stop(mut self) {
+        if let Some(owner) = self.owner.upgrade() {
+            crate::ingress_observation::tunnel(
+                &owner.id,
+                "provider_stop",
+                json!({"provider":self.provider,"pid":self.child.id()}),
+            );
+        }
         if let Some(session) = self.pinggy.take() {
             session.stop().await;
         }
         let _ = self.child.kill().await;
     }
     pub async fn ready(&mut self) -> Result<bool> {
+        let previous_state = self.health["state"].clone();
+        let previous_connections = self.health["readyConnections"].clone();
+        let downtime = self
+            .degraded_since
+            .map(|at| at.elapsed().as_millis() as u64);
         self.health_error.clear();
         let mut result = self.probe_ready().await;
         if matches!(result, Ok(true)) {
             self.ever_ready = true;
             self.unhealthy_since = None;
+            self.degraded_since = None;
             self.health["retryAfterSeconds"] = Value::Null;
             self.health["lastReadyAt"] = json!(now());
             if self.stable_since.get_or_insert_with(Instant::now).elapsed()
@@ -69,6 +84,7 @@ impl Tunnel {
                 self.restart_attempts = 0;
             }
         } else {
+            self.degraded_since.get_or_insert_with(Instant::now);
             self.stable_since = None;
             let elapsed = self
                 .unhealthy_since
@@ -77,6 +93,14 @@ impl Tunnel {
             let backoff = (60u64.saturating_mul(1u64 << self.restart_attempts.min(3))).min(300);
             if self.provider == "cloudflare" && self.ever_ready {
                 if elapsed >= Duration::from_secs(backoff) {
+                    self.restart_count += 1;
+                    if let Some(owner) = self.owner.upgrade() {
+                        crate::ingress_observation::tunnel(
+                            &owner.id,
+                            "provider_restart",
+                            json!({"provider":self.provider,"restartCount":self.restart_count,"downtimeMs":self.degraded_since.map(|at|at.elapsed().as_millis() as u64)}),
+                        );
+                    }
                     let _ = self.child.kill().await;
                     for reader in self.error_readers.drain(..) {
                         reader.abort();
@@ -124,6 +148,7 @@ impl Tunnel {
         }
         self.health["pid"] = json!(self.child.id());
         self.health["restartAttempts"] = json!(self.restart_attempts);
+        self.health["restartCount"] = json!(self.restart_count);
         self.health["state"] = json!(if matches!(result, Ok(true)) {
             "ready"
         } else if self.ever_ready {
@@ -132,6 +157,24 @@ impl Tunnel {
             "starting"
         });
         self.health["observedAt"] = json!(now());
+        if previous_state != self.health["state"]
+            || previous_connections != self.health["readyConnections"]
+        {
+            let ready = self.health["state"] == "ready";
+            if !ready && self.ever_ready && previous_state != "degraded" {
+                self.health["lastDegradedAt"] = json!(now());
+            } else if ready && previous_state == "degraded" {
+                self.health["recoveredAt"] = json!(now());
+                self.health["lastDowntimeMs"] = json!(downtime);
+            }
+            if let Some(owner) = self.owner.upgrade() {
+                crate::ingress_observation::tunnel(
+                    &owner.id,
+                    "provider_health",
+                    json!({"provider":self.provider,"previousState":previous_state,"state":self.health["state"],"previousReadyConnections":previous_connections,"readyConnections":self.health["readyConnections"],"restartCount":self.restart_count,"downtimeMs":downtime}),
+                );
+            }
+        }
         let message = match &result {
             Ok(true) => String::new(),
             Ok(false) if !self.health_error.is_empty() => self.health_error.clone(),
@@ -142,6 +185,8 @@ impl Tunnel {
         self.health["error"] = json!(message);
         self.health["code"] = json!(if matches!(result, Ok(true)) {
             "READY"
+        } else if self.health["processState"] == "exited" {
+            "PROVIDER_EXITED"
         } else if self.health["readyConnections"] == 0 {
             "EDGE_UNAVAILABLE"
         } else {
@@ -166,7 +211,10 @@ impl Tunnel {
         result
     }
     async fn probe_ready(&mut self) -> Result<bool> {
+        self.health["readyConnections"] = Value::Null;
+        self.health["httpStatus"] = Value::Null;
         if self.child.try_wait().map_err(|e| e.to_string())?.is_some() {
+            self.health["processState"] = json!("exited");
             let mut code = None;
             for mut reader in self.error_readers.drain(..) {
                 match tokio::time::timeout(Duration::from_secs(2), &mut reader).await {
@@ -189,6 +237,7 @@ impl Tunnel {
                 self.provider
             ));
         }
+        self.health["processState"] = json!("running");
         if matches!(self.provider.as_str(), "pinggy" | "localxpose") {
             let Some(discovered) = self.discovered.borrow().clone() else {
                 return Ok(false);
@@ -213,8 +262,6 @@ impl Tunnel {
             self.url = url;
             return Ok(true);
         }
-        self.health["readyConnections"] = Value::Null;
-        self.health["httpStatus"] = Value::Null;
         let client = reqwest::Client::builder()
             .no_proxy()
             .timeout(Duration::from_secs(2))
@@ -487,8 +534,10 @@ async fn spawn(
         child,
         command: cmd,
         unhealthy_since: None,
+        degraded_since: None,
         stable_since: None,
         restart_attempts: 0,
+        restart_count: 0,
         ever_ready: false,
         health: json!({}),
         owner: Arc::downgrade(owner),

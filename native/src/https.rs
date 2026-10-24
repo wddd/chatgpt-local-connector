@@ -51,7 +51,13 @@ pub async fn listen(
                     Some(_) = connections.join_next(), if !connections.is_empty() => {},
                     accepted = listener.accept() => {
                         let Ok((stream, _)) = accepted else { break };
-                        if connections.len() >= 128 { continue; }
+                        let connection = id();
+                        if connections.len() >= 128 {
+                            if let Some(service) = service.upgrade() {
+                                crate::ingress_observation::connection(&service, &connection, "capacity_rejected", "CONNECTION_LIMIT");
+                            }
+                            continue;
+                        }
                         let local_host = stream.local_addr().map(|addr|addr.to_string()).unwrap_or_default();
                         let Some(service) = service.upgrade() else { break };
                         let Ok(socket) = stream.into_std() else { continue };
@@ -60,14 +66,21 @@ pub async fn listen(
                         let disconnect = Arc::new(disconnect);
                         let Ok(stream) = tokio::net::TcpStream::from_std(socket) else { continue };
                         connections.spawn(async move {
+                            let observed = service.clone();
+                            let connection_id = connection.clone();
                             let handler = hyper::service::service_fn(move |request| {
-                                handle(request, service.clone(), local_host.clone(), disconnect.clone())
+                                handle(request, service.clone(), local_host.clone(), disconnect.clone(), connection.clone())
                             });
-                            let _ = hyper::server::conn::http1::Builder::new()
+                            if let Err(error) = hyper::server::conn::http1::Builder::new()
                                 .timer(TokioTimer::new())
                                 .header_read_timeout(Duration::from_secs(10))
                                 .keep_alive(false)
-                                .serve_connection(TokioIo::new(stream), handler).await;
+                                .serve_connection(TokioIo::new(stream), handler).await {
+                                let code = if error.is_timeout() { "HEADER_TIMEOUT" }
+                                    else if error.is_parse() { "INVALID_HTTP" }
+                                    else { "CONNECTION_CLOSED" };
+                                crate::ingress_observation::connection(&observed, &connection_id, "connection_error", code);
+                            }
                         });
                     }
                 }
@@ -101,6 +114,18 @@ async fn handle(
     service: Arc<Ingress>,
     local_host: String,
     disconnect: Arc<tokio::net::TcpStream>,
+    connection: String,
+) -> std::result::Result<Response<crate::wait_transport::Body>, Infallible> {
+    let observation = crate::ingress_observation::Request::new(&service, &connection, &request);
+    let response = handle_inner(request, service, local_host, disconnect, &observation).await?;
+    Ok(observation.respond(response))
+}
+async fn handle_inner(
+    request: Request<Incoming>,
+    service: Arc<Ingress>,
+    local_host: String,
+    disconnect: Arc<tokio::net::TcpStream>,
+    observation: &crate::ingress_observation::Request,
 ) -> std::result::Result<Response<crate::wait_transport::Body>, Infallible> {
     let error = |code, message| Ok(reply(code, Some(json!({"error":message}))));
     let url = service.mcp_url.lock().await.clone();
@@ -248,31 +273,36 @@ async fn handle(
         }
         return Ok(reply(202, None));
     }
+    observation.dispatch(&value);
     if crate::transport::is_wait(&value) {
         let request = value.clone();
+        let trace = observation.trace();
         return Ok(crate::wait_transport::stream(
             &value,
             sse,
             async move {
-                crate::transport::mcp_ingress_authenticated(
+                let result = crate::transport::mcp_ingress_authenticated(
                     &service,
                     request,
                     &principal,
                     Some(&event_header),
                 )
-                .await
+                .await;
+                trace.result(&result);
+                result
             },
             async move { crate::transport::wait_disconnect(&disconnect).await },
         ));
     }
-    match crate::transport::mcp_ingress_authenticated(
+    let result = crate::transport::mcp_ingress_authenticated(
         &service,
         value,
         &principal,
         Some(&event_header),
     )
-    .await
-    {
+    .await;
+    observation.trace().result(&result);
+    match result {
         Ok(value) => Ok(reply(200, Some(value))),
         Err(_) => error(400, "invalid MCP request"),
     }

@@ -211,7 +211,16 @@ pub fn query(options: &Value) -> Result<Value> {
         rows.iter()
             .skip(position.map_or(0, |i| i + 1))
             .filter(|row| {
-                if ["ingressId", "level"].iter().any(|key| {
+                if [
+                    "ingressId",
+                    "level",
+                    "traceId",
+                    "requestId",
+                    "cfRay",
+                    "event",
+                ]
+                .iter()
+                .any(|key| {
                     options[*key]
                         .as_str()
                         .is_some_and(|v| !v.is_empty() && row[*key] != v)
