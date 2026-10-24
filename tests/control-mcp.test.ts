@@ -741,7 +741,7 @@ test('Git writes use durable receipts, isolated identity and safe local workflow
   git('config', 'user.email', '');
   const missingIdentity = await write('commit', { message: 'missing identity' });
   assert.equal(missingIdentity.state, 'failed');
-  assert.match(JSON.stringify(missingIdentity.result), /configure user.email/);
+  assert.match(missingIdentity.error.message, /configure user.email/);
   git('config', 'user.email', 'local@example.invalid');
   // Literal pathspecs must not treat wildcard-looking names as patterns.
   if (process.platform !== 'win32') {
@@ -760,7 +760,7 @@ test('Git writes use durable receipts, isolated identity and safe local workflow
   git('config', 'merge.block.driver', 'exit 94');
   const blockedMerge = await write('stash_pop');
   assert.equal(blockedMerge.state, 'failed');
-  assert.match(JSON.stringify(blockedMerge.result), /external merge drivers/);
+  assert.match(blockedMerge.error.message, /external merge drivers/);
   assert.equal(git('ls-files', '--unmerged'), '');
   git('config', '--remove-section', 'merge.block');
   const popId = randomUUID();
