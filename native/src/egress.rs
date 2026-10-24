@@ -595,8 +595,8 @@ pub fn retry_contract(op: &Value) -> Value {
             | "write"
             | "git_write"
     ) {
-        return json!({"mode":"receipt","key":"requestId","callerGenerated":true,
-            "instruction":"Generate and retain a UUID before the first write. Reuse it with identical arguments. After timeout, read receipt; unconfirmed is not permission to submit again."});
+        return json!({"mode":"receipt","key":"requestId","callerGenerated":false,"serverGeneratedWhenOmitted":true,
+            "instruction":"requestId is optional. Retain the returned receipt requestId and reuse it with identical arguments. For retry safety before receiving a response, supply a UUID on the first attempt. After timeout, read the original receipt; if its generated ID was lost, inspect task/resource state instead of blindly replaying. unconfirmed is not permission to submit again."});
     }
     json!({"mode":"read-back","automaticRetry":false,
         "instruction":"No ARC receipt replay protection. Read current state or the upstream result before retrying a side effect. An outer act requestId does not add replay protection."})
