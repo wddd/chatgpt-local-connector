@@ -146,7 +146,7 @@ export interface AgentTimelineEntry {
   input?: AgentTrackingExcerpt;
   output?: AgentTrackingExcerpt;
   plan?: { content: AgentTrackingExcerpt; status: string; priority?: string | null }[];
-  changes?: { path: string; operation: "create" | "edit" | null }[];
+  changes?: { path: string; operation?: "create" | "edit" | null; added?: number; removed?: number }[];
   interaction?: AgentInteraction;
   truncated?: boolean;
 }

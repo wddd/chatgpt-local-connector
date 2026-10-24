@@ -1,15 +1,17 @@
+import "./TaskDetail.css";
 import { useEffect, useLayoutEffect, useRef, useState, useId } from "react";
 import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { AgentTimeline } from "../types";
 import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
-import { interactionTool, permissionRequestLabel, followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
+import { followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
 import { useInterval } from "../state/hooks";
-import { Button, IconButton, LoadingIndicator, Tooltip } from "./ui";
+import { Button, Icon, IconButton, LoadingIndicator } from "./ui";
 import TimelineEntries, { durationText } from "./TimelineEntries";
 import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
 import { connector } from "../state/connector";
+import { projectTurn, taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import ActivityInteraction from "./ActivityInteraction";
 import FilePath from "./FilePath";
@@ -37,7 +39,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const external = session.source === "transcript";
   // Completed history entries do not override a session in the live snapshot.
   const running = !!live || session.endedAt === undefined && !external && !timeline?.readOnly && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? "");
-  const statusUnknown = session.conversation && !running && !["completed", "idle", "cancelled", "failed"].includes(timeline?.status ?? "");
+
   const followAllowed = useRef(true);
   followAllowed.current = running;
   useInterval(() => setNow(Date.now()), running ? 1000 : null);
@@ -102,49 +104,37 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   useEffect(() => {
     if (showCard) document.getElementById(cardId)?.focus({ preventScroll: true });
   }, [showCard, pendingSession?.phaseSince, cardId]);
-  const pendingEntry = timeline?.entries.find(entry => entry.type === "interaction" && pendingSession
-    && interactionKey(agent, { ...pendingSession, phaseSince: entry.startedAt, interaction: entry.interaction }) === interactionKey(agent, pendingSession));
-  const tool = pendingEntry && timeline ? interactionTool(timeline.entries, pendingEntry) : undefined;
-  const requestLabel = pendingSession?.interaction?.kind === "question" ? "timeline.questionRequest"
-    : pendingSession?.interaction?.command ? "timeline.commandRequest" : permissionRequestLabel(tool);
   const project = timeline?.projectName || nativeSession.projectName || session.projectName
     || session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
   const latestSummary = live ? live.dispatchSummary : timeline?.dispatchSummary ?? nativeSession.dispatchSummary;
   const source = latestSummary?.controlSource;
   const knownSource = source?.id ? connection.sources.find(item => item.id === source.id) : undefined;
   const where = knownSource ? connection.status?.ingresses.find(item => item.id === knownSource.ingressId)?.name || knownSource.connectionName : undefined;
-  const turnCount = timelineGroups(timeline?.entries ?? []).length;
+  const groups = timelineGroups(timeline?.entries ?? []);
+  const turnCount = groups.length;
+  const state = taskState(timeline?.status, running, showCard);
+  const plan = projectTurn(groups.at(-1)?.entries ?? [], state).plan?.plan ?? [];
+  const doneSteps = plan.filter(step => step.status === "completed").length;
   const title = taskTitle || nativeSession.title || session.title || t("timeline.title");
   const footer = showCard && <section className="activity-approval-card" id={cardId} tabIndex={-1} aria-label={t("activity.needsAttention")}>
-    <strong>{t(requestLabel, { agent: agentName })}</strong>
+    <strong>{t("detail.needsYou")}</strong>
     <p className="mono">{pendingSession.interaction?.path
       ? <FilePath path={pendingSession.interaction.path} project={pendingSession.project} />
       : pendingSession.interaction?.command || pendingSession.interaction?.summary}</p>
     <ActivityInteraction key={interactionKey(agent, pendingSession)} agent={agent} session={pendingSession} questions />
   </section>;
   return <section className="agent-panel-layer task-detail-layer">
-    <header className="dialog-header">
-      <IconButton icon={ArrowLeft} label={t("back")} onClick={onBack} />
-      <div className="task-detail-heading">
-        <div className="task-detail-title">
-          <h2 className="activity-panel-title" title={title}>{title}</h2>
-          {nativeSession.open && <Tooltip text={t("activity.open")}><IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
-            setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error)));
-          }} /></Tooltip>}
-        </div>
-        <span className="activity-status" data-state={showCard ? "attention" : running ? "running" : statusUnknown ? "unknown" : "completed"}>
-          {t(showCard ? pendingSession.interaction?.kind === "question" ? "activity.question" : "activity.phase.interaction" : running ? "timeline.status.running" : statusUnknown ? "unknown" : "activity.completed")}
-        </span></div>
-      <div className="actions">
-        <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
-          aria-pressed={expanded} onClick={onToggleWidth} />
+    <header className="dialog-header task-detail-header">
+      <div className="task-detail-navigation"><Button variant="ghost" onClick={onBack}><Icon icon={ArrowLeft} />{agentName}{project && ` · ${project}`}</Button>
+        <div className="actions">{nativeSession.open && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); }} />}
+          <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} /></div>
       </div>
-      <div className="activity-panel-subline task-detail-dispatch">
-        {project && <span className="activity-project" title={session.project || project}>{project}</span>}
-        {source && <span className="task-source-chip"><SourceBadge source={source} /><span>{dispatchSourceLabel(source)}</span>{where && <span className="task-source-where">{where}</span>}</span>}
-        <SpecPill summary={latestSummary} />{turnCount > 0 && <span className="activity-spec">{t("timeline.turnCount", { count: turnCount })}</span>}
-        {duration !== undefined && <span className="timeline-meta task-detail-duration">{durationText(duration)}</span>}
+      <h2 className="activity-panel-title" title={title}>{title}</h2>
+      <div className="task-detail-chips"><span className="task-state" data-state={state}>{t(`detail.state.${state}`)}</span>
+        <div className="task-detail-meta"><SpecPill summary={latestSummary} />{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: dispatchSourceLabel(source) })}</span>{where && <span className="task-source-where">{where}</span>}</span>}</div>
+        {duration !== undefined && <span className="timeline-meta">{durationText(duration)}</span>}
       </div>
+      {turnCount > 0 && <div className="task-progress"><div>{plan.map((step, index) => <span key={index} data-state={step.status} />)}</div><span>{t("timeline.turn", { count: turnCount })}{plan.length > 0 && ` · ${t("detail.planProgress", { done: doneSteps, total: plan.length })}`}</span></div>}
     </header>
     <div className="task-timeline" aria-busy={loading}>
       {(error || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}

@@ -1,22 +1,21 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { AlertCircle, Brain, Check, ChevronRight, Circle, FileText, ListChecks, LoaderCircle, MessageSquare, Minus, ShieldAlert, Terminal, UserRound, Wrench, X } from "lucide-react";
+import { AlertCircle, Brain, Copy, Check, ChevronRight, Circle, FileText, ListChecks, MessageSquare, ShieldAlert, Terminal, UserRound, Wrench } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import { AnimatePresence, motion } from "motion/react";
 import { t } from "../i18n";
 import { useMedia } from "../state/hooks";
 import type { AgentActivitySession, AgentTimelineEntry, DispatchSummary, TurnTiming } from "../types";
 import { activityApprovals } from "../state/activity";
-import { activityHeadline, filePathParts, interactionKey } from "../state/activityModel";
-import { expandableTimelineEntry } from "../state/timelineModel";
-import { entryDuration, timelineGroups, turnDuration, turnEntries, workBlockOpen, workState } from "../state/timelineGroups";
-import { Button, Icon } from "./ui";
-import { AnimatedSize } from "./ui/AnimatedSize";
-import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
+import { filePathParts, interactionKey } from "../state/activityModel";
+import { timelineGroups, turnDuration } from "../state/timelineGroups";
+import { Button, Icon, IconButton } from "./ui";
+import { dispatchSourceLabel } from "./activity";
+import { copyText } from "../platform";
+import { changedFiles, processOpen, projectTurn, taskState, toolCounts, type ProcessRow } from "../state/taskProjection";
 import FilePath from "./FilePath";
 import TimelineMarkdown, { TimelineResources } from "./TimelineMarkdown";
 
 const stepIcons = { command: Terminal, file: FileText, tool: Wrench, thinking: Brain, text: MessageSquare, user: UserRound, plan: ListChecks, interaction: ShieldAlert, error: AlertCircle };
-const statusIcons = { running: LoaderCircle, completed: Check, failed: X, cancelled: Minus, pending: Circle, unknown: Circle };
 export function durationText(value: number) {
   if (value < 1000) return t("activity.milliseconds", { count: Math.floor(value) });
   const seconds = Math.floor(value / 1000), minutes = Math.floor(seconds / 60), hours = Math.floor(minutes / 60);
@@ -88,108 +87,86 @@ function ToolDetails({ entry, project }: { entry: AgentTimelineEntry; project?: 
     {(entry.truncated || entry.input?.truncated || entry.output?.truncated) && <span className="timeline-meta">{t("timeline.truncated")}</span>}
   </div>;
 }
-function TimelineEntry({ entry, agent, session, now, open, onChange, live }: {
-  entry: AgentTimelineEntry; agent: string; session: AgentActivitySession; now: number; open: boolean; onChange: (open: boolean) => void; live: boolean;
-}) {
+export function ChangedFiles({ entries, project }: { entries: AgentTimelineEntry[]; project?: string | null }) {
+  const files = changedFiles(entries);
+  if (!files.length) return null;
+  return <section className="task-changes" aria-label={t("timeline.changes")}>
+    <strong>{t("detail.filesChanged", { count: files.length })}</strong>
+    {files.map(file => <div key={file.path}><FilePath path={file.path} project={project} />
+      {file.added !== undefined && <span className="task-added">+{file.added}</span>}
+      {file.removed !== undefined && <span className="task-removed">−{file.removed}</span>}
+    </div>)}
+  </section>;
+}
+function CopyReply({ text }: { text: string }) {
+  const [error, setError] = useState("");
+  return <><IconButton icon={Copy} label={t("detail.copyReply")} onClick={() => void copyText(text).catch(() => setError(t("copyFailedSelectAndCopyTheTextManually")))} />{error && <span role="alert">{error}</span>}</>;
+}
+function InteractionAnchor({ entry, agent, session }: { entry: AgentTimelineEntry; agent: string; session: AgentActivitySession }) {
   const submissions = activityApprovals.use();
-  const status = !live && entry.status === "running" ? "unknown" : entry.status;
-  const duration = entryDuration({ ...entry, status }, now);
-  const kind = <Icon icon={stepIcons[entry.type]} />;
-  const title = entry.title || entry.text || t(`activity.phase.${entry.type}`);
-  if (entry.type === "user" || entry.type === "text") return <Fold open={open} onChange={onChange} className="timeline-intermediate" expandable={!!entry.text?.trim()} summary={<>
-    {kind}<span className="timeline-entry-title" title={entry.text}>{entry.text || t(entry.type === "user" ? "timeline.user" : "activity.phase.text")}</span><Duration value={duration} />
-  </>}><div className="timeline-intermediate-detail"><TimelineMarkdown text={entry.text ?? ""} />{entry.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}</div></Fold>;
-  if (entry.type === "thinking") {
-    const summary = entry.text?.trim();
-    if (!summary) return null;
-    return <Fold open={open} onChange={onChange} className="timeline-thinking" summary={<>
-      {kind}<span className="timeline-entry-title" title={summary}>{summary}</span><Duration value={duration} />
-    </>}><div className="timeline-thought-text"><TimelineMarkdown text={summary} />{entry.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}</div></Fold>;
-  }
-  if (entry.type === "error") return <Fold open={open} onChange={onChange} className="timeline-error" expandable={!!(entry.text || entry.title)} summary={<>
-    {kind}<span className="timeline-entry-title">{title || t("timeline.status.failed")}</span><Duration value={duration} />
-  </>}><pre className="timeline-error-text">{entry.text || entry.title}</pre></Fold>;
-  if (entry.type === "plan") return <Fold open={open} onChange={onChange} className="timeline-plan" expandable={!!entry.plan?.length} summary={<>
-    {kind}<span className="timeline-entry-title">{t("timeline.plan")}</span><Duration value={duration} />
-  </>}><ul>{entry.plan?.map((step, index) => <li key={index} data-completed={step.status === "completed" || undefined} data-current={["in_progress", "inProgress", "running"].includes(step.status) || undefined}>
-    <span className="timeline-check" aria-label={t(`timeline.status.${step.status === "completed" ? "completed" : ["in_progress", "inProgress", "running"].includes(step.status) ? "running" : "pending"}`)}>{step.status === "completed" && <Icon icon={Check} />}</span>
-    <span>{step.content.text}{step.content.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}</span>
-  </li>)}</ul></Fold>;
-  if (entry.type === "interaction") {
-    const interactionSession = { ...session, phase: "interaction" as const, headline: entry.interaction?.summary ?? "", phaseSince: entry.startedAt, interaction: entry.interaction };
-    const headline = activityHeadline(interactionSession), receipt = submissions[interactionKey(agent, interactionSession)];
-    const submitted = receipt?.status === "submitted", resolved = submitted || entry.status === "completed";
-    const denied = submitted && ["deny", "cancel"].includes(receipt.decision);
-    const pending = !resolved && entry.status === "pending";
-    const label = submitted ? denied ? "timeline.denied" : entry.interaction?.kind === "question" ? "timeline.answered" : "timeline.allowed"
-      : resolved ? "timeline.resolved" : pending ? "timeline.waitingApproval" : `timeline.status.${entry.status}`;
-    return <Fold open={open} onChange={onChange} className="timeline-interaction" expandable={!!(entry.interaction?.summary || headline.fullText)} summary={<>
-      <Icon icon={pending ? ShieldAlert : denied ? X : resolved ? Check : Circle} />
-      <span className="timeline-interaction-state" data-pending={pending || undefined}>{t(label)}</span>
-      <span className="timeline-entry-title" title={headline.fullText}>{headline.path ? <FilePath path={headline.path} project={session.project} /> : headline.text}</span><Duration value={duration} />
-    </>}><div className="timeline-intermediate-detail"><TimelineMarkdown text={entry.interaction?.summary || headline.fullText || ""} /></div></Fold>;
-  }
-  const summary = <>{kind}<ToolTitle entry={entry} project={session.project} />
-    <span className="timeline-tool-status" role="img" aria-label={t(`timeline.status.${status}`)}><Icon icon={statusIcons[status]} className={status === "running" ? "timeline-spinner" : ""} /></span>
-    {entry.status === "failed" && <span className="timeline-failure">{t("timeline.status.failed")}</span>}<Duration value={duration} /></>;
-  return <div className="timeline-tool" data-status={status}>
-    {expandableTimelineEntry(entry) || !!entry.changes?.length ? <Fold open={open} onChange={onChange} summary={summary}><ToolDetails entry={entry} project={session.project} /></Fold>
-      : <div className="timeline-summary">{summary}</div>}
+  const receipt = submissions[interactionKey(agent, { ...session, phaseSince: entry.startedAt, interaction: entry.interaction })];
+  const resolved = receipt?.status === "submitted" || entry.status === "completed";
+  const verdict = receipt?.decision === "deny" ? "detail.reject" : receipt?.decision === "allow" ? "detail.approve" : "timeline.answered";
+  return <div className="task-interaction-anchor" data-pending={!resolved || undefined}>
+    <Icon icon={resolved ? Check : ShieldAlert} /><div><strong>{resolved ? t(verdict) : t("detail.needsYou")}</strong>
+      <span>{entry.interaction?.summary}</span>
+      {resolved && <small>{receipt?.status === "submitted" ? t("detail.byARC") : t("detail.resolvedElsewhere")}</small>}
+    </div>
   </div>;
 }
-export default function TimelineEntries({ entries, agent, session, now, running = entries.some(entry => entry.status === "running" || entry.status === "pending"), turnDispatchSummaries, turnStatuses, turnTimings, status }: {
+function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; agent: string; session: AgentActivitySession }) {
+  if (entry.type === "text") return <article className="task-phase"><span className="task-agent-mark" aria-label={agent}><Icon icon={MessageSquare} /></span><TimelineMarkdown text={entry.text ?? ""} /></article>;
+  if (entry.type === "user") return <div className="task-prompt"><small>{t("timeline.user")}</small><TimelineMarkdown text={entry.text ?? ""} /></div>;
+  if (entry.type === "interaction") return <InteractionAnchor entry={entry} agent={agent} session={session} />;
+  if (entry.type === "plan") return <section className="task-plan" aria-label={t("timeline.plan")}><strong>{t("timeline.plan")}</strong><ul>{entry.plan?.map((step, index) => <li key={index} data-state={step.status}>
+    <Icon icon={step.status === "completed" ? Check : Circle} /><span>{step.content.text}</span>
+  </li>)}</ul></section>;
+  return <p className="timeline-error">{entry.text || entry.title}</p>;
+}
+function ToolRun({ entries, live }: { entries: AgentTimelineEntry[]; live: boolean }) {
+  const failed = entries.some(entry => entry.status === "failed");
+  const active = live && entries.some(entry => entry.status === "running");
+  const [manual, setManual] = useState<boolean>();
+  const counts = toolCounts(entries);
+  const stats = Object.entries(counts).filter(([kind, count]) => count && (kind !== "running" || live)).map(([kind, count]) => <span key={kind} className="task-tool-count">{t(`detail.tools.${kind}`, { count })}</span>);
+  return <Fold className="task-tool-run" open={failed || (manual ?? active)} onChange={setManual} summary={<span className="task-tool-counts">{stats}</span>}>
+    <div className="task-tool-rows">{entries.map(entry => <div key={entry.id} className="task-tool-row" data-failed={entry.status === "failed" || undefined}>
+      <div><Icon icon={stepIcons[entry.type]} /><ToolTitle entry={entry} /><span>{entry.exitCode !== undefined && t("timeline.exitCode", { code: entry.exitCode })}</span></div>
+      {!!entry.changes?.length && <ChangedFiles entries={[entry]} />}
+      {entry.type === "command" && live && entry.status === "running" ? <pre className="task-live-log">{(entry.output?.text || entry.text || "").split("\n").slice(-8).join("\n")}</pre>
+        : (entry.output?.text || entry.input?.text || entry.text || entry.cwd) && <details open={entry.status === "failed" || undefined}><summary>{t("detail.evidence")}</summary><ToolDetails entry={entry} /></details>}
+    </div>)}</div>
+  </Fold>;
+}
+export default function TimelineEntries({ entries, agent, session, now, running = false, turnDispatchSummaries, turnStatuses, turnTimings, status }: {
   entries: AgentTimelineEntry[]; agent: string; session: AgentActivitySession; now: number; running?: boolean; turnDispatchSummaries?: Record<string, DispatchSummary>; turnStatuses?: Record<string, string>; status?: string; turnTimings?: Record<string, TurnTiming>;
 }) {
-  // Entries keep their state when work blocks grow or history is backfilled.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const change = (id: string) => (open: boolean) => setExpanded(previous => ({ ...previous, [id]: open }));
   const groups = timelineGroups(entries);
   return <TimelineResources agent={agent} id={session.id}>{groups.map((group, index) => {
     const latest = index === groups.length - 1;
-    const matchesSession = !group.turnId || group.turnId === session.turnId;
-    const currentTurn = !session.turnId || matchesSession;
-    const turnStatus = (group.turnId ? turnStatuses?.[group.turnId] : undefined) ?? (latest && currentTurn ? status : undefined);
-    const live = latest && currentTurn && running;
-    const completed = turnStatus === undefined ? undefined : ["completed", "idle"].includes(turnStatus);
-    const { prompt, final, work } = turnEntries(group.entries, live, completed);
-    const state = workState(work);
-    const observedStart = latest && matchesSession ? session.turnStartedAt : undefined;
-    const duration = turnDuration(group.entries, now, live, observedStart, group.turnId ? turnTimings?.[group.turnId] : undefined);
-    const summary = group.turnId ? turnDispatchSummaries?.[group.turnId] ?? (latest && matchesSession ? session.dispatchSummary : undefined) : session.dispatchSummary;
-    const source = summary?.controlSource;
-    const workId = `work:${group.id}`, turnOpen = expanded[group.id] ?? latest;
-    const workOpen = workBlockOpen(live, expanded[workId]);
-    const workRows = work.filter(entry => entry.type !== "thinking" || entry.text?.trim());
-    const earlierId = `earlier:${group.id}`, earlier = workRows.length - 3;
-    const visibleWork = live && earlier > 0 && !expanded[earlierId] ? workRows.slice(-3) : workRows;
-    const stats = Object.entries(state.counts).filter(([, count]) => count).map(([kind, count]) => t(`timeline.group.${kind}${count === 1 ? "One" : "Many"}`, { count })).join(t("timeline.group.separator"));
-    const header = <><span className="timeline-turn-number">{t("timeline.turn", { count: index + 1 })}</span>
-      {source && <span className="timeline-turn-source" title={dispatchSourceLabel(source)}><SourceBadge source={source} /><span>{dispatchSourceLabel(source)}</span></span>}
-      <SpecPill summary={summary} /><Duration value={duration} /></>;
-    return <Collapsible.Root key={group.id} open={turnOpen} onOpenChange={change(group.id)} asChild>
-      <section className="timeline-item timeline-turn" data-timeline-id={group.id} onClick={event => {
-        if (!turnOpen && !(event.target as Element).closest("button, a")) change(group.id)(true);
-      }}>
-        <Collapsible.Trigger type="button" className="timeline-turn-header">{header}</Collapsible.Trigger>
-        <AnimatedSize>
-          <Collapsible.Content className="timeline-turn-body">
-            {prompt && <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[`entry:${prompt.id}`] ?? false} onChange={change(`entry:${prompt.id}`)} />}
-            {!!workRows.length && <Fold className="timeline-work" open={workOpen} onChange={change(workId)} summary={<>
-              <span className="timeline-tool-icons">{state.kinds.map(kind => <span key={kind} data-phase={kind}><Icon icon={stepIcons[kind]} /></span>)}</span>
-              <span className="timeline-work-heading">{stats && <span className="timeline-work-stats">{stats}</span>}</span>
-              {state.failed > 0 && <span className="timeline-failure">{t("timeline.failures", { count: state.failed })}</span>}
-            </>}><div className="timeline-group-entries">
-              {live && earlier > 0 && <Button variant="ghost" className="timeline-earlier-steps" onClick={() => change(earlierId)(!expanded[earlierId])}>{t(expanded[earlierId] ? "timeline.hideEarlierSteps" : "timeline.earlierSteps", { count: earlier })}</Button>}
-              {visibleWork.map(entry => <TimelineEntry key={entry.id} entry={entry} agent={agent} session={session} now={now} live={live} open={expanded[`entry:${entry.id}`] ?? false} onChange={change(`entry:${entry.id}`)} />)}
-            </div></Fold>}
-            {final && <article className="timeline-text timeline-final"><TimelineMarkdown text={final.text ?? ""} />{final.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}</article>}
-          </Collapsible.Content>
-          {!turnOpen && (prompt || final) && <div className="timeline-turn-preview">
-            {prompt && <span className="timeline-turn-prompt">{prompt.text}</span>}
-            {final && <span className="timeline-turn-answer">{final.text}</span>}
-          </div>}
-        </AnimatedSize>
-      </section>
-    </Collapsible.Root>;
+    const current = !session.turnId || !group.turnId || group.turnId === session.turnId;
+    const live = latest && current && running;
+    const state = taskState((group.turnId ? turnStatuses?.[group.turnId] : undefined) ?? (latest && current ? status : undefined), live);
+    const projection = projectTurn(group.entries, state);
+    const { prompt, final, rows } = projection;
+    const duration = turnDuration(group.entries, now, live, latest && current ? session.turnStartedAt : undefined, group.turnId ? turnTimings?.[group.turnId] : undefined);
+    const source = (group.turnId ? turnDispatchSummaries?.[group.turnId] ?? (latest && current ? session.dispatchSummary : undefined) : session.dispatchSummary)?.controlSource;
+    const workId = `process:${group.id}:${state}`, turnOpen = latest || (expanded[group.id] ?? false);
+    const renderRow = (row: ProcessRow) => row.kind === "tools" ? <ToolRun key={row.id} entries={row.entries} live={live} /> : <ProcessEntry key={row.id} entry={row.entry} agent={agent} session={session} />;
+    const process = <div className="task-process-rows">{rows.map(renderRow)}</div>;
+    return <section className="task-turn" key={group.id} data-timeline-id={group.id}>
+      {!latest && <Button variant="ghost" className="task-previous-turn" aria-expanded={turnOpen} onClick={() => change(group.id)(!turnOpen)}>
+        <Icon icon={ChevronRight} /><span>{t("detail.previousTurn", { count: index + 1, actions: projection.actions })}{duration !== undefined && ` · ${durationText(duration)}`}<span>{final?.text?.split("\n")[0] || prompt?.text?.split("\n")[0]}</span></span>
+      </Button>}
+      {turnOpen && <div className="task-turn-content">
+        {prompt && <div className="task-prompt"><small>{t("timeline.user")}{source && ` · ${t("detail.via", { source: dispatchSourceLabel(source) })}`}{prompt.startedAt && ` · ${new Date(prompt.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small>
+          <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[prompt.id] ?? false} onChange={change(prompt.id)} /></div>}
+        {!!rows.length && (live ? process : <Fold className="task-process" open={processOpen(state, expanded[workId])} onChange={change(workId)} summary={<><span>{t("detail.process", projection)}</span><Duration value={duration} /></>}>{process}</Fold>)}
+        {projection.thinking && <div className="task-thinking" role="status">{projection.thinking.text}</div>}
+        {final && state !== "failed" && state !== "interrupted" && <article className="task-final"><header><Icon icon={Check} /><strong>{t("detail.finalReply")}</strong><CopyReply text={final.text ?? ""} /></header><TimelineMarkdown text={final.text ?? ""} />{final.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}<ChangedFiles entries={group.entries} project={session.project} /></article>}
+      </div>}
+    </section>;
   })}</TimelineResources>;
 }

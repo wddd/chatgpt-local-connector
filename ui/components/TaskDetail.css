@@ -1,0 +1,65 @@
+.task-detail-layer { container-type: inline-size; }
+.task-detail-header.dialog-header { display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 16px 12px; background: var(--surface); }
+.task-detail-navigation { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+.task-detail-navigation > .button { min-width: 0; overflow: hidden; text-overflow: ellipsis; justify-content: flex-start; color: var(--text-secondary); }
+.task-detail-header .activity-panel-title { font-size: 17px; line-height: 1.35; margin: 0; }
+.task-detail-chips, .task-detail-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.task-state { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; color: var(--text-secondary); background: var(--surface-subtle); }
+.task-state::before { content: ""; width: 7px; height: 7px; background: currentColor; border-radius: 50%; }
+.task-state[data-state=running] { color: var(--accent); background: var(--task-live-soft); }
+.task-state[data-state=needsYou] { color: var(--warning); background: var(--warning-soft); }
+.task-state[data-state=done] { color: var(--success); background: var(--success-soft); }
+.task-state[data-state=failed] { color: var(--danger); background: var(--danger-soft); }
+.task-state:is([data-state=running], [data-state=needsYou])::before { animation: task-pulse 1.8s infinite; }
+.task-progress { display: flex; align-items: center; gap: 10px; color: var(--text-tertiary); font-size: 11px; }
+.task-progress > div { display: flex; flex: 1; gap: 4px; }
+.task-progress > div > span { flex: 1; height: 4px; border-radius: 4px; background: var(--border); }
+.task-progress [data-state=completed] { background: var(--success); }
+.task-progress :is([data-state=in_progress], [data-state=inProgress], [data-state=running]) { background: var(--accent); }
+.task-detail-layer .timeline-entries { padding: 14px 16px 18px; gap: 14px; }
+.task-turn, .task-turn-content, .task-process-rows { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.task-previous-turn.button { width: 100%; height: auto; min-height: 44px; text-align: left; justify-content: flex-start; border: 1px solid var(--border); border-radius: 14px; }
+.task-previous-turn > span { display: grid; gap: 4px; min-width: 0; font-size: 12px; color: var(--text-secondary); }
+.task-previous-turn > span > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13px; }
+.task-prompt { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
+.task-prompt > small { color: var(--text-tertiary); font-size: 11px; }
+.task-prompt .timeline-user { background: var(--task-user-bg); color: var(--task-user-ink); border-radius: 18px 18px 6px 18px; max-width: 86%; font-size: 13.5px; padding: 10px 14px; }
+.task-prompt .timeline-user-toggle.button { color: inherit; }
+.task-phase { display: flex; gap: 10px; color: var(--text); font-size: 14px; line-height: 1.6; min-width: 0; }
+.task-agent-mark { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 8px; color: var(--accent); background: var(--task-live-soft); }
+.task-plan { padding: 10px 12px; border: 1px solid var(--border); border-radius: 14px; font-size: 13px; }
+.task-plan > strong { color: var(--text-secondary); font-size: 11px; }
+.task-plan ul { display: grid; gap: 7px; margin: 8px 0 0; padding: 0; list-style: none; }
+.task-plan li { display: flex; gap: 8px; color: var(--text-secondary); }
+.task-plan li[data-state=completed] > span { text-decoration: line-through; }
+.task-plan li[data-state=completed] .icon { color: var(--success); }
+.task-plan li:is([data-state=in_progress], [data-state=inProgress], [data-state=running]) { color: var(--accent); font-weight: 600; }
+.task-tool-run { color: var(--text-tertiary); font-size: 12px; }
+.task-tool-counts { display: flex; flex-wrap: wrap; gap: 4px; }
+.task-tool-count + .task-tool-count::before { content: "·"; margin-right: 4px; }
+.task-tool-rows { border-left: 2px solid var(--border); margin-left: 6px; padding-left: 10px; display: grid; gap: 6px; }
+.task-tool-row { font: 11.5px/1.6 var(--font-mono); overflow-wrap: anywhere; min-width: 0; }
+.task-tool-row > div:first-child { display: flex; align-items: center; gap: 6px; }
+.task-tool-row[data-failed] { color: var(--danger); }
+.task-tool-row summary { cursor: pointer; }
+.task-live-log { white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 10px; background: var(--task-log-bg); color: var(--task-log-ink); max-height: 160px; overflow: auto; }
+.task-thinking { font-size: 13px; color: var(--text-tertiary); white-space: nowrap; text-overflow: ellipsis; overflow: hidden; animation: task-shimmer 1.8s infinite; }
+.task-process > .timeline-summary { border: 1px dashed var(--border-strong); border-radius: 12px; font-size: 12px; color: var(--text-secondary); }
+.task-process-rows { padding: 6px 0; }
+.task-final { padding: 14px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); box-shadow: var(--task-lift); font-size: 15px; line-height: 1.6; min-width: 0; overflow-wrap: anywhere; }
+.task-final > header { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 11px; color: var(--success); }
+.task-final > header > .icon-button { margin-left: auto; }
+.task-changes { display: grid; gap: 6px; border-top: 1px solid var(--border); padding-top: 10px; margin-top: 12px; font-size: 12px; }
+.task-changes > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.task-changes .file-path { flex: 1; }
+.task-added { color: var(--success); }
+.task-removed { color: var(--danger); }
+.task-interaction-anchor { display: flex; gap: 10px; border: 1px solid var(--border); padding: 10px 12px; border-radius: 14px; font-size: 12px; color: var(--success); }
+.task-interaction-anchor > div { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.task-interaction-anchor span { color: var(--text); }
+.task-interaction-anchor[data-pending] { color: var(--warning); background: var(--warning-soft); border-color: var(--task-attention-ring); }
+@keyframes task-pulse { 70% { box-shadow: 0 0 0 7px transparent; } 0% { box-shadow: 0 0 0 0 currentColor; } }
+@keyframes task-shimmer { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) {
+  .task-detail-layer *, .task-detail-layer *::before { animation: none !important; transition: none !important; }
+}
