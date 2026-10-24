@@ -1,11 +1,15 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 export async function nativeControl(script: string, extraEnv: Record<string, string> = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'arc-control-'));
+  if (extraEnv.ARC_DEV_INSTANCE_ID) {
+    await mkdir(path.join(directory, "state"));
+    await writeFile(path.join(directory, "state/acceptance-instance.json"), JSON.stringify({instanceId:extraEnv.ARC_DEV_INSTANCE_ID}));
+  }
   const fixture = path.join(directory, 'server.mjs');
   await writeFile(fixture, script);
   const target = process.env.CARGO_TARGET_DIR || path.resolve('target');

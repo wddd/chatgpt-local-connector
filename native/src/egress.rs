@@ -90,6 +90,8 @@ pub fn failure(e: &str) -> Value {
                     | "ARCHIVE_WRITER_BUSY"
                     | "THREAD_WRITER_BUSY"
                     | "WRITER_RELEASE_REQUIRES_OWNER"
+                    | "ACCEPTANCE_FAULT_UNAVAILABLE"
+                    | "ACCEPTANCE_SELF_TEST_REQUIRED"
             )
         ) {
             return value;

@@ -504,3 +504,11 @@ Read `error.code`, `error.message`, and `next` from the public result (the CLI e
 Read `codex_owner({threadId})` for available process IDs, executable/app paths, and the next owner step. Process evidence identifies open descriptors on the held lock; an empty list means process attribution is unavailable, not that the lock is free. Use `codex_release({threadId})` for an idle ARC connector-owned thread, or `codex_archive({threadId,release:true})` to release then archive. ARC uses native `thread/unsubscribe` only for its own idle writer.
 
 Desktop follower IPC currently exposes no per-thread release/archive request. `WRITER_RELEASE_REQUIRES_OWNER` returns a `task_open` action for the exact thread. In the owning ChatGPT/Codex app, select that thread and choose **Archive** from its thread menu. For an external terminal owner, end that exact native session normally. Closing the ARC panel or unsubscribing ARC does not release a Desktop writer. Re-probe ownership before a new archive attempt. ARC never terminates a shared process or removes locks to force a handoff.
+
+### Isolated observation faults
+
+`acceptance_fault({threadId,mode:"placeholder"|"read-rejection"|"clear",durationMs?})` is available only through the local CLI in an isolated debug instance started with `npm run dev:isolated`. The thread's latest ARC dispatch must have `purpose:"self-test"`. The launcher supplies a matching instance marker in its separate state directory. Production builds reject this operation.
+
+Example: `echo '{"threadId":"<self-test-thread-id>","mode":"placeholder"}' | arc cli --state-dir <isolated-state> control acceptance_fault --stdin`.
+
+`placeholder` overlays a null-ID active turn on the real Desktop follower read path, exercising the existing steering guard without changing native history. Use a Desktop-owned self-test thread. `read-rejection` rejects native thread reads at the normal request boundary, exercising public error and recovery projection. Responses identify injected evidence. These switches validate ARC behavior, not an upstream provider failure. Faults expire after five minutes by default (maximum ten), disappear on restart, and can be cleared explicitly. Clear before normal cleanup or archive.

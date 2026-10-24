@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { developmentConfig } from './dev-identity.mjs';
 import { spawn } from 'node:child_process';
-import { mkdtemp, realpath } from 'node:fs/promises';
+import { mkdtemp, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ if (!['darwin', 'win32'].includes(process.platform)) throw new Error('Desktop is
 const root = fileURLToPath(new URL('../', import.meta.url));
 const stateDirectory = await realpath(await mkdtemp(path.join(tmpdir(), 'arc-isolated-')));
 const env = { ...process.env, ARC_STATE_DIR: stateDirectory, ARC_DEV_INSTANCE_ID: randomBytes(6).toString('hex') };
+await writeFile(path.join(stateDirectory, "acceptance-instance.json"), JSON.stringify({ instanceId: env.ARC_DEV_INSTANCE_ID }));
 const identity = developmentConfig(env);
 console.log(JSON.stringify({ event: 'isolated-starting', stateDirectory, bundleId: identity.identifier, appName: identity.productName }));
 const child = spawn(process.execPath, [path.join(root, 'tooling/desktop-dev.mjs')], { cwd: root, env, stdio: 'inherit' });

@@ -434,7 +434,7 @@ impl Ipc {
                 )
                 .await?;
         }
-        Ok(state)
+        Ok(crate::acceptance_fault::snapshot(thread, state))
     }
     pub async fn snapshot(&self, thread: &str) -> Option<Value> {
         if !self.alive() {
@@ -449,7 +449,7 @@ impl Ipc {
         }
         snapshots
             .get(thread)
-            .map(|s| s.value["conversationState"].clone())
+            .map(|s| crate::acceptance_fault::snapshot(thread, s.value["conversationState"].clone()))
     }
     pub async fn mutate(&self, method: &str, args: &Value) -> Result<Value> {
         let thread = string(args, "threadId");

@@ -600,6 +600,7 @@ impl Control {
         self.request_native(method, args, timeout).await
     }
     async fn request_native(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
+        crate::acceptance_fault::check_read(method, &args)?;
         #[cfg(feature = "test-fixture")]
         {
             if std::env::var_os("ARC_FIXTURE_DESKTOP").is_none() {
@@ -1658,6 +1659,7 @@ impl Control {
             "codex_send" => self.mutate("send", args).await,
             "codex_queue" => crate::dispatch_queue::query(&args).await,
             "codex_queue_control" => crate::dispatch_queue::control(self, &args).await,
+            "acceptance_fault" => crate::acceptance_fault::control(&args),
             "codex_release" => self.mutate("release", args).await,
             "codex_owner" => { let mut owner=self.writer_ownership(string(&args,"threadId")).await; if owner["state"] == "held" {owner["processes"]=crate::writer::processes(string(&args,"threadId")).await;owner["next"]=crate::writer::release_step(string(&args,"threadId"));} Ok(owner) },
             "codex_archive" => self.mutate("archive", args).await,

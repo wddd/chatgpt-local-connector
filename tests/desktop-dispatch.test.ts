@@ -15,7 +15,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
   const desktopThread = randomUUID(), desktopTurn = randomUUID();
   const read = () => JSON.parse(readFileSync(dataFile, 'utf8'));
   const save = (data: any) => { writeFileSync(dataFile + '.tmp', JSON.stringify(data)); renameSync(dataFile + '.tmp', dataFile); };
-  save({ [desktopThread]: { id: desktopThread, cwd: directory, turns: [{ id: desktopTurn, status: 'inProgress', items: [], input: [] }], phantom: true } });
+  save({ [desktopThread]: { id: desktopThread, cwd: directory, turns: [{ id: desktopTurn, status: 'inProgress', items: [], input: [] }], phantom: false } });
   await mkdir(path.join(directory, 'ipc'));
   const sockets = new Set<Socket>();
   let revision = 0;
@@ -68,7 +68,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       if(method==='turn/steer'){row.turns.at(-1).input.push(...params.input);save(data);result={turnId:row.turns.at(-1).id};}
       process.stdout.write(JSON.stringify({id,result})+'\\n');
     }
-  `, { CODEX_HOME: directory, ARC_OWNER_DATA: dataFile, ARC_FIXTURE_DESKTOP: '1' });
+  `, { CODEX_HOME: directory, ARC_OWNER_DATA: dataFile, ARC_FIXTURE_DESKTOP: '1', ARC_DEV_INSTANCE_ID: 'ax3-fault-test' });
   const waitQueue = async (threadId: string, queueId: string, state: string) => {
     const deadline = Date.now() + 7000;
     while (Date.now() < deadline) {
@@ -79,8 +79,11 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
     throw new Error(JSON.stringify(await fixture.call('codex_queue', {threadId, queueId})));
   };
   try {
+    assert.equal((await fixture.completed('codex_send', {threadId:desktopThread,prompt:'Establish self-test dispatch',sendMode:'steer'})).state, 'completed');
     const queued = await fixture.completed('codex_send', { threadId: desktopThread, prompt: 'After completion', sendMode: 'next' });
     assert.equal(queued.dispatchMode, 'queued');
+    const injected = await fixture.call('acceptance_fault', {threadId:desktopThread,mode:'placeholder'});
+    assert.equal(injected.injected, true, JSON.stringify(injected));
     const rejected = await fixture.call('codex_queue_control', {threadId:desktopThread, queueId:queued.queueId, action:'promote'});
     assert.equal(rejected.error.code, 'DESKTOP_STEER_UNAVAILABLE');
     assert.equal((await fixture.call('codex_queue', {queueId:queued.queueId})).items[0].state, 'queued');
@@ -88,6 +91,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       const result = await fixture.completed('codex_send', {threadId:desktopThread, prompt:'Steer', ...(sendMode ? {sendMode} : {})});
       assert.equal(result.error?.code ?? result.result?.error?.code, 'DESKTOP_STEER_UNAVAILABLE');
     }
+    assert.equal((await fixture.call('acceptance_fault', {threadId:desktopThread,mode:'clear'})).injected, false);
     let data = read(); data[desktopThread].turns.at(-1).status = 'completed'; save(data);
     for (const socket of sockets) snapshot(socket, desktopThread);
     assert.equal((await waitQueue(desktopThread, queued.queueId, 'sent')).state, 'sent');

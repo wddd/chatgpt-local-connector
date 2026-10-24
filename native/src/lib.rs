@@ -1,3 +1,4 @@
+mod acceptance_fault;
 pub mod app_replace;
 mod changes;
 mod claude_notify;
