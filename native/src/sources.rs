@@ -690,6 +690,14 @@ pub async fn local_origin() -> Result<Value> {
             .await?;
     touch(&s, "local").await
 }
+/// The local panel and CLI share local authority and a durable source identity.
+pub async fn panel_origin() -> Result<Value> {
+    let mut origin = local_origin().await?;
+    origin["controlSource"] = json!("ARC");
+    origin["sourceLabel"] = json!("ARC");
+    origin["ingressId"] = json!("local-ui");
+    Ok(origin)
+}
 /// Labels are read from the current store, including retained revoked sources.
 pub fn decorate(value: &mut Value) {
     let Ok(rows) = list() else {

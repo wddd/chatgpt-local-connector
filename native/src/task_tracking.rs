@@ -442,6 +442,31 @@ impl Timeline {
             self.put(row, at);
         }
     }
+    pub fn answered(&mut self, request: &Value, response: &Value) {
+        let params = &request["params"];
+        let live_id = format!("interaction:{}", request["id"]);
+        let id = if self
+            .entries
+            .iter()
+            .any(|entry| entry["id"] == live_id && entry["turnId"] == params["turnId"])
+        {
+            live_id
+        } else {
+            format!(
+                "interaction:history:{}",
+                hash(
+                    json!([request["backendSession"], params["turnId"], request["id"]]).to_string()
+                )
+            )
+        };
+        let mut row = self.entry(&id, "interaction", "completed");
+        if row["interaction"].is_null() {
+            row["interaction"] = json!({"kind":if string(request,"method").contains("Approval") {"permission"} else {"question"},"method":request["method"],"summary":params["question"].as_str().or_else(||params["title"].as_str()).or_else(||params["questions"][0]["question"].as_str()).or_else(||params["command"].as_str()).unwrap_or("Interaction"),"questions":params["questions"]});
+        }
+        row["turnId"] = params["turnId"].clone();
+        row["response"] = response.clone();
+        self.put(row, string(response, "resolvedAt"));
+    }
     pub fn enrich_permission(&self, msg: &mut Value) {
         let call_id = msg["params"]["toolCallId"].clone();
         let call = &mut msg["params"]["toolCall"];
@@ -1379,6 +1404,20 @@ mod tests {
     use super::*;
     const AT: &str = "2026-01-01T00:00:00.000Z";
     const LATER: &str = "2026-01-01T00:00:01.000Z";
+    #[test]
+    fn restored_answers_keep_distinct_native_sessions_and_turns() {
+        // Regression: native request IDs restart at zero and must not overwrite answers from earlier turns.
+        let mut timeline = Timeline::default();
+        for (session, turn, answer) in [("first", "one", "A"), ("second", "two", "B")] {
+            timeline.answered(&json!({"backendSession":session,"id":0,"method":"item/tool/requestUserInput","params":{"turnId":turn,"questions":[{"id":"q","question":"Choose"}]}}), &json!({"result":{"answer":answer},"origin":{"controlSource":"ARC"},"resolvedAt":"2026-01-01T00:00:00Z"}));
+        }
+        let result = timeline.response("task", 0);
+        assert_eq!(result["entries"].as_array().unwrap().len(), 2);
+        assert_eq!(result["entries"][0]["response"]["result"]["answer"], "A");
+        assert_eq!(result["entries"][1]["response"]["result"]["answer"], "B");
+        assert_ne!(result["entries"][0]["id"], result["entries"][1]["id"]);
+    }
+
     #[test]
     fn native_diff_counts_only_hunk_lines() {
         // Property: diff headers do not contribute counts and missing hunks leave counts unknown.

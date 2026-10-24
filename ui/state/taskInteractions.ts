@@ -16,7 +16,7 @@ export function inputResponse(interaction: AgentInteraction, answers: Record<str
   const questions = interactionQuestions(interaction);
   if (!skip && questions.some(q => !answers[q.id]?.some(answer => answer.trim()))) return;
   if (op === "codex_respond") {
-    if (interaction.method === "request_user_input_async" && (!skip || skippedAnswer?.trim())) return { op, args: { ...args, result: { answer: skip ? skippedAnswer : answers.answer?.join("\n") ?? "" } } };
+    if (interaction.method === "request_user_input_async" && (!skip || skippedAnswer?.trim())) return { op, args: { ...args, ...(skip ? { skipped: true } : {}), result: { answer: skip ? skippedAnswer : answers.answer?.join("\n") ?? "" } } };
     if (interaction.method === "item/tool/requestUserInput" && questions.length) return { op, args: { ...args, result: { answers: Object.fromEntries(questions.map(q => [q.id, { answers: skip ? [] : answers[q.id] }])) } } };
     return;
   }

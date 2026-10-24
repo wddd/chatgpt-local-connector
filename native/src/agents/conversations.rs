@@ -214,7 +214,12 @@ impl AgentHost {
         let session = string(args, "id");
         uuid::Uuid::parse_str(session).map_err(|_| "INVALID_SESSION_ID")?;
         if agent == "codex" {
-            let known = control.events.lock().await.timelines.contains_key(session);
+            let known = control.events.lock().await.timelines.contains_key(session)
+                || control
+                    .task_records()
+                    .await?
+                    .iter()
+                    .any(|r| r["threadId"] == session || r["task"]["threadId"] == session);
             return if known {
                 control
                     .timeline(session, num(args, "after", 0) as u64)

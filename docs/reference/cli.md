@@ -469,6 +469,10 @@ printf '%s' '{"minimalText":true}' | arc cli source update <sourceId> --stdin
 
 Set `minimalText:false` to restore full text immediately. This setting defaults to false for every existing and new source and is read for each response without rebuilding or reconnecting. In minimal mode, MCP text points to structuredContent.result; errors also name their code. Structured results, isError, and non-text content such as images are retained. Some clients consume only text, so do not enable this setting globally. Offline configuration may set the source's minimalText boolean in sources.json while Core is stopped. CLI updates are the supported live path. No credentials or source identity change with this setting.
 
+Task detail actions use `cli control` with the same operation arguments as control sources. See [Task detail actions](tools.md#task-detail-actions). For example, send `{ "agent": "codex", "id": "<threadId>", "action": "latest" }` to `cli control task_panel_control --stdin` to scroll to the bottom and enable follow. Read `cli control task_panel --stdin` with the same `agent` and `id` to inspect `following`, `atLatest`, the queue, timeline and disclosures.
+
+`cli app snapshot --stdin` accepts `{ "modelOnly": true }` to return the live model inline without writing files or capturing a screenshot. Its `taskDetail` contains the selected task's current follow and queue state. An optional `taskPanel` object accepts the same navigation arguments as `task_panel_control`.
+
 ## Explicit instance targeting
 
 Run `npm run dev:isolated` from a source checkout to start a supported side-by-side development Desktop and Core. The launcher allocates a fresh private ARC state directory and uses the existing development bundle identity (`com.whzxc.agent-remote-control.dev`). Core and Desktop bind independent ephemeral loopback ports. The installed application and its state keep running. Signing and the development build remain owned by the normal development supervisor.

@@ -100,12 +100,19 @@ function CopyReply({ text }: { text: string }) {
 function InteractionAnchor({ entry, agent, session }: { entry: AgentTimelineEntry; agent: string; session: AgentActivitySession }) {
   const submissions = activityApprovals.use();
   const receipt = submissions[interactionKey(agent, { ...session, phaseSince: entry.startedAt, interaction: entry.interaction })];
-  const resolved = receipt?.status === "submitted" || entry.status === "completed";
-  const verdict = receipt?.status !== "submitted" ? "timeline.resolved" : receipt.decision === "deny" ? "detail.verdict.reject" : receipt.decision === "allow" ? "detail.verdict.approved" : receipt.decision === "cancel" ? "detail.skipped" : "timeline.answered";
+  const saved = entry.response;
+  const own = !!saved || receipt?.status === "submitted";
+  const resolved = own || entry.status === "completed";
+  const answer = saved ? answerLabel({ op: "codex_respond", args: { result: saved.result } }) : receipt?.status === "submitted" ? answerLabel(receipt.payload) : "";
+  const decision = saved?.result?.decision;
+  const verdict = !own ? "timeline.resolved" : saved
+    ? saved.skipped ? "detail.skipped" : decision ? ["decline", "cancel", "denied"].includes(decision) ? "detail.verdict.reject" : "detail.verdict.approved"
+      : answer ? "timeline.answered" : "detail.skipped"
+    : receipt?.decision === "deny" ? "detail.verdict.reject" : receipt?.decision === "allow" ? "detail.verdict.approved" : receipt?.decision === "cancel" ? "detail.skipped" : "timeline.answered";
   return <div className="task-interaction-anchor" data-pending={!resolved || undefined}>
     <Icon icon={resolved ? Check : ShieldAlert} /><div><strong>{resolved ? t(verdict) : t("detail.needsYou")}</strong>
-      <span>{entry.interaction?.summary}</span>{receipt?.status === "submitted" && answerLabel(receipt.payload) && <span>{answerLabel(receipt.payload)}</span>}
-      {resolved && <small>{receipt?.status === "submitted" ? t("detail.byARC") : t("detail.resolvedElsewhere")}</small>}
+      <span>{entry.interaction?.summary}</span>{answer && <span>{answer}</span>}
+      {resolved && <small>{saved ? saved.origin.controlSource === "ARC" ? t("detail.byARC") : saved.origin.sourceLabel || saved.origin.controlSource || t("detail.sourceUnknown") : own ? t("detail.byARC") : t("detail.resolvedElsewhere")}</small>}
     </div>
   </div>;
 }

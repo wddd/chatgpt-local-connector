@@ -45,7 +45,9 @@ pub async fn capture(app: &tauri::AppHandle, body: &Value) -> Result<Value, Stri
     if !out.is_absolute() {
         return Err("INVALID_ARGUMENT: out must be an absolute directory".into());
     }
-    arc_core::private_dir(&out)?;
+    if body["modelOnly"] != true {
+        arc_core::private_dir(&out)?;
+    }
     let (sender, receiver) = tokio::sync::oneshot::channel();
     *state.pending.lock().map_err(|e| e.to_string())? = Some((id.clone(), sender));
     let handle = app.clone();
@@ -73,7 +75,7 @@ pub async fn capture(app: &tauri::AppHandle, body: &Value) -> Result<Value, Stri
                 &handle,
                 Some((
                     "acceptance:snapshot".into(),
-                    json!({"id":id,"panel":request["panel"]}),
+                    json!({"id":id,"panel":request["panel"],"taskPanel":request["taskPanel"]}),
                 )),
             )
         })();
@@ -93,6 +95,9 @@ pub async fn capture(app: &tauri::AppHandle, body: &Value) -> Result<Value, Stri
     .await;
     state.pending.lock().map_err(|e| e.to_string())?.take();
     let model = model?;
+    if body["modelOnly"] == true {
+        return Ok(json!({"model":model}));
+    }
     let model_path = out.join("view-model.json");
     arc_core::save(&model_path, &model)?;
     let png = capture_png(app).await;

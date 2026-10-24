@@ -430,6 +430,7 @@ impl Control {
             .await?;
         let mut timeline = crate::task_tracking::Timeline::default();
         timeline.backfill_codex(&history["thread"], 0, 0, &now());
+        crate::interaction_responses::project(&mut timeline, thread)?;
         let mut result = timeline.response(thread, 0);
         let projects = crate::projects::catalog(self).await.unwrap_or_default();
         result["projectName"] = json!(crate::projects::display_name(
@@ -449,6 +450,7 @@ impl Control {
                 return Err("TIMELINE_CURSOR_EXPIRED: fetch again without after".into());
             }
             if timeline.history_loaded {
+                crate::interaction_responses::project(timeline, thread)?;
                 return Ok(timeline.response(thread, after));
             }
             (timeline.revision, timeline.observed_events)
@@ -476,13 +478,19 @@ impl Control {
             Ok(result) => timeline.backfill_codex(&result["thread"], baseline, observed, &now()),
             Err(error) => return Err(error),
         }
+        crate::interaction_responses::project(timeline, thread)?;
         if after > timeline.revision {
             return Err("TIMELINE_CURSOR_EXPIRED: fetch again without after".into());
         }
         Ok(timeline.response(thread, after))
     }
     pub async fn request(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
-        if method == "fs/fetchFile" || (method == "fs/writeFile" && ["expectedSha256", "append", "offset"].iter().any(|key| args.get(*key).is_some())) {
+        if method == "fs/fetchFile"
+            || (method == "fs/writeFile"
+                && ["expectedSha256", "append", "offset"]
+                    .iter()
+                    .any(|key| args.get(*key).is_some()))
+        {
             return crate::text_files::binary::transfer(method, &args).await;
         }
         if method == "turn/start" {
@@ -815,7 +823,16 @@ impl Control {
                     }
                     receipt["failureStage"] = receipt["state"].clone();
                     receipt["state"] = json!(crate::kernel::receipts::failure_state(&err));
-                    receipt["result"] = json!({"error":crate::egress::failure(&err)});
+                    let mut error = crate::egress::failure(&err);
+                    if error["code"] == "THREAD_WRITER_BUSY" && receipt["threadId"].is_string() {
+                        error["next"]["args"] =
+                            json!({"threadId":receipt["threadId"],"statusOnly":true});
+                        error["next"]
+                            .as_object_mut()
+                            .unwrap()
+                            .remove("requiredArgs");
+                    }
+                    receipt["result"] = json!({"error":error});
                 }
             }
             let result = c.checkpoint(&mut receipt).map(|_| receipt);
@@ -1145,6 +1162,7 @@ impl Control {
                     )?;
                 }
                 let result = result?;
+                crate::interaction_responses::record(&pending, args)?;
                 if let Some(turn) = result["nextTurnId"].as_str() {
                     let thread = string(&result, "threadId");
                     if let Err(e) = crate::changes::record(thread, turn, &baseline) {
@@ -1173,6 +1191,7 @@ impl Control {
             rpc.write(response)
                 .await
                 .map_err(|e| format!("SUBMISSION_UNCONFIRMED: {e}"))?;
+            crate::interaction_responses::record(&pending, args)?;
             {
                 let mut events = self.events.lock().await;
                 events.pending.remove(key);
@@ -1320,6 +1339,17 @@ impl Control {
                 .flat_map(|m| m.values())
                 .chain(state["turns"].as_array().into_iter().flatten())
                 .find(|t| t["status"] == "inProgress");
+            if args["sendMode"] == "next" && active.is_some() {
+                return crate::dispatch_queue::enqueue(args, r).await;
+            }
+            if args["sendMode"] == "steer"
+                && (active.is_none()
+                    || args.get("_expectedActiveTurn").is_some_and(|id| {
+                        active.is_none_or(|turn| turn.get("turnId").unwrap_or(&turn["id"]) != id)
+                    }))
+            {
+                return Err("NO_ACTIVE_TURN: steering was not submitted; queue the message or send a new turn explicitly".into());
+            }
             params = configured(args, string(&state, "cwd"))?;
             params["threadId"] = json!(thread);
             params["input"] = input;
@@ -1631,11 +1661,21 @@ impl Control {
                 }
                 if args["statusOnly"] == true {
                     let mut progress = crate::review::progress(self, id).await;
-                    if t["status"]["activeFlags"].as_array().is_some_and(|flags| flags.iter().any(|flag| matches!(flag.as_str(), Some("waitingOnApproval" | "waitingOnUserInput")))) && progress["pendingInteractionCount"] == 0 {
+                    if t["status"]["activeFlags"].as_array().is_some_and(|flags| {
+                        flags.iter().any(|flag| {
+                            matches!(
+                                flag.as_str(),
+                                Some("waitingOnApproval" | "waitingOnUserInput")
+                            )
+                        })
+                    }) && progress["pendingInteractionCount"] == 0
+                    {
                         progress["pendingInteractionCount"] = Value::Null;
                         progress["interactionRequired"] = json!(true);
                     }
-                    return Ok(json!({"threadId":id,"runtimeStatus":t["status"]["type"],"turns":null,"observedAt":now(),"progress":progress}));
+                    return Ok(
+                        json!({"threadId":id,"runtimeStatus":t["status"]["type"],"turns":null,"observedAt":now(),"progress":progress}),
+                    );
                 }
                 if args["view"] == "review" {
                     let page = self.request("thread/turns/list",json!({"threadId":id,"cursor":args["cursor"],"limit":num(&args,"limit",1),"sortDirection":"desc","itemsView":"full"}),60000).await?;

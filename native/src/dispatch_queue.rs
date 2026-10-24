@@ -19,7 +19,6 @@ fn records() -> Result<Vec<Value>> {
         .filter_map(|e| {
             let row = load(&e.path()).ok()?;
             if !row.is_object()
-                || string(&row["origin"], "sourceId").is_empty()
                 || uuid::Uuid::parse_str(string(&row, "queueId")).is_err()
                 || string(&row, "threadId").is_empty()
                 || !row["args"].is_object()
@@ -33,8 +32,14 @@ fn records() -> Result<Vec<Value>> {
     Ok(rows)
 }
 fn visible(row: &Value) -> bool {
-    !string(&row["origin"], "sourceId").is_empty()
-        && row["origin"]["sourceId"] == crate::kernel::origin::current_origin()["sourceId"]
+    visible_to(row, &crate::kernel::origin::current_origin())
+}
+pub(crate) fn visible_to(row: &Value, origin: &Value) -> bool {
+    // Local authenticated administration can recover orphaned records. Remote
+    // sources retain the existing own-source boundary, including for promotion.
+    origin["authType"] == "local"
+        || (!string(&row["origin"], "sourceId").is_empty()
+            && row["origin"]["sourceId"] == origin["sourceId"])
 }
 fn public(row: &Value) -> Value {
     let mut out = json!({});
@@ -47,11 +52,13 @@ fn public(row: &Value) -> Value {
         "dispatchRequestId",
         "reason",
         "error",
+        "origin",
     ] {
         if !row[key].is_null() {
             out[key] = row[key].clone();
         }
     }
+    out["text"] = row["args"]["prompt"].clone();
     out["preview"] = json!(string(&row["args"], "prompt")
         .chars()
         .take(120)
@@ -59,6 +66,12 @@ fn public(row: &Value) -> Value {
     out
 }
 pub(crate) async fn enqueue(args: &Value, receipt: &mut Value) -> Result<Value> {
+    if string(&receipt["origin"], "sourceId").is_empty() {
+        return Err(
+            "SOURCE_REQUIRED: enqueue through an authenticated control source or tasks.control"
+                .into(),
+        );
+    }
     let _guard = LOCK.lock().await;
     let id = string(receipt, "requestId");
     let target = path(id)?;
@@ -84,7 +97,11 @@ pub(crate) async fn counts() -> Result<std::collections::HashMap<String, Value>>
     let _guard = LOCK.lock().await;
     let mut counts = std::collections::HashMap::new();
     for row in records()?.into_iter().filter(|r| {
-        visible(r) && matches!(string(r, "state"), "queued" | "blocked" | "dispatching")
+        visible(r)
+            && matches!(
+                string(r, "state"),
+                "queued" | "blocked" | "dispatching" | "steering"
+            )
     }) {
         let entry = counts
             .entry(string(&row, "threadId").to_owned())
@@ -112,9 +129,13 @@ pub(crate) async fn query(args: &Value) -> Result<Value> {
 }
 pub(crate) async fn control(control: &Arc<control::Control>, args: &Value) -> Result<Value> {
     let thread = string(args, "threadId");
-    let _thread = control.thread_lock(thread).await;
-    let _guard = LOCK.lock().await;
+    if args["action"] == "promote" && !args["queueId"].is_string() {
+        return Err("QUEUE_ID_REQUIRED: promote requires one queueId".into());
+    }
+    let thread_guard = control.thread_lock(thread).await;
+    let guard = LOCK.lock().await;
     let mut changed = Vec::new();
+    let mut promoted = None;
     for mut row in records()?.into_iter().filter(|r| {
         visible(r)
             && r["threadId"] == thread
@@ -125,9 +146,23 @@ pub(crate) async fn control(control: &Arc<control::Control>, args: &Value) -> Re
         }
         match string(args, "action") {
             "cancel" => row["state"] = json!("cancelled"),
-            "resume" => {
-                row["allowFailedTurn"] = row["blockedTurn"].clone();
-                row["state"] = json!("queued");
+            "resume" | "promote" => {
+                if string(&row["origin"], "sourceId").is_empty() {
+                    return Err("QUEUE_SOURCE_MISSING: cancel this orphan through local codex_queue_control; submit a new message explicitly".into());
+                }
+                if args["action"] == "promote" {
+                    let latest = control.request("thread/turns/list", json!({"threadId":thread,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}), 10000).await?;
+                    let turn = &latest["data"][0];
+                    if turn["status"] != "inProgress" {
+                        return Err("NO_ACTIVE_TURN: keep the message queued or resume it after an interrupted turn".into());
+                    }
+                    row["expectedActiveTurn"] = turn["id"].clone();
+                    row["state"] = json!("steering");
+                    promoted = Some(row.clone());
+                } else {
+                    row["allowFailedTurn"] = row["blockedTurn"].clone();
+                    row["state"] = json!("queued");
+                }
                 row["reason"] = Value::Null;
             }
             _ => return Err("INVALID_QUEUE_ACTION".into()),
@@ -135,18 +170,26 @@ pub(crate) async fn control(control: &Arc<control::Control>, args: &Value) -> Re
         save(&path(string(&row, "queueId"))?, &row)?;
         changed.push(public(&row));
     }
-    Ok(json!({"changed":changed.len(),"items":changed}))
+    drop(guard);
+    drop(thread_guard);
+    if let Some(row) = promoted {
+        tick(control, row.clone()).await?;
+        changed = vec![public(&load(&path(string(&row, "queueId"))?)?)];
+    }
+    Ok(
+        json!({"changed":changed.iter().filter(|r| match string(args,"action") { "cancel" => r["state"] == "cancelled", "resume" => r["state"] == "queued", _ => matches!(string(r,"state"),"steering"|"steered") }).count(),"items":changed}),
+    )
 }
 async fn tick(control: &Arc<control::Control>, mut row: Value) -> Result<()> {
     if crate::app_replace::check_dispatch().is_err() {
         return Ok(());
     }
     if string(&row["origin"], "sourceId").is_empty() {
-        return Err("SOURCE_REQUIRED".into());
+        return Ok(()); // Orphans remain visible for explicit local cancellation.
     }
     // The send path serializes this check with all other ARC writes to this thread.
     let thread = string(&row, "threadId").to_owned();
-    if row["state"] != "dispatching" {
+    if row["state"] != "dispatching" && row["state"] != "steering" {
         let _thread = control.thread_lock(&thread).await;
         {
             let _guard = LOCK.lock().await;
@@ -215,12 +258,27 @@ async fn tick(control: &Arc<control::Control>, mut row: Value) -> Result<()> {
     args["requestId"] = row["dispatchRequestId"].clone();
     args["waitMs"] = json!(0);
     args["approval"] = json!("approved");
-    args["_newTurn"] = json!(true);
-    args["_expectedPreviousTurn"] = row["expectedPreviousTurn"].clone();
+    let steering = row["state"] == "steering";
+    if steering {
+        args["sendMode"] = json!("steer");
+        args["_expectedActiveTurn"] = row["expectedActiveTurn"].clone();
+    } else {
+        args["_newTurn"] = json!(true);
+        args["_expectedPreviousTurn"] = row["expectedPreviousTurn"].clone();
+    }
     let origin = row["origin"].clone();
-    let result = crate::kernel::origin::ORIGIN
+    let result = match crate::kernel::origin::ORIGIN
         .scope(origin, control.mutate("send", args))
-        .await?;
+        .await
+    {
+        Ok(result) => result,
+        Err(error) => {
+            let _guard = LOCK.lock().await;
+            row["state"] = json!(crate::kernel::receipts::failure_state(&error));
+            row["error"] = crate::egress::failure(&error);
+            return save(&path(string(&row, "queueId"))?, &row);
+        }
+    };
     let state = string(&result, "state");
     if matches!(
         state,
@@ -235,7 +293,13 @@ async fn tick(control: &Arc<control::Control>, mut row: Value) -> Result<()> {
     }
     let _guard = LOCK.lock().await;
     row["state"] = json!(if state == "completed" {
-        "sent"
+        if steering {
+            "steered"
+        } else {
+            "sent"
+        }
+    } else if state == "unconfirmed" {
+        "unconfirmed"
     } else {
         "failed"
     });
@@ -255,8 +319,16 @@ pub(crate) fn start(control: &Arc<control::Control>) {
             let cycle = async {
                 let mut threads = std::collections::HashSet::new();
                 let mut tasks = tokio::task::JoinSet::new();
-                for row in records()? {
-                    if matches!(string(&row, "state"), "queued" | "blocked" | "dispatching")
+                let mut rows = records()?;
+                // Reconcile reserved submissions before an older queued row can
+                // block their receipt readback behind a running turn.
+                rows.sort_by_key(|r| !matches!(string(r, "state"), "steering" | "dispatching"));
+                for row in rows {
+                    if !string(&row["origin"], "sourceId").is_empty()
+                        && matches!(
+                            string(&row, "state"),
+                            "queued" | "blocked" | "dispatching" | "steering"
+                        )
                         && threads.insert(string(&row, "threadId").to_owned())
                     {
                         let c = c.clone();
@@ -275,4 +347,24 @@ pub(crate) fn start(control: &Arc<control::Control>) {
             tokio::select! {_=shutdown.changed()=>break,_=tokio::time::sleep(std::time::Duration::from_secs(1))=>{}}
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn orphaned_panel_records_remain_cancellable_only_locally() {
+        // Regression: missing sourceId filtered a queued panel record out of every cancel path.
+        let orphan =
+            json!({"origin":{"controlSource":"ARC","ingressId":"local-ui"},"state":"queued"});
+        assert!(visible_to(
+            &orphan,
+            &json!({"authType":"local","sourceId":"local"})
+        ));
+        assert!(!visible_to(&orphan, &json!({"sourceId":"remote"})));
+        assert!(!visible_to(&orphan, &Value::Null));
+        let owned = json!({"origin":{"sourceId":"a"}});
+        assert!(visible_to(&owned, &json!({"sourceId":"a"})));
+        assert!(!visible_to(&owned, &json!({"sourceId":"b"})));
+    }
 }

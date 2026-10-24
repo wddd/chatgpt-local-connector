@@ -84,6 +84,57 @@ impl Execution {
             )
             .await;
         }
+        if matches!(
+            name,
+            "task_timeline"
+                | "task_reviews"
+                | "task_review_undo"
+                | "task_panel"
+                | "task_panel_control"
+                | "task_open"
+                | "task_resource"
+        ) {
+            let spec = catalog()["ops"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|op| op["name"] == name)
+                .unwrap();
+            crate::egress::validate_op(spec, &args)?;
+            return match name {
+                "task_timeline" => {
+                    self.agents
+                        .conversation_timeline(&self.control, &args)
+                        .await
+                }
+                "task_reviews" => {
+                    Ok(json!({"reviews":crate::dispatch_policy::reviews(string(&args,"id"))?}))
+                }
+                "task_review_undo" => crate::dispatch_policy::undo_local_review(
+                    string(&args, "id"),
+                    string(&args, "turnId"),
+                    string(&args, "reviewRequestId"),
+                ),
+                "task_panel" | "task_panel_control" => {
+                    let result = crate::transport::forward_request(
+                        "app/snapshot",
+                        "POST",
+                        json!({"modelOnly":true,"taskPanel":args}),
+                    )
+                    .await?;
+                    Ok(result["model"]["taskDetail"].clone())
+                }
+                "task_open" => {
+                    crate::transport::forward_request(
+                        "tasks/open",
+                        "POST",
+                        json!({"agent":args["agent"],"taskId":args["id"]}),
+                    )
+                    .await
+                }
+                _ => crate::transport::forward_request("agents/resources", "POST", args).await,
+            };
+        }
         if name == "receipt" {
             let spec = crate::catalog()["ops"]
                 .as_array()

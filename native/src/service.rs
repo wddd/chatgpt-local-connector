@@ -738,7 +738,7 @@ impl Service {
             // still validate arguments, receipts, permissions and task boundaries.
             return crate::kernel::origin::ORIGIN
                 .scope(
-                    json!({"controlSource":"ARC","sourceLabel":"ARC","ingressId":"local-ui"}),
+                    crate::sources::panel_origin().await?,
                     self.execution.call(
                         string(&body, "op"),
                         body["args"].clone(),
@@ -763,12 +763,14 @@ impl Service {
             // Local authentication is enforced by transport; keep the existing
             // respond owners responsible for scope, validation and UUID replay.
             crate::management::resolve("agents.respond", &json!({"body":body}))?;
-            return self
-                .execution
-                .call(
-                    string(&body, "op"),
-                    body["args"].clone(),
-                    crate::kernel::policy::default_policy(),
+            return crate::kernel::origin::ORIGIN
+                .scope(
+                    crate::sources::panel_origin().await?,
+                    self.execution.call(
+                        string(&body, "op"),
+                        body["args"].clone(),
+                        crate::kernel::policy::default_policy(),
+                    ),
                 )
                 .await;
         }

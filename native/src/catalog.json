@@ -1958,7 +1958,7 @@
     },
     {
       "name": "codex_send",
-      "description": "Send text to a task. Steers an active turn or starts a new turn otherwise. turn parameters pass through. Desktop first opens/resumes unloaded threads. Confirmed absence of an owner falls back to ARC App Server. See guide for orchestration. Receipt dispatchMode is steered/new-turn/queued. sendMode:queue returns queueId. Inspect with codex_queue. Cancel or resume with codex_queue_control.",
+      "description": "Send text to a task. Steers an active turn or starts a new turn otherwise. turn parameters pass through. Desktop first opens/resumes unloaded threads. Confirmed absence of an owner falls back to ARC App Server. See guide for orchestration. Receipt dispatchMode is steered/new-turn/queued. sendMode:queue returns queueId. Inspect with codex_queue. Cancel or resume with codex_queue_control. sendMode:steer never starts a new turn. THREAD_WRITER_BUSY means a native session owns the thread; notLoaded is not global writer availability. Read the receipt and continue in or close the owning session before retrying.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2075,10 +2075,12 @@
             "type": "string",
             "enum": [
               "auto",
-              "queue"
+              "queue",
+              "next",
+              "steer"
             ],
             "default": "auto",
-            "description": "auto retains steering of the active turn. queue waits in thread FIFO order and starts a new turn. A failed/interrupted prior turn pauses it."
+            "description": "auto steers an active turn or starts a new one. next queues when active and starts a new turn when idle. queue persists FIFO input without steering. steer requires an active turn and fails without submitting if none exists."
           },
           "reason": {
             "type": "string",
@@ -2860,6 +2862,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "Optional UUID. Omit it to let ARC generate and return a receipt requestId. Retain that ID for retries with identical arguments. Supply a UUID up front only when retry safety is needed before receiving the response."
+          },
+          "skipped": {
+            "type": "boolean",
+            "description": "Explicit skip provenance for an asynchronous question. Still supply the native result.answer or cancellation result; this flag never sends or fabricates an answer. Read back entries[].response.skipped in task_timeline."
           },
           "result": {},
           "error": {
@@ -4958,7 +4964,7 @@
     },
     {
       "name": "codex_queue_control",
-      "description": "Cancel or resume undispatched messages for a thread in the current source. Omitted queueId applies to all queued/paused items in that thread. Submitted messages cannot be recalled.",
+      "description": "Cancel or resume undispatched messages in the current source. Omitted queueId applies to all queued/blocked items. Promote requires one queueId and injects that message into the current active turn once; it never starts a new turn. Local CLI and panel can also cancel legacy records missing source attribution. Inspect state with codex_queue; never replay an uncertain submission.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4973,7 +4979,8 @@
           "action": {
             "enum": [
               "cancel",
-              "resume"
+              "resume",
+              "promote"
             ]
           }
         },
@@ -5221,6 +5228,393 @@
         "content": "Updated standard practice and avoid list.",
         "reason": "User correction"
       }
+    },
+    {
+      "name": "task_timeline",
+      "description": "Read the task detail projection, including persisted answers and answering sources. This is the same data used by the panel. Never answers or approves interactions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "minLength": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "after": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "agent",
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "agent": "codex",
+        "id": "<threadId>"
+      },
+      "guideParameters": [
+        "agent",
+        "id",
+        "after"
+      ]
+    },
+    {
+      "name": "task_reviews",
+      "description": "Read persisted pass/rework verdicts and review request IDs for a task.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "id": "<threadId>"
+      },
+      "guideParameters": [
+        "id"
+      ]
+    },
+    {
+      "name": "task_review_undo",
+      "description": "Undo the exact ARC local pass review shown in the panel. A different reviewer, verdict or request ID fails closed. Read task_reviews first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turnId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reviewRequestId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "turnId",
+          "reviewRequestId"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "id": "<threadId>",
+        "turnId": "<turnId>",
+        "reviewRequestId": "<reviewRequestId>"
+      },
+      "guideParameters": [
+        "id",
+        "turnId",
+        "reviewRequestId"
+      ]
+    },
+    {
+      "name": "task_panel",
+      "description": "Read the currently open task panel, including following, atLatest, queued messages, responses and disclosure IDs. Requires the matching open task. No screenshots or files are created. Use task_panel_control to open it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "minLength": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "agent",
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "agent": "codex",
+        "id": "<threadId>"
+      },
+      "guideParameters": [
+        "agent",
+        "id"
+      ]
+    },
+    {
+      "name": "task_panel_control",
+      "description": "Navigate the task detail panel. open selects a task; latest scrolls to the bottom and enables follow; follow changes streaming follow mode; width toggles panel width; back returns to the task list; disclose toggles the disclosure ID returned by task_panel. Requires Desktop; headless agents can read task_timeline. Dispatch and decisions use their own ops, never this navigation op.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "minLength": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "enum": [
+              "open",
+              "latest",
+              "follow",
+              "width",
+              "back",
+              "disclose"
+            ]
+          },
+          "following": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "agent",
+          "id",
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "agent": "codex",
+        "id": "<threadId>",
+        "action": "latest"
+      },
+      "guideParameters": [
+        "agent",
+        "id",
+        "action",
+        "following",
+        "target"
+      ]
+    },
+    {
+      "name": "task_open",
+      "description": "Open this task in its native Agent application using the same capability as the detail header.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "minLength": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "agent",
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "agent": "codex",
+        "id": "<threadId>"
+      },
+      "guideParameters": [
+        "agent",
+        "id"
+      ]
+    },
+    {
+      "name": "task_resource",
+      "description": "Read an image or reveal a file using the task detail resource boundary. Paths must belong to the task project or its visualization directory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "minLength": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          },
+          "action": {
+            "enum": [
+              "image",
+              "reveal"
+            ]
+          }
+        },
+        "required": [
+          "agent",
+          "id",
+          "path",
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "agent": "codex",
+        "id": "<threadId>",
+        "path": "<task-relative-path>",
+        "action": "image"
+      },
+      "guideParameters": [
+        "agent",
+        "id",
+        "path",
+        "action"
+      ]
     }
   ],
   "domains": {
@@ -5452,6 +5846,72 @@
       "connector_verify"
     ],
     "tools": {
+      "task_timeline": {
+        "group": "codex",
+        "presets": [
+          "common",
+          "readOnly"
+        ],
+        "requires": [],
+        "tier": "default",
+        "conditional": false
+      },
+      "task_reviews": {
+        "group": "codex",
+        "presets": [
+          "common",
+          "readOnly"
+        ],
+        "requires": [],
+        "tier": "default",
+        "conditional": false
+      },
+      "task_review_undo": {
+        "group": "codex",
+        "presets": [
+          "common"
+        ],
+        "requires": [],
+        "tier": "default",
+        "conditional": false
+      },
+      "task_panel": {
+        "group": "codex",
+        "presets": [
+          "common",
+          "readOnly"
+        ],
+        "requires": [],
+        "tier": "default",
+        "conditional": false
+      },
+      "task_panel_control": {
+        "group": "codex",
+        "presets": [
+          "common"
+        ],
+        "requires": [],
+        "tier": "default",
+        "conditional": false
+      },
+      "task_open": {
+        "group": "codex",
+        "presets": [
+          "common"
+        ],
+        "requires": [],
+        "tier": "default",
+        "conditional": false
+      },
+      "task_resource": {
+        "group": "codex",
+        "presets": [
+          "common"
+        ],
+        "requires": [],
+        "tier": "default",
+        "conditional": false
+      },
       "connector_verify": {
         "group": "project",
         "presets": [

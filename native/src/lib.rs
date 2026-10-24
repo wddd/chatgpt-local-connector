@@ -38,6 +38,7 @@ pub mod i18n;
 pub mod images;
 pub mod ingress;
 mod ingress_observation;
+mod interaction_responses;
 pub mod kernel;
 pub mod local_access;
 pub mod logs;

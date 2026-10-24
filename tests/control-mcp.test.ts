@@ -102,6 +102,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       if (method === 'thread/read') {
         if(row.model.includes('lazy-seed') && !row.named)return emit({id,error:{code:-32000,message:'seed not durable until named'}});
         if(row.model.includes('lazy-seed'))row.independentReader=process.pid!==row.creator;
+        if (params.includeTurns && row.model.includes('question')) return emit({id,result:{thread:{...row.thread,turns:row.turns,status:{type:row.turns.at(-1)?.status==='inProgress'?'active':'idle'}}}});
         if (params.includeTurns) return emit({id,error:{code:-32601,message:'list_turns is not supported yet'}});
         row.metadataReads++;
         saveFixture(saved);
@@ -1021,6 +1022,56 @@ test('FIFO queue never steers, pauses on failures, supports cancellation/resume 
   const rows=await fixtureRows();assert.equal(rows[created.threadId].turns[2].input[0].text,'third');
   assert.deepEqual(rows[created.threadId].turns[0].input, activeInput, 'queued input never changes the running turn');
   await completed('codex_call',{method:'fixture/finish-turn',params:{threadId:created.threadId},requestId:randomUUID()});
+});
+
+test('local panel queues have durable sources, dispatch after completion and promote or cancel once', async () => {
+  // Regression: local UI queues lacked sourceId, so dispatch and cancel silently ignored accepted messages.
+  const created = await dispatchFixture('fixture-dispatch-queue');
+  const local = (op: string, args: Record<string, unknown>) => management('tasks/control', 'POST', { op, args });
+  const queue = async (prompt: string) => local('codex_send', { threadId: created.threadId, prompt, sendMode: 'queue', approval: 'approved', requestId: randomUUID() });
+  const a = await local('codex_send', { threadId: created.threadId, prompt: 'next turn', sendMode: 'next', approval: 'approved', requestId: randomUUID() }), b = await queue('steer this'), c = await queue('cancel this');
+  assert.ok(a.origin.sourceId);
+  assert.equal((await local('codex_queue_control', { threadId: created.threadId, queueId: c.queueId, action: 'cancel' })).changed, 1);
+  const promoted = await local('codex_queue_control', { threadId: created.threadId, queueId: b.queueId, action: 'promote' });
+  assert.ok(['steering', 'steered'].includes(promoted.items[0].state));
+  const query = () => local('codex_queue', { threadId: created.threadId });
+  await eventually(query, r => r.items.some((row: any) => row.queueId === b.queueId && row.state === 'steered'));
+  assert.equal((await fixtureRows())[created.threadId].turns.length, 1);
+  assert.equal((await local('codex_queue_control', { threadId: created.threadId, queueId: b.queueId, action: 'promote' })).changed, 0);
+  await completed('codex_call', { method: 'fixture/finish-turn', params: { threadId: created.threadId }, requestId: randomUUID() });
+  await eventually(fixtureRows, r => r[created.threadId].turns.length === 2);
+  assert.equal((await fixtureRows())[created.threadId].turns[1].input[0].text, 'next turn');
+  await completed('codex_call', { method: 'fixture/finish-turn', params: { threadId: created.threadId }, requestId: randomUUID() });
+  const rejected = await local('codex_send', { threadId: created.threadId, prompt: 'do not start', sendMode: 'steer', approval: 'approved', requestId: randomUUID() });
+  assert.equal(rejected.state, 'failed');
+  assert.equal((await fixtureRows())[created.threadId].turns.length, 2);
+  const idle = await local('codex_send', { threadId: created.threadId, prompt: 'idle next', sendMode: 'next', approval: 'approved', requestId: randomUUID() });
+  assert.equal(idle.dispatchMode, 'new-turn');
+  await completed('codex_call', { method: 'fixture/finish-turn', params: { threadId: created.threadId }, requestId: randomUUID() });
+});
+
+test('ARC answers retain their content and answering source after reconnect', async () => {
+  // Regression: reopening a locally answered question lost both its answer and answering source.
+  const created = await dispatchFixture('fixture-dispatch-question');
+  const pending = await eventually(async () => (await call('codex_pending', { threadId: created.threadId })).result, r => r.requests?.length > 0);
+  const request = pending.requests.find((r: any) => r.params.threadId === created.threadId);
+  const answer = { answers: { q: { answers: ['Retained answer'] } } };
+  const result = await management('agents/respond', 'POST', { op: 'codex_respond', args: { id: request.responseId, backendSession: pending.backendSession, result: answer, requestId: randomUUID() } });
+  assert.equal(result.state, 'completed');
+  await client.close(); await connectFixture();
+  const timeline = await management(`agents/timeline/${created.threadId}`);
+  const response = timeline.entries.find((e: any) => e.response)?.response;
+  assert.deepEqual(response.result, answer);
+  assert.equal(response.origin.controlSource, 'ARC');
+  assert.ok(response.origin.sourceId);
+  const projected = (await call('task_timeline', { agent: 'codex', id: created.threadId })).result;
+  assert.deepEqual(projected.entries.find((e: any) => e.response)?.response, response);
+  const reviewId = randomUUID();
+  const reviewed = await management('tasks/control', 'POST', { op: 'codex_review', args: { threadId: created.threadId, turnId: created.turnId, verdict: 'pass', requestId: reviewId } });
+  assert.equal(reviewed.state, 'completed');
+  assert.equal((await call('task_reviews', { id: created.threadId })).result.reviews[0].review.verdict, 'pass');
+  assert.equal((await call('task_review_undo', { id: created.threadId, turnId: created.turnId, reviewRequestId: reviewId })).result.undone, true);
+  assert.deepEqual((await call('task_reviews', { id: created.threadId })).result.reviews, []);
 });
 
 test('capacity failures retry same model without replaying input, suppress intermediate failure and stop after budget or side effects', async () => {

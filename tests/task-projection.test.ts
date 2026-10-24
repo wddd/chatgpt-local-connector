@@ -60,6 +60,7 @@ test("asynchronous questions and Pi selectors keep distinct native answer format
   const { inputResponse } = await import("../ui/state/taskInteractions.ts");
   const question = { kind: "question" as const, summary: "Choose", method: "request_user_input_async", respond: { op: "codex_respond" as const, args: { id: "question" } } };
   assert.deepEqual(inputResponse(question, { answer: ["Custom"] })?.args.result, { answer: "Custom" });
+  assert.equal(inputResponse(question, {}, true, "Skipped")?.args.skipped, true);
   const pi = { ...question, method: "select", options: ["A"], respond: { op: "agent_respond" as const, args: { agent: "pi", interactionId: "question" } } };
   assert.equal(inputResponse(pi, { answer: ["Other"] }), undefined);
   assert.equal(inputResponse(pi, { answer: ["A"] })?.args.value, "A");

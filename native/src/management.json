@@ -1754,6 +1754,9 @@
               "op": {
                 "enum": [
                   "codex_send",
+                  "codex_queue",
+                  "codex_queue_control",
+                  "task_review_undo",
                   "agent_send",
                   "codex_interrupt",
                   "agent_interrupt",
@@ -1770,9 +1773,7 @@
                     "format": "uuid"
                   }
                 },
-                "required": [
-                  "requestId"
-                ]
+                "additionalProperties": true
               }
             },
             "required": [
@@ -2672,13 +2673,52 @@
       "name": "app.snapshot",
       "method": "POST",
       "route": "app/snapshot",
-      "description": "Export live derived UI view-model.json and macOS WKWebView snapshot.png. Other desktops export the model with png.code=NOT_SUPPORTED. out defaults to state/acceptance/<unique id>; width/height are logical pixels; panel.id is required for agent/source.",
+      "description": "Read the live UI model. modelOnly:true returns model inline without files or screenshots. Otherwise export view-model.json and macOS snapshot.png; other desktops report png.code=NOT_SUPPORTED. taskPanel reads or navigates one task detail. out defaults to state/acceptance/<unique id>; width/height are logical pixels; panel.id is required for agent/source.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "body": {
             "type": "object",
             "properties": {
+              "modelOnly": {
+                "type": "boolean",
+                "default": false
+              },
+              "taskPanel": {
+                "type": "object",
+                "properties": {
+                  "agent": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "action": {
+                    "enum": [
+                      "open",
+                      "latest",
+                      "follow",
+                      "width",
+                      "back",
+                      "disclose"
+                    ]
+                  },
+                  "following": {
+                    "type": "boolean"
+                  },
+                  "target": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "agent",
+                  "id"
+                ],
+                "additionalProperties": false
+              },
               "out": {
                 "type": "string",
                 "minLength": 1

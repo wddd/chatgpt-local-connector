@@ -382,13 +382,17 @@ impl AgentDriver {
     pub async fn respond(&self, p: &Arc<Process>, a: &Value) -> Result<Value> {
         let key = a["interactionId"].to_string();
         let mut pending = p.events.lock().await;
-        let req = pending.pending.get(&key).ok_or("INTERACTION_NOT_PENDING")?;
+        let req = pending
+            .pending
+            .get(&key)
+            .cloned()
+            .ok_or("INTERACTION_NOT_PENDING")?;
         let response = if p.pi {
             let mut v = json!({"type":"extension_ui_response","id":req["id"]});
             if a["cancelled"] == true {
                 v["cancelled"] = json!(true);
             } else {
-                match string(req, "method") {
+                match string(&req, "method") {
                     "confirm" => {
                         if !a["confirmed"].is_boolean() {
                             return Err("CONFIRMATION_REQUIRED".into());
@@ -429,7 +433,24 @@ impl AgentDriver {
             .await
             .map_err(|e| format!("SUBMISSION_UNCONFIRMED: {e}"))?;
         if let Some(timeline) = pending.timelines.values_mut().next() {
-            timeline.resolve(&a["interactionId"], &now());
+            let request = json!({"id":a["interactionId"],"method":req["method"],"params":{"turnId":timeline.turn}});
+            let result = if a["value"].is_string() {
+                json!({"answer":a["value"]})
+            } else if a["cancelled"] == true {
+                json!({"answers":{}})
+            } else {
+                let rejected = a["confirmed"] == false
+                    || req["params"]["options"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .any(|option| {
+                            option["optionId"] == a["optionId"]
+                                && string(option, "kind").starts_with("reject")
+                        });
+                json!({"decision":if rejected {"decline"} else {"accept"}})
+            };
+            timeline.answered(&request, &json!({"result":result,"native":a,"origin":crate::kernel::origin::current_origin(),"resolvedAt":now()}));
         }
         pending.pending.remove(&key);
         let empty = pending.pending.is_empty();

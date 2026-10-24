@@ -39,6 +39,12 @@ export default function TaskNeedsYou({ agent, session, entries, source, onPendin
       const key = interactionKey(agent, old);
       if (!native.some(s => interactionKey(agent, s) === key)) {
         const submission = submissions[key];
+        const saved = entries.find(entry => entry.response && interactionKey(agent, { ...session, phaseSince: entry.startedAt, interaction: entry.interaction }) === key)?.response;
+        if (saved) {
+          const source = saved.origin.controlSource === "ARC" ? t("detail.byARC") : saved.origin.sourceLabel || saved.origin.controlSource || t("detail.sourceUnknown");
+          setResolved(`${source} · ${answerLabel({ op: "codex_respond", args: { result: saved.result } }) || t("timeline.resolved")}`);
+          continue;
+        }
         setResolved(submission?.status === "submitted" ? `${t("detail.byARC")} · ${answerLabel(submission.payload) || t(`activity.${submission.decision}`)}` : t("detail.resolvedElsewhere"));
       }
     }
