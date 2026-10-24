@@ -1,0 +1,169 @@
+//! Outcome-only projection of recorded native turns. No command output is exposed.
+use crate::*;
+use std::collections::BTreeMap;
+use std::sync::OnceLock;
+
+fn checks() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(||regex::Regex::new(r"^\s*(?:rtk\s+)?(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|check|lint|typecheck|type-check|build)[\w:-]*|cargo\s+(?:test|check|clippy|fmt)|node\s+--test[\w=-]*|(?:npx\s+)?(?:tsc|eslint|vitest|jest)|(?:python3?\s+-m\s+)?(?:pytest|unittest)|go\s+test|dotnet\s+test|ctest)\b").unwrap())
+}
+// Preserve quoted arguments and redirections while recognizing shell clauses.
+fn clauses(line: &str) -> Vec<&str> {
+    let mut result = Vec::new();
+    let mut start = 0;
+    let mut quote = None;
+    let mut escaped = false;
+    for (offset, ch) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && quote != Some('\'') {
+            escaped = true;
+        } else if Some(ch) == quote {
+            quote = None;
+        } else if quote.is_none() {
+            if matches!(ch, '\'' | '"' | '`') {
+                quote = Some(ch);
+            } else if matches!(ch, ';' | '|')
+                || (ch == '&'
+                    && (line[offset..].starts_with("&&")
+                        || (offset > 0 && line.as_bytes()[offset - 1] == b'&')))
+            {
+                result.push(line[start..offset].trim());
+                start = offset + ch.len_utf8();
+            }
+        }
+    }
+    result.push(line[start..].trim());
+    result
+}
+fn check_command(item: &Value) -> Option<String> {
+    static HEREDOC: OnceLock<regex::Regex> = OnceLock::new();
+    let heredoc = HEREDOC
+        .get_or_init(|| regex::Regex::new(r#"<<-?\s*['"]?([A-Za-z_][A-Za-z_0-9]*)['"]?"#).unwrap());
+    let actions: Vec<_> = item["commandActions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|a| a["command"].as_str())
+        .collect();
+    let scripts = if actions.is_empty() {
+        vec![string(item, "command")]
+    } else {
+        actions
+    };
+    let mut commands = Vec::new();
+    for script in scripts {
+        let mut delimiters = std::collections::VecDeque::<String>::new();
+        for line in script.lines() {
+            if let Some(delimiter) = delimiters.front() {
+                if line.trim() == delimiter {
+                    delimiters.pop_front();
+                }
+                continue;
+            }
+            // Native commandActions removes the shell wrapper. The fallback also
+            // recognizes common wrappers when older native records omit actions.
+            let line = line
+                .trim()
+                .strip_prefix("/bin/zsh -lc \"")
+                .or_else(|| line.trim().strip_prefix("/bin/sh -lc \""))
+                .unwrap_or(line);
+            for command in clauses(line) {
+                if checks().is_match(command) {
+                    commands.push(command.to_owned());
+                }
+            }
+            delimiters.extend(heredoc.captures_iter(line).map(|c| c[1].to_owned()));
+        }
+    }
+    (!commands.is_empty()).then(|| commands.join("; "))
+}
+fn check_summary(item: &Value) -> String {
+    let output = string(item, "aggregatedOutput");
+    let lines: Vec<_> = output
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            let line = line.trim_start_matches('ℹ').trim();
+            line.starts_with("test result:")
+                || line.starts_with("Test policy ")
+                || [
+                    "tests ",
+                    "pass ",
+                    "fail ",
+                    "cancelled ",
+                    "skipped ",
+                    "todo ",
+                ]
+                .iter()
+                .any(|p| {
+                    line.strip_prefix(p)
+                        .is_some_and(|n| n.starts_with(|c: char| c.is_ascii_digit()))
+                })
+        })
+        .collect();
+    if !lines.is_empty() {
+        return lines.join("; ").chars().take(240).collect();
+    }
+    match item["exitCode"].as_i64() {
+        Some(code) => format!("Process exited with code {code}; no test summary captured."),
+        None => format!("Native command status: {}.", string(item, "status")),
+    }
+}
+fn native_files(items: &[Value]) -> Value {
+    if !items.iter().any(|i| i["type"] == "fileChange") {
+        return Value::Null;
+    }
+    let mut files = BTreeMap::<String, (u64, u64, bool)>::new();
+    for item in items.iter().filter(|i| {
+        i["type"] == "fileChange" && i["status"] != "failed" && i["status"] != "declined"
+    }) {
+        for change in item["changes"].as_array().into_iter().flatten() {
+            let Some(path) = change["path"].as_str() else {
+                continue;
+            };
+            let counts = files.entry(path.into()).or_default();
+            let mut hunk = false;
+            let mut known = false;
+            for line in string(change, "diff").lines() {
+                if line.starts_with("@@ ") {
+                    hunk = true;
+                    known = true;
+                } else if line.starts_with("diff --git ") {
+                    hunk = false;
+                } else if hunk && line.starts_with('+') {
+                    counts.0 += 1;
+                } else if hunk && line.starts_with('-') {
+                    counts.1 += 1;
+                }
+            }
+            counts.2 |= !known;
+        }
+    }
+    json!(files
+        .into_iter()
+        .map(|(path, (added, removed, unknown))| json!({"path":path,"added":if unknown{None}else{Some(added)},"removed":if unknown{None}else{Some(removed)}}))
+        .collect::<Vec<_>>())
+}
+pub(crate) async fn turn(c: &control::Control, thread: &str, turn: &Value) -> Value {
+    let items = turn["items"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let message = items
+        .iter()
+        .rev()
+        .find(|i| i["type"] == "agentMessage" && i["phase"] != "commentary")
+        .and_then(|i| i["text"].as_str());
+    let files = crate::changes::review_files(c, thread, string(turn, "id"))
+        .await
+        .unwrap_or_else(|| native_files(items));
+    let checks: Vec<_> = items
+        .iter()
+        .filter(|i| i["type"] == "commandExecution")
+        .filter_map(|i| {
+            let command = check_command(i)?;
+            Some(json!({"command":command,"exitCode":i["exitCode"],"summary":check_summary(i)}))
+        })
+        .collect();
+    json!({"turnId":turn["id"],"recordedStatus":turn["status"],"finalResponse":message,"files":files,"checks":checks})
+}

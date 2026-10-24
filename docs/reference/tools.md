@@ -374,3 +374,12 @@ Dispatch receipt follow-ups retain `hint`, `via`, `op`, and `args`, with shorter
 
 
 Without verified proactive notifications, control sources SHOULD schedule a revisit timer using `receipt.next.revisitAfterMinutes` when provided. This historical estimate is absent when no matching duration samples exist. In-turn segmented waits SHOULD be limited to tasks expected to finish within a few minutes: each wait call costs the control source a full context round trip. Client wait limits still apply. Reuse the same task IDs and follow returned next arguments rather than redispatching.
+
+
+## Outcome-oriented Codex review
+
+Start review with `query({"op":"codex_read","args":{"threadId":"<thread>","view":"review"}})`. The default is the latest turn; existing `limit` and `cursor` request history. Each turn returns only `turnId`, `recordedStatus`, the complete `finalResponse`, `files` with `path`/`added`/`removed`, and `checks` with `command`/`exitCode`/a one-line `summary`. Thread identity, pagination, and ARC version remain in the envelope. Commentary, intermediate messages, command outputs, diffs, images, external inputs, and inbox payloads are omitted. Reading still acknowledges the returned turns. Compact/full views retain their existing behavior.
+
+File counts use a valid recorded Git baseline, bounded by the next clean recorded turn baseline for historical turns, or native file-change diffs when Git evidence is unavailable. Git workspace counts may include concurrent or pre-existing changes. Historical uncommitted changes cannot be reconstructed from a Git commit alone. `files:null` means change evidence is unavailable; it does not mean no files changed. Native patch counts aggregate recorded edits per path. Binary counts can be null. Use `codex_changes` or full records for detailed evidence.
+
+Checks recognize common validation commands (package-manager test/check/lint/build scripts, Cargo test/check/clippy/fmt, Node tests, and common standalone test/type/lint runners). Heredoc bodies are excluded from command discovery. Each exit code belongs to the native command batch, not independently to every extracted subcommand. Summaries preserve bounded native test-result lines when present; otherwise they state the process result without claiming tests passed. Custom command names may require full records. Very large final responses retain normal control_output pagination rather than truncating the final text.

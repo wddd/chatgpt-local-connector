@@ -1626,6 +1626,19 @@ impl Control {
                         .await?["thread"]
                         .clone();
                 }
+                if args["view"] == "review" {
+                    if args["statusOnly"] == true {
+                        return Ok(json!({"threadId":id,"runtimeStatus":t["status"]["type"]}));
+                    }
+                    let page = self.request("thread/turns/list",json!({"threadId":id,"cursor":args["cursor"],"limit":num(&args,"limit",1),"sortDirection":"desc","itemsView":"full"}),60000).await?;
+                    let mut turns = Vec::new();
+                    for turn in page["data"].as_array().into_iter().flatten() {
+                        turns.push(crate::review::turn(self, id, turn).await);
+                    }
+                    return Ok(
+                        json!({"threadId":id,"turns":turns,"nextCursor":page["nextCursor"]}),
+                    );
+                }
                 let full = args["view"] == "full";
                 let mut result = if full {
                     summary(&t)

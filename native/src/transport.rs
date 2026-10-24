@@ -664,7 +664,7 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
             }
         }
     };
-    if !inbox.is_null() {
+    if !inbox.is_null() && !(name == "codex_read" && args["view"] == "review") {
         if !value.is_object() {
             value = json!({"value":value});
         }

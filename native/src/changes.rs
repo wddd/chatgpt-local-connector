@@ -29,6 +29,49 @@ pub fn record(thread: &str, turn: &str, baseline: &Value) -> Result<()> {
     Ok(())
 }
 pub async fn query(c: &control::Control, args: &Value) -> Result<Value> {
+    query_until(c, args, None).await
+}
+
+/// Bound historical Git evidence by the next recorded turn baseline when present.
+/// Native fileChange records are the fallback when no usable Git baseline exists.
+pub(crate) async fn review_files(c: &control::Control, thread: &str, turn: &str) -> Option<Value> {
+    let baseline = load(&path(thread, turn)).ok()?;
+    let mut later = Vec::new();
+    for entry in std::fs::read_dir(path(thread, turn).parent()?)
+        .ok()?
+        .flatten()
+    {
+        let Ok(candidate) = load(&entry.path()) else {
+            continue;
+        };
+        if candidate["capturedAt"]
+            .as_str()
+            .zip(baseline["capturedAt"].as_str())
+            .is_some_and(|(a, b)| a > b)
+            && candidate["root"] == baseline["root"]
+        {
+            later.push(candidate);
+        }
+    }
+    later.sort_by(|a, b| string(a, "capturedAt").cmp(string(b, "capturedAt")));
+    if later.first().is_some_and(|b| b["dirty"] == true) {
+        return None;
+    }
+    let end = later.first().and_then(|b| b["head"].as_str());
+    let result = query_until(c, &json!({"threadId":thread,"turnId":turn,"limit":1}), end)
+        .await
+        .ok()?;
+    (result["fallback"] == false).then(|| {
+        json!(result["files"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|f| json!({"path":f["path"],"added":f["added"],"removed":f["removed"]}))
+            .collect::<Vec<_>>())
+    })
+}
+
+async fn query_until(c: &control::Control, args: &Value, end: Option<&str>) -> Result<Value> {
     let thread = string(args, "threadId");
     let task = c
         .request(
@@ -57,10 +100,14 @@ pub async fn query(c: &control::Control, args: &Value) -> Result<Value> {
     let repository = git(cwd, &["rev-parse", "--show-toplevel"]).await?;
     let task_cwd = cwd;
     let cwd = repository.trim();
-    let head = git(cwd, &["rev-parse", "--verify", "HEAD"])
-        .await
-        .ok()
-        .map(|s| s.trim().to_owned());
+    let head = if let Some(end) = end {
+        Some(end.to_owned())
+    } else {
+        git(cwd, &["rev-parse", "--verify", "HEAD"])
+            .await
+            .ok()
+            .map(|s| s.trim().to_owned())
+    };
     let empty_tree = git(cwd, &["hash-object", "-t", "tree", "--stdin"]).await?;
     let head_ref = head.as_deref().unwrap_or(empty_tree.trim());
     let start = baseline["head"].as_str();
@@ -102,19 +149,19 @@ pub async fn query(c: &control::Control, args: &Value) -> Result<Value> {
     } else {
         head_ref
     };
-    let raw = git(
-        cwd,
-        &[
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--numstat",
-            "-z",
-            base,
-            "--",
-        ],
-    )
-    .await?;
+    let mut diff_args = vec![
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--numstat",
+        "-z",
+        base,
+    ];
+    if end.is_some() {
+        diff_args.push(head_ref);
+    }
+    diff_args.push("--");
+    let raw = git(cwd, &diff_args).await?;
     let mut files = Vec::new();
     let mut chunks = raw.split('\0').filter(|s| !s.is_empty());
     while let Some(entry) = chunks.next() {
@@ -131,7 +178,11 @@ pub async fn query(c: &control::Control, args: &Value) -> Result<Value> {
         files.push(json!({"path":file,"added":parts[0].parse::<u64>().ok(),"removed":parts[1].parse::<u64>().ok(),"binary":parts[0]=="-"}));
     }
     // Git diff omits untracked files; include their current text in the workspace summary.
-    let untracked = git(cwd, &["ls-files", "--others", "--exclude-standard", "-z"]).await?;
+    let untracked = if end.is_some() {
+        String::new()
+    } else {
+        git(cwd, &["ls-files", "--others", "--exclude-standard", "-z"]).await?
+    };
     for file in untracked.split('\0').filter(|s| !s.is_empty()) {
         let text = projects::read_bytes(cwd, file)
             .ok()

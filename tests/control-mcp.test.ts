@@ -122,6 +122,21 @@ for await (const line of createInterface({ input: process.stdin })) {
         return emit({id,result:{}});
       }
     }
+    if(params?.threadId==='review-outcomes') {
+      const items=[
+        {type:'agentMessage',phase:'commentary',text:'Working'},
+        {type:'fileChange',status:'completed',changes:[{path:'src/example.rs',kind:{type:'update'},diff:'--- a/src/example.rs\\n+++ b/src/example.rs\\n@@ -1 +1 @@\\n-old\\n+new'}]},
+        {type:'fileChange',status:'completed',changes:[{path:'src/example.rs',kind:{type:'update'},diff:'@@ -1 +1,3 @@\\n unchanged\\n+one\\n+two'}]},
+        {type:'fileChange',status:'failed',changes:[{path:'rejected.rs',diff:'@@ -0,0 +1 @@\\n+no'}]},
+        {type:'commandExecution',command:'cat README.md',exitCode:0,status:'completed',aggregatedOutput:'PRIVATE_COMMAND_OUTPUT'.repeat(100)},
+        {type:'commandExecution',command:'npm run check',commandActions:[{type:'unknown',command:"npm run check && node --test --test-name-pattern='review|full' checks.test.ts > check.log 2>&1"}],exitCode:1,status:'completed',aggregatedOutput:'PRIVATE_COMMAND_OUTPUT'.repeat(100)+'\\ntest result: FAILED. 2 passed; 1 failed; 0 ignored\\n'},
+        {type:'commandExecution',command:'cargo check',commandActions:[{type:'unknown',command:"cat <<'EOF'\\nnpm test --not-executed\\nEOF\\ncargo check"}],exitCode:0,status:'completed',aggregatedOutput:''},
+        {type:'agentMessage',phase:'final_answer',text:'Complete final response. '.repeat(100)},
+        {type:'agentMessage',phase:'commentary',text:'After final commentary'}
+      ];
+      if(method==='thread/read')return emit({id,result:{thread:{id:params.threadId,cwd:'/fixture',status:{type:'idle'}}}});
+      if(method==='thread/turns/list')return emit({id,result:{data:[{id:'review-turn',status:'completed',items}],nextCursor:'history-cursor'}});
+    }
     if (params?.threadId === 'response-size') {
       const thread={id:'response-size',name:'Response size fixture',cwd:'/fixture/response-size',status:{type:'idle'},model:'fixture-model'};
       const items=[{id:'user',type:'userMessage',content:[{type:'text',text:'Inspect this change and explain the result. '.repeat(3)}]},...Array.from({length:8},(_,i)=>({id:'reason-'+i,type:'reasoning',summary:[],content:[]})),{id:'command',type:'commandExecution',command:'git diff --stat',exitCode:0,aggregatedOutput:' src/example.rs | 4 ++--\\n'.repeat(12),status:'completed'},{id:'change',type:'fileChange',status:'completed',changes:[{path:'src/example.rs',kind:{type:'update'},diff:'@@ -1 +1 @@\\n-old\\n+new'}]},{id:'agent',type:'agentMessage',text:'The change is complete and the checks passed. '.repeat(9)+(sizeRevision?'Changed':'')}];
@@ -1523,4 +1538,40 @@ test('receipt next hashes omit repeated guidance only when explicitly supplied',
   assert.equal(cached.next.unchanged,true);assert.equal(cached.next.op,undefined);assert.equal(cached.next.hash,first.next.hash);
   const fresh=(await call('receipt',{requestId:created.requestId,knownNextHash:'outdated'})).result;
   assert.deepEqual(fresh.next,first.next);
+});
+
+
+test('review read returns complete outcomes without command outputs or intermediate messages',async()=>{
+  // Regression: compact review returned command output while truncating the final response.
+  const {result:r,response}=await call('codex_read',{threadId:'review-outcomes',view:'review',includeImages:true});
+  assert.equal(response.isError,false);assert.equal(r.nextCursor,'history-cursor');assert.equal(r.arcInbox,undefined);
+  const turn=r.turns[0];assert.equal(turn.recordedStatus,'completed');
+  assert.equal(turn.finalResponse,'Complete final response. '.repeat(100));
+  assert.deepEqual(turn.files,[{path:'src/example.rs',added:3,removed:1}]);
+  assert.equal(turn.checks.length,2);assert.equal(turn.checks[0].command,"npm run check; node --test --test-name-pattern='review|full' checks.test.ts > check.log 2>&1");assert.equal(turn.checks[0].exitCode,1);
+  assert.ok(turn.checks.every((c:any)=>typeof c.summary==='string'&&!c.summary.includes('\n')));
+  assert.equal(turn.checks[1].command,'cargo check');assert.ok(!JSON.stringify(r).includes('PRIVATE_COMMAND_OUTPUT'));assert.ok(!JSON.stringify(r).includes('After final commentary'));
+  assert.equal(turn.items,undefined);assert.equal(turn.externalUserInputs,undefined);
+  const compact=(await call('codex_read',{threadId:'review-outcomes',view:'compact'})).result;
+  assert.ok(compact.turns[0].items.some((i:any)=>i.output));
+  const full=(await call('codex_read',{threadId:'review-outcomes',view:'full'})).result;
+  assert.ok(full.turns[0].items.some((i:any)=>i.text.includes('PRIVATE_COMMAND_OUTPUT')));
+});
+
+
+test('historical review file counts stop at the next clean turn baseline',async()=>{
+  // Regression: live workspace diffs included changes made after the reviewed turn.
+  const project=path.join(directory,'review-history');await mkdir(project);
+  const git=(...args:string[])=>execFileSync('git',['-C',project,...args],{stdio:'pipe'});
+  const commit=(subject:string)=>{git('add','.');git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgSign=false','commit','-m',subject);};
+  git('init');await writeFile(path.join(project,'first.txt'),'before\n');commit('test: seed history');
+  const created=await completed('codex_create',{project,prompt:'harmless fixture',thread:{model:'fixture-dispatch'},purpose:'self-test',notify:null,requestId:randomUUID()});
+  assert.equal(created.state,'completed');
+  await writeFile(path.join(project,'first.txt'),'after\n');commit('test: complete reviewed work');
+  const sent=await completed('codex_send',{threadId:created.threadId,prompt:'next harmless turn',purpose:'self-test',notify:null,requestId:randomUUID()});assert.equal(sent.state,'completed');
+  await writeFile(path.join(project,'later.txt'),'later\n');commit('test: add later work');
+  const latest=(await call('codex_read',{threadId:created.threadId,view:'review'})).result;
+  const previous=(await call('codex_read',{threadId:created.threadId,view:'review',cursor:latest.nextCursor})).result;
+  assert.equal(previous.turns[0].turnId,created.turnId);
+  assert.deepEqual(previous.turns[0].files,[{path:'first.txt',added:1,removed:1}]);
 });
