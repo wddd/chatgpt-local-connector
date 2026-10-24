@@ -118,13 +118,15 @@ impl Execution {
                     string(&args, "reviewRequestId"),
                 ),
                 "task_panel" | "task_panel_control" => {
+                    let full=args["view"]=="full";
+                    let mut panel_args=args.clone();panel_args.as_object_mut().unwrap().remove("view");
                     let result = crate::transport::forward_request(
                         "app/snapshot",
                         "POST",
-                        json!({"modelOnly":true,"taskPanel":args}),
+                        json!({"modelOnly":true,"taskPanel":panel_args}),
                     )
                     .await?;
-                    Ok(result["model"]["taskDetail"].clone())
+                    Ok(if full {result["model"]["taskDetail"].clone()} else {crate::egress::panel_state(&result["model"]["taskDetail"])})
                 }
                 "task_open" => {
                     crate::transport::forward_request(

@@ -1013,3 +1013,19 @@ pub fn interaction_history(args: &Value) -> Result<Value> {
     let total = rows.len(); let offset = num(args,"offset",0); let end = offset.saturating_add(num(args,"limit",20).min(100)).min(total);
     Ok(json!({"threadId":thread,"interactions":rows.into_iter().skip(offset).take(end.saturating_sub(offset)).collect::<Vec<_>>(),"total":total,"nextOffset":if end < total {Some(end)} else {None}}))
 }
+
+/// Navigation state stays inline regardless of transcript or queue size.
+pub fn panel_state(panel: &Value) -> Value {
+    if !panel.is_object() {return panel.clone();}
+    let mut result=json!({});
+    for key in ["agent","id","purpose","following","atLatest","expanded","state","turnId"] {
+        if let Some(value)=panel.get(key) {result[key]=value.clone();}
+    }
+    result["queueCount"]=json!(panel["queue"].as_array().map_or(0,Vec::len));
+    result["disclosureCount"]=json!(panel["disclosures"].as_array().map_or(0,Vec::len));
+    if panel["timeline"].is_object() {
+        result["timeline"]=json!({"entryCount":panel["timeline"]["entries"].as_array().map_or(0,Vec::len)});
+        for key in ["status","cursor","snapshotHash","coverage"] {if let Some(value)=panel["timeline"].get(key) {result["timeline"][key]=value.clone();}}
+    }
+    result
+}
