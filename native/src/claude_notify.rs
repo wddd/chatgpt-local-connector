@@ -647,12 +647,27 @@ trait Executor: Sync {
         async { SendOutcome::failed("webhook_unavailable", false) }
     }
     fn send(&self, args: Vec<String>) -> impl Future<Output = Result<Vec<u8>>> + Send;
+    fn local_account(&self) -> impl Future<Output = Value> + Send {
+        async {json!({"available":false,"reason":"auth-status-unavailable"})}
+    }
     fn escalate(&self, body: String) -> impl Future<Output = Result<()>> + Send;
 }
 struct Cli {
     service: std::sync::Weak<crate::service::Service>,
 }
 impl Executor for Cli {
+    async fn local_account(&self) -> Value {
+        let Some(binary)=crate::agents::driver::discover("claude") else {return json!({"available":false,"reason":"claude-not-found"});};
+        let mut probe=command(&binary);
+        probe.args(["auth","status","--json"]).stdin(std::process::Stdio::null());
+        if let Ok(paths)=std::env::join_paths(crate::agents::driver::search_paths()) {probe.env("PATH",paths);}
+        let mut identity=match tokio::time::timeout(Duration::from_secs(3),probe.output()).await {
+            Ok(Ok(output))=>serde_json::from_slice::<Value>(&output.stdout).ok().map(|v|safe_account(&v)).unwrap_or(json!({"available":false,"reason":"auth-status-unavailable"})),
+            _=>json!({"available":false,"reason":"auth-status-unavailable"}),
+        };
+        identity["cliPath"]=json!(binary);identity["observedAt"]=json!(now());identity
+    }
+
     async fn webhook(
         &self,
         sub: &subscriptions::Subscription,
@@ -692,6 +707,9 @@ impl Executor for Cli {
         .map_err(|_| "CLAUDE_SEND_TIMEOUT")?
         .map_err(|e| format!("CLAUDE_SEND_FAILED: {e}"))?;
         if !output.status.success() {
+            if session_not_found(&String::from_utf8_lossy(&output.stderr)) || session_not_found(&String::from_utf8_lossy(&output.stdout)) {
+                return Err("CLAUDE_SESSION_NOT_FOUND: Session not found".into());
+            }
             return Err(format!(
                 "CLAUDE_SEND_FAILED: exit {}; {}",
                 output.status,
@@ -705,20 +723,32 @@ impl Executor for Cli {
     }
 }
 async fn deliver_message(executor: &impl Executor, b: &Binding, body: &str) -> &'static str {
-    deliver_target(executor, b.target.as_deref().unwrap(), body).await
+    if deliver_target(executor, b.target.as_deref().unwrap(), body).await.is_ok() {"delivered"} else {"failed"}
 }
-async fn deliver_target(executor: &impl Executor, session: &str, body: &str) -> &'static str {
+fn session_not_found(error: &str) -> bool {
+    error.to_ascii_lowercase().contains("session not found") || error.contains("CLAUDE_SESSION_NOT_FOUND")
+}
+fn safe_account(value: &Value) -> Value {
+    let mut identity=json!({"available":false});
+    if let Some(logged_in)=value["loggedIn"].as_bool() {identity["loggedIn"]=json!(logged_in);identity["available"]=json!(true);}
+    for key in ["email","authMethod"] {
+        if let Some(text)=value[key].as_str() {identity[key]=json!(text.chars().take(320).collect::<String>());identity["available"]=json!(true);}
+    }
+    identity
+}
+async fn deliver_target(executor: &impl Executor, session: &str, body: &str) -> Result<()> {
     let result = executor
         .send(arguments(session, body))
         .await
         .and_then(|bytes| {
-            serde_json::from_slice::<Value>(&bytes).map_err(|_| "CLAUDE_SEND_UNKNOWN".into())
+            serde_json::from_slice::<Value>(&bytes).map_err(|_| if session_not_found(&String::from_utf8_lossy(&bytes)) {"CLAUDE_SESSION_NOT_FOUND: Session not found".into()} else {"CLAUDE_SEND_UNKNOWN".into()})
         });
     let error = match result {
         Ok(ref v) if v["ok"] == true && v["session_id"].as_str() == Some(session) => {
-            return "delivered"
+            return Ok(())
         }
         Ok(ref v) if v["ok"] == true => "CLAUDE_SESSION_MISMATCH".to_owned(),
+        Ok(v) if ["error","errors","message"].iter().any(|key|session_not_found(&v[*key].to_string())) => "CLAUDE_SESSION_NOT_FOUND: Session not found".into(),
         Ok(v) => format!("CLAUDE_SEND_REJECTED: {}", v["error"]),
         Err(error) => error,
     };
@@ -730,9 +760,7 @@ async fn deliver_target(executor: &impl Executor, session: &str, body: &str) -> 
         ),
         None,
     );
-    #[cfg(test)]
-    let _ = error;
-    "failed"
+    Err(if session_not_found(&error) {"CLAUDE_SESSION_NOT_FOUND: Session not found".into()} else {error})
 }
 fn recover(dir: &Path, b: &mut Binding) -> Result<bool> {
     let retry = |d: &Delivery| {
@@ -2104,6 +2132,24 @@ mod tests {
         assert_eq!(failed["ok"],false);assert_eq!(failed["verificationAttempts"],2);assert_eq!(failed["deliveryStatus"],"failed");assert_eq!(failed["next"]["op"],"notify_control");assert_eq!(failed["next"]["args"]["action"],"verify");
         assert!(governance::status_in(&dir.0,"source-b",&args,chrono::Utc::now().timestamp(),&settings).unwrap()["targets"].as_array().unwrap().is_empty());
     }
+    #[tokio::test]
+    async fn missing_cloud_session_reports_safe_account_and_manual_recovery() {
+        // Regression: Session not found became generic handshake-delivery-failed and hid a likely host-account mismatch.
+        let dir=Sandbox::new();let settings=json!({"notificationsEnabled":true});let args=json!({"target":"session_test"});
+        governance::bind_target_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
+        for reply in [Err("CLAUDE_SEND_FAILED: exit 1; Session not found".into()),Ok(br#"{"ok":false,"error":"Session not found"}"#.to_vec()),Ok(br#"{"is_error":true,"errors":["Session not found"]}"#.to_vec()),Ok(b"Session not found".to_vec())] {
+            let result=reachability::verify_in(&dir.0,"source-a",&args,&settings,&Fake::new(reply)).await.unwrap();
+            assert_eq!(result["ok"],false);assert_eq!(result["reason"],"claude-session-not-found");assert_eq!(result["error"]["code"],"CLAUDE_SESSION_NOT_FOUND");
+            assert_eq!(result["error"]["localAccount"]["email"],"fixture@example.invalid");
+            assert_eq!(result["next"]["before"]["hostCommand"],json!(["claude","auth","login"]));
+            assert_eq!(result["next"]["args"],json!({"action":"verify","target":"session_test"}));
+            let status=governance::status_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
+            assert_eq!(status["targets"][0]["lastVerificationError"]["code"],"CLAUDE_SESSION_NOT_FOUND");
+            assert!(!result.to_string().contains("fixture-secret"));assert!(!status.to_string().contains("fixture-secret"));
+        }
+        assert!(!session_not_found("Connection timed out"));
+        assert_eq!(safe_account(&json!({"accessToken":"fixture-secret"})),json!({"available":false}));
+    }
     struct Fake {
         result: Result<Vec<u8>>,
         calls: SyncMutex<Vec<Vec<String>>>,
@@ -2122,6 +2168,7 @@ mod tests {
         }
     }
     impl Executor for Fake {
+        async fn local_account(&self) -> Value {safe_account(&json!({"loggedIn":true,"authMethod":"claude.ai","email":"fixture@example.invalid","accessToken":"fixture-secret","credentials":{"refreshToken":"fixture-secret"}}))}
         async fn send(&self, args: Vec<String>) -> Result<Vec<u8>> {
             self.calls.lock().unwrap().push(args);
             self.result.clone()

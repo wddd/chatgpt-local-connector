@@ -8,6 +8,7 @@ pub(super) struct Reachability {
     pub reason: String,
     pub attempts: u64,
     pub delivery_status: String,
+    pub last_error: Value,
     challenge_hash: String,
     source_id: String,
     expires_at: i64,
@@ -19,6 +20,7 @@ impl Default for Reachability {
             reason: "handshake-required".into(),
             attempts: 0,
             delivery_status: "not-attempted".into(),
+            last_error: Value::Null,
             challenge_hash: String::new(),
             source_id: String::new(),
             expires_at: 0,
@@ -87,12 +89,15 @@ pub(super) async fn verify_in(dir: &Path, source_id: &str, args: &Value, setting
     }
     // The code exists only in the delivered message; receipts and status cannot confirm it.
     let body = format!("[ARC] Notification reachability check. Only after receiving this message in this conversation, call act with {}. This confirms delivery, not task acceptance.", json!({"op":"notification_ack","args":{"target":target,"code":code}}));
-    let sent = deliver_target(
+    let delivery = deliver_target(
         executor,
         &target,
         &body,
     )
     .await;
+    let missing=delivery.as_ref().err().is_some_and(|error|session_not_found(error));
+    let account=if missing {executor.local_account().await} else {Value::Null};
+    let sent=if delivery.is_ok() {"delivered"} else {"failed"};
     let _guard = LOCK.lock().await;
     let mut state = State::load(&dir)?;
     let t = state.target(
@@ -104,10 +109,20 @@ pub(super) async fn verify_in(dir: &Path, source_id: &str, args: &Value, setting
     );
     if t.reachability.challenge_hash == digest || t.reachability.state == "verified" {
         t.reachability.delivery_status=sent.into();
-        if sent == "failed" {t.reachability.fail("handshake-delivery-failed");}
+        if sent == "failed" {t.reachability.fail(if missing {"claude-session-not-found"} else {"handshake-delivery-failed"});}
     }
     let mut result = json!({"target":target,"reachability":t.reachability.state,"reason":t.reachability.reason,"expiresAt":t.reachability.expires_at,"verificationAttempts":t.reachability.attempts,"deliveryStatus":sent,"next":{"via":"query","op":"notify_status","args":{"target":target}},"hint":"Confirm only with the code received in the target conversation via notification_ack. A successful send alone does not verify reachability."});
-    if sent == "failed" {result["next"]=json!({"via":"act","op":"notify_control","args":{"action":"verify","target":target},"hint":"Correct the reported delivery failure before retrying verification. Binding is retained."});result["ok"]=json!(false);result["error"]=json!({"code":"NOTIFICATION_DELIVERY_FAILED","message":"The verification message could not be delivered. Inspect notification logs, correct the destination or transport, and retry notify_control action:verify. Binding remains registered."});}
+    if sent == "failed" {
+        result["next"]=json!({"via":"act","op":"notify_control","args":{"action":"verify","target":target},"hint":"Correct the reported delivery failure before retrying verification. Binding is retained."});
+        result["ok"]=json!(false);
+        result["error"]=if missing {
+            result["next"]["before"]=json!({"actor":"user","hostCommand":[account["cliPath"].as_str().unwrap_or("claude"),"auth","login"],"instruction":"On the ARC host, using ARC's OS user and Claude configuration environment, run this command and sign in to the account that owns the cloud session. Confirm the session ID, then call the verify operation shown here. ARC will not log in or change accounts."});
+            result["next"]["hint"]=json!("Have the user log the host CLI into the session owner's account, or correct a wrong session ID, before retrying verify.");
+            json!({"code":"CLAUDE_SESSION_NOT_FOUND","message":"Claude CLI reported Session not found. Likely causes are a different local Claude account or an incorrect cloud-session ID; account mismatch is not confirmed.","localAccount":account})
+        } else {json!({"code":"NOTIFICATION_DELIVERY_FAILED","message":"The verification message could not be delivered. Inspect notification logs, correct the destination or transport, and retry notify_control action:verify. Binding remains registered."})};
+        t.reachability.last_error=result["error"].clone();
+    }
+
     state.save(&dir)?;
     Ok(result)
 }
