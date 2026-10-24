@@ -16,11 +16,13 @@ import type { Snapshot } from './subscriptions/types';
 import { selectAgentPanel } from './state/overviewPanels';
 import type { Status } from './state/types';
 import config from '../native/src/ingress/config.json';
+import { taskScenario } from './scenarioTasks';
 
-type Fixture = { update?: UpdateSnapshot; replacement?: Replacement; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; completed?: boolean; elapsedSeconds?: number }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
+type Fixture = { update?: UpdateSnapshot; replacement?: Replacement; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; question?: boolean; completed?: boolean; elapsedSeconds?: number }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 let conversations: Record<string, AgentConversation[]> = {};
+let taskResponse: ReturnType<typeof taskScenario> | undefined;
 export function scenarioResponse(path: string, method: string, body?: unknown): unknown {
   if (path === 'preferences' || path === 'preferences/import') return responses.preferences;
   if (path === 'agents/conversations/timeline' && method === 'POST') {
@@ -35,10 +37,14 @@ export function scenarioResponse(path: string, method: string, body?: unknown): 
     return { data: structuredClone(rows.slice(start, start + size)), nextCursor: start + size < rows.length ? `fixture-page-${start + size}` : null,
       scope: agent === 'codex' ? 'native-unarchived' : 'arc-tasks' };
   }
-  if (method !== 'GET') throw new Error('SCENARIO_READ_ONLY');
+  if (method === 'POST') {
+    const result = taskResponse?.(path, body);
+    if (result !== undefined) return structuredClone(result);
+  }
+  if (method !== 'GET') throw new Error(`SCENARIO_ACTION_UNAVAILABLE: ${path}`);
   const route = path.split('?')[0];
   if (Object.hasOwn(responses, route)) return structuredClone(responses[route]);
-  if (path.startsWith('tasks/runtime/')) return { runtimeStatus: 'active', observedAt: new Date().toISOString() };
+  if (path.startsWith('tasks/runtime/')) return { runtimeStatus: ['running','inProgress'].includes((responses[`agents/timeline/${path.slice('tasks/runtime/'.length)}`] as AgentTimeline)?.status ?? '') ? 'active' : 'idle', observedAt: new Date().toISOString() };
   throw new Error(`SCENARIO_ROUTE_UNAVAILABLE: ${path}`);
 }
 export async function installScenario(name: string) {
@@ -102,7 +108,8 @@ export async function installScenario(name: string) {
       turnId: `fixture-turn-${index}-${fixture.timeline ? 2 : 1}`, project: '/workspace/acceptance', phaseSince: now, turnStartedAt: new Date(Date.parse(now) - (task.elapsedSeconds ?? 83) * 1000).toISOString(), startedAt: now, timeline: true, recentSteps: ['thinking', 'command', 'file'],
       recentContent: ['Reviewed project files', task.headline],
       dispatchSummary: { controlSource: { id: 'fixture-source', label: 'Claude', kind: 'claude' }, model: 'gpt-6.1-sol', effort: 'high', serviceTier: 'priority' },
-      ...(task.approval ? { interaction: { kind: 'permission' as const, summary: 'Read README.md', command: 'cat README.md', canRespond: true, respond: { via: 'act' as const, op: 'codex_respond' as const, args: {} } } } : {}),
+      ...(task.approval ? { interaction: { kind: 'permission' as const, summary: 'Read README.md', command: 'cat README.md', canRespond: true, respond: { via: 'act' as const, op: 'codex_respond' as const, args: { id: `fixture-interaction-${index}`, backendSession: 'fixture' } } } } : {}),
+      ...(task.question ? { interaction: { kind: 'question' as const, method: 'item/tool/requestUserInput', summary: 'Select a fixture option', questions: [{id:'choice',question:'Choose an option',options:[{label:'Alpha'},{label:'Beta'}]}], canRespond:true, respond:{op:'codex_respond' as const,args:{id:`fixture-interaction-${index}`,backendSession:'fixture'}} } } : {}),
     });
   });
   const timelines: Record<string, AgentTimeline> = {};
@@ -126,7 +133,7 @@ export async function installScenario(name: string) {
         { type: 'file', status: 'completed', path: '/workspace/acceptance/config.json', operation: 'edit', changes: [{ path: '/workspace/acceptance/config.json', operation: 'edit' }], durationMs: 1400 },
         { type: 'tool', status: 'completed', title: 'Read project metadata', durationMs: 600 },
         { type: 'plan', status: 'completed', plan: [{ content: { state: 'available', text: 'Verify project changes', truncated: false, sha256: 'fixture', hashScope: 'excerpt' }, status: live ? 'in_progress' : 'completed' }] },
-        task.approval && live
+        (task.approval || task.question) && live
           ? { type: 'interaction', status: 'pending', interaction: session.interaction }
           : { type: 'command', status: live ? 'running' : 'completed', command: 'npm run check', cwd: '/workspace/acceptance', ...(live ? {} : { durationMs: 1700, exitCode: 0 }) },
       ];
@@ -162,6 +169,14 @@ export async function installScenario(name: string) {
   }));
   const records = fixture.tasks.map((task, index) => ({ requestId: `fixture-request-${index}`, threadId: `fixture-task-${index}`, state: task.approval ? 'awaiting-approval' : 'completed', createdAt: now, updatedAt: now,
     origin: { ingressId: 'fixture-source', sourceId: 'fixture-source' }, approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } }));
+  taskResponse = taskScenario(timelines, activity, records, () => {
+    activity.observedAt = new Date().toISOString();
+    const visible = { ...activity, agents: Object.fromEntries(Object.entries(activity.agents).map(([agent, group]) => [agent, {
+      sessions: group.sessions.filter(session => ['running', 'inProgress'].includes(timelines[`agents/timeline/${session.id}`]?.status ?? '')),
+    }])) };
+    responses['agents/activity'] = visible;
+    acceptActivity(structuredClone(visible));
+  });
   const permissionData = { items: [], observedAt: now };
   const subscriptionData: Snapshot = { instanceId: 'fixture', revision: 1, settings: { enabled: !!fixture.quota, refreshMinutes: 30, agentProviders: {} }, providers: fixture.quota ? [{
     providerId: 'codex', agentId: 'codex', agentIds: ['codex'], name: 'ChatGPT', eligible: true, state: 'ready', refreshing: false,

@@ -1,0 +1,13 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": ["codex"],
+  "panel": {"kind": "agent", "id": "codex"},
+  "detailTask": 0,
+  "timeline": "multi-turn",
+  "tasks": [
+    {"agent": "codex", "phase": "command", "title": "Queue and steering actions", "headline": "Running fixture command"},
+    {"agent": "codex", "phase": "text", "title": "Answer or skip a question", "headline": "Waiting for an explicit answer", "question": true},
+    {"agent": "codex", "phase": "command", "title": "Approval actions", "headline": "Waiting for an explicit decision", "approval": true}
+  ]
+}
