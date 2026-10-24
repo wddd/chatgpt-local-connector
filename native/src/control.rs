@@ -1441,7 +1441,22 @@ impl Control {
         }
         if operation == "interrupt" {
             method = "turn/interrupt".into();
-            params = json!({"threadId":args["threadId"],"turnId":args["turnId"]});
+            let turn = if let Some(turn) = args["turnId"].as_str() {
+                turn.to_owned()
+            } else {
+                let thread = self.request("thread/read", json!({"threadId":args["threadId"],"includeTurns":false}), 10000).await?;
+                if thread["thread"]["status"]["type"] != "active" {
+                    return Err("NO_ACTIVE_TURN: no active turn is confirmed; read codex_read(statusOnly:true). Supply an explicit turnId only when the owning session confirms it.".into());
+                }
+                let page = self.request("thread/turns/list", json!({"threadId":args["threadId"],"limit":1,"sortDirection":"desc","itemsView":"full"}), 10000).await?;
+                let active = &page["data"][0];
+                if active["status"] != "inProgress" {
+                    return Err("NO_ACTIVE_TURN: latest native turn is not active; read codex_read(statusOnly:true) before interrupting.".into());
+                }
+                active["id"].as_str().ok_or("NO_ACTIVE_TURN: native owner returned no turn ID")?.to_owned()
+            };
+            r["turnId"] = json!(turn);
+            params = json!({"threadId":args["threadId"],"turnId":turn});
         }
         if args["project"].is_string()
             && matches!(

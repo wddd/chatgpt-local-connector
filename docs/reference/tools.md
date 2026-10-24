@@ -462,3 +462,7 @@ Default control results above 12 KiB return a short preview, identity/status sum
 ## Status and stalled submissions
 
 Receipt `stateScope:"operation"` describes submission, not task completion. `codex_read` uses the same native turn classifier as `codex_wait`, with `stateScope:"turn"`, `recordedStatus`, and `runtimeStatus`. `notLoaded` is unknown ownership, not proof that no writer exists. Intermediate receipts expose `updatedAt`, `phaseAgeMs`, `progressStalled` after 30 seconds without a checkpoint, and an actionable `next`. Poll that original receipt until it returns a turn ID; for stalled submission inspect CLI logs/doctor and the owning app without redispatching. Running, blocked, failed, and unconfirmed responses also provide a next read or wait. CLI wait stops immediately on a failed operation and preserves its receipt and error.
+
+## Interrupt the active turn
+
+Use `act({op:"codex_interrupt",args:{threadId:"<id>"}})` to interrupt the currently active native turn. ARC resolves it under the thread lock and records `turnId` in the receipt before submitting. Explicit `turnId` keeps native stale-turn protection. `NO_ACTIVE_TURN` means ARC could not confirm an active turn; read status before trying again. Replay the returned requestId to reconcile the same attempt rather than selecting a later turn.

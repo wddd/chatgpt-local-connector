@@ -118,6 +118,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         return emit({id,result:{turn:row.turns.at(-1)}});
       }
       if (method === 'turn/steer') { row.turns.at(-1).input.push(...params.input);saveFixture(saved);return emit({id,result:{turnId:row.turns.at(-1).id}}); }
+      if (method === 'turn/interrupt') { if(row.turns.at(-1)?.id!==params.turnId)return emit({id,error:{code:-32600,message:'stale turn'}}); row.turns.at(-1).status='interrupted';saveFixture(saved);return emit({id,result:{}}); }
       if (method === 'fixture/finish-turn') { row.turns.at(-1).status=params.status||'completed';saveFixture(saved);return emit({id,result:{}}); }
       if (method === 'thread/turns/list') {
         const rows = [...row.turns];
@@ -1996,4 +1997,19 @@ test('AX2 status reads agree with wait observations and nonterminal receipts hav
   const failure=await call('fs',{action:'writeFile',params:{path:path.join(directory,'stalled-failure'),dataBase64:'aGk=',expectedSha256:'0'.repeat(64)}});
   assert.equal(failure.result.next.op,'receipt');
   await completed('codex_call',{method:'fixture/finish-turn',params:{threadId:task.threadId},requestId:randomUUID()});
+});
+
+
+test('AX2 interrupt resolves the active turn and preserves explicit IDs and retry identity', async () => {
+  // Regression: interrupt required a separate native read solely to obtain the active turnId.
+  const task=await dispatchFixture('fixture-dispatch-queue');
+  const args={threadId:task.threadId,requestId:randomUUID()};
+  const stopped=await completed('codex_interrupt',args);
+  assert.equal(stopped.state,'completed');assert.equal(stopped.turnId,task.turnId);
+  const replay=await completed('codex_interrupt',args);assert.equal(replay.turnId,task.turnId);
+  const idle=await call('codex_interrupt',{threadId:task.threadId});
+  assert.equal(idle.response.isError,true);assert.match(idle.result.error.message,/NO_ACTIVE_TURN/);
+  const other=await dispatchFixture('fixture-dispatch-queue');
+  const explicit=await completed('codex_interrupt',{threadId:other.threadId,turnId:other.turnId,requestId:randomUUID()});
+  assert.equal(explicit.turnId,other.turnId);
 });
