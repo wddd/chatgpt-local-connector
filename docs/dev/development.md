@@ -58,7 +58,7 @@ Packages contain Desktop, standalone Core, static frontend, icons, and licenses.
 
 Packaged production-identity builds support automatic updates even when built with the debug profile. The separate development bundle identity does not install production updates.
 
-For a fast signed local macOS package, use `npm run desktop:build -- --debug`. This builds without installing. Check the bundle under `target/aarch64-apple-darwin/debug/bundle/macos/Agent Remote Control.app`.
+For a fast signed local macOS package, use `npm run desktop:build -- --debug`. This builds without installing. Desktop, Core, and the screen helper use the required packaging certificate regardless of the Rust profile. Missing or conflicting signing identities fail before compilation. Check the bundle under `target/aarch64-apple-darwin/debug/bundle/macos/Agent Remote Control.app`.
 
 Install only when local replacement is authorized. From an ARC-dispatched task, use the candidate CLI so the first upgrade also works with an older installed Core:
 

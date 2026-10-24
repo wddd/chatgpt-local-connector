@@ -12,7 +12,8 @@ export async function buildNative({ release = false, target, bundled = release, 
   if (release) args.push('--release');
   if (target) args.push('--target', target);
   const env = buildEnv(release);
-  const identity = macosSigningIdentity(env, { release });
+  // Packaging identity is independent of the Rust optimization profile.
+  const identity = macosSigningIdentity(env, { release: release || bundled });
   // The Core is itself a desktop resource, so its build must not copy resources
   // that have not been produced yet (notably on a clean Actions checkout).
   const config = developmentDesktop ? JSON.parse(await readFile(path.join(root, 'desktop/tauri.dev.conf.json'), 'utf8')) : {};
