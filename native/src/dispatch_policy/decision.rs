@@ -125,6 +125,12 @@ fn history(row: &Value) -> Value {
                 ", {}/{}/{} pass/rework/unreviewed",
                 g["pass"], g["rework"], g["unreviewed"]
             ));
+            if let Some(n) = g["external"]["reviews"].as_u64() {
+                s.push_str(&format!(
+                    ", {n} external reviews ({}/{} pass/rework)",
+                    g["external"]["pass"], g["external"]["rework"]
+                ));
+            }
             for k in ["failed", "interrupted"] {
                 if g[k].as_u64().unwrap_or(0) > 0 {
                     s.push_str(&format!(", {} {k}", g[k]));

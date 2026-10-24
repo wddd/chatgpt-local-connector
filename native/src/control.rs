@@ -1727,6 +1727,11 @@ impl Control {
                         result["readMore"] = json!("Use codex_items with threadId, turnId and view:full for complete items and text pagination.");
                     }
                 }
+                if full {
+                    result["reviews"] = crate::dispatch_policy::reviews(id)
+                        .map(|rows| json!(rows))
+                        .unwrap_or_else(|error| json!({"unavailable":error}));
+                }
                 if let Some(turns) = result["turns"].as_array_mut() {
                     for turn in turns {
                         let retry = crate::claude_notify::retry_status(id, string(turn, "turnId"))?;

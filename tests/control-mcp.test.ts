@@ -73,6 +73,13 @@ for await (const line of createInterface({ input: process.stdin })) {
     if (method === 'fixture/null') return emit({ id, result: null });
     if (method === 'fixture/array') return emit({ id, result: [null, 1, { native: true }] });
     const saved = existsSync(fixtureState) ? JSON.parse(readFileSync(fixtureState, 'utf8')) : {};
+    if (method === 'fixture/external-review') {
+      const threadId=params.threadId,turnId=randomUUID();
+      const configuration=params.known===false?{}:{model:'fixture-external-model',effort:'high',serviceTier:'priority'};
+      saved[threadId]={thread:{...saved[threadId].thread,...configuration},model:'fixture-dispatch-external',externalReview:true,turns:[{id:turnId,status:'completed',items:[]},{id:randomUUID(),status:'inProgress',items:[]}],metadataReads:0};
+      saveFixture(saved);return emit({id,result:{threadId,turnId,activeTurnId:saved[threadId].turns.at(-1).id}});
+    }
+    if (method === 'thread/list' && params.searchTerm === 'fixture-external-review') return emit({id,result:{data:Object.values(saved).filter(r=>r.externalReview).map(r=>({...r.thread,status:{type:'active'}})),nextCursor:null}});
     if (method === 'thread/start' && params.model?.startsWith('fixture-dispatch')) {
       const thread = {id:randomUUID(),cwd:params.cwd,path:params.model.includes('lazy-seed')?null:process.env.ARC_FIXTURE_DATA+'/seed-'+randomUUID()+'.jsonl'};
       if(thread.path)writeFileSync(thread.path, '{}');
@@ -1379,11 +1386,69 @@ test('large Git diff is bounded and its immutable output pages retain text and f
   assert.equal(narrow.truncated,false);assert.equal(narrow.output,undefined);assert.ok(narrow.text.includes('+after'));
 });
 
+test('external terminal reviews retain provenance, replay, rework links and separate history', async()=>{
+  // Regression: REVIEW_DISPATCH_NOT_FOUND prevented reviewing turns started directly in Codex Desktop.
+  await management('task-settings','PUT',{autoOpenCodex:false});
+  const seed=async(known=true)=>{
+    const native=(await call('codex_call',{method:'thread/start',params:{model:'fixture-dispatch-external',cwd:directory},requestId:randomUUID()})).result;
+    assert.equal(native.state,'completed');
+    return (await call('codex_call',{method:'fixture/external-review',params:{threadId:native.threadId,known},requestId:randomUUID()})).result;
+  };
+  const seeded=await seed();
+  assert.equal(seeded.state,'completed');
+  const {threadId,turnId}=seeded,activeTurnId=seeded.result.activeTurnId;
+  const requestId=randomUUID();
+  const args={threadId,verdict:'rework',requestId};
+  const first=(await call('codex_review',args)).result;
+  assert.equal(first.state,'completed',JSON.stringify(first));
+  assert.equal(first.turnId,turnId);
+  const review=first.result.review;
+  assert.equal(review.dispatchOrigin,'external');assert.equal(review.dispatchRequestId,null);
+  assert.equal(review.model,'fixture-external-model');assert.equal(review.effort,'high');assert.equal(review.serviceTier,'priority');
+  assert.equal(review.reviewer.controlSource,'chatgpt');assert.ok(review.reviewer.sourceId);
+  assert.equal(review.reviewer.sessionId,null);assert.equal(review.reviewer.target,null);
+  assert.ok(Date.parse(review.reviewedAt));
+  const again=(await call('codex_review',args)).result;
+  assert.deepEqual(again.result.review,review);
+  const running=(await call('codex_review',{threadId,turnId:activeTurnId,verdict:'pass',requestId:randomUUID()})).result;
+  assert.equal(running.state,'failed');assert.match(running.result.error.message,/REVIEW_REQUIRES_TERMINAL_TURN/);
+  const missing=(await call('codex_review',{threadId,turnId:randomUUID(),verdict:'pass',requestId:randomUUID()})).result;
+  assert.equal(missing.state,'failed');assert.match(missing.result.error.message,/REVIEW_TERMINAL_TURN_NOT_FOUND/);
+  const unknown=(await call('codex_review',{threadId:randomUUID(),verdict:'pass',requestId:randomUUID()})).result;
+  assert.equal(unknown.state,'failed');
+  const invalid=await call('codex_review',{threadId,turnId,verdict:'invalid',requestId:randomUUID()});
+  assert.equal(invalid.response.isError,true);assert.equal(invalid.result.error.code,'INVALID_ARGUMENTS');
+  let history=(await call('dispatch_policy',{agent:'codex',view:'full'})).result.agents.find((a:any)=>a.agent==='codex').history;
+  let group=history.groups.find((g:any)=>g.model==='fixture-external-model');
+  assert.deepEqual(group.external,{reviews:1,pass:0,rework:1});assert.equal(group.dispatches,0);assert.equal(group.durationSamples,undefined);
+  await call('codex_call',{method:'fixture/finish-turn',params:{threadId},requestId:randomUUID()});
+  const next=(await call('codex_send',{threadId,prompt:'Revise fixture',purpose:'self-test',requestId:randomUUID()})).result;
+  assert.equal(next.state,'completed',JSON.stringify(next));
+  const tasks=(await call('codex_tasks',{searchTerm:'fixture-external-review',view:'full'})).result.tasks;
+  assert.equal(tasks.find((t:any)=>t.threadId===threadId).dispatches.find((d:any)=>d.turnId===next.turnId).reworkOf,turnId);
+  const changed=(await call('codex_review',{threadId,turnId,verdict:'pass',requestId:randomUUID()})).result;
+  assert.equal(changed.state,'completed');assert.equal(changed.result.review.dispatchOrigin,'external');
+  const read=(await call('codex_read',{threadId,view:'full'})).result;
+  assert.equal(read.reviews.filter((r:any)=>r.turnId===turnId).length,1);
+  assert.equal(read.reviews.find((r:any)=>r.turnId===turnId).review.verdict,'pass');
+  history=(await call('dispatch_policy',{agent:'codex',view:'full'})).result.agents.find((a:any)=>a.agent==='codex').history;
+  group=history.groups.find((g:any)=>g.model==='fixture-external-model');
+  assert.deepEqual(group.external,{reviews:1,pass:1,rework:0});assert.equal(group.dispatches,0);
+  const compact=(await call('dispatch_policy',{agent:'codex'})).result.agents.find((a:any)=>a.agent==='codex').history;
+  assert.ok(compact.groups.some((g:string)=>g.includes('external reviews')));
+  const noConfig=await seed(false);
+  const nullable=(await call('codex_review',{threadId:noConfig.threadId,turnId:noConfig.turnId,verdict:'pass',requestId:randomUUID()})).result;
+  assert.equal(nullable.state,'completed');
+  for(const key of ['model','effort','serviceTier'])assert.equal(nullable.result.review[key],null);
+});
+
+
 test('review receipts omit notification delivery details including replay',async()=>{
   // Contract: review receipts omit notification delivery details including replay.
   const created=await dispatchFixture('fixture-dispatch');
   const requestId=randomUUID();const args={threadId:created.threadId,turnId:created.turnId,verdict:'pass',requestId};
   const reviewed=await completed('codex_review',args);
+  assert.equal(reviewed.result.review.dispatchOrigin,'arc');assert.equal(reviewed.result.review.dispatchRequestId,created.requestId);
   assert.equal(reviewed.state,'completed',JSON.stringify(reviewed));assert.equal(reviewed.notification,undefined);assert.equal(reviewed.notificationError,undefined);
   const replay=(await call('receipt',{requestId})).result;
   assert.equal(replay.state,'completed');assert.equal(replay.notification,undefined);assert.equal(replay.notificationError,undefined);

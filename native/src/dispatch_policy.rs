@@ -327,6 +327,31 @@ fn history(agent: &str) -> Result<Value> {
 }
 
 fn history_view(agent: &str, compact: bool) -> Result<Value> {
+    let _guard = RECORDS_LOCK.lock().map_err(|e| e.to_string())?;
+    let mut rows = Vec::new();
+    for kind in ["dispatches", "reviews"] {
+        let dir = root().join(kind);
+        if dir.exists() {
+            for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+                let entry = entry.map_err(|e| e.to_string())?;
+                rows.extend(read_rows(&entry.path())?);
+            }
+        }
+    }
+    Ok(summarize_history(
+        &rows,
+        agent,
+        compact,
+        chrono::Utc::now() - chrono::Duration::days(30),
+    ))
+}
+
+pub(crate) fn summarize_history(
+    rows: &[Value],
+    agent: &str,
+    compact: bool,
+    cutoff: chrono::DateTime<chrono::Utc>,
+) -> Value {
     #[derive(Default)]
     struct Group {
         dispatches: u64,
@@ -335,79 +360,105 @@ fn history_view(agent: &str, compact: bool) -> Result<Value> {
         failed: u64,
         interrupted: u64,
         durations: Vec<u64>,
+        external_reviews: u64,
+        external_pass: u64,
+        external_rework: u64,
     }
-    let _guard = RECORDS_LOCK.lock().map_err(|e| e.to_string())?;
     let mut groups = std::collections::BTreeMap::<(String, String, String, String), Group>::new();
-    let cutoff = chrono::Utc::now() - chrono::Duration::days(30);
-    let dir = root().join("dispatches");
-    if dir.exists() {
-        for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let thread = entry.file_name().to_string_lossy().into_owned();
-            let mut seen = std::collections::HashSet::new();
-            for row in read_records(&thread)? {
-                if row["agent"].as_str().unwrap_or("codex") != agent
-                    || (agent != "codex" && row["submission"] != "accepted")
-                    || row["purpose"] == "self-test"
-                    || row["dispatchMode"] != "new-turn"
-                    || !chrono::DateTime::parse_from_rfc3339(string(&row, "submittedAt"))
-                        .is_ok_and(|time| time >= cutoff)
-                    || !seen.insert(string(&row, "turnId").to_owned())
+    let mut seen = std::collections::HashSet::new();
+    for row in rows {
+        let external = row["dispatchOrigin"] == "external";
+        if row["agent"].as_str().unwrap_or("codex") != agent
+            || (!external && agent != "codex" && row["submission"] != "accepted")
+            || row["purpose"] == "self-test"
+            || (!external && row["dispatchMode"] != "new-turn")
+            || !chrono::DateTime::parse_from_rfc3339(string(
+                if external { &row["review"] } else { row },
+                if external {
+                    "reviewedAt"
+                } else {
+                    "submittedAt"
+                },
+            ))
+            .is_ok_and(|time| time >= cutoff)
+            || !seen.insert((string(row, "threadId"), string(row, "turnId")))
+        {
+            continue;
+        }
+        let value = |field: &str| {
+            row["turnEvidence"][field]
+                .as_str()
+                .or_else(|| row["effectiveConfiguration"][field].as_str())
+                .filter(|v| !v.is_empty() && *v != "unknown")
+                .unwrap_or_else(|| string(&row, field))
+                .to_owned()
+        };
+        if external
+            && ["model", "effort"].iter().any(|field| {
+                let v = value(field);
+                v.is_empty() || v == "unknown"
+            })
+        {
+            continue;
+        }
+        let group = groups
+            .entry((
+                value("model"),
+                if agent == "codex" {
+                    value("effort")
+                } else {
+                    String::new()
+                },
                 {
-                    continue;
-                }
-                let value = |field: &str| {
-                    row["turnEvidence"][field]
-                        .as_str()
-                        .or_else(|| row["effectiveConfiguration"][field].as_str())
-                        .filter(|v| !v.is_empty() && *v != "unknown")
-                        .unwrap_or_else(|| string(&row, field))
-                        .to_owned()
-                };
-                let group = groups
-                    .entry((
-                        value("model"),
-                        value("effort"),
-                        {
-                            let tier = value("serviceTier");
-                            if tier.is_empty() {
-                                "unknown".into()
-                            } else {
-                                tier
-                            }
-                        },
-                        row.get("options").cloned().unwrap_or(json!({})).to_string(),
-                    ))
-                    .or_default();
-                group.dispatches += 1;
-                match string(&row["terminal"], "state") {
-                    "failed" => {
-                        group.failed += 1;
-                        continue;
+                    let tier = value("serviceTier");
+                    if tier.is_empty() {
+                        "unknown".into()
+                    } else {
+                        tier
                     }
-                    "interrupted" | "cancelled" => {
-                        group.interrupted += 1;
-                        continue;
-                    }
-                    _ => {}
-                }
-                match string(&row["review"], "verdict") {
-                    "pass" => group.pass += 1,
-                    "rework" => group.rework += 1,
-                    _ => {}
-                }
-                if let Some(ms) = row["terminal"]["observedDurationMs"].as_u64() {
-                    group.durations.push(ms);
-                }
+                },
+                row.get("options").cloned().unwrap_or(json!({})).to_string(),
+            ))
+            .or_default();
+        if external {
+            group.external_reviews += 1;
+            match string(&row["review"], "verdict") {
+                "pass" => group.external_pass += 1,
+                "rework" => group.external_rework += 1,
+                _ => {}
             }
+            continue;
+        }
+        group.dispatches += 1;
+        match string(&row["terminal"], "state") {
+            "failed" => {
+                group.failed += 1;
+                continue;
+            }
+            "interrupted" | "cancelled" => {
+                group.interrupted += 1;
+                continue;
+            }
+            _ => {}
+        }
+        match string(&row["review"], "verdict") {
+            "pass" => group.pass += 1,
+            "rework" => group.rework += 1,
+            _ => {}
+        }
+        if let Some(ms) = row["terminal"]["observedDurationMs"].as_u64() {
+            group.durations.push(ms);
         }
     }
     if compact {
         let mut other = Group::default();
         groups.retain(|_, group| {
-            if group.dispatches >= 3 {
+            if group.dispatches + group.external_reviews >= 3 {
                 return true;
             }
+            other.external_reviews += group.external_reviews;
+            other.external_pass += group.external_pass;
+            other.external_rework += group.external_rework;
             other.dispatches += group.dispatches;
             other.pass += group.pass;
             other.rework += group.rework;
@@ -416,7 +467,7 @@ fn history_view(agent: &str, compact: bool) -> Result<Value> {
             other.durations.append(&mut group.durations);
             false
         });
-        if other.dispatches > 0 {
+        if other.dispatches + other.external_reviews > 0 {
             groups.insert(
                 ("other".into(), String::new(), String::new(), "{}".into()),
                 other,
@@ -428,6 +479,9 @@ fn history_view(agent: &str, compact: bool) -> Result<Value> {
         .map(|((model, effort, tier, options), mut g)| {
             let mut row = json!({"agent":agent,"model":model,"options":serde_json::from_str::<Value>(&options).unwrap_or(json!({})),"effort":effort,"serviceTier":tier,"dispatches":g.dispatches,
             "pass":g.pass,"rework":g.rework,"failed":g.failed,"interrupted":g.interrupted,"unreviewed":g.dispatches-g.pass-g.rework-g.failed-g.interrupted});
+            if g.external_reviews > 0 {
+                row["external"] = json!({"reviews":g.external_reviews,"pass":g.external_pass,"rework":g.external_rework});
+            }
             if !g.durations.is_empty() {
                 g.durations.sort_unstable();
                 let n = g.durations.len();
@@ -439,14 +493,18 @@ fn history_view(agent: &str, compact: bool) -> Result<Value> {
         })
         .collect::<Vec<_>>();
     // Keep the guide query small even after many model generations; disclose omitted groups.
-    groups.sort_by_key(|g| std::cmp::Reverse(g["dispatches"].as_u64().unwrap_or(0)));
+    groups.sort_by_key(|g| {
+        std::cmp::Reverse(
+            g["dispatches"].as_u64().unwrap_or(0) + g["external"]["reviews"].as_u64().unwrap_or(0),
+        )
+    });
     let omitted = groups.len().saturating_sub(12);
     groups.truncate(12);
     let mut history = json!({"windowDays":30,"excludedPurpose":"self-test","groups":groups});
     if omitted > 0 {
         history["omittedGroups"] = json!(omitted);
     }
-    Ok(history)
+    history
 }
 
 /// Match the effective configuration; never substitute another model's duration.
@@ -487,7 +545,13 @@ pub(crate) fn records(thread: &str) -> Result<Vec<Value>> {
     read_records(thread)
 }
 fn read_records(thread: &str) -> Result<Vec<Value>> {
-    let dir = directory(thread)?;
+    read_rows(&directory(thread)?)
+}
+fn read_external_reviews(thread: &str) -> Result<Vec<Value>> {
+    directory(thread)?;
+    read_rows(&root().join("reviews").join(thread))
+}
+fn read_rows(dir: &Path) -> Result<Vec<Value>> {
     if !dir.exists() {
         return Ok(vec![]);
     }
@@ -528,13 +592,14 @@ pub(crate) fn record(receipt: &Value) -> Result<()> {
     let write = || -> Result<()> {
         let dir = directory(string(receipt, "threadId"))?;
         uuid::Uuid::parse_str(string(receipt, "requestId")).map_err(|_| "INVALID_REQUEST_ID")?;
-        let previous = read_records(string(receipt, "threadId"))?;
+        let mut previous = read_records(string(receipt, "threadId"))?;
         row["purpose"] = receipt["arguments"]
             .get("purpose")
             .cloned()
             .or_else(|| previous.last().and_then(|r| r.get("purpose")).cloned())
             .unwrap_or(json!("task"));
         if row["dispatchMode"] == "new-turn" {
+            previous.extend(read_external_reviews(string(receipt, "threadId"))?);
             let rework = previous
                 .iter()
                 .filter(|r| r["review"]["verdict"] == "rework")
@@ -647,22 +712,7 @@ pub(crate) async fn review(c: &control::Control, args: &Value) -> Result<Value> 
         let page = c.request("thread/turns/list",
             json!({"threadId":thread,"limit":20,"sortDirection":"desc","itemsView":"notLoaded","cursor":cursor}), 10000).await?;
         let turns = page["data"].as_array().ok_or("NATIVE_TURNS_MISSING")?;
-        if let Some(turn) = turns.iter().find(|t| {
-            if args["turnId"].is_string() {
-                t["id"] == args["turnId"]
-            } else {
-                matches!(
-                    string(t, "status"),
-                    "completed" | "failed" | "interrupted" | "cancelled"
-                )
-            }
-        }) {
-            if !matches!(
-                string(turn, "status"),
-                "completed" | "failed" | "interrupted" | "cancelled"
-            ) {
-                return Err("REVIEW_REQUIRES_TERMINAL_TURN".into());
-            }
+        if let Some(turn) = select_review_turn(turns, args["turnId"].as_str())? {
             break turn.clone();
         }
         cursor = page["nextCursor"].clone();
@@ -676,18 +726,142 @@ pub(crate) async fn review(c: &control::Control, args: &Value) -> Result<Value> 
         other => other,
     };
     complete(c, thread, turn, state).await?;
-    save_review(thread, turn, args)
+    if records(thread)?.iter().any(|row| row["turnId"] == turn) {
+        return save_review(thread, turn, args, &Value::Null);
+    }
+    let metadata = c
+        .request(
+            "thread/read",
+            json!({"threadId":thread,"includeTurns":false}),
+            10000,
+        )
+        .await
+        .unwrap_or(Value::Null);
+    let thread_metadata = &metadata["thread"];
+    let persisted = control::persisted_turns(thread_metadata)
+        .configurations
+        .remove(turn)
+        .unwrap_or(Value::Null);
+    let configuration = review_configuration(&[&persisted, &selected, thread_metadata]);
+    let external = json!({"agent":"codex","threadId":thread,"taskId":thread,"turnId":turn,
+        "dispatchOrigin":"external","model":configuration["model"],"effort":configuration["effort"],
+        "serviceTier":configuration["serviceTier"],"options":{},"terminal":{"state":state}});
+    save_review(thread, turn, args, &external)
 }
-fn save_review(thread: &str, turn: &str, args: &Value) -> Result<Value> {
+
+pub(crate) fn select_review_turn<'a>(
+    turns: &'a [Value],
+    requested: Option<&str>,
+) -> Result<Option<&'a Value>> {
+    let terminal = |turn: &Value| {
+        matches!(
+            string(turn, "status"),
+            "completed" | "failed" | "interrupted" | "cancelled"
+        )
+    };
+    let selected = turns
+        .iter()
+        .find(|turn| requested.map_or_else(|| terminal(turn), |id| turn["id"] == id));
+    if selected.is_some_and(|turn| !terminal(turn)) {
+        return Err("REVIEW_REQUIRES_TERMINAL_TURN".into());
+    }
+    Ok(selected)
+}
+
+pub(crate) fn review_configuration(metadata: &[&Value]) -> Value {
+    let mut configuration = json!({});
+    for (field, names) in [
+        ("model", &["model"][..]),
+        (
+            "effort",
+            &[
+                "effort",
+                "reasoningEffort",
+                "reasoning_effort",
+                "thinkingLevel",
+            ][..],
+        ),
+        (
+            "serviceTier",
+            &["serviceTierForTurn", "serviceTier", "service_tier"][..],
+        ),
+    ] {
+        configuration[field] = metadata
+            .iter()
+            .find_map(|m| {
+                names
+                    .iter()
+                    .find_map(|key| m[key].as_str().filter(|v| !v.is_empty() && *v != "unknown"))
+            })
+            .map_or(Value::Null, |v| json!(v));
+    }
+    configuration
+}
+
+pub(crate) fn reviews(thread: &str) -> Result<Vec<Value>> {
+    let _guard = RECORDS_LOCK.lock().map_err(|e| e.to_string())?;
+    let mut rows = read_records(thread)?;
+    rows.extend(read_external_reviews(thread)?);
+    let mut seen = std::collections::HashSet::new();
+    Ok(rows
+        .into_iter()
+        .filter(|r| r["review"].is_object() && seen.insert(string(r, "turnId").to_owned()))
+        .map(|r| json!({"turnId":r["turnId"],"review":r["review"]}))
+        .collect())
+}
+
+pub(crate) fn review_record(
+    args: &Value,
+    origin: &Value,
+    dispatch: Option<&Value>,
+    external: &Value,
+    reviewed_at: &str,
+) -> Value {
+    let mut review = json!({"verdict":args["verdict"],"note":args["note"],"reviewedAt":reviewed_at,"requestId":args["requestId"],
+        "reviewer":{"sourceId":origin["sourceId"],"controlSource":origin["controlSource"],"sessionId":origin["sessionId"],"target":origin["target"]},
+        "dispatchOrigin":if dispatch.is_some() {"arc"} else {"external"},
+        "dispatchRequestId":dispatch.map(|r| &r["requestId"])});
+    if dispatch.is_none() {
+        for field in ["model", "effort", "serviceTier"] {
+            review[field] = external[field].clone();
+        }
+    }
+    review
+}
+
+fn save_review(thread: &str, turn: &str, args: &Value, external: &Value) -> Result<Value> {
     let _guard = RECORDS_LOCK.lock().map_err(|e| e.to_string())?;
     let mut rows = read_records(thread)?
         .into_iter()
         .filter(|r| r["turnId"] == turn)
         .collect::<Vec<_>>();
-    if rows.is_empty() {
-        return Err("REVIEW_DISPATCH_NOT_FOUND: only ARC-dispatched turns can be reviewed".into());
+    if !matches!(string(args, "verdict"), "pass" | "rework") {
+        return Err("INVALID_REVIEW_VERDICT: use pass or rework".into());
     }
-    let review = json!({"verdict":args["verdict"],"note":args["note"],"reviewedAt":now(),"requestId":args["requestId"]});
+    let is_external = rows.is_empty();
+    let dispatch = rows
+        .iter()
+        .find(|r| r["dispatchMode"] == "new-turn")
+        .or(rows.first());
+    let review = review_record(
+        args,
+        &crate::kernel::origin::current_origin(),
+        dispatch,
+        external,
+        &now(),
+    );
+    if is_external {
+        let mut row = external.clone();
+        row["review"] = review.clone();
+        save(
+            &root()
+                .join("reviews")
+                .join(thread)
+                .join(format!("{}.json", hash(turn))),
+            &row,
+        )?;
+        return Ok(json!({"threadId":thread,"turnId":turn,"review":row["review"]}));
+    }
     for row in &mut rows {
         row["review"] = review.clone();
         save(
@@ -749,27 +923,225 @@ pub(crate) fn agent_observe(task: &Value, submission: Option<&str>) -> Result<()
     }
     Ok(())
 }
-pub(crate) fn agent_review(args: &Value) -> Result<Value> {
+pub(crate) fn agent_review(args: &Value, snapshot: &Value) -> Result<Value> {
     let task = string(args, "taskId");
-    let rows = records(task)?;
-    let row = rows
-        .iter()
-        .rev()
-        .find(|r| {
-            r["agent"] == args["agent"]
-                && if args["turnId"].is_string() {
-                    r["turnId"] == args["turnId"]
-                } else {
-                    r["terminal"].is_object()
-                }
-        })
-        .ok_or("REVIEW_DISPATCH_NOT_FOUND")?;
-    if !row["terminal"].is_object() {
-        return Err("REVIEW_REQUIRES_TERMINAL_TURN".into());
-    }
-    let mut result = save_review(task, string(row, "turnId"), args)?;
+    let mut rows = records(task)?;
+    rows.extend(read_external_reviews(task)?);
+    let row = select_agent_review(rows, args, snapshot)?;
+    let mut result = save_review(task, string(&row, "turnId"), args, &row)?;
     result.as_object_mut().unwrap().remove("threadId");
     result["agent"] = args["agent"].clone();
     result["taskId"] = json!(task);
     Ok(result)
+}
+
+pub(crate) fn select_agent_review(
+    mut rows: Vec<Value>,
+    args: &Value,
+    snapshot: &Value,
+) -> Result<Value> {
+    let task = string(args, "taskId");
+    if snapshot["turnId"].is_string() && !rows.iter().any(|r| r["turnId"] == snapshot["turnId"]) {
+        let configuration = review_configuration(&[
+            &snapshot["turnEvidence"],
+            snapshot,
+            &snapshot["options"],
+            &snapshot["metadata"],
+        ]);
+        rows.push(json!({"agent":snapshot["agent"],"taskId":task,"threadId":task,"turnId":snapshot["turnId"],
+            "dispatchOrigin":"external","model":configuration["model"],"effort":configuration["effort"],
+            "serviceTier":configuration["serviceTier"],"options":snapshot.get("options").cloned().unwrap_or(json!({})),"observedAt":snapshot["updatedAt"],
+            "terminal":if matches!(string(snapshot,"status"),"completed"|"failed"|"cancelled") {json!({"state":snapshot["status"]})} else {Value::Null}}));
+    }
+    for (turn, status) in snapshot["tracking"]["turnStatuses"]
+        .as_object()
+        .into_iter()
+        .flatten()
+    {
+        if rows.iter().any(|row| row["turnId"] == *turn) {
+            continue;
+        }
+        let summary = &snapshot["tracking"]["turnDispatchSummaries"][turn];
+        let configuration = review_configuration(&[summary]);
+        rows.push(json!({"agent":snapshot["agent"],"taskId":task,"threadId":task,"turnId":turn,
+            "dispatchOrigin":"external","model":configuration["model"],"effort":configuration["effort"],
+            "serviceTier":configuration["serviceTier"],"options":{},
+            "observedAt":snapshot["tracking"]["turnTimings"][turn]["endedAt"],
+            "terminal":if matches!(status.as_str(),Some("completed"|"failed"|"cancelled")) {json!({"state":status})} else {Value::Null}}));
+    }
+    let row = rows
+        .iter()
+        .filter(|r| r["agent"] == args["agent"])
+        .filter(|r| {
+            if args["turnId"].is_string() {
+                r["turnId"] == args["turnId"]
+            } else {
+                r["terminal"].is_object()
+            }
+        })
+        .max_by_key(|r| {
+            if r["turnId"] == snapshot["turnId"] {
+                String::from("~")
+            } else {
+                r["submittedAt"]
+                    .as_str()
+                    .unwrap_or_else(|| string(r, "observedAt"))
+                    .to_owned()
+            }
+        })
+        .ok_or("REVIEW_TERMINAL_TURN_NOT_FOUND")?;
+    if !row["terminal"].is_object() {
+        return Err("REVIEW_REQUIRES_TERMINAL_TURN".into());
+    }
+    Ok(row.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn review_provenance_preserves_arc_verdict_and_marks_external_configuration() {
+        // Regression: REVIEW_DISPATCH_NOT_FOUND rejected terminal turns started outside ARC.
+        let args = json!({"verdict":"rework","note":"Check failed","requestId":"review-request"});
+        let origin = json!({"sourceId":"source-id","controlSource":"claude","sessionId":"session","target":"target"});
+        let dispatch = json!({"requestId":"dispatch-request"});
+        let arc = review_record(&args, &origin, Some(&dispatch), &Value::Null, "timestamp");
+        assert_eq!(arc["verdict"], "rework");
+        assert_eq!(arc["note"], args["note"]);
+        assert_eq!(arc["requestId"], args["requestId"]);
+        assert_eq!(arc["reviewedAt"], "timestamp");
+        assert_eq!(arc["dispatchOrigin"], "arc");
+        assert_eq!(arc["dispatchRequestId"], "dispatch-request");
+        assert_eq!(arc["reviewer"], origin);
+        let external = review_record(
+            &args,
+            &origin,
+            None,
+            &json!({"model":"model","effort":"high"}),
+            "timestamp",
+        );
+        assert_eq!(external["dispatchOrigin"], "external");
+        assert!(external["dispatchRequestId"].is_null());
+        assert_eq!(external["model"], "model");
+        assert_eq!(external["effort"], "high");
+        assert!(external["serviceTier"].is_null());
+    }
+
+    #[test]
+    fn terminal_selection_rejects_unknown_and_running_turns_and_skips_active_latest() {
+        // Regression: external review must retain native terminal-turn validation.
+        let turns = vec![
+            json!({"id":"running","status":"inProgress"}),
+            json!({"id":"done","status":"completed"}),
+        ];
+        assert_eq!(
+            select_review_turn(&turns, None).unwrap().unwrap()["id"],
+            "done"
+        );
+        assert!(select_review_turn(&turns, Some("missing"))
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            select_review_turn(&turns, Some("running")).unwrap_err(),
+            "REVIEW_REQUIRES_TERMINAL_TURN"
+        );
+        for status in ["completed", "failed", "interrupted", "cancelled"] {
+            assert!(
+                select_review_turn(&[json!({"id":"turn","status":status})], Some("turn"))
+                    .unwrap()
+                    .is_some()
+            );
+        }
+        let args = json!({"agent":"example","taskId":"task","turnId":"turn"});
+        let mut snapshot = json!({"agent":"example","turnId":"turn","status":"completed","model":"model","options":{"effort":"high"}});
+        let selected = select_agent_review(vec![], &args, &snapshot).unwrap();
+        assert_eq!(selected["dispatchOrigin"], "external");
+        assert_eq!(selected["model"], "model");
+        assert_eq!(selected["effort"], "high");
+        assert_eq!(selected["terminal"]["state"], "completed");
+        snapshot["tracking"] = json!({"turnStatuses":{"older":"completed"},"turnTimings":{"older":{"endedAt":"2026-01-01T00:00:00Z"}}});
+        let older = select_agent_review(
+            vec![],
+            &json!({"agent":"example","taskId":"task","turnId":"older"}),
+            &snapshot,
+        )
+        .unwrap();
+        assert_eq!(older["dispatchOrigin"], "external");
+        assert!(older["model"].is_null());
+        assert_eq!(older["terminal"]["state"], "completed");
+        snapshot["status"] = json!("running");
+        assert_eq!(
+            select_agent_review(vec![], &args, &snapshot).unwrap_err(),
+            "REVIEW_REQUIRES_TERMINAL_TURN"
+        );
+        assert_eq!(
+            select_agent_review(
+                vec![],
+                &json!({"agent":"example","taskId":"task","turnId":"missing"}),
+                &snapshot
+            )
+            .unwrap_err(),
+            "REVIEW_TERMINAL_TURN_NOT_FOUND"
+        );
+    }
+
+    #[test]
+    fn external_configuration_prefers_turn_evidence_and_retains_missing_as_null() {
+        // Property: native per-turn configuration takes precedence and missing configuration stays null.
+        let configuration = review_configuration(&[
+            &json!({"model":"turn-model","effort":"high","serviceTier":"unknown"}),
+            &json!({"model":"thread-model","effort":"low","serviceTier":"priority"}),
+        ]);
+        assert_eq!(
+            configuration,
+            json!({"model":"turn-model","effort":"high","serviceTier":"priority"})
+        );
+        assert_eq!(
+            review_configuration(&[&json!({})]),
+            json!({"model":null,"effort":null,"serviceTier":null})
+        );
+    }
+
+    #[test]
+    fn external_history_uses_configuration_groups_with_separate_counts_and_no_durations() {
+        // Regression: external reviews must not silently skew ARC dispatch outcomes or duration samples.
+        let mut arc = json!({"agent":"codex","threadId":"thread","turnId":"arc","dispatchMode":"new-turn","submittedAt":now(),"model":"model","effort":"high","serviceTier":"priority","options":{},"review":{"verdict":"pass"},"terminal":{"state":"completed","observedDurationMs":60000}});
+        let external = json!({"agent":"codex","threadId":"thread","turnId":"external","dispatchOrigin":"external","model":"model","effort":"high","serviceTier":"priority","options":{},"review":{"verdict":"rework","reviewedAt":now()},"terminal":{"state":"failed","observedDurationMs":1}});
+        let mut unknown = external.clone();
+        unknown["turnId"] = json!("unknown");
+        unknown["effort"] = Value::Null;
+        let mut other = external.clone();
+        other["turnId"] = json!("other");
+        other["model"] = json!("another-model");
+        let rows = vec![
+            arc.clone(),
+            external.clone(),
+            external.clone(),
+            unknown,
+            other,
+        ];
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(30);
+        let history = summarize_history(&rows, "codex", false, cutoff);
+        let groups = history["groups"].as_array().unwrap();
+        assert_eq!(groups.len(), 2);
+        let group = groups.iter().find(|r| r["model"] == "model").unwrap();
+        assert_eq!(group["dispatches"], 1);
+        assert_eq!(group["pass"], 1);
+        assert_eq!(group["rework"], 0);
+        assert_eq!(group["failed"], 0);
+        assert_eq!(group["unreviewed"], 0);
+        assert_eq!(group["external"], json!({"reviews":1,"pass":0,"rework":1}));
+        assert_eq!(group["medianObservedDurationMs"], 60000.0);
+        assert_eq!(group["durationSamples"], 1);
+        let compact = summarize_history(&rows, "codex", true, cutoff);
+        assert_eq!(compact["groups"][0]["model"], "other");
+        assert_eq!(compact["groups"][0]["external"]["reviews"], 2);
+        assert_eq!(compact["groups"][0]["durationSamples"], 1);
+        arc["purpose"] = json!("self-test");
+        assert!(summarize_history(&[arc], "codex", false, cutoff)["groups"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
 }

@@ -872,6 +872,7 @@ impl AgentHost {
                 Value::Null
             };
             task["dispatches"] = json!(crate::dispatch_policy::records(string(&args, "taskId"))?);
+            task["reviews"] = json!(crate::dispatch_policy::reviews(string(&args, "taskId"))?);
             task.as_object_mut().unwrap().remove("tracking");
             return Ok(task);
         }
@@ -1007,10 +1008,30 @@ impl AgentHost {
         task: &str,
     ) -> Result<Value> {
         let agent = string(args, "agent");
-        self.ensure_enabled(agent).await?;
         if name == "agent_review" {
-            return crate::dispatch_policy::agent_review(args);
+            let mut snapshot = self.task(agent, task).await?;
+            let facts = dispatch::catalog_facts(
+                &snapshot,
+                &snapshot["metadata"],
+                snapshot["configurationObservedAt"].clone(),
+                "persisted-session-snapshot",
+                Value::Null,
+            );
+            let configuration = dispatch::current_configuration(&facts);
+            for key in ["model", "options"] {
+                if snapshot[key].is_null() {
+                    snapshot[key] = configuration[key].clone();
+                }
+            }
+            if agent == "pi"
+                && snapshot["lastMessage"]["model"].is_string()
+                && snapshot["lastMessage"]["provider"].is_string()
+            {
+                snapshot["turnEvidence"] = json!({"model":format!("{}/{}", string(&snapshot["lastMessage"],"provider"), string(&snapshot["lastMessage"],"model"))});
+            }
+            return crate::dispatch_policy::agent_review(args, &snapshot);
         }
+        self.ensure_enabled(agent).await?;
         let p = if name == "agent_create" {
             let _guard = self.lifecycle.lock().await;
             let t = json!({"origin":crate::kernel::origin::current_origin(),"taskId":task,"agent":agent,"runtimeSource":driver.protocol(),"sessionId":null,"threadId":null,"cwd":args["cwd"],"title":args["title"],"status":"starting","createdAt":now(),"updatedAt":now(),"metadata":{},"output":""});
