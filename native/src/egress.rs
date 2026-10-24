@@ -89,6 +89,7 @@ pub fn failure(e: &str) -> Value {
                     | "ARCHIVE_ACTIVE_TURN"
                     | "ARCHIVE_WRITER_BUSY"
                     | "THREAD_WRITER_BUSY"
+                    | "WRITER_RELEASE_REQUIRES_OWNER"
             )
         ) {
             return value;

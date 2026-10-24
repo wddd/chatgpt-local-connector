@@ -498,3 +498,9 @@ Read `error.code`, `error.message`, and `next` from the public result (the CLI e
 ## Fast writer diagnosis
 
 `codex_owner({threadId})` probes the native thread writer lock without creating, deleting, or rewriting a lock file. A free lock is acquired nonblocking and immediately released. Held locks are classified as connector, Desktop follower owner, or external; Desktop discovery is bounded. Sends and loads reject confirmed external occupancy before navigation. `codex_read({threadId,statusOnly:true})` retains that diagnosis in `ownership` and `reason:"external-writer-held"`. An unheld probe is only a point-in-time observation; native submission still enforces ownership. Unknown probes never imply that a write is safe.
+
+## Writer release and archive handoff
+
+Read `codex_owner({threadId})` for available process IDs, executable/app paths, and the next owner step. Process evidence identifies open descriptors on the held lock; an empty list means process attribution is unavailable, not that the lock is free. Use `codex_release({threadId})` for an idle ARC connector-owned thread, or `codex_archive({threadId,release:true})` to release then archive. ARC uses native `thread/unsubscribe` only for its own idle writer.
+
+Desktop follower IPC currently exposes no per-thread release/archive request. `WRITER_RELEASE_REQUIRES_OWNER` returns a `task_open` action for the exact thread. In the owning ChatGPT/Codex app, select that thread and choose **Archive** from its thread menu. For an external terminal owner, end that exact native session normally. Closing the ARC panel or unsubscribing ARC does not release a Desktop writer. Re-probe ownership before a new archive attempt. ARC never terminates a shared process or removes locks to force a handoff.

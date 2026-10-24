@@ -2048,7 +2048,7 @@ test('AX2 archive supports ended ARC threads and explains active or external wri
   const busy=await dispatchFixture('fixture-dispatch-archive-busy');
   const blocked=await call('codex_archive',{threadId:busy.threadId});
   assert.equal(blocked.response.isError,true);assert.equal(blocked.result.error.code,'ARCHIVE_WRITER_BUSY');
-  assert.equal(blocked.result.next.args.threadId,busy.threadId);
+  assert.equal(blocked.result.next.args.id,busy.threadId);
   const active=await dispatchFixture('fixture-dispatch-queue');
   const rejected=await call('codex_archive',{threadId:active.threadId});
   assert.equal(rejected.result.error.code,'ARCHIVE_ACTIVE_TURN');
@@ -2066,4 +2066,14 @@ test('AX2 local follow-ups accept self-test purpose and inherit it without bindi
   }
   const guide=(await call('guide',{op:'task_panel_control'})).result;
   assert.ok(guide.inputSchema.properties.action.enum.includes('purpose'));
+});
+
+
+test('AX3 release hands off an idle connector thread without closing another owner',async()=>{
+  // Regression: control sources had no supported per-thread release operation before archive.
+  const task=await dispatchFixture('fixture-dispatch');
+  const release=await completed('codex_release',{threadId:task.threadId,requestId:randomUUID()});
+  assert.equal(release.result.released,true);
+  const archive=await completed('codex_archive',{threadId:task.threadId,release:true,requestId:randomUUID()});
+  assert.equal(archive.result.archived,true);
 });

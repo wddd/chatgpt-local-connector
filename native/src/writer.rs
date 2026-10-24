@@ -36,3 +36,29 @@ mod tests {
         drop(writer);std::fs::remove_file(path).unwrap();
     }
 }
+
+pub(crate) async fn processes(thread: &str) -> Value {
+    #[cfg(unix)]
+    {
+        let Ok(path) = lock_path(thread) else { return json!([]); };
+        let mut command = tokio::process::Command::new(if cfg!(target_os="macos") {"/usr/sbin/lsof"} else {"lsof"});
+        command.args(["-t", "--"]).arg(path).kill_on_drop(true);
+        if let Ok(Ok(output)) = tokio::time::timeout(std::time::Duration::from_millis(800),command.output()).await {
+            let pids: Vec<_> = String::from_utf8_lossy(&output.stdout).lines().filter_map(|s|s.parse::<u32>().ok()).take(16).map(|n|n.to_string()).collect();
+            if !pids.is_empty() {
+                let mut ps = tokio::process::Command::new("ps");ps.args(["-p", &pids.join(","), "-o", "pid=", "-o", "comm="]).kill_on_drop(true);
+                if let Ok(Ok(output)) = tokio::time::timeout(std::time::Duration::from_millis(800),ps.output()).await {
+                    return json!(String::from_utf8_lossy(&output.stdout).lines().filter_map(|line| {
+                        let (pid,path)=line.trim().split_once(char::is_whitespace)?;
+                        let executable=path.trim();let app=executable.split_once(".app/").map(|(p,_)|format!("{p}.app"));
+                        Some(json!({"pid":pid.parse::<u32>().ok()?,"executable":executable,"app":app,"evidence":"open-descriptor-on-held-writer-lock"}))
+                    }).collect::<Vec<_>>());
+                }
+            }
+        }
+    }
+    json!([])
+}
+pub(crate) fn release_step(thread: &str) -> Value {
+    json!({"via":"act","op":"task_open","args":{"agent":"codex","id":thread},"hint":"In the owning ChatGPT/Codex app, select this exact thread and choose Archive from its thread menu. Closing the ARC panel or unsubscribing ARC does not release a Desktop writer. If the owner is an external terminal, end that exact native session normally. Do not kill a shared app-server or delete locks. Re-probe codex_owner before retrying archive."})
+}

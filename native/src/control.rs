@@ -358,6 +358,19 @@ impl Control {
         }
         result
     }
+    async fn release_writer(&self, thread: &str) -> Result<Value> {
+        let mut ownership = self.writer_ownership(thread).await;
+        if ownership["state"] == "held" { ownership["processes"] = crate::writer::processes(thread).await; }
+        if !self.background(thread)? || (ownership["state"] == "held" && ownership["owner"] != "connector") {
+            return Err(json!({"code":"WRITER_RELEASE_REQUIRES_OWNER","message":"This writer is not owned by ARC's connector. The Desktop follower protocol exposes no safe per-thread release request. Use the exact owner step; ARC will not close another session.","ownership":ownership,"next":crate::writer::release_step(thread)}).to_string());
+        }
+        let rpc=self.utility().await?;
+        let metadata=rpc.call("thread/read",json!({"threadId":thread,"includeTurns":false}),3000).await?;
+        if metadata["thread"]["status"]["type"] == "active" { return Err("WRITER_ACTIVE: finish or explicitly interrupt this turn before release".into()); }
+        rpc.call("thread/unsubscribe",json!({"threadId":thread}),3000).await?;
+        let observed=crate::writer::probe(thread);
+        Ok(json!({"threadId":thread,"released":observed["state"] == "unheld","ownership":observed,"state":if observed["state"] == "unheld" {"completed"} else {"unconfirmed"}}))
+    }
     // Only an explicit write may load a persisted thread. Never retry a turn
     // submission on another owner: its acceptance may already be unknown.
     async fn prepare_thread(&self, thread: &str) -> Result<()> {
@@ -1094,7 +1107,7 @@ impl Control {
             .or_else(|| args["params"]["threadId"].as_str())
             .unwrap_or("");
         let _thread_guard = if !thread_key.is_empty()
-            && (matches!(operation, "send" | "interrupt" | "review" | "archive")
+            && (matches!(operation, "send" | "interrupt" | "review" | "archive" | "release")
                 || (operation == "native"
                     && matches!(
                         string(args, "method"),
@@ -1112,9 +1125,11 @@ impl Control {
                 return Err(crate::writer::busy(thread_key, ownership).to_string());
             }
         }
+        if operation == "release" { r["threadId"] = args["threadId"].clone(); return self.release_writer(string(args,"threadId")).await; }
         if operation == "archive" {
             let thread = string(args,"threadId");
             r["threadId"] = json!(thread);
+            if args["release"] == true { let released=self.release_writer(thread).await?; if released["released"] != true { return Err("RELEASE_UNCONFIRMED: read codex_owner before archive".into()); } }
             let rpc = self.utility().await?;
             let native = rpc.call("thread/read", json!({"threadId":thread,"includeTurns":false}), 10000).await?;
             if native["thread"]["status"]["type"] == "active" || self.events.lock().await.pending.values().any(|v| v["params"]["threadId"] == thread) {
@@ -1123,7 +1138,8 @@ impl Control {
             r["state"] = json!("submitting"); self.checkpoint(r)?;
             if let Err(error) = rpc.call("thread/archive", json!({"threadId":thread}), 10000).await {
                 if error.contains("active writer") {
-                    return Err(json!({"code":"ARCHIVE_WRITER_BUSY","message":"Native archival is blocked by the owning session. Close or archive this exact thread in its owner, then retry with a new requestId after confirming ownership was released. ARC cannot release another session's writer lock.","nativeError":error,"retryable":false,"next":{"via":"query","op":"codex_read","args":{"threadId":thread,"statusOnly":true}}}).to_string());
+                    let mut ownership=self.writer_ownership(thread).await;ownership["processes"]=crate::writer::processes(thread).await;
+                    return Err(json!({"code":"ARCHIVE_WRITER_BUSY","message":"Native archival requires the owning session to release or archive this exact thread.","nativeError":error,"ownership":ownership,"retryable":false,"next":crate::writer::release_step(thread)}).to_string());
                 }
                 return Err(error);
             }
@@ -1642,7 +1658,8 @@ impl Control {
             "codex_send" => self.mutate("send", args).await,
             "codex_queue" => crate::dispatch_queue::query(&args).await,
             "codex_queue_control" => crate::dispatch_queue::control(self, &args).await,
-            "codex_owner" => Ok(self.writer_ownership(string(&args,"threadId")).await),
+            "codex_release" => self.mutate("release", args).await,
+            "codex_owner" => { let mut owner=self.writer_ownership(string(&args,"threadId")).await; if owner["state"] == "held" {owner["processes"]=crate::writer::processes(string(&args,"threadId")).await;owner["next"]=crate::writer::release_step(string(&args,"threadId"));} Ok(owner) },
             "codex_archive" => self.mutate("archive", args).await,
             "codex_interrupt" => self.mutate("interrupt", args).await,
             "codex_call" => self.mutate("native", args).await,
