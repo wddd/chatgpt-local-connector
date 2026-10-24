@@ -1851,3 +1851,20 @@ test('AX CLI explicitly targets an isolated instance without installed fallback'
   assert.equal(failed.error.code,'APP_UNAVAILABLE');
   assert.equal((await call('guide')).response.isError,false);
 });
+
+test('AX topic guides return relevant operations and cache each view separately', async () => {
+  // Regression: every topic guide repeated the entire operation catalog during long control loops.
+  const guide = async (args: Record<string,unknown>) => ((await client.callTool({name:'query',arguments:{op:'guide',args}})).structuredContent as any).result;
+  for (const [topic,required] of [['notify','notify_control'],['review','codex_review'],['approvals','codex_respond']]) {
+    const scoped = await guide({topic});
+    assert.equal(scoped.indexScope,'topic');
+    assert.ok(scoped.ops.some((op:any)=>op.op===required));
+    assert.ok(!scoped.ops.some((op:any)=>op.op==='fs'));
+    const full = await guide({topic,view:'full'});
+    assert.ok(full.ops.some((op:any)=>op.op==='fs'));
+    assert.ok(full.ops.length > scoped.ops.length);
+    assert.equal((await guide({topic,knownGuideHash:scoped.guideHash})).unchanged,true);
+    assert.equal((await guide({topic,view:'full',knownGuideHash:scoped.guideHash})).unchanged,undefined);
+    assert.equal((await guide({topic,view:'full',knownGuideHash:full.guideHash})).unchanged,true);
+  }
+});

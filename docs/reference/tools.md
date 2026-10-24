@@ -403,3 +403,9 @@ Use `act({op:"fs",args:{action:"fetchFile",params:{path:"/workspace/archive.zip"
 Status revisits read at most the latest native turn and cache its compact projection for five seconds (`cacheAgeMs` reports reuse). Git reads have a two-second budget and do not compute diffs or scan working files. Commits are repository changes since the recorded turn baseline, including concurrent writers; they are not proof of authorship. Elapsed time is wall time since that baseline. Tasks without a baseline expose the gap explicitly.
 
 `codex_wait` timeouts include progress from the last native observation, with the same bounded Git evidence. The native observation may precede the timeout; inspect `progress.observedAt`. The Git read can add up to two seconds after the wait deadline. Continue using the same task and turn IDs.
+
+## Focused guide topics
+
+`guide({topic:"notify"})` returns notification guidance and only the relevant enabled operations. `review` and `approvals` are scoped similarly; the default `loop` view lists common operations, including text and binary file transfer. `indexScope` identifies `topic`, `common`, or `full`.
+
+Use `query({op:"guide",args:{topic:"notify",view:"full"}})` for a complete enabled operation index alongside that topic. Retain its `guideHash` and send the same topic/view with `knownGuideHash` to receive only `unchanged:true` when content has not changed. A hash from a different topic/view does not suppress the requested content. Use `query guide` for these op arguments; the frozen `guide` tool shape remains `topic`/`op` only.

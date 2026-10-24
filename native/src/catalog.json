@@ -26,7 +26,8 @@
               "compact",
               "full"
             ],
-            "default": "compact"
+            "default": "compact",
+            "description": "compact returns the topic content and only related enabled ops (common ops for loop). full includes every enabled op. Use through query guide; the frozen guide tool accepts only topic/op."
           },
           "knownGuideHash": {
             "type": "string",
