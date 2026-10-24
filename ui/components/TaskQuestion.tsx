@@ -32,9 +32,9 @@ export default function TaskQuestion({ agent, session }: { agent: string; sessio
   const interaction = session.interaction!;
   const questions = interactionQuestions(interaction);
   const locked = !!submission;
-  const supported = !!inputResponse(interaction, {}, true);
+  const supported = !!inputResponse(interaction, {}, true, t("detail.skippedAnswer"));
   const send = (skip: boolean) => {
-    const payload = inputResponse(interaction, answers, skip);
+    const payload = inputResponse(interaction, answers, skip, t("detail.skippedAnswer"));
     if (payload) void submitActivityResponse(agent, session, skip ? "cancel" : "answer", payload);
   };
   return <form className="task-question" onSubmit={event => { event.preventDefault(); send(false); }}>

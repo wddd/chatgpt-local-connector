@@ -10,13 +10,13 @@ export function interactionQuestions(interaction: AgentInteraction): Question[] 
   const options = Array.isArray(interaction.options) ? interaction.options.flatMap(option => typeof option === "string" ? [{ label: option }] : option && typeof option.label === "string" ? [option] : []) : [];
   return [{ id: "answer", text: interaction.summary, multiple: false, other: interaction.method !== "select", secret: false, options }];
 }
-export function inputResponse(interaction: AgentInteraction, answers: Record<string, string[]>, skip = false): ApprovalPayload | undefined {
+export function inputResponse(interaction: AgentInteraction, answers: Record<string, string[]>, skip = false, skippedAnswer?: string): ApprovalPayload | undefined {
   const { op, args } = interaction.respond;
   if (interaction.kind !== "question" || interaction.canRespond === false || !op || !args) return;
   const questions = interactionQuestions(interaction);
   if (!skip && questions.some(q => !answers[q.id]?.some(answer => answer.trim()))) return;
   if (op === "codex_respond") {
-    if (interaction.method === "request_user_input_async") return { op, args: { ...args, result: { answer: skip ? "" : answers.answer?.join("\n") ?? "" } } };
+    if (interaction.method === "request_user_input_async" && (!skip || skippedAnswer?.trim())) return { op, args: { ...args, result: { answer: skip ? skippedAnswer : answers.answer?.join("\n") ?? "" } } };
     if (interaction.method === "item/tool/requestUserInput" && questions.length) return { op, args: { ...args, result: { answers: Object.fromEntries(questions.map(q => [q.id, { answers: skip ? [] : answers[q.id] }])) } } };
     return;
   }

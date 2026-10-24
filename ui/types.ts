@@ -128,6 +128,7 @@ export interface AgentConversationPage {
   scope: "native-unarchived" | "arc-tasks";
 }
 export interface AgentTimelineEntry {
+  controlSource?: DispatchSummary["controlSource"];
   phase?: string;
   id: string;
   type: "user" | "text" | "thinking" | "command" | "file" | "tool" | "plan" | "interaction" | "error";
@@ -145,12 +146,13 @@ export interface AgentTimelineEntry {
   cwd?: string;
   path?: string | null;
   operation?: "read" | "write" | "edit" | "create";
+  commandActions?: { type: string; path?: string }[];
   exitCode?: number;
   exitCodeSource?: "rawOutput" | "output";
   input?: AgentTrackingExcerpt;
   output?: AgentTrackingExcerpt;
   plan?: { content: AgentTrackingExcerpt; status: string; priority?: string | null }[];
-  changes?: { path: string; operation?: "create" | "edit" | null; added?: number; removed?: number }[];
+  changes?: { path: string; operation?: "create" | "edit" | null; added?: number; removed?: number; diff?: AgentTrackingExcerpt }[];
   interaction?: AgentInteraction;
   truncated?: boolean;
 }

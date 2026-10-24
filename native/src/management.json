@@ -1709,6 +1709,123 @@
       }
     },
     {
+      "name": "tasks.control",
+      "route": "tasks/control",
+      "method": "POST",
+      "description": "Run an existing task operation from the authenticated local UI. Operation owners validate arguments and stable receipt IDs; no remote MCP schema changes.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "op": {
+                "enum": [
+                  "codex_send",
+                  "agent_send",
+                  "codex_interrupt",
+                  "agent_interrupt",
+                  "codex_review",
+                  "agent_review",
+                  "receipt"
+                ]
+              },
+              "args": {
+                "type": "object",
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "requestId"
+                ]
+              }
+            },
+            "required": [
+              "op",
+              "args"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "tasks.reviews",
+      "route": "tasks/reviews",
+      "method": "POST",
+      "description": "Read persisted review verdicts for a task.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "tasks.reviews.undo",
+      "route": "tasks/reviews/undo",
+      "method": "POST",
+      "description": "Undo only the matching local ARC pass review. A changed verdict or reviewer rejects the undo; external reviews are preserved.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "turnId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reviewRequestId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id",
+              "turnId",
+              "reviewRequestId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "agents.respond",
       "route": "agents/respond",
       "method": "POST",

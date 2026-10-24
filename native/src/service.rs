@@ -732,6 +732,33 @@ impl Service {
         if route.starts_with("runtime/") && method == "POST" {
             return self.runtime.request(route, body);
         }
+        if route == "tasks/control" && method == "POST" {
+            crate::management::resolve("tasks.control", &json!({"body":body}))?;
+            // This local bridge exposes only existing task operations. Their owners
+            // still validate arguments, receipts, permissions and task boundaries.
+            return crate::kernel::origin::ORIGIN
+                .scope(
+                    json!({"controlSource":"ARC","sourceLabel":"ARC","ingressId":"local-ui"}),
+                    self.execution.call(
+                        string(&body, "op"),
+                        body["args"].clone(),
+                        crate::kernel::policy::default_policy(),
+                    ),
+                )
+                .await;
+        }
+        if route == "tasks/reviews" && method == "POST" {
+            crate::management::resolve("tasks.reviews", &json!({"body":body}))?;
+            return Ok(json!({"reviews":crate::dispatch_policy::reviews(string(&body,"id"))?}));
+        }
+        if route == "tasks/reviews/undo" && method == "POST" {
+            crate::management::resolve("tasks.reviews.undo", &json!({"body":body}))?;
+            return crate::dispatch_policy::undo_local_review(
+                string(&body, "id"),
+                string(&body, "turnId"),
+                string(&body, "reviewRequestId"),
+            );
+        }
         if route == "agents/respond" && method == "POST" {
             // Local authentication is enforced by transport; keep the existing
             // respond owners responsible for scope, validation and UUID replay.

@@ -16,7 +16,7 @@ test("only the latest plan and live thinking survive projection", () => {
   const live = projectTurn(entries, "running");
   assert.equal(live.plan?.id, "p2");
   assert.equal(live.thinking?.id, "t2");
-  assert.deepEqual(live.rows.map(row => row.id), ["p2"]);
+  assert.deepEqual(live.rows.flatMap(row => row.kind === "entry" ? [row.entry.id] : []), ["p2"]);
   assert.equal(projectTurn(entries, "done").thinking, undefined);
   assert.equal(projectTurn(entries, "done").final?.id, "answer");
 });
@@ -60,4 +60,21 @@ test("asynchronous questions and Pi selectors keep distinct native answer format
   assert.equal(inputResponse(pi, { answer: ["Other"] }), undefined);
   assert.equal(inputResponse(pi, { answer: ["A"] })?.args.value, "A");
   assert.equal(inputResponse(pi, {}, true)?.args.cancelled, true);
+});
+
+test("send timing, stop targets and reviews map to their existing operation arguments", async () => {
+  // Property: task actions preserve target identity and queue mode without changing native permissions.
+  const { taskControlPayload } = await import("../ui/state/taskControlModel.ts");
+  assert.deepEqual(taskControlPayload("codex", "task", "turn", "send", { prompt: "Next", sendMode: "queue" }, "request"), { op: "codex_send", args: { threadId: "task", approval: "approved", prompt: "Next", sendMode: "queue", requestId: "request" } });
+  assert.deepEqual(taskControlPayload("codex", "task", "turn", "interrupt", {}, "request").args, { threadId: "task", turnId: "turn", approval: "approved", requestId: "request" });
+  assert.deepEqual(taskControlPayload("pi", "task", "turn", "review", { verdict: "pass" }, "request"), { op: "agent_review", args: { agent: "pi", taskId: "task", turnId: "turn", verdict: "pass", requestId: "request" } });
+});
+test("native command action metadata counts searches and reads without guessing from shell text", async () => {
+  // Property: structured command actions determine exploration counts while opaque commands remain commands.
+  const { toolCounts } = await import("../ui/state/taskProjection.ts");
+  const counts = toolCounts([entry("a", "command", { commandActions: [{ type: "read", path: "a" }, { type: "search" }] }), entry("b", "command", { command: "cat hidden", status: "running" })]);
+  assert.equal(counts.read, 1);
+  assert.equal(counts.search, 1);
+  assert.equal(counts.running, 1);
+  assert.equal(counts.command, 0);
 });

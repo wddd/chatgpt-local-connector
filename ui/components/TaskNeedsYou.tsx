@@ -71,3 +71,11 @@ export default function TaskNeedsYou({ agent, session, entries, source, onPendin
     <small>{source ? t("detail.routed", { source }) : t("detail.firstAnswer")}</small>
   </section>;
 }
+
+export function TaskReceiptHistory({ agent, id, turnId, latest }: { agent: string; id: string; turnId?: string; latest: boolean }) {
+  const { records } = tasks.use();
+  const rows = taskReceipts(records, agent, id).filter(record => record.approval && ["approved", "bypass", "reject"].includes(record.approval.decision) && (record.turnId ? record.turnId === turnId : latest));
+  return <>{rows.map(record => <div className="task-receipt-anchor" key={record.requestId}>
+    <strong data-verdict={record.approval.decision}>{t(`detail.verdict.${record.approval.decision}`)}</strong><span>{record.task.title || record.task.prompt}</span><small>{record.approval.source === "local" ? t("detail.byARC") : record.origin?.sourceLabel || record.approval.source}</small>
+  </div>)}</>;
+}

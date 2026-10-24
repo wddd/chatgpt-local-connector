@@ -810,6 +810,46 @@ pub(crate) fn reviews(thread: &str) -> Result<Vec<Value>> {
         .collect())
 }
 
+pub(crate) fn local_review_matches(rows: &[Value], request: &str) -> bool {
+    !rows.is_empty()
+        && rows.iter().all(|r| {
+            r["review"]["requestId"] == request
+                && r["review"]["verdict"] == "pass"
+                && r["review"]["reviewer"]["controlSource"] == "ARC"
+        })
+}
+
+pub(crate) fn undo_local_review(thread: &str, turn: &str, request: &str) -> Result<Value> {
+    let _guard = RECORDS_LOCK.lock().map_err(|e| e.to_string())?;
+    let mut rows = read_records(thread)?
+        .into_iter()
+        .filter(|r| r["turnId"] == turn)
+        .collect::<Vec<_>>();
+    let external = rows.is_empty();
+    if external {
+        rows = read_external_reviews(thread)?
+            .into_iter()
+            .filter(|r| r["turnId"] == turn)
+            .collect();
+    }
+    if !local_review_matches(&rows, request) {
+        return Err("REVIEW_CHANGED: reload the task before undoing a local pass review".into());
+    }
+    for mut row in rows {
+        row.as_object_mut().unwrap().remove("review");
+        let path = if external {
+            root()
+                .join("reviews")
+                .join(thread)
+                .join(format!("{}.json", hash(turn)))
+        } else {
+            directory(thread)?.join(format!("{}.json", string(&row, "requestId")))
+        };
+        save(&path, &row)?;
+    }
+    Ok(json!({"undone":true,"turnId":turn}))
+}
+
 pub(crate) fn review_record(
     args: &Value,
     origin: &Value,
@@ -999,6 +1039,21 @@ pub(crate) fn select_agent_review(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_review_undo_rejects_changed_or_external_verdicts() {
+        // Property: undo requires every targeted record to retain the exact local pass receipt.
+        let local = json!({"review":{"requestId":"same","verdict":"pass","reviewer":{"controlSource":"ARC"}}});
+        assert!(local_review_matches(&[local.clone()], "same"));
+        assert!(!local_review_matches(&[], "same"));
+        assert!(!local_review_matches(&[local.clone()], "different"));
+        let mut external = local.clone();
+        external["review"]["reviewer"]["controlSource"] = json!("external");
+        assert!(!local_review_matches(&[local.clone(), external], "same"));
+        let mut rework = local;
+        rework["review"]["verdict"] = json!("rework");
+        assert!(!local_review_matches(&[rework], "same"));
+    }
 
     #[test]
     fn review_provenance_preserves_arc_verdict_and_marks_external_configuration() {

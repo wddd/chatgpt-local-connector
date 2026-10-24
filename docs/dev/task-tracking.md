@@ -175,3 +175,11 @@ Navigation support requires actual session readback, not command existence/help.
 | Pi | pi --session <path-or-id>, ARC session-dir | Empty RPC sessions may lack persisted files. Expected sessionFile paths are not persistence evidence. No open. |
 | DeepSeek Harness | dsh tui --resume <session>, ACP profile | ACP creation does not establish a usable tui profile or Desktop session link. No open. |
 | Gemini, Copilot, Kimi, Qwen, Kiro, Devin, Cline, Junie, Hermes, Droid, Goose, CodeBuddy, Oh My Pi | Unverified | No integrated verified navigation route. |
+
+### Task detail controls
+
+The detail projection merges consecutive tool activity, keeps the latest plan in place, and removes thinking at turn end. Successful process groups fold behind their summary; failed and interrupted process groups stay expanded. Native unified diff hunks supply per-file line counts and bounded diff excerpts. Missing diff evidence remains unknown. The first prompt may carry controlSource from the original new-turn dispatch; a later steering dispatch never rewrites that prompt's attribution. Unattributed native inputs stay explicitly unattributed.
+
+POST tasks/control bridges a fixed allowlist of existing send, interrupt, review and receipt operations through their execution owners. It records local ARC provenance and uses stable request IDs. Codex queue uses sendMode:queue; steer uses auto. Other Agents accept input after settling because agent_send rejects active turns. A successful interrupt receipt only confirms the request; timeline state confirms interruption. Unconfirmed requests require receipt readback before another write.
+
+POST tasks/reviews reads persisted reviews. Pass/rework use codex_review or agent_review; rework sends the inline instructions as the next turn after recording the verdict. POST tasks/reviews/undo removes only the exact matching local ARC pass review under the review lock. Changed or external reviews reject undo. These are authenticated local management operations, not additions to the frozen MCP tools or notification envelope.

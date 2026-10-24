@@ -8,6 +8,32 @@ const MAX_BYTES: usize = 8 * 1024 * 1024;
 const MAX_TEXT: usize = 256 * 1024;
 const SUMMARY: usize = 1024;
 
+pub(crate) fn file_change(change: &Value) -> Value {
+    let mut row = json!({"path":cut(&redact(string(change,"path")),SUMMARY).0,
+        "operation":match string(&change["kind"],"type") {"add"=>Some("create"),"update"=>Some("edit"),_=>None}});
+    if let Some(diff) = change["diff"].as_str().filter(|diff| !diff.is_empty()) {
+        row["diff"] = summary(&json!(diff));
+        let (mut hunk, mut known, mut added, mut removed) = (false, false, 0u64, 0u64);
+        for line in diff.lines() {
+            if line.starts_with("@@ ") {
+                hunk = true;
+                known = true;
+            } else if line.starts_with("diff --git ") {
+                hunk = false;
+            } else if hunk && line.starts_with('+') {
+                added += 1;
+            } else if hunk && line.starts_with('-') {
+                removed += 1;
+            }
+        }
+        if known {
+            row["added"] = json!(added);
+            row["removed"] = json!(removed);
+        }
+    }
+    row
+}
+
 pub(crate) fn redact(text: &str) -> String {
     use std::sync::OnceLock;
     static PATTERNS: OnceLock<Vec<regex::Regex>> = OnceLock::new();
@@ -633,7 +659,19 @@ impl Timeline {
                 item.map(|r| string(r, "command"))
                     .unwrap_or("Interaction required")
             });
-            self.put(json!({"id":id,"type":"interaction","status":"pending","interaction":{"kind":if string(req,"method").contains("Approval") {"permission"} else {"question"},"summary":cut(&redact(summary_text),SUMMARY).0,"request":summary(params),"method":req["method"],"questions":sanitize(&params["questions"]),"options":sanitize(&params["options"]),"command":sanitize(&params["command"]),"path":sanitize(&params["path"]),"cwd":sanitize(&params["cwd"]),"reason":sanitize(&params["reason"]),"preview":sanitize(&params["diff"]),"respond":req["next"],"canRespond":req["canRespond"]}}),at);
+            let questions: Vec<_> = params["questions"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|question| {
+                    let mut value = sanitize(question);
+                    if question["isSecret"].is_boolean() {
+                        value["isSecret"] = question["isSecret"].clone();
+                    }
+                    value
+                })
+                .collect();
+            self.put(json!({"id":id,"type":"interaction","status":"pending","interaction":{"kind":if string(req,"method").contains("Approval") {"permission"} else {"question"},"summary":cut(&redact(summary_text),SUMMARY).0,"request":summary(params),"method":req["method"],"questions":if params["questions"].is_array() {json!(questions)} else {Value::Null},"options":sanitize(&params["options"]),"command":sanitize(&params["command"]),"path":sanitize(&params["path"]),"cwd":sanitize(&params["cwd"]),"reason":sanitize(&params["reason"]),"preview":sanitize(&params["diff"]),"respond":req["next"],"canRespond":req["canRespond"]}}),at);
         }
         let resolved: Vec<_> = self
             .entries
@@ -977,13 +1015,21 @@ impl Timeline {
                     row[k] = json!(cut(&redact(string(item, k)), SUMMARY).0);
                 }
                 row["output"] = summary(&item["aggregatedOutput"]);
+                if item["commandActions"].is_array() {
+                    row["commandActions"] = sanitize(&item["commandActions"]);
+                }
                 if item["exitCode"].is_i64() {
                     row["exitCode"] = item["exitCode"].clone();
                 }
             }
             "file" => {
                 self.tool_observed = true;
-                let changes: Vec<_>=item["changes"].as_array().into_iter().flatten().map(|c| json!({"path":cut(&redact(string(c,"path")),SUMMARY).0,"operation":match string(&c["kind"],"type") {"add"=>Some("create"),"update"=>Some("edit"),_=>None}})).collect();
+                let changes: Vec<_> = item["changes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(file_change)
+                    .collect();
                 row["path"] = changes
                     .first()
                     .map(|c| c["path"].clone())
@@ -1073,6 +1119,40 @@ impl Timeline {
                 || row["output"]["truncated"] == true
         });
         let mut result = json!({"sessionId":session,"status":self.status,"entries":self.entries.iter().enumerate().filter(|(_,r)|r["cursor"].as_u64().unwrap_or(0)>after).map(|(i,r)| { let mut row=r.clone(); if row.get("position").is_none() { row["position"]=json!(i); } row }).collect::<Vec<_>>(),"cursor":self.revision,"coverage":{"state":if self.partial {"partial"} else {"complete"},"truncated":truncated},"executionEvidence":self.execution_evidence()});
+        let mut prompt_sources = HashMap::new();
+        for mut record in crate::dispatch_policy::records(session).unwrap_or_default() {
+            if record["dispatchMode"] != "new-turn" {
+                continue;
+            }
+            crate::sources::decorate(&mut record["origin"]);
+            if let Some(summary) = crate::egress::dispatch_summary(&record) {
+                if summary["controlSource"].is_object() {
+                    prompt_sources
+                        .entry(string(&record, "turnId").to_owned())
+                        .or_insert(summary["controlSource"].clone());
+                }
+            }
+        }
+        let first_prompts: HashMap<_, _> = self
+            .entries
+            .iter()
+            .filter(|r| r["type"] == "user")
+            .fold(HashMap::new(), |mut map, row| {
+                map.entry(string(row, "turnId"))
+                    .or_insert(string(row, "id"));
+                map
+            });
+        for row in result["entries"].as_array_mut().into_iter().flatten() {
+            let turn = string(row, "turnId");
+            if first_prompts
+                .get(turn)
+                .is_some_and(|id| *id == string(row, "id"))
+            {
+                if let Some(source) = prompt_sources.get(turn) {
+                    row["controlSource"] = source.clone();
+                }
+            }
+        }
         let summaries = dispatch_summaries(session, &self.turn_dispatch_summaries);
         if let Some(summary) = summaries.get(&self.turn) {
             result["dispatchSummary"] = summary.clone();
@@ -1299,6 +1379,17 @@ mod tests {
     use super::*;
     const AT: &str = "2026-01-01T00:00:00.000Z";
     const LATER: &str = "2026-01-01T00:00:01.000Z";
+    #[test]
+    fn native_diff_counts_only_hunk_lines() {
+        // Property: diff headers do not contribute counts and missing hunks leave counts unknown.
+        let row = file_change(
+            &json!({"path":"example.txt","diff":"--- a/example.txt\n+++ b/example.txt\n@@ -1,1 +1,2 @@\n-old\n+new\n+extra\n"}),
+        );
+        assert_eq!(row["added"], 2);
+        assert_eq!(row["removed"], 1);
+        assert!(file_change(&json!({"path":"example.txt"}))["added"].is_null());
+    }
+
     #[test]
     fn recent_steps_merge_chunks_and_updates_and_keep_last_five_in_order() {
         // Property: recent steps merge chunks and updates and keep last five in order.

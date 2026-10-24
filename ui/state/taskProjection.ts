@@ -14,8 +14,14 @@ export type ProcessRow = { kind: "tools"; id: string; entries: AgentTimelineEntr
 export function processRows(entries: readonly AgentTimelineEntry[]): ProcessRow[] {
   const rows: ProcessRow[] = [];
   const plan = [...entries].reverse().find(entry => entry.type === "plan");
+  let insertedPlan = false;
   for (const entry of entries) {
-    if (entry.type === "thinking" || entry.type === "plan" && entry !== plan) continue;
+    if (entry.type === "thinking") continue;
+    if (entry.type === "plan") {
+      if (!insertedPlan && plan) rows.push({ kind: "entry", id: entry.id, entry: plan });
+      insertedPlan = true;
+      continue;
+    }
     if (["command", "file", "tool"].includes(entry.type)) {
       const last = rows.at(-1);
       if (last?.kind === "tools") last.entries.push(entry);
@@ -40,9 +46,12 @@ export function projectTurn(entries: readonly AgentTimelineEntry[], state: TaskS
 }
 export function toolCounts(entries: readonly AgentTimelineEntry[]) {
   const counts = workState(entries).counts;
-  return { read: counts.read, edit: counts.write, file: counts.file, command: counts.command,
-    running: entries.filter(entry => entry.type === "command" && entry.status === "running").length,
-    tool: counts.tool };
+  const actions = entries.flatMap(entry => entry.commandActions ?? []);
+  const reads = new Set(actions.filter(action => action.type === "read" && action.path).map(action => action.path));
+  const commands = entries.filter(entry => entry.type === "command" && (!entry.commandActions?.length || entry.commandActions.some(action => !["read", "search", "listFiles"].includes(action.type))));
+  const running = commands.filter(entry => entry.status === "running").length;
+  return { read: counts.read + reads.size, search: actions.filter(action => action.type === "search").length,
+    edit: counts.write, file: counts.file, command: commands.length - running, running, tool: counts.tool };
 }
 export function changedFiles(entries: readonly AgentTimelineEntry[]) {
   const files = new Map<string, { path: string; added?: number; removed?: number }>();

@@ -1,3 +1,5 @@
+import TaskControls from "./TaskControls";
+import { useTaskControl } from "../state/taskControl";
 import "./TaskDetail.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
@@ -106,6 +108,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const groups = timelineGroups(timeline?.entries ?? []);
   const turnCount = groups.length;
   const state = taskState(timeline?.status, running, showCard);
+  const turnId = nativeSession.turnId || groups.at(-1)?.turnId;
+  const control = useTaskControl(agent, session.id, turnId, timeline?.status, !external && !timeline?.readOnly);
   const plan = projectTurn(groups.at(-1)?.entries ?? [], state).plan?.plan ?? [];
   const doneSteps = plan.filter(step => step.status === "completed").length;
   const title = taskTitle || nativeSession.title || session.title || t("timeline.title");
@@ -117,6 +121,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       </div>
       <h2 className="activity-panel-title" title={title}>{title}</h2>
       <div className="task-detail-chips"><span className="task-state" data-state={state}>{t(`detail.state.${state}`)}</span>
+        {state === "done" && <span className="task-review-status" data-verdict={control.review?.verdict}>{t(control.review?.verdict === "pass" ? "detail.reviewPassed" : control.review?.verdict === "rework" ? "detail.reviewRework" : "detail.awaitingReview")}</span>}
         <div className="task-detail-meta"><SpecPill summary={latestSummary} />{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: dispatchSourceLabel(source) })}</span>{where && <span className="task-source-where">{where}</span>}</span>}</div>
         {duration !== undefined && <span className="timeline-meta">{durationText(duration)}</span>}
       </div>
@@ -149,7 +154,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
               .map((text, index) => <p key={index}>{text}</p>)}
           </section>}
           {timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
-          <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} turnTimings={timeline?.turnTimings} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries} />
+          <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} turnTimings={timeline?.turnTimings} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries} control={!external && !timeline?.readOnly ? control : undefined} />
           </>}
         </div>
       </div>
@@ -158,6 +163,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
         if (node) { manualDisclosure.current = false; node.scrollTop = node.scrollHeight; following.current = true; setAtLatest(true); }
       }}>{t("timeline.latest")}</Button>}
     </div>
-    {!external && !timeline?.readOnly && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={source && dispatchSourceLabel(source)} onPending={setShowCard} /></footer>}
+    {!external && !timeline?.readOnly && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={source && dispatchSourceLabel(source)} onPending={setShowCard} /><TaskControls agent={agent} state={state} control={control} turnId={turnId || undefined} /></footer>}
   </section>;
 }
