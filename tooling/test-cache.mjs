@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { release, homedir } from 'node:os';
 import path from 'node:path';
 import { inputKey } from './build-cache.mjs';
+import { randomUUID } from 'node:crypto';
 
 const capture = (file, args) => execFileSync(file, args, { encoding: 'utf8' }).trim();
 export function testEnvironment(env = process.env) {
@@ -15,7 +16,7 @@ export async function testInputs() {
   if (capture('git', ['status', '--porcelain'])) return undefined;
   const env = testEnvironment();
   const inputs = { schema: 1, testVersion: env.ARC_BUILD_VERSION, tree: capture('git', ['rev-parse', 'HEAD^{tree}']), platform: process.platform, arch: process.arch,
-    os: release(), node: process.version, npm: capture('npm', ['--version']), rustc: capture('rustc', ['-vV']), cargo: capture('cargo', ['--version']),
+    os: release(), node: process.version, npm: capture('npm', ['--version']), rustc: capture(env.RUSTC || 'rustc', ['-vV']), cargo: capture('cargo', ['--version']),
     flags: inputKey(['RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'CARGO_BUILD_TARGET', 'CC', 'CFLAGS', 'RUSTDOCFLAGS', 'RUSTC', 'RUSTC_WRAPPER',
       'RUSTC_WORKSPACE_WRAPPER', 'RUSTUP_TOOLCHAIN', 'CARGO_HOME', 'RUSTUP_HOME', 'CARGO_TARGET_DIR', 'SDKROOT'].map(key => [key, env[key] ?? null])), files: {} };
   if (process.platform === 'darwin') inputs.sdk = capture('xcrun', ['--show-sdk-version']);
@@ -45,7 +46,8 @@ export async function recordTestPass(before) {
   const key = inputKey(after), dir = 'release-artifacts/test-cache';
   await mkdir(dir, { recursive: true });
   const file = path.join(dir, key + '.json');
-  await writeFile(file + '.tmp', JSON.stringify({ schema: 1, status: 'passed', key, inputs: after, passedAt: new Date().toISOString() }, null, 2) + '\n');
-  await rename(file + '.tmp', file);
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  await writeFile(temporary, JSON.stringify({ schema: 1, status: 'passed', key, inputs: after, passedAt: new Date().toISOString() }, null, 2) + '\n');
+  await rename(temporary, file);
   console.log(`Recorded passing tests for tree ${after.tree}: ${file}`);
 }

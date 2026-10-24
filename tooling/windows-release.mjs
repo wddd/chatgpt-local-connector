@@ -70,7 +70,7 @@ export async function prepareWindowsWorker({ timer }) {
       // The source checkout lock also covers SCNet jobs which have not started their guest yet.
       const source = builds.source.checkout;
       await runCommand('ssh', [...sshOptions, fleet.k12.ssh,
-        `test ! -d ${shellQuote(`${source}/.git/enjoy-build.lock`)} && test ! -d ${shellQuote(`${source}/.git/enjoy-platform.lock`)}`]);
+        `test ! -d ${shellQuote(`${source}/.git/enjoy-build.lock`)} && test ! -d ${shellQuote(`${source}/.git/enjoy-platform.lock`)}`], { env: workerEnv() });
       if (initial.owner || initial.status !== 'stopped' || initial.other_status !== 'stopped') throw new Error('K12 worker is occupied; refusing to take over');
       claimed = true; // Includes ambiguous start responses; cleanup must inspect ownership.
       await operation('start');
