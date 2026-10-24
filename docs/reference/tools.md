@@ -403,32 +403,3 @@ Use `act({op:"fs",args:{action:"fetchFile",params:{path:"/workspace/archive.zip"
 Status revisits read at most the latest native turn and cache its compact projection for five seconds (`cacheAgeMs` reports reuse). Git reads have a two-second budget and do not compute diffs or scan working files. Commits are repository changes since the recorded turn baseline, including concurrent writers; they are not proof of authorship. Elapsed time is wall time since that baseline. Tasks without a baseline expose the gap explicitly.
 
 `codex_wait` timeouts include progress from the last native observation, with the same bounded Git evidence. The native observation may precede the timeout; inspect `progress.observedAt`. The Git read can add up to two seconds after the wait deadline. Continue using the same task and turn IDs.
-
-## Task detail actions
-
-The task panel and agents share operation owners. Local agents use `cli control <op> --stdin`; control sources use the existing `query` or `act` tool with `{op,args}`. Tool and notification envelopes are unchanged. Read `guide({op})` for the current schema.
-
-| Panel action | Agent operation | Readback |
-| --- | --- | --- |
-| Answer or skip a question | `codex_pending` / `agent_pending`, then the supplied `codex_respond` / `agent_respond` arguments with the explicit answer or native cancellation result | `task_timeline`, pending ops and original receipt |
-| Approve, bypass or reject an ARC dispatch | `receipt` with the original `requestId` and `action:approve/bypass/reject` | `receipt` |
-| Allow or deny a native permission request | The pending request's respond op and native decision | `task_timeline` and pending ops |
-| Send while active; send while idle | `codex_send` with `sendMode:next` queues when active and starts a turn when idle; other Agents use `agent_send` when idle | Receipt, `codex_queue`, `task_timeline` |
-| Queue explicitly | `codex_send` with `sendMode:queue` | Receipt and `codex_queue` |
-| Steer directly | `codex_send` with `sendMode:steer` | Receipt `dispatchMode` and `task_timeline` |
-| Promote a queued message | `codex_queue_control` with `action:promote`, `threadId`, `queueId` | `codex_queue`: steering, steered, failed or unconfirmed |
-| Cancel a queued message | `codex_queue_control` with `action:cancel`, `threadId`, `queueId` | `codex_queue`: cancelled |
-| Stop | `codex_interrupt` / `agent_interrupt` | Receipt and wait/read ops |
-| Pass or rework | `codex_review` / `agent_review` with `verdict:pass/rework` | `task_reviews` |
-| Undo a local pass | `task_review_undo` with `id`, `turnId`, `reviewRequestId` | `task_reviews` |
-| Retry or continue | `codex_send` / `agent_send` in the same task, with the user's continuation instruction | Receipt and wait/read ops |
-| Open, resize, return, disclose, jump to latest or change follow mode | `task_panel_control` with `agent`, `id` and `action:open/width/back/disclose/latest/follow`; disclose uses a target from `task_panel`; follow requires `following` | `task_panel` or `cli app snapshot` with `modelOnly:true` |
-| Open in the native Agent | `task_open` | Operation result |
-| Inspect/copy a reply, question or tool result | `task_timeline` with `agent`, `id` | Original text and structured entries |
-| Read an image or reveal a file | `task_resource` with `agent`, `id`, `path`, `action:image/reveal` | Operation result |
-
-Answers acknowledged through ARC retain their result, answering source and resolution time in `task_timeline.entries[].response`. No interaction is answered or approved automatically. Question drafts and request pagination are local presentation; agents read all pending requests and submit only an explicit answer. Headless installations support task operations and timeline readback; panel navigation requires Desktop.
-
-The composer's default `next` mode makes the active-turn decision under the thread write lock. The control-source default `auto` retains its previous steer-or-start behavior. Explicit `queue` retains FIFO dispatch after a completed turn and pauses after a failed or interrupted predecessor. `promote` requires an active turn, reserves exactly one message, and never creates a turn. Queued submissions retain their originating source. Only authenticated local administration may inspect or cancel legacy orphaned queue records with no source ID; these records never dispatch automatically. Remote queue visibility remains restricted to the current source.
-
-`THREAD_WRITER_BUSY` retains the native rejection and gives a recovery hint. `runtimeStatus:notLoaded` describes ARC's observation, not global writer availability. Read the original receipt, continue in the owning native session, or explicitly close that session before retrying the same thread. Do not delete writer locks or create another thread to bypass ownership. Unknown submissions require receipt reconciliation rather than automatic resubmission.
