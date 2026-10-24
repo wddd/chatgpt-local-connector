@@ -17,29 +17,19 @@ pub(crate) fn session_id(value: &str) -> Result<String> {
         .strip_prefix("https://")
         .or_else(|| value.strip_prefix("http://"))
         .unwrap_or(value);
-    let (id, from_url) = match url.strip_prefix("claude.ai/code/") {
-        Some(id) => (
-            id.split(['?', '#'])
-                .next()
-                .unwrap_or("")
-                .trim_end_matches('/'),
-            true,
-        ),
-        None => (value, false),
+    let id = match url.strip_prefix("claude.ai/code/") {
+        Some(id) => id.split(['?', '#']).next().unwrap_or("").trim_end_matches('/'),
+        None => value,
     };
-    if id.is_empty()
-        || !id
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
-        || (!from_url
-            && !id
-                .strip_prefix("session_")
-                .or_else(|| id.strip_prefix("cse_"))
-                .is_some_and(|suffix| !suffix.is_empty()))
-    {
-        return Err(
-            "INVALID_CLAUDE_SESSION: expected cloud session ID or claude.ai/code URL".into(),
-        );
+    let suffix = id.strip_prefix("session_").or_else(|| id.strip_prefix("cse_"));
+    if !suffix.is_some_and(|suffix| suffix.len() == 24 && suffix.bytes().all(|c| c.is_ascii_alphanumeric())) {
+        return Err(json!({
+            "code":"INVALID_CLAUDE_SESSION",
+            "message":"Invalid cloud-session target. Expected session_ or cse_ followed by exactly 24 ASCII letters/digits, or a claude.ai/code URL containing that ID. A local Claude CLI UUID is not a cloud-session ID.",
+            "argument":"target",
+            "expectedFormat":"^(session_|cse_)[A-Za-z0-9]{24}$",
+            "next":{"via":"query","op":"guide","args":{"topic":"notify"},"hint":"Copy the receiving conversation's complete cloud-session ID from its claude.ai/code URL, then retry notify_control action:bind with that target. This request was rejected before binding or delivery."}
+        }).to_string());
     }
     Ok(id.into())
 }
@@ -2113,7 +2103,7 @@ mod tests {
     #[tokio::test]
     async fn registered_target_verifies_without_a_task_and_remains_source_scoped() {
         // Regression: a cloud source with no turn binding could never start a reachability handshake.
-        let dir=Sandbox::new();let settings=json!({"notificationsEnabled":true});let args=json!({"target":"session_test"});
+        let dir=Sandbox::new();let settings=json!({"notificationsEnabled":true});let args=json!({"target":"session_010000000000000000000001"});
         let bound=governance::bind_target_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
         assert_eq!(bound["taskBound"],false);
         let fake=Fake::success();
@@ -2135,14 +2125,14 @@ mod tests {
     #[tokio::test]
     async fn missing_cloud_session_reports_safe_account_and_manual_recovery() {
         // Regression: Session not found became generic handshake-delivery-failed and hid a likely host-account mismatch.
-        let dir=Sandbox::new();let settings=json!({"notificationsEnabled":true});let args=json!({"target":"session_test"});
+        let dir=Sandbox::new();let settings=json!({"notificationsEnabled":true});let args=json!({"target":"session_010000000000000000000001"});
         governance::bind_target_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
         for reply in [Err("CLAUDE_SEND_FAILED: exit 1; Session not found".into()),Ok(br#"{"ok":false,"error":"Session not found"}"#.to_vec()),Ok(br#"{"is_error":true,"errors":["Session not found"]}"#.to_vec()),Ok(b"Session not found".to_vec())] {
             let result=reachability::verify_in(&dir.0,"source-a",&args,&settings,&Fake::new(reply)).await.unwrap();
             assert_eq!(result["ok"],false);assert_eq!(result["reason"],"claude-session-not-found");assert_eq!(result["error"]["code"],"CLAUDE_SESSION_NOT_FOUND");
             assert_eq!(result["error"]["localAccount"]["email"],"fixture@example.invalid");
             assert_eq!(result["next"]["before"]["hostCommand"],json!(["claude","auth","login"]));
-            assert_eq!(result["next"]["args"],json!({"action":"verify","target":"session_test"}));
+            assert_eq!(result["next"]["args"],json!({"action":"verify","target":"session_010000000000000000000001"}));
             let status=governance::status_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
             assert_eq!(status["targets"][0]["lastVerificationError"]["code"],"CLAUDE_SESSION_NOT_FOUND");
             assert!(!result.to_string().contains("fixture-secret"));assert!(!status.to_string().contains("fixture-secret"));
@@ -2164,7 +2154,7 @@ mod tests {
             }
         }
         fn success() -> Self {
-            Self::new(Ok(br#"{"ok":true,"session_id":"session_test"}"#.to_vec()))
+            Self::new(Ok(br#"{"ok":true,"session_id":"session_010000000000000000000001"}"#.to_vec()))
         }
     }
     impl Executor for Fake {
@@ -2206,7 +2196,7 @@ mod tests {
     fn fixture(dir: &Path) -> Binding {
         bind_in(
             dir,
-            Some("session_test"),
+            Some("session_010000000000000000000001"),
             "thread-1",
             "turn-1",
             "/projects/sample",
@@ -2223,7 +2213,7 @@ mod tests {
     async fn enqueue(dir: &Path, thread: &str, observation: Value, at: i64) -> Binding {
         bind_in(
             dir,
-            Some("session_test"),
+            Some("session_010000000000000000000001"),
             thread,
             "turn-1",
             "/projects/sample",
@@ -2416,7 +2406,7 @@ mod tests {
         governance::control_in(
             &dir.0,
             "claude",
-            &json!({"action":"breaker","target":"session_test","enabled":true}),
+            &json!({"action":"breaker","target":"session_010000000000000000000001","enabled":true}),
             100,
             &s,
         )
@@ -2434,7 +2424,7 @@ mod tests {
         governance::control_in(
             &dir.0,
             "claude",
-            &json!({"action":"breaker","target":"session_test","enabled":false}),
+            &json!({"action":"breaker","target":"session_010000000000000000000001","enabled":false}),
             201,
             &s,
         )
@@ -2462,7 +2452,7 @@ mod tests {
         governance::control_in(
             &dir.0,
             "claude",
-            &json!({"action":"breaker","target":"session_test","enabled":true}),
+            &json!({"action":"breaker","target":"session_010000000000000000000001","enabled":true}),
             3802,
             &s,
         )
@@ -2505,9 +2495,9 @@ mod tests {
             1
         );
         assert_eq!(
-            inbox_in(&dir.0, "claude", &[], true, Some("session_test")).unwrap()["events"][0]
+            inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000001")).unwrap()["events"][0]
                 ["target"],
-            "session_test"
+            "session_010000000000000000000001"
         );
         acknowledge_in(&dir.0, "claude", &json!({"all":true})).unwrap();
         let status = governance::status_in(&dir.0, "claude", &json!({}), 3701, &s).unwrap();
@@ -2537,7 +2527,7 @@ mod tests {
         governance::control_in(
             &dir.0,
             "claude",
-            &json!({"action":"rebind","threadId":"thread","target":"session_test"}),
+            &json!({"action":"rebind","threadId":"thread","target":"session_010000000000000000000001"}),
             3702,
             &s,
         )
@@ -2548,7 +2538,7 @@ mod tests {
                 .unwrap()
                 .target
                 .as_deref(),
-            Some("session_test")
+            Some("session_010000000000000000000001")
         );
         assert_eq!(State::load(&dir.0).unwrap().threads[0].mode, "normal");
         assert!(
@@ -2577,7 +2567,7 @@ mod tests {
             "batch",
         ] {
             let mut b = enqueue(&dir.0, name, interaction(json!(name)), 100).await;
-            b.target = Some(format!("session_{name}"));
+            b.target = Some(format!("session_{name:0>24}"));
             let d = &mut b.deliveries[0];
             d.target = b.target.clone().unwrap();
             d.status = if name == "pending" {
@@ -2636,7 +2626,7 @@ mod tests {
         assert_eq!(recent["turns"][0]["causedBy"]["requestId"], "request-test");
         for args in [
             json!({"all":true}),
-            json!({"target":"session_recent"}),
+            json!({"target":format!("session_{:0>24}", "recent")}),
             json!({"threadId":"recent"}),
         ] {
             let full = governance::status_in(&dir.0, "claude", &args, now, &settings).unwrap();
@@ -2807,7 +2797,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(inbox_in(&dir.0, "claude", &[], true, Some("session_test"))
+        assert!(inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000001"))
             .unwrap()
             .is_null());
         assert_eq!(
@@ -2822,11 +2812,11 @@ mod tests {
         persist(&dir.0, &b).unwrap();
         inbox_append(&dir.0, "claude", event(&b, &b.deliveries[0])).unwrap();
         assert_eq!(
-            inbox_in(&dir.0, "claude", &[], true, Some("session_test")).unwrap()["events"][0]
+            inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000001")).unwrap()["events"][0]
                 ["eventId"],
             "fresh"
         );
-        assert!(inbox_in(&dir.0, "claude", &[], true, Some("session_test"))
+        assert!(inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000001"))
             .unwrap()
             .is_null());
         inbox_append(&dir.0, "chatgpt", event(&b, &b.deliveries[0])).unwrap();
@@ -2867,16 +2857,16 @@ mod tests {
             100,
         )
         .await;
-        second.target = Some("session_other".into());
-        second.deliveries[0].target = "session_other".into();
+        second.target = Some("session_010000000000000000000002".into());
+        second.deliveries[0].target = "session_010000000000000000000002".into();
         persist(&dir.0, &second).unwrap();
         assert!(inbox_in(&dir.0, "claude", &[], true, None)
             .unwrap()
             .is_null());
-        let inbox = inbox_in(&dir.0, "claude", &[], true, Some("session_test")).unwrap();
+        let inbox = inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000001")).unwrap();
         assert_eq!(inbox["unread"], 1);
         assert_eq!(inbox["events"][0]["threadId"], "first");
-        let other = inbox_in(&dir.0, "claude", &[], true, Some("session_other")).unwrap();
+        let other = inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000002")).unwrap();
         assert_eq!(other["events"][0]["threadId"], "second");
         inbox_append(&dir.0, "chatgpt", event(&first, &first.deliveries[0])).unwrap();
         assert_eq!(
@@ -2934,8 +2924,8 @@ mod tests {
             100,
         )
         .await;
-        other.target = Some("session_other".into());
-        other.deliveries[0].target = "session_other".into();
+        other.target = Some("session_010000000000000000000002".into());
+        other.deliveries[0].target = "session_010000000000000000000002".into();
         persist(&dir.0, &other).unwrap();
         let filters = json!({"threadIds":["first"],"eventTypes":["completed"]});
         assert!(
@@ -2956,7 +2946,7 @@ mod tests {
                 "claude",
                 &[],
                 true,
-                Some("session_test"),
+                Some("session_010000000000000000000001"),
                 Some(&filters),
             )
             .unwrap();
@@ -2975,7 +2965,7 @@ mod tests {
             "claude",
             &[],
             true,
-            Some("session_test"),
+            Some("session_010000000000000000000001"),
             Some(&filters)
         )
         .unwrap()
@@ -2985,7 +2975,7 @@ mod tests {
             "claude",
             &[],
             true,
-            Some("session_other"),
+            Some("session_010000000000000000000002"),
             Some(&json!({})),
         )
         .unwrap();
@@ -3067,21 +3057,21 @@ mod tests {
     fn session_forms_and_turn_isolation() {
         // Regression: session parsing must reject invalid targets and binding must not cross turns.
         for input in [
-            "session_test",
-            "https://claude.ai/code/session_test?x=y",
-            "claude.ai/code/session_test",
-            "http://claude.ai/code/session_test#fragment",
+            "session_010000000000000000000001",
+            "https://claude.ai/code/session_010000000000000000000001?x=y",
+            "claude.ai/code/session_010000000000000000000001",
+            "http://claude.ai/code/session_010000000000000000000001#fragment",
         ] {
-            assert_eq!(session_id(input).unwrap(), "session_test");
+            assert_eq!(session_id(input).unwrap(), "session_010000000000000000000001");
         }
-        assert_eq!(session_id("cse_test").unwrap(), "cse_test");
+        assert_eq!(session_id("cse_010000000000000000000005").unwrap(), "cse_010000000000000000000005");
         for bad in [
             "",
             "session_",
             "cse_",
             "hello world",
             "--help",
-            "https://other.invalid/code/session_test",
+            "https://other.invalid/code/session_010000000000000000000001",
             "session_a extra",
         ] {
             assert!(session_id(bad).is_err());
@@ -3090,7 +3080,7 @@ mod tests {
         fixture(&dir.0);
         bind_in(
             &dir.0,
-            Some("cse_other"),
+            Some("cse_010000000000000000000006"),
             "thread-1",
             "turn-2",
             "/projects/sample",
@@ -3103,7 +3093,7 @@ mod tests {
                 .unwrap()
                 .target
                 .as_deref(),
-            Some("session_test")
+            Some("session_010000000000000000000001")
         );
         assert_eq!(
             binding(&dir.0, "thread-1", "turn-2")
@@ -3111,7 +3101,7 @@ mod tests {
                 .unwrap()
                 .target
                 .as_deref(),
-            Some("cse_other")
+            Some("cse_010000000000000000000006")
         );
         assert!(binding(&dir.0, "thread-1", "turn-3").unwrap().is_none());
         bind_in(&dir.0, None, "thread-1", "turn-2", "").unwrap();
@@ -3121,7 +3111,7 @@ mod tests {
                 .unwrap()
                 .target
                 .as_deref(),
-            Some("cse_other")
+            Some("cse_010000000000000000000006")
         );
     }
     #[tokio::test]
@@ -3132,13 +3122,13 @@ mod tests {
         bind_in(&dir.0, None, "thread-1", "turn-1", "").unwrap();
         bind_in(&dir.0, None, "thread-1", "turn-2", "").unwrap();
         let mut b = binding(&dir.0, "thread-1", "turn-1").unwrap().unwrap();
-        assert_eq!(b.target.as_deref(), Some("session_test"));
+        assert_eq!(b.target.as_deref(), Some("session_010000000000000000000001"));
         assert!(binding(&dir.0, "thread-1", "turn-2").unwrap().is_none());
         let fake = Fake::success();
         process(&fake, &dir.0, &mut b, &json!({"state":"completed"}))
             .await
             .unwrap();
-        assert_eq!(fake.calls.lock().unwrap()[0][3], "session_test");
+        assert_eq!(fake.calls.lock().unwrap()[0][3], "session_010000000000000000000001");
     }
     #[test]
     fn binding_failure_marks_receipt_without_changing_dispatch_result() {
@@ -3147,7 +3137,7 @@ mod tests {
         std::fs::create_dir_all(&dir.0).unwrap();
         let blocked = dir.0.join("not-a-directory");
         std::fs::write(&blocked, "fixture").unwrap();
-        let result = bind_in(&blocked, Some("session_test"), "thread-1", "turn-1", "");
+        let result = bind_in(&blocked, Some("session_010000000000000000000001"), "thread-1", "turn-1", "");
         assert!(result.is_err());
         let mut receipt =
             json!({"state":"completed","result":{"submitted":true,"turnId":"turn-1"}});
@@ -3169,7 +3159,7 @@ mod tests {
             b.created_at = 100;
             persist(&dir.0, &b).unwrap();
             // Rebinding preserves the original creation time.
-            bind_in(&dir.0, Some("cse_other"), "thread-1", "turn-1", "").unwrap();
+            bind_in(&dir.0, Some("cse_010000000000000000000006"), "thread-1", "turn-1", "").unwrap();
             let b = binding(&dir.0, "thread-1", "turn-1").unwrap().unwrap();
             assert_eq!(b.created_at, 100);
             assert!(!remove_expired(&dir.0, &b, 100 + RETENTION_SECONDS).unwrap());
@@ -3199,11 +3189,11 @@ mod tests {
                     .expect("CLI must not hold binding lock");
                 let b = binding(self.dir, "thread-1", "turn-1")?.unwrap();
                 assert_eq!(b.deliveries[0].status, "sending");
-                bind_in(self.dir, Some("cse_other"), "thread-1", "turn-1", "")?;
+                bind_in(self.dir, Some("cse_010000000000000000000006"), "thread-1", "turn-1", "")?;
                 if self.fail {
                     Err("simulated failure".into())
                 } else {
-                    Ok(br#"{"ok":true,"session_id":"session_test"}"#.to_vec())
+                    Ok(br#"{"ok":true,"session_id":"session_010000000000000000000001"}"#.to_vec())
                 }
             }
             async fn escalate(&self, _: String) -> Result<()> {
@@ -3230,8 +3220,8 @@ mod tests {
                 .await
                 .unwrap();
             let b = binding(&dir.0, "thread-1", "turn-1").unwrap().unwrap();
-            assert_eq!(b.target.as_deref(), Some("cse_other"));
-            assert_eq!(b.deliveries[0].target, "session_test");
+            assert_eq!(b.target.as_deref(), Some("cse_010000000000000000000006"));
+            assert_eq!(b.deliveries[0].target, "session_010000000000000000000001");
             assert_eq!(
                 b.deliveries[0].status,
                 if fail { "pending" } else { "delivered" }
@@ -3276,7 +3266,7 @@ mod tests {
 
         assert!(b.terminal);
         let report = notification(binding(&dir.0, "thread-1", "turn-1").unwrap());
-        assert_eq!(report["target"], "session_test");
+        assert_eq!(report["target"], "session_010000000000000000000001");
         assert_eq!(report["deliveries"].as_array().unwrap().len(), 3);
         assert_eq!(
             report["deliveries"][2],
@@ -3287,7 +3277,7 @@ mod tests {
         assert_eq!(calls[0][0], "-p");
         assert_eq!(
             &calls[0][2..],
-            ["--cloud", "session_test", "--output-format", "json"]
+            ["--cloud", "session_010000000000000000000001", "--output-format", "json"]
         );
         assert!(!serde_json::to_string(&*calls)
             .unwrap()
@@ -3304,20 +3294,20 @@ mod tests {
         process(&fake, &dir.0, &mut b, &interaction(json!(17)))
             .await
             .unwrap();
-        bind_in(&dir.0, Some("cse_other"), "thread-1", "turn-1", "").unwrap();
+        bind_in(&dir.0, Some("cse_010000000000000000000006"), "thread-1", "turn-1", "").unwrap();
         let mut b = binding(&dir.0, "thread-1", "turn-1").unwrap().unwrap();
         let report = notification(Some(b.clone()));
-        assert_eq!(report["target"], "cse_other");
+        assert_eq!(report["target"], "cse_010000000000000000000006");
         assert_eq!(report["deliveries"], json!([]));
         process(&fake, &dir.0, &mut b, &interaction(json!(17)))
             .await
             .unwrap();
 
-        let other = Fake::new(Ok(br#"{"ok":true,"session_id":"cse_other"}"#.to_vec()));
+        let other = Fake::new(Ok(br#"{"ok":true,"session_id":"cse_010000000000000000000006"}"#.to_vec()));
         process(&other, &dir.0, &mut b, &json!({"state":"completed"}))
             .await
             .unwrap();
-        assert_eq!(other.calls.lock().unwrap()[0][3], "cse_other");
+        assert_eq!(other.calls.lock().unwrap()[0][3], "cse_010000000000000000000006");
         assert_eq!(
             notification(Some(b.clone()))["deliveries"],
             json!([{"eventId":b.deliveries[1].event_id,"kind":"completed","level":"L1","state":"delivered","error":null,"timing":b.deliveries[1].timing}])
@@ -3357,7 +3347,7 @@ mod tests {
             Err("not installed".into()),
             Ok(b"not json".to_vec()),
             Ok(br#"{"ok":false,"error":"SECRET_ERROR"}"#.to_vec()),
-            Ok(br#"{"ok":true,"session_id":"session_wrong"}"#.to_vec()),
+            Ok(br#"{"ok":true,"session_id":"session_010000000000000000000004"}"#.to_vec()),
         ] {
             let dir = Sandbox::new();
             let mut b = fixture(&dir.0);
@@ -3400,7 +3390,7 @@ mod tests {
             digest: false,
             error: None,
             key: "request:17".into(),
-            target: "session_test".into(),
+            target: "session_010000000000000000000001".into(),
             state: "waiting for approval".into(),
             task_state: "interaction-required".into(),
             interaction: Value::Null,

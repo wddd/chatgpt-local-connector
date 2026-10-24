@@ -16,6 +16,7 @@ for await(const line of createInterface({input:process.stdin})) {
       ['codex_read',{threadId},'THREAD_WRITER_BUSY'],
       ['codex_read',{threadId,statusOnly:true},'THREAD_WRITER_BUSY'],
       ['notify_control',{action:'verify',target:'session_011111111111111111111111'},'NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE'],
+      ['notify_control',{action:'bind',target:'session_invalid'},'INVALID_CLAUDE_SESSION'],
       ['receipt',{requestId:'missing-receipt'},'INVALID_ARGUMENTS'],
       ['codex_read',{unknown:true},'INVALID_ARGUMENTS'],
       ['unknown_operation',{},'UNKNOWN_OP'],

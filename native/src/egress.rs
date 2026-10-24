@@ -85,6 +85,7 @@ pub fn failure(e: &str) -> Value {
                     | "OP_UNAVAILABLE"
                     | "WRONG_TOOL"
                     | "NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE"
+                    | "INVALID_CLAUDE_SESSION"
                     | "DESKTOP_STEER_UNAVAILABLE"
                     | "ARCHIVE_ACTIVE_TURN"
                     | "ARCHIVE_WRITER_BUSY"

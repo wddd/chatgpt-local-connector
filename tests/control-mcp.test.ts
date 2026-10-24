@@ -1939,7 +1939,7 @@ test('AX topic guides return relevant operations and cache each view separately'
 
 test('AX unbound cloud-session verification explains binding and its next call', async () => {
   // Regression: notify_control verify returned a bare target-not-bound error with no usable recovery flow.
-  const target = 'session_ax_unbound';
+  const target = 'session_010000000000000000000010';
   const response = await call('notify_control',{action:'verify',target});
   assert.equal(response.response.isError,true);
   const error = response.result.error;
@@ -2092,7 +2092,7 @@ test('AX3 cloud binding is discoverable before dispatch and repairs an unbound t
   // Regression: cloud controls had no bound target or verification attempts and had to resubmit work to bind.
   const guide=await call('guide',{});
   assert.ok(guide.result.ops.some((o:any)=>o.op==='notify_control'));
-  const target='session_ax3_registered';
+  const target='session_010000000000000000000008';
   const bound=await call('notify_control',{action:'bind',target,verify:false});
   assert.equal(bound.result.bound,true,JSON.stringify(bound.result));assert.equal(bound.result.taskBound,false);
   const status=await call('notify_status',{target});
@@ -2105,17 +2105,17 @@ test('AX3 cloud binding is discoverable before dispatch and repairs an unbound t
   const settings=await management('task-settings');
   try {
     await management('task-settings','PUT',{notificationsEnabled:false});
-    const attempted=await call('notify_control',{action:'bind',target:'session_ax3_disabled'});
+    const attempted=await call('notify_control',{action:'bind',target:'session_010000000000000000000007'});
     assert.equal(attempted.response.isError,true);assert.equal(attempted.result.bound,true);
     assert.match(attempted.result.error.message,/NOTIFICATIONS_DISABLED/);
-    assert.equal((await call('notify_status',{target:'session_ax3_disabled'})).result.targets[0].registered,true);
+    assert.equal((await call('notify_status',{target:'session_010000000000000000000007'})).result.targets[0].registered,true);
   } finally {await management('task-settings','PUT',settings);}
 });
 
 
 test('Public failures provide a usable next without serialized duplicate reasons',async()=>{
   // Regression: verify failures emitted next:null and archive errors repeated serialized RPC errors.
-  const target='session_ax_failure_next';
+  const target='session_010000000000000000000009';
   const saved=await management('task-settings');
   try {
     await call('notify_control',{action:'bind',target,verify:false});
