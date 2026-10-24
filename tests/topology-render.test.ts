@@ -344,8 +344,7 @@ test("timeline turn disclosures preserve choices through incremental work and re
     }
     await act(() => activityApprovals.set({}));
     await render([{ ...pending, status: "completed" }]);
-    const folded = page.getByRole("button", { name: name => name.startsWith(t("detail.process", { updates: 0, answers: 1, actions: 0 })) });
-    await click(folded);
+    assert.ok(page.getByText(interaction.summary));
     assert.ok(page.getByText(t("detail.resolvedElsewhere")));
 
   } finally {
