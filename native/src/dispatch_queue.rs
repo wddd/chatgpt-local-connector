@@ -151,11 +151,12 @@ pub(crate) async fn control(control: &Arc<control::Control>, args: &Value) -> Re
                     return Err("QUEUE_SOURCE_MISSING: cancel this orphan through local codex_queue_control; submit a new message explicitly".into());
                 }
                 if args["action"] == "promote" {
-                    let latest = control.request("thread/turns/list", json!({"threadId":thread,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}), 10000).await?;
-                    let turn = &latest["data"][0];
+                    let latest = control.dispatch_state(thread).await?;
+                    let turn = &latest["turns"][0];
                     if turn["status"] != "inProgress" {
                         return Err("NO_ACTIVE_TURN: keep the message queued or resume it after an interrupted turn".into());
                     }
+                    control.check_steer(thread, &turn["id"]).await?;
                     row["expectedActiveTurn"] = turn["id"].clone();
                     row["state"] = json!("steering");
                     promoted = Some(row.clone());
@@ -198,14 +199,8 @@ async fn tick(control: &Arc<control::Control>, mut row: Value) -> Result<()> {
         if !matches!(string(&row, "state"), "queued" | "blocked") {
             return Ok(());
         }
-        let latest = control
-            .request(
-                "thread/turns/list",
-                json!({"threadId":thread,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),
-                10000,
-            )
-            .await?;
-        let turns = latest["data"].as_array().ok_or("NATIVE_TURNS_MISSING")?;
+        let latest = control.dispatch_state(&thread).await?;
+        let turns = latest["turns"].as_array().ok_or("NATIVE_TURNS_MISSING")?;
         let turn = turns.first().unwrap_or(&Value::Null);
         let waiting_input = control
             .events

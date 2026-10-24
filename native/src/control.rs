@@ -346,8 +346,9 @@ impl Control {
     async fn prepare_thread(&self, thread: &str) -> Result<()> {
         #[cfg(feature = "test-fixture")]
         {
-            let _ = thread;
-            return Ok(());
+            if std::env::var_os("ARC_FIXTURE_DESKTOP").is_none() {
+                return Ok(());
+            }
         }
         #[allow(unreachable_code)]
         if self.background(thread)? {
@@ -574,7 +575,9 @@ impl Control {
     async fn request_native(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
         #[cfg(feature = "test-fixture")]
         {
-            return self.utility().await?.call(method, args, timeout).await;
+            if std::env::var_os("ARC_FIXTURE_DESKTOP").is_none() {
+                return self.utility().await?.call(method, args, timeout).await;
+            }
         }
         #[allow(unreachable_code)]
         if method == "turn/start" || method == "thread/resume" {
@@ -679,7 +682,7 @@ impl Control {
             if params.is_null() {
                 params = json!({"type":"null"})
             }
-            params["definitions"] = root["definitions"].clone();
+            params = crate::kernel::results::schema_closure(params, &root["definitions"]);
             return Ok(
                 json!({"method":method,"direction":direction,"description":b["description"],"paramsSchema":params,"responseSchema":data["responses"][method]}),
             );
@@ -1032,6 +1035,42 @@ impl Control {
     pub(crate) async fn thread_lock(&self, thread: &str) -> tokio::sync::OwnedMutexGuard<()> {
         self.requests.lock(&format!("thread-write:{thread}")).await
     }
+    pub(crate) async fn dispatch_state(&self, thread: &str) -> Result<Value> {
+        let mut state = self
+            .request(
+                "thread/read",
+                json!({"threadId":thread,"includeTurns":false}),
+                10000,
+            )
+            .await?["thread"]
+            .clone();
+        let latest = self
+            .request(
+                "thread/turns/list",
+                json!({"threadId":thread,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),
+                10000,
+            )
+            .await?;
+        let turns = latest["data"].as_array().ok_or("NATIVE_TURNS_MISSING")?;
+        if state["status"]["type"] == "active"
+            && turns.first().is_none_or(|t| t["status"] != "inProgress")
+        {
+            return Err("THREAD_STATE_UNCONFIRMED: native runtime is active without a confirmed active turn; read codex_read and keep queued messages pending".into());
+        }
+        state["turns"] = latest["data"].clone();
+        Ok(state)
+    }
+    pub(crate) async fn check_steer(&self, thread: &str, turn: &Value) -> Result<()> {
+        #[cfg(feature = "test-fixture")]
+        if std::env::var_os("ARC_FIXTURE_DESKTOP").is_none() {
+            return Ok(());
+        }
+        if !self.background(thread)? {
+            let state = self.ipc().await?.read(thread, true).await?;
+            desktop::check_steer(&state, thread, turn)?;
+        }
+        Ok(())
+    }
     async fn perform(&self, operation: &str, args: &Value, r: &mut Value) -> Result<Value> {
         if operation == "send" && args["sendMode"] == "queue" {
             return crate::dispatch_queue::enqueue(args, r).await;
@@ -1314,31 +1353,11 @@ impl Control {
             } else {
                 "desktop"
             });
-            let state = if self.background(thread)? {
-                let mut state = self
-                    .request(
-                        "thread/read",
-                        json!({"threadId":thread,"includeTurns":false}),
-                        60000,
-                    )
-                    .await?["thread"]
-                    .clone();
-                if state["status"]["type"] == "active" {
-                    let latest = self.request("thread/turns/list",
-                        json!({"threadId":thread,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}), 60000).await?;
-                    state["turns"] = latest["data"].clone();
-                }
-                state
-            } else {
-                // Refresh missing/expired snapshots once; mutate reuses the IPC cache.
-                self.ipc().await?.read(thread, false).await?
-            };
-            let active = state["turnHistory"]["history"]["entitiesByKey"]
-                .as_object()
-                .into_iter()
-                .flat_map(|m| m.values())
-                .chain(state["turns"].as_array().into_iter().flatten())
-                .find(|t| t["status"] == "inProgress");
+            let state = self.dispatch_state(thread).await?;
+            let active = state["turns"]
+                .as_array()
+                .and_then(|turns| turns.first())
+                .filter(|t| t["status"] == "inProgress");
             if args["sendMode"] == "next" && active.is_some() {
                 return crate::dispatch_queue::enqueue(args, r).await;
             }
@@ -1362,8 +1381,7 @@ impl Control {
                     );
                 }
                 if args.get("_expectedPreviousTurn").is_some() {
-                    let latest=self.request("thread/turns/list",json!({"threadId":thread,"limit":1,"sortDirection":"desc","itemsView":"notLoaded"}),10000).await?;
-                    let turns = latest["data"].as_array().ok_or("NATIVE_TURNS_MISSING")?;
+                    let turns = state["turns"].as_array().ok_or("NATIVE_TURNS_MISSING")?;
                     if turns.first().map(|t| &t["id"]).unwrap_or(&Value::Null)
                         != &args["_expectedPreviousTurn"]
                     {
@@ -1380,6 +1398,7 @@ impl Control {
                 .unwrap_or(Value::Null);
             retry_args["_retryTurn"] = retry_turn(&params);
             if let Some(active) = active {
+                self.check_steer(thread, &active["id"]).await?;
                 let model = active
                     .get("model")
                     .or_else(|| state["latestThreadSettings"].get("model"))

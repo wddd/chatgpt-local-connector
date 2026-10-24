@@ -73,6 +73,7 @@ pub fn failure(e: &str) -> Value {
                     | "OP_UNAVAILABLE"
                     | "WRONG_TOOL"
                     | "NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE"
+                    | "DESKTOP_STEER_UNAVAILABLE"
             )
         ) {
             return value;

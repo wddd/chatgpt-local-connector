@@ -533,18 +533,15 @@ impl Ipc {
                 Ok(r["result"]["result"].clone())
             }
             "turn/steer" => {
-                let state = self.snapshot(thread).await.unwrap_or(Value::Null);
-                let mut params = args.clone();
-                params.as_object_mut().unwrap().remove("threadId");
-                params["conversationId"] = json!(thread);
-                params["input"] = input(&args["input"])?;
-                params["attachments"] = json!([]);
-                if state["cwd"].is_string() {
-                    params["restoreMessage"] = json!({"cwd":state["cwd"],"context":{"workspaceRoots":[state["cwd"]],"commentAttachments":[]}});
-                }
+                let state = self.read_owned(thread, true, &owner).await?;
+                let params = steer_params(&state, args)?;
                 let r = self
                     .request("thread-follower-steer-turn", params, Some(&owner))
-                    .await?;
+                    .await.map_err(|error| {
+                        if error.contains("thread-follower-steer-turn-timeout") {
+                            format!("SUBMISSION_UNCONFIRMED: Desktop did not confirm steering; read the original receipt and codex_read for thread {thread}; do not replay or switch execution owners")
+                        } else { error }
+                    })?;
                 Ok(r["result"]["result"].clone())
             }
             "turn/interrupt" => {
@@ -560,6 +557,38 @@ impl Ipc {
             _ => Err(format!("DESKTOP_METHOD_UNSUPPORTED: {method}")),
         }
     }
+}
+pub(crate) fn check_steer(state: &Value, thread: &str, expected: &Value) -> Result<()> {
+    let history = &state["turnHistory"]["history"];
+    let tail = history["islands"]
+        .as_array()
+        .and_then(|islands| islands.last());
+    let selected = tail
+        .and_then(|island| island["entries"].as_array())
+        .into_iter()
+        .flatten()
+        .rev()
+        .filter_map(|entry| history["entitiesByKey"].get(string(entry, "value")))
+        .find(|turn| {
+            turn["turnId"].is_string() || !matches!(string(turn, "status"), "completed" | "failed")
+        });
+    if tail.is_none_or(|island| island["newerBoundary"]["status"] != "exhausted")
+        || selected.is_none_or(|turn| {
+            !turn["turnId"].is_string()
+                || turn["turnId"] != *expected
+                || turn["status"] != "inProgress"
+        })
+    {
+        return Err(json!({"code":"DESKTOP_STEER_UNAVAILABLE","message":"Desktop's follower selects an unconfirmed or different turn. Steering was not submitted. Keep the queued message pending until the current turn ends, or explicitly submit codex_send with sendMode:queue. ARC will not switch owners or start another turn as a steering fallback.","retryable":false,"threadId":thread,"next":{"via":"query","op":"codex_queue","args":{"threadId":thread},"hint":"Inspect the queue; an unsuccessful promotion leaves the message queued. Use codex_read statusOnly:true for the current native turn."}}).to_string());
+    }
+    Ok(())
+}
+pub(crate) fn steer_params(state: &Value, args: &Value) -> Result<Value> {
+    check_steer(state, string(args, "threadId"), &args["expectedTurnId"])?;
+    let message = id();
+    Ok(
+        json!({"conversationId":args["threadId"],"input":input(&args["input"])? ,"attachments":[],"clientUserMessageId":message,"serviceTier":args["serviceTier"],"restoreMessage":{"id":message,"cwd":state["cwd"],"context":{"workspaceRoots":state["cwd"].as_str().map(|cwd| vec![cwd]).unwrap_or_default(),"commentAttachments":[]}}}),
+    )
 }
 pub fn turns(state: &Value) -> Result<Vec<Value>> {
     let h = &state["turnHistory"]["history"];

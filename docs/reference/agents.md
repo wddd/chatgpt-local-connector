@@ -74,6 +74,12 @@ Cursor uses its advertised cursor_login authenticate method to reuse native logi
 
 ## Sessions and archives
 
+### Codex execution owners
+
+Desktop is the default execution owner on macOS and Windows. Connector-owned threads use ARC's App Server. Both owners use confirmed native turn IDs for `codex_send` (`next`, `queue`, `steer` and default `auto`), queue promotion and FIFO dispatch. Desktop's optimistic UI turns without native IDs are not running-turn evidence for ARC dispatch.
+
+Desktop can retain a trailing optimistic turn with no native ID even after the real turn ends. Its follower steering implementation selects that placeholder and waits for an ID. ARC detects this before submission and returns `DESKTOP_STEER_UNAVAILABLE`, including recovery steps. An unsuccessful `codex_queue_control action:promote` leaves the message queued. Let FIFO dispatch it after completion, or explicitly submit `codex_send sendMode:queue`. Direct `steer` and active-turn `auto` return the same error rather than silently changing delivery semantics. ARC never switches an owned thread to another executor or starts a new turn as a steering fallback. If Desktop stops acknowledging a submitted steer, its receipt is `unconfirmed`; reconcile that receipt and native history before any further submission.
+
 Each Pi/ACP task owns its process. Completed/stopped sessions can resume through agent_send: Pi reuses the session file, ACP requires negotiated session/load support. Unconfirmed writes are not replayed automatically. Reads and waits never restart a process.
 
 Memory events are bounded to 2000 entries or 8 MiB. Full Pi/ACP events persist as an active JSONL tail and verified gzip segments. Tails rotate at 8 MiB; unique history is retained. `cli storage compact` losslessly compresses archives. control_output reads original content with UTF-16 offsets. ACP's recent text keeps a 256 KiB tail and marks outputTruncated; the event archive holds full output.
