@@ -1836,3 +1836,18 @@ test('AX status revisits and wait timeouts expose bounded progress evidence', as
   assert.equal(wait.progress.commits.count,1);
   await call('codex_call',{method:'fixture/finish-turn',params:{threadId:task.threadId},requestId:randomUUID()});
 });
+
+test('AX CLI explicitly targets an isolated instance without installed fallback', async () => {
+  // Regression: CLI acceptance commands could not explicitly select a separate debug instance.
+  const selected = JSON.parse(execFileSync(fixtureCommand,['cli','--state-dir',stateDir,'control','guide'],{env:fixtureEnv,encoding:'utf8'}));
+  assert.equal(selected.ok,true);
+  assert.ok(selected.result.ops.some((op:any)=>op.op==='codex_read'));
+  const empty = path.join(directory,'empty-instance');
+  await mkdir(empty);
+  let failed: any;
+  try { execFileSync(fixtureCommand,['cli','--state-dir',empty,'control','guide'],{env:fixtureEnv,encoding:'utf8',stdio:['pipe','pipe','pipe']}); }
+  catch (error) { failed = JSON.parse((error as any).stdout); }
+  assert.equal(failed.ok,false);
+  assert.equal(failed.error.code,'APP_UNAVAILABLE');
+  assert.equal((await call('guide')).response.isError,false);
+});

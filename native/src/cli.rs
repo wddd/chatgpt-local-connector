@@ -596,7 +596,8 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
             result
         }
         [] | ["help"] | ["--help"] => Ok(json!({"version":env!("ARC_BUILD_VERSION"),
-            "usage":"arc cli <command>",
+            "usage":"arc cli [--state-dir <absolute-directory>] <command>",
+            "targeting":"--state-dir selects only that instance and never falls back to the installed app. Start a side-by-side development instance with npm run dev:isolated.",
             "groups":[
                 {"commands":"control <op> [--stdin]; control guide [op]; wait --op <op> [--control] [--stdin] --until <condition> [--until <condition>] [--timeout <seconds>]","description":"Local-only control dispatch and bounded condition waiting. Read cli schema control and cli schema wait."},
                 {"commands":"app snapshot [--out <directory>] [--stdin]; install-shim","description":"Export the live UI and a macOS WebView PNG; install the macOS CLI symlink."},
@@ -777,7 +778,33 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
 
 pub async fn run(args: Vec<String>) -> i32 {
     crate::init_crypto();
-    let args: Vec<String> = args.into_iter().filter(|arg| arg != "--json").collect();
+    let mut args: Vec<String> = args.into_iter().filter(|arg| arg != "--json").collect();
+    if args.first().is_some_and(|arg| arg == "--state-dir") {
+        let target = args
+            .get(1)
+            .filter(|arg| std::path::Path::new(arg).is_absolute())
+            .ok_or("--state-dir requires an existing absolute directory")
+            .and_then(|arg| {
+                std::fs::canonicalize(arg)
+                    .map_err(|_| "--state-dir requires an existing absolute directory")
+            })
+            .and_then(|path| {
+                if path.is_dir() {
+                    Ok(path)
+                } else {
+                    Err("--state-dir requires an existing absolute directory")
+                }
+            });
+        match target {
+            Ok(path) => {
+                std::env::set_var("ARC_STATE_DIR", path);
+                args.drain(..2);
+            }
+            Err(error) => {
+                return print_error(error, "cli --state-dir <absolute-directory> <command>", &[])
+            }
+        }
+    }
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     let usage = match command_usage(&words) {
         Ok(usage) => usage,

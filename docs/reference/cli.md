@@ -468,3 +468,19 @@ printf '%s' '{"minimalText":true}' | arc cli source update <sourceId> --stdin
 ```
 
 Set `minimalText:false` to restore full text immediately. This setting defaults to false for every existing and new source and is read for each response without rebuilding or reconnecting. In minimal mode, MCP text points to structuredContent.result; errors also name their code. Structured results, isError, and non-text content such as images are retained. Some clients consume only text, so do not enable this setting globally. Offline configuration may set the source's minimalText boolean in sources.json while Core is stopped. CLI updates are the supported live path. No credentials or source identity change with this setting.
+
+## Explicit instance targeting
+
+Run `npm run dev:isolated` from a source checkout to start a supported side-by-side development Desktop and Core. The launcher allocates a fresh private ARC state directory and uses the existing development bundle identity (`com.whzxc.agent-remote-control.dev`). Core and Desktop bind independent ephemeral loopback ports. The installed application and its state keep running. Signing and the development build remain owned by the normal development supervisor.
+
+Wait for the launcher's `isolated-ready` JSON line. It is emitted only after Core identity and the attached Desktop endpoint respond, and includes `stateDirectory` and a `cli` argument array. This readiness handshake does not perform product acceptance. Use that checkout's newly built Core:
+
+```sh
+./dist/native/arc cli --state-dir /absolute/isolated-directory control guide
+./dist/native/arc cli --state-dir /absolute/isolated-directory wait --op app.status --until '/pid exists'
+./dist/native/arc cli --state-dir /absolute/isolated-directory app snapshot --stdin
+```
+
+`--state-dir` is a global CLI option placed before the command. It requires an existing absolute directory and never falls back to the installed instance. It applies to `control`, `wait`, `app snapshot`, and other CLI commands. `ARC_STATE_DIR` remains available for subprocess environments. Stop the launcher with Ctrl-C; the existing supervisor drains its own Core and Desktop. The temporary state directory is retained for inspection.
+
+Only one development supervisor may use the development bundle identity and Vite port 5187 at a time. The production installation does not use that port. Close another development instance before starting this one. ARC state isolation does not clone or isolate the upstream Agent account/profile; select harmless projects and tasks explicitly. Local device permissions still apply. Linux supports explicit CLI state targeting for headless instances; the Desktop launcher requires macOS or Windows.
