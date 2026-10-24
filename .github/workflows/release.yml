@@ -1,19 +1,18 @@
 name: Build release platforms
-run-name: Release ${{ inputs.tag }} (${{ inputs.platforms }})
+run-name: Linux ${{ inputs.version }} (${{ inputs.source_sha }})
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: Release tag
+      source_sha:
+        description: Exact full source commit SHA
         type: string
         required: true
-      platforms:
-        description: Comma-separated CI platforms (windows,linux)
+      version:
+        description: Build version (x.y.z; no tag required)
         type: string
         required: true
-        default: windows,linux
 env:
-  ARC_BUILD_VERSION: ${{ inputs.tag }}
+  ARC_BUILD_VERSION: ${{ inputs.version }}
 permissions:
   contents: read
 concurrency:
@@ -21,7 +20,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   linux:
-    if: contains(format(',{0},', inputs.platforms), ',linux,')
     strategy:
       fail-fast: false
       matrix:
@@ -36,8 +34,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: refs/tags/${{ inputs.tag }}
+          ref: ${{ inputs.source_sha }}
           fetch-depth: 0
+      - name: Verify exact source SHA
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           targets: ${{ matrix.target }}
@@ -54,7 +58,7 @@ jobs:
           cargo build --manifest-path native/Cargo.toml --locked --release --bin arc --target "$TARGET"
       - name: Package Linux tarball
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: v${{ inputs.version }}
           TARGET: ${{ matrix.target }}
           ARCH: ${{ matrix.arch }}
         run: |
@@ -69,43 +73,4 @@ jobs:
         with:
           name: linux-${{ matrix.arch }}
           path: linux-artifacts/*.tar.gz
-          if-no-files-found: error
-  windows:
-    if: contains(format(',{0},', inputs.platforms), ',windows,')
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: refs/tags/${{ inputs.tag }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          cache: npm
-      - uses: dtolnay/rust-toolchain@1.96.0
-        with:
-          targets: x86_64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
-        with:
-          shared-key: desktop-x86_64-pc-windows-msvc
-          key: shared-target-v2
-          workspaces: |
-            . -> target
-          cache-bin: false
-          save-if: 'true'
-      - run: npm ci
-      - name: Build signed desktop installers
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run desktop:build -- --release --target x86_64-pc-windows-msvc
-      - name: Stage platform artifacts
-        run: npm run release:stage -- windows-x86_64 target/x86_64-pc-windows-msvc/release/bundle release-artifacts
-      - uses: actions/upload-artifact@v4
-        with:
-          name: desktop-windows-x86_64
-          path: release-artifacts/*
           if-no-files-found: error

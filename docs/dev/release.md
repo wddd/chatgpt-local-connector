@@ -6,7 +6,7 @@ Public source and artifacts live in whzxc/agent-remote-control. Git tags define 
 
 ## Build and signing prerequisites
 
-Default releases cover all platforms. Build macOS locally on Apple Silicon. release.yml builds Windows and Linux x86_64/aarch64. Local macOS requires Node.js 24.12+, Rust, full Xcode 26+, uv, npm dependencies, and authenticated gh. Windows/Linux-only releases need no macOS signing environment.
+Default releases cover all platforms. Build macOS locally on Apple Silicon. The on-demand Windows worker builds x64 NSIS installers. release.yml builds Linux x86_64/aarch64 only. Local macOS requires Node.js 24.12+, Rust, full Xcode 26+, uv, npm dependencies, and authenticated gh. Any release containing Windows requires the Mac coordinator and updater key. Linux-only releases need no signing environment.
 
 Updater Minisign keys MUST match desktop/tauri.conf.json's public key. Lookup order:
 
@@ -14,13 +14,13 @@ Updater Minisign keys MUST match desktop/tauri.conf.json's public key. Lookup or
 2. TAURI_SIGNING_PRIVATE_KEY_FILE: an existing key file.
 3. ~/.tauri/agent-remote-control.key.
 
-Encrypted keys also use TAURI_SIGNING_PRIVATE_KEY_PASSWORD. Keys stay outside the repository. Scripts only read them and never generate, move, or print them. Ordinary desktop:build may omit updater signing. Releases and dry runs containing mac require it.
+Encrypted keys also use TAURI_SIGNING_PRIVATE_KEY_PASSWORD. Keys stay outside the repository. Scripts only read them and never generate, move, or print them. Ordinary desktop:build may omit updater signing. Releases and dry runs containing mac or windows require it on the Mac coordinator.
 
 Packaged macOS builds, including debug desktop:build, release, dry-run, and release:stage, use the repository's fixed self-signed identity from tooling/macos-signing.mjs. APPLE_SIGNING_IDENTITY is optional but may only select that identity or its fingerprint. Selection uses the fingerprint. Missing certificate/private key, ad-hoc selection, or another identity fails immediately without choosing a company Team. Package checks validate Desktop/Core/screen-helper certificates and identifiers. stage rejects other identities.
 
 Private keys remain in the build machine's keychain. Another build machine MUST securely import the same certificate and private key. A regenerated same-name certificate does not preserve authorization identity. Packages enable hardened runtime without Apple notarization or timestamping and clear unrelated APPLE_* credentials from child environments. Self-signing is not Developer ID or notarization. First launch may be blocked by Gatekeeper as described in Installation. npm run dev/build retain separate explicit APPLE_SIGNING_IDENTITY configuration and default to ad-hoc.
 
-macOS packages are built and signed locally. Do not export the certificate/private key to GitHub Secrets. release.yml builds Windows/Linux only. Windows updater signing uses TAURI_SIGNING_PRIVATE_KEY and, if encrypted, its password. Updater Minisign and macOS code-signing identities are independent.
+macOS packages are built and signed locally. Do not export the certificate/private key to GitHub Secrets. The Windows worker does not hold updater keys, code-signing certificates, or upload credentials. The previous CI installer step only created updater Minisign signatures; it did not perform Authenticode signing. The Mac signs the collected Windows EXE using TAURI_SIGNING_PRIVATE_KEY and, if encrypted, its password. Updater Minisign and macOS code-signing identities are independent.
 
 Bundle identifiers are com.whzxc.agent-remote-control for production App, .dev for development, .core for Core, and .screen for the Swift helper. Recheck system permissions after identity changes. Updater signatures do not establish system code-signing identity.
 
@@ -48,9 +48,9 @@ npm run release -- --skip-tests
 npm run release -- --version X.Y.Z
 # macOS only, without CI:
 npm run release -- --platforms mac
-# macOS and Linux, skipping Windows CI:
+# macOS and Linux:
 npm run release -- --platforms mac,linux
-# CI platforms only:
+# Windows worker and Linux CI:
 npm run release -- --platforms windows,linux
 # Continue a failed publication using its verified local artifacts:
 npm run release -- --resume release-artifacts/vX.Y.Z-<suffix>
@@ -58,7 +58,13 @@ npm run release -- --resume release-artifacts/vX.Y.Z-<suffix>
 
 The flow checks signing, workspace, branch, and gh permissions, fetches remote main/tags, selects a version after the previous public release, and builds the current feature commit. npm test runs by default. ARC_BUILD_VERSION injects the version into frontend, Core, Desktop, and installer. Source placeholders remain 0.0.0.
 
-A unique release-artifacts/v<version>-<suffix> directory holds artifacts, latest.json, release-notes.md, Cask, and SHA256SUMS.txt. Notes derive from the previous formal ancestor tag through the current commit. With mac selected, local build/signature checks precede tagging and an atomic main/tag push. --platforms defaults to mac,windows,linux and accepts a nonduplicated comma-separated subset. Windows/Linux selections trigger release.yml for that tag using only selected jobs. mac-only releases never trigger CI. CI never creates or publishes Releases. The local flow waits for the matching SHA's selected CI jobs, downloads selected artifacts, verifies the complete selected platform set and checksums, uploads a draft with gh, verifies remote assets, publishes it, and reads back public latest.json.
+A unique release-artifacts/v<version>-<suffix> directory holds artifacts, platform receipts, latest.json, release-notes.md, Cask, and SHA256SUMS.txt. Notes derive from the previous formal ancestor tag through the current commit. --platforms defaults to mac,windows,linux and accepts a nonduplicated comma-separated subset.
+
+After checks and tests, the coordinator freezes the full source SHA and atomically pushes main and the release tag. macOS builds/signs in a clean ordinary local clone, Windows builds on the exclusive worker, and Linux runs on GitHub Actions concurrently. All tasks settle before any error is returned; successful artifacts are retained. The Linux workflow accepts source_sha and version without requiring a tag, checks the full checkout SHA, and never creates Releases. The coordinator matches the workflow run's head SHA and downloads both Linux architectures. Verification, draft upload, --resume, publish, and public readback retain their existing boundaries.
+
+Windows worker connections and the SCNet checkout come from the installed Enjoy profile returned by enjoy runtime. Before acquiring the worker, the coordinator checks SCNet source locks and requires both workers to be stopped and unowned. A busy or already-running worker is preserved and reported, never taken over. Start/inspect/stop use enjoy infra execute with proxmox.worker operations, target k12, a unique owner, and --fresh. Poll inspect until both ssh_reachable and ready are true before any Windows SSH. Check SCNet guest locks and build processes again before building. Shutdown is allowed only when this invocation started the worker and still owns it; ambiguous start responses require ownership readback before cleanup.
+
+Transfer a Git bundle of the frozen commit into the dedicated ordinary worker checkout. Refuse a dirty checkout, fetch and detach at the exact full SHA, run npm ci, and retain the checkout's target directory and Cargo cache between runs. Remove stale installer outputs only. Windows builds with --unsigned-updater, rejects signing secrets, checks the x64 PE and embedded Core version, and returns the EXE plus windows-receipt.json (version, sourceSha, arch, filename, SHA-256). The Mac validates the receipt and downloaded hash, signs the EXE locally, and verifies both updater signatures against the embedded public key during finalize. macOS uses a separate persistent ordinary clone under release-artifacts/.macos-source, also detached at the same SHA. Neither build modifies the original working tree or installs the app.
 
 latest.json includes only this build's macOS/Windows updater entries. It never reuses unselected platforms or versions. Linux packages and installer scripts are separate assets outside Tauri updater platforms. Linux-only manifests have empty platforms. Cask is generated only with mac. Partial-platform publication still uses a new version without appending to existing public releases. Unpublished platforms stay on their prior version. Desktop treats a missing platform in the latest manifest as no update. Linux installation selects the latest formal release containing the current architecture's tarball.
 
@@ -82,19 +88,21 @@ Resume starts at the publication boundary. It requires release-state.json from a
 
 ## Stage timings
 
-Each stage prints START and END lines with its result and elapsed seconds. Stages cover checks, tests, frontend build, Rust Core build/sign, Rust Desktop build/sign, macOS staging verification, tag/source push, CI wait, CI artifact download, local verification, upload, remote verification, publish, and public readback. Resume and platform selections mark unneeded stages as skipped. Local build timers separate frontend, Core, and Desktop work; CI compilation time is included in CI wait.
+Each stage prints START/END, status, seconds, and timestamped JSONL records. Platform wall stages include checkout/dependencies, worker startup, compilation, staging, collection/signing, and cleanup. The platform critical path measures the concurrent group rather than adding platform times. The final overall wall time includes checks, tests, tagging, the parallel group, verification, upload, publish, and readback. Nested stages overlap and MUST NOT be summed. Windows returns windows-stages.jsonl with frontend, Core, Desktop, and dependency timings. macOS records its component stages in the coordinator's timing file.
 
-Every run prints a final timing table, including failed stages, and the path to release-artifacts/.timings-<suffix>/stages.jsonl. Timings are local metadata and are never uploaded. Publication failures retain both artifacts and timings for the next resume attempt.
+Every run prints its timing table and release-artifacts/.timings-<suffix>/stages.jsonl path, including failures. Timings and receipts are local metadata and are not release uploads. Resume retains verified artifacts and skips build/worker/CI work.
 
-## Dry runs and stages
+## Non-publishing rehearsal
 
 ```sh
-npm run release -- --dry-run
+npm run release -- --dry-run --version X.Y.Z --platforms mac,windows
 ```
 
-A dry run builds macOS and generates local release files without Windows/Linux CI, commit, tag, push, upload, or automatic tests. It MUST include mac. Other selected platforms do not participate. It still requires the updater key and fixed macOS self-signed identity. No Apple notarization runs. Links use the chosen version. Formal publication requires rebuilding for its target version.
+Run twice at the same clean committed HEAD and version to compare cold and warm persistent caches. A dry run actually builds the selected desktop platforms in parallel, collects their artifacts and receipts, signs Windows on the Mac, verifies updater signatures, and generates local checksums and metadata. It never tests automatically, creates tags/drafts/releases, pushes, uploads, or replaces the installed app. It writes no resumable publication checkpoint. The worker lifecycle rules remain identical. Temporary source bundles and staging folders stay under release-artifacts/; ordinary source clones and compilation caches persist for the next run.
 
-stage/finalize organize and verify existing artifacts. finalize builds the current manifest from platform fragments and Linux packages in the same directory without merging old manifests. tooling/release.mjs owns parameters. Complete selected artifacts before publishing the manifest. Download URLs, manifest URLs, signatures, and embedded versions MUST agree.
+Dry runs skip Linux CI because CI artifact uploads are outside the no-upload boundary. For an explicitly authorized Linux build-only rehearsal, the source_sha/version workflow can build a pushed commit without tags or releases; its artifact upload still requires authorization. If that workflow is not available at the frozen commit on the remote, skip it and report the latest measured Linux job time separately. Never substitute older Linux bytes into the rehearsal's verified artifact set.
+
+stage/finalize organize and verify existing artifacts. finalize builds the manifest from platform fragments and Linux packages in the same directory. Complete all selected artifacts before publication; download URLs, signatures, checksums, and embedded versions MUST agree.
 
 ## Identity migration
 

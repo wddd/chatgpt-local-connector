@@ -132,18 +132,26 @@ export async function boundedMap(items, operation, concurrency = 3) {
   if (failure) throw failure;
 }
 
+export async function parallelPlatforms(operations) {
+  const results = await Promise.allSettled(operations.map(operation => Promise.resolve().then(operation)));
+  const failed = results.filter(result => result.status === 'rejected');
+  if (failed.length) throw new AggregateError(failed.map(result => result.reason), 'Platform builds failed; successful artifacts are retained');
+  return results.map(result => result.value);
+}
+
 export function stageTimer(file = process.env.ARC_RELEASE_TIMINGS_FILE, log = console.log) {
-  function record(name, started, status) {
+  function record(name, started, status, startedAt) {
     const elapsed = performance.now() - started;
     log(`[stage] END ${name} ${status} (${(elapsed / 1000).toFixed(1)}s)`);
-    if (file) appendFileSync(file, JSON.stringify({ stage: name, status, seconds: +(elapsed / 1000).toFixed(1) }) + '\n');
+    if (file) appendFileSync(file, JSON.stringify({ stage: name, status, seconds: +(elapsed / 1000).toFixed(1), startedAt, finishedAt: new Date().toISOString(), platform: process.env.ARC_RELEASE_PLATFORM }) + '\n');
   }
   return {
     async run(name, operation) {
       const started = performance.now();
+      const startedAt = new Date().toISOString();
       log(`[stage] START ${name}`);
-      try { const result = await operation(); record(name, started, 'ok'); return result; }
-      catch (error) { record(name, started, 'failed'); throw error; }
+      try { const result = await operation(); record(name, started, 'ok', startedAt); return result; }
+      catch (error) { record(name, started, 'failed', startedAt); throw error; }
     },
     skip(name) { log(`[stage] START ${name}`); record(name, performance.now(), 'skipped'); },
   };

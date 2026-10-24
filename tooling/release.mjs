@@ -3,11 +3,12 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildWindows, buildMac, runCommand } from './windows-release.mjs';
 import { buildVersion, stableVersion } from './version.mjs';
 import { releaseSigningEnv } from './release-signing.mjs';
 import { macosSigningIdentity, verifyMacosReleaseSignature } from './macos-signing.mjs';
 import { gh, ghTransfer, releaseByTag, publishedTags, fileDigest, assetMatches, publicationStages,
-  validateResume, validateRemoteAssets, validateArtifactInventory, platformAssetNames, retry, boundedMap, stageTimer } from './release-support.mjs';
+  validateResume, validateRemoteAssets, validateArtifactInventory, platformAssetNames, retry, boundedMap, stageTimer, parallelPlatforms } from './release-support.mjs';
 process.chdir(fileURLToPath(new URL('../', import.meta.url)));
 let version = buildVersion();
 const repo = 'whzxc/agent-remote-control';
@@ -128,13 +129,15 @@ if (mode === 'release') {
   const platforms = (options.platforms ?? saved?.platforms?.join(',') ?? 'mac,windows,linux').split(',');
   if (new Set(platforms).size !== platforms.length || platforms.some(value => !['mac', 'windows', 'linux'].includes(value))) throw new Error('--platforms accepts a nonempty comma-separated selection of mac,windows,linux');
   const mac = platforms.includes('mac');
-  const ciPlatforms = platforms.filter(value => value !== 'mac');
-  if (dryRun && !mac) throw new Error('--dry-run requires mac; CI platforms are only built during release');
+  const windows = platforms.includes('windows');
+  const linux = platforms.includes('linux');
+  if (dryRun && !mac && !windows) throw new Error('--dry-run requires a desktop platform');
   await mkdir('release-artifacts', { recursive: true });
   const timingDir = await mkdtemp(path.join('release-artifacts', '.timings-'));
   const timingFile = path.resolve(timingDir, 'stages.jsonl');
   await writeFile(timingFile, '');
   const timer = stageTimer(timingFile);
+  const startedAt = Date.now();
   let output = resume ? path.resolve(options.resume) : undefined;
   let state = saved;
   let sourceSha;
@@ -155,11 +158,12 @@ if (mode === 'release') {
   });
   try {
     await timer.run('checks', async () => {
-      if (!resume && mac && (process.platform !== 'darwin' || process.arch !== 'arm64')) throw new Error('macOS releases require a local build and signing on an Apple Silicon Mac');
-      env = !resume && mac ? releaseSigningEnv(true) : { ...process.env };
+      if (!resume && (mac || windows) && (process.platform !== 'darwin' || process.arch !== 'arm64')) throw new Error('macOS releases require a local build and signing on an Apple Silicon Mac');
+      env = !resume && (mac || windows) ? releaseSigningEnv(true) : { ...process.env };
       env.ARC_RELEASE_TIMINGS_FILE = timingFile;
       if (!resume && mac) macosSigningIdentity(env, { release: true });
       sourceSha = git('rev-parse', 'HEAD');
+      if (git('status', '--porcelain')) throw new Error('Release builds require a clean committed source');
       if (!dryRun) {
         if (git('branch', '--show-current') !== 'main') throw new Error('Run release from main');
         if (git('status', '--porcelain')) throw new Error('Commit or set aside existing changes before release');
@@ -192,52 +196,52 @@ if (mode === 'release') {
     if (resume) {
       for (const name of ['frontend build', 'Rust Core build/sign', 'Rust Desktop build/sign', 'CI wait', 'CI artifact download']) timer.skip(name);
     } else {
-      if (mac) run('tooling/desktop-build.mjs', '--release', '--target', 'aarch64-apple-darwin');
-      else for (const name of ['frontend build', 'Rust Core build/sign', 'Rust Desktop build/sign']) timer.skip(name);
-      output = await mkdtemp(path.join('release-artifacts', `v${version}-`));
-      if (mac) await timer.run('macOS staging verification', async () => {
-        run('tooling/release.mjs', 'stage', 'darwin-aarch64', 'target/aarch64-apple-darwin/release/bundle', output);
-      });
-      console.log(`Release artifacts: ${path.resolve(output)}`);
+      output = path.resolve(await mkdtemp(path.join('release-artifacts', `v${version}-`)));
+      console.log(`Release artifacts: ${output}`);
       if (!dryRun) {
         assertSource();
         await timer.run('tag/source push', async () => {
           if (!git('tag', '--list', `v${version}`)) git('tag', `v${version}`);
           git('push', '--atomic', 'origin', 'main', `refs/tags/v${version}`);
         });
+      } else timer.skip('tag/source push');
+      await timer.run('platform critical path', () => parallelPlatforms([
+        ...(mac ? [() => timer.run('macOS wall', () => buildMac({ sourceSha, output, env, timer }))] : []),
+        ...(windows ? [() => timer.run('Windows wall', () => buildWindows({ sourceSha, version, output, env, timer }))] : []),
+        ...(linux && !dryRun ? [() => timer.run('Linux wall', async () => {
+          let runId;
+          await timer.run('CI wait', async () => {
+            const listRuns = () => JSON.parse(gh(['run', 'list', '--repo', repo, '--workflow', 'release.yml', '--branch', 'main',
+              '--event', 'workflow_dispatch', '--json', 'databaseId,headSha', '--limit', '20']));
+            const previousRuns = new Set(listRuns().map(item => item.databaseId));
+            gh(['workflow', 'run', 'release.yml', '--repo', repo, '--ref', 'main',
+              '-f', `source_sha=${sourceSha}`, '-f', `version=${version}`], { stdio: 'inherit' });
+            let build;
+            for (let attempt = 0; attempt < 20; attempt++) {
+              build = listRuns().find(item => !previousRuns.has(item.databaseId) && item.headSha === sourceSha);
+              if (build) break;
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+            if (!build) throw new Error('CI started but its run could not be found. Do not start another release.');
+            runId = String(build.databaseId);
+            await runCommand('gh', ['run', 'watch', runId, '--repo', repo, '--exit-status', '--interval', '15']);
+          });
+          await timer.run('CI artifact download', async () => {
+            for (const name of ['linux-x86_64', 'linux-aarch64']) {
+              await transferRetry(name, () => ghTransfer(['run', 'download', runId, '--repo', repo, '--name', name, '--dir', output]));
+            }
+            await copyFile('tooling/install-agent-remote-control.sh', path.join(output, 'install-agent-remote-control.sh'));
+          });
+        })] : []),
+      ]));
+      if (linux && dryRun) {
+        console.log('Linux skipped: dry run does not dispatch the remote tag-only workflow or upload CI artifacts.');
+        timer.skip('Linux wall');
       }
-      let runId;
-      if (!dryRun && ciPlatforms.length) {
-        await timer.run('CI wait', async () => {
-          const tag = `v${version}`;
-          const listRuns = () => JSON.parse(gh(['run', 'list', '--repo', repo, '--workflow', 'release.yml', '--branch', tag,
-            '--event', 'workflow_dispatch', '--json', 'databaseId,headSha', '--limit', '20']));
-          const previousRuns = new Set(listRuns().map(item => item.databaseId));
-          gh(['workflow', 'run', 'release.yml', '--repo', repo, '--ref', tag, '-f', `tag=${tag}`, '-f', `platforms=${ciPlatforms.join(',')}`], { stdio: 'inherit' });
-          let build;
-          for (let attempt = 0; attempt < 20; attempt++) {
-            build = listRuns().find(item => !previousRuns.has(item.databaseId) && item.headSha === sourceSha);
-            if (build) break;
-            await new Promise(resolve => setTimeout(resolve, 3000));
-          }
-          if (!build) throw new Error('CI started but its run could not be found. Check the workflow. Do not start another release.');
-          runId = String(build.databaseId);
-          console.log(`Waiting for ${ciPlatforms.join('/')} CI: ${runId}`);
-          gh(['run', 'watch', runId, '--repo', repo, '--exit-status', '--interval', '15'], { stdio: 'inherit', timeout: 0 });
-        });
-        await timer.run('CI artifact download', async () => {
-          const artifacts = [
-            ...(platforms.includes('windows') ? ['desktop-windows-x86_64'] : []),
-            ...(platforms.includes('linux') ? ['linux-x86_64', 'linux-aarch64'] : []),
-          ];
-          for (const name of artifacts) await transferRetry(name, () => ghTransfer(['run', 'download', runId, '--repo', repo, '--name', name, '--dir', output]));
-          if (platforms.includes('linux')) await copyFile('tooling/install-agent-remote-control.sh', path.join(output, 'install-agent-remote-control.sh'));
-        });
-      } else { timer.skip('CI wait'); timer.skip('CI artifact download'); }
+      assertSource();
     }
     await timer.run('verification', async () => {
-      // Dry runs deliberately contain only the locally built macOS platform.
-      const selected = dryRun ? ['mac'] : platforms;
+      const selected = dryRun ? platforms.filter(value => value !== 'linux') : platforms;
       if (!resume) run('tooling/release.mjs', 'finalize', output);
       const manifest = await json(path.join(output, 'latest.json'));
       await validateManifest(manifest, output);
@@ -331,6 +335,7 @@ if (mode === 'release') {
     const rows = (await readFile(timingFile, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);
     console.log(`Stage timings: ${timingFile}`);
     console.table(rows);
+    console.log(`Overall wall: ${((Date.now() - startedAt) / 1000).toFixed(1)}s (nested stages overlap)`);
   }
 } else if (mode === 'stage') {
   const [target, input, output] = args;

@@ -1,11 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assetMatches, boundedMap, ghOptions, transferOptions, platformAssetNames, publicationStages,
-  publishedTags, releaseByTag, retry, stageTimer, validateResume, validateRemoteAssets, validateArtifactInventory } from '../tooling/release-support.mjs';
+  publishedTags, releaseByTag, retry, stageTimer, validateResume, validateRemoteAssets, validateArtifactInventory, parallelPlatforms } from '../tooling/release-support.mjs';
+import { workerReady, canStopWorker, validateWindowsReceipt } from '../tooling/windows-release.mjs';
 
 const asset = { name: 'latest.json', size: 120, digest: 'sha256:abc' };
 const remote = { ...asset, state: 'uploaded' };
 const state = { schema: 1, verified: true, version: '1.2.3', sourceSha: 'source', platforms: ['mac', 'linux'], assets: [asset] };
+
+test('worker readiness requires power SSH and ready signals together', () => {
+  // Property: running alone never authorizes SSH.
+  const ready = { status: 'running', ssh_reachable: 'true', ready: 'true' };
+  assert.equal(workerReady(ready), true);
+  assert.equal(workerReady({ ...ready, ssh_reachable: true, ready: true }), true);
+  for (const invalid of [{ ...ready, status: 'stopped' }, { ...ready, ready: 'false' }, { ...ready, ssh_reachable: false }, {}]) assert.equal(workerReady(invalid), false);
+});
+
+test('shutdown requires the original stopped worker and current ownership', () => {
+  // Property: another invocation or a previously running worker cannot be shut down.
+  const current = { owner: 'mine', owner_worker: 'windows' };
+  assert.equal(canStopWorker({ status: 'stopped' }, current, 'mine'), true);
+  assert.equal(canStopWorker({ status: 'running' }, current, 'mine'), false);
+  assert.equal(canStopWorker({ status: 'stopped' }, current, 'other'), false);
+  assert.equal(canStopWorker({ status: 'stopped' }, { ...current, owner_worker: 'linux' }, 'mine'), false);
+});
+
+test('Windows receipts bind version full SHA architecture filename and transferred bytes', () => {
+  // Property: changing any artifact identity component invalidates the receipt.
+  const request = { version: '1.2.3', sourceSha: 'a'.repeat(40), digest: 'sha256:abc' };
+  const receipt = { ...request, file: 'agent-remote-control_1.2.3_x64-setup.exe', arch: 'x86_64', sha256: 'abc' };
+  assert.doesNotThrow(() => validateWindowsReceipt(receipt, request));
+  for (const patch of [{ version: '1.2.4' }, { sourceSha: 'b'.repeat(40) }, { arch: 'aarch64' }, { file: '../other.exe' }, { sha256: 'def' }]) {
+    assert.throws(() => validateWindowsReceipt({ ...receipt, ...patch }, request));
+  }
+  assert.throws(() => validateWindowsReceipt(receipt, { ...request, sourceSha: 'short' }));
+});
+
+test('parallel platform failures drain every started build before returning', async () => {
+  // Property: independent platforms start concurrently and no writer outlives failure reporting.
+  const events = [];
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const task = parallelPlatforms([
+    async () => { events.push('mac start'); await gate; events.push('mac end'); },
+    async () => { events.push('windows start'); release(); throw new Error('failed'); },
+  ]);
+  await assert.rejects(task, AggregateError);
+  assert.deepEqual(events, ['mac start', 'windows start', 'mac end']);
+});
 
 test('exact release lookup treats only GitHub HTTP 404 as an absent tag', () => {
   // Regression: historical release listing exhausted the synchronous gh output buffer before upload.
