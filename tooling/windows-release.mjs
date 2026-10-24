@@ -90,8 +90,9 @@ Set-Location ${psQuote(remoteRoot)}
 if (!(Test-Path source/.git)) { git init source; checked }
 Set-Location source
 if ((git status --porcelain)) { throw 'Windows release checkout is dirty' }
-git fetch ../release-artifacts/source.bundle HEAD; checked
-git checkout --detach ${sourceSha}; checked
+git fetch ../release-artifacts/source.bundle HEAD:refs/remotes/source/frozen; checked
+if (!(Test-Path .git/packed-refs)) { git pack-refs --all; checked }
+if ((git rev-parse --verify --quiet HEAD) -ne '${sourceSha}') { git checkout --detach ${sourceSha}; checked }
 if ((git rev-parse HEAD) -ne '${sourceSha}') { throw 'Windows source SHA mismatch' }
 $env:ARC_BUILD_VERSION='${version}'
 node tooling/windows-build.mjs; checked`);
@@ -131,7 +132,9 @@ export async function buildMac({ sourceSha, output, env, timer }) {
     }
     if (capture('git', ['-C', source, 'status', '--porcelain'])) throw new Error('macOS release checkout is dirty');
     await runCommand('git', ['-C', source, 'fetch', path.resolve('.'), sourceSha]);
-    await runCommand('git', ['-C', source, 'checkout', '--detach', sourceSha]);
+    if (capture('git', ['-C', source, 'rev-parse', 'HEAD']) !== sourceSha) {
+      await runCommand('git', ['-C', source, 'checkout', '--detach', sourceSha]);
+    }
     await runCommand('npm', ['ci'], { cwd: source, env: dependencyEnv(env) });
   });
   await runCommand(process.execPath, ['tooling/desktop-build.mjs', '--release', '--target', 'aarch64-apple-darwin'], { cwd: source, env: { ...env, ARC_RELEASE_PLATFORM: 'mac' } });
