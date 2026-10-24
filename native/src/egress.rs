@@ -98,7 +98,7 @@ pub fn failure(e: &str) -> Value {
         }
     }
     if e.contains("already has an active writer") {
-        return json!({"code":"THREAD_WRITER_BUSY","message":"Codex rejected the operation because another native session owns this thread. ARC runtimeStatus=notLoaded only describes ARC observation, not global writer ownership.","nativeError":e,"retryable":false,"next":{"via":"query","op":"codex_read","requiredArgs":["threadId"],"statusOnly":true,"hint":"Read the original receipt and thread status. Continue in the owning ChatGPT/Codex session, or explicitly close that session before retrying this same thread. Do not delete writer locks, auto-retry, or create a replacement thread."}});
+        return json!({"code":"THREAD_WRITER_BUSY","message":"Codex rejected the operation because another native session owns this thread. ARC runtimeStatus=notLoaded only describes ARC observation, not global writer ownership.","nativeError":e,"retryable":false,"next":{"via":"query","op":"guide","args":{"op":"codex_owner"},"hint":"Read the original receipt and thread status. Continue in the owning ChatGPT/Codex session, or explicitly close that session before retrying this same thread. Do not delete writer locks, auto-retry, or create a replacement thread."}});
     }
     let rpc = e
         .strip_prefix("RPC_REJECTED:")
@@ -816,6 +816,7 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
     } else {
         json!({"threadId":thread,"turnId":turn})
     };
+    wait_args.as_object_mut().unwrap().retain(|_,value|!value.is_null());
     wait_args["until"] = json!("terminal");
     wait_args["timeoutMs"] = json!(30000);
     let wait_tool = if agent { "agent_wait" } else { "codex_wait" };
@@ -894,6 +895,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn generated_continuations_validate_against_operation_schemas() {
+        // Regression: writer recovery next had an illegal statusOnly argument and waits emitted null optional IDs.
+        let catalog=catalog();
+        for name in ["codex_read","codex_wait","codex_send","agent_read","agent_wait","agent_send","receipt"] {
+            for state in ["running","timeout","unconfirmed","failed","rejected","cancelled","not-executed","awaiting-approval","interaction-required","completed"] {
+                for turn in [Value::Null,json!("turn")] {
+                    let args=json!({"agent":"pi","threadId":"00000000-0000-4000-8000-000000000001","taskId":"00000000-0000-4000-8000-000000000003","turnId":turn});
+                    let mut value=args.clone();value["state"]=json!(state);value["requestId"]=json!("00000000-0000-4000-8000-000000000002");
+                    next(&mut value,name,&args,false);
+                    if let Some(op)=value["next"]["op"].as_str() {
+                        let spec=catalog["ops"].as_array().unwrap().iter().find(|o|o["name"]==op).unwrap();
+                        assert!(crate::validator("next-regression",op,&spec["inputSchema"]).unwrap().is_valid(&value["next"]["args"]),"{name}/{state}: {}",value["next"]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn writer_rejection_explains_owner_and_recovery() {
         // Regression: native active-writer rejection gave control sources no reason or safe next step.
         for native in [
@@ -904,7 +924,7 @@ mod tests {
             let error = failure(native);
             assert_eq!(error["code"], "THREAD_WRITER_BUSY");
             assert_eq!(error["retryable"], false);
-            assert_eq!(error["next"]["op"], "codex_read");
+            assert_eq!(error["next"]["op"], "guide");
             assert_eq!(error["nativeError"], native);
         }
     }

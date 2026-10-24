@@ -1,3 +1,4 @@
+import {assertNextCalls} from './helpers/continuations.ts';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { chmod, mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
@@ -261,6 +262,7 @@ function opCall(name: string, args: Record<string, unknown> = {}) {
 }
 async function call(name: string, args: Record<string, unknown> = {}) {
   const response = await client.callTool(opCall(name, args));
+  assertNextCalls(response.structuredContent);
   return { response, result: (response.structuredContent as { result: any } | undefined)?.result };
 }
 async function completed(name: string, args: Record<string, unknown>) {

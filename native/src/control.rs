@@ -886,12 +886,7 @@ impl Control {
                     receipt["state"] = json!(crate::kernel::receipts::failure_state(&err));
                     let mut error = crate::egress::failure(&err);
                     if error["code"] == "THREAD_WRITER_BUSY" && receipt["threadId"].is_string() {
-                        error["next"]["args"] =
-                            json!({"threadId":receipt["threadId"],"statusOnly":true});
-                        error["next"]
-                            .as_object_mut()
-                            .unwrap()
-                            .remove("requiredArgs");
+                        error["next"] = crate::writer::busy(string(&receipt,"threadId"),Value::Null)["next"].clone();
                     }
                     receipt["result"] = json!({"error":error});
                 }

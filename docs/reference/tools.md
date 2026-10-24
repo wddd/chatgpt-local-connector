@@ -516,3 +516,5 @@ Example: `echo '{"threadId":"<self-test-thread-id>","mode":"placeholder"}' | arc
 A bounded Desktop owner-discovery timeout does not reject a fresh, confirmed unheld thread. Explicit creation may reveal that same thread and wait for its owner; write-submission timeouts remain unconfirmed and are never treated as permission to resubmit.
 
 Thread reads, item reads, and turn-history reads report `THREAD_WRITER_BUSY` when an external writer is confirmed. `ownership` includes lock/process evidence, or native rejection evidence with a separate current lock observation. The isolated `read-rejection` fault induces this same mapping and labels its evidence `injected:true`.
+
+Executable `next` objects carry schema-valid operation arguments. Writer conflicts point to `codex_owner({threadId})`; status-only arguments belong to `codex_read`, never `codex_owner`. Optional absent turn IDs are omitted from wait continuations. Interaction response templates still require the caller’s actual decision before submission.

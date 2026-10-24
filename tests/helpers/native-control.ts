@@ -1,3 +1,4 @@
+import {assertNextCalls} from './continuations.ts';
 import {promisify} from 'node:util';
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
@@ -29,6 +30,7 @@ export async function nativeControl(script: string, extraEnv: Record<string, str
   };
   const call = async (op: string, args: Record<string, unknown> = {}) => {
     const value = await api('cli/control', { op, args });
+    assertNextCalls(value.structuredContent);
     return value.structuredContent?.result ?? value;
   };
   const completed = async (op: string, args: Record<string, unknown> = {}) => {
