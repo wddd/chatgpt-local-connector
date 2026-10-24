@@ -2,7 +2,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { readFile, writeFile, rm, copyFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { fileDigest } from './release-support.mjs';
+import { fileDigest, dependencyEnv } from './release-support.mjs';
 
 export function runCommand(file, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -132,7 +132,7 @@ export async function buildMac({ sourceSha, output, env, timer }) {
     if (capture('git', ['-C', source, 'status', '--porcelain'])) throw new Error('macOS release checkout is dirty');
     await runCommand('git', ['-C', source, 'fetch', path.resolve('.'), sourceSha]);
     await runCommand('git', ['-C', source, 'checkout', '--detach', sourceSha]);
-    await runCommand('npm', ['ci'], { cwd: source, env });
+    await runCommand('npm', ['ci'], { cwd: source, env: dependencyEnv(env) });
   });
   await runCommand(process.execPath, ['tooling/desktop-build.mjs', '--release', '--target', 'aarch64-apple-darwin'], { cwd: source, env: { ...env, ARC_RELEASE_PLATFORM: 'mac' } });
   await timer.run('macOS staging verification', async () => {

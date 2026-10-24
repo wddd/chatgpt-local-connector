@@ -1,12 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assetMatches, boundedMap, ghOptions, transferOptions, platformAssetNames, publicationStages,
-  publishedTags, releaseByTag, retry, stageTimer, validateResume, validateRemoteAssets, validateArtifactInventory, parallelPlatforms } from '../tooling/release-support.mjs';
+  publishedTags, releaseByTag, retry, stageTimer, validateResume, validateRemoteAssets, validateArtifactInventory, parallelPlatforms, dependencyEnv } from '../tooling/release-support.mjs';
 import { workerReady, canStopWorker, validateWindowsReceipt } from '../tooling/windows-release.mjs';
 
 const asset = { name: 'latest.json', size: 120, digest: 'sha256:abc' };
 const remote = { ...asset, state: 'uploaded' };
 const state = { schema: 1, verified: true, version: '1.2.3', sourceSha: 'source', platforms: ['mac', 'linux'], assets: [asset] };
+
+test('dependency installs reread npmrc script policy without mutating the parent environment', () => {
+  // Regression: npm run exported allow-scripts and npm ci rejected it with EALLOWSCRIPTS.
+  const env = { npm_config_allow_scripts: 'esbuild', NPM_CONFIG_ALLOW_SCRIPTS: 'esbuild', PATH: '/tools', npm_config_registry: 'https://example.com' };
+  assert.deepEqual(dependencyEnv(env), { PATH: '/tools', npm_config_registry: 'https://example.com' });
+  assert.equal(env.npm_config_allow_scripts, 'esbuild');
+});
 
 test('worker readiness requires power SSH and ready signals together', () => {
   // Property: running alone never authorizes SSH.

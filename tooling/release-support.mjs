@@ -139,6 +139,14 @@ export async function parallelPlatforms(operations) {
   return results.map(result => result.value);
 }
 
+export function dependencyEnv(env) {
+  const result = { ...env };
+  // npm run exports user .npmrc settings as CLI-level environment settings.
+  // npm ci must read the original .npmrc policy rather than reject that export.
+  for (const key of Object.keys(result)) if (key.toLowerCase() === 'npm_config_allow_scripts') delete result[key];
+  return result;
+}
+
 export function stageTimer(file = process.env.ARC_RELEASE_TIMINGS_FILE, log = console.log) {
   function record(name, started, status, startedAt) {
     const elapsed = performance.now() - started;
