@@ -4,6 +4,7 @@ import { api } from "../api";
 import { locale, t } from "../i18n";
 import type { AgentActivitySession, AgentConversation, AgentConversationPage } from "../types";
 import { agentActivity } from "../state/activity";
+import { trackedActivity } from "../state/activityBubbles";
 import { selectAgentPanel } from "../state/overviewPanels";
 import type { TrackedActivity } from "../state/activityModel";
 import { ActivityBubbleContent } from "./ActivityBubbles";
@@ -25,6 +26,8 @@ const ConversationRow = memo(function ConversationRow({ agent, session, live, no
 export default function AgentConversations({ agent, active }: { agent: string; active: boolean }) {
   const language = locale.use();
   const { snapshot } = agentActivity.use();
+  const tracked = trackedActivity.use(), retained = tracked[agent] ?? [];
+  const unread = new Set(retained.filter(session => session.endedAt !== undefined && session.readAt === undefined).map(session => session.id));
   const [observed, setObserved] = useState<Record<string, AgentActivitySession>>({});
   const [rows, setRows] = useState<AgentConversation[]>([]), [next, setNext] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string>(), [retry, setRetry] = useState(0);
@@ -34,9 +37,9 @@ export default function AgentConversations({ agent, active }: { agent: string; a
   const live = new Map(snapshot?.agents[agent]?.sessions.map(session => [session.id, session]) ?? []);
   const now = useAppNow(active && live.size ? 1000 : 60000);
   useEffect(() => {
-    const sessions = snapshot?.agents[agent]?.sessions;
-    if (sessions?.length) setObserved(old => ({ ...old, ...Object.fromEntries(sessions.map(session => [session.id, session])) }));
-  }, [agent, snapshot]);
+    const sessions = [...(tracked[agent] ?? []), ...(snapshot?.agents[agent]?.sessions ?? [])];
+    if (sessions.length) setObserved(old => ({ ...old, ...Object.fromEntries(sessions.map(session => [session.id, session])) }));
+  }, [agent, snapshot, tracked]);
   useEffect(() => {
     const key = cursor ?? "";
     if (!active || loaded.current === key) return;
@@ -75,7 +78,7 @@ export default function AgentConversations({ agent, active }: { agent: string; a
     nativeSessionId: conversation.nativeSessionId ?? undefined, open: conversation.open,
     timeline: true, orderAt: Date.parse(conversation.createdAt ?? "") || 0, conversation: true,
   }]));
-  for (const remembered of [...Object.values(observed), ...live.values()]) {
+  for (const remembered of [...Object.values(observed), ...retained, ...live.values()]) {
     const current = live.get(remembered.id), history = sessions.get(remembered.id);
     const session = current ?? { ...remembered, phase: "idle" as const, phaseSince: null, interaction: undefined, turnStartedAt: undefined };
     sessions.set(session.id, { ...history, ...session,
@@ -92,10 +95,11 @@ export default function AgentConversations({ agent, active }: { agent: string; a
   const yesterday = new Date(midnight); yesterday.setDate(yesterday.getDate() - 1);
   const week = new Date(midnight); week.setDate(week.getDate() - (week.getDay() + 6) % 7);
   type Group = { id: string; label: string; entries: TrackedActivity[] };
-  const groups = Object.fromEntries(["attention", "running", "today", "yesterday", "earlier"].map(id => [id, { id, label: t(`agentPanel.${id}`), entries: [] as TrackedActivity[] }])) as Record<string, Group>;
+  const groups = Object.fromEntries(["attention", "running", "unread", "today", "yesterday", "earlier"].map(id => [id, { id, label: t(`agentPanel.${id}`), entries: [] as TrackedActivity[] }])) as Record<string, Group>;
   const dates = new Map<number, Group>();
   for (const session of [...sessions.values()].sort((a, b) => b.orderAt - a.orderAt || b.id.localeCompare(a.id))) {
     let group = live.has(session.id) ? groups[session.interaction ? "attention" : "running"]
+      : unread.has(session.id) ? groups.unread
       : session.orderAt >= midnight.getTime() ? groups.today
       : session.orderAt >= yesterday.getTime() ? groups.yesterday : groups.earlier;
     if (!live.has(session.id) && group === groups.earlier && session.orderAt >= week.getTime()) {
@@ -106,7 +110,7 @@ export default function AgentConversations({ agent, active }: { agent: string; a
     }
     group.entries.push(session);
   }
-  const sections = [groups.attention, groups.running, groups.today, groups.yesterday, ...dates.values(), groups.earlier];
+  const sections = [groups.attention, groups.running, groups.unread, groups.today, groups.yesterday, ...dates.values(), groups.earlier];
   return <div className="activity-task-list agent-conversations">
     {sections.map(({ id, label, entries }) => entries.length > 0 && <section className="agent-task-section" key={id} aria-label={label}>
       <h3 className="agent-task-section-heading" data-attention={id === "attention" || undefined}>

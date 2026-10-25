@@ -640,6 +640,7 @@
   "agentPanel.inProgress": "{count} tasks in progress",
   "agentPanel.attention": "Needs your attention",
   "agentPanel.running": "Running",
+  "agentPanel.unread": "Unread",
   "agentPanel.today": "Today",
   "agentPanel.yesterday": "Yesterday",
   "agentPanel.earlier": "Earlier",

@@ -54,6 +54,30 @@ try {
         if (!fixture.page && !fixture.panel && representedTasks !== fixture.tasks.length) throw new Error(`Task count mismatch: ${representedTasks}/${fixture.tasks.length}`);
         if (fixture.panel?.kind === 'agent' && model.panels.agent?.agent !== fixture.panel.id) throw new Error('Agent panel not opened');
         if (fixture.panel?.kind === 'source' && model.panels.source !== fixture.panel.id) throw new Error('Source panel not opened');
+        if (name === 'agent-panel-unread') {
+          // Regression: completed unread tasks were mixed into date groups instead of appearing between Running and Today.
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          const panel = page.getByRole('dialog', { name: 'Codex', exact: true });
+          const unread = panel.getByRole('region', { name: messages['agentPanel.unread'], exact: true });
+          const today = panel.getByRole('region', { name: messages['agentPanel.today'], exact: true });
+          await unread.waitFor({ state: 'visible' });
+          await today.waitFor({ state: 'visible' });
+          const sections = await panel.getByRole('region').evaluateAll(elements => elements.map(element => element.getAttribute('aria-label')));
+          const runningIndex = sections.indexOf(messages['agentPanel.running']);
+          if (runningIndex < 0 || sections[runningIndex + 1] !== messages['agentPanel.unread'] || sections[runningIndex + 2] !== messages['agentPanel.today']) throw new Error('Unread is not between Running and Today');
+          const completed = fixture.tasks.filter(task => task.completed);
+          if (await unread.getByRole('button').count() !== completed.length) throw new Error('Unread group count does not match observed unread completions');
+          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-unread.png`), animations: 'disabled' });
+          for (const task of completed) {
+            const name = new RegExp(`^${task.title} ·`);
+            if (await today.getByRole('button', { name }).count()) throw new Error('Unread task is duplicated in Today');
+            await unread.getByRole('button', { name }).click();
+            await page.getByRole('button', { name: messages.back, exact: true }).click();
+            await today.getByRole('button', { name }).waitFor({ state: 'visible' });
+            await unread.getByRole('button', { name }).waitFor({ state: 'hidden' });
+          }
+          await unread.waitFor({ state: 'hidden' });
+        }
         if (name === 'task-queue-overflow') {
           // Regression: overflow hid running tasks, and View all opened the Agent panel instead of temporarily revealing the queue.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));

@@ -640,6 +640,7 @@
   "agentPanel.inProgress": "{count} 个任务进行中",
   "agentPanel.attention": "需要你处理",
   "agentPanel.running": "运行中",
+  "agentPanel.unread": "未读",
   "agentPanel.today": "今天",
   "agentPanel.yesterday": "昨天",
   "agentPanel.earlier": "更早",

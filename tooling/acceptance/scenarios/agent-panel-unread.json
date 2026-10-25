@@ -1,0 +1,12 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": ["codex", "claude"],
+  "panel": { "kind": "agent", "id": "codex" },
+  "panelHistory": true,
+  "tasks": [
+    { "agent": "codex", "phase": "command", "title": "Verify project changes", "headline": "npm run check" },
+    { "agent": "codex", "phase": "command", "title": "Completed verification", "headline": "npm run check", "completed": true },
+    { "agent": "codex", "phase": "file", "title": "Completed configuration", "headline": "config.json", "completed": true }
+  ]
+}
