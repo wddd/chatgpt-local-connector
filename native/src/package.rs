@@ -3,8 +3,22 @@ use crate::*;
 use std::fs;
 
 const IDENTIFIER: &str = "com.whzxc.agent-remote-control";
+const DEV_IDENTIFIER: &str = "com.whzxc.agent-remote-control.dev";
 const CERTIFICATE: &str = "dce238666578502cf7de81a7b4d5e835a186bc60";
 include!(concat!(env!("OUT_DIR"), "/package_skills.rs"));
+
+pub fn replacement_identifier_allowed(identifier: &str, isolated_instance: Option<&str>) -> bool {
+    match isolated_instance {
+        None => [IDENTIFIER, DEV_IDENTIFIER].contains(&identifier),
+        Some(instance) => {
+            (8..=32).contains(&instance.len())
+                && instance
+                    .bytes()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+                && identifier == format!("{DEV_IDENTIFIER}.acceptance-{instance}")
+        }
+    }
+}
 
 pub(crate) async fn plist(app: &Path, key: &str) -> Result<String> {
     Ok(output(
@@ -21,7 +35,14 @@ pub(crate) async fn plist(app: &Path, key: &str) -> Result<String> {
 }
 
 pub(crate) async fn signature(app: &Path, identifier: &str) -> Result<()> {
-    if ![IDENTIFIER, "com.whzxc.agent-remote-control.dev"].contains(&identifier) {
+    let marker = root().join("acceptance-instance.json");
+    let identity = if marker.exists() {
+        Some(load(&marker)?)
+    } else {
+        None
+    };
+    let instance = identity.as_ref().map(|value| string(value, "instanceId"));
+    if !replacement_identifier_allowed(identifier, instance) {
         return Err("REPLACE_INVALID_PACKAGE: unsupported bundle identifier".into());
     }
     for (path, suffix) in [
@@ -41,6 +62,51 @@ pub(crate) async fn signature(app: &Path, identifier: &str) -> Result<()> {
         output("/usr/bin/codesign", &args).await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn isolated_copy_checks_accept_only_the_selected_instance_identity() {
+        // Regression: app replace --check rejected the official isolated bundle ID before validating the copied candidate.
+        let instance = "abc123def456";
+        let identifier = format!("{DEV_IDENTIFIER}.acceptance-{instance}");
+        assert!(replacement_identifier_allowed(&identifier, Some(instance)));
+        assert!(!replacement_identifier_allowed(&identifier, None));
+        assert!(!replacement_identifier_allowed(
+            &identifier,
+            Some("other1234567")
+        ));
+        assert!(!replacement_identifier_allowed(IDENTIFIER, Some(instance)));
+        assert!(!replacement_identifier_allowed(
+            DEV_IDENTIFIER,
+            Some(instance)
+        ));
+    }
+
+    #[test]
+    fn package_identity_profiles_never_broaden_to_arbitrary_bundle_ids() {
+        // Property: ordinary profiles admit only fixed ARC identities; isolated profiles admit only their exact valid generated identity.
+        assert!(replacement_identifier_allowed(IDENTIFIER, None));
+        assert!(replacement_identifier_allowed(DEV_IDENTIFIER, None));
+        for instance in [
+            "",
+            "short",
+            "UPPERCASE1",
+            "abc-12345",
+            "../abc1234",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ] {
+            let identifier = format!("{DEV_IDENTIFIER}.acceptance-{instance}");
+            assert!(!replacement_identifier_allowed(&identifier, Some(instance)));
+        }
+        assert!(!replacement_identifier_allowed(
+            "com.example.unrelated",
+            None
+        ));
+    }
 }
 
 fn inspect(path: &Path) -> Result<()> {
