@@ -488,7 +488,7 @@ Use `act({op:"codex_interrupt",args:{threadId:"<id>"}})` to interrupt the curren
 
 ## Archive ended threads
 
-Use `act({op:"codex_archive",args:{threadId:"<id>"}})` for ended self-test or other explicitly selected native threads. ARC submits native `thread/archive` through its app-server and retains an idempotent receipt, including for Desktop-created history. It does not interrupt running work. `ARCHIVE_ACTIVE_TURN` requires completion or an explicit interrupt first. `ARCHIVE_WRITER_BUSY` preserves the native reason and requires releasing or archiving that exact thread from its owning session. The current Desktop follower protocol has no archive/release request, so ARC cannot release another owner's writer. Never remove lock files, move rollouts manually, close unrelated sessions, or repeatedly replay a blocked archive.
+Archiving ended self-test threads is optional and is not an acceptance completion step. Keep traces available for observation or archive them later as desired. When archival is chosen, use `act({op:"codex_archive",args:{threadId:"<id>"}})` for explicitly selected ended native threads. ARC submits native `thread/archive` through its app-server and retains an idempotent receipt, including for Desktop-created history. It does not interrupt running work. `ARCHIVE_ACTIVE_TURN` requires completion or an explicit interrupt first. `ARCHIVE_WRITER_BUSY` preserves the native reason and requires releasing or archiving that exact thread from its owning session. The current Desktop follower protocol has no archive/release request, so ARC cannot release another owner's writer. Never remove lock files, move rollouts manually, close unrelated sessions, or repeatedly replay a blocked archive.
 
 ## Task detail interaction ownership
 
@@ -526,7 +526,7 @@ Desktop follower IPC currently exposes no per-thread release/archive request. `W
 
 Example: `echo '{"threadId":"<self-test-thread-id>","mode":"placeholder"}' | arc cli --state-dir <isolated-state> control acceptance_fault --stdin`.
 
-`placeholder` overlays a null-ID active turn on the real Desktop follower read path, exercising the existing steering guard without changing native history. Use a Desktop-owned self-test thread. `read-rejection` rejects native thread reads at the normal request boundary, exercising public error and recovery projection. Responses identify injected evidence. These switches validate ARC behavior, not an upstream provider failure. Faults expire after five minutes by default (maximum ten), disappear on restart, and can be cleared explicitly. Clear before normal cleanup or archive.
+`placeholder` overlays a null-ID active turn on the real Desktop follower read path, exercising the existing steering guard without changing native history. Use a Desktop-owned self-test thread. `read-rejection` rejects native thread reads at the normal request boundary, exercising public error and recovery projection. Responses identify injected evidence. These switches validate ARC behavior, not an upstream provider failure. Faults expire after five minutes by default (maximum ten), disappear on restart, and can be cleared explicitly. Clear injected faults before returning to normal observation or optionally archiving the thread.
 
 A bounded Desktop owner-discovery timeout does not reject a fresh, confirmed unheld thread. Explicit creation may reveal that same thread and wait for its owner; write-submission timeouts remain unconfirmed and are never treated as permission to resubmit.
 

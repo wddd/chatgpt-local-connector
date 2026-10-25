@@ -81,6 +81,10 @@ Default output is output/acceptance/remote/<timestamp>/. Each step's CLI JSON, r
 
 Assertions match rendered tasks to the dispatch by threadId/taskId, confirm local-cli origin and layoutSettled:true, and require PNG luminance variance above 1 after compositing on white. Explicit mismatches are defects. Missing data or undecodable PNGs are evidence gaps. Task failure still triggers a screenshot attempt. Tasks and original target screenshots remain available through report IDs and paths.
 
+## Self-test trace retention
+
+Archiving ended self-test threads is optional. Acceptance is complete when the requested checks and evidence are complete; archival is not a completion step. Threads may remain available for later observation, and users may archive them periodically. When archival is chosen for explicitly selected threads, use `codex_archive` and follow its native owner and active-turn recovery guidance. Clear any injected acceptance faults before normal observation, whether or not the thread is archived.
+
 ## Control source and waiting
 
 ```sh
