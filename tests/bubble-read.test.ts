@@ -7,8 +7,8 @@ import { createServer } from "vite";
 import { act, createElement as h } from "react";
 import { within, fireEvent } from "@testing-library/dom";
 
-test("completed bubble check hands drags to topology while preserving jitter clicks, cancellation and keyboard activation", async () => {
-  // Regression: acceptance found that drags starting on the completed check never moved or reordered the bubble.
+for (const mode of ["default", "tree", "flat"] as const) test(`completed bubble check hands drags to topology in ${mode} layout while preserving jitter clicks, cancellation and keyboard activation`, async () => {
+  // Regression: check-button drag hand-off must coexist with account tree/flat task parents and default topology navigation.
   const window = new Window({ url: "http://localhost" });
   window.localStorage.setItem("arc.privacy", "false");
   const frames = new Map<number, FrameRequestCallback>(); let frame = 0;
@@ -38,11 +38,21 @@ test("completed bubble check hands drags to topology while preserving jitter cli
     const { viewModel } = await server.ssrLoadModule("/ui/acceptance.ts");
     const position = () => { const { x, y } = viewModel().topology.tasks.find((task: any) => task.id === "finished").position; return { x, y }; };
     const session = { id: "finished", title: "Finished task", source: "arc-task", phase: "idle", phaseSince: null, headline: "", orderAt: 1, endedAt: 1 };
-    let read = false, order: string[] = [];
-    await act(() => root.render(h(Topology, { boundary: { current: mount }, left: [], right: [{ id: "codex", state: "normal", attention: false, selected: false,
-      content: h("button", null, "Codex"), tasks: [{ id: session.id, width: 264, height: 76, state: "completed", selected: false, reorderable: true,
-        content: h(ActivityBubble, { agent: "codex", session, now: 1, onRead: () => { read = true; } }) }] }],
-      onReorderNodes() {}, onReorderTasks: (_side: number, _parent: string, ids: string[]) => { order = ids; } })));
+    const { accountViews } = await server.ssrLoadModule("/ui/topology/accountViews.tsx");
+    const { accountNodeId } = await server.ssrLoadModule("/ui/topology/accounts.ts");
+    const accounts = mode === "default" ? [] : ["first", "second"].map(id => ({ id, alias: `${id} account`, provider: "openai", identityKey: id,
+      sources: [], agentProfiles: [{ agent: "codex", state: "signed-in" }] }));
+    let read = false, order: string[] = [], reorderedParent: string | undefined;
+    let navigation: { side: number; platform: string; accountId?: string } | undefined;
+    const actions = { open: (side: number, platform: string, _sourceId?: string, accountId?: string) => { navigation = { side, platform, accountId }; } };
+    const right = accountViews([{ id: "codex", platform: "codex", platformLabel: "Codex", state: "normal", attention: false, selected: false, reorderable: true,
+      content: h("button", null, "Codex"), tasks: [{ id: session.id, agentAccountId: accounts[0]?.id, width: 264, height: 76, state: "completed", selected: false, reorderable: true,
+        content: h(ActivityBubble, { agent: "codex", session, now: 1, onRead: () => { read = true; } }) }] }], 1, accounts, mode === "flat" ? "flat" : "tree", {}, actions);
+    const expectedParent = mode === "default" ? "codex" : accountNodeId("codex", accounts[0].id);
+    await act(() => root.render(h(Topology, { boundary: { current: mount }, left: [], right, accountsEnabled: accounts.length > 0,
+      onReorderNodes() {}, onReorderTasks: (_side: number, parent: string, ids: string[]) => { order = ids; reorderedParent = parent; } })));
+    assert.equal(viewModel().topology.tasks.find((task: any) => task.id === session.id).parent, expectedParent);
+    assert.equal(viewModel().topology.nodes.find((node: any) => node.id === expectedParent).parent, mode === "tree" ? "codex" : undefined);
     const page = within(mount), button = page.getByRole("button", { name: t("activity.markRead"), exact: true });
     const body = page.getByRole("button", { name: name => name.startsWith(session.title) });
     const pointer = async (target: Element, type: string, x: number, y: number, pointerType = "mouse") => act(() => {
@@ -65,7 +75,7 @@ test("completed bubble check hands drags to topology while preserving jitter cli
         // Returning inside the click threshold must not turn a drag into a read.
         await pointer(button, "pointermove", 20, 20, kind);
         await pointer(button, "pointerup", 20, 20, kind); await click(button);
-        assert.equal(read, false); assert.equal(agentPanel.get(), undefined); assert.deepEqual(order, [session.id]);
+        assert.equal(read, false); assert.equal(agentPanel.get(), undefined); assert.deepEqual(order, [session.id]); assert.equal(reorderedParent, expectedParent);
         order = [];
         const bodyStart = position();
         await pointer(body, "pointerdown", 100, 100, kind);
@@ -74,7 +84,7 @@ test("completed bubble check hands drags to topology while preserving jitter cli
         assert.deepEqual({ x: checkMoved.x - checkStart.x, y: checkMoved.y - checkStart.y },
           { x: bodyMoved.x - bodyStart.x, y: bodyMoved.y - bodyStart.y });
         await pointer(body, "pointerup", 100 + dx, 100 + dy, kind); await click(body);
-        assert.equal(read, false); assert.equal(agentPanel.get(), undefined); assert.deepEqual(order, [session.id]);
+        assert.equal(read, false); assert.equal(agentPanel.get(), undefined); assert.deepEqual(order, [session.id]); assert.equal(reorderedParent, expectedParent);
       }
       order = [];
       await pointer(button, "pointerdown", 20, 20, kind); await pointer(button, "pointercancel", 20, 20, kind); await click(button);
@@ -101,6 +111,13 @@ test("completed bubble check hands drags to topology while preserving jitter cli
     read = false;
     await pointer(button, "pointerdown", 20, 20); await pointer(button, "pointerup", 20, 20); await click(button);
     assert.equal(read, true); assert.equal(agentPanel.get(), undefined);
+    if (accounts.length) {
+      const account = page.getAllByRole("button", { name: name => name.includes(accounts[0].alias) })
+        .find(button => button.getAttribute("aria-haspopup") === "dialog")!;
+      await click(account);
+      assert.deepEqual(navigation, { side: 1, platform: "codex", accountId: accounts[0].id });
+      assert.equal(agentPanel.get(), undefined);
+    }
   } finally { await act(() => root.unmount()); await server.close(); await window.happyDOM.close(); }
 });
 
