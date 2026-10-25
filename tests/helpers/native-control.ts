@@ -33,6 +33,15 @@ export async function nativeControl(script: string, extraEnv: Record<string, str
     assertNextCalls(value.structuredContent);
     return value.structuredContent?.result ?? value;
   };
+  const sourceCall = async (ingressId: string, op: string, args: Record<string,unknown> = {}) => {
+    const response=await fetch(`http://127.0.0.1:${endpoint.port}/mcp/${ingressId}`, {
+      method:'POST',headers:{authorization:`Bearer ${endpoint.token}`,'content-type':'application/json'},
+      body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'act',arguments:{op,args}}}),
+    });
+    const value=await response.json() as any;
+    assertNextCalls(value.result?.structuredContent);
+    return value.result?.structuredContent?.result??value;
+  };
   const completed = async (op: string, args: Record<string, unknown> = {}) => {
     let result = await call(op, { ...(['codex_create','codex_send','agent_create','agent_send'].includes(op) ? {purpose:'self-test',notify:null} : {}), ...args });
     const deadline = Date.now() + 10000;
@@ -48,7 +57,7 @@ export async function nativeControl(script: string, extraEnv: Record<string, str
     const quoted="'"+binary.replaceAll("'","'\\''")+"'";
     return promisify(execFile)('/bin/sh',['-c',command.replace('arc cli',`${quoted} cli`)],{env:{...process.env,ARC_STATE_DIR:path.join(directory,'state')}});
   };
-  return { api, call, completed, shell, async close() {
+  return { api, call, sourceCall, completed, shell, async close() {
     processHandle.stdin.end('\n');
     await new Promise<void>(resolve => processHandle.once('exit', () => resolve()));
     lines.close(); await rm(directory, { recursive: true, force: true });

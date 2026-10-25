@@ -130,6 +130,7 @@ pub fn failure(e: &str) -> Value {
                     | "WRONG_TOOL"
                     | "NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE"
                     | "INVALID_CLAUDE_SESSION"
+                    | "ACCOUNT_SELECTION_REQUIRED"
                     | "DESKTOP_STEER_UNAVAILABLE"
                     | "ARCHIVE_ACTIVE_TURN"
                     | "ARCHIVE_WRITER_BUSY"

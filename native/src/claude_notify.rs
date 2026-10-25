@@ -1996,13 +1996,26 @@ pub(crate) async fn migrate() -> Result<()> {
     subscriptions::sync(&mut state, &all);
     // Populate stable IDs without creating any subscription to the retired event name.
     subscriptions::route(&state, &mut all, chrono::Utc::now().timestamp());
+    for b in &all {
+        if b.channel == Channel::ClaudeSession {
+            if let Some(target) = &b.target {
+                state.target(
+                    &b.source_id,
+                    Channel::ClaudeSession,
+                    target,
+                    chrono::Utc::now().timestamp(),
+                    &settings,
+                );
+            }
+        }
+    }
     let legacy_routes = crate::claude_accounts::routing::list()?;
     for t in &mut state.targets {
         if t.channel == Channel::ClaudeSession && t.account_id.is_none() {
             t.account_id = legacy_routes.get(&t.target).cloned();
             if t.account_id.is_none() && t.reachability.state == "verified" {
                 // Keep already verified pre-route destinations pinned to their original profile.
-                t.account_id = crate::claude_accounts::routing::account(&t.target).ok();
+                t.account_id = crate::claude_accounts::routing::legacy_account(&t.target).ok();
             }
         }
     }

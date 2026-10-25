@@ -13,7 +13,7 @@ pub(crate) fn list() -> Result<BTreeMap<String, String>> {
         .map_err(|_| "CLAUDE_ROUTES_INVALID: Repair the local Claude notification routes".into())
 }
 
-pub(crate) fn account(target: &str) -> Result<String> {
+pub(crate) fn legacy_account(target: &str) -> Result<String> {
     match list()?.get(target) {
         Some(id) => Ok(id.clone()),
         None => super::system::initial_account(),

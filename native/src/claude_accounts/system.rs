@@ -124,6 +124,16 @@ fn host_storage() -> PathBuf {
 }
 
 async fn read_credentials() -> Result<Value> {
+    read_credentials_at(None, &host_storage()).await
+}
+
+pub(super) async fn profile_credentials(config: &Path) -> Result<Value> {
+    read_credentials_at(Some(config), config).await
+}
+
+async fn read_credentials_at(config: Option<&Path>, storage: &Path) -> Result<Value> {
+    #[cfg(not(target_os = "macos"))]
+    let _ = config;
     #[cfg(target_os = "macos")]
     let bytes = {
         let output = security(&[
@@ -131,14 +141,14 @@ async fn read_credentials() -> Result<Value> {
             "-a",
             &username(),
             "-s",
-            &service(None),
+            &service(config),
             "-w",
         ])
         .await?;
         if output.status.success() {
             output.stdout
         } else if output.status.code() == Some(44) {
-            std::fs::read(host_storage().join(".credentials.json"))
+            std::fs::read(storage.join(".credentials.json"))
                 .map_err(|_| "CLAUDE_IMPORT_CREDENTIALS_UNAVAILABLE: Sign in with the system CLI and retry import")?
         } else {
             return Err(
@@ -148,7 +158,7 @@ async fn read_credentials() -> Result<Value> {
         }
     };
     #[cfg(not(target_os = "macos"))]
-    let bytes = std::fs::read(host_storage().join(".credentials.json")).map_err(|_| {
+    let bytes = std::fs::read(storage.join(".credentials.json")).map_err(|_| {
         "CLAUDE_IMPORT_CREDENTIALS_UNAVAILABLE: Sign in with the system CLI and retry import"
     })?;
     let stored: Value = serde_json::from_slice(&bytes).map_err(|_| {

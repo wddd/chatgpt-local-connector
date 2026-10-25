@@ -469,8 +469,15 @@ pub(crate) async fn notify_control(args: &Value) -> Result<Value> {
                 &settings()?,
             )?
         };
-        let route = account_route_control(&source_id, args).await?;
-        result["accountRoute"] = route;
+        match ensure_account_route(&source_id, args).await {
+            Ok(route) => result["accountRoute"] = route,
+            Err(error) => {
+                result["ok"] = json!(false);
+                result["error"] = crate::egress::failure(&error);
+                result["next"] = result["error"]["next"].clone();
+                return Ok(result);
+            }
+        }
         if args["verify"] != false {
             match super::reachability::verify(&source_id, args).await {
                 Ok(mut verification) => {
@@ -496,7 +503,7 @@ pub(crate) async fn notify_control(args: &Value) -> Result<Value> {
         return Ok(result);
     }
     if args["action"] == "verify" {
-        account_route_control(&source_id, args).await?;
+        ensure_account_route(&source_id, args).await?;
         return super::reachability::verify(&source_id, args).await;
     }
     let _guard = LOCK.lock().await;
@@ -708,6 +715,15 @@ async fn account_route_control(source_id: &str, args: &Value) -> Result<Value> {
             && b.channel == Channel::ClaudeSession
             && b.target.as_deref() == Some(&target)
     });
+    if owned {
+        state.target(
+            source_id,
+            Channel::ClaudeSession,
+            &target,
+            chrono::Utc::now().timestamp(),
+            &settings()?,
+        );
+    }
     let t = state.targets.iter_mut().find(|t| t.source_id == source_id && t.channel == Channel::ClaudeSession && t.target == target && (t.registered || owned))
         .ok_or_else(|| json!({"code":"NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE","message":"Bind this target before reading or changing its account route","next":{"via":"act","op":"notify_control","args":{"action":"bind","target":target}}}).to_string())?;
     if let Some(account_id) = args["accountId"].as_str() {
@@ -724,6 +740,44 @@ async fn account_route_control(source_id: &str, args: &Value) -> Result<Value> {
             .cloned();
     }
     let result = json!({"target":target,"accountId":t.account_id,"profiles":crate::claude_accounts::profiles()?});
+    state.save(&directory())?;
+    Ok(result)
+}
+
+async fn ensure_account_route(source_id: &str, args: &Value) -> Result<Value> {
+    let route = account_route_control(source_id, args).await?;
+    if route["accountId"].is_string() {
+        return Ok(route);
+    }
+    let target = string(&route, "target");
+    let candidates = crate::claude_accounts::candidates(target).await?;
+    let visible: Vec<_> = candidates
+        .iter()
+        .filter(|p| p["visibility"] == "visible")
+        .collect();
+    // An unknown profile could also see the session; uniqueness is not established.
+    let selected = if visible.len() == 1 && !candidates.iter().any(|p| p["visibility"] == "unknown")
+    {
+        Some(string(visible[0], "accountId").to_owned())
+    } else {
+        None
+    };
+    let _guard = LOCK.lock().await;
+    let mut state = State::load(&directory())?;
+    let t = state
+        .targets
+        .iter_mut()
+        .find(|t| {
+            t.source_id == source_id && t.channel == Channel::ClaudeSession && t.target == target
+        })
+        .ok_or("NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE")?;
+    if t.account_id.is_none() {
+        t.account_id = selected;
+    }
+    if t.account_id.is_none() {
+        return Err(json!({"code":"ACCOUNT_SELECTION_REQUIRED","message":"No unique visible Claude profile was confirmed. Select an accountId from candidates for this source-owned target; unknown means the read-only probe was inconclusive. ARC did not send a challenge or change accounts.","target":target,"candidates":candidates,"next":{"via":"act","op":"notify_control","args":{"action":"route","target":target},"hint":"Inspect safe profiles, then set accountId with action:route and retry action:verify. If no profile can see the session, correct the session ID or have the user explicitly sign in to its owner profile."}}).to_string());
+    }
+    let result = json!({"target":target,"accountId":t.account_id,"profiles":candidates});
     state.save(&directory())?;
     Ok(result)
 }

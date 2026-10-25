@@ -9,7 +9,9 @@ use tokio::{
 mod browsers;
 pub(crate) mod routing;
 mod system;
+mod visibility;
 pub use system::same_identity;
+pub(crate) use visibility::candidates;
 
 const OPENED_URL: &str = "ARC_CLAUDE_LOGIN_URL_FILE";
 
