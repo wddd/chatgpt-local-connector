@@ -1095,7 +1095,6 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .task-source-chip { padding: 3px 6px; border-radius: 999px; background: var(--surface-subtle); max-width: 100%; }
 .task-source-chip > span:not(.activity-source-badge), .timeline-turn-source > span:not(.activity-source-badge) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .task-source-chip .activity-source-badge, .timeline-turn-source .activity-source-badge { position: static; flex: none; }
-.task-source-where { color: var(--text-tertiary); }
 .timeline-turn { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); }
 .timeline-turn[data-state=closed] { cursor: pointer; }
 .timeline-turn-header { appearance: none; position: sticky; top: -4px; z-index: 2; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; min-height: 36px; width: calc(100% + 16px); margin: -8px; padding: 8px; border: 0; border-radius: 8px; background: var(--surface-soft); color: inherit; text-align: left; font: inherit; cursor: pointer; }

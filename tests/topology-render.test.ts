@@ -352,7 +352,7 @@ test("timeline turn disclosures preserve choices through incremental work and re
   }
 });
 
-test("task detail prioritizes pending requests, preserves drafts and consolidates header actions", async () => {
+test("task detail limits input to pending execution requests and consolidates header actions", async () => {
   // Regression: pending docks retained the composer, Skip leaked a key and compact headers duplicated actions and source names.
   const window = new Window({ url: "http://localhost" });
   const media = Object.assign(new window.EventTarget(), { matches: true });
@@ -398,8 +398,7 @@ test("task detail prioritizes pending requests, preserves drafts and consolidate
     await act(() => root.render(h(TooltipProvider, null, h(ActivityTimeline, { agent: "codex", session, expanded, onToggleWidth: () => { expanded = !expanded; }, onBack() {} }))));
     const page = within(document.body);
     const click = async (element: Element) => act(async () => { fireEvent.click(element); });
-    const draft = "Keep this follow-up draft";
-    await act(() => fireEvent.change(page.getByRole("textbox", { name: t("detail.message") }), { target: { value: draft } }));
+    assert.equal(page.queryByRole("textbox"), null);
     for (const language of ["en", "zh-CN"]) {
       await act(() => locale.set(language));
       await update();
@@ -409,15 +408,19 @@ test("task detail prioritizes pending requests, preserves drafts and consolidate
       await update(question);
       assert.equal(page.queryByRole("textbox", { name: t("detail.message") }), null);
       await click(page.getByRole("button", { name: t("detail.skip"), exact: true }));
-      assert.ok(page.getAllByRole("status").some(node => node.textContent?.includes(t("activity.cancel"))));
-      assert.equal((page.getByRole("textbox", { name: t("detail.message") }) as HTMLTextAreaElement).value, draft);
+      assert.equal(page.queryByRole("button", { name: t("detail.skip"), exact: true }), null);
+      assert.equal(page.queryByRole("textbox"), null);
     }
-    await update({ kind: "approval", summary: "Command approval", respond: { op: "codex_respond", args: { respondToken: "approval" } } });
+    await update({ kind: "permission", summary: "Command approval", respond: { op: "codex_respond", args: { respondToken: "approval" } } });
     assert.equal(page.queryByRole("textbox", { name: t("detail.message") }), null);
     await update();
-    assert.equal((page.getByRole("textbox", { name: t("detail.message") }) as HTMLTextAreaElement).value, draft);
+    assert.equal(page.queryByRole("textbox"), null);
     await act(() => connector.set({ ...connector.get(), sources: [{ id: source.id, connectionName: "Separate connection" }] }));
-    assert.ok(page.getByText("Separate connection"));
+    assert.equal(page.queryByText("Separate connection"), null);
+    await act(() => agentActivity.set({ error: "", snapshot: { observedAt: "", activeAgents: ["codex"], agents: { codex: { sessions: [{ ...session, dispatchSummary: undefined,
+      interaction: { kind: "question", summary: "Native user question", respond: { op: "codex_respond", args: { respondToken: "native" } } } }] } } } }));
+    assert.equal(page.queryByRole("textbox"), null);
+    assert.equal(page.queryByRole("button", { name: t("detail.skip"), exact: true }), null);
     assert.ok(page.getByRole("button", { name: t("expandPanelWidth") }));
     await act(() => { panelWidth = 320; [...observers].forEach(observer => observer.notify()); });
     assert.equal(page.queryByRole("button", { name: t("expandPanelWidth") }), null);

@@ -2,7 +2,7 @@
 .task-detail-layer > .task-detail-header.dialog-header { display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 16px 12px; background: var(--surface); }
 .task-detail-navigation { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
 .task-detail-navigation > .button { min-width: 0; overflow: hidden; text-overflow: ellipsis; justify-content: flex-start; color: var(--text-secondary); }
-.task-detail-header .activity-panel-title { font-size: 17px; line-height: 1.35; margin: 0; }
+.task-detail-header .activity-panel-title { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 17px; line-height: 1.35; margin: 0; }
 .task-detail-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .task-detail-meta { display: flex; align-items: center; flex: 1; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .task-duration { margin-left: auto; flex: none; white-space: nowrap; }
@@ -80,15 +80,7 @@
 .task-question kbd { font: 11px var(--font-mono); color: var(--text-tertiary); }
 .task-needs-you .activity-actions { flex-wrap: wrap; }
 .task-needs-you .activity-once { flex-basis: 100%; }
-.task-dock-resolved { padding: 8px 12px; color: var(--success); font-size: 12px; }
 @keyframes task-dock-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.task-controls, .task-controls form { display: grid; gap: 8px; min-width: 0; }
-.task-controls p { margin: 0; font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
-.task-compose-row { display: flex; align-items: flex-end; gap: 8px; min-width: 0; }
-.task-compose-row > .field { flex: 1; min-width: 0; }
-.task-compose-row textarea { resize: vertical; max-height: 160px; }
-.task-compose-row .icon-button { min-width: 44px; height: 44px; border: 1px solid var(--border); border-radius: 14px; }
-.task-review-dock { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
 .task-review-status { font-size: 12px; padding: 4px 9px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); }
 .task-review-status[data-verdict=pass] { background: var(--success-soft); color: var(--success); }
 .task-outcome { border: 1px solid var(--border-strong); background: var(--surface-subtle); padding: 14px; border-radius: 18px; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
@@ -107,7 +99,6 @@
 .task-detail-layer.agent-panel-layer > .task-timeline { padding: 0; }
 .task-detail-layer.agent-panel-layer > .task-detail-footer { flex-wrap: nowrap; justify-content: flex-start; max-height: 60%; min-height: 0; overflow: hidden; }
 .task-needs-you { flex: 1 1 auto; min-height: 0; }
-.task-controls { flex: none; }
 .task-needs-banner.button { width: 100%; height: auto; min-height: 52px; justify-content: space-between; text-align: left; border: 1.5px solid var(--task-attention-ring); border-radius: 16px; padding: 10px 12px; box-shadow: 0 8px 20px -12px var(--warning); }
 .task-needs-banner > span:first-child { display: grid; gap: 4px; min-width: 0; }
 .task-needs-banner strong { color: var(--warning); font-size: 11px; }
@@ -132,7 +123,7 @@
   .task-detail-meta .task-source-chip { border: 0; background: none; padding: 0; border-radius: 0; font-size: 11.5px; }
   .task-detail-meta .activity-spec { flex-shrink: 1; overflow: hidden; min-width: 0; }
   .task-detail-meta .activity-spec > span:first-child { overflow: hidden; text-overflow: ellipsis; }
-  .task-detail-meta .activity-source-badge, .task-source-where { display: none; }
+  .task-detail-meta .activity-source-badge { display: none; }
   .task-duration { font-size: 11.5px; }
   .task-detail-chips > .task-review-status { display: none; }
   .task-detail-layer .timeline-entries { padding: 12px; gap: 12px; }
@@ -143,10 +134,6 @@
   .task-tool-count + .task-tool-count::before { content: none; }
   .task-final { padding: 12px; }
   .task-detail-layer.agent-panel-layer > .task-detail-footer { padding: 8px; max-height: 42%; }
-  .task-compose-row { flex-wrap: wrap; gap: 6px; }
-  .task-compose-row > .field { flex-basis: 100%; }
-  .task-compose-row > .button { flex: 1; }
-  .task-review-dock { flex-wrap: wrap; }
   .task-process > .timeline-summary { padding-inline: 12px; }
   .task-receipt-anchor { flex-wrap: wrap; }
 }

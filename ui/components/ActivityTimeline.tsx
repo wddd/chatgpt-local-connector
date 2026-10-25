@@ -1,8 +1,7 @@
 import { observeTaskPanel } from "../state/taskPanel";
 import { useTaskQueue } from "../state/taskQueue";
 import TaskQueuedMessages from "./TaskQueuedMessages";
-import TaskControls from "./TaskControls";
-import { useTaskControl } from "../state/taskControl";
+import { useTaskReview } from "../state/taskReview";
 import "./TaskDetail.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2, MoreHorizontal } from "lucide-react";
@@ -15,7 +14,6 @@ import { useInterval } from "../state/hooks";
 import { Button, Icon, IconButton, LoadingIndicator, Menu } from "./ui";
 import TimelineEntries, { durationText } from "./TimelineEntries";
 import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
-import { connector } from "../state/connector";
 import { taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import TaskNeedsYou from "./TaskNeedsYou";
@@ -28,7 +26,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   agent: string; session: TrackedActivity; expanded: boolean; onToggleWidth: () => void; onBack: () => void;
 }) {
   const { snapshot } = agentActivity.use();
-  const connection = connector.use();
   const detail = useRef<HTMLElement>(null);
   const [narrow, setNarrow] = useState(false);
   useLayoutEffect(() => {
@@ -118,18 +115,16 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const latestSummary = live ? live.dispatchSummary : timeline?.dispatchSummary ?? nativeSession.dispatchSummary;
   const source = latestSummary?.controlSource;
   const sourceLabel = source && dispatchSourceLabel(source);
-  const knownSource = source?.id ? connection.sources.find(item => item.id === source.id) : undefined;
-  const where = knownSource ? connection.status?.ingresses.find(item => item.id === knownSource.ingressId)?.name || knownSource.connectionName : undefined;
   const groups = timelineGroups(timeline?.entries ?? []);
   const state = taskState(timeline?.status, running, showCard);
   const turnId = nativeSession.turnId || groups.at(-1)?.turnId;
-  const reviewSource = timeline
+  const turnSource = timeline
     ? (turnId && timeline.turnDispatchSummaries?.[turnId]?.controlSource) || timeline.dispatchSummary?.controlSource
       || groups.find(group => group.turnId === turnId)?.entries.find(entry => entry.type === "user")?.controlSource
     : source;
-  const reviewRequired = !!reviewSource && reviewSource.kind !== "ARC";
-  const control = useTaskControl(agent, session.id, turnId, timeline?.status, !external && !timeline?.readOnly);
-  const queue = useTaskQueue(external || timeline?.readOnly ? "" : agent, session.id, control.operation?.receipt);
+  const fromControlSource = !!turnSource && turnSource.kind !== "ARC";
+  const { review, reviewError } = useTaskReview(session.id, turnId, !external && !timeline?.readOnly && fromControlSource);
+  const queue = useTaskQueue(external || timeline?.readOnly ? "" : agent, session.id);
   const latest = () => {
     const node = viewport.current;
     if (!node) return;
@@ -145,7 +140,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
         if (!id) { id = crypto.randomUUID(); disclosureIds.current.set(button, id); }
         return { id, label: button.getAttribute("aria-label") || button.textContent, expanded: button.getAttribute("aria-expanded") === "true", disabled: button.disabled };
       });
-      return { agent, id: session.id, following: following.current, atLatest, expanded, state, turnId, timeline, queue: queue.items, review: control.review, operation: control.operation, disclosures };
+      return { agent, id: session.id, following: following.current, atLatest, expanded, state, turnId, timeline, queue: queue.items, review, disclosures };
     },
     act: request => {
       if (request.action === "latest") latest();
@@ -174,13 +169,13 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       ]} /></div>}
       <h2 className="activity-panel-title" title={title}>{title}</h2>
       <div className="task-detail-chips"><span className="task-state" data-state={state}>{t(`detail.state.${state}`)}</span>
-        {state === "done" && reviewRequired && <span className="task-review-status" data-verdict={control.review?.verdict}>{t(control.review?.verdict === "pass" ? "detail.reviewPassed" : control.review?.verdict === "rework" ? "detail.reviewRework" : "detail.awaitingReview")}</span>}
-        <div className="task-detail-meta"><SpecPill summary={latestSummary} />{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span>{where && where.trim().toLowerCase() !== sourceLabel?.trim().toLowerCase() && <span className="task-source-where">{where}</span>}</span>}</div>
+        {state === "done" && fromControlSource && <span className="task-review-status" data-verdict={review?.verdict}>{t(review?.verdict === "pass" ? "detail.reviewPassed" : review?.verdict === "rework" ? "detail.reviewRework" : "detail.awaitingReview")}</span>}
+        <div className="task-detail-meta"><SpecPill summary={latestSummary} />{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span></span>}</div>
         {duration !== undefined && <time className="timeline-meta task-duration">{durationText(duration)}</time>}
       </div>
     </header>
     <div className="task-timeline" aria-busy={loading}>
-      {(error || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}
+      {(error || openError || reviewError) && <p className="timeline-error" role="alert">{openError || error || reviewError}</p>}
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => {
           const node = event.currentTarget;
@@ -206,13 +201,13 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
               .map((text, index) => <p key={index}>{text}</p>)}
           </section>}
           {timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
-          <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} turnTimings={timeline?.turnTimings} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries} control={!external && !timeline?.readOnly ? control : undefined} />
-          <TaskQueuedMessages queue={queue} running={running} restoreFocus={() => viewport.current?.focus({ preventScroll: true })} />
+          <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} turnTimings={timeline?.turnTimings} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries} />
+          <TaskQueuedMessages queue={queue} />
           </>}
         </div>
       </div>
       {!atLatest && <Button variant="secondary" className="timeline-latest" onClick={latest}>{t("timeline.latest")}</Button>}
     </div>
-    {!external && !timeline?.readOnly && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} onPending={setShowCard} narrow={narrow} /><div hidden={showCard}><TaskControls agent={agent} taskId={session.id} state={state} control={control} turnId={turnId || undefined} reviewRequired={reviewRequired} /></div></footer>}
+    {!external && !timeline?.readOnly && fromControlSource && running && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} onPending={setShowCard} narrow={narrow} /></footer>}
   </section>;
 }

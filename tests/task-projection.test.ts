@@ -67,13 +67,6 @@ test("asynchronous questions and Pi selectors keep distinct native answer format
   assert.equal(inputResponse(pi, {}, true)?.args.cancelled, true);
 });
 
-test("send timing, stop targets and reviews map to their existing operation arguments", async () => {
-  // Property: task actions preserve target identity and queue mode without changing native permissions.
-  const { taskControlPayload } = await import("../ui/state/taskControlModel.ts");
-  assert.deepEqual(taskControlPayload("codex", "task", "turn", "send", { prompt: "Next", sendMode: "queue" }, "request"), { op: "codex_send", args: { threadId: "task", approval: "approved", prompt: "Next", sendMode: "queue", requestId: "request" } });
-  assert.deepEqual(taskControlPayload("codex", "task", "turn", "interrupt", {}, "request").args, { threadId: "task", turnId: "turn", approval: "approved", requestId: "request" });
-  assert.deepEqual(taskControlPayload("pi", "task", "turn", "review", { verdict: "pass" }, "request"), { op: "agent_review", args: { agent: "pi", taskId: "task", turnId: "turn", verdict: "pass", requestId: "request" } });
-});
 test("native command action metadata counts searches and reads without guessing from shell text", async () => {
   // Property: structured command actions determine exploration counts while opaque commands remain commands.
   const { toolCounts } = await import("../ui/state/taskProjection.ts");
@@ -95,13 +88,4 @@ test('answered questions remain available outside collapsed process rows', async
   const result=projectTurn([entry('answer','interaction',{status:'completed',interaction})],'done');
   assert.equal(result.answeredInteractions.length,1);assert.equal(result.rows.length,0);
   assert.match(interactionSummary(interaction),/Pick one.*A.*B/);
-});
-
-
-test('self-test UI follow-ups retain purpose and suppress notification binding', async () => {
-  // Regression: the task composer could not mark self-test follow-ups and polluted task history.
-  const { taskControlPayload, taskPurposeArgs }=await import('../ui/state/taskControlModel.ts');
-  const send=taskControlPayload('codex','thread',undefined,'send',{prompt:'probe',...taskPurposeArgs('self-test')},'request');
-  assert.equal(send.args.purpose,'self-test');assert.equal(send.args.notify,null);
-  assert.deepEqual(taskPurposeArgs('inherit'),{});assert.deepEqual(taskPurposeArgs('task'),{purpose:'task'});
 });

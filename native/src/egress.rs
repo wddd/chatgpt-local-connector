@@ -1020,7 +1020,7 @@ pub fn interaction_history(args: &Value) -> Result<Value> {
 pub fn panel_state(panel: &Value) -> Value {
     if !panel.is_object() {return panel.clone();}
     let mut result=json!({});
-    for key in ["agent","id","purpose","following","atLatest","expanded","state","turnId"] {
+    for key in ["agent","id","following","atLatest","expanded","state","turnId"] {
         if let Some(value)=panel.get(key) {result[key]=value.clone();}
     }
     result["queueCount"]=json!(panel["queue"].as_array().map_or(0,Vec::len));

@@ -10,7 +10,7 @@ test("task detail messages exist in both supported locales, including every dyna
   const program = ts.createProgram(parsed.fileNames, parsed.options);
   const checker = program.getTypeChecker();
   const messages = ["en", "zh-CN"].map(locale => ({ locale, values: JSON.parse(readFileSync(`ui/locales/${locale}.json`, "utf8")) as Record<string, string> }));
-  const components = new Set(["ActivityTimeline", "ActivityInteraction", "TimelineEntries", "TaskChanges", "TaskControls", "TaskNeedsYou", "TaskOutcome", "TaskQuestion"]);
+  const components = new Set(["ActivityTimeline", "ActivityInteraction", "TimelineEntries", "TaskChanges", "TaskNeedsYou", "TaskOutcome", "TaskQuestion"]);
   const keys = new Set<string>();
   const literals = (type: ts.Type): string[] => {
     if (type.isStringLiteral()) return [type.value];
@@ -26,7 +26,7 @@ test("task detail messages exist in both supported locales, including every dyna
   };
   for (const source of program.getSourceFiles()) {
     const component = source.fileName.match(/\/components\/([^/]+)\.tsx$/)?.[1];
-    if (!components.has(component ?? "") && !source.fileName.endsWith("/state/taskControl.ts")) continue;
+    if (!components.has(component ?? "") && !source.fileName.endsWith("/state/taskReview.ts")) continue;
     const visit = (node: ts.Node) => {
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "t") {
         try { values(node.arguments[0]).forEach(key => keys.add(key)); }

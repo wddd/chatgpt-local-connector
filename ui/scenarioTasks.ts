@@ -1,7 +1,7 @@
 // Development-only task operations. Every mutation stays in the scenario's memory.
 import type { AgentActivitySnapshot, AgentTimeline, AgentTimelineEntry } from './types';
 import type { TaskRecord } from './state/tasks';
-import type { TaskReview } from './state/taskControl';
+import type { TaskReview } from './state/taskReview';
 import type { QueuedMessage } from './state/taskQueue';
 
 export function taskScenario(timelines: Record<string, AgentTimeline>, activity: AgentActivitySnapshot, records: TaskRecord[], changed: () => void) {

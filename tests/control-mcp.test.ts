@@ -2073,8 +2073,6 @@ test('AX2 local follow-ups accept self-test purpose and inherit it without bindi
     const sent=await management('tasks/control','POST',{op:'codex_send',args:{threadId:created.threadId,prompt:'local self-test',sendMode:'next',purpose,requestId:randomUUID()}});
     assert.equal(sent.state,'completed');assert.equal(sent.arguments.purpose,'self-test');assert.equal(sent.arguments.notify,null);
   }
-  const guide=(await call('guide',{op:'task_panel_control'})).result;
-  assert.ok(guide.inputSchema.properties.action.enum.includes('purpose'));
 });
 
 

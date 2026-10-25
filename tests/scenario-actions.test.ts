@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Window } from 'happy-dom';
 import { createServer } from 'vite';
 import { act, createElement as h } from 'react';
-import { fireEvent, within } from '@testing-library/dom';
+import { within } from '@testing-library/dom';
 
 test('task scenarios execute panel actions with mock receipts and readable state without Core', async () => {
   // Regression: SCENARIO_READ_ONLY rejected task review/queue POST reads and prevented every panel action in fixtures.
@@ -31,17 +31,19 @@ test('task scenarios execute panel actions with mock receipts and readable state
     const {TooltipProvider} = await server.ssrLoadModule('/ui/components/ui/index.tsx');
     const {t} = await server.ssrLoadModule('/ui/i18n.ts');
     await act(async()=>root.render(h(TooltipProvider,null,h(ActivityTimeline,{agent:'codex',session:agentActivity.get().snapshot.agents.codex.sessions[0],expanded:false,onToggleWidth(){},onBack(){}}))));
-    const page=within(mount),click=async(label:string)=>act(async()=>{fireEvent.click(page.getByRole('button',{name:label,exact:true}));});
-    const send = async(text:string) => {
-      await act(()=>fireEvent.change(page.getByRole('textbox',{name:t('detail.message')}),{target:{value:text}}));
-      await click(t('detail.send'));
-    };
-    await send('Queued fixture input'); await click(t('detail.steer'));
+    const page = within(mount);
+    assert.equal(page.queryByRole('textbox'), null);
+    for (const key of ['detail.send', 'detail.stop', 'detail.pass', 'detail.rework']) assert.equal(page.queryByRole('button', {name:t(key),exact:true}), null);
+    await act(async () => { call('codex_send',{threadId:id,prompt:'Queued fixture input',sendMode:'next'}); });
+    const queued = call('codex_queue',{threadId:id}).items[0];
+    call('codex_queue_control',{threadId:id,queueId:queued.queueId,action:'promote'});
     assert.equal(call('codex_queue',{threadId:id}).items[0].state,'steered');
     assert.ok(timeline(id).entries.some((entry:any)=>entry.type==='user'&&entry.text==='Queued fixture input'));
-    await send('Cancelled fixture input'); await click(t('cancel'));
-    assert.equal(call('codex_queue',{threadId:id}).items[0].state,'cancelled');
-    await click(t('detail.stop')); assert.equal(timeline(id).status,'cancelled');
+    call('codex_send',{threadId:id,prompt:'Cancelled fixture input',sendMode:'next'});
+    const cancel = call('codex_queue',{threadId:id}).items.find((row:any)=>row.state==='queued');
+    call('codex_queue_control',{threadId:id,queueId:cancel.queueId,action:'cancel'});
+    assert.equal(call('codex_queue',{threadId:id}).items.find((row:any)=>row.queueId===cancel.queueId).state,'cancelled');
+    call('codex_interrupt',{threadId:id,turnId:timeline(id).entries.at(-1).turnId}); assert.equal(timeline(id).status,'cancelled');
     await act(()=>root.unmount());
     const continuation = call('codex_send',{threadId:id,prompt:'Continue',sendMode:'next'});
     assert.equal(continuation.dispatchMode,'new-turn'); assert.equal(timeline(id).status,'completed');
