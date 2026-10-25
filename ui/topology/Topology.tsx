@@ -38,7 +38,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   const reportedPanel = useRef<PanelLayout>(undefined);
   const origin = useRef({ x: 0, y: 0 }), size = useRef<{ vw: number; vh: number } | null>(null);
   const drag = useRef<(Drag & { pointer: number; startClientX: number; startClientY: number; grabX: number; grabY: number; parent?: string;
-    order: string[]; active: boolean; target: HTMLElement; slot: HTMLElement; key: string }) | null>(null);
+    order: string[]; active: boolean; control: boolean; target: HTMLElement; slot: HTMLElement; key: string }) | null>(null);
   const suppressedClick = useRef<string | null>(null);
   const reduced = useMedia("(prefers-reduced-motion: reduce)"), prefix = useId();
   const params = topologyValues.use(), { guides, slow } = topologyDebug.use();
@@ -190,8 +190,8 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     animator.current.step(0, !!latest.current.reduced);
     paint(); wake();
   }, [paint, wake, scene]);
-  const startDrag = (event: PointerEvent<HTMLDivElement>, kind: Drag["kind"], side: Side, id: string, parent?: string) => {
-    if ((event.target as Element).closest("[data-topology-control]")) return;
+  const startDrag = (event: PointerEvent<HTMLDivElement>, kind: Drag["kind"], side: Side, id: string, parent?: string, control = false) => {
+    if (!control && (event.target as Element).closest("[data-topology-control]")) return;
     if (event.button !== 0 || !event.isPrimary || latest.current.nodes.some(n => n.selected)) return;
     const key = kind === "node" ? nodeKey(side, id) : taskKey(side, id), v = animator.current.values(key);
     const button = (event.target as Element).closest("button");
@@ -203,14 +203,17 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       : latest.current.tasks.filter(t => t.side === side && t.parent === parent && t.reorderable
         && (t.state === "attention") === (latest.current.tasks.find(t => t.side === side && t.id === id)?.state === "attention"));
     drag.current = { kind, side, id, parent, x: v.x, y: v.y, pointer: event.pointerId, startClientX: event.clientX, startClientY: event.clientY,
-      grabX: event.clientX - origin.current.x - v.x, grabY: event.clientY - origin.current.y - v.y, order: candidates.map(n => n.id), active: false,
+      grabX: event.clientX - origin.current.x - v.x, grabY: event.clientY - origin.current.y - v.y, order: candidates.map(n => n.id), active: false, control,
       target: button, slot: event.currentTarget, key };
-    button.setPointerCapture(event.pointerId);
+    // The check owns capture until its click threshold is exceeded. Retain the
+    // original grab point so handing over never jumps or loses the first move.
+    if (!control) button.setPointerCapture(event.pointerId);
   };
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d || d.pointer !== event.pointerId) return;
-    if (!d.active && Math.hypot(event.clientX - d.startClientX, event.clientY - d.startClientY) < 4) return;
+    const distance = Math.hypot(event.clientX - d.startClientX, event.clientY - d.startClientY);
+    if (!d.active && (d.control ? distance <= 6 : distance < 4)) return;
     d.active = true; d.slot.dataset.dragging = "true"; suppressedClick.current = d.key;
     const y = event.clientY - origin.current.y - d.grabY, movedY = y !== d.y;
     d.x = event.clientX - origin.current.x - d.grabX; d.y = y;
@@ -224,7 +227,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     const d = drag.current;
     if (!d || d.pointer !== event.pointerId) return;
     drag.current = null; delete d.slot.dataset.dragging;
-    if (d.target.hasPointerCapture(d.pointer)) d.target.releasePointerCapture(d.pointer);
+    if ((!d.control || d.active) && d.target.hasPointerCapture(d.pointer)) d.target.releasePointerCapture(d.pointer);
     if (d.active && !cancelled) {
       if (d.kind === "node") latest.current.onReorderNodes(d.side, d.order);
       else latest.current.onReorderTasks(d.side, d.parent!, d.order);
@@ -283,6 +286,10 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   // controls that stop pointerdown before the draggable slot can receive it.
   return <div ref={graph} className="connection-graph topology-scene"
     onPointerDownCapture={() => { suppressedClick.current = null; }}
+    onPointerMoveCapture={event => { if (drag.current?.control) moveDrag(event); }}
+    onPointerUpCapture={event => { if (drag.current?.control) finishDrag(event); }}
+    onPointerCancelCapture={event => { if (drag.current?.control) finishDrag(event, true); }}
+    onLostPointerCaptureCapture={event => { if (drag.current?.control) finishDrag(event, true); }}
     onPointerMove={moveDrag} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)}
     onLostPointerCapture={event => finishDrag(event, true)}
     onKeyDownCapture={event => { if (event.key === "Escape" && drag.current) {
@@ -326,6 +333,9 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       className="activity-slot" data-highlighted={t.selected || undefined} data-reorderable={t.reorderable || undefined}
       onPointerEnter={() => setHover({ side: t.side, id: t.id, task: true })} onPointerLeave={() => setHover(null)}
       onFocusCapture={() => setFocus({ side: t.side, id: t.id, task: true })} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocus(null); }}
+      onPointerDownCapture={t.reorderable ? event => {
+        if ((event.target as Element).closest("[data-topology-control]")) startDrag(event, "task", t.side, t.id, t.parent, true);
+      } : undefined}
       onPointerDown={t.reorderable ? event => startDrag(event, "task", t.side, t.id, t.parent) : undefined}
       onClickCapture={event => suppressClick(event, taskKey(t.side, t.id))}>{t.content}</div>)}
   </div>;

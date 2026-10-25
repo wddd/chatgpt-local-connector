@@ -7,8 +7,8 @@ import { createServer } from "vite";
 import { act, createElement as h } from "react";
 import { within, fireEvent } from "@testing-library/dom";
 
-test("completed bubble read control isolates jitter, drag, cancellation and keyboard activation from topology", async () => {
-  // Regression: the completed bubble check shared topology drag handling and had no movement or cancellation guard.
+test("completed bubble check hands drags to topology while preserving jitter clicks, cancellation and keyboard activation", async () => {
+  // Regression: acceptance found that drags starting on the completed check never moved or reordered the bubble.
   const window = new Window({ url: "http://localhost" });
   window.localStorage.setItem("arc.privacy", "false");
   const frames = new Map<number, FrameRequestCallback>(); let frame = 0;
@@ -17,7 +17,7 @@ test("completed bubble read control isolates jitter, drag, cancellation and keyb
   class Observer { observe() {} disconnect() {} }
   Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
     Node: window.Node, localStorage: window.localStorage, getComputedStyle: window.getComputedStyle.bind(window),
-    ResizeObserver: Observer, matchMedia: window.matchMedia, innerWidth: 1280, innerHeight: 800,
+    ResizeObserver: Observer, matchMedia: window.matchMedia, innerWidth: 1280, innerHeight: 800, devicePixelRatio: 1,
     requestAnimationFrame: (callback: FrameRequestCallback) => { frames.set(++frame, callback); return frame; },
     cancelAnimationFrame: (id: number) => frames.delete(id), IS_REACT_ACT_ENVIRONMENT: true });
   Object.defineProperties(window.HTMLElement.prototype, {
@@ -35,6 +35,8 @@ test("completed bubble read control isolates jitter, drag, cancellation and keyb
     const { ActivityBubble } = await server.ssrLoadModule("/ui/components/ActivityBubbles.tsx");
     const { agentPanel } = await server.ssrLoadModule("/ui/state/overviewPanels.ts");
     const { t } = await server.ssrLoadModule("/ui/i18n.ts");
+    const { viewModel } = await server.ssrLoadModule("/ui/acceptance.ts");
+    const position = () => { const { x, y } = viewModel().topology.tasks.find((task: any) => task.id === "finished").position; return { x, y }; };
     const session = { id: "finished", title: "Finished task", source: "arc-task", phase: "idle", phaseSince: null, headline: "", orderAt: 1, endedAt: 1 };
     let read = false, order: string[] = [];
     await act(() => root.render(h(Topology, { boundary: { current: mount }, left: [], right: [{ id: "codex", state: "normal", attention: false, selected: false,
@@ -53,14 +55,33 @@ test("completed bubble read control isolates jitter, drag, cancellation and keyb
       await pointer(button, "pointermove", 23, 22, kind);
       await pointer(button, "pointerup", 23, 22, kind); await click(button);
       assert.equal(read, true); assert.equal(agentPanel.get(), undefined); assert.deepEqual(order, []);
-      read = false;
-      await pointer(button, "pointerdown", 20, 20, kind);
-      await pointer(button, "pointermove", 20, 80, kind);
-      await pointer(button, "pointermove", 20, 20, kind);
-      await pointer(button, "pointerup", 20, 20, kind); await click(button);
-      assert.equal(read, false); assert.equal(agentPanel.get(), undefined); assert.deepEqual(order, []);
+      for (const [dx, dy] of [[60, 0], [0, 60]]) {
+        read = false; order = [];
+        const checkStart = position();
+        await pointer(button, "pointerdown", 20, 20, kind);
+        await pointer(button, "pointermove", 20 + dx, 20 + dy, kind);
+        const checkMoved = position();
+        assert.notDeepEqual(checkMoved, checkStart);
+        // Returning inside the click threshold must not turn a drag into a read.
+        await pointer(button, "pointermove", 20, 20, kind);
+        await pointer(button, "pointerup", 20, 20, kind); await click(button);
+        assert.equal(read, false); assert.equal(agentPanel.get(), undefined); assert.deepEqual(order, [session.id]);
+        order = [];
+        const bodyStart = position();
+        await pointer(body, "pointerdown", 100, 100, kind);
+        await pointer(body, "pointermove", 100 + dx, 100 + dy, kind);
+        const bodyMoved = position();
+        assert.deepEqual({ x: checkMoved.x - checkStart.x, y: checkMoved.y - checkStart.y },
+          { x: bodyMoved.x - bodyStart.x, y: bodyMoved.y - bodyStart.y });
+        await pointer(body, "pointerup", 100 + dx, 100 + dy, kind); await click(body);
+        assert.equal(read, false); assert.equal(agentPanel.get(), undefined); assert.deepEqual(order, [session.id]);
+      }
+      order = [];
       await pointer(button, "pointerdown", 20, 20, kind); await pointer(button, "pointercancel", 20, 20, kind); await click(button);
-      assert.equal(read, false);
+      assert.equal(read, false); assert.deepEqual(order, []);
+      await pointer(button, "pointerdown", 20, 20, kind); await pointer(button, "pointermove", 20, 80, kind);
+      await pointer(button, "pointercancel", 20, 80, kind); await click(button);
+      assert.equal(read, false); assert.deepEqual(order, []);
     }
     for (const key of ["Enter", " "]) {
       read = false;
