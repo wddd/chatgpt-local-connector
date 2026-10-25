@@ -6,7 +6,7 @@ import { act, createElement as h } from "react";
 import { within, fireEvent } from "@testing-library/dom";
 
 test("dock interaction pauses routing and explicit controls preserve answering", async () => {
-  // Regression: a pending question was pushed while the user was choosing or entering an answer in the open dock.
+  // Regression: pending questions routed during answering; stable routing labels appeared twice in DOM fixture captures.
   const window = new Window({ url: "http://localhost" });
   const media = { matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} };
   window.matchMedia = () => media as unknown as MediaQueryList;
@@ -60,14 +60,21 @@ test("dock interaction pauses routing and explicit controls preserve answering",
     failRouting = false;
     routing.state = "not-routable";
     await render("next-check", false);
+    assert.equal(page.getAllByText(t("routing.nextCheck")).length, 1);
+    assert.equal(page.getByRole("status").textContent, t("routing.nextCheck"));
     assert.equal(page.queryByRole("button", { name: t("routing.pause") }), null);
     assert.equal(page.queryByRole("button", { name: t("routing.handoff", { source }) }), null);
-    routing.state = "deferred";
+    routing = { ...routing, state: "deferred", deferUntil: Date.now() + 4000 };
+    await render("soon", false);
+    assert.equal(page.getByRole("status").textContent, t("routing.soon", { source }));
+    routing.deferUntil = Date.now() + 15000;
     await render("countdown", true);
+    assert.equal(page.getByRole("status").textContent, t("routing.handing", { source }));
     const click = async (node: HTMLElement) => { await act(async () => fireEvent.click(node)); };
     assert.ok(page.getByRole("button", { name: t("routing.pause") }));
     await click(page.getByRole("button", { name: new RegExp(t("detail.openRequest")) }));
     assert.ok(page.getByRole("dialog", { name: t("detail.needsYou") }));
+    assert.equal(page.getAllByText(t("routing.paused")).length, 1);
     await click(page.getByRole("button", { name: t("routing.resume") }));
     const input = page.getByRole("textbox");
     await act(async () => input.focus());
@@ -82,6 +89,7 @@ test("dock interaction pauses routing and explicit controls preserve answering",
     await click(page.getByRole("button", { name: t("routing.handoff", { source }) }));
     assert.equal(page.queryByRole("button", { name: t("routing.resume") }), null);
     assert.equal(page.queryByRole("button", { name: t("routing.pause") }), null);
+    assert.equal(page.getAllByText(t("routing.routed", { source })).length, 1);
     await click(page.getByRole("button", { name: t("detail.sendAnswer") }));
     assert.deepEqual(submitted, { answer: "One" });
   } finally {

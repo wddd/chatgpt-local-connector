@@ -53,7 +53,7 @@ test("pending input actions and routing stay inside short panels and narrow shee
         const surface = narrow ? page.getByRole("dialog", { name: copy["detail.needsYou"], exact: true }) : panel;
         const dock = page.getByRole("region", { name: copy["detail.needsYou"], exact: true });
         const submit = dock.getByRole("button", { name: copy[options < 0 ? "detail.approve" : "detail.sendAnswer"], exact: true });
-        const routing = dock.getByText(copy["routing.nextCheck"], { exact: true }).and(dock.locator('[aria-hidden="true"]'));
+        const routing = dock.getByRole("status");
         await submit.waitFor();
         await routing.waitFor();
         await inside(dock, surface); await inside(submit, surface); await inside(routing, surface);
