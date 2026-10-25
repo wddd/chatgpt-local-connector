@@ -6,34 +6,57 @@ const PROMPT: &str = "The previous turn was interrupted by an ARC update. Check 
 pub(crate) async fn snapshot(control: &crate::control::Control) -> Result<Value> {
     let health = control.health().await;
     let records = control.task_records().await?;
-    let events = control.events.lock().await;
+    // Copy only cutoff metadata, not timelines or transcript contents. Release the
+    // event lock before ownership probes, which may themselves publish events.
+    let (observations, pending) = {
+        let events = control.events.lock().await;
+        (
+            events
+                .timelines
+                .iter()
+                .map(|(thread, timeline)| {
+                    (
+                        thread.clone(),
+                        timeline.turn.clone(),
+                        timeline.status.clone(),
+                        timeline.observation_lost,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            events.pending.values().cloned().collect::<Vec<_>>(),
+        )
+    };
     let mut turns = Vec::new();
-    for (thread, timeline) in &events.timelines {
-        if !control.background(thread)?
-            || !matches!(timeline.status.as_str(), "running" | "inProgress")
+    for (thread, turn, state, observation_lost) in observations {
+        let interactions: Vec<_> = pending
+            .iter()
+            .filter(|p| p["params"]["threadId"] == thread)
+            .cloned()
+            .collect();
+        if turn.is_empty()
+            || (!matches!(state.as_str(), "running" | "inProgress")
+                && interactions.is_empty()
+                && !observation_lost)
         {
             continue;
         }
-        let pending: Vec<_> = events
-            .pending
-            .values()
-            .filter(|p| p["params"]["threadId"] == *thread)
-            .cloned()
-            .collect();
-        let binding = crate::claude_notify::replacement_turn_binding(thread, Some(&timeline.turn))?;
-        let mut entry = json!({"threadId":thread,"turnId":timeline.turn,"executionOwner":"connector",
-            "binding":binding,"dispatch":binding["dispatch"],"configuration":{"model":binding["model"],"turn":binding["turn"]},"pendingInteractions":pending,
+        if !control.effective_background(&thread).await? {
+            continue;
+        }
+        let binding = crate::claude_notify::replacement_turn_binding(&thread, Some(&turn))?;
+        let mut entry = json!({"threadId":thread,"turnId":turn,"executionOwner":"connector",
+            "binding":binding,"dispatch":binding["dispatch"],"configuration":{"model":binding["model"],"turn":binding["turn"]},"pendingInteractions":interactions,
             "state":"recorded","dispatchRequestId":id(),"observedAt":now()});
-        let reason = if !pending.is_empty() {
+        let reason = if !interactions.is_empty() {
             Some("pending-interaction-cannot-reconnect")
         } else if health["activeWrites"] != 0 {
             Some("write-in-flight")
         } else if records
             .iter()
-            .any(|r| r["threadId"] == *thread && r["state"] == "unconfirmed")
+            .any(|r| r["threadId"] == thread && r["state"] == "unconfirmed")
         {
             Some("uncertain-write")
-        } else if timeline.observation_lost {
+        } else if observation_lost {
             Some("observation-lost")
         } else if !binding.is_object() {
             Some("dispatch-binding-missing")
@@ -74,7 +97,7 @@ pub(crate) async fn snapshot(control: &crate::control::Control) -> Result<Value>
     }
     Ok(
         json!({"backendSession":control.session,"turns":turns,"activeWrites":health["activeWrites"],
-        "pendingInteractions":events.pending.len(),"observedAt":now()}),
+        "pendingInteractions":pending.len(),"observedAt":now()}),
     )
 }
 
@@ -95,7 +118,7 @@ pub(crate) async fn capture_shutdown(control: &crate::control::Control) -> Resul
     Ok(())
 }
 
-pub(super) fn apply_snapshot(receipt: &mut Value, snapshot: Value) {
+pub fn apply_snapshot(receipt: &mut Value, snapshot: Value) {
     let previous = receipt["interruptedTurns"]
         .as_array()
         .cloned()

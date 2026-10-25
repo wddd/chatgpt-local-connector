@@ -3,8 +3,8 @@ use crate::*;
 mod backups;
 mod resume;
 pub use backups::{cleanup_candidate, legacy_backup_name};
+pub use resume::{apply_snapshot, continuation_outcome, resumable_waiting};
 pub(crate) use resume::{capture_shutdown, continuation_entry, snapshot};
-pub use resume::{continuation_outcome, resumable_waiting};
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -378,6 +378,65 @@ mod tests {
             continuation_outcome(&previous, &json!({"id":"newer","status":"interrupted"}))
                 .is_some()
         );
+    }
+
+    #[test]
+    fn final_snapshot_preserves_dispatch_ids_and_reports_new_interactions() {
+        // Regression: countdown changes could duplicate a continuation or resend a newly blocked interaction.
+        let old = json!({"threadId":"task","turnId":"turn","state":"recorded","dispatchRequestId":"dispatch","continuation":{"threadId":"task","requestId":"queue","prompt":"continue"}});
+        let mut receipt = json!({"interruptedTurns":[old.clone()]});
+        apply_snapshot(
+            &mut receipt,
+            json!({"turns":[{"threadId":"task","turnId":"turn","state":"recorded","dispatchRequestId":"discard","continuation":{"requestId":"discard"}}]}),
+        );
+        assert_eq!(
+            receipt["interruptedTurns"][0]["dispatchRequestId"],
+            "dispatch"
+        );
+        assert_eq!(
+            receipt["interruptedTurns"][0]["continuation"],
+            old["continuation"]
+        );
+        apply_snapshot(
+            &mut receipt,
+            json!({"turns":[{"threadId":"task","turnId":"turn","state":"needs-attention","reason":"pending-interaction-cannot-reconnect","pendingInteractions":[{"id":"question"}]}]}),
+        );
+        assert_eq!(receipt["interruptedTurns"].as_array().unwrap().len(), 1);
+        assert_eq!(receipt["interruptedTurns"][0]["state"], "needs-attention");
+        assert_eq!(
+            receipt["interruptedTurns"][0]["pendingInteractions"],
+            json!([{"id":"question"}])
+        );
+        assert!(receipt["interruptedTurns"][0]["continuation"].is_null());
+    }
+
+    #[test]
+    fn explicit_continuation_merges_once_and_finished_turns_are_not_submitted() {
+        // Regression: a replacing-thread continuation could compete with the automatic batch continuation.
+        let explicit = json!({"threadId":"one","requestId":"explicit","prompt":"user instruction"});
+        let mut receipt =
+            json!({"continuation":explicit,"continuationState":"waiting-for-recovery"});
+        let snapshot = json!({"turns":[
+            {"threadId":"one","turnId":"first","state":"recorded","continuation":{"requestId":"generated","model":"model"}},
+            {"threadId":"two","turnId":"second","state":"recorded","continuation":{"requestId":"other"}}
+        ]});
+        apply_snapshot(&mut receipt, snapshot);
+        assert_eq!(receipt["interruptedTurns"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            receipt["interruptedTurns"][0]["continuation"]["requestId"],
+            "explicit"
+        );
+        assert_eq!(
+            receipt["interruptedTurns"][0]["continuation"]["model"],
+            "model"
+        );
+        assert_eq!(receipt["continuationState"], "covered-by-interrupted-turn");
+        apply_snapshot(&mut receipt, json!({"turns":[]}));
+        assert!(receipt["interruptedTurns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entry| entry["state"] == "finished-before-shutdown"));
     }
 
     #[test]
