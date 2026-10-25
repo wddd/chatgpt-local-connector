@@ -1,6 +1,6 @@
 import { installTopologyAccounts } from './topology/scenarioAccounts';
 import { accountScenario } from "./scenarioAccounts";
-import { beginScenario, finishScenario } from "./state/scenarioReadiness";
+import { beginScenario, finishScenario, missingScenarioRoute, scenarioReadiness } from "./state/scenarioReadiness";
 import { updates, acceptUpdateSnapshot } from './state/updates';
 import type { UpdateSnapshot, Replacement } from './state/updateModel';
 import { onboarding, connectionSetup, connectionSwitch, type ConnectionSwitch, type SourceSetup, type ConnectionSetup } from './state/onboarding';
@@ -20,6 +20,7 @@ import { selectAgentPanel } from './state/overviewPanels';
 import type { Status } from './state/types';
 import config from '../native/src/ingress/config.json';
 import { taskScenario } from './scenarioTasks';
+import { taskPanelSnapshot } from './state/taskPanel';
 
 type Fixture = { update?: UpdateSnapshot; replacement?: Replacement; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; question?: boolean; completed?: boolean; elapsedSeconds?: number }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
@@ -28,6 +29,17 @@ let conversations: Record<string, AgentConversation[]> = {};
 let accountResponse: ReturnType<typeof accountScenario> | undefined;
 let taskResponse: ReturnType<typeof taskScenario> | undefined;
 export function scenarioResponse(path: string, method: string, body?: unknown): unknown {
+  try { return respondToScenario(path, method, body); }
+  catch (error) {
+    if (/SCENARIO_(ROUTE|ACTION|TIMELINE)_UNAVAILABLE/.test(String(error))) missingScenarioRoute(path, method);
+    throw error;
+  }
+}
+function respondToScenario(path: string, method: string, body?: unknown): unknown {
+  if (path === 'app/env' && method === 'GET') {
+    const now = Date.now();
+    return { active: false, expiresAt: null, realNowMs: now, overrides: {}, clock: { value: { nowMs: now, speed: 1 }, source: 'system' } } satisfies import('./state/appEnvModel').EnvSample;
+  }
   const accountResult = accountResponse?.(path, method, body);
   if (accountResult !== undefined) return structuredClone(accountResult);
   if (path === 'preferences' || path === 'preferences/import') return responses.preferences;
@@ -58,10 +70,10 @@ export function scenarioResponse(path: string, method: string, body?: unknown): 
   throw new Error(`SCENARIO_ROUTE_UNAVAILABLE: ${path}`);
 }
 export async function installScenario(name: string) {
-  beginScenario(name);
   const load = fixtures[`../tooling/acceptance/scenarios/${name}.json`];
   if (!load) throw new Error(`Unknown acceptance scenario: ${name}`);
   const fixture = await load() as Fixture;
+  beginScenario(name, fixture.detailTask === undefined ? undefined : `fixture-task-${fixture.detailTask}`);
   localStorage.setItem('arc-page', 'overview');
   const preferences = { 'arc.privacy': 'true', theme: fixture.theme, language: fixture.language, 'arc.agent-order': JSON.stringify(fixture.agents), 'quota-display': fixture.quotaDisplay ?? 'remaining', 'quota-reset-display': fixture.resetDisplay ?? 'countdown', 'task-bubble-density': fixture.bubbles?.density ?? 'standard', 'task-bubble-width': fixture.bubbles?.width ?? 'medium', 'task-bubble-auto-compact': fixture.bubbles?.autoCompact === false ? 'off' : 'on' };
   acceptPreferences(preferences);
@@ -226,7 +238,6 @@ export async function installScenario(name: string) {
     openSnapshotPanel(fixture.panel);
     if (fixture.detailTask !== undefined) {
       await settledViewModel();
-      beginScenario(name, `fixture-task-${fixture.detailTask}`);
       const task = fixture.tasks[fixture.detailTask];
       const session = activity.agents[task.agent].sessions.find(session => session.id === `fixture-task-${fixture.detailTask}`)!;
       selectAgentPanel({ type: 'task', agent: task.agent, session: { ...session, orderAt: Date.parse(session.startedAt!) } });
@@ -239,6 +250,12 @@ export async function installScenario(name: string) {
     if (fixture.replacement) updates.set(old => ({...old, replacement: fixture.replacement, replacementOpen: true}));
     await settledViewModel();
     finishScenario();
-    document.documentElement.dataset.scenarioReady = name;
+    for (let frame = 0; frame < 120; frame++) {
+      const state = scenarioReadiness(taskPanelSnapshot());
+      if (state?.error) throw new Error(state.error);
+      if (state?.ready) { document.documentElement.dataset.scenarioReady = name; return; }
+      await new Promise(requestAnimationFrame);
+    }
+    throw new Error('Fixture task detail did not finish loading');
   };
 }

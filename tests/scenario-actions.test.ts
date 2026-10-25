@@ -26,6 +26,14 @@ test('task scenarios execute panel actions with mock receipts and readable state
     const call = (op:string,args:Record<string,unknown>) => scenarioResponse('tasks/control','POST',{op,args});
     const timeline = (id:string) => scenarioResponse('agents/conversations/timeline','POST',{agent:'codex',id});
     const id='fixture-task-0';
+    const env = scenarioResponse('app/env', 'GET');
+    assert.equal(env.active, false); assert.equal(env.clock.source, 'system');
+    assert.ok(Number.isFinite(env.clock.value.nowMs));
+    assert.deepEqual(scenarioResponse('tasks/presence', 'POST', {agent:'codex',taskId:id,present:true}), {present:true});
+    const routingArgs = {agent:'codex',taskId:'fixture-task-1',id:'fixture-interaction-1'};
+    for (const action of ['read','pause','resume','handoff']) {
+      assert.equal(scenarioResponse('tasks/request-routing', 'POST', {...routingArgs,action}).routing.state, 'not-routable');
+    }
     assert.deepEqual(scenarioResponse('tasks/reviews','POST',{id}),{reviews:[]});
     assert.deepEqual(call('codex_queue',{threadId:id}).items,[]);
     const {agentActivity} = await server.ssrLoadModule('/ui/state/activity.ts');
@@ -74,7 +82,11 @@ test('task scenarios execute panel actions with mock receipts and readable state
       assert.equal(result.state,action==='reject'?'not-executed':'completed');
       assert.equal(scenarioResponse('tasks','GET').records.find((row:any)=>row.requestId===before.requestId).approval.source,'local');
     }
+    const {scenarioReadiness} = await server.ssrLoadModule('/ui/state/scenarioReadiness.ts');
+    assert.equal(scenarioReadiness(null).state, 'opening');
     assert.throws(()=>scenarioResponse('unknown-write','POST',{}),/SCENARIO_ACTION_UNAVAILABLE/);
+    assert.deepEqual(scenarioReadiness(null).missingRoutes, ['POST unknown-write']);
+    assert.equal(scenarioReadiness(null).state, 'failed');
     await installScenario('timeline-multi-turn');
     assert.deepEqual(scenarioResponse('tasks/reviews','POST',{id}).reviews,[]);
     assert.deepEqual(call('codex_queue',{threadId:id}).items,[]);

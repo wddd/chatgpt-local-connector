@@ -1,10 +1,13 @@
 // Development-only task operations. Every mutation stays in the scenario's memory.
 import type { AgentActivitySnapshot, AgentTimeline, AgentTimelineEntry } from './types';
+import { appNow } from './state/appEnvironment';
+import type { RequestRouting } from './state/requestRouting';
 import type { TaskRecord } from './state/tasks';
 import type { TaskReview } from './state/taskReview';
 import type { QueuedMessage } from './state/taskQueue';
 
-export function taskScenario(timelines: Record<string, AgentTimeline>, activity: AgentActivitySnapshot, records: TaskRecord[], changed: () => void) {
+export function taskScenario(timelines: Record<string, AgentTimeline>, activity: AgentActivitySnapshot, records: TaskRecord[], changed: () => void, routingByTask: Record<string, RequestRouting> = {}) {
+  const routing = new Map<string, { value: RequestRouting; remaining: number }>();
   const queue: (QueuedMessage & { turnId?: string })[] = [], reviews = new Map<string, Map<string, TaskReview>>();
   const receipts = new Map<string, Record<string, unknown>>();
   const read = (id: string) => {
@@ -93,6 +96,28 @@ export function taskScenario(timelines: Record<string, AgentTimeline>, activity:
   };
   return (route: string, body: unknown) => {
     const request = body as Record<string, any>;
+    if (route === 'tasks/presence') return { present: request.present === true };
+    if (route === 'tasks/request-routing') {
+      const timeline = read(request.taskId);
+      if (!timeline.entries.some(row => row.status === 'pending' && String(row.interaction?.respond.args?.id) === request.id)) throw new Error('REQUEST_ROUTING_NOT_FOUND');
+      const key = JSON.stringify([request.agent, request.taskId, request.id]);
+      let entry = routing.get(key);
+      if (!entry) {
+        const value = structuredClone(routingByTask[request.taskId] ?? { state: 'not-routable', deferUntil: null, pausedBy: null, reason: 'no-source-binding' });
+        routing.set(key, entry = { value, remaining: Math.max(0, (value.deferUntil ?? appNow()) - appNow()) });
+      }
+      const now = appNow();
+      if (entry.value.state === 'deferred' && (entry.value.deferUntil ?? now) <= now) entry.value = { state: 'routed', deferUntil: null, pausedBy: null, reason: 'countdown-elapsed' };
+      if (request.action === 'pause' && entry.value.state === 'deferred') {
+        entry.remaining = Math.max(0, (entry.value.deferUntil ?? now) - now);
+        entry.value = { state: 'paused', deferUntil: null, pausedBy: 'user', reason: 'explicit-or-dock-interaction' };
+      } else if (request.action === 'resume' && entry.value.state === 'paused') {
+        entry.value = { state: 'deferred', deferUntil: now + entry.remaining, pausedBy: null, reason: 'resumed' };
+      } else if (request.action === 'handoff' && ['deferred', 'paused'].includes(entry.value.state)) {
+        entry.value = { state: 'routed', deferUntil: null, pausedBy: null, reason: 'handoff-now' };
+      } else if (!['read', 'pause', 'resume', 'handoff'].includes(request.action)) throw new Error('INVALID_ROUTING_ACTION');
+      return { routing: entry.value };
+    }
     if (route === 'tasks/reviews') return operate('task_reviews',request);
     if (route === 'tasks/decision') return operate('receipt',request);
     if (route === 'tasks/control' || route === 'agents/respond') return operate(request.op,request.args);

@@ -44,8 +44,9 @@ try {
       const row = { name, width, height, key, errors, baseline: screenshots ? 'missing' : 'disabled', changedPixels: null, changedRatio: null };
       try {
         await page.goto(`http://127.0.0.1:${port}/?scenario=${encodeURIComponent(name)}`);
-        await page.waitForFunction(name => document.documentElement.dataset.scenarioReady === name, name, { timeout: 15000 });
+        await page.waitForFunction(name => document.documentElement.dataset.scenarioError || document.documentElement.dataset.scenarioReady === name, name, { timeout: 15000 });
         const model = await page.evaluate(() => window.__ARC_VIEW_MODEL__());
+        if (!model.scenario?.ready) throw new Error(model.scenario?.error || 'Fixture task detail is not ready');
         if (!fixture.page && !model.topology) throw new Error('No rendered topology exported');
         const actualAgents = (model.topology?.nodes ?? []).filter(n => n.side === 1).map(n => n.id);
         if (!fixture.page && fixture.agents.some(a => !actualAgents.includes(a))) throw new Error('Fixture agents were not rendered');

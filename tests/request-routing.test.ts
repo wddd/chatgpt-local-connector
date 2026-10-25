@@ -23,9 +23,11 @@ test("dock interaction pauses routing and explicit controls preserve answering",
   const originalFetch = globalThis.fetch;
   let routing = { state: "deferred", deferUntil: Date.now() + 15000, pausedBy: null as string | null, reason: "user-present" };
   let submitted: unknown;
+  let failRouting = false;
   globalThis.fetch = async (input, init) => {
     const path = String(input).replace("/api/", ""), body = JSON.parse(String(init?.body || "{}"));
     if (path === "tasks/request-routing") {
+      if (failRouting) throw new Error("SCENARIO_ACTION_UNAVAILABLE: tasks/request-routing");
       if (body.action === "pause") routing = { ...routing, state: "paused", pausedBy: "user" };
       if (body.action === "resume") routing = { ...routing, state: "deferred", pausedBy: null };
       if (body.action === "handoff") routing = { ...routing, state: "routed", pausedBy: null };
@@ -45,6 +47,17 @@ test("dock interaction pauses routing and explicit controls preserve answering",
       await act(async () => root.render(h(TooltipProvider, null, h(Dock, { key, agent: "codex", session, entries: [], source, narrow }))));
     };
     const page = within(document.body);
+    failRouting = true;
+    for (const narrow of [false, true]) {
+      await render(`unavailable-${narrow}`, narrow);
+      if (narrow) await act(async () => fireEvent.click(page.getByRole("button", { name: new RegExp(t("detail.openRequest")) })));
+      assert.equal(page.queryByRole("alert"), null);
+      assert.equal(page.queryByRole("status"), null);
+      assert.ok(!document.body.textContent.includes("SCENARIO_ACTION_UNAVAILABLE"));
+      await act(async () => fireEvent.click(page.getByRole("radio", { name: /One/ })));
+      assert.equal((page.getByRole("button", { name: t("detail.sendAnswer") }) as HTMLButtonElement).disabled, false);
+    }
+    failRouting = false;
     routing.state = "not-routable";
     await render("next-check", false);
     assert.equal(page.queryByRole("button", { name: t("routing.pause") }), null);

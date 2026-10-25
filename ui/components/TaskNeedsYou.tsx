@@ -49,11 +49,10 @@ export default function TaskNeedsYou({ agent, session, entries, source, narrow }
         <ActivityInteraction key={identity} agent={agent} session={pending} />
       </>}
     </>}
-    <RequestRouting routing={routing.routing} source={source || t("routing.source")} busy={routing.busy} change={routing.change} />
-    {routing.error && <p role="alert">{routing.error}</p>}
+    <RequestRouting routing={routing.error ? undefined : routing.routing} source={source || t("routing.source")} busy={routing.busy} change={routing.change} />
   </section>;
   if (!narrow) return <footer className="dialog-footer task-detail-footer">{dock}</footer>;
-  return <><footer className="dialog-footer task-detail-footer" onFocusCapture={pauseOnInteraction} onPointerDownCapture={pauseOnInteraction} onClickCapture={pauseOnInteraction} onKeyDownCapture={pauseOnInteraction}><Button variant="secondary" className="task-needs-banner" onClick={() => { void routing.change("pause"); setSheetOpen(true); }} aria-haspopup="dialog"><span><strong>{t("detail.needsYou")} · {count}</strong><span>{interaction?.summary}</span></span><span>{t("detail.openRequest")}</span></Button>{!sheetOpen && <><RequestRouting routing={routing.routing} source={source || t("routing.source")} busy={routing.busy} change={routing.change} />{routing.error && <p role="alert">{routing.error}</p>}</>}</footer>
+  return <><footer className="dialog-footer task-detail-footer" onFocusCapture={pauseOnInteraction} onPointerDownCapture={pauseOnInteraction} onClickCapture={pauseOnInteraction} onKeyDownCapture={pauseOnInteraction}><Button variant="secondary" className="task-needs-banner" onClick={() => { void routing.change("pause"); setSheetOpen(true); }} aria-haspopup="dialog"><span><strong>{t("detail.needsYou")} · {count}</strong><span>{interaction?.summary}</span></span><span>{t("detail.openRequest")}</span></Button>{!sheetOpen && <><RequestRouting routing={routing.error ? undefined : routing.routing} source={source || t("routing.source")} busy={routing.busy} change={routing.change} /></>}</footer>
     {sheetOpen && <Dialog sheet width={360} title={t("detail.needsYou")} onClose={() => setSheetOpen(false)} returnFocus=".task-needs-banner" footer={<Button variant="ghost" onClick={() => setSheetOpen(false)}>{t("detail.later")}</Button>}><div className="task-input-sheet">{dock}</div></Dialog>}
   </>;
 }
