@@ -1,7 +1,10 @@
 //! Local replacement receipts. No remote MCP surface or shell executor owns the worker.
 use crate::*;
 mod backups;
+mod resume;
 pub use backups::{cleanup_candidate, legacy_backup_name};
+pub(crate) use resume::{capture_shutdown, continuation_entry, snapshot};
+pub use resume::{continuation_outcome, resumable_waiting};
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -78,6 +81,9 @@ async fn deliver_continuation(path: &Path, receipt: &mut Value) -> Result<()> {
     else {
         return Ok(());
     };
+    if receipt["continuationState"] != "waiting-for-recovery" {
+        return Ok(());
+    }
     // Persist intent before submission. A crash is reconciled by this ID, never by a new send.
     receipt["continuationState"] = json!("submitting");
     save(&path.join("status.json"), receipt)?;
@@ -111,6 +117,17 @@ pub(crate) fn continuation_context(args: &Value) -> Result<Option<Value>> {
             continue;
         }
         let receipt = load(&path)?;
+        for entry in receipt["interruptedTurns"].as_array().into_iter().flatten() {
+            if entry["continuation"] == *args
+                && entry["binding"].is_object()
+                && matches!(
+                    string(entry, "state"),
+                    "submitting" | "receipt-returned" | "unconfirmed"
+                )
+            {
+                return Ok(Some(entry["binding"].clone()));
+            }
+        }
         if receipt["continuation"] == *args
             && receipt["continuationBinding"].is_object()
             && matches!(
@@ -125,6 +142,9 @@ pub(crate) fn continuation_context(args: &Value) -> Result<Option<Value>> {
 }
 
 pub(crate) fn continuation_request_matches(thread: &str, request: &str) -> Result<bool> {
+    if continuation_entry(thread, request)?.is_some() {
+        return Ok(true);
+    }
     let Ok(entries) = std::fs::read_dir(directory()) else {
         return Ok(false);
     };
@@ -159,11 +179,12 @@ pub fn status() -> Result<Value> {
     {
         receipt["next"] = json!(next);
     }
+    resume::status_details(&mut receipt)?;
     Ok(receipt)
 }
 pub fn terminal_next(state: &str) -> Option<&'static str> {
     match state {
-        "succeeded" => Some("Replacement succeeded. Read cli app status to confirm the running version and build."),
+        "succeeded" => Some("Replacement succeeded. Read interruptedTurns and continuation receipts for task recovery; queue acceptance is not task completion. Read cli app status to confirm the running build."),
         "cancelled" => Some("Replacement cancelled before installation. The previous app is unchanged. Read error and waiting, resolve the blocker, then retry cli app replace with the original candidate."),
         "rolled-back" => Some("Installation failed and the previous app was restored. Read error and logPath before retrying cli app replace."),
         "failed" => Some("Replacement failed. Read error, backupMoved and logPath. Preserve the recorded backup; do not start another replacement while recovery is required."),
@@ -307,6 +328,70 @@ pub fn waiting(activity: &Value, status: &Value, tasks: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn resumable_turns_do_not_hide_unsafe_shutdown_blockers() {
+        // Regression: parallel ARC-owned turns prevented normal replacement for the full idle deadline.
+        let activity = json!({"activeAgents":["codex"],"agents":{"codex":{"sessions":[{"id":"task","turnId":"turn","source":"codex-thread"}]}}});
+        let tasks =
+            json!({"records":[{"threadId":"task","turnId":"turn","executionOwner":"connector"}]});
+        let quiet = json!({"core":{"activeWrites":0,"pendingInteractions":0}});
+        let snapshot = json!({"turns":[{"threadId":"task","turnId":"turn","state":"recorded"}]});
+        let observed = waiting(&activity, &quiet, &tasks);
+        assert_eq!(resumable_waiting(observed.clone(), &snapshot)["idle"], true);
+        assert_eq!(
+            resumable_waiting(observed.clone(), &json!({"turns":[]}))["idle"],
+            false
+        );
+        let blocked =
+            json!({"turns":[{"threadId":"task","turnId":"turn","state":"needs-attention"}]});
+        assert_eq!(resumable_waiting(observed, &blocked)["idle"], false);
+        for field in ["activeWrites", "pendingInteractions"] {
+            let mut busy = quiet.clone();
+            busy["core"][field] = json!(1);
+            assert_eq!(
+                resumable_waiting(waiting(&activity, &busy, &tasks), &snapshot)["idle"],
+                false
+            );
+        }
+        assert_eq!(
+            resumable_waiting(
+                waiting(&activity, &quiet, &json!({"records":[]})),
+                &snapshot
+            )["idle"],
+            false
+        );
+    }
+
+    #[test]
+    fn replacement_continuation_does_not_repeat_completed_or_newer_work() {
+        // Regression: a turn could finish between the replacement snapshot and Core shutdown.
+        let previous = json!("original");
+        assert_eq!(
+            continuation_outcome(&previous, &json!({"id":"original","status":"interrupted"})),
+            None
+        );
+        assert!(
+            continuation_outcome(&previous, &json!({"id":"original","status":"completed"}))
+                .is_some()
+        );
+        assert!(
+            continuation_outcome(&previous, &json!({"id":"newer","status":"interrupted"}))
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn replacement_attribution_survives_public_receipt_projection() {
+        // Contract: CLI/control-source receipts expose replacement lineage without internal arguments or bindings.
+        let lineage = json!({"threadId":"thread","interruptedTurnId":"old","originalRequestId":"original","requestId":"queue","dispatchRequestId":"send"});
+        let receipt = crate::egress::receipt(
+            json!({"requestId":"send","state":"completed","operation":"send","replacementContinuation":lineage,"arguments":{"prompt":"private"},"binding":{"origin":"private"}}),
+        );
+        assert_eq!(receipt["replacementContinuation"], lineage);
+        assert!(receipt.get("arguments").is_none());
+        assert!(receipt.get("binding").is_none());
+    }
+
     #[test]
     fn explicit_immediate_replacement_is_preserved_through_cli_and_management() {
         // Regression: an explicit local installation still waited for idle work and a fixed handoff delay.

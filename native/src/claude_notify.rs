@@ -265,7 +265,7 @@ pub(crate) async fn bind(
     let dir = directory();
     let created = binding(&dir, thread, turn)?.is_none();
     let origin = crate::kernel::origin::current_origin();
-    let continued = if created && args.get("notify").is_none() && cause["op"] == "codex_send" {
+    let mut continued = if created && args.get("notify").is_none() && cause["op"] == "codex_send" {
         records(&dir)?
             .into_iter()
             .filter(|b| {
@@ -278,6 +278,16 @@ pub(crate) async fn bind(
     } else {
         None
     };
+    if created && continued.is_none() {
+        if let Some(entry) =
+            crate::app_replace::continuation_entry(thread, string(&cause, "requestId"))?
+        {
+            if entry["binding"]["origin"] == origin && entry["binding"]["notify"] == args["notify"]
+            {
+                continued = binding(&dir, thread, string(&entry, "turnId"))?;
+            }
+        }
+    }
     if created
         && continued.is_none()
         && matches!(string(&cause, "op"), "codex_send" | "codex_create")
@@ -409,11 +419,18 @@ pub(crate) async fn inherit(thread: &str, previous: &str, turn: &str) -> Result<
 
 // Local replacement captures the exact active dispatch before stopping Core.
 pub(crate) fn replacement_binding(thread: &str) -> Result<Value> {
+    replacement_turn_binding(thread, None)
+}
+
+pub(crate) fn replacement_turn_binding(thread: &str, turn: Option<&str>) -> Result<Value> {
     let all = records(&directory())?;
     let Some(b) = all
         .iter()
         .filter(|b| {
-            b.thread_id == thread && !b.terminal && (b.agent.is_empty() || b.agent == "codex")
+            b.thread_id == thread
+                && !b.terminal
+                && (b.agent.is_empty() || b.agent == "codex")
+                && turn.is_none_or(|turn| b.turn_id == turn)
         })
         .max_by_key(|b| b.created_at)
     else {
@@ -428,7 +445,7 @@ pub(crate) fn replacement_binding(thread: &str) -> Result<Value> {
     };
     Ok(
         json!({"threadId":thread,"turnId":b.turn_id,"origin":dispatch["origin"],
-        "purpose":dispatch["purpose"],"notify":b.target.as_ref().map(|target|json!({"channel":b.channel,"target":target}))}),
+        "purpose":dispatch["purpose"],"dispatch":dispatch,"model":b.retry["model"],"turn":b.retry["turn"],"notify":b.target.as_ref().map(|target|json!({"channel":b.channel,"target":target}))}),
     )
 }
 

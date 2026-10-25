@@ -84,7 +84,14 @@ pub(crate) async fn enqueue(args: &Value, receipt: &mut Value) -> Result<Value> 
             .max()
             .unwrap_or(0)
             + 1;
-        let row = json!({"queueId":id,"threadId":args["threadId"],"args":args,"origin":receipt["origin"],"state":"queued","sequence":sequence,"createdAt":now(),"dispatchRequestId":crate::id()});
+        let mut row = json!({"queueId":id,"threadId":args["threadId"],"args":args,"origin":receipt["origin"],"state":"queued","sequence":sequence,"createdAt":now(),"dispatchRequestId":crate::id()});
+        if let Some(entry) = crate::app_replace::continuation_entry(string(args, "threadId"), id)? {
+            if entry["binding"]["origin"] == receipt["origin"] {
+                row["replacementOf"] = entry["turnId"].clone();
+                row["allowFailedTurn"] = entry["turnId"].clone();
+                row["dispatchRequestId"] = entry["dispatchRequestId"].clone();
+            }
+        }
         save(&target, &row)?;
         row
     };
@@ -202,6 +209,15 @@ async fn tick(control: &Arc<control::Control>, mut row: Value) -> Result<()> {
         let latest = control.dispatch_state(&thread).await?;
         let turns = latest["turns"].as_array().ok_or("NATIVE_TURNS_MISSING")?;
         let turn = turns.first().unwrap_or(&Value::Null);
+        if !row["replacementOf"].is_null() {
+            if let Some(reason) =
+                crate::app_replace::continuation_outcome(&row["replacementOf"], turn)
+            {
+                row["state"] = json!("cancelled");
+                row["reason"] = json!(reason);
+                return save(&path(string(&row, "queueId"))?, &row);
+            }
+        }
         let waiting_input = control
             .events
             .lock()

@@ -129,6 +129,13 @@ impl Control {
         self.shutdown.send_modify(|v| *v = v.wrapping_add(1));
     }
     pub async fn close(&self) {
+        if let Err(error) = crate::app_replace::capture_shutdown(self).await {
+            crate::logs::record(
+                "ERROR",
+                &format!("Replacement shutdown snapshot failed: {error}"),
+                None,
+            );
+        }
         self.stop_waits();
         let jobs: Vec<_> = self.jobs.lock().await.drain().collect();
         for (request, job) in jobs {
@@ -976,6 +983,14 @@ impl Control {
             Value::Null
         };
         let mut receipt = json!({"agentAccountId":args["agentAccountId"],"agentProfileId":args["agentProfileId"],"origin":crate::kernel::origin::current_origin(),"requestId":request,"backendSession":self.session,"digest":digest,"operation":operation,"arguments":args,"state":"reserved","createdAt":now(),"updatedAt":now()});
+        if operation == "send" {
+            if let Some(entry) =
+                crate::app_replace::continuation_entry(string(&args, "threadId"), &request)?
+            {
+                receipt["replacementContinuation"] = json!({"threadId":entry["threadId"],"interruptedTurnId":entry["turnId"],
+                    "originalRequestId":entry["dispatch"]["requestId"],"requestId":entry["continuation"]["requestId"],"dispatchRequestId":entry["dispatchRequestId"]});
+            }
+        }
         if operation == "create" || (operation == "native" && args["method"] == "thread/start") {
             receipt["executionOwner"] = json!(if self.auto_open_codex()? {
                 "desktop"

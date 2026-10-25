@@ -183,6 +183,7 @@ pub fn receipt(value: Value) -> Value {
         "updatedAt",
         "dispatchMode",
         "queueId",
+        "replacementContinuation",
         "state",
         "operation",
         "threadId",

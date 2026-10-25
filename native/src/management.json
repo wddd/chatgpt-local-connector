@@ -262,7 +262,15 @@
         },
         "additionalProperties": false
       },
-      "description": "macOS only. Validate and stage a same-identity package, then bootstrap a detached launchd worker. Returns a durable replacement receipt before shutdown. CLI and local management MCP acknowledge after flushing output; raw HTTP clients MUST call app.replace.ack after receiving it. End the dispatching turn immediately after receipt. Without immediate:true, the helper waits up to five minutes for active turns and announces a ten-second restart countdown. Immediate mode skips both waits. Backups use <state>/app-replacements/backups/. Native notifications and status report phases and outcomes. The helper verifies installed Desktop and Core health and rolls back on failure. Read app.replace.status after reconnecting. Optional continuation {threadId,prompt,model?,turn?,notify?} is persisted before shutdown and submitted once through codex_send(sendMode:queue) after verified success. Its requestId and dispatch receipt remain in replacement status; reconcile that original ID after an uncertain submission. Failed or rolled-back replacements do not send it.",
+      "description": "macOS only. Validate and stage a same-identity package, then bootstrap a detached launchd worker. Returns a durable replacement receipt before shutdown. CLI and local management MCP acknowledge after flushing output; raw HTTP clients MUST call app.replace.ack after receiving it. End the dispatching turn immediately after receipt. Without immediate:true, the helper waits up to five minutes for unsafe or unobservable work while eligible ARC-owned Codex turns are recorded for continuation and announces a ten-second restart countdown. Immediate mode skips both waits. Backups use the private app-replacements/backups state directory. Native notifications and status report phases and outcomes. The helper verifies installed Desktop and Core health and rolls back on failure. Read app.replace.status after reconnecting. Optional continuation {threadId,prompt,model?,turn?,notify?} is persisted before shutdown and submitted once through codex_send(sendMode:queue) after verified success. Its requestId and dispatch receipt remain in replacement status; reconcile that original ID after an uncertain submission. Failed or rolled-back replacements do not send it. interruptedTurns records all ARC-owned Codex turns before shutdown, with stable continuation IDs, original dispatch attribution and notification binding. Eligible entries resume through codex_resume(threadId,turnId) after verified health, preserving the existing interrupted-continuation scope; pending interactions and uncertain writes require attention. Read app.replace.snapshot for live eligibility.",
+      "localOnly": true
+    },
+    {
+      "name": "app.replace.snapshot",
+      "method": "GET",
+      "route": "app/replace/snapshot",
+      "inputSchema": {"type":"object","properties":{},"additionalProperties":false},
+      "description": "Read the live ARC-owned Codex turns eligible for replacement continuation, original dispatch and notification binding, pending interactions and write blockers. Does not stop or resume work. Replacement persists a fresh snapshot immediately before shutdown.",
       "localOnly": true
     },
     {

@@ -690,6 +690,9 @@ impl Service {
                 crate::management::resolve("app.replace", &json!({"body":body}))?;
                 return crate::app_replace::prepare(body).await;
             }
+            ("GET", "app/replace/snapshot") => {
+                return crate::app_replace::snapshot(&self.control).await
+            }
             ("GET", "app/replace/status") => return crate::app_replace::status(),
             ("POST", "app/replace/ack") => {
                 crate::management::resolve("app.replace.ack", &json!({"body":body}))?;

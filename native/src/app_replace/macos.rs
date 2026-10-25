@@ -310,6 +310,10 @@ async fn wait_idle(path: &Path, receipt: &mut Value) -> Result<()> {
             quiet = 0;
         }
         receipt["waiting"] = waiting(&activity, &status, &tasks);
+        // An older Core has no snapshot operation: retain its conservative idle drain.
+        if let Ok(snapshot) = request("app/replace/snapshot", "GET").await {
+            receipt["waiting"] = resumable_waiting(receipt["waiting"].clone(), &snapshot);
+        }
         receipt["waiting"]["updatePhase"] = update["phase"].clone();
         if update["phase"] != "idle" {
             receipt["waiting"]["idle"] = json!(false);
@@ -544,7 +548,7 @@ pub async fn run_worker(id: &str) -> Result<()> {
             phase(&path, &mut receipt, "waiting-for-turns", None).await?;
             wait_idle(&path, &mut receipt).await?;
         } else {
-            // Explicit user-directed replacement bypasses activity and quiet-period probes.
+            // Explicit replacement bypasses idle waits, but still snapshots interrupted work.
             // Still establish the process owners to avoid stopping a different installation.
             let health = request("health", "GET").await?;
             let app = request("app", "GET").await?;
@@ -555,6 +559,7 @@ pub async fn run_worker(id: &str) -> Result<()> {
                     "REPLACE_OWNER_CHANGED: retry against the current installed app".into(),
                 );
             }
+            receipt["coreInstance"] = health["instance"].clone();
             receipt["corePid"] = health["pid"].clone();
             receipt["desktopPid"] = app["pid"].clone();
         }
@@ -576,11 +581,54 @@ pub async fn run_worker(id: &str) -> Result<()> {
             phase(&path, &mut receipt, "countdown", None).await?;
             tokio::time::sleep_until(restart).await;
         }
-        phase(&path, &mut receipt, "stopping", None).await?;
+        // Snapshot immediately before quit, after validation and the visible countdown.
+        // Do not stop a Core whose interrupted work cannot be recorded.
+        let snapshot = match request("app/replace/snapshot", "GET").await {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                let quiet = waiting(&request("agents/activity", "GET").await?,
+                    &request("status", "GET").await?, &request("tasks", "GET").await?);
+                if quiet["idle"] != true {
+                    return Err(format!("REPLACE_SNAPSHOT_UNAVAILABLE: no shutdown performed; let old Core work finish before upgrading: {error}"));
+                }
+                json!({"turns":[],"reason":"idle-core-without-snapshot","error":error})
+            }
+        };
+        if receipt["immediate"] != true {
+            let waiting = resumable_waiting(
+                waiting(
+                    &request("agents/activity", "GET").await?,
+                    &request("status", "GET").await?,
+                    &request("tasks", "GET").await?,
+                ),
+                &snapshot,
+            );
+            receipt["waiting"] = waiting;
+            if receipt["waiting"]["idle"] != true {
+                return Err(
+                    "REPLACE_TASKS_BUSY: work changed during countdown; no shutdown performed"
+                        .into(),
+                );
+            }
+        }
+        super::resume::apply_snapshot(&mut receipt, snapshot);
         receipt["shutdownRequested"] = json!(true);
+        phase(&path, &mut receipt, "stopping", None).await?;
         request("app/quit", "POST").await?;
         let core_guard =
             wait_exit(&[pid(&receipt, "desktopPid")?, pid(&receipt, "corePid")?]).await?;
+        let final_snapshot = path.join("shutdown-snapshot.json");
+        if final_snapshot.exists() {
+            super::resume::apply_snapshot(&mut receipt, load(&final_snapshot)?);
+            receipt["snapshotFinalized"] = json!(true);
+        } else {
+            // The pre-quit snapshot survives even if Core could not finish its final journal.
+            receipt["snapshotFinalized"] = json!(false);
+            for entry in receipt["interruptedTurns"].as_array_mut().into_iter().flatten() {
+                entry["state"] = json!("needs-attention");
+                entry["reason"] = json!("shutdown-snapshot-unconfirmed");
+            }
+        }
         phase(&path, &mut receipt, "installing", None).await?;
         // Journal before touching the original: even a partial removal must restore the verified backup.
         receipt["backupMoved"] = json!(true);
@@ -624,6 +672,19 @@ pub async fn run_worker(id: &str) -> Result<()> {
             phase(&path, &mut receipt, "cancelled", Some(&error)).await?;
         }
     }
+    if receipt["state"] != "succeeded" {
+        let outcome = receipt["state"].clone();
+        for entry in receipt["interruptedTurns"]
+            .as_array_mut()
+            .into_iter()
+            .flatten()
+        {
+            if entry["state"] == "recorded" {
+                entry["state"] = json!("not-sent");
+                entry["reason"] = outcome.clone();
+            }
+        }
+    }
     // Cleanup never rolls back a healthy app or removes a backup still needed for recovery.
     receipt["backupCleanup"] = match super::backups::cleanup(&receipt).await {
         Ok(result) => result,
@@ -632,7 +693,12 @@ pub async fn run_worker(id: &str) -> Result<()> {
     save(&path.join("status.json"), &receipt)?;
     if receipt["state"] == "succeeded" {
         // Continuation failures do not roll back a healthy replacement.
-        if let Err(error) = deliver_continuation(&path, &mut receipt).await {
+        let delivery = async {
+            super::resume::deliver(&path, &mut receipt).await?;
+            deliver_continuation(&path, &mut receipt).await
+        }
+        .await;
+        if let Err(error) = delivery {
             crate::logs::record(
                 "ERROR",
                 &format!("Replacement continuation persistence failed: {error}"),
