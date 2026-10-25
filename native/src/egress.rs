@@ -186,6 +186,8 @@ pub fn receipt(value: Value) -> Value {
         "createdAt",
         "updatedAt",
         "dispatchMode",
+        "heldForUpdate",
+        "message",
         "queueId",
         "replacementContinuation",
         "state",
@@ -820,7 +822,7 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
         .iter()
         .filter(|op| {
             let name = string(op, "name");
-            full || name == "guide" || match topic {
+            full || matches!(name, "guide" | "update_status" | "update_request") || match topic {
                 "notify" => matches!(name, "request_route" | "notify_status" | "notify_control" | "notification_ack" | "inbox_wait" | "codex_create" | "codex_send" | "codex_read" | "agent_create" | "agent_send" | "agent_read"),
                 "review" => matches!(name, "codex_review" | "agent_review" | "codex_read" | "agent_read" | "codex_wait" | "agent_wait" | "agent_events" | "codex_changes" | "codex_items" | "codex_send" | "agent_send" | "receipt" | "task_reviews"),
                 "approvals" => matches!(name, "request_route" | "receipt" | "codex_pending" | "codex_interactions" | "codex_respond" | "agent_pending" | "agent_respond" | "codex_read" | "agent_read"),

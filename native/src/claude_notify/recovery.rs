@@ -2,6 +2,15 @@
 use super::*;
 
 pub(super) async fn enqueue(dir: &Path, lock: &Mutex<()>, restart: &str, at: i64) -> Result<()> {
+    enqueue_notice(dir, lock, restart, at, None).await
+}
+pub(super) async fn enqueue_notice(
+    dir: &Path,
+    lock: &Mutex<()>,
+    restart: &str,
+    at: i64,
+    message: Option<&str>,
+) -> Result<()> {
     let _guard = lock.lock().await;
     let mut all = records(dir)?;
     let mut state = State::load(dir)?;
@@ -65,7 +74,8 @@ pub(super) async fn enqueue(dir: &Path, lock: &Mutex<()>, restart: &str, at: i64
             .flat_map(|b| &b.deliveries)
             .any(|d| {
                 d.event_id == event_id
-                    || (d.task_state == "recovered"
+                    || (message.is_none()
+                        && d.task_state == "recovered"
                         && d.channel == channel
                         && d.target == target
                         && matches!(d.status.as_str(), "pending" | "sending"))
@@ -87,7 +97,7 @@ pub(super) async fn enqueue(dir: &Path, lock: &Mutex<()>, restart: &str, at: i64
             subscription: subscription.id.clone(), channel, target,
             event_id, key: format!("recovery:{restart}"), created_at: at,
             state: "recovered".into(), task_state: "recovered".into(), status: "pending".into(),
-            recovery: json!({"recoveredAt":chrono::DateTime::from_timestamp(at,0).ok_or("INVALID_RECOVERY_TIME")?.to_rfc3339(),"affectedTasks":affected}),
+            recovery: json!({"recoveredAt":chrono::DateTime::from_timestamp(at,0).ok_or("INVALID_RECOVERY_TIME")?.to_rfc3339(),"affectedTasks":affected,"message":message}),
             timing: DeliveryTiming { queued_at: Some(at.saturating_mul(1000)), ..Default::default() },
             ..Default::default()
         });

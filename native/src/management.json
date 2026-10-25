@@ -255,6 +255,14 @@
                   "prompt"
                 ],
                 "additionalProperties": false
+              },
+              "when": {
+                "type": "string",
+                "enum": [
+                  "settled",
+                  "now",
+                  "defer"
+                ]
               }
             },
             "additionalProperties": false
@@ -269,7 +277,11 @@
       "name": "app.replace.snapshot",
       "method": "GET",
       "route": "app/replace/snapshot",
-      "inputSchema": {"type":"object","properties":{},"additionalProperties":false},
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
       "description": "Read the live ARC-owned Codex turns eligible for replacement continuation, original dispatch and notification binding, pending interactions and write blockers. Does not stop or resume work. Replacement persists a fresh snapshot immediately before shutdown.",
       "localOnly": true
     },

@@ -38,7 +38,29 @@ impl Execution {
         }
         true
     }
-    pub async fn call(&self, name: &str, args: Value, policy: Value) -> Result<Value> {
+    pub async fn call(&self, name: &str, mut args: Value, policy: Value) -> Result<Value> {
+        if let Some(receipt) = crate::update_queue::hold(name, &mut args, &policy).await? {
+            return Ok(receipt);
+        }
+        self.call_inner(name, args, policy).await
+    }
+    pub(crate) async fn call_inner(&self, name: &str, args: Value, policy: Value) -> Result<Value> {
+        if matches!(name, "update_status" | "update_request") {
+            let spec = catalog()["ops"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|v| v["name"] == name)
+                .unwrap();
+            crate::egress::validate_op(spec, &args)?;
+        }
+        if name == "update_status" {
+            return crate::app_replace::update_status(args["view"] == "full").await;
+        }
+        if name == "update_request" {
+            return crate::app_replace::update_request(args).await;
+        }
+
         if matches!(name, "notify_control" | "notify_status") {
             crate::accounts::migrate()?;
         }
@@ -211,6 +233,9 @@ impl Execution {
             };
         }
         if name == "receipt" {
+            if let Some(receipt) = crate::update_queue::receipt(&args).await? {
+                return Ok(receipt);
+            }
             let spec = crate::catalog()["ops"]
                 .as_array()
                 .unwrap()

@@ -919,7 +919,8 @@ pub async fn run(args: Vec<String>) -> i32 {
                 return 1;
             }
             let replacing = matches!(words.as_slice(), ["app", "replace", path, ..] if *path != "--status")
-                || matches!(words.as_slice(), ["call", "app.replace", ..]);
+                || matches!(words.as_slice(), ["call", "app.replace", ..])
+                || matches!(words.as_slice(), ["control", "update_request", ..]);
             let id = crate::app_replace::acknowledgment_id(
                 if replacing { "app.replace" } else { "" },
                 &result,

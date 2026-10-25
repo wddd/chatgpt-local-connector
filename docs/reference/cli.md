@@ -557,3 +557,11 @@ and OS resolution are both `system`. Width fields expose actual `value` and over
 renderer polling cadence; snapshot refreshes inputs before reading. See
 [Acceptance](../dev/acceptance.md#instance-environment) for restoration and scope.
 Acceptance MUST never modify host system settings; use overrides or report a gap.
+
+## Unified updates
+
+Use `query update_status` for compact state, source, instance, blocking/resumable/unaffected work, timing, notes, recovery paths and recent outcomes. Use `act update_request` with `action: now | defer | cancel` to schedule the current job; pass its `id` to reject stale changes. Defer defaults to one hour and accepts `seconds`. Swap cannot be cancelled.
+
+Authenticated local administration can submit `source: {kind: local, path}` with `when: settled | now | defer` and optional `continuation: {threadId, prompt}`. Release jobs originate only in Desktop. `arc cli app replace` and the local management routes remain local-submit aliases; `--now` maps to `when: now`. End the replacing turn after the receipt. New ARC dispatches while settling or later receive durable held receipts and start after a terminal outcome. Query their original request IDs with `receipt`. Desktop-owned and external turns remain unaffected.
+
+See [app replacement](app-replacement.md) for acknowledgment, validation, rollback and recovery details.

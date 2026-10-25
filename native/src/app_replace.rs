@@ -2,9 +2,11 @@
 use crate::*;
 mod backups;
 mod resume;
+mod unified;
 pub use backups::{cleanup_candidate, legacy_backup_name};
 pub use resume::{apply_snapshot, resumable_waiting, resume_request};
 pub(crate) use resume::{capture_shutdown, continuation_entry, snapshot};
+pub use unified::{history, project, update_request, update_status};
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -221,7 +223,7 @@ pub fn same_package_owner(receipt: &Value, health: &Value, app: &Value) -> bool 
 /// Fail closed for new dispatch while a helper waits for existing turns to finish.
 pub(crate) fn check_dispatch() -> Result<()> {
     let value = status()?;
-    if active(&value) {
+    if active(&value) && value["when"] != "defer" {
         return Err("REPLACE_PENDING: finish the current turn; resume dispatch after app.replace.status is terminal".into());
     }
     Ok(())
@@ -238,6 +240,7 @@ pub fn active(value: &Value) -> bool {
             | "installing"
             | "starting"
             | "rolling-back"
+            | "resuming"
     )
 }
 
@@ -250,6 +253,7 @@ pub async fn prepare(_body: Value) -> Result<Value> {
 /// records used by the UI. Titles and dispatch origins do not establish ownership.
 pub fn waiting(activity: &Value, status: &Value, tasks: &Value) -> Value {
     let mut turns = Vec::new();
+    let mut unaffected = Vec::new();
     let active = activity["activeAgents"].as_array();
     let mut unknown_activity = active.is_none();
     for agent in active.into_iter().flatten() {
@@ -300,6 +304,7 @@ pub fn waiting(activity: &Value, status: &Value, tasks: &Value) -> Value {
                 _ => "unknown",
             };
             if matches!(owner, "desktop" | "external") {
+                unaffected.push(json!({"kind":"turn","agent":agent,"taskId":session["id"],"title":session["title"],"owner":owner}));
                 continue;
             }
             let turn = session["turnId"]
@@ -316,12 +321,15 @@ pub fn waiting(activity: &Value, status: &Value, tasks: &Value) -> Value {
                 json!({"agent":agent,"taskId":session["id"],"turnId":turn,"executionOwner":owner,
                 "reason":if owner == "unknown" {"ownership-unknown"} else {"arc-owned-turn"}}),
             );
+            if let Some(title) = session["title"].as_str() {
+                turns.last_mut().unwrap()["title"] = json!(title);
+            }
         }
     }
     let writes = status["core"]["activeWrites"].as_u64();
     let interactions = status["core"]["pendingInteractions"].as_u64();
     json!({"idle":!unknown_activity && turns.is_empty() && writes == Some(0) && interactions == Some(0),
-        "blockingTurns":turns,"activeWrites":writes,"pendingInteractions":interactions,
+        "unaffected":unaffected,"blockingTurns":turns,"activeWrites":writes,"pendingInteractions":interactions,
         "unknownActivity":unknown_activity,"ownershipError":tasks.get("error")})
 }
 

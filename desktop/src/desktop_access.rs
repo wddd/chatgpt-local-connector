@@ -55,6 +55,7 @@ pub async fn request(app: &tauri::AppHandle, operation: DesktopRequest) -> Resul
                 return crate::updates::install_update(
                     app.clone(),
                     body["version"].as_str().ok_or("version required")?.into(),
+                    body["when"].as_str().unwrap_or("settled"),
                 )
                 .await
             }

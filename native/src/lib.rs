@@ -15,6 +15,7 @@ mod task_overview;
 mod task_tracking;
 mod text_files;
 mod uninstall;
+mod update_queue;
 use serde_json::{json, Value};
 use std::{
     path::{Path, PathBuf},

@@ -233,7 +233,11 @@ pub async fn download_update(app: tauri::AppHandle, version: String) -> Result<V
         .map_err(|error| failed(&app, "download", error))?;
     complete_download(&app, downloaded).await
 }
-pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Value, String> {
+pub async fn install_update(
+    app: tauri::AppHandle,
+    version: String,
+    when: &str,
+) -> Result<Value, String> {
     allow_update()?;
     let state = app.state::<UpdateState>();
     let _guard = state.install.lock().await;
@@ -262,6 +266,7 @@ pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Va
         json!({"phase":"installing","update":update_result(&update, true),"error":null,"errorStage":null}),
     );
     let retry_update = update_result(&update, false);
+    #[cfg(not(target_os = "macos"))]
     let installation = async {
         let service = app
             .state::<std::sync::Arc<arc_core::runtime::Client>>()
@@ -313,6 +318,27 @@ pub async fn install_update(app: tauri::AppHandle, version: String) -> Result<Va
         Ok(json!({"available":true,"version":version,"restarting":true}))
     }
     .await;
+    #[cfg(target_os = "macos")]
+    let installation = async {
+        // Updater::download verifies the release signature. Keep the acquisition
+        // candidate for retry; the replacement worker owns staging and all swaps.
+        let directory = arc_core::root().join("release-candidates").join(arc_core::id());
+        arc_core::private_dir(&directory)?;
+        let archive = directory.join("release.tar.gz");
+        std::fs::write(&archive, bytes).map_err(|e| e.to_string())?;
+        arc_core::output("/usr/bin/tar", &["-xzf", &archive.to_string_lossy(), "-C", &directory.to_string_lossy()]).await?;
+        let candidates: Vec<_> = std::fs::read_dir(&directory).map_err(|e| e.to_string())?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|v| v == "app") && p.is_dir()).collect();
+        if candidates.len() != 1 { return Err("UPDATE_INVALID_PACKAGE: expected one application bundle".into()); }
+        let service = app.state::<std::sync::Arc<arc_core::runtime::Client>>().inner().clone();
+        let current = service.request("status", "GET", json!({})).await?;
+        let running: Vec<_> = current["ingresses"].as_array().into_iter().flatten().filter(|v| v["running"] == true).filter_map(|v| v["id"].as_str().map(str::to_owned)).collect();
+        arc_core::save(&resume_path(), &json!({"version":version,"ingresses":crate::session::restore().unwrap_or(running)}))?;
+        let receipt = arc_core::app_replace::prepare(json!({"path":candidates[0],"releaseVerified":true,"releaseVersion":version,"notes":update.body,"when":when})).await?;
+        // Receipt has reached its initiating Desktop before arming the helper.
+        arc_core::app_replace::acknowledge(receipt["id"].as_str().ok_or("UPDATE_RECEIPT_MISSING")?)?;
+        progress(&app, json!({"phase":"idle","update":null}));
+        Ok(json!({"available":false,"replacementReceipt":receipt}))
+    }.await;
     if let Err(error) = installation {
         progress(&app, json!({"update":retry_update}));
         return Err(failed(&app, "install", error));
@@ -356,7 +382,16 @@ pub fn start(app: tauri::AppHandle) {
                 .unwrap_or(0);
             let current = chrono_now_millis().parse::<u128>().unwrap_or(0);
             if current.saturating_sub(previous) >= 3600000 && allow_update().is_ok() {
-                let _ = check_update(app.clone()).await;
+                if let Ok(offer) = check_update(app.clone()).await {
+                    if prefs["update-timing"] == "automatic"
+                        && offer["ready"] == true
+                        && offer["version"] != prefs["update-skipped-version"]
+                    {
+                        if let Some(version) = offer["version"].as_str() {
+                            let _ = install_update(app.clone(), version.into(), "settled").await;
+                        }
+                    }
+                }
             }
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
         }

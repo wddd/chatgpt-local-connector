@@ -410,7 +410,7 @@ Notification bindings, subscriptions, inboxes, token buckets, notification contr
 The `guide`, `query`, and `act` parameter schemas and the single `notification` event's `{op,args}` input remain frozen. Source management is available only through the [local API and CLI](cli.md#control-source-management).
 
 
-New dispatch pauses during local app replacement. `REPLACE_PENDING` returns `next:{via:"cli",op:"app.replace.status",args:{},command:"arc cli app replace --status",...}`. Read that durable local status after reconnecting and resume dispatch only after replacement is terminal. The status read belongs to the local CLI/management surface; it is unavailable through control-source `query`.
+New dispatches are held during update settling. Low-level operations racing the admission gate return `REPLACE_PENDING` with `next:{via:"cli",op:"app.replace.status",args:{},command:"arc cli app replace --status",...}`. Read that durable local status after reconnecting and resume dispatch only after replacement is terminal. The status read belongs to the local CLI/management surface; it is unavailable through control-source `query`.
 
 ## Reducing repeated output
 
@@ -652,3 +652,11 @@ report a gap. Overrides expire using real time, remain separate from exported
 preferences and do not alter native Codex timing. See
 [instance environment](../dev/acceptance.md#instance-environment) for CLI examples,
 clock boundaries and width restoration.
+
+## Unified updates
+
+Use `query update_status` for compact state, source, instance, blocking/resumable/unaffected work, timing, notes, recovery paths and recent outcomes. Use `act update_request` with `action: now | defer | cancel` to schedule the current job; pass its `id` to reject stale changes. Defer defaults to one hour and accepts `seconds`. Swap cannot be cancelled.
+
+Authenticated local administration can submit `source: {kind: local, path}` with `when: settled | now | defer` and optional `continuation: {threadId, prompt}`. Release jobs originate only in Desktop. `arc cli app replace` and the local management routes remain local-submit aliases; `--now` maps to `when: now`. End the replacing turn after the receipt. New ARC dispatches while settling or later receive durable held receipts and start after a terminal outcome. Query their original request IDs with `receipt`. Desktop-owned and external turns remain unaffected.
+
+See [app replacement](app-replacement.md) for acknowledgment, validation, rollback and recovery details.

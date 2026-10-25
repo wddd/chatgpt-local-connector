@@ -627,6 +627,9 @@ fn task_title(b: &Binding) -> &str {
 }
 fn receipt(b: &Binding, d: &Delivery) -> String {
     if d.task_state == "recovered" {
+        if let Some(message) = d.recovery["message"].as_str() {
+            return message.into();
+        }
         return format!("⟢ ARC receipt — automated, not a user message\nARC recovered at {}; {} tasks affected.",
             string(&d.recovery, "recoveredAt"), d.recovery["affectedTasks"]);
     }
@@ -5145,4 +5148,16 @@ pub(crate) async fn account_sessions() -> Result<Vec<Value>> {
         sessions.push(json!({"sourceId":sub.source_id,"channel":"mcp-events","target":sub.id,"state":if reachable {"reachable"} else {"unavailable"},"reachable":reachable,"registered":true}));
     }
     Ok(sessions)
+}
+
+pub(crate) async fn update_notice(args: &Value) -> Result<Value> {
+    recovery::enqueue_notice(
+        &directory(),
+        &LOCK,
+        string(args, "id"),
+        chrono::Utc::now().timestamp(),
+        Some(string(args, "message")),
+    )
+    .await?;
+    Ok(json!({"queued":true}))
 }

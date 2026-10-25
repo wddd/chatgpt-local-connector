@@ -108,6 +108,20 @@ async fn inspect(source: &Path) -> Result<Value> {
 }
 
 pub async fn prepare(body: Value) -> Result<Value> {
+    let prefs = crate::preferences::read();
+    if body["releaseVerified"] != true && prefs["update-accept-local"] == "off" {
+        return Err("LOCAL_UPDATES_DISABLED: enable local builds in Settings > Updates".into());
+    }
+    let when = body["when"]
+        .as_str()
+        .unwrap_or(if body["immediate"] == true {
+            "now"
+        } else {
+            "settled"
+        });
+    if !["settled", "now", "defer"].contains(&when) {
+        return Err("INVALID_ARGUMENT: when must be settled, now or defer".into());
+    }
     let continuation = continuation_request(&body, &id())?;
     let source = Path::new(string(&body, "path"));
     if !source.is_absolute() || source.extension().is_none_or(|e| e != "app") {
@@ -127,6 +141,9 @@ pub async fn prepare(body: Value) -> Result<Value> {
         return Err("INVALID_ARGUMENT: source and installed bundle must be separate".into());
     }
     let expected = inspect(&source).await?;
+    if body["releaseVerified"] == true && expected["version"] != body["releaseVersion"] {
+        return Err("UPDATE_VERSION_MISMATCH: candidate differs from the verified offer".into());
+    }
     let identifier = crate::package::plist(&target, "CFBundleIdentifier").await?;
     if expected["identifier"] != identifier {
         return Err("REPLACE_INVALID_PACKAGE: bundle identifier differs from installed app".into());
@@ -174,6 +191,42 @@ pub async fn prepare(body: Value) -> Result<Value> {
         target.file_name().unwrap().to_string_lossy()
     ));
     let mut receipt = json!({"replacementReceipt":true,"id":id,"state":"preparing","immediate":body["immediate"]==true,"backupDirectory":backup_directory,"source":source,"target":target,"backup":backup,"staged":staged,"backupMoved":false,"package":expected,"oldPackage":{"coreBuild":old_core,"desktopBuild":old_desktop,"identifier":identifier},"desktopPid":app["pid"],"corePid":core["pid"],"coreInstance":core["instance"],"service":service,"createdAt":now(),"statusPath":path.join("status.json"),"logPath":path.join("worker.log"),"next":"End this turn after the receipt. Do not continue work depending on ARC. Query app replace --status after reconnecting."});
+    receipt["when"] = json!(when);
+    receipt["immediate"] = json!(when == "now");
+    if when == "defer" {
+        receipt["deferUntil"] =
+            json!((chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339());
+    }
+    receipt["updateSource"] = json!({"kind":if body["releaseVerified"] == true {"release"} else {"local"},"version":expected["version"],"build":expected["coreBuild"]});
+    let metadata =
+        load(&source.join("Contents/Resources/bin/build-metadata.json")).unwrap_or(Value::Null);
+    for key in ["build", "branch", "landedLanes"] {
+        if !metadata[key].is_null() {
+            receipt["updateSource"][key] = metadata[key].clone();
+        }
+    }
+    let installed =
+        load(&target.join("Contents/Resources/bin/build-metadata.json")).unwrap_or(Value::Null);
+    let notes = metadata["commits"].as_array().map(|rows| {
+        let changes = rows
+            .iter()
+            .take_while(|row| row["build"] != installed["build"]);
+        changes
+            .map(|row| string(row, "subject"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    });
+    receipt["notes"] = body.get("notes").cloned().unwrap_or_else(|| json!(notes));
+    receipt["instance"] = json!(if let Some(instance) =
+        identifier.strip_prefix("com.whzxc.agent-remote-control.dev.acceptance-")
+    {
+        format!("isolated:{instance}")
+    } else if identifier.ends_with(".dev") {
+        "dev".into()
+    } else {
+        "production".into()
+    });
+    receipt["resumeInterrupted"] = json!(prefs["update-resume"] != "off");
     if let Some(args) = continuation {
         receipt["continuationBinding"] =
             crate::claude_notify::replacement_binding(string(&args, "threadId"))?;
@@ -241,9 +294,27 @@ async fn request(route: &str, method: &str) -> Result<Value> {
     .map_err(|_| format!("REPLACE_TIMEOUT: {route}"))?
 }
 async fn wait_idle(path: &Path, receipt: &mut Value) -> Result<()> {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
+    let mut deadline = tokio::time::Instant::now() + Duration::from_secs(300);
     let mut quiet = 0;
     loop {
+        super::unified::command(path, receipt)?;
+        if receipt["immediate"] == true {
+            return Ok(());
+        }
+        if receipt["when"] == "defer" {
+            let future = receipt["deferUntil"]
+                .as_str()
+                .and_then(|v| chrono::DateTime::parse_from_rfc3339(v).ok())
+                .is_some_and(|v| v > chrono::Utc::now());
+            if future {
+                quiet = 0;
+                deadline = tokio::time::Instant::now() + Duration::from_secs(300);
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                continue;
+            }
+            receipt["when"] = json!("settled");
+            receipt["deferUntil"] = Value::Null;
+        }
         if tokio::time::Instant::now() >= deadline {
             return Err("REPLACE_TASKS_BUSY: no shutdown performed; inspect cli app replace --status for blocking work and retry when it is idle".into());
         }
@@ -312,11 +383,35 @@ async fn wait_idle(path: &Path, receipt: &mut Value) -> Result<()> {
         receipt["waiting"] = waiting(&activity, &status, &tasks);
         // An older Core has no snapshot operation: retain its conservative idle drain.
         if let Ok(snapshot) = request("app/replace/snapshot", "GET").await {
-            receipt["waiting"] = resumable_waiting(receipt["waiting"].clone(), &snapshot);
+            if receipt["resumeInterrupted"] != false {
+                receipt["waiting"] = resumable_waiting(receipt["waiting"].clone(), &snapshot);
+            }
         }
         receipt["waiting"]["updatePhase"] = update["phase"].clone();
-        if update["phase"] != "idle" {
+        if update["phase"] != "idle" && receipt["updateSource"]["kind"] != "release" {
             receipt["waiting"]["idle"] = json!(false);
+        }
+        if receipt["settleNoticeSent"] != true {
+            let blockers = receipt["waiting"]["blockingTurns"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|v| format!("{} {}", string(v, "agent"), string(v, "taskId")))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let message = format!(
+                "ARC update settling: {}. Writes: {}; pending interactions: {}.",
+                if blockers.is_empty() {
+                    "no turn blockers"
+                } else {
+                    &blockers
+                },
+                receipt["waiting"]["activeWrites"],
+                receipt["waiting"]["pendingInteractions"]
+            );
+            if notice(receipt, "settling", &message).await.is_ok() {
+                receipt["settleNoticeSent"] = json!(true);
+            }
         }
         receipt["waiting"]["observedAt"] = json!(now());
         receipt["updatedAt"] = json!(now());
@@ -372,15 +467,19 @@ fn pid(value: &Value, key: &str) -> Result<u32> {
         .ok_or_else(|| format!("REPLACE_INVALID_OWNER: {key}"))
 }
 async fn launch(target: &Path, expected: &Value) -> Result<()> {
+    open_app(target).await?;
+    health(target, expected).await
+}
+async fn open_app(target: &Path) -> Result<()> {
     let target_name = target.to_string_lossy();
     let state_dir = root();
     let state_name = state_dir.to_string_lossy();
-    let mut args = vec!["-n"];
-    if expected["identifier"] != "com.whzxc.agent-remote-control" {
-        args.push("-g");
-    }
+    let mut args = vec!["-g", "-n"];
     args.extend(["-a", &target_name, "--args", "--state-dir", &state_name]);
     output("/usr/bin/open", &args).await?;
+    Ok(())
+}
+async fn health(target: &Path, expected: &Value) -> Result<()> {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     loop {
         if let (Ok(core), Ok(app)) = (request("health", "GET").await, request("app", "GET").await) {
@@ -542,6 +641,8 @@ pub async fn run_worker(id: &str) -> Result<()> {
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
+        super::unified::command(&path, &mut receipt)?;
+        receipt["settleStartedAt"] = json!(now());
         if receipt["immediate"] != true {
             receipt["waitDeadline"] =
                 json!((chrono::Utc::now() + chrono::Duration::seconds(300)).to_rfc3339());
@@ -563,6 +664,7 @@ pub async fn run_worker(id: &str) -> Result<()> {
             receipt["corePid"] = health["pid"].clone();
             receipt["desktopPid"] = app["pid"].clone();
         }
+        receipt["settleDurationMs"] = json!(receipt["settleStartedAt"].as_str().and_then(|v| chrono::DateTime::parse_from_rfc3339(v).ok()).map(|v| (chrono::Utc::now() - v.with_timezone(&chrono::Utc)).num_milliseconds()).unwrap_or(0));
         phase(&path, &mut receipt, "verifying", None).await?;
         crate::package::check(&staged).await?;
         verify_identity(&backup, &receipt["oldPackage"]).await?;
@@ -577,9 +679,29 @@ pub async fn run_worker(id: &str) -> Result<()> {
         if receipt["immediate"] != true {
             receipt["restartAt"] =
                 json!((chrono::Utc::now() + chrono::Duration::seconds(10)).to_rfc3339());
-            let restart = tokio::time::Instant::now() + Duration::from_secs(10);
             phase(&path, &mut receipt, "countdown", None).await?;
-            tokio::time::sleep_until(restart).await;
+            loop {
+                super::unified::command(&path, &mut receipt)?;
+                if receipt["immediate"] == true { break; }
+                if receipt["when"] == "defer" {
+                    receipt["restartAt"] = Value::Null;
+                    phase(&path, &mut receipt, "waiting-for-turns", None).await?;
+                    wait_idle(&path, &mut receipt).await?;
+                    if receipt["immediate"] != true {
+                        receipt["restartAt"] = json!((chrono::Utc::now() + chrono::Duration::seconds(10)).to_rfc3339());
+                        phase(&path, &mut receipt, "countdown", None).await?;
+                    }
+                }
+                let future = receipt["restartAt"].as_str().and_then(|v| chrono::DateTime::parse_from_rfc3339(v).ok()).is_some_and(|v| v > chrono::Utc::now());
+                if !future { break; }
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+        }
+        super::unified::command(&path, &mut receipt)?;
+        if receipt["when"] == "defer" { wait_idle(&path, &mut receipt).await?; }
+        while !super::unified::seal(&path, &mut receipt)? {
+            phase(&path, &mut receipt, "waiting-for-turns", None).await?;
+            wait_idle(&path, &mut receipt).await?;
         }
         // Snapshot immediately before quit, after validation and the visible countdown.
         // Do not stop a Core whose interrupted work cannot be recorded.
@@ -611,7 +733,10 @@ pub async fn run_worker(id: &str) -> Result<()> {
                 );
             }
         }
+        receipt["droppedInteractions"] = if receipt["immediate"] == true { snapshot["pendingInteractions"].clone() } else { json!(0) };
         super::resume::apply_snapshot(&mut receipt, snapshot);
+        let count = receipt["interruptedTurns"].as_array().map_or(0, Vec::len);
+        let _ = notice(&receipt, "interrupting", &format!("ARC update: {count} ARC-owned turns will be interrupted; eligible turns resume after verified recovery. {} pending interactions dropped.", receipt["droppedInteractions"])).await;
         receipt["shutdownRequested"] = json!(true);
         phase(&path, &mut receipt, "stopping", None).await?;
         request("app/quit", "POST").await?;
@@ -643,7 +768,15 @@ pub async fn run_worker(id: &str) -> Result<()> {
         verify_identity(&target, &receipt["package"]).await?;
         phase(&path, &mut receipt, "starting", None).await?;
         drop(core_guard);
-        launch(&target, &receipt["package"]).await?;
+        open_app(&target).await?;
+        phase(&path, &mut receipt, "verifying", None).await?;
+        health(&target, &receipt["package"]).await?;
+        phase(&path, &mut receipt, "resuming", None).await?;
+        let delivery: Result<()> = async {
+            if receipt["resumeInterrupted"] != false { super::resume::deliver(&path, &mut receipt).await?; }
+            deliver_continuation(&path, &mut receipt).await
+        }.await;
+        if let Err(error) = delivery { receipt["continuationError"] = json!(error); }
         phase(&path, &mut receipt, "succeeded", None).await
     }
     .await;
@@ -654,6 +787,9 @@ pub async fn run_worker(id: &str) -> Result<()> {
             match rollback(&target, &backup, &mut receipt).await {
                 Ok(()) => {
                     receipt["backupMoved"] = json!(false);
+                    if receipt["resumeInterrupted"] != false {
+                        let _ = super::resume::deliver(&path, &mut receipt).await;
+                    }
                     phase(&path, &mut receipt, "rolled-back", Some(&error)).await?;
                 }
                 Err(rollback) => {
@@ -696,25 +832,42 @@ pub async fn run_worker(id: &str) -> Result<()> {
         Err(error) => json!({"errors":[{"error":error}]}),
     };
     save(&path.join("status.json"), &receipt)?;
-    if receipt["state"] == "succeeded" {
-        // Continuation failures do not roll back a healthy replacement.
-        let delivery = async {
-            super::resume::deliver(&path, &mut receipt).await?;
-            deliver_continuation(&path, &mut receipt).await
-        }
-        .await;
-        if let Err(error) = delivery {
-            crate::logs::record(
-                "ERROR",
-                &format!("Replacement continuation persistence failed: {error}"),
-                None,
-            );
-        }
-    }
+    receipt["resumedCount"] = json!(receipt["interruptedTurns"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|r| r["state"] == "receipt-returned")
+        .count());
+    save(&path.join("status.json"), &receipt)?;
+    super::unified::record_history(&receipt)?;
+    let _ = notice(
+        &receipt,
+        "outcome",
+        &format!(
+            "ARC update {}. Resumed: {}.{}",
+            string(&receipt, "state"),
+            receipt["resumedCount"],
+            if receipt["error"].is_string() {
+                format!(" {}", string(&receipt, "error"))
+            } else {
+                String::new()
+            }
+        ),
+    )
+    .await;
     // Terminal recovery keeps no duplicate app copies; success keeps only its latest backup.
     let _ = fs::remove_dir_all(&staged);
     let _ = fs::remove_file(path.join("arc-replace"));
     // bootout may terminate us. The durable terminal result is written first.
     let _ = output("/bin/launchctl", &["bootout", &service]).await;
     Ok(())
+}
+
+async fn notice(receipt: &Value, phase: &str, message: &str) -> Result<Value> {
+    crate::transport::forward_request(
+        "updates/notice",
+        "POST",
+        json!({"id":format!("{}:{phase}",string(receipt,"id")),"message":message}),
+    )
+    .await
 }

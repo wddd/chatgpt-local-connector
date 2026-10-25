@@ -49,6 +49,7 @@ pub(super) async fn cleanup(receipt: &Value) -> Result<Value> {
     let mut removed = Vec::new();
     let mut errors = Vec::new();
     let mut candidates = Vec::new();
+    let mut retained = Vec::new();
     if succeeded || recovered {
         for entry in std::fs::read_dir(directory()).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
@@ -63,15 +64,21 @@ pub(super) async fn cleanup(receipt: &Value) -> Result<Value> {
             if previous["id"].as_str() != entry.file_name().to_str() {
                 continue;
             }
-            if succeeded && previous["id"] == receipt["id"] {
-                continue;
-            }
             if let Some(path) =
                 cleanup_candidate(&directory(), &std::env::temp_dir(), &previous, target)
             {
-                candidates.push(path);
+                if previous["backupReady"] == true
+                    && path.is_dir()
+                    && matches!(string(&previous, "state"), "succeeded" | "rolled-back")
+                {
+                    retained.push((string(&previous, "createdAt").to_owned(), path));
+                } else {
+                    candidates.push(path);
+                }
             }
         }
+        retained.sort_by(|a, b| b.0.cmp(&a.0));
+        candidates.extend(retained.iter().skip(3).map(|(_, p)| p.clone()));
         // These copies predate receipt-owned backup storage. Authenticate before removing them.
         let parent = target.parent().ok_or("REPLACE_TARGET_INVALID")?;
         let name = target

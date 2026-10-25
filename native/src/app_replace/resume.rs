@@ -165,21 +165,35 @@ pub(super) fn status_details(receipt: &mut Value) -> Result<()> {
 
 /// Only exact observed turns with a complete continuation cease blocking normal replacement.
 pub fn resumable_waiting(mut waiting: Value, snapshot: &Value) -> Value {
+    let mut resumes = Vec::new();
     if let Some(blockers) = waiting["blockingTurns"].as_array_mut() {
-        blockers.retain(|blocker| {
-            !snapshot["turns"]
+        blockers.retain_mut(|blocker| {
+            let entry = snapshot["turns"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .any(|entry| {
+                .find(|entry| {
                     blocker["agent"] == "codex"
                         && blocker["executionOwner"] == "connector"
                         && entry["threadId"] == blocker["taskId"]
                         && entry["turnId"] == blocker["turnId"]
-                        && entry["state"] == "recorded"
-                })
+                });
+            if let Some(entry) = entry {
+                if entry["state"] == "recorded" {
+                    resumes.push(blocker.clone());
+                    return false;
+                }
+                blocker["question"] = entry["pendingInteractions"]
+                    .as_array()
+                    .and_then(|v| v.first())
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                blocker["reason"] = entry["reason"].clone();
+            }
+            true
         });
     }
+    waiting["willResume"] = json!(resumes);
     waiting["continuableTurns"] = snapshot["turns"].clone();
     waiting["idle"] = json!(
         waiting["unknownActivity"] == false

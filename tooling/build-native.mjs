@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, copyFile, rm } from 'node:fs/promises';
+import { mkdir, copyFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { developmentConfig } from './dev-identity.mjs';
@@ -38,6 +38,11 @@ export async function buildNative({ release = false, target, bundled = release, 
     execFileSync('xcrun', ['swiftc', '-O', '-target', `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-macos11.0`, path.join(root, 'native/screen/main.swift'), '-o', helper], { env, stdio: 'inherit' });
     execFileSync('codesign', [...macosSigningArgs(identity, 'com.whzxc.agent-remote-control.screen'), helper], { env, stdio: 'inherit' });
   }
+  // Package source identity without embedding checkout paths or user configuration.
+  const git = (...args) => execFileSync('git', args, { cwd: fileURLToPath(new URL('../', import.meta.url)), encoding: 'utf8' }).trim();
+  const commits = git('log', '-100', '--format=%H%x09%s').split('\n').filter(Boolean).map(line => { const [build, ...subject] = line.split('\t'); return { build, subject: subject.join('\t') }; });
+  const metadata = { build: git('rev-parse', 'HEAD'), branch: git('branch', '--show-current'), landedLanes: git('branch', '--merged', 'HEAD', '--format=%(refname:short)').split('\n').filter(name => name.startsWith('wt/')).map(name => name.slice(3)), commits };
+  await writeFile(new URL('../dist/native/build-metadata.json', import.meta.url), JSON.stringify(metadata));
   return binary;
 }
 

@@ -950,7 +950,14 @@ impl Control {
 
     pub async fn mutate(self: &Arc<Self>, operation: &str, mut args: Value) -> Result<Value> {
         if matches!(operation, "create" | "send" | "resume" | "native") {
-            crate::app_replace::check_dispatch()?;
+            let op = match operation {
+                "send" => "codex_send",
+                "resume" => "codex_resume",
+                _ => "",
+            };
+            if crate::app_replace::continuation_context(op, &args)?.is_none() {
+                crate::app_replace::check_dispatch()?;
+            }
         }
         if matches!(operation, "create" | "send") {
             crate::claude_notify::normalize(&mut args)?;
