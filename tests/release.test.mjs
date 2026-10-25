@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { assetMatches, boundedMap, ghOptions, transferOptions, platformAssetNames, publicationStages,
-  publishedTags, releaseByTag, retry, stageTimer, validateResume, validateRemoteAssets, validateArtifactInventory, parallelPlatforms, dependencyEnv } from '../tooling/release-support.mjs';
+  publishedTags, releaseByTag, releaseById, uploadReleaseAsset, fileDigest, retry, stageTimer, validateResume, validateRemoteAssets, validateArtifactInventory, parallelPlatforms, dependencyEnv } from '../tooling/release-support.mjs';
 import { workerReady, canStopWorker, validateWindowsReceipt } from '../tooling/windows-release.mjs';
 import { inputKey, dependenciesMatch } from '../tooling/build-cache.mjs';
 import { testPassMatches, testEnvironment } from '../tooling/test-cache.mjs';
@@ -136,6 +139,87 @@ test('release lookup refuses ambiguous drafts and preserves fallback permission 
   assert.throws(lookup(() => JSON.stringify({ count: 2, matches: [{ id: 42 }, { id: 43 }] })));
   const forbidden = Object.assign(new Error('Forbidden'), { status: 1, stderr: 'gh: Forbidden (HTTP 403)' });
   assert.throws(lookup(() => { throw forbidden; }), forbidden);
+});
+
+test('known release IDs do not rediscover a missing release by tag', async () => {
+  // Regression: v0.9.32 repeated draft tag lookups and historical pagination for every asset.
+  const missing = Object.assign(new Error('Not Found'), { status: 1, stderr: 'gh: Not Found (HTTP 404)' });
+  await assert.rejects(releaseById('owner/repo', 42, async args => {
+    assert.deepEqual(args, ['api', 'repos/owner/repo/releases/42']);
+    throw missing;
+  }), missing);
+});
+
+test('release uploads send binary files by ID and separate lookup from transfer timing', async context => {
+  // Regression: v0.9.32 combined blocking draft discovery and binary transfers into one opaque upload duration.
+  const directory = await mkdtemp(path.join(tmpdir(), 'arc-release-upload-'));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'archive with spaces.bin'), timingFile = path.join(directory, 'timings.jsonl');
+  const bytes = Buffer.from([0, 255, 127, 10, 34, 92]);
+  await writeFile(file, bytes);
+  const asset = { name: 'archive.bin', size: bytes.length, digest: await fileDigest(file) };
+  const draft = { id: 42, tag_name: 'v1.2.3', draft: true, assets: [], upload_url: 'https://uploads.github.com/repos/owner/repo/releases/42/assets{?name,label}' };
+  const timer = stageTimer(timingFile, () => {});
+  const options = { repo: 'owner/repo', releaseId: 42, tag: draft.tag_name, asset, file, timer };
+  const query = async args => {
+    assert.deepEqual(args, ['api', 'repos/owner/repo/releases/42']);
+    return JSON.stringify(draft);
+  };
+  const uploaded = await uploadReleaseAsset(options, { query, transfer: async args => {
+    const url = new URL(args[1]);
+    assert.equal(url.origin, 'https://uploads.github.com');
+    assert.equal(url.pathname, '/repos/owner/repo/releases/42/assets');
+    assert.equal(url.searchParams.get('name'), asset.name);
+    assert.equal(args[args.indexOf('--method') + 1], 'POST');
+    assert.equal(args[args.indexOf('--header') + 1], 'Content-Type: application/octet-stream');
+    assert.deepEqual(await readFile(args[args.indexOf('--input') + 1]), bytes);
+    return { stdout: JSON.stringify({ ...asset, state: 'uploaded' }) };
+  } });
+  assert.equal(uploaded, true);
+  const rows = (await readFile(timingFile, 'utf8')).trim().split('\n').map(JSON.parse);
+  const preparation = rows.find(row => row.stage === `asset prepare ${asset.name}`);
+  const transfer = rows.find(row => row.stage === `asset upload ${asset.name}`);
+  assert.equal(preparation.status, 'ok'); assert.equal(preparation.bytes, undefined);
+  assert.equal(transfer.status, 'ok'); assert.equal(transfer.bytes, bytes.length);
+  assert.ok(Number.isFinite(transfer.bytesPerSecond) && transfer.bytesPerSecond > 0);
+  await assert.rejects(uploadReleaseAsset(options, { query, transfer: async () => ({ stdout: JSON.stringify({ ...asset, state: 'uploaded', digest: 'sha256:other' }) }) }), /Uploaded asset size\/digest mismatch/);
+});
+
+test('upload retries replace incomplete assets and reconcile a lost success response', async () => {
+  // Regression: upload recovery must reconcile persisted bytes without overwriting a completed asset after a lost response.
+  const draft = { id: 42, tag_name: 'v1.2.3', draft: true, assets: [{ ...remote, id: 7, state: 'starter', size: 0 }], upload_url: 'https://uploads.github.com/repos/owner/repo/releases/42/assets{?name,label}' };
+  const result = await retry(() => uploadReleaseAsset({ repo: 'owner/repo', releaseId: 42, tag: draft.tag_name, asset, file: 'latest.json', timer: stageTimer(null, () => {}) }, {
+    query: async args => {
+      if (args.includes('DELETE')) {
+        assert.deepEqual(args, ['api', 'repos/owner/repo/releases/assets/7', '--method', 'DELETE']);
+        draft.assets = []; return '';
+      }
+      assert.deepEqual(args, ['api', 'repos/owner/repo/releases/42']);
+      return JSON.stringify(draft);
+    },
+    transfer: async () => {
+      assert.deepEqual(draft.assets, []);
+      draft.assets = [{ ...remote, id: 8 }];
+      throw new Error('Upload response lost');
+    },
+  }), { sleep: async () => {} });
+  assert.equal(result, false);
+  assert.deepEqual(draft.assets, [{ ...remote, id: 8 }]);
+});
+
+test('upload refuses a public release or a changed draft identity before any write', async () => {
+  // Regression: reusing a release ID must preserve the original draft and tag boundary before replacing assets.
+  for (const patch of [{ draft: false }, { id: 43 }, { tag_name: 'v9.9.9' }]) {
+    const draft = { id: 42, tag_name: 'v1.2.3', draft: true, assets: [{ ...remote, size: 0 }], ...patch };
+    await assert.rejects(uploadReleaseAsset({ repo: 'owner/repo', releaseId: 42, tag: 'v1.2.3', asset, file: 'latest.json', timer: stageTimer(null, () => {}) }, {
+      query: async args => {
+        assert.deepEqual(args, ['api', 'repos/owner/repo/releases/42']);
+        return JSON.stringify(draft);
+      },
+      transfer: async () => { throw new Error('Unexpected upload'); },
+    }), /Original draft changed/);
+    assert.deepEqual(draft.assets, [{ ...remote, size: 0 }]);
+  }
 });
 
 test('release history uses bounded pages and retains only public stable tags', () => {

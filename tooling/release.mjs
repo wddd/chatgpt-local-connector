@@ -9,7 +9,7 @@ import { cachedTestPass, testEnvironment } from './test-cache.mjs';
 import { buildVersion, stableVersion } from './version.mjs';
 import { releaseSigningEnv } from './release-signing.mjs';
 import { macosSigningIdentity, verifyMacosReleaseSignature } from './macos-signing.mjs';
-import { gh, ghTransfer, releaseByTag, publishedTags, fileDigest, assetMatches, publicationStages,
+import { gh, ghTransfer, releaseByTag, releaseById, requireDraftRelease, uploadReleaseAsset, publishedTags, fileDigest, publicationStages,
   validateResume, validateRemoteAssets, validateArtifactInventory, platformAssetNames, retry, boundedMap, stageTimer, parallelPlatforms } from './release-support.mjs';
 process.chdir(fileURLToPath(new URL('../', import.meta.url)));
 let version = buildVersion();
@@ -246,14 +246,9 @@ if (mode === 'release') {
         git('push', '--atomic', 'origin', 'main', `refs/tags/v${version}`);
       });
       const tag = `v${version}`;
-      let release = releaseByTag(repo, tag);
-      if (state.releaseId && release?.id !== state.releaseId) throw new Error('Original release was removed or replaced; refusing to resume');
+      let release = state.releaseId ? await releaseById(repo, state.releaseId) : releaseByTag(repo, tag);
+      if (state.releaseId && (release?.id !== state.releaseId || release.tag_name !== tag)) throw new Error('Original release was removed or replaced; refusing to resume');
       const stages = publicationStages(state, release);
-      const requireDraft = () => {
-        const current = releaseByTag(repo, tag);
-        if (!current?.draft || current.id !== state.releaseId) throw new Error('Original draft changed; refusing to upload or publish');
-        return current;
-      };
       if (stages.includes('upload')) await timer.run('upload', async () => {
         if (!release) {
           gh(['release', 'create', tag, '--repo', repo, '--draft', '--verify-tag', '--notes-file', path.join(output, 'release-notes.md')], { stdio: 'inherit' });
@@ -263,13 +258,8 @@ if (mode === 'release') {
         state.releaseId = release.id;
         await saveState();
         await boundedMap(state.assets, asset => transferRetry(asset.name, async () => {
-          const current = requireDraft();
-          if (assetMatches(asset, current.assets.find(remote => remote.name === asset.name))) {
-            console.log(`Already uploaded: ${asset.name}`);
-            return;
-          }
-          await ghTransfer(['release', 'upload', tag, path.join(output, asset.name), '--repo', repo, '--clobber']);
-          console.log(`Uploaded: ${asset.name}`);
+          const uploaded = await uploadReleaseAsset({ repo, releaseId: state.releaseId, tag, asset, file: path.join(output, asset.name), timer });
+          console.log(`${uploaded ? 'Uploaded' : 'Already uploaded'}: ${asset.name}`);
         }));
       });
       else {
@@ -278,8 +268,8 @@ if (mode === 'release') {
         await saveState();
       }
       await timer.run('remote verification', async () => {
-        release = releaseByTag(repo, tag);
-        if (!release || release.id !== state.releaseId) throw new Error('Original release changed');
+        release = await releaseById(repo, state.releaseId);
+        if (!release || release.id !== state.releaseId || release.tag_name !== tag) throw new Error('Original release changed');
         validateRemoteAssets(state.assets, release.assets);
         await boundedMap(state.assets, async asset => {
           const remote = release.assets.find(item => item.name === asset.name);
@@ -296,7 +286,7 @@ if (mode === 'release') {
       });
       if (stages.includes('publish')) await timer.run('publish', async () => {
         assertSource();
-        validateRemoteAssets(state.assets, requireDraft().assets);
+        validateRemoteAssets(state.assets, (await requireDraftRelease(repo, state.releaseId, tag)).assets);
         // Persist before the request: a lost publish response must resume as read-only readback.
         state.publishAttempted = true;
         await saveState();
@@ -305,8 +295,8 @@ if (mode === 'release') {
       else timer.skip('publish');
       await timer.run('readback', async () => {
         await transferRetry('public latest.json', async () => {
-          const current = releaseByTag(repo, tag);
-          if (!current || current.draft || current.id !== state.releaseId) throw new Error('Release is not public');
+          const current = await releaseById(repo, state.releaseId);
+          if (!current || current.draft || current.id !== state.releaseId || current.tag_name !== tag) throw new Error('Release is not public');
           const response = await fetch(`https://github.com/${repo}/releases/latest/download/latest.json`, { signal: AbortSignal.timeout(60_000), cache: 'no-store' });
           if (!response.ok) throw new Error(`Public latest.json returned HTTP ${response.status}`);
           const bytes = Buffer.from(await response.arrayBuffer());

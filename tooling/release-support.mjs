@@ -11,6 +11,40 @@ export const transferOptions = {
 };
 export const gh = (args, options = {}) => execFileSync('gh', args, { ...ghOptions, ...options });
 export const ghTransfer = args => execute('gh', args, transferOptions);
+const ghRead = async args => (await execute('gh', args, ghOptions)).stdout;
+
+export async function releaseById(repo, id, query = ghRead) {
+  return JSON.parse(await query(['api', `repos/${repo}/releases/${id}`]));
+}
+
+export async function requireDraftRelease(repo, id, tag, query = ghRead) {
+  const current = await releaseById(repo, id, query);
+  if (current?.draft !== true || current.id !== id || current.tag_name !== tag) throw new Error('Original draft changed; refusing to upload or publish');
+  return current;
+}
+
+export async function uploadReleaseAsset({ repo, releaseId, tag, asset, file, timer }, { query = ghRead, transfer = ghTransfer } = {}) {
+  const current = await timer.run(`asset prepare ${asset.name}`, async () => {
+    const draft = await requireDraftRelease(repo, releaseId, tag, query);
+    const existing = draft.assets.find(remote => remote.name === asset.name);
+    if (existing && !assetMatches(asset, existing)) {
+      await query(['api', `repos/${repo}/releases/assets/${existing.id}`, '--method', 'DELETE']);
+    }
+    return draft;
+  });
+  if (assetMatches(asset, current.assets.find(remote => remote.name === asset.name))) {
+    timer.skip(`asset upload ${asset.name}`);
+    return false;
+  }
+  const url = new URL(current.upload_url.replace(/\{.*$/, ''));
+  if (url.origin !== 'https://uploads.github.com' || url.pathname !== `/repos/${repo}/releases/${releaseId}/assets`) throw new Error('Unexpected release upload URL');
+  url.searchParams.set('name', asset.name);
+  await timer.run(`asset upload ${asset.name}`, async () => {
+    const { stdout } = await transfer(['api', url.href, '--method', 'POST', '--header', 'Content-Type: application/octet-stream', '--input', file]);
+    if (!assetMatches(asset, JSON.parse(stdout))) throw new Error(`Uploaded asset size/digest mismatch: ${asset.name}`);
+  }, { bytes: asset.size });
+  return true;
+}
 
 export function releaseByTag(repo, tag, query = gh) {
   try { return JSON.parse(query(['api', `repos/${repo}/releases/tags/${encodeURIComponent(tag)}`])); }
@@ -148,18 +182,21 @@ export function dependencyEnv(env) {
 }
 
 export function stageTimer(file = process.env.ARC_RELEASE_TIMINGS_FILE, log = console.log) {
-  function record(name, started, status, startedAt) {
+  function record(name, started, status, startedAt, bytes) {
     const elapsed = performance.now() - started;
-    log(`[stage] END ${name} ${status} (${(elapsed / 1000).toFixed(1)}s)`);
-    if (file) appendFileSync(file, JSON.stringify({ stage: name, status, seconds: +(elapsed / 1000).toFixed(1), startedAt, finishedAt: new Date().toISOString(), platform: process.env.ARC_RELEASE_PLATFORM }) + '\n');
+    const transfer = bytes === undefined ? {} : { bytes, ...(status === 'ok' ? { bytesPerSecond: Math.round(bytes * 1000 / Math.max(elapsed, 1)) } : {}) };
+    const rate = transfer.bytesPerSecond === undefined ? '' : `, ${(transfer.bytesPerSecond / 1024 ** 2).toFixed(2)} MiB/s`;
+    const size = bytes === undefined ? '' : `, ${(bytes / 1024 ** 2).toFixed(2)} MiB${rate}`;
+    log(`[stage] END ${name} ${status} (${(elapsed / 1000).toFixed(1)}s${size})`);
+    if (file) appendFileSync(file, JSON.stringify({ stage: name, status, seconds: +(elapsed / 1000).toFixed(1), startedAt, finishedAt: new Date().toISOString(), platform: process.env.ARC_RELEASE_PLATFORM, ...transfer }) + '\n');
   }
   return {
-    async run(name, operation) {
+    async run(name, operation, { bytes } = {}) {
       const started = performance.now();
       const startedAt = new Date().toISOString();
       log(`[stage] START ${name}`);
-      try { const result = await operation(); record(name, started, 'ok', startedAt); return result; }
-      catch (error) { record(name, started, 'failed', startedAt); throw error; }
+      try { const result = await operation(); record(name, started, 'ok', startedAt, bytes); return result; }
+      catch (error) { record(name, started, 'failed', startedAt, bytes); throw error; }
     },
     skip(name) { log(`[stage] START ${name}`); record(name, performance.now(), 'skipped'); },
   };
