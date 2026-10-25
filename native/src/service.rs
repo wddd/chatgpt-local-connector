@@ -1021,6 +1021,9 @@ impl Service {
             }
             return Err("UNKNOWN_ROUTE".into());
         }
+        if matches!(route, "ax/import" | "ax/export") && method == "POST" {
+            return crate::coordination::ax::local(route.strip_prefix("ax/").unwrap(), &body);
+        }
         if route == "context" && method == "POST" {
             return crate::context::read(&self.agents, &self.control, body, json!("all")).await;
         }

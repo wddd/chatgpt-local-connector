@@ -25,6 +25,8 @@ const COMMANDS: &[&str] = &[
     "app replace <path> --check --stdin",
     "app replace --status",
     "storage compact",
+    "ax import --from <path>",
+    "ax export --to <path>",
     "subscriptions get",
     "subscriptions set --stdin",
     "subscriptions refresh [providerId]",
@@ -605,6 +607,8 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
         ["source", "switch", id, "--cancel"] => forward_request(&format!("source/{id}/switch"), "DELETE", json!({})).await,
         ["source", "switch", id, ingress] => forward_request(&format!("source/{id}/switch"), "POST", json!({"ingressId":ingress})).await,
         ["source", "claim", id, "--stdin"] => forward_request(&format!("source/{id}/claim"), "POST", stdin_json()?).await,
+        ["ax", "import", "--from", path] => forward_request("ax/import", "POST", json!({"from":path})).await,
+        ["ax", "export", "--to", path] => forward_request("ax/export", "POST", json!({"to":path})).await,
         ["storage", "compact"] => {
             // Refuse mixed old/new writers before changing the archive layout.
             let owner = crate::runtime::Client::connect(crate::runtime::binary()?, "cli").await?;
@@ -627,6 +631,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
                 {"commands":"ingress list|presets|add|update|remove|start|stop|restart|probe|doctor|verify","description":"Manage and diagnose a selected connection; add/update accept JSON on stdin."},
                 {"commands":"ingress oauth list|request|decision|register|revoke; ingress token rotate","description":"Manage this connection's OAuth access and bearer token."},
                 {"commands":"app start|status|quit|restart; app replace <path> [--now] [--check] [--stdin]; app replace --status; uninstall [--purge]","description":"Control the installed application. On macOS, replace validates and hands off to launchd; end the turn after its receipt. --now skips task-idle checks and the countdown; ARC-owned work can be interrupted. --check validates without installation. --stdin accepts continuation:{threadId,prompt,model?,turn?,notify?}, queued into the same thread after verified recovery."},
+                {"commands":"ax import --from <path>; ax export --to <path>","description":"Import the interim AX queue or export retained AX history through local Core management. Paths must be absolute; export requires a new file in an existing directory outside ARC state."},
                 {"commands":"subscriptions get|set|refresh|open","description":"Read or refresh subscription usage; set accepts JSON on stdin."},
                 {"commands":"stats control [--since <duration>]; logs [--stdin|--follow|--offline]; watch; storage compact","description":"Inspect logs, watch changes or compact local storage."},
                 {"commands":"configure --stdin; network --stdin; connect; disconnect; verify [--fresh]","description":"Configure and control the primary connection."},

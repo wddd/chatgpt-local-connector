@@ -565,3 +565,25 @@ Use `query update_status` for compact state, source, instance, blocking/resumabl
 Authenticated local administration can submit `source: {kind: local, path}` with `when: settled | now | defer` and optional `continuation: {threadId, prompt}`. Release jobs originate only in Desktop. `arc cli app replace` and the local management routes remain local-submit aliases; `--now` maps to `when: now`. End the replacing turn after the receipt. New ARC dispatches while settling or later receive durable held receipts and start after a terminal outcome. Query their original request IDs with `receipt`. Desktop-owned and external turns remain unaffected.
 
 See [app replacement](app-replacement.md) for acknowledgment, validation, rollback and recovery details.
+
+## Local AX migration and export
+
+Use `cli ax import --from <absolute-path>` to import the interim Markdown queue
+through the running Core's authenticated local management boundary. It reads only
+AX frictions, backlog ideas and undispatched follow-ups, plus the accepted seed
+backlog. Policy, completed acceptance and history prose are not new defects.
+Known observations map to stable seed IDs; overlapping queue descriptions do not
+invent occurrences. Re-running the same input is idempotent; changed seed notes
+append reported history. Ideas have zero failure occurrences. Imported build/time
+evidence remains unknown, and reported fixes stay open for triage and verification.
+The input is limited to 256 KiB. The command never changes or deletes the input.
+Read the returned entries and `cli control ax_list --stdin` before retiring an
+interim queue. There is no runtime dependency on that file and no dual writing.
+
+Use `cli ax export --to <new-absolute-path>` to save a private local AX archive
+in an existing directory outside ARC state. It refuses an existing destination
+and returns the export count and SHA-256. A successful export marks current revisions eligible for pruning
+when closed/merged and older than 180 days. A changed revision requires another
+export. Open records remain retained. Keep archives with the user's local records;
+export does not delete them. Local triage uses `cli control ax_triage --stdin` with
+the same revision checks and history as the control-source op.

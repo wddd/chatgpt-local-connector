@@ -669,8 +669,8 @@ See [app replacement](app-replacement.md) for acknowledgment, validation, rollba
 Use `query({op:"events",args:{since?,resource?,kinds?,limit?}})` for the instance's
 bounded metadata feed. All of the user's authorized sources/accounts see the same
 metadata by default. Existing ingress op allowlists and revocation still apply.
-This increment exposes storage and pull queries only; no observers, source report
-operation, AX store or resource push are attached.
+The event surface remains read-only. AX reports and lifecycle changes below emit
+compact events; resource push remains a later phase.
 
 The result contains `events`, `nextCursor`, `hasMore`, `oldestCursor`, `coverage`,
 and `observedAt`. Each event includes `eventId`, `sequence`, `kind`,
@@ -707,3 +707,72 @@ coverage. An unreadable store returns a failure, never fabricated empty history.
 Reads allow 60 requests/minute/source with burst 10; internal emission allows
 100 events/second with bounded drop counts. No subscription or acknowledgement
 is required. Inspect coverage and the owning task/receipt before acting.
+
+## AX reports and triage
+
+After working around ARC friction, report metadata with
+`act({op:"ax_report",args:{symptom,expected,severity,requestId?,reproductionHints?,receiptIds?,requestIds?,threadIds?,resources?}})`.
+Use `kind:"idea"` for a desired outcome; ideas may omit severity and have no failure
+occurrence count. Friction requires `blocking`, `workaround` or `cosmetic` severity.
+Symptoms and expectations allow 500 characters each, hints 1,000, and each reference
+array 16 IDs. Never include prompts, conversation content, credentials or private
+routes. ARC supplies the authenticated principal, public contract `arcVersion`,
+Core build identity when available and observation time. The contract hash is not
+a binary version. Missing Desktop build evidence stays null. Reference reads use
+current source/task association; unknown, expired or unauthorized references are
+unavailable, not inferred. The first and latest representative evidence samples
+are retained, up to 16.
+
+Keep the returned request ID; supply a UUID on the first attempt when retries must
+survive a lost response. Same caller, ID and normalized arguments replay once;
+changed arguments or another receipt owner return `REQUEST_ID_CONFLICT`. A crash
+between AX persistence and receipt completion reconciles the same owner mutation.
+Exact normalized symptom tokens, kind and resource classes identify recurrences.
+A new reference occurrence increases the count once; identical references do not.
+Receipt/request IDs share one occurrence namespace; thread IDs are contextual
+when receipt references exist. Authors may enrich their matching report and change
+severity; another source may only add evidence occurrences.
+Similar token overlap returns ranked `duplicateCandidates` with reasons without
+merging automatically. A recurrence reopens a closed canonical entry.
+
+`query({op:"ax_list",args:{id?,resource?,status?,severity?,since?,cursor?,limit?,beforeRelease?}})`
+returns `{entries,nextCursor,triageDue,counts,observedAt,projectionPending}`.
+`state` may substitute for `status`; do not supply both. `since` is RFC3339.
+All authorized sources/accounts can read summaries without resource opt-in.
+Reproduction details, evidence and free-form decision details remain owner/local-only.
+Pages default to 50, cap at 100 / 128 KiB, and use a source/authority/filter-bound
+cursor. A cursor expires after 15 minutes or a changed snapshot; `AX_CURSOR_EXPIRED`
+includes a reset query. Candidate and rejected rows never count as confirmed open
+entries. Inspect AX before release (`beforeRelease:true`), at eight open/triaged
+entries, or on any confirmed blocker. Record the user's decision for unresolved
+blockers before release; these ops do not authorize a release.
+
+`act({op:"ax_candidate",args:{id,expectedRevision,action:"confirm"|"reject",reason,requestId?}})`
+records a candidate decision. ARC generates hypotheses for observed stalled
+receipts, owner-discovery timeouts and delivery failures. The associated source
+must inspect the evidence; unattributed candidates need local review. Candidates
+coalesce per signature/source/build with a ten-minute cooldown. Rejection suppresses
+the same signature/build for 24 hours. Confirmation opens the entry. Candidates
+have an instance budget of 20/hour, with an exposed overflow counter; they generate
+no recursive delivery alerts.
+
+`act({op:"ax_triage",args:{id,expectedRevision,action,reason,evidenceIds?,commit?,document?,mergedInto?,requestId?}})`
+accepts `fix`, `document`, `wontfix`, `merged` or `reopen`. Only the reporting source
+or local authority may triage; merges require authority over both entries.
+`fix`/`document` stays triaged until a change/document reference and available
+completed verification receipts (`command`, `native`, `review`, `agent_review`)
+are supplied as `evidenceIds`. A commit alone never closes the entry. Verification
+references are evidence supplied by the reviewer, not an independent reproduction
+of the fix. `wontfix` closes with a reason. Merges retain original IDs, provenance,
+history and counts in tombstones, union unique occurrence keys, and reject cycles.
+Revision conflicts require fresh readback. Source-authored explanations remain
+claims, even when linked to observed receipts.
+
+Reports are limited to 10/minute/source. Storage is bounded to 1,000 entries,
+16 KiB per entry and 16 MiB including the atomic temporary. Open records and
+required history are never silently evicted. Capacity errors preserve the prior
+snapshot and name the local export path. Closed records are eligible for pruning
+only after 180 days and an explicit local export of their current revision.
+New entries and changes project compact `ax.created` / `ax.changed` events through
+the coordination journal. `projectionPending:true` means AX is durable but its
+feed projection still needs reconciliation; reads and retries reconcile it.

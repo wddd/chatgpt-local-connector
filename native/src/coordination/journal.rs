@@ -126,7 +126,7 @@ fn sync_directory(dir: &Path) -> Result<()> {
 }
 /// Same private directory/atomic rename convention as save_bytes, with fsync and a
 /// fixed temporary name so repeated disk-full failures cannot accumulate files.
-fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(super) fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
     let temp = path.with_extension("tmp");
     let result = (|| {
         let mut file = private_file(&temp, false)?;

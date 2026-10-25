@@ -1,0 +1,236 @@
+[
+  {
+    "id": "AX-01",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "An interrupted receipt arrives after the resumed turn completed, including for a completed thread. Delivery should identify supersession and avoid obsolete recovery advice.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Interrupt, resume, finish before a delayed delivery; compare predecessor/successor turn IDs, event creation and send times, binding scope.",
+    "anchor": "Interrupted receipts"
+  },
+  {
+    "id": "AX-02",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "`No verified push` contradicts a verified notification field on same-origin sends. Hint and structured reachability should describe the same effective route.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Same-source send with inherited notify; attach receipt, source ID, binding generation and reachability snapshot.",
+    "anchor": "No verified push"
+  },
+  {
+    "id": "AX-03",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "The first turn has no completion push. A bound eligible first turn should reach a terminal delivery state or explain failure.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Bind/verify before a short first turn; retain dispatch, terminal observation, subscription and attempt IDs.",
+    "anchor": "Missing completion push"
+  },
+  {
+    "id": "AX-04",
+    "kind": "friction",
+    "severity": "blocking",
+    "symptom": "A control-source MCP connection does not recover after ARC restart. Reconnect should restore usable authorized ops or provide actionable remediation.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Restart with an existing connection; compare ingress/grant, transport reconnect and first post-restart call, without recording credentials.",
+    "anchor": "connection did not recover"
+  },
+  {
+    "id": "AX-05",
+    "kind": "friction",
+    "severity": "blocking",
+    "symptom": "`codex_read` / `codex_resume` remain at `DESKTOP_REQUEST_TIMEOUT` during `thread-owner-discovery` for an unheld thread; `next` only points to guide. Diagnosis should be bounded and offer an exact recovery action.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Capture `codex_owner`, thread ID, native ownership evidence, timeout stage and receipt.next.",
+    "anchor": "thread-owner-discovery"
+  },
+  {
+    "id": "AX-06",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "A `command` background process dies when the command returns; no detach is available. The supported process-lifetime contract should be explicit and offer a supported persistent path if intended.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Start a harmless child and observe after command completion; attach execution/session and process evidence. Do not infer a detach design here.",
+    "anchor": "background processes"
+  },
+  {
+    "id": "AX-07",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "A healthy long foreground command leaves its receipt at `reserved` / `progressStalled`. Receipt progress should distinguish execution time from stalled submission.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Compare receipt phase/timestamps with observed process progress and eventual exit; retain original request ID.",
+    "anchor": "Long foreground command"
+  },
+  {
+    "id": "AX-08",
+    "kind": "friction",
+    "severity": "blocking",
+    "symptom": "Unbounded concurrent app snapshots can exhaust host memory during acceptance loops. Snapshot admission and memory use should be bounded.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Controlled bounded-load reproduction only; attach concurrency, image dimensions, memory observations and snapshot receipts.",
+    "anchor": "snapshot had no concurrency"
+  },
+  {
+    "id": "AX-09",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "Omitted model on `codex_send` chooses policy default instead of the thread's last model; app-replace continuations inherit the problem. Continuation should have an explicit, consistent model-inheritance contract.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Compare last effective model, omitted-model send, dispatch policy and persisted replacement continuation; inspect explicit override behavior.",
+    "anchor": "codex_send without model"
+  },
+  {
+    "id": "AX-10",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "`SOURCE_REVOKED` is presented as `Correct usage`. Revocation should identify the authorization failure and its actual recovery boundary.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Capture top-level error/next and guide rendering for a revoked fixture source.",
+    "anchor": "SOURCE_REVOKED"
+  },
+  {
+    "id": "AX-11",
+    "kind": "friction",
+    "severity": "blocking",
+    "symptom": "Local CLI can be revoked from the control-source list with no restore. Built-in local authority must remain available independently of sources.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Track the `wt/local-cli-guard` fix; verify local identity/list/mutation/readback through its own acceptance. This proposal does not redesign it.",
+    "anchor": "Local CLI revocable"
+  },
+  {
+    "id": "AX-12",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "`logs` with `since:'2m'` fails with `premature end of input`. Supported duration input should parse, or the schema should reject it with the accepted format.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Attach exact args, parser error and the current guide contract; compare absolute-time behavior.",
+    "anchor": "logs since:"
+  },
+  {
+    "id": "AX-13",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "`whoami` / notification data retain empty-target and stale failed sessions. Active destinations should exclude empty routes and distinguish historical diagnostics.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Compare registered targets, verification, expiry/revocation and public projections before/after cleanup. Preserve needed delivery history.",
+    "anchor": "whoami/notification"
+  },
+  {
+    "id": "AX-14",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "Update/replacement notices arrive out of order: `N turns will be interrupted` arrives after `update succeeded`.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Preserve replacement/phase IDs and send order; suppress superseded impact notices.",
+    "anchor": "notices delivered out of order"
+  },
+  {
+    "id": "AX-15",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "Recovery summary `14 tasks affected` includes non-interrupted tasks.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Partly addressed by `4ffbe47` (`fix(notify): count only restart-interrupted turns`); compare exact interrupted turn IDs with the recovery count and remaining recipients.",
+    "anchor": "Recovery summary"
+  },
+  {
+    "id": "AX-16",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "`REPLACE_PENDING` next points to guide instead of `app.replace.status`.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Retain the failing receipt and return the concrete replacement-status recovery path.",
+    "anchor": "REPLACE_PENDING"
+  },
+  {
+    "id": "AX-17",
+    "kind": "idea",
+    "severity": null,
+    "symptom": "`native/src/catalog.json` conflicts on most lands; consider a per-op split.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Preserve as a maintainability idea, not an approved implementation; assess deterministic assembly and frozen-surface checks.",
+    "anchor": "catalog.json conflicts"
+  },
+  {
+    "id": "AX-18",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "An idle-thread send produces a self-triggered `unheld -> connector` handoff notice to its triggering source.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Correlate dispatch/source and owner transition; suppress redundant self-notification without hiding externally caused handoffs.",
+    "anchor": "self-triggered"
+  },
+  {
+    "id": "AX-19",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "Update notices lack the standard `⟢ ARC receipt — automated` header and read like user messages.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Cover settling, interruption-impact and success messages with the automated receipt presentation.",
+    "anchor": "standard"
+  },
+  {
+    "id": "AX-20",
+    "kind": "friction",
+    "severity": "cosmetic",
+    "symptom": "`settling: no blockers` creates update noise when no action is needed.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Emit only actionable impact/state transitions; retain useful diagnostics in pull results.",
+    "anchor": "settling: no blockers"
+  },
+  {
+    "id": "AX-21",
+    "kind": "friction",
+    "severity": "blocking",
+    "symptom": "Per-turn interruption notices reach every verified target instead of affected owners only.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Join actual interrupted turn/source/session bindings before sending; other sources receive at most a metadata-only recovery summary through eligible subscriptions.",
+    "anchor": "per-turn interruption notices"
+  },
+  {
+    "id": "AX-22",
+    "kind": "idea",
+    "severity": null,
+    "symptom": "Optional thin real-instance smoke before push/release for routing, queue/steer, notifications and restart recovery.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Retain as an undispatched idea; bounded memory-watched execution and separate authorization, not an implicit acceptance policy change.",
+    "anchor": "Optional thin real-instance smoke"
+  },
+  {
+    "id": "AX-23",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "Residual installed Core idle CPU after polling fixes; queue reports about 15% versus an earlier 195%.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Reported after `2f77284` and `9e956a0`; inspect writer-lock probes/upstream requests before claiming a current measurement.",
+    "anchor": "Core idles"
+  },
+  {
+    "id": "AX-24",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "Core footprint reportedly grows from about 126 MB to 400 MB after polling cache changes.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Check cache bounds around `9e956a0`; preserve observations as reported, not reproduced.",
+    "anchor": "Core footprint"
+  },
+  {
+    "id": "AX-25",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "WebContent RSS reportedly creeps at idle, about 2 MB/min over ten minutes.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Preserve queue label `D3`; bounded idle observation with instance identity and memory samples.",
+    "anchor": "WebContent RSS"
+  },
+  {
+    "id": "AX-26",
+    "kind": "friction",
+    "severity": "workaround",
+    "symptom": "A selection spanning a privacy stand-in and ordinary text copies only the sensitive value.",
+    "expected": "Review the reported behavior and the proposed outcome before implementation or closure.",
+    "reproductionHints": "Preserve queue label `D2`; use sanitized fixtures and compare mixed-selection clipboard output.",
+    "anchor": "selection spanning"
+  }
+]

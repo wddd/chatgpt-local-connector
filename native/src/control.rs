@@ -1999,7 +1999,12 @@ impl Control {
         }
         Ok(result)
     }
-    pub async fn tool(self: &Arc<Self>, name: &str, mut args: Value) -> Result<Value> {
+    pub async fn tool(self: &Arc<Self>, name: &str, args: Value) -> Result<Value> {
+        let result = self.tool_inner(name, args.clone()).await;
+        crate::coordination::ax::observe_control_result(name, &args, &result);
+        result
+    }
+    async fn tool_inner(self: &Arc<Self>, name: &str, mut args: Value) -> Result<Value> {
         let catalog = catalog();
         let spec = catalog["ops"]
             .as_array()
@@ -2056,6 +2061,9 @@ impl Control {
         }
         match name {
             "events" => crate::coordination::query(&args),
+            "ax_report" | "ax_list" | "ax_candidate" | "ax_triage" => {
+                crate::coordination::ax::call(name, args, &self.session).await
+            }
             "codex_review" => self.mutate("review", args).await,
             "screen" => crate::screen::call(args).await,
             "projects" => Ok(
