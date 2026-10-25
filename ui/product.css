@@ -1550,3 +1550,28 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 
 .account-shared-notice { display: flex; align-items: flex-start; gap: var(--space-2); margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-control); background: var(--surface-subtle); color: var(--text-secondary); font-size: var(--text-sm); }
 .account-shared-notice > .icon { flex: none; margin-top: 2px; }
+
+/* Portrait geometry is solver-owned; only label placement belongs to CSS. */
+.topology-hub .graph-brand { transform: rotate(var(--hub-rotation, 0deg)); }
+.hub-source { left: var(--source-dot-x, calc(14 / 92 * 100%)); top: var(--source-dot-y, 50%); }
+.hub-agent { left: var(--agent-dot-x, calc(78 / 92 * 100%)); top: var(--agent-dot-y, 50%); }
+.topology-scene[data-orientation="portrait"] .hub-hint { display: none; }
+.topology-scene[data-orientation="portrait"] .sources:not(.topology-account) .graph-node-name {
+  top: 50%; left: auto; right: calc(100% + 12px); transform: translateY(-50%); text-align: right; max-width: var(--portrait-source-label-width);
+}
+.topology-scene[data-orientation="portrait"] .sources.topology-account .graph-node-name {
+  top: 50%; left: calc(100% + 12px); transform: translateY(-50%); max-width: 160px;
+}
+.topology-scene[data-orientation="portrait"] .agents:not(.topology-account) .graph-node-name {
+  top: 50%; left: calc(100% + 12px); transform: translateY(-50%); max-width: var(--portrait-agent-label-width);
+}
+.topology-scene[data-orientation="portrait"] .agents:not(.topology-account) .agent-auto-compact {
+  top: calc(50% + 12px); left: calc(100% + 12px); transform: none; max-width: var(--portrait-agent-label-width); overflow: hidden; text-overflow: ellipsis;
+}
+.portrait-wires .portrait-rail { fill: none; stroke: var(--wire-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.portrait-wires .portrait-task { --task-color: var(--accent); fill: none; stroke: var(--task-color); stroke-width: 2; stroke-linecap: round; }
+.portrait-wires .portrait-task[data-state="completed"] { --task-color: var(--success); }
+.portrait-wires .portrait-task[data-state="attention"] { --task-color: var(--warning); }
+.portrait-wires .portrait-task[data-state="summary"] { --task-color: var(--border-strong); }
+.portrait-wires .portrait-task[data-state="external"] { --task-color: var(--text-tertiary); stroke-dasharray: 3 5; }
+.portrait-wires .portrait-task.activity-flow { stroke: color-mix(in srgb, var(--task-color) 65%, var(--text)); stroke-width: 3; stroke-dasharray: 1 17; }

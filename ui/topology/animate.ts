@@ -26,7 +26,8 @@ export class TopologyAnimator {
   }
   setTargets(layout: Layout, drag: Drag | null = null) {
     this.live.forEach(s => { s.alive = false; });
-    this.spring("hub", { ...layout.hub });
+    this.spring("hub", { ...layout.hub, rotation: layout.portrait ? 90 : 0 });
+    if (layout.portrait) this.spring("portrait", { ...layout.portrait });
     this.spring("scene", { height: layout.sceneH });
     const { t1Node, t1Root, t2End, t2Root, flare } = this.params;
     this.spring("shape", { t1Node, t1Root, t2End, t2Root, flare });
@@ -35,7 +36,7 @@ export class TopologyAnimator {
       for (const n of w.nodes) {
         const parent = n.parent ? this.values(nodeKey(w.side, n.parent)) : undefined;
         const s = this.spring(nodeKey(w.side, n.id), { x: n.x, y: n.y, size: n.size, scale: n.scale, op: n.opacity, port: n.port,
-          radius: n.arc?.R ?? n.size / 2 * n.scale + this.params.arcGap, alo: n.arc?.lo ?? 0, ahi: n.arc?.hi ?? 0, aop: n.arc ? 1 : 0, presence: n.opacity === 0 ? 0 : 1, emphasis: 0 },
+          taskBusX: n.taskBusX ?? n.x, childBusX: n.childBusX ?? n.x, radius: n.arc?.R ?? n.size / 2 * n.scale + this.params.arcGap, alo: n.arc?.lo ?? 0, ahi: n.arc?.hi ?? 0, aop: n.arc ? 1 : 0, presence: n.opacity === 0 ? 0 : 1, emphasis: 0 },
         { aop: 0, alo: 0, ahi: 0, ...(parent ? { x: parent.x + w.side * parent.radius, y: parent.y, op: 0, presence: 0, scale: 0.6 } : {}) });
         s.side = w.side; s.parent = n.parent ? nodeKey(w.side, n.parent) : undefined;
         if (drag?.kind === "node" && drag.side === w.side && drag.id === n.id) {
@@ -44,7 +45,7 @@ export class TopologyAnimator {
       }
       for (const t of w.tasks) {
         const parent = nodeKey(w.side, t.parent), n = this.values(parent)!;
-        const s = this.spring(taskKey(w.side, t.id), { x: t.x, y: t.y, width: t.width, height: t.height, port: t.port, op: t.hidden ? 0 : 1, emphasis: 0 },
+        const s = this.spring(taskKey(w.side, t.id), { x: t.x, y: t.y, width: t.width, height: t.height, anchor: t.anchor ?? (t.side === -1 ? 1 : 0), port: t.port, op: t.hidden ? 0 : 1, emphasis: 0 },
           { x: n.x + t.side * n.radius, y: n.y, port: 0, op: 0 });
         s.parent = parent; s.side = w.side;
         if (drag?.kind === "task" && drag.side === w.side && drag.id === t.id) {

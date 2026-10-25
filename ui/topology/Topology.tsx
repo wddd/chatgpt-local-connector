@@ -1,6 +1,8 @@
 import { appEnvironment, envOverrides } from "../state/appEnvironment";
 import { topologyLayout } from "../subscriptions/displayPreferences";
 import { resolveOrientation, type Orientation } from "./orientation";
+import { solvePortrait } from "./portrait";
+import { PortraitPainter } from "./portraitRender";
 import CollapseSymbol from './CollapseSymbol';
 import { t } from '../i18n';
 import { topologyCollapsed } from './accountState';
@@ -34,6 +36,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   boundary: RefObject<HTMLElement | null>; ref: Ref<TopologyHandle>;
 }) {
   const graph = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), hub = useRef<HTMLDivElement>(null);
+  const portraitSvg = useRef<SVGSVGElement>(null), portraitPainter = useRef<PortraitPainter | null>(null);
   const elements = useRef(new Map<string, HTMLDivElement>());
   const animator = useRef(new TopologyAnimator()), painter = useRef<TopologyPainter | null>(null);
   const frame = useRef(0), lastTime = useRef(0), panel = useRef<SurfaceRect | null>(null);
@@ -102,16 +105,28 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     nodes: latest.current.nodes.map(({ content: _content, icon: _icon, children: _children, tasks: _tasks, ...node }) => ({ ...node, position: animator.current.values(nodeKey(node.side, node.id)) })),
     tasks: latest.current.allTasks.map(({ content: _content, ...task }) => ({ ...task, position: animator.current.values(taskKey(task.side, task.id)), text: elements.current.get(taskKey(task.side, task.id))?.textContent })),
     primitives: Object.fromEntries([...animator.current.live.keys()].map(key => [key, animator.current.values(key)])),
-    paths: [...(svg.current?.querySelectorAll("path") ?? [])].map(path => ({ d: path.getAttribute("d"), class: path.getAttribute("class"), opacity: path.getAttribute("opacity"), mask: path.getAttribute("mask") })),
+    paths: [...((orientation.current === "portrait" ? portraitSvg.current : svg.current)?.querySelectorAll("path") ?? [])].map(path => ({ d: path.getAttribute("d"), class: path.getAttribute("class"), opacity: path.getAttribute("opacity"), mask: path.getAttribute("mask") })),
   })), []);
   const paint = useCallback(() => {
     const a = animator.current, h = a.values("hub"), root = graph.current;
     if (!h || !root) return;
+    const portrait = orientation.current === 'portrait';
+    root.dataset.orientation = orientation.current;
+    if (svg.current) svg.current.style.display = portrait ? 'none' : '';
+    if (portraitSvg.current) portraitSvg.current.style.display = portrait ? '' : 'none';
+    root.style.setProperty('--portrait-source-label-width', `${Math.max(32, (layout.current?.portrait?.sourceX ?? 170) - 44)}px`);
+    root.style.setProperty('--portrait-agent-label-width', `${Math.max(32, (size.current?.vw ?? 900) - (layout.current?.portrait?.agentX ?? 768) - 44)}px`);
     root.style.height = `${a.values("scene")!.height}px`;
     boundary.current?.style.setProperty("--topology-hub-x", `${h.x}px`);
     if (hub.current) {
       const size = h.Re * 240 / 130; // Preserve the ARC mark's existing earmuff clearance.
       hub.current.style.width = hub.current.style.height = `${size}px`;
+      hub.current.style.setProperty('--hub-rotation', `${h.rotation}deg`);
+      const angle = h.rotation * Math.PI / 180;
+      hub.current.style.setProperty('--source-dot-x', `${50 - Math.cos(angle) * 32 / 92 * 100}%`);
+      hub.current.style.setProperty('--source-dot-y', `${50 - Math.sin(angle) * 32 / 92 * 100}%`);
+      hub.current.style.setProperty('--agent-dot-x', `${50 + Math.cos(angle) * 32 / 92 * 100}%`);
+      hub.current.style.setProperty('--agent-dot-y', `${50 + Math.sin(angle) * 32 / 92 * 100}%`);
       hub.current.style.setProperty("--hub-dot-size", `${size * 20 / 92}px`);
       hub.current.style.transform = `translate(${h.x - size / 2}px, ${h.y - size / 2}px)`;
     }
@@ -124,7 +139,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
         el.inert = !a.live.get(key)?.alive || v.op < 0.02;
         const scale = v.scale * v.size / (NODE_R * 2);
         el.style.setProperty('--node-inverse', String(1 / scale));
-        const toggle = collapseTarget(v.radius, v.alo, v.ahi, n.side);
+        const toggle = portrait ? { x: -n.side * v.radius, y: 0 } : collapseTarget(v.radius, v.alo, v.ahi, n.side);
         el.style.setProperty('--collapse-x', `${toggle.x / scale}px`);
         el.style.setProperty('--collapse-y', `${toggle.y / scale}px`);
       } else if (el) {
@@ -142,12 +157,14 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
         el.style.setProperty('--path-emphasis', String(Math.max(0, Math.min(1, v.emphasis))));
         el.style.width = `${v.width}px`;
         el.style.height = `${v.height}px`;
-        el.style.transform = `translate(${v.x - (t.side === -1 ? v.width : 0)}px, ${v.y - v.height / 2}px)`;
+        el.style.transform = `translate(${v.x - v.anchor * v.width}px, ${v.y - v.height / 2}px)`;
       }
     }
     const rect = panel.current ? { ...panel.current, x: panel.current.x - origin.current.x, y: panel.current.y - origin.current.y } : null;
     svg.current?.style.setProperty("--topology-time-scale", latest.current.slow ? "4" : "1");
-    painter.current?.paint(a, latest.current.allNodes, latest.current.allTasks, rect,
+    portraitSvg.current?.style.setProperty("--topology-time-scale", latest.current.slow ? "4" : "1");
+    if (portrait) portraitPainter.current?.paint(a, latest.current.allNodes, latest.current.allTasks, rect);
+    else painter.current?.paint(a, latest.current.allNodes, latest.current.allTasks, rect,
       latest.current.guides ? layout.current : null);
   }, [boundary]);
   const tick = useCallback((time: number) => {
@@ -204,7 +221,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       d = null;
     }
     animator.current.params = latest.current.params;
-    layout.current = solve(scene(), latest.current.params, d?.active ? d : null);
+    layout.current = (orientation.current === "portrait" ? solvePortrait : solve)(scene(), latest.current.params, d?.active ? d : null);
     // Publish the settled destination once per layout change, never a spring's
     // in-flight position. The dock can then open at its final content width.
     const selected = latest.current.nodes.find(n => n.selected);
@@ -265,7 +282,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     d.active = true; d.slot.dataset.dragging = "true"; suppressedClick.current = d.key;
     const y = event.clientY - origin.current.y - d.grabY, movedY = y !== d.y;
     d.x = event.clientX - origin.current.x - d.grabX; d.y = y;
-    const layout = solve(scene(), latest.current.params), wing = layout.wings.find(w => w.side === d.side)!;
+    const layout = (orientation.current === "portrait" ? solvePortrait : solve)(scene(), latest.current.params), wing = layout.wings.find(w => w.side === d.side)!;
     const candidates = (d.kind === "node" ? wing.nodes : wing.tasks.filter(t => t.parent === d.parent)).filter(item => d.order.includes(item.id));
     if (!candidates.some(item => item.id === d.id)) { finishDrag(event, true); return; }
     if (movedY) d.order = moveToY(candidates, d.id, d.y);
@@ -315,6 +332,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   // whole commit so the painter and viewport observer always mount together.
   useEffect(() => {
     if (!svg.current || !boundary.current || !graph.current) return;
+    portraitPainter.current = new PortraitPainter(portraitSvg.current!, prefix, changeHover);
     painter.current = new TopologyPainter(svg.current, prefix, changeHover);
     const container = boundary.current;
     const measure = () => {
@@ -343,6 +361,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       cancelAnimationFrame(frame.current); frame.current = 0; lastTime.current = 0;
       observer.disconnect(); container.removeEventListener("scroll", scroll); window.removeEventListener("resize", measure);
       painter.current?.dispose(); painter.current = null;
+      portraitPainter.current?.dispose(); portraitPainter.current = null;
     };
   }, [boundary, paint, prefix, target, changeHover, scheduleOrientation]);
   // A new pointer sequence clears the previous drag's click guard, including
@@ -364,6 +383,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       target(); event.preventDefault(); event.stopPropagation();
     } }}>
     <svg ref={svg} className="topology-wires" aria-hidden="true" />
+    <svg ref={portraitSvg} className="topology-wires portrait-wires" aria-hidden="true" />
     <div ref={hub} className="topology-hub">{brand}</div>
     {allNodes.map(n => <div key={nodeKey(n.side, n.id)} ref={el => { const key = nodeKey(n.side, n.id); if (el) elements.current.set(key, el); else elements.current.delete(key); }}
       data-agent-node={n.side === 1 ? n.platform ?? n.id : undefined} data-source-node={n.side === -1 ? n.sourceIds?.[0] ?? n.id : undefined}

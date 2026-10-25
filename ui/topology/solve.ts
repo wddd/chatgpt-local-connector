@@ -1,3 +1,4 @@
+import type { PortraitGeometry } from "./portrait.ts";
 // Metadata is the single source for solver defaults, controls and validation.
 export const PARAMETER_GROUPS = {
   balance: { en: "Fitting", "zh-CN": "空间适配" },
@@ -51,14 +52,15 @@ export interface Drag extends Point { kind: "node" | "task"; side: Side; id: str
 export interface Point { x: number; y: number }
 export interface NodeGeometry extends Point {
   id: string; parent?: string; tasks: readonly Task[]; active: boolean; size: number; scale: number; opacity: number; dim: boolean; side: Side;
+  taskBusX?: number; childBusX?: number;
   port: number; arc: { R: number; lo: number; hi: number } | null;
 }
-export interface TaskGeometry extends Task, Point { parent: string; side: Side; port: number; hidden?: boolean }
+export interface TaskGeometry extends Task, Point { parent: string; side: Side; port: number; hidden?: boolean; anchor?: number }
 interface WingOptions { idleStyle: boolean; rowScale: number; squeeze: number }
 interface Row { e: Entity; n: number; h: number }
 export interface Wing { side: Side; H: number; nodes: NodeGeometry[]; ear: { lo: number; hi: number }; tasks: TaskGeometry[] }
 export interface WingBalance { core: number; full: number; squeeze: number }
-export interface Layout { balance: WingBalance[]; vw: number; vh: number; sceneH: number; hub: Point & { Re: number }; wings: Wing[] }
+export interface Layout { portrait?: PortraitGeometry; balance: WingBalance[]; vw: number; vh: number; sceneH: number; hub: Point & { Re: number }; wings: Wing[] }
 export const deg = (d: number) => d * Math.PI / 180;
 export const NODE_R = 22, LABEL_W = 110;
 export const PANEL_MIN_WIDTH = 400, PANEL_MARGIN = 16, PANEL_ARC_GAP = 40;
