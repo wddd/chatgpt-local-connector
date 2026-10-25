@@ -118,7 +118,7 @@ pub(crate) fn evidence_from_history(
         && configuration.is_object()
     {
         result["reason"] = json!("native-continuation");
-        result["retry"] = json!({"turnId":next["id"],"trigger":trigger,"startedAt":started,"configuration":configuration});
+        result["retry"] = json!({"turnId":next["id"],"trigger":trigger,"startedAt":started,"configuration":configuration,"state":notice_state(string(next,"status"))});
     } else if !matches!(
         trigger,
         "capacity_retry_automatic" | "capacity_retry_manual" | "resume_interrupted_task"
@@ -132,6 +132,56 @@ pub(crate) fn evidence_from_history(
         result["reason"] = json!("outside-continuation-window");
     }
     Ok(result)
+}
+
+fn notice_state(state: &str) -> &'static str {
+    match state {
+        "completed" => "completed",
+        "failed" => "failed",
+        "cancelled" | "interrupted" => "interrupted",
+        "running" | "inProgress" => "running",
+        "interaction-required" => "needs-input",
+        _ => "unknown",
+    }
+}
+
+pub(super) fn notice(b: &Binding, observation: &Value, all: &[Binding]) -> Value {
+    if b.successor["inherited"] != true {
+        return Value::Null;
+    }
+    let Some(mut turn) = b.successor["turnId"].as_str() else {
+        return Value::Null;
+    };
+    let mut state = "unknown";
+    let retry = &observation["nativeContinuation"]["retry"];
+    if retry["turnId"] == turn {
+        state = notice_state(string(retry, "state"));
+    }
+    // Follow only confirmed continuations owned by this source. Bound the walk
+    // even if a damaged record links back to an earlier turn.
+    for _ in 0..all.len() {
+        let Some(next) = all.iter().find(|next| {
+            next.thread_id == b.thread_id && next.turn_id == turn && next.source_id == b.source_id
+        }) else {
+            break;
+        };
+        let observed = notice_state(string(&next.observation, "state"));
+        if observed != "unknown" {
+            state = observed;
+        }
+        if next.successor["inherited"] != true {
+            break;
+        }
+        let Some(successor) = next.successor["turnId"].as_str() else {
+            break;
+        };
+        if successor == turn {
+            break;
+        }
+        turn = successor;
+        state = "unknown";
+    }
+    json!({"turnId":turn,"state":state})
 }
 
 // Called under the notification lock; record-first writes are restart-idempotent.
@@ -297,12 +347,13 @@ mod tests {
             let proof = evidence_from_history(
                 &json!({"id":"thread","cwd":"/project"}),
                 "old",
-                &json!({"id":"next","items":[]}),
+                &json!({"id":"next","status":"completed","items":[]}),
                 &history(trigger, None),
             )
             .unwrap();
             assert_eq!(proof["retry"]["turnId"], "next");
             assert_eq!(proof["retry"]["trigger"], trigger);
+            assert_eq!(proof["retry"]["state"], "completed");
             assert_eq!(proof["until"], 1600);
         }
     }

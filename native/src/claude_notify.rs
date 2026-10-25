@@ -96,6 +96,8 @@ struct Delivery {
     task_error: Value,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     reconciliation: Value,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    continuation: Value,
     #[serde(default)]
     timing: DeliveryTiming,
     #[serde(default)]
@@ -580,7 +582,7 @@ fn event(b: &Binding, d: &Delivery) -> Value {
     } else {
         json!({"hint":"Read the result and review its changes.","via":"query","op":"codex_read","args":{"threadId":b.thread_id}})
     };
-    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":task_title(b),"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"routing":d.interaction["routing"],"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":if kind=="handoff" {Value::Null}else{d.task_error.clone()},"reconciliation":d.reconciliation,"ownership":if kind=="handoff" {d.task_error.clone()}else{Value::Null},"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
+    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":task_title(b),"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"routing":d.interaction["routing"],"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":if kind=="handoff" {Value::Null}else{d.task_error.clone()},"reconciliation":d.reconciliation,"continuation":d.continuation,"ownership":if kind=="handoff" {d.task_error.clone()}else{Value::Null},"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
 }
 fn empty_answered_completion(b: &Binding, observed: &Value) -> bool {
     observed["state"] == "completed"
@@ -687,7 +689,16 @@ fn receipt(b: &Binding, d: &Delivery) -> String {
     } else {
         ""
     };
-    format!("⟢ ARC receipt — automated, not a user message\n{icon} {state}{reconciliation} · {}{duration}\n{}\n{}{config} · ref {}",
+    let continuation = if d.continuation.is_object() {
+        format!(
+            "\ncontinued in turn {} · {}",
+            string(&d.continuation, "turnId"),
+            string(&d.continuation, "state")
+        )
+    } else {
+        String::new()
+    };
+    format!("⟢ ARC receipt — automated, not a user message\n{icon} {state}{reconciliation} · {}{duration}\n{}\n{}{config} · ref {}{continuation}",
         receipt_line(project, 100), receipt_line(title, 100),
         receipt_line(agent, 100), b.thread_id)
 }
@@ -1084,7 +1095,17 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     {
         b.thread_title = title.to_owned();
     }
+    let history = records(dir)?;
+    let continuation = continuation::notice(b, observation, &history);
     let mut resolved = false;
+    if continuation.is_object() {
+        for d in &mut b.deliveries {
+            if d.key == "terminal" && d.status == "pending" && d.continuation != continuation {
+                d.continuation = continuation.clone();
+                resolved = true;
+            }
+        }
+    }
     if observation["state"] != "unconfirmed" {
         for d in &mut b.deliveries {
             if d.task_state == "interaction-required"
@@ -1131,7 +1152,6 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     if suppress_empty {
         events.clear();
     }
-    let history = records(dir)?;
     for handoff in observation["handoffs"].as_array().into_iter().flatten() {
         let started = if b.scope_started_at == 0 {
             b.created_at.saturating_mul(1000)
@@ -1201,6 +1221,7 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
                 observation["dispatches"].clone()
             },
             reconciliation: reconciliation.clone(),
+            continuation: continuation.clone(),
             task_error: if handoff {
                 observation["handoffs"]
                     .as_array()
@@ -1237,7 +1258,16 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     for d in &b.deliveries[first..] {
         inbox_append(dir, &b.source_id, event(b, d))?;
     }
-    if resolved && !b.source_id.is_empty() {
+    if resolved {
+        inbox_refresh(dir, b)?;
+    }
+    persist(dir, b)?;
+    drop(guard);
+    Ok(())
+}
+
+fn inbox_refresh(dir: &Path, b: &Binding) -> Result<()> {
+    if !b.source_id.is_empty() {
         let path = inbox_path(dir, &b.source_id);
         if path.exists() {
             let mut rows = load(&path)?;
@@ -1261,8 +1291,6 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
             save(&path, &rows)?;
         }
     }
-    persist(dir, b)?;
-    drop(guard);
     Ok(())
 }
 
@@ -1733,7 +1761,25 @@ async fn flush(
             }
         }
     }
-    for b in &mut all {
+    let continuations = all
+        .iter()
+        .map(|b| continuation::notice(b, &Value::Null, &all))
+        .collect::<Vec<_>>();
+    for (b, continuation) in all.iter_mut().zip(continuations) {
+        let mut changed = false;
+        for d in &mut b.deliveries {
+            if d.key == "terminal"
+                && d.status == "pending"
+                && continuation.is_object()
+                && (continuation["state"] != "unknown" || !d.continuation.is_object())
+            {
+                changed |= d.continuation != continuation;
+                d.continuation = continuation.clone();
+            }
+        }
+        if changed {
+            inbox_refresh(dir, b)?;
+        }
         routing::refresh(dir, b)?;
     }
     subscriptions::route(&state, &mut all, now);
@@ -3399,6 +3445,21 @@ mod tests {
         validator.validate(&data).unwrap();
         assert_eq!(data["kind"], "handoff");
         assert!(data["ownership"].is_object());
+        let mut continued = data.clone();
+        continued["kind"] = json!("interrupted");
+        for state in [
+            "running",
+            "completed",
+            "failed",
+            "interrupted",
+            "needs-input",
+            "unknown",
+        ] {
+            continued["continuation"] = json!({"turnId":"resumed-turn","state":state});
+            validator.validate(&continued).unwrap();
+        }
+        continued["continuation"]["undeclared"] = json!(true);
+        assert!(validator.validate(&continued).is_err());
         let mut reconciled = data.clone();
         reconciled["kind"] = json!("interrupted");
         for (ended, duration, basis) in [
@@ -4074,6 +4135,79 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reconciled_interruption_reports_continued_outcome_once() {
+        // Regression: restart sent a bare interruption after Desktop Resume had already completed the work.
+        for state in ["completed", "running"] {
+            let dir = Sandbox::new();
+            let mut old = fixture(&dir.0);
+            old.continuation_bound = true;
+            old.successor =
+                json!({"turnId":"resumed-turn","inherited":true,"reason":"native-continuation"});
+            old.observation = json!({"reconciliation":"pending-after-restart"});
+            persist(&dir.0, &old).unwrap();
+            let mut next = old.clone();
+            next.turn_id = "resumed-turn".into();
+            next.continuation_bound = false;
+            next.successor = Value::Null;
+            next.observation = json!({"state":state});
+            persist(&dir.0, &next).unwrap();
+            let fake = Fake::success();
+            for _ in 0..3 {
+                super::recover(&dir.0, &mut old).unwrap();
+                process(&fake, &dir.0, &mut old, &json!({"state":"cancelled"}))
+                    .await
+                    .unwrap();
+            }
+            let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
+            assert_eq!(inbox["events"].as_array().unwrap().len(), 1);
+            assert!(string(&inbox["events"][0], "summary")
+                .contains(string(&inbox["events"][0]["continuation"], "turnId")));
+            assert_eq!(
+                inbox["events"][0]["continuation"],
+                json!({"turnId":"resumed-turn","state":state})
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn pending_interruption_refreshes_when_continuation_finishes() {
+        // Regression: an interruption waiting for bucket tokens lost the continuation's completed outcome.
+        let dir = Sandbox::new();
+        let mut old = fixture(&dir.0);
+        super::process(
+            &dir.0,
+            &Mutex::new(()),
+            &mut old,
+            &json!({"state":"cancelled"}),
+        )
+        .await
+        .unwrap();
+        old.continuation_bound = true;
+        old.successor = json!({"turnId":"resumed-turn","inherited":true});
+        persist(&dir.0, &old).unwrap();
+        let mut next = old.clone();
+        next.turn_id = "resumed-turn".into();
+        next.successor = Value::Null;
+        next.deliveries.clear();
+        next.observation = json!({"state":"completed"});
+        persist(&dir.0, &next).unwrap();
+        let fake = Fake::success();
+        flush(&fake, &dir.0, &Mutex::new(()), i64::MAX, 0, &json!({}))
+            .await
+            .unwrap();
+        let restored = binding(&dir.0, &old.thread_id, &old.turn_id)
+            .unwrap()
+            .unwrap();
+        let data = mcp_events::payload("task_status", &event(&restored, &restored.deliveries[0]));
+        assert_eq!(
+            data["continuation"],
+            json!({"turnId":"resumed-turn","state":"completed"})
+        );
+        let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
+        assert_eq!(inbox["events"][0]["continuation"], data["continuation"]);
+    }
+
+    #[tokio::test]
     async fn restart_duration_uses_native_end_or_last_activity_without_downtime() {
         // Regression: a ten-minute interrupted turn was reported as 146 minutes after restart.
         for (timing, last, expected, basis) in [
@@ -4344,6 +4478,7 @@ mod tests {
             dispatches: Value::Null,
             task_error: Value::Null,
             reconciliation: Value::Null,
+            continuation: Value::Null,
         });
         persist(&dir.0, &b).unwrap();
         let mut b = binding(&dir.0, "thread-1", "turn-1").unwrap().unwrap();
