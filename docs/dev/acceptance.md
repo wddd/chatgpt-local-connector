@@ -96,6 +96,15 @@ The first run creates a baseline. Later runs compare with the latest directory f
 
 Scenarios in tooling/acceptance/scenarios/*.json include idle, single-task, parallel-seven, approval, long-multilingual, narrow-tentacles, left-panel, right-panel, light, and dark. Left and right panels are captured separately under the product's single-panel rule. The `p3-*` scenarios cover source setup (including empty, local, and fixed-connection entry), standalone and stacked connection methods/configuration/ready, Welcome, and owned/joined Connection detail in both themes. Fixtures use `sourceSetup`, `connectionSetup`, `remoteLink`, and `relayProgress` to select real renderer states without contacting Core. Copy scenario JSON to change Agents, phases, text, themes, language, and panels without unit tests.
 
+Task-detail fixtures use sanitized payloads matching `AgentTimeline` / `AgentInteraction` in `ui/types.ts`. Ownership follows `control::observe_ownership` and `claude_notify::ownership`; request routing follows `claude_notify::routing`. No fixture contains real task content or provider identities.
+
+| Scenario | Target |
+| --- | --- |
+| `task-owner-connector` | Connector ownership hides the owner chip. |
+| `task-owner-desktop` | Desktop ownership shows the owner chip; open it to inspect handoff history. |
+
+Target one fixture with `npm run accept:ui -- --scenario=task-owner-desktop` from main. The runner uses browser fixtures and screenshots. A missing route fails readiness with its method and path in `scenario.missingRoutes` and `data-scenario-error`.
+
 For manual inspection, run npm run dev:ui and open `http://127.0.0.1:5187/?scenario=<scenario>`. Only Vite development loads scenarios. Release builds exclude fixture modules. Fixed time and reduced animation support layout comparison. These screenshots do not prove real Agent or native-window behavior.
 
 ## Notification reachability and guides

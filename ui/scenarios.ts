@@ -22,7 +22,7 @@ import config from '../native/src/ingress/config.json';
 import { taskScenario } from './scenarioTasks';
 import { taskPanelSnapshot } from './state/taskPanel';
 
-type Fixture = { update?: UpdateSnapshot; replacement?: Replacement; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; question?: boolean; completed?: boolean; elapsedSeconds?: number }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
+type Fixture = { update?: UpdateSnapshot; replacement?: Replacement; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; question?: boolean; completed?: boolean; elapsedSeconds?: number; ownership?: AgentTimeline['ownership'] }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 let conversations: Record<string, AgentConversation[]> = {};
@@ -174,7 +174,7 @@ export async function installScenario(name: string) {
     }
     timelines[`agents/timeline/${session.id}`] = { sessionId: session.id, status: task.completed ? 'completed' : 'running', entries,
       cursor: entries.length, executionEvidence: true, coverage: { state: 'complete', truncated: false },
-      dispatchSummary: session.dispatchSummary, turnDispatchSummaries: summaries, turnStatuses };
+      dispatchSummary: session.dispatchSummary, turnDispatchSummaries: summaries, turnStatuses, ownership: task.ownership };
   });
   conversations = Object.fromEntries(fixture.agents.map(agent => {
     const current = activity.agents[agent].sessions.map(session => ({ id: session.id, source: session.source as AgentConversation['source'], title: session.title,
