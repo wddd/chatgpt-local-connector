@@ -1,12 +1,11 @@
-import { Minus, Plus } from 'lucide-react';
-import { Icon } from '../components/ui';
+import CollapseSymbol from './CollapseSymbol';
 import { t } from '../i18n';
 import { topologyCollapsed } from './accountState';
 import { highlightedPaths, type PathTask } from './accounts';
 import { observeTopology } from "../acceptance";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject, type PointerEvent, type MouseEvent } from "react";
 import { useMedia } from "../state/hooks";
-import { solve, NODE_R, PANEL_MIN_WIDTH, PANEL_MARGIN, panelWidth, type Side, type Scene, type Drag, type Layout, type Task } from "./solve";
+import { solve, collapseOffset, NODE_R, PANEL_MIN_WIDTH, PANEL_MARGIN, panelWidth, type Side, type Scene, type Drag, type Layout, type Task } from "./solve";
 import { TopologyAnimator, nodeKey, taskKey } from "./animate";
 import { TopologyPainter, type PaintNode, type PaintTask } from "./render";
 import { orderedSubset, moveToY } from "./order";
@@ -86,13 +85,12 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     for (const n of latest.current.allNodes) {
       const key = nodeKey(n.side, n.id), v = a.values(key), el = elements.current.get(key);
       if (v && el) {
-        el.style.transform = `translate(${v.x - NODE_R}px, ${v.y - NODE_R}px) scale(${v.scale * v.size / (NODE_R * 2) * v.emphasis})`;
+        el.style.transform = `translate(${v.x - NODE_R}px, ${v.y - NODE_R}px) scale(${v.scale * v.size / (NODE_R * 2)})`;
         el.style.opacity = String(v.op * v.light);
-        el.dataset.pathLit = String(!!latest.current.lit && v.light > 0.99 && !n.selected);
         el.inert = !a.live.get(key)?.alive || v.op < 0.02;
-        const scale = v.scale * v.size / (NODE_R * 2) * v.emphasis;
+        const scale = v.scale * v.size / (NODE_R * 2);
         el.style.setProperty('--node-inverse', String(1 / scale));
-        el.style.setProperty('--collapse-offset', `${(v.size / 2 * v.scale + (v.radius - v.size / 2 * v.scale) * 0.35) / scale}px`);
+        el.style.setProperty('--collapse-offset', `${collapseOffset(v.size / 2 * v.scale, v.radius, 2 * Math.max(0.8, h.Re / 130)) / scale}px`);
       } else if (el) {
         el.style.opacity = '0'; el.inert = true;
       }
@@ -185,7 +183,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       latest.current.onPanelLayout?.(reportedPanel.current);
     }
     animator.current.setTargets(layout.current, d?.active ? d : null);
-    animator.current.highlight(latest.current.lit, latest.current.nodes.filter(n => n.selected).map(n => nodeKey(n.side, n.id)));
+    animator.current.highlight(latest.current.lit);
     // Pins follow the pointer immediately; their neighbours continue springing.
     animator.current.step(0, !!latest.current.reduced);
     paint(); wake();
@@ -324,7 +322,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
         return <>
           <button type="button" className="topology-collapse" aria-label={`${t(closed ? 'topology.expand' : 'topology.collapse')} ${n.label ?? n.id}`} aria-expanded={!closed}
             onPointerDown={event => event.stopPropagation()} onClick={() => { setHover({ side: n.side, id: n.id }); topologyCollapsed.set(old => ({ ...old, [nodeKey(n.side, n.id)]: !closed })); }}>
-            <Icon icon={closed ? Plus : Minus} />
+            <CollapseSymbol collapsed={closed} />
           </button>
           {(closed || panelKey?.startsWith('agent:') && n.side === 1 && !n.selected && !n.children?.length) && count > 0 && <span className="agent-task-count" data-attention={hiddenTasks.some(t => t.state === 'attention' || t.pending) || undefined} aria-label={t('topology.hiddenTasks', { count })}>{count}</span>}
         </>;

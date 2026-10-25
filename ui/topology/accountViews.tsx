@@ -25,16 +25,19 @@ export function accountViews(views: NodeView[], side: -1 | 1, accounts: Topology
       // Preserve the existing node, label, quota, badges and panel behavior.
       // Multiple connections of this identity still share just one node.
       const account = linked[0];
-      return [{ ...first, accountId: account.id, sourceIds: covered.map(v => v.id), tasks,
+      return [{ ...first, label, accountId: account.id, sourceIds: covered.map(v => v.id), tasks,
         selected: covered.some(v => v.selected), sameIdentity: account.sources.length > 0 && account.agentProfiles.length > 0 }, ...unmatched];
     }
     // Equal aliases (including Unidentified) never merge distinct ARC account IDs.
+    const unidentified = linked.filter(a => a.alias === 'Unidentified').map(a => a.id).sort();
     const childViews = linked.map(account => {
       const sources = members.filter(v => account.sources.includes(v.id));
       const selected = side === -1 ? sources.some(v => v.selected) : members.some(v => v.selected) && members.some(v => v.selectedAccountId === account.id);
       const sameIdentity = account.sources.length > 0 && account.agentProfiles.length > 0;
       const state = side === -1 ? sources.find(v => v.state === 'normal')?.state ?? sources[0]?.state ?? first.state : first.state;
-      const nodeLabel = mode === 'flat' ? `${label} · ${account.alias}` : account.alias;
+      const suffix = account.alias === 'Unidentified' ? String(unidentified.indexOf(account.id) + 1) : undefined;
+      const alias = suffix ? `${account.alias} · ${suffix}` : account.alias;
+      const nodeLabel = mode === 'flat' ? `${label} · ${alias}` : alias;
       return {
         ...first, id: accountNodeId(platform, account.id), accountId: account.id, sourceIds: sources.map(v => v.id),
         selected, account: true, sameIdentity, label: nodeLabel,
@@ -43,7 +46,10 @@ export function accountViews(views: NodeView[], side: -1 | 1, accounts: Topology
         tasks: tasks.filter(t => t.agentAccountId === account.id),
         content: <GraphNode label={nodeLabel} state={state} highlighted={selected} onOpen={() => actions.open(side, platform, sources[0]?.id, account.id)}>
           {mode === 'tree' ? <span className="topology-account-initial">{account.alias.slice(0, 1)}</span> : first.icon}
-          <span className="graph-node-name">{nodeLabel}{sameIdentity && <Icon icon={Link} />}</span>
+          <span className={`graph-node-name${suffix ? ' topology-unidentified-label' : ''}`}>
+            {suffix ? <><span>{mode === 'flat' ? `${label} · ${account.alias}` : account.alias}</span><span> · {suffix}</span></> : nodeLabel}
+            {sameIdentity && <Icon icon={Link} />}
+          </span>
         </GraphNode>,
       } satisfies NodeView;
     });

@@ -1,3 +1,4 @@
+import { controlSource } from '../controlSources';
 import { orderedSubset } from '../topology/order';
 import { accountViews } from '../topology/accountViews';
 import { useTopologyAccounts, topologyMode, topologyAccountOrder } from '../topology/accountState';
@@ -212,13 +213,15 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     if (!ingress) return [];
     const state = source.state === "disconnected" ? "disconnected" : sourceState(ingress);
     const selected = !sourceSelection?.closing && sourceSelection?.client?.id === source.id;
+    const platformLabel = controlSource(source.product)?.displayName ?? source.product;
+    const nodeLabel = accounts.some(account => account.sources.includes(source.id)) ? platformLabel : source.label;
     return [{
-      id: source.id, platform: source.product, platformLabel: source.product === 'claude' ? 'Claude' : source.product === 'chatgpt' ? 'ChatGPT' : source.product,
+      id: source.id, platform: source.product, platformLabel, label: nodeLabel,
       icon: <SourceIcon platform={source.product} panelVisual />, sourceIds: [source.id], state: wireState(state), attention: false, selected, tasks: [], reorderable: !panelOpen,
-      content: <GraphNode label={`${source.label}: ${t(state)}`} state={wireState(state)} highlighted={selected} newlyAdded={source.id === newSourceId && !flow}
+      content: <GraphNode label={`${nodeLabel}: ${t(state)}`} state={wireState(state)} highlighted={selected} newlyAdded={source.id === newSourceId && !flow}
         onMove={panelOpen ? undefined : by => moveSource(source.id, by)}
         onOpen={() => selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } })}>
-        <SourceIcon platform={source.product} panelVisual /><span className="graph-node-name">{source.label}</span>
+        <SourceIcon platform={source.product} panelVisual /><span className="graph-node-name">{nodeLabel}</span>
       </GraphNode>,
     }];
   });

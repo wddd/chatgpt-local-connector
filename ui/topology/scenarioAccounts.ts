@@ -19,7 +19,7 @@ export function installTopologyAccounts(status: Status, activity: AgentActivityS
     quota: { state: 'unavailable', windows: [] },
     health: { state: identity.sources.length && identity.provider === 'anthropic' ? 'attention' : 'ready' },
   }));
-  status.ingresses[0].sources = accounts.flatMap(a => a.sources.map(id => ({ ...base, id, product: a.provider === 'openai' ? 'chatgpt' : 'claude', label: a.provider === 'openai' ? 'ChatGPT' : 'Claude' })));
+  status.ingresses[0].sources = accounts.flatMap(a => a.sources.map(id => ({ ...base, id, product: a.provider === 'openai' ? 'chatgpt' : 'claude', label: id === 'example-source-one' ? 'Claude · Laptop' : id === 'example-source-two' ? 'Claude · Desktop' : a.provider === 'openai' ? 'Personal' : 'Claude' })));
   for (const [agent, group] of Object.entries(activity.agents)) group.sessions.forEach((session, index) => {
     const account = agent === 'claude' ? accounts[index === 1 ? 1 : 0] : agent === 'codex' ? accounts[2] : accounts[3];
     session.agentAccountId = account.id;

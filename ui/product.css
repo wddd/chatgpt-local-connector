@@ -1471,10 +1471,16 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .topology-account .graph-node { background: var(--topology-account-fill); border: 2px solid var(--account-color); border-radius: 50%; }
 .topology-account-initial { color: var(--account-color); font-weight: 600; font-size: 18px; }
 .topology-node .graph-node-name .icon { display: inline-flex; vertical-align: middle; margin-left: 3px; }
-.topology-collapse { position: absolute; top: 50%; left: calc(50% + var(--collapse-side) * var(--collapse-offset, 27px)); transform: translate(-50%, -50%) scale(var(--node-inverse, 1)); width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--account-color); color: white; opacity: 0; pointer-events: none; cursor: pointer; }
-.topology-node:hover .topology-collapse, .topology-node:focus-within .topology-collapse { opacity: 1; pointer-events: auto; }
-.topology-collapse:focus-visible { outline: 2px solid var(--account-color); outline-offset: 3px; }
-.topology-node[data-path-lit="true"] .graph-node { box-shadow: 0 0 0 4px color-mix(in srgb, var(--account-color) 14%, transparent); }
+.topology-unidentified-label { display: flex; width: max-content; }
+.topology-unidentified-label > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.topology-unidentified-label > span:last-child { flex: none; }
+.connection-core .topology-collapse { position: absolute; top: 50%; left: calc(50% + var(--collapse-side) * var(--collapse-offset, 18px)); transform: translate(-50%, -50%) scale(var(--node-inverse, 1)); width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; pointer-events: none; cursor: pointer; }
+.topology-collapse-symbol { display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--canvas); box-shadow: 0 0 0 2px var(--canvas); opacity: 0; transform: scale(.65); transition: transform 180ms var(--task-spring), opacity 140ms ease; }
+.topology-collapse-symbol > svg { display: block; width: 100%; height: 100%; }
+.topology-node:hover .topology-collapse, .topology-node:focus-within .topology-collapse { pointer-events: auto; }
+.topology-node:hover .topology-collapse-symbol, .topology-node:focus-within .topology-collapse-symbol { opacity: 1; transform: scale(1); }
+.topology-collapse:focus-visible .topology-collapse-symbol { box-shadow: 0 0 0 2px var(--canvas), 0 0 0 3px var(--account-color); }
+@media (prefers-reduced-motion: reduce) { .topology-collapse-symbol { transition: none; } }
 .activity-slot[data-path-lit="true"] .activity-bubble { box-shadow: inset 0 0 0 1px var(--border-strong), 0 6px 18px color-mix(in srgb, var(--text) 18%, transparent); }
 /* Accounts share the workspace shell and source side panel. */
 /* Only inline stand-ins blur. Their raw values never enter hidden DOM. */

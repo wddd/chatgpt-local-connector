@@ -54,16 +54,16 @@ export class TopologyPainter {
       keep.add(key);
       const b = this.branch(key), a = deg(v.port), radial = { x: n.side * Math.cos(a), y: Math.sin(a) };
       const ancestor = n.parent ? animator.values(nodeKey(n.side, n.parent)) : undefined;
-      const port = ancestor ? { x: ancestor.x + ancestor.radius * ancestor.emphasis * radial.x, y: ancestor.y + ancestor.radius * ancestor.emphasis * radial.y }
+      const port = ancestor ? { x: ancestor.x + ancestor.radius * radial.x, y: ancestor.y + ancestor.radius * radial.y }
         : { x: h.x + h.Re * radial.x, y: h.y + h.Re * radial.y };
-      const start = { x: v.x - n.side * (v.size / 2 * v.scale * v.emphasis + 6), y: v.y }, D = Math.hypot(start.x - port.x, start.y - port.y);
+      const start = { x: v.x - n.side * (v.size / 2 * v.scale + 6), y: v.y }, D = Math.hypot(start.x - port.x, start.y - port.y);
       const c1 = { x: start.x - n.side * D * p.t1Node, y: start.y };
       const c2 = { x: port.x + radial.x * D * p.t1Root, y: port.y + radial.y * D * p.t1Root };
       const shape = grownWire(start, c1, c2, port, scale, p.flare, false, n.state === "connecting");
       if (n.state !== "inactive") controls(start, c1, c2, port);
       attr(b.group, { class: `topology-branch primary ${n.side === 1 ? "right" : "left"}`, "data-state": n.state,
         "data-selected": String(n.selected),
-        opacity: v.presence * (v.light < 0.99 ? 0.18 : 1) });
+        opacity: v.presence * clamp(v.wireLight, 0, 1) });
       attr(b.gradient, { x1: port.x, y1: port.y, x2: start.x, y2: start.y });
       attr(b.solid, { offset: Math.min(0.29, 10 * scale / Math.max(1, D)) });
       attr(b.fade, { offset: n.state === "connecting" ? Math.min(1, 26 * scale / Math.max(1, D)) : 0.3,
@@ -73,7 +73,7 @@ export class TopologyPainter {
       attr(b.flow, { class: "connecting-wire", d: n.state === "connecting" ? shape.centerline : "", "stroke-width": 3 * scale });
       attr(b.gap, { class: "wire-break", d: n.state === "error" ? shape.gap : "", "stroke-width": 18 * scale });
       attr(b.arc, { class: `topology-outer-arc ${n.attention ? "needs-attention" : ""}`,
-        d: arcPath(v.x, v.y, v.radius * v.emphasis, v.alo, v.ahi, n.side), opacity: v.aop, "stroke-width": 4 * Math.max(0.8, scale) });
+        d: arcPath(v.x, v.y, v.radius, v.alo, v.ahi, n.side), opacity: v.aop, "stroke-width": 4 * Math.max(0.8, scale) });
     }
     const bridges: PaintTask[] = panel ? nodes.filter(n => n.selected).map(n => ({
       id: `panel:${n.id}`, parent: n.id, side: n.side, state: "running" as const, selected: true,
@@ -81,11 +81,11 @@ export class TopologyPainter {
     for (const t of [...tasks, ...bridges]) {
       const key = taskKey(t.side, t.id), n = animator.values(nodeKey(t.side, t.parent));
       const bridge = bridges.includes(t);
-      const v = bridge && n ? { x: n.x, y: n.y, port: 0, op: 1 } : animator.values(key);
+      const v = bridge && n ? { x: n.x, y: n.y, port: 0, op: 1, wireLight: n.wireLight } : animator.values(key);
       if (!v || !n) continue;
       keep.add(key);
       const b = this.branch(key), a = deg(v.port), radial = { x: t.side * Math.cos(a), y: Math.sin(a) };
-      const port = { x: n.x + n.radius * n.emphasis * radial.x, y: n.y + n.radius * n.emphasis * radial.y };
+      const port = { x: n.x + n.radius * radial.x, y: n.y + n.radius * radial.y };
       const end = bridge && panel ? { x: t.side === 1 ? panel.x : panel.x + panel.width,
         y: clamp(v.y, panel.y + 27, panel.y + panel.height - 27) } : { x: v.x + ("offset" in v ? v.offset : 0), y: v.y };
       const D = Math.hypot(end.x - port.x, end.y - port.y);
@@ -94,7 +94,7 @@ export class TopologyPainter {
       const shape = grownWire(end, c1, c2, port, scale, p.flare, true);
       controls(end, c1, c2, port);
       attr(b.group, { class: `topology-branch secondary ${bridge ? "panel-link" : ""} ${t.side === 1 ? "right" : "left"}`, "data-state": t.state,
-        opacity: v.op * ("light" in v && v.light < 0.99 ? 0.18 : 1) });
+        opacity: v.op * clamp(v.wireLight, 0, 1) });
       attr(b.outline, { d: t.state === "external" ? shape.centerline : shape.outline, class: t.state === "external" ? "external-wire" : "task-body" });
       attr(b.flow, { d: ["running", "external"].includes(t.state) ? shape.centerline : "", class: "activity-flow" });
     }
