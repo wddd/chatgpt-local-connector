@@ -121,6 +121,10 @@ for await (const line of createInterface({ input: process.stdin })) {
       if (method === 'turn/steer') { row.turns.at(-1).input.push(...params.input);saveFixture(saved);return emit({id,result:{turnId:row.turns.at(-1).id}}); }
       if (method === 'turn/interrupt') { if(row.turns.at(-1)?.id!==params.turnId)return emit({id,error:{code:-32600,message:'stale turn'}}); row.turns.at(-1).status='interrupted';saveFixture(saved);return emit({id,result:{}}); }
       if (method === 'fixture/finish-turn') { row.turns.at(-1).status=params.status||'completed';saveFixture(saved);return emit({id,result:{}}); }
+      if (method === 'fixture/update-turn') {
+        Object.assign(row.turns.find(turn=>turn.id===params.turnId),params.patch);
+        saveFixture(saved);return emit({id,result:{}});
+      }
       if (method === 'thread/turns/list') {
         const rows = [...row.turns];
         if(params.sortDirection === 'desc') rows.reverse();
@@ -556,10 +560,12 @@ test('tool presets use the full registry, preserve exact allowlists and close on
   }
   const readOnly = presetPolicy('readOnly', config) as { allowlist: string[] };
   const common = presetPolicy('common', config) as { allowlist: string[] };
-  for (const forbidden of ['git_write', 'edit', 'write', 'receipt', 'fs', 'command', 'process', 'mcp', 'codex_call', 'codex_thread', 'codex_query', 'codex_account', ...['agent', 'codex'].flatMap(prefix => ['create', 'send', 'interrupt', 'respond'].map(action => `${prefix}_${action}`))]) {
+  for (const forbidden of ['git_write', 'edit', 'write', 'receipt', 'fs', 'command', 'process', 'mcp', 'codex_call', 'codex_thread', 'codex_query', 'codex_account', 'codex_resume', ...['agent', 'codex'].flatMap(prefix => ['create', 'send', 'interrupt', 'respond'].map(action => `${prefix}_${action}`))]) {
     assert.ok(!readOnly.allowlist.includes(forbidden), forbidden);
   }
   assert.ok(!common.allowlist.includes('git_write'));
+  assert.ok(common.allowlist.includes('codex_resume'));
+  for (const name of ['codex_resume', 'codex_read', 'codex_wait', 'receipt', 'control_output']) assert.ok(normalizeSelection(['codex_resume'], config).includes(name));
   for (const dependency of ['git_write', 'receipt', 'control_output']) assert.ok(normalizeSelection(['git_write'], config).includes(dependency));
   // Read-only closure must not silently pull in any entry excluded from this preset.
   assert.deepEqual(new Set(readOnly.allowlist), new Set(config.tools.filter(tool => tool.presets.includes('readOnly')).map(tool => tool.name)));
@@ -1134,31 +1140,33 @@ test('Git change queries retain attribution and page through every commit',async
 });
 
 test('wait omits repeated nonterminal text and retains complete terminal replies', async () => {
-  // Regression: dbb25cf; wait omits repeated nonterminal text and retains complete terminal replies.
+  // Regression: dbb25cf; concurrent fixture writes killed the native reader instead of observing wait progress and deduplication.
   const created=await dispatchFixture('fixture-dispatch-queue');
   const threadId=created.threadId, turnId=created.turnId;
-  const rows=await fixtureRows();
-  rows[threadId].turns[0].status='inProgress';
-  await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(rows));
+  const updateTurn=(patch:Record<string,unknown>)=>completed('codex_call',{method:'fixture/update-turn',params:{threadId,turnId,patch},requestId:randomUUID()});
+  const items=(await fixtureRows())[threadId].turns[0].items;
   const args={threadId,turnId,timeoutMs:200,until:'terminal'};
-  delete rows[threadId].turns[0].items[0].status;
-  rows[threadId].turns[0].items.push({id:'streaming',type:'agentMessage',status:'inProgress',text:'unfinished sentence'});
-  await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(rows));
-  const first=(await call('codex_wait',args)).result;
-  assert.equal(first.state,'timeout');assert.equal(first.finalResponse.text,'pong');
+  delete items[0].status;
+  items.push({id:'streaming',type:'agentMessage',status:'inProgress',text:'unfinished sentence'});
+  await updateTurn({status:'inProgress',items});
+  const firstCall=await call('codex_wait',args);
+  assert.equal(firstCall.response.isError,false,JSON.stringify(firstCall.result));
+  const first=firstCall.result;
+  assert.equal(first.state,'timeout',JSON.stringify(first));assert.equal(first.finalResponse.text,'pong');
+  assert.equal(first.threadId,threadId);assert.equal(first.turnId,turnId);assert.equal(first.conditionMet,false);
+  assert.ok(first.progress);
   const second=(await call('codex_wait',{...args,expectedHash:first.snapshotHash})).result;
   assert.equal(second.changed,false);assert.equal(second.finalResponse.text,undefined);
   assert.equal(second.finalResponseUnchanged,true);assert.equal(second.finalResponse.textHash,first.finalResponse.textHash);
   assert.equal(second.next.args.expectedHash,second.snapshotHash);assert.equal(second.next.args.timeoutMs,200);assert.equal(second.next.args.until,'terminal');
   const full=(await call('codex_wait',args)).result;assert.equal(full.finalResponse.text,'pong');
-  const updated=await fixtureRows();updated[threadId].turns[0].items[0].id='different-message';
-  updated[threadId].turns[0].items[0].status='completed';
-  await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(updated));
+  items[0].id='different-message';
+  items[0].status='completed';
+  await updateTurn({items});
   const metadata=(await call('codex_wait',{...args,expectedHash:second.snapshotHash})).result;
   assert.equal(metadata.changed,true);assert.equal(metadata.finalResponseUnchanged,true);assert.equal(metadata.finalResponse.text,undefined);
-  updated[threadId].turns[0].items.pop();
-  updated[threadId].turns[0].status='completed';
-  await writeFile(path.join(directory,'dispatch-fixture.json'),JSON.stringify(updated));
+  items.pop();
+  await updateTurn({status:'completed',items});
   const terminal=(await call('codex_wait',{...args,timeoutMs:300000,expectedHash:metadata.snapshotHash})).result;
   assert.equal(terminal.state,'completed');assert.ok(terminal.finalResponse,JSON.stringify(terminal));assert.equal(terminal.finalResponse.text,'pong');
   const repeated=(await call('codex_wait',{...args,expectedHash:terminal.snapshotHash})).result;
@@ -1945,7 +1953,9 @@ test('AX unbound cloud-session verification explains binding and its next call',
   const error = response.result.error;
   assert.equal(error.code,'NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE');
   assert.deepEqual(response.result.next.args,{action:'bind',target});
-  assert.equal(error.guide.arguments.topic,'notify');
+  assert.equal(response.result.next.via,'act');
+  assert.equal(response.result.next.op,'notify_control');
+  assertNextCalls(response.result);
 });
 
 test('AX2 failed receipts report failure through MCP and CLI without losing identity', async () => {
@@ -2106,7 +2116,18 @@ test('AX3 cloud binding is discoverable before dispatch and repairs an unbound t
     const attempted=await call('notify_control',{action:'bind',target:'session_010000000000000000000007'});
     assert.equal(attempted.response.isError,true);assert.equal(attempted.result.bound,true);
     assert.match(attempted.result.error.message,/NOTIFICATIONS_DISABLED/);
-    assert.equal((await call('notify_status',{target:'session_010000000000000000000007'})).result.targets[0].registered,true);
+    const disabledTarget='session_010000000000000000000007';
+    const disabledStatus=(await call('notify_status',{target:disabledTarget})).result.targets[0];
+    assert.equal(disabledStatus.registered,true);
+    assert.equal(disabledStatus.verificationAttempts,0);
+    const verification=await call('notify_control',{action:'verify',target:disabledTarget,accountId:'missing-profile'});
+    assert.equal(verification.response.isError,true);
+    assert.match(verification.result.error.message,/NOTIFICATIONS_DISABLED/);
+    const route=await call('notify_control',{action:'route',target:disabledTarget});
+    assert.equal(route.response.isError,false);
+    assert.equal(route.result.accountId,null);
+    const unbound=await call('notify_control',{action:'verify',target:'session_010000000000000000000006'});
+    assert.equal(unbound.result.error.code,'NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE');
   } finally {await management('task-settings','PUT',settings);}
 });
 

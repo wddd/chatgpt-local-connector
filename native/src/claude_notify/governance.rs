@@ -733,6 +733,13 @@ async fn account_route_control(source_id: &str, args: &Value) -> Result<Value> {
     }
     let t = state.targets.iter_mut().find(|t| t.source_id == source_id && t.channel == Channel::ClaudeSession && t.target == target && (t.registered || owned))
         .ok_or_else(|| json!({"code":"NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE","message":"Bind this target before reading or changing its account route","next":{"via":"act","op":"notify_control","args":{"action":"bind","target":target}}}).to_string())?;
+    // Verification honors the master switch before selecting or probing a profile.
+    // Binding-only and explicit route management remain available while disabled.
+    if (args["action"] == "verify" || (args["action"] == "bind" && args["verify"] != false))
+        && settings()?["notificationsEnabled"] == false
+    {
+        return Err("NOTIFICATIONS_DISABLED".into());
+    }
     if let Some(account_id) = args["accountId"].as_str() {
         let profile = crate::accounts::claude_profile(account_id)?;
         if t.account_id.as_deref() != Some(profile.as_str()) {
