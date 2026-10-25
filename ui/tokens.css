@@ -54,6 +54,7 @@
 
   --topology-error: #d7263d;
   --success: #058750;
+  --on-success: #fff;
   --warning: #8a5108;
   --danger: #bc2936;
   --success-soft: #e8faf0;
@@ -88,6 +89,7 @@
 
   --topology-error: #ff4967;
   --success: #59e6a0;
+  --on-success: #062819;
   --warning: #f0c17d;
   --danger: #ffa0a7;
   --success-soft: #123d29;

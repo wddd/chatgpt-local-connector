@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Check } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { locale, t } from "../i18n";
 import { PhaseTile, PhaseLabel, StepTrail, SpecPill, dispatchSourceLabel } from "./activity";
@@ -6,7 +7,7 @@ import { selectAgentPanel } from "../state/overviewPanels";
 import { activityHeadline, type TrackedActivity, type BubbleDensity } from "../state/activityModel";
 import { useInterval } from "../state/hooks";
 import FilePath from "./FilePath";
-import { Button } from "./ui";
+import { Button, Icon } from "./ui";
 
 export function elapsed(since: string | null | undefined, now: number) {
   const seconds = since ? Math.max(0, Math.floor((now - Date.parse(since)) / 1000)) : NaN;
@@ -120,6 +121,6 @@ export function ActivityBubble({ agent, session, now, onMove, onRead, density = 
         event.stopPropagation();
         if (event.detail !== 0 && cancelled.current) { event.preventDefault(); return; }
         onRead();
-      }} />}
+      }}><Icon icon={Check} /></Button>}
   </div>;
 }

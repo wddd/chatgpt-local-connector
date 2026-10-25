@@ -932,8 +932,16 @@
 .activity-slot > .activity-bubble { width: 100%; height: 100%; }
 .activity-bubble-shell { position: relative; width: 100%; height: 100%; pointer-events: auto; }
 .activity-bubble-shell > .activity-bubble { width: 100%; height: 100%; }
-.activity-bubble-shell > .activity-mark-read { background: transparent; position: absolute; left: 12px; top: calc(50% - 15px); width: 30px; height: 30px; min-height: 0; padding: 0; border-radius: 9px; cursor: pointer; }
-.activity-bubble-shell > .activity-mark-read:hover:not(:disabled) { background: transparent; }
+.activity-bubble-shell > .activity-mark-read { background: var(--success); color: var(--on-success); position: absolute; left: 12px; top: calc(50% - 15px); width: 30px; height: 30px; min-height: 0; padding: 0; border: 0; border-radius: 9px; cursor: pointer; touch-action: none; transition: transform 180ms var(--task-spring), filter 160ms; }
+.activity-mark-read::after { content: ""; position: absolute; inset: -3px; border: 1.5px solid var(--success); border-radius: 12px; pointer-events: none; animation: activity-read-ring 2.4s ease-out infinite; }
+.activity-bubble-shell > .activity-mark-read:hover:not(:disabled) { background: var(--success); filter: brightness(1.08); transform: scale(1.1); }
+.activity-bubble-shell > .activity-mark-read:active:not(:disabled) { transform: scale(.92); filter: brightness(.94); }
+@keyframes activity-read-ring { 0%, 15% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(1.35); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .activity-mark-read::after { animation: none; opacity: .55; }
+  .activity-bubble-shell > .activity-mark-read { transition: none; }
+  .activity-bubble-shell > .activity-mark-read:hover:not(:disabled), .activity-bubble-shell > .activity-mark-read:active:not(:disabled) { transform: none; }
+}
 button.activity-bubble, .activity-bubble-shell { transition: transform 180ms cubic-bezier(.34,1.56,.64,1), background 160ms; }
 button.activity-bubble:hover, .activity-bubble-shell:hover { transform: translateY(-2px) scale(1.015); }
 button.activity-bubble:active, .activity-bubble-shell:active { transform: scale(.97); }
