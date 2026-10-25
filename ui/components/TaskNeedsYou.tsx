@@ -15,14 +15,14 @@ import { Button, Dialog, IconButton } from "./ui";
 export function taskReceipts(records: TaskRecord[], agent: string, id: string) {
   return records.filter(record => (record.agent || "codex") === agent && (record.taskId || record.threadId || record.task.threadId) === id);
 }
-export default function TaskNeedsYou({ agent, session, entries, source, onPending, narrow }: {
-  agent: string; session: AgentActivitySession; entries: AgentTimelineEntry[]; source?: string; onPending: (pending: boolean) => void; narrow: boolean;
+export default function TaskNeedsYou({ agent, session, entries, source, narrow }: {
+  agent: string; session: AgentActivitySession; entries: AgentTimelineEntry[]; source?: string; narrow: boolean;
 }) {
   const submissions = activityApprovals.use();
   const [page, setPage] = useState(0);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, Record<string, string[]>>>({});
-  const native = pendingSessions(session, entries).filter(s => submissions[interactionKey(agent, s)]?.status !== "submitted");
+  const native = pendingSessions(agent, session, entries, submissions);
   const count = native.length;
   const index = Math.min(page, Math.max(0, count - 1));
   const pending = native[index];
@@ -34,7 +34,6 @@ export default function TaskNeedsYou({ agent, session, entries, source, onPendin
     if (target !== event.currentTarget && !target.closest("[data-routing-controls]")) void routing.change("pause");
   };
   const focus = useRef<HTMLElement>(null);
-  useEffect(() => { onPending(count > 0); return () => onPending(false); }, [count, onPending]);
   useEffect(() => { if (identity && (!narrow || sheetOpen)) focus.current?.focus({ preventScroll: true }); }, [identity, narrow, sheetOpen]);
   useEffect(() => { if (!count || !narrow) setSheetOpen(false); }, [count, narrow]);
   if (!count) return null;

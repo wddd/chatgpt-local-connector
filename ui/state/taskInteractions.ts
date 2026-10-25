@@ -1,5 +1,5 @@
 import type { AgentInteraction } from "../types.ts";
-import type { ApprovalPayload } from "./activityModel.ts";
+import { interactionKey, type ApprovalPayload, type ApprovalSubmission } from "./activityModel.ts";
 export interface Question {
   id: string; text: string; multiple: boolean; other: boolean; secret: boolean;
   options: { label: string; description?: string }[];
@@ -30,11 +30,14 @@ export function answerLabel(payload: ApprovalPayload) {
   return typeof payload.args.value === "string" ? payload.args.value : result?.answer ?? Object.values(result?.answers ?? {}).flatMap(v => v.answers).join(" · ");
 }
 
-export function pendingSessions(session: import("../types.ts").AgentActivitySession, entries: import("../types.ts").AgentTimelineEntry[]) {
-  const pending: import("../types.ts").AgentActivitySession[] = entries.filter(e => e.type === "interaction" && e.status === "pending" && e.interaction)
-    .map(e => ({ ...session, phaseSince: e.startedAt, interaction: e.interaction }));
-  if (session.interaction && !pending.some(p => JSON.stringify(p.interaction?.respond) === JSON.stringify(session.interaction?.respond))) pending.push(session);
-  return pending;
+export function pendingSessions(agent: string, session: import("../types.ts").AgentActivitySession, entries: import("../types.ts").AgentTimelineEntry[], submissions: Record<string, ApprovalSubmission> = {}) {
+  const sameRequest = (interaction: AgentInteraction | undefined) => JSON.stringify(interaction?.respond) === JSON.stringify(session.interaction?.respond);
+  const pending: import("../types.ts").AgentActivitySession[] = entries.filter(e => e.type === "interaction" && e.status === "pending" && !e.response && e.interaction)
+    .map(e => ({ ...session, turnId: e.turnId || session.turnId, phaseSince: e.startedAt, interaction: e.interaction }));
+  // A stale activity snapshot must not resurrect a request already resolved in history.
+  if (session.interaction && !entries.some(e => e.type === "interaction" && sameRequest(e.interaction))) pending.push(session);
+  return pending.filter(s => s.interaction?.canRespond !== false && !!s.interaction?.respond.op && !!s.interaction.respond.args
+    && submissions[interactionKey(agent, s)]?.status !== "submitted");
 }
 
 export function interactionSummary(interaction: AgentInteraction | undefined): string {

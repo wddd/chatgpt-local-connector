@@ -1,0 +1,310 @@
+{
+  "session": {
+    "conversation": true,
+    "dispatchSummary": {
+      "controlSource": {
+        "id": "sample-source",
+        "kind": "local-cli",
+        "label": "Local CLI"
+      },
+      "model": "sample-model",
+      "serviceTier": "default"
+    },
+    "fallbackHeadline": "Sample task",
+    "headline": "Interaction required",
+    "id": "sample-thread",
+    "interaction": {
+      "canRespond": true,
+      "command": null,
+      "cwd": null,
+      "kind": "question",
+      "method": "item/tool/requestUserInput",
+      "options": null,
+      "path": null,
+      "preview": null,
+      "questions": [
+        {
+          "header": "Sample",
+          "id": "sample",
+          "isOther": true,
+          "isSecret": false,
+          "options": [
+            {
+              "description": "Use option A.",
+              "label": "Option A"
+            },
+            {
+              "description": "Use option B.",
+              "label": "Option B"
+            }
+          ],
+          "question": "Choose a sample"
+        }
+      ],
+      "reason": null,
+      "respond": {
+        "args": {
+          "backendSession": "sample-backend",
+          "id": "[\"desktop\",\"sample-thread\",\"previous-turn\",\"item/tool/requestUserInput\",65]"
+        },
+        "hint": "Supply result using this native request's response schema; never invent approval.",
+        "op": "codex_respond",
+        "via": "act"
+      },
+      "summary": "Interaction required"
+    },
+    "open": {
+      "taskId": "sample-thread"
+    },
+    "orderAt": 0,
+    "origin": {
+      "authType": "local",
+      "controlSource": "local-cli",
+      "ingressId": "local-cli",
+      "sourceId": "sample-source",
+      "sourceLabel": "Local CLI"
+    },
+    "phase": "interaction",
+    "phaseSince": "2026-01-01T10:04:12.716Z",
+    "project": "/projects/sample",
+    "recentContent": [],
+    "recentSteps": [
+      "interaction"
+    ],
+    "source": "codex-thread",
+    "startedAt": "2026-01-01T10:04:08.497Z",
+    "timeline": true,
+    "title": "Sample task",
+    "turnCount": 1,
+    "turnId": "previous-turn",
+    "turnStartedAt": null
+  },
+  "turnId": "pending-turn",
+  "timeline": {
+    "coverage": {
+      "state": "partial",
+      "truncated": false
+    },
+    "cursor": 12,
+    "dispatchSummary": {
+      "controlSource": {
+        "id": "sample-source",
+        "kind": "ARC",
+        "label": "Local CLI"
+      },
+      "model": "sample-model"
+    },
+    "entries": [
+      {
+        "controlSource": {
+          "id": "sample-source",
+          "kind": "local-cli",
+          "label": "Local CLI"
+        },
+        "cursor": 9,
+        "endedAt": "2026-01-01T10:04:22.514Z",
+        "id": "first-input",
+        "position": 0,
+        "startedAt": "2026-01-01T10:04:10.163Z",
+        "status": "completed",
+        "text": "Choose a sample value.",
+        "truncated": false,
+        "turnId": "previous-turn",
+        "type": "user",
+        "updatedAt": "2026-01-01T10:04:37.187Z"
+      },
+      {
+        "cursor": 7,
+        "endedAt": "2026-01-01T10:04:35.601Z",
+        "id": "interaction:\"[\\\"desktop\\\",\\\"sample-thread\\\",\\\"previous-turn\\\",\\\"item/tool/requestUserInput\\\",65]\"",
+        "interaction": {
+          "canRespond": true,
+          "command": null,
+          "cwd": null,
+          "kind": "question",
+          "method": "item/tool/requestUserInput",
+          "options": null,
+          "path": null,
+          "preview": null,
+          "questions": [
+            {
+              "header": "Sample",
+              "id": "sample",
+              "isOther": true,
+              "isSecret": false,
+              "options": [
+                {
+                  "description": "Use option A.",
+                  "label": "Option A"
+                },
+                {
+                  "description": "Use option B.",
+                  "label": "Option B"
+                }
+              ],
+              "question": "Choose a sample"
+            }
+          ],
+          "reason": null,
+          "respond": {
+            "args": {
+              "backendSession": "sample-backend",
+              "id": "[\"desktop\",\"sample-thread\",\"previous-turn\",\"item/tool/requestUserInput\",65]"
+            },
+            "hint": "Supply result using this native request's response schema; never invent approval.",
+            "op": "codex_respond",
+            "via": "act"
+          },
+          "summary": "Interaction required"
+        },
+        "position": 1,
+        "response": {
+          "error": null,
+          "origin": {
+            "authType": "local",
+            "controlSource": "ARC",
+            "ingressId": "local-ui",
+            "sourceId": "sample-source",
+            "sourceLabel": "Local CLI"
+          },
+          "resolvedAt": "2026-01-01T10:04:35.608Z",
+          "result": {
+            "answers": {
+              "marker": {
+                "answers": [
+                  "Option A"
+                ]
+              }
+            }
+          },
+          "skipped": false
+        },
+        "startedAt": "2026-01-01T10:04:12.716Z",
+        "status": "completed",
+        "turnId": "previous-turn",
+        "type": "interaction",
+        "updatedAt": "2026-01-01T10:04:35.608Z"
+      },
+      {
+        "cursor": 10,
+        "endedAt": "2026-01-01T10:04:37.187Z",
+        "id": "first-final",
+        "phase": "final_answer",
+        "position": 8,
+        "startedAt": "2026-01-01T10:04:37.110Z",
+        "status": "completed",
+        "text": "Previous answer complete",
+        "truncated": false,
+        "turnId": "previous-turn",
+        "type": "text",
+        "updatedAt": "2026-01-01T10:04:37.187Z"
+      },
+      {
+        "controlSource": {
+          "id": "sample-source",
+          "kind": "ARC",
+          "label": "Local CLI"
+        },
+        "cursor": 11,
+        "id": "second-input",
+        "position": 11,
+        "startedAt": "2026-01-01T10:04:47.092Z",
+        "status": "running",
+        "text": "Choose a sample value.",
+        "truncated": false,
+        "turnId": "pending-turn",
+        "type": "user",
+        "updatedAt": "2026-01-01T10:04:47.092Z"
+      },
+      {
+        "cursor": 12,
+        "id": "interaction:\"[\\\"desktop\\\",\\\"sample-thread\\\",\\\"pending-turn\\\",\\\"item/tool/requestUserInput\\\",66]\"",
+        "interaction": {
+          "canRespond": true,
+          "command": null,
+          "cwd": null,
+          "kind": "question",
+          "method": "item/tool/requestUserInput",
+          "options": null,
+          "path": null,
+          "preview": null,
+          "questions": [
+            {
+              "header": "Sample",
+              "id": "second_sample",
+              "isOther": true,
+              "isSecret": false,
+              "options": [
+                {
+                  "description": "Use option A.",
+                  "label": "Option A"
+                },
+                {
+                  "description": "Use option B.",
+                  "label": "Option B"
+                }
+              ],
+              "question": "Choose another sample"
+            }
+          ],
+          "reason": null,
+          "respond": {
+            "args": {
+              "backendSession": "sample-backend",
+              "id": "[\"desktop\",\"sample-thread\",\"pending-turn\",\"item/tool/requestUserInput\",66]"
+            },
+            "hint": "Supply result using this native request's response schema; never invent approval.",
+            "op": "codex_respond",
+            "via": "act"
+          },
+          "summary": "Interaction required"
+        },
+        "position": 12,
+        "startedAt": "2026-01-01T10:04:49.948Z",
+        "status": "pending",
+        "turnId": "pending-turn",
+        "type": "interaction",
+        "updatedAt": "2026-01-01T10:04:49.948Z"
+      }
+    ],
+    "executionEvidence": "partial",
+    "ownership": {
+      "currentOwner": "desktop",
+      "evidence": "native-writer-file-lock",
+      "history": [],
+      "observedAt": "2026-01-01T10:04:55.646Z",
+      "owner": "desktop",
+      "state": "held",
+      "threadId": "sample-thread"
+    },
+    "sessionId": "sample-thread",
+    "status": "inProgress",
+    "turnDispatchSummaries": {
+      "previous-turn": {
+        "controlSource": {
+          "id": "sample-source",
+          "kind": "local-cli",
+          "label": "Local CLI"
+        },
+        "model": "sample-model"
+      },
+      "pending-turn": {
+        "controlSource": {
+          "id": "sample-source",
+          "kind": "ARC",
+          "label": "Local CLI"
+        },
+        "model": "sample-model"
+      }
+    },
+    "turnStatuses": {
+      "previous-turn": "completed",
+      "pending-turn": "running"
+    },
+    "turnTimings": {
+      "previous-turn": {
+        "startedAt": "2026-01-01T10:04:08.605Z"
+      }
+    }
+  }
+}

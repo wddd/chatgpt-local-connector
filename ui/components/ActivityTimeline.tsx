@@ -1,3 +1,4 @@
+import { pendingSessions } from "../state/taskInteractions";
 import { useTaskPresence } from "../state/requestRouting";
 import { observeTaskPanel } from "../state/taskPanel";
 import { useTaskQueue } from "../state/taskQueue";
@@ -10,7 +11,7 @@ import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2, MoreHorizontal, Zap } fr
 import { api } from "../api";
 import { t } from "../i18n";
 import type { AgentTimeline } from "../types";
-import { agentActivity, openActivitySession } from "../state/activity";
+import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
 import { followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
 import { useInterval } from "../state/hooks";
 import { Button, Icon, IconButton, LoadingIndicator, Menu } from "./ui";
@@ -40,7 +41,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  const [showCard, setShowCard] = useState(false);
+  const submissions = activityApprovals.use();
   const [atLatest, setAtLatest] = useState(true);
   const [timeline, setTimeline] = useState<AgentTimeline>();
   const [taskTitle, setTaskTitle] = useState<{ id: string; title: string }>();
@@ -121,7 +122,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const source = latestSummary?.controlSource;
   const sourceLabel = source && dispatchSourceLabel(source);
   const groups = timelineGroups(timeline?.entries ?? []);
-  const state = taskState(timeline?.status, running, showCard);
+  const hasPending = !external && !timeline?.readOnly && running && pendingSessions(agent, nativeSession, timeline?.entries ?? [], submissions).length > 0;
+  const state = taskState(timeline?.status, running, hasPending);
   const turnId = nativeSession.turnId || groups.at(-1)?.turnId;
   const turnSource = timeline
     ? (turnId && timeline.turnDispatchSummaries?.[turnId]?.controlSource) || timeline.dispatchSummary?.controlSource
@@ -197,7 +199,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       </div>
       {!!groups.length && <div className="task-turn-progress">{groups.map((group, index) => {
         const current = index === groups.length - 1 && (!nativeSession.turnId || nativeSession.turnId === group.turnId);
-        const turnState = taskState((group.turnId && timeline?.turnStatuses?.[group.turnId]) || (current ? timeline?.status : undefined), current && running);
+        const turnState = taskState((group.turnId && timeline?.turnStatuses?.[group.turnId]) || (current ? timeline?.status : undefined), current && running, current && hasPending);
         const plan = [...group.entries].reverse().find(entry => entry.type === "plan")?.plan;
         const completed = plan?.filter(step => step.status === "completed").length ?? 0;
         const value = plan?.length ? completed / plan.length * 100 : turnState === "done" ? 100 : undefined;
@@ -242,6 +244,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       </div>
       {!atLatest && <Button variant="secondary" className="timeline-latest" onClick={latest}>{t("timeline.latest")}</Button>}
     </div>
-    {!external && !timeline?.readOnly && fromControlSource && running && <TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} onPending={setShowCard} narrow={narrow} />}
+    {hasPending && <TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} narrow={narrow} />}
   </section>;
 }
