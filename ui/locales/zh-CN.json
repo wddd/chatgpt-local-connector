@@ -1201,5 +1201,13 @@
   "replacementSucceeded": "ARC 替换完成，启动校验通过",
   "replacementProgress": "正在替换 ARC",
   "replacementImmediate": "立即替换：ARC 管理的进行中任务可能被中断。",
-  "replacementWaitingDetails": "正在等待：{turns} 个任务、{writes} 项写入、{interactions} 项交互。暂时无法确定重启时间。"
+  "replacementWaitingDetails": "正在等待：{turns} 个任务、{writes} 项写入、{interactions} 项交互。暂时无法确定重启时间。",
+  "detail.owner": "控制方 · {owner}",
+  "detail.owner.connector": "ARC 连接器",
+  "detail.owner.desktop": "Desktop",
+  "detail.owner.external": "外部会话",
+  "detail.owner.unheld": "已释放",
+  "detail.owner.unknown": "未知",
+  "detail.handoffHistory": "已观察到的交接",
+  "detail.resumeInterrupted": "恢复"
 }

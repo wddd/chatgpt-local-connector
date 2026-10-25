@@ -470,7 +470,12 @@ impl Ipc {
         match method {
             "turn/start" => {
                 let mut args = args.clone();
-                args["input"] = input(&args["input"])?;
+                if !(args["turnTrigger"] == "resume_interrupted_task"
+                    && args["parentTurnId"].is_string()
+                    && args["input"].as_array().is_some_and(Vec::is_empty))
+                {
+                    args["input"] = input(&args["input"])?;
+                }
                 // Desktop inherits collaborationMode separately from model/effort;
                 // its settings take precedence when App Server starts the turn.
                 if args["collaborationMode"].is_null() {

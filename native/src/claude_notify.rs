@@ -3,6 +3,7 @@ use crate::*;
 pub(crate) mod continuation;
 mod governance;
 pub(crate) mod mcp_events;
+pub(crate) mod ownership;
 mod reachability;
 mod retry;
 pub(crate) mod subscriptions;
@@ -137,6 +138,8 @@ struct Binding {
     #[serde(default)]
     scope_end: Option<String>,
     #[serde(default)]
+    scope_started_at: i64,
+    #[serde(default)]
     successor: Value,
     #[serde(default)]
     observation: Value,
@@ -210,6 +213,7 @@ fn bind_in(dir: &Path, session: Option<&str>, thread: &str, turn: &str, cwd: &st
         continuation_bound: false,
         continuation_until: 0,
         scope_end: None,
+        scope_started_at: chrono::Utc::now().timestamp_millis(),
         successor: Value::Null,
         observation: Value::Null,
         caused_by: Value::Null,
@@ -251,7 +255,22 @@ pub(crate) async fn bind(
     let _guard = LOCK.lock().await;
     let dir = directory();
     let created = binding(&dir, thread, turn)?.is_none();
+    let origin = crate::kernel::origin::current_origin();
+    let continued = if created && args.get("notify").is_none() && cause["op"] == "codex_send" {
+        records(&dir)?
+            .into_iter()
+            .filter(|b| {
+                b.thread_id == thread
+                    && b.scope_end.is_none()
+                    && b.source_id == string(&origin, "sourceId")
+                    && !b.continuation_bound
+            })
+            .max_by_key(|b| b.created_at)
+    } else {
+        None
+    };
     if created
+        && continued.is_none()
         && matches!(string(&cause, "op"), "codex_send" | "codex_create")
         && args["_retryAttempt"].as_u64().unwrap_or(0) == 0
         && !crate::app_replace::continuation_request_matches(thread, string(&cause, "requestId"))?
@@ -322,7 +341,26 @@ pub(crate) async fn bind(
         );
         state.save(&dir)?;
     }
-    persist(&dir, &b)
+    persist(&dir, &b)?;
+    if let Some(mut previous) = continued {
+        b.target = previous.target.clone();
+        b.channel = previous.channel;
+        b.scope_started_at = if previous.scope_started_at == 0 {
+            previous.created_at.saturating_mul(1000)
+        } else {
+            previous.scope_started_at
+        };
+        b.caused_by["continuationOf"] = json!(previous.turn_id);
+        if let Some(rule) = state.rule(&b) {
+            governance::apply_rebind(&mut b, rule);
+        }
+        persist(&dir, &b)?;
+        previous.continuation_bound = true;
+        previous.successor =
+            json!({"turnId":turn,"inherited":true,"reason":"same-origin-thread-continuation"});
+        persist(&dir, &previous)?;
+    }
+    Ok(())
 }
 pub(crate) async fn inherit(thread: &str, previous: &str, turn: &str) -> Result<()> {
     let _guard = LOCK.lock().await;
@@ -336,6 +374,11 @@ pub(crate) async fn inherit(thread: &str, previous: &str, turn: &str) -> Result<
             next.source_id = old.source_id.clone();
             next.title = old.title.clone();
             next.project = old.project.clone();
+            next.scope_started_at = if old.scope_started_at == 0 {
+                old.created_at.saturating_mul(1000)
+            } else {
+                old.scope_started_at
+            };
             for d in &mut next.deliveries {
                 if d.status == "pending" && d.target.is_empty() {
                     d.target = old.target.clone().unwrap_or_default();
@@ -376,6 +419,54 @@ pub(crate) fn replacement_binding(thread: &str) -> Result<Value> {
         "purpose":dispatch["purpose"],"notify":b.target.as_ref().map(|target|json!({"channel":b.channel,"target":target}))}),
     )
 }
+
+pub(crate) fn resume_context(thread: &str, turn: &str) -> Result<Value> {
+    let error = |code: &str, message: &str| {
+        json!({"code":code,"message":message,"next":{"via":"query","op":"codex_read","args":{"threadId":thread,"statusOnly":true}}}).to_string()
+    };
+    let b = binding(&directory(), thread, turn)?.ok_or_else(|| {
+        error(
+            "RESUME_BINDING_MISSING",
+            "Resume only a bound ARC dispatch.",
+        )
+    })?;
+    let caller = crate::kernel::origin::current_origin();
+    if b.scope_end.is_some() || (caller["authType"] != "local" && caller["sourceId"] != b.source_id)
+    {
+        return Err(error(
+            "RESUME_SOURCE_MISMATCH",
+            "The thread binding ended or belongs to another source.",
+        ));
+    }
+    let rows = crate::dispatch_policy::records(thread)?;
+    let parent = rows
+        .iter()
+        .find(|r| r["turnId"] == turn)
+        .ok_or("RESUME_DISPATCH_MISSING")?;
+    Ok(
+        json!({"model":parent["model"],"effort":parent["effort"],"serviceTier":parent["serviceTier"],"source":"inherited-dispatch-not-confirmed"}),
+    )
+}
+
+pub(crate) async fn resumed(
+    thread: &str,
+    previous: &str,
+    turn: &str,
+    configuration: Value,
+) -> Result<()> {
+    let Some(mut b) = binding(&directory(), thread, previous)? else {
+        return Err("RESUME_BINDING_MISSING".into());
+    };
+    process(
+        &directory(),
+        &LOCK,
+        &mut b,
+        &json!({"state":"cancelled","nextTurnId":turn,
+        "nativeContinuation":{"retry":{"turnId":turn,"trigger":"resume_interrupted_task",
+        "startedAt":chrono::Utc::now().timestamp(),"configuration":configuration}}}),
+    )
+    .await
+}
 pub(crate) fn record_binding(receipt: &mut Value, result: Result<()>) {
     if let Err(error) = result {
         #[cfg(not(test))]
@@ -390,7 +481,8 @@ pub(crate) fn record_binding(receipt: &mut Value, result: Result<()>) {
 }
 const RETENTION_SECONDS: i64 = 7 * 24 * 60 * 60;
 fn remove_expired(dir: &Path, b: &Binding, now: i64) -> Result<bool> {
-    if !b.terminal
+    if (!b.continuation_bound && b.scope_end.is_none())
+        || !b.terminal
         || b.deliveries
             .iter()
             .any(|d| matches!(d.status.as_str(), "pending" | "sending"))
@@ -462,13 +554,16 @@ pub(crate) fn retry_status(thread: &str, turn: &str) -> Result<Value> {
 }
 fn event(b: &Binding, d: &Delivery) -> Value {
     let kind = match d.task_state.as_str() {
+        "handoff" => "handoff",
         "completed" => "completed",
         "failed" => "failed",
         "cancelled" => "interrupted",
         _ => "needs-input",
     };
     let agent = !b.agent.is_empty() && b.agent != "codex";
-    let next = if kind == "needs-input" {
+    let next = if kind == "handoff" {
+        json!({"via":"query","op":"codex_owner","args":{"threadId":b.thread_id},"hint":"Inspect the current writer and observed handoff history before continuing."})
+    } else if kind == "needs-input" {
         if agent {
             json!({"hint":"Read the pending interaction before responding.","via":"query","op":"agent_pending","args":{"agent":b.agent,"taskId":b.thread_id}})
         } else {
@@ -479,7 +574,7 @@ fn event(b: &Binding, d: &Delivery) -> Value {
     } else {
         json!({"hint":"Read the result and review its changes.","via":"query","op":"codex_read","args":{"threadId":b.thread_id}})
     };
-    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":b.title,"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":d.task_error,"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
+    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":b.title,"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":if kind=="handoff" {Value::Null}else{d.task_error.clone()},"ownership":if kind=="handoff" {d.task_error.clone()}else{Value::Null},"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
 }
 fn empty_answered_completion(b: &Binding, observed: &Value) -> bool {
     observed["state"] == "completed"
@@ -503,6 +598,15 @@ fn receipt_line(value: &str, limit: usize) -> String {
     }
 }
 fn receipt(b: &Binding, d: &Delivery) -> String {
+    if d.task_state == "handoff" {
+        return format!(
+            "⟢ ARC receipt — automated, not a user message\n↔ handoff · {} → {}\n{} · ref {}",
+            string(&d.task_error, "from"),
+            string(&d.task_error, "to"),
+            b.project,
+            b.thread_id
+        );
+    }
     let (icon, state) = match d.task_state.as_str() {
         "completed" => ("✓", "completed"),
         "failed" => ("✗", "failed"),
@@ -965,17 +1069,45 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     if suppress_empty {
         events.clear();
     }
+    let history = records(dir)?;
+    for handoff in observation["handoffs"].as_array().into_iter().flatten() {
+        let started = if b.scope_started_at == 0 {
+            b.created_at.saturating_mul(1000)
+        } else {
+            b.scope_started_at
+        };
+        if chrono::DateTime::parse_from_rfc3339(string(handoff, "observedAt"))
+            .ok()
+            .is_none_or(|at| at.timestamp_millis() < started)
+        {
+            continue;
+        }
+        let key = format!("handoff:{}", string(handoff, "eventId"));
+        let id = hash(json!([b.source_id, b.thread_id, key]).to_string());
+        if !history
+            .iter()
+            .filter(|other| other.source_id == b.source_id)
+            .any(|other| other.deliveries.iter().any(|d| d.event_id == id))
+        {
+            events.push((key, "handoff".into()));
+        }
+    }
     if events.is_empty() && b.waiting == previous_waiting && b.terminal == was_terminal && !resolved
     {
         return Ok(());
     }
     let first = b.deliveries.len();
     for (key, state) in events {
+        let handoff = key.starts_with("handoff:");
         b.deliveries.push(Delivery {
             subscription: String::new(),
             channel: b.channel,
             target: b.target.clone().unwrap_or_default(),
-            event_id: hash(json!([b.agent, b.thread_id, b.turn_id, key]).to_string()),
+            event_id: if handoff {
+                hash(json!([b.source_id, b.thread_id, key]).to_string())
+            } else {
+                hash(json!([b.agent, b.thread_id, b.turn_id, key]).to_string())
+            },
             created_at: chrono::Utc::now().timestamp(),
             timing: DeliveryTiming {
                 queued_at: Some(chrono::Utc::now().timestamp_millis()),
@@ -1003,7 +1135,15 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
             } else {
                 observation["dispatches"].clone()
             },
-            task_error: if matches!(string(observation, "state"), "failed" | "cancelled") {
+            task_error: if handoff {
+                observation["handoffs"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .find(|h| key == format!("handoff:{}", string(h, "eventId")))
+                    .cloned()
+                    .unwrap_or(Value::Null)
+            } else if matches!(string(observation, "state"), "failed" | "cancelled") {
                 observation["error"].clone()
             } else {
                 Value::Null
@@ -1017,7 +1157,12 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
                 .unwrap_or(Value::Null),
             key,
             state,
-            task_state: string(observation, "state").into(),
+            task_state: if handoff {
+                "handoff"
+            } else {
+                string(observation, "state")
+            }
+            .into(),
             status: "pending".into(),
         });
     }
@@ -2131,7 +2276,6 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
     tokio::spawn(async move {
         crate::logs::record("INFO", "Control-source notification observer started", None);
         let mut recovering = true;
-        let mut pending_reconciliation = std::collections::HashSet::new();
         loop {
             let Some(control) = weak.upgrade() else {
                 break;
@@ -2141,6 +2285,8 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
             };
             let cycle = async {
                 let mut reads = tokio::task::JoinSet::new();
+                let permits = Arc::new(tokio::sync::Semaphore::new(8));
+                let mut owner_threads = std::collections::HashSet::new();
                 if let Ok(entries) = std::fs::read_dir(directory().join("tasks")) {
                     for entry in entries
                         .flatten()
@@ -2158,22 +2304,26 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                         }
                         if recovering {
                             recover(&directory(), &mut b)?;
-                            pending_reconciliation.insert((b.thread_id.clone(), b.turn_id.clone()));
+
                         }
                         drop(_guard);
-                        if b.terminal
-                            && (b.scope_end.is_some()
-                                || b.continuation_bound
-                                || b.continuation_until == 0
-                                || (b.continuation_until < chrono::Utc::now().timestamp()
-                                    && !pending_reconciliation
-                                        .contains(&(b.thread_id.clone(), b.turn_id.clone()))))
+                        if b.scope_end.is_none()
+                            && (b.agent.is_empty() || b.agent == "codex")
+                            && owner_threads.insert(b.thread_id.clone())
                         {
+                            let _ = control.observe_ownership(&b.thread_id).await;
+                        }
+                        if b.terminal && (b.scope_end.is_some() || b.continuation_bound) {
                             continue;
                         }
                         let c = control.clone();
                         let agents = agents.clone();
+                        let permits = permits.clone();
                         reads.spawn(async move {
+                            let _permit = permits
+                                .acquire_owned()
+                                .await
+                                .expect("observer semaphore remains open");
                             let args = json!({"threadId":b.thread_id,"turnId":b.turn_id});
                             let result = tokio::time::timeout(Duration::from_secs(10), async {
                                 if b.agent.is_empty() || b.agent == "codex" {
@@ -2202,11 +2352,8 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                     }
                 }
                 while let Some(result) = reads.join_next().await {
-                    let Ok((old, Ok(Ok(observed)))) = result else {
-                        continue;
-                    };
+                    let Ok((old, Ok(Ok(observed)))) = result else { continue; };
                     let mut b = old;
-                    pending_reconciliation.remove(&(b.thread_id.clone(), b.turn_id.clone()));
                     let mut observed = observed;
                     for request in observed["interaction"].as_array_mut().into_iter().flatten() {
                         crate::respond_tokens::issue(&b.source_id, request)?;
@@ -3467,14 +3614,23 @@ mod tests {
         assert_eq!(receipt["notification"], "bind-failed");
     }
     #[test]
-    fn seven_day_cleanup_preserves_unfinished_records() {
-        // Regression: retention cleanup must not remove unfinished deliveries.
+    fn seven_day_cleanup_preserves_open_scopes_and_unfinished_records() {
+        // Regression: retention cleanup must preserve unfinished work and open thread-origin bindings; closed terminal records can expire.
         for terminal in [false, true] {
             let dir = Sandbox::new();
             let mut b = fixture(&dir.0);
             b.terminal = terminal;
             b.created_at = 100;
             persist(&dir.0, &b).unwrap();
+            assert!(!remove_expired(&dir.0, &b, 101 + RETENTION_SECONDS).unwrap());
+            governance::control_in(
+                &dir.0,
+                "claude",
+                &json!({"action":"rebind","threadId":b.thread_id,"target":null}),
+                100,
+                &json!({}),
+            )
+            .unwrap();
             // Rebinding preserves the original creation time.
             bind_in(
                 &dir.0,

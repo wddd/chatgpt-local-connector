@@ -2,6 +2,7 @@ import { createStore } from "./store";
 import { api } from "../api";
 import { notifyNative } from "../platform";
 import { t } from "../i18n";
+import type { TaskOwnership } from "../types";
 export interface TaskRecord {
   agent?: string;
   open?: { taskId: string };
@@ -33,6 +34,7 @@ export interface TaskRecord {
   };
 }
 export interface TaskRuntime {
+  ownership?: TaskOwnership;
   archived?: boolean;
   runtimeStatus: string;
   title?: string;

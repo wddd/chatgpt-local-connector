@@ -168,7 +168,16 @@ export interface TurnTiming {
   startedAt?: string | null;
   endedAt?: string | null;
 }
+export interface TaskOwnership {
+  owner?: string;
+  currentOwner?: string;
+  state?: string;
+  observedAt?: string;
+  history?: { eventId: string; from: string; to: string; observedAt: string }[];
+}
+
 export interface AgentTimeline {
+  ownership?: TaskOwnership;
   turnTimings?: Record<string, TurnTiming>;
   projectName?: string | null;
   dispatchSummary?: DispatchSummary;

@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { nativeControl } from './helpers/native-control.ts';
 
 test('Desktop and connector owners dispatch FIFO and steer only a confirmed native turn', { skip: process.platform !== 'darwin' }, async () => {
-  // Regression: Desktop optimistic turns caused NO_ACTIVE_TURN, follower steering timeouts and FIFO THREAD_ADVANCED failures.
+  // Regression: Desktop handoff after connector restart lost resume notifications; optimistic turns also broke FIFO/steering.
   const directory = await mkdtemp(path.join(tmpdir(), 'arc-owner-'));
   const dataFile = path.join(directory, 'native.json');
   const openFile = path.join(directory, "opened-url");
@@ -26,7 +26,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
     const row = read()[thread], entities = Object.fromEntries(row.turns.map((turn: any) => [turn.id, { ...turn, turnId: turn.id }]));
     // A real native turn and an unconfirmed Desktop UI placeholder coexist.
     if (row.phantom) entities.placeholder = { turnId: null, status: 'inProgress', items: [] };
-    const state = { id: thread, cwd: directory, rolloutPath: row.path, threadRuntimeStatus: { type: row.turns.at(-1)?.status === 'inProgress' ? 'active' : 'idle' }, latestModel: 'fixture-model',
+    const state = { id: thread, cwd: directory, rolloutPath: row.path, requests: row.requests || [], threadRuntimeStatus: { type: row.turns.at(-1)?.status === 'inProgress' ? 'active' : 'idle' }, latestModel: 'fixture-model',
       turnHistory: { kind: 'canonical', history: { isComplete: true, entitiesByKey: entities, islands: [{ newerBoundary: { status: 'exhausted' }, entries: Object.keys(entities).map(value => ({ value })) }] } } };
     send(socket, { type: 'broadcast', method: 'thread-stream-state-changed', version: 11, sourceClientId: 'fixture-owner', params: { hostId: 'local', conversationId: thread, change: { type: 'snapshot', revision: ++revision, conversationState: state } } });
   };
@@ -48,6 +48,10 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
         else if (method === 'thread-follower-start-turn') {
           const data = read(), turn = { id: randomUUID(), status: 'inProgress', items: [], input: params.turnStart.request.input };
           data[thread].turns.push(turn); save(data); result = { result: { turn } }; snapshot(socket, thread);
+        } else if (method === 'thread-follower-interrupt-turn') {
+          const data=read(); data[thread].turns.at(-1).status='interrupted'; save(data); result={ok:true}; snapshot(socket,thread);
+        } else if (['thread-follower-command-approval-decision','thread-follower-submit-user-input'].includes(method)) {
+          const data=read(); data[thread].requests=data[thread].requests.filter((row:any)=>row.id!==params.requestId); save(data); result={ok:true}; snapshot(socket,thread);
         } else if (method === 'thread-follower-steer-turn') {
           const data = read();
           if (data[thread].phantom) {
@@ -66,6 +70,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
     for await (const line of createInterface({input:process.stdin})) {
       const {id,method,params}=JSON.parse(line); if(id===undefined)continue;
       const data=JSON.parse(readFileSync(file,'utf8')); let row=data[params?.threadId],result={};
+      if(row?.detached && ['thread/resume','turn/start','turn/steer','turn/interrupt'].includes(method)){process.stdout.write(JSON.stringify({id,error:{code:-32600,message:'thread '+params.threadId+' already has an active writer'}})+'\\n');continue;}
       if(method==='thread/start'){const threadId=randomUUID();row=data[threadId]={id:threadId,cwd:params.cwd,turns:[]};save(data);result={thread:row};}
       if(method==='thread/read')result={thread:{...row,status:{type:row?.detached?'notLoaded':row?.turns.at(-1)?.status==='inProgress'?'active':'idle'}}};
       if(method==='thread/turns/list')result={data:[...row.turns].reverse().slice(0,params.limit),nextCursor:null};
@@ -125,7 +130,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       const turns = await fixture.call('codex_call', {method:'thread/turns/list', params:{threadId,limit:1,sortDirection:'desc'}, waitMs:1000});
       assert.equal(turns.result.data[0].id, sent.turnId);
     }
-    // A restarted connector retains its preference while Desktop holds the live writer.
+    // A former connector thread remains fully controllable through the Desktop writer.
     const detached = read(); detached[created.threadId].detached = true;
     detached[created.threadId].turns.at(-1).status = 'completed'; save(detached);
     await mkdir(path.join(directory, 'thread-writer-locks'));
@@ -139,6 +144,29 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       assert.equal(release.error?.code, 'WRITER_RELEASE_REQUIRES_OWNER', JSON.stringify(release));
       const owner = await fixture.call('codex_owner', {threadId:created.threadId});
       assert.equal(owner.owner, 'desktop'); assert.equal(owner.state, 'held');
+      const sentDesktop=await fixture.completed('codex_send',{threadId:created.threadId,prompt:'Control-source intent after handoff',sendMode:'next'});
+      assert.equal(sentDesktop.state,'completed',JSON.stringify(sentDesktop));
+      assert.equal(sentDesktop.executionOwner,'desktop'); assert.equal(sentDesktop.dispatchMode,'new-turn');
+      const steeredDesktop=await fixture.completed('codex_send',{threadId:created.threadId,prompt:'Steer through Desktop',sendMode:'steer'});
+      assert.equal(steeredDesktop.state,'completed',JSON.stringify(steeredDesktop)); assert.equal(steeredDesktop.turnId,sentDesktop.turnId);
+      for (const method of ['item/commandExecution/requestApproval','item/tool/requestUserInput']) {
+        const approval=method.includes('requestApproval');
+        const state=read(); state[created.threadId].requests=[{id:approval?1:2,method,params:{turnId:sentDesktop.turnId,command:'true',questions:[{id:'q',question:'Choose',options:[{label:'A'}]}]}}];save(state);
+        for(const socket of sockets)snapshot(socket,created.threadId);
+        const pending=await fixture.call('codex_pending',{threadId:created.threadId});
+        assert.equal(pending.requests.length,1,JSON.stringify(pending));
+        const answer=await fixture.completed('codex_respond',{id:pending.requests[0].responseId,backendSession:pending.backendSession,result:approval?{decision:'accept'}:{answers:{q:{answers:['A']}}}});
+        assert.equal(answer.state,'completed',JSON.stringify(answer));
+        assert.equal((await fixture.call('codex_pending',{threadId:created.threadId})).requests.length,0);
+      }
+      const queueAfterHandoff=await fixture.completed('codex_send',{threadId:created.threadId,prompt:'Queue after handoff',sendMode:'queue'});
+      const nextAfterHandoff=await fixture.completed('codex_send',{threadId:created.threadId,prompt:'Next after handoff',sendMode:'next'});
+      assert.equal(queueAfterHandoff.dispatchMode,'queued'); assert.equal(nextAfterHandoff.dispatchMode,'queued');
+      const interruptedDesktop=await fixture.completed('codex_interrupt',{threadId:created.threadId,turnId:sentDesktop.turnId});
+      assert.equal(interruptedDesktop.state,'completed',JSON.stringify(interruptedDesktop));
+      await fixture.call('codex_queue_control',{threadId:created.threadId,action:'cancel'});
+      const remainsDesktop=await fixture.call('codex_owner',{threadId:created.threadId});
+      assert.equal(remainsDesktop.owner,'desktop');assert.equal(remainsDesktop.state,'held');
     } finally { writer.stdin.end(); await new Promise(resolve => writer.once('exit', resolve)); }
     await fixture.api('task-settings', {notificationsEnabled:false}, 'PUT');
     const target = 'session_010000000000000000000009';
@@ -168,10 +196,16 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       const status = async () => fixture.call('notify_status',{threadId:interrupted.threadId,all:true});
       let report: any;
       const deadline = Date.now()+20000;
-      do { report=await status(); if(report.deliveries?.length===2)break; await new Promise(resolve=>setTimeout(resolve,100)); } while(Date.now()<deadline);
-      assert.equal(report.deliveries.length,2,JSON.stringify(report));
-      assert.deepEqual(report.deliveries.map((d:any)=>d.kind).sort(),['completed','interrupted']);
+      do { report=await status(); if(report.deliveries?.filter((d:any)=>d.kind!=='handoff').length===2)break; await new Promise(resolve=>setTimeout(resolve,100)); } while(Date.now()<deadline);
+      assert.equal(report.deliveries.filter((d:any)=>d.kind!=='handoff').length,2,JSON.stringify(report));
+      assert.deepEqual(report.deliveries.filter((d:any)=>d.kind!=='handoff').map((d:any)=>d.kind).sort(),['completed','interrupted']);
       assert.ok(report.threads[0].turns.some((turn:any)=>turn.turnId===successor && turn.target===target));
+      assert.equal(report.deliveries.filter((d:any)=>d.kind==='handoff').length,1);
+      assert.equal(report.threads[0].ownership.currentOwner,'desktop');
+      const owner = await fixture.call('codex_owner',{threadId:interrupted.threadId});
+      assert.equal(owner.history.at(-1).to,'desktop');
+      const timeline=await fixture.call('task_timeline',{agent:'codex',id:interrupted.threadId});
+      assert.equal(timeline.ownership.currentOwner,'desktop');
       const eventIds=report.deliveries.map((d:any)=>d.eventId).sort();
       await fixture.restart();
       await new Promise(resolve=>setTimeout(resolve,2500));
@@ -180,6 +214,37 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       assert.equal(replayed.targets[0].tokens,report.targets[0].tokens);
       assert.equal(replayed.targets[0].breaker,report.targets[0].breaker);
       assert.equal((await fixture.call('codex_owner',{threadId:interrupted.threadId})).owner,'desktop');
+      const continuedOrigin=await fixture.api('tasks/control',{op:'codex_send',args:{threadId:interrupted.threadId,prompt:'Continue the source-owned task',purpose:'task',sendMode:'next',requestId:randomUUID()}});
+      assert.equal(continuedOrigin.state,'completed',JSON.stringify(continuedOrigin));
+      assert.equal(continuedOrigin.executionOwner,'desktop');
+      const originStatus=await status();
+      assert.ok(originStatus.threads[0].turns.some((turn:any)=>turn.turnId===continuedOrigin.turnId && turn.target===target));
     } finally {desktopWriter.stdin.end(); await new Promise(resolve=>desktopWriter.once('exit',resolve));}
+    const action = await fixture.completed('codex_create',{prompt:'ARC resume fixture',thread:{cwd:directory},notify:{channel:'claude-session',target}});
+    const actionData=read(); actionData[action.threadId].turns.at(-1).status='interrupted'; save(actionData);
+    const requestId=randomUUID();
+    const recovered=await fixture.completed('codex_resume',{threadId:action.threadId,turnId:action.turnId,requestId});
+    assert.equal(recovered.state,'completed',JSON.stringify(recovered));
+    assert.equal(recovered.result.resumedFrom,action.turnId);
+    assert.notEqual(recovered.turnId,action.turnId);
+    const replay=await fixture.completed('codex_resume',{threadId:action.threadId,turnId:action.turnId,requestId});
+    assert.equal(replay.turnId,recovered.turnId);
+    const stale=await fixture.completed('codex_resume',{threadId:action.threadId,turnId:action.turnId});
+    assert.equal(stale.error.code,'RESUME_TURN_ADVANCED',JSON.stringify(stale));
+    const actionStatus=await fixture.call('notify_status',{threadId:action.threadId,all:true});
+    assert.ok(actionStatus.threads[0].turns.some((turn:any)=>turn.turnId===recovered.turnId && turn.target===target));
+    const desktopAction=read(); desktopAction[action.threadId].turns.at(-1).status='interrupted'; desktopAction[action.threadId].detached=true; save(desktopAction);
+    const actionWriter=spawn('python3',['-c','import fcntl,sys; f=open(sys.argv[1],"w"); fcntl.flock(f,fcntl.LOCK_EX); print("ready",flush=True); sys.stdin.read()',path.join(directory,'thread-writer-locks',action.threadId+'.lock')]);
+    await new Promise<void>(resolve=>actionWriter.stdout.once('data',resolve));
+    try {
+      const fromPanel=await fixture.api('tasks/control',{op:'codex_resume',args:{threadId:action.threadId,turnId:recovered.turnId,requestId:randomUUID()}});
+      assert.equal(fromPanel.state,'completed',JSON.stringify(fromPanel));
+      assert.equal(fromPanel.result.executionOwner,'desktop');
+      const stillOwned=await fixture.call('codex_owner',{threadId:action.threadId});
+      assert.equal(stillOwned.owner,'desktop'); assert.equal(stillOwned.state,'held');
+      await fixture.call('notify_control',{action:'rebind',threadId:action.threadId,target:null});
+      const unbound=await fixture.completed('codex_resume',{threadId:action.threadId,turnId:fromPanel.turnId});
+      assert.equal(unbound.error.code,'RESUME_SOURCE_MISMATCH',JSON.stringify(unbound));
+    } finally {actionWriter.stdin.end(); await new Promise(resolve=>actionWriter.once('exit',resolve));}
   } finally { await fixture.close(); for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); await rm(directory, {recursive:true,force:true}); }
 });

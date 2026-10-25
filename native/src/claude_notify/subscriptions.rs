@@ -72,7 +72,7 @@ pub(super) fn claude_id(b: &Binding) -> String {
 }
 
 pub(crate) fn guide() -> Value {
-    json!({"event":"notification","inputSchema":{"type":"object","properties":{"op":{"type":"string"},"args":{"type":"object"}},"required":["op","args"],"additionalProperties":false},"ops":[{"op":"task_status","description":"Task completed, failed, interrupted or needs input; only tasks dispatched through this source. Empty args watches all such tasks; both filters must match when supplied.","inputSchema":task_schema(),"example":{"name":"notification","arguments":{"op":"task_status","args":{}}}}]})
+    json!({"event":"notification","inputSchema":{"type":"object","properties":{"op":{"type":"string"},"args":{"type":"object"}},"required":["op","args"],"additionalProperties":false},"ops":[{"op":"task_status","description":"Task completed, failed, interrupted, needs input or changed writer owner; only tasks dispatched through this source. Empty args watches all such tasks; both filters must match when supplied.","inputSchema":task_schema(),"example":{"name":"notification","arguments":{"op":"task_status","args":{}}}}]})
 }
 fn task_schema() -> Value {
     json!({"type":"object","properties":{"threadId":{"type":"string","minLength":1},"taskId":{"type":"string","minLength":1}},"additionalProperties":false})

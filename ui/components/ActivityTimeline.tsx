@@ -17,6 +17,7 @@ import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
 import { taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import TaskNeedsYou from "./TaskNeedsYou";
+import TaskOwnership from "./TaskOwnership";
 import { activityHeadline, type TrackedActivity } from "../state/activityModel";
 import type { TaskRuntime } from "../state/tasks";
 
@@ -41,6 +42,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const [atLatest, setAtLatest] = useState(true);
   const [timeline, setTimeline] = useState<AgentTimeline>();
   const [taskTitle, setTaskTitle] = useState("");
+  const [resuming, setResuming] = useState(false);
+  const resumeRequest = useRef<{turnId:string;requestId:string} | undefined>(undefined);
   const [error, setError] = useState(""), [openError, setOpenError] = useState("");
   const loading = session.timeline && !timeline && !error;
   const [now, setNow] = useState(Date.now);
@@ -169,6 +172,19 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       ]} /></div>}
       <h2 className="activity-panel-title" title={title}>{title}</h2>
       <div className="task-detail-chips"><span className="task-state" data-state={state}>{t(`detail.state.${state}`)}</span>
+        <TaskOwnership ownership={timeline?.ownership} />
+        {agent === "codex" && !external && !timeline?.readOnly && state === "interrupted" && turnId && <Button variant="secondary" disabled={resuming} onClick={() => {
+          if (resumeRequest.current?.turnId !== turnId) resumeRequest.current = {turnId,requestId:crypto.randomUUID()};
+          setResuming(true); setOpenError("");
+          void (async () => {
+            let receipt = await api<{state:string;requestId:string;error?:{message?:string}}>("tasks/control", "POST", {op:"codex_resume",args:{threadId:session.id,turnId,requestId:resumeRequest.current!.requestId}});
+            while (["pending","reserved","submitting"].includes(receipt.state)) {
+              await new Promise(resolve=>setTimeout(resolve,500));
+              receipt = await api("tasks/control", "POST", {op:"receipt",args:{requestId:receipt.requestId}});
+            }
+            if (receipt.state !== "completed") throw new Error(receipt.error?.message || receipt.state);
+          })().catch(error=>setOpenError(String(error))).finally(()=>setResuming(false));
+        }}>{t("detail.resumeInterrupted")}</Button>}
         {state === "done" && fromControlSource && <span className="task-review-status" data-verdict={review?.verdict}>{t(review?.verdict === "pass" ? "detail.reviewPassed" : review?.verdict === "rework" ? "detail.reviewRework" : "detail.awaitingReview")}</span>}
         <div className="task-detail-meta"><SpecPill summary={latestSummary} />{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span></span>}</div>
         {duration !== undefined && <time className="timeline-meta task-duration">{durationText(duration)}</time>}

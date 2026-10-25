@@ -143,7 +143,32 @@ pub(super) fn adopt(dir: &Path, b: &mut Binding, observation: &Value) -> Result<
     if b.scope_end.is_some() || (!b.agent.is_empty() && b.agent != "codex") {
         return Ok(());
     }
+    if let Some(next) = observation["nextTurnId"].as_str() {
+        if uuid::Uuid::parse_str(&b.thread_id).is_ok()
+            && crate::dispatch_policy::records(&b.thread_id)?
+                .iter()
+                .any(|row| row["turnId"] == next && row["dispatchSource"] != "native-retry")
+        {
+            // ARC records accepted dispatches before binding. Do not close an
+            // origin scope in that gap; bind owns explicit scope replacement.
+            return Ok(());
+        }
+        if observation["state"] == "completed" && !b.continuation_bound {
+            b.successor = json!({"turnId":next,"inherited":false,"reason":"predecessor-completed"});
+            b.scope_end = Some("unrelated-native-turn".into());
+            persist(dir, b)?;
+            return Ok(());
+        }
+    }
     if matches!(string(observation, "state"), "cancelled" | "failed") && !b.continuation_bound {
+        if observation["nextTurnId"].is_string()
+            && !observation["nativeContinuation"]["retry"].is_object()
+            && observation["nativeContinuation"]["excluded"] != true
+        {
+            b.successor = json!({"turnId":observation["nextTurnId"],"inherited":false,
+                "reason":"pending-native-provenance"});
+            persist(dir, b)?;
+        }
         if observation["nativeContinuation"]["excluded"] == true {
             b.successor = json!({"turnId":observation["nextTurnId"],"inherited":false,"reason":observation["nativeContinuation"]["reason"]});
             b.scope_end = Some("unrelated-native-content".into());
@@ -182,6 +207,11 @@ pub(super) fn adopt(dir: &Path, b: &mut Binding, observation: &Value) -> Result<
                 let mut successor = binding(dir, &b.thread_id, next)?.unwrap_or_else(|| {
                     let mut next_binding = b.clone();
                     next_binding.turn_id = next.into();
+                    next_binding.scope_started_at = if b.scope_started_at == 0 {
+                        b.created_at.saturating_mul(1000)
+                    } else {
+                        b.scope_started_at
+                    };
                     next_binding.created_at = chrono::Utc::now().timestamp();
                     next_binding.terminal = false;
                     next_binding.waiting.clear();

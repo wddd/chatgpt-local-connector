@@ -14,6 +14,7 @@ import {
 } from "../state/tasks";
 import { useInterval } from "../state/hooks";
 import { Button, Empty, IconButton, Loading, Notice, Dialog } from "./ui";
+import TaskOwnership from "./TaskOwnership";
 import { Markdown, plainMarkdown } from "./ui/Markdown";
 const idOf = (r: TaskRecord) => r.taskId || r.threadId || r.task.threadId;
 export default function TasksPage() {
@@ -165,11 +166,7 @@ export default function TasksPage() {
         )}
       </div>}
       <div className="task-focus-content">
-        {selected.first.executionOwner === "connector" && (
-          <p className="muted small">
-            {t("connectorRunsThisTaskInTheBackgroundDisconnecting")} {t("codexExternalTaskRestartHint")}
-          </p>
-        )}
+        <TaskOwnership ownership={runtime(selected.first)?.ownership} />
         {[...selected.records].reverse().map((r) => (
           <section className="task-entry" key={r.requestId}>
             <header>

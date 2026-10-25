@@ -397,7 +397,15 @@ pub(super) async fn send(
     }
     let mut data = json!({"op":sub.op,"query":query});
     for k in [
-        "kind", "summary", "threadId", "taskId", "turnId", "agent", "project", "title",
+        "kind",
+        "summary",
+        "threadId",
+        "taskId",
+        "turnId",
+        "agent",
+        "project",
+        "title",
+        "ownership",
     ] {
         data[k] = event[k].clone();
     }

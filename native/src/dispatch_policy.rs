@@ -640,12 +640,15 @@ pub(crate) fn record_native_retry(thread: &str, previous: &str, retry: &Value) -
         .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
         .ok_or("NATIVE_RETRY_START_MISSING")?;
     let config = &retry["configuration"];
+    let evidence = config["source"]
+        .as_str()
+        .unwrap_or("native-persisted-turn-context");
     let row = json!({
         "agent":"codex","taskId":thread,"options":{},"requestId":turn,"threadId":thread,"turnId":turn,"dispatchMode":"new-turn",
         "origin":parent["origin"],"dispatchSource":"native-retry","retryOf":previous,"nativeTrigger":retry["trigger"],
         "model":config["model"],"effort":config["effort"],"serviceTier":config["serviceTier"],
-        "source":{"model":"native-persisted-turn-context","effort":"native-persisted-turn-context","serviceTier":"native-persisted-turn-context"},
-        "configurationEvidence":"native-persisted-turn-context","effectiveConfiguration":config,
+        "source":{"model":evidence,"effort":evidence,"serviceTier":evidence},
+        "configurationEvidence":evidence,"effectiveConfiguration":config,
         "submittedAt":started.to_rfc3339(),"observedAt":now(),
         "purpose":parent["purpose"],"reason":"Native retry of failed or interrupted ARC dispatch"
     });

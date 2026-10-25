@@ -1767,7 +1767,8 @@
                   "agent_interrupt",
                   "codex_review",
                   "agent_review",
-                  "receipt"
+                  "receipt",
+                  "codex_resume"
                 ]
               },
               "args": {

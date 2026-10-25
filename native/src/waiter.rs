@@ -291,7 +291,7 @@ pub(crate) fn classify(observation: &Value, selected: &mut Option<String>) -> Va
         .map(|r| r["questionSummary"].clone())
         .collect::<Vec<_>>());
     json!({"state":state,"reason":reason,"title":t["name"],"threadId":t["id"],"turnId":selected,"recordedStatus":turn["status"],"runtimeStatus":runtime,
-        "runtimeSource":t["runtimeSource"],"externalUserInputs":observation["externalUserInputs"].as_array().into_iter().flatten().filter(|r| r["turnId"].as_str()==selected.as_deref() || (r["answeredTurnId"].is_string() && r["answeredTurnId"].as_str()==selected.as_deref())).collect::<Vec<_>>(),"finalResponse":assistant,"error":turn["error"],"interaction":interactions,
+        "runtimeSource":t["runtimeSource"],"archived":crate::control::summary(t)["archived"],"externalUserInputs":observation["externalUserInputs"].as_array().into_iter().flatten().filter(|r| r["turnId"].as_str()==selected.as_deref() || (r["answeredTurnId"].is_string() && r["answeredTurnId"].as_str()==selected.as_deref())).collect::<Vec<_>>(),"finalResponse":assistant,"error":turn["error"],"interaction":interactions,
         "activeFlags":flags,"interactionAction":if blocked && interactions.is_empty(){Some("Inspect Codex Desktop for the pending interaction; this owner exposes no callback ID to Agent Remote Control")}else if !interactions.is_empty(){Some("Use codex_respond with id=responseId and backendSession; do not resend the task")}else{None},
         "progress":progress,"observedAt":now()})
 }
@@ -310,7 +310,10 @@ struct CodexSource {
 impl WaitSource for CodexSource {
     fn classify(&mut self, observation: &Value, selected: &mut Option<String>) -> Value {
         let mut result = classify(observation, selected);
-        if matches!(string(&result, "state"), "cancelled" | "failed") {
+        if matches!(
+            string(&result, "state"),
+            "completed" | "cancelled" | "failed"
+        ) {
             let turns = observation["thread"]["turns"].as_array();
             if let Some(turns) = turns {
                 if let Some(index) = turns.iter().position(|t| t["id"] == result["turnId"]) {
@@ -443,13 +446,7 @@ impl WaitSource for CodexSource {
 }
 async fn codex_source(control: &Arc<Control>, args: &Value) -> Result<CodexSource> {
     let thread = string(args, "threadId");
-    let mut background = control.background(thread)?;
-    // The persisted connector preference is not a live writer lease. Desktop can
-    // resume an interrupted task after our app-server exits. Follow that owner
-    // without changing the preference or loading/unsubscribing its thread.
-    if background && crate::writer::probe(thread)["state"] == "held" {
-        background = control.writer_ownership(thread).await["owner"] != "desktop";
-    }
+    let background = control.effective_background(thread).await?;
     let owner = if background {
         CodexOwner::Background(control.utility().await?)
     } else {

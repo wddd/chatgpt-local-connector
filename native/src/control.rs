@@ -167,6 +167,33 @@ impl Control {
         let path = root().join("execution").join(format!("{thread}.json"));
         Ok(path.exists() && load(&path)?["owner"] == "connector")
     }
+    fn handed_to_desktop(&self, thread: &str) -> bool {
+        crate::claude_notify::ownership::read(thread)
+            .ok()
+            .is_some_and(|state| {
+                state["currentOwner"] == "desktop"
+                    || state["history"]
+                        .as_array()
+                        .is_some_and(|history| history.iter().any(|row| row["to"] == "desktop"))
+            })
+    }
+    pub(crate) async fn effective_background(&self, thread: &str) -> Result<bool> {
+        let background = self.background(thread)?;
+        if !background || cfg!(target_os = "linux") {
+            return Ok(background);
+        }
+        if self.handed_to_desktop(thread) {
+            return Ok(false);
+        }
+        if crate::writer::probe(thread)["state"] == "held" {
+            let owner = self.writer_ownership(thread).await;
+            if owner["owner"] == "desktop" {
+                crate::claude_notify::ownership::observe(thread, &owner).await?;
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
     async fn create_background(
         &self,
         args: Value,
@@ -385,6 +412,14 @@ impl Control {
         }
         result
     }
+    pub(crate) async fn observe_ownership(&self, thread: &str) -> Result<Value> {
+        let mut owner = self.writer_ownership(thread).await;
+        let history = crate::claude_notify::ownership::observe(thread, &owner).await?;
+        owner["currentOwner"] = history["currentOwner"].clone();
+        owner["history"] = history["history"].clone();
+        owner["observedAt"] = history["observedAt"].clone();
+        Ok(owner)
+    }
     async fn release_writer(&self, thread: &str) -> Result<Value> {
         let mut ownership = self.writer_ownership(thread).await;
         if ownership["state"] == "unheld" {
@@ -430,7 +465,7 @@ impl Control {
             }
         }
         #[allow(unreachable_code)]
-        if self.background(thread)? {
+        if self.effective_background(thread).await? {
             return Ok(());
         }
         let ipc = self.ipc().await?;
@@ -444,6 +479,12 @@ impl Control {
                 ()
             }
             Err(e) => return Err(e),
+        }
+        if self.handed_to_desktop(thread) {
+            return desktop::reveal(&ipc,thread).await.map(|_|()).map_err(|error|
+                json!({"code":"DESKTOP_HANDOFF_UNAVAILABLE","message":error,
+                "next":{"via":"act","op":"task_open","args":{"agent":"codex","id":thread},
+                "hint":"Open this exact thread in its Desktop owner, then inspect it before retrying. ARC will not reclaim a handed-off writer."}}).to_string());
         }
         // Validate existence before navigation; metadata needs no history API.
         let rpc = self.utility().await?;
@@ -505,6 +546,7 @@ impl Control {
         )
     }
     pub(crate) async fn external_timeline(&self, thread: &str) -> Result<Value> {
+        let ownership = self.observe_ownership(thread).await?;
         let history = self
             .utility()
             .await?
@@ -525,9 +567,22 @@ impl Control {
             history["thread"]["projectId"].as_str(),
         ));
         result["readOnly"] = json!(true);
+        if result["snapshotHash"].is_string() {
+            result["snapshotHash"] = json!(hash(
+                json!([
+                    result["snapshotHash"],
+                    ownership["currentOwner"],
+                    ownership["state"],
+                    ownership["history"]
+                ])
+                .to_string()
+            ));
+        }
+        result["ownership"] = ownership;
         Ok(result)
     }
     pub(crate) async fn timeline(&self, thread: &str, after: u64) -> Result<Value> {
+        let ownership = self.observe_ownership(thread).await?;
         let _read = self.requests.lock(&format!("timeline-read:{thread}")).await;
         let (baseline, observed) = {
             let mut events = self.events.lock().await;
@@ -537,14 +592,27 @@ impl Control {
             }
             if timeline.history_loaded && !timeline.observation_lost {
                 crate::interaction_responses::project(timeline, thread)?;
-                return Ok(timeline.response(thread, after));
+                let mut result = timeline.response(thread, after);
+                if result["snapshotHash"].is_string() {
+                    result["snapshotHash"] = json!(hash(
+                        json!([
+                            result["snapshotHash"],
+                            ownership["currentOwner"],
+                            ownership["state"],
+                            ownership["history"]
+                        ])
+                        .to_string()
+                    ));
+                }
+                result["ownership"] = ownership;
+                return Ok(result);
             }
             (timeline.revision, timeline.observed_events)
         };
         // Reconnect the desktop observation stream before reading its persisted history.
         // This is read-only: it never resumes a background task.
         #[cfg(not(feature = "test-fixture"))]
-        if !self.background(thread)? && !cfg!(target_os = "linux") {
+        if !self.effective_background(thread).await? && !cfg!(target_os = "linux") {
             let _ = self.follow(thread).await;
         }
         let history = async {
@@ -565,7 +633,22 @@ impl Control {
         if after > timeline.revision {
             return Err("TIMELINE_CURSOR_EXPIRED: fetch again without after".into());
         }
-        Ok(timeline.response(thread, after))
+        {
+            let mut result = timeline.response(thread, after);
+            if result["snapshotHash"].is_string() {
+                result["snapshotHash"] = json!(hash(
+                    json!([
+                        result["snapshotHash"],
+                        ownership["currentOwner"],
+                        ownership["state"],
+                        ownership["history"]
+                    ])
+                    .to_string()
+                ));
+            }
+            result["ownership"] = ownership;
+            Ok(result)
+        }
     }
     pub async fn request(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
         if method == "fs/fetchFile"
@@ -638,7 +721,7 @@ impl Control {
                 let unseen_history = !events.timelines.contains_key(thread) && !turns.is_empty();
                 let timeline = events.timelines.entry(thread.into()).or_default();
                 timeline.partial |= unseen_history;
-                timeline.info = json!({"runtimeSource":if self.background(thread).unwrap_or(false) {"connector-app-server"} else {"desktop"},"id":thread,"title":info["thread"]["name"].as_str().unwrap_or("Codex task"),"project":info["thread"]["cwd"],"startedAt":timeline.info.get("startedAt").cloned().unwrap_or(json!(now()))});
+                timeline.info = json!({"runtimeSource":info["thread"]["runtimeSource"],"id":thread,"title":info["thread"]["name"].as_str().unwrap_or("Codex task"),"project":info["thread"]["cwd"],"startedAt":timeline.info.get("startedAt").cloned().unwrap_or(json!(now()))});
                 timeline.status = "running".into();
             }
             let result = self.request_native(method, args.clone(), timeout).await;
@@ -656,6 +739,9 @@ impl Control {
     }
     async fn writer_conflict(&self, thread: &str, error: Option<&str>) -> Value {
         let mut ownership = self.writer_ownership(thread).await;
+        if ownership["owner"] == "desktop" {
+            return json!({"code":"DESKTOP_HANDOFF_UNAVAILABLE","message":"The Desktop route did not confirm this operation. Inspect the original receipt and current Desktop state before retrying.","ownership":ownership,"next":{"via":"query","op":"codex_owner","args":{"threadId":thread}}});
+        }
         if ownership["state"] == "held" {
             ownership["processes"] = crate::writer::processes(thread).await;
         }
@@ -678,10 +764,18 @@ impl Control {
     }
     async fn request_native(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
         let thread = string(&args, "threadId");
-        if matches!(
-            method,
-            "thread/read" | "thread/turns/list" | "thread/items/list"
-        ) && crate::writer::probe(thread)["state"] == "held"
+        if !thread.is_empty()
+            && matches!(
+                method,
+                "thread/read"
+                    | "thread/turns/list"
+                    | "thread/items/list"
+                    | "thread/resume"
+                    | "turn/start"
+                    | "turn/steer"
+                    | "turn/interrupt"
+            )
+            && crate::writer::probe(thread)["state"] == "held"
         {
             let mut ownership = self.writer_ownership(thread).await;
             if ownership["owner"] == "external" {
@@ -692,6 +786,14 @@ impl Control {
         let result = self.request_native_raw(method, args.clone(), timeout).await;
         if let Err(error) = &result {
             if !thread.is_empty() && error.contains("already has an active writer") {
+                let ownership = self.writer_ownership(thread).await;
+                if ownership["owner"] == "desktop" {
+                    // This explicit native rejection occurs before admission. It
+                    // is safe to route once through the newly observed Desktop;
+                    // never do this after a timeout or an uncertain submission.
+                    crate::claude_notify::ownership::observe(thread, &ownership).await?;
+                    return self.request_native_raw(method, args, timeout).await;
+                }
                 return Err(self.writer_conflict(thread, Some(error)).await.to_string());
             }
             if !thread.is_empty()
@@ -715,7 +817,7 @@ impl Control {
         if method == "turn/start" || method == "thread/resume" {
             self.prepare_thread(string(&args, "threadId")).await?;
         }
-        if self.background(string(&args, "threadId"))? {
+        if self.effective_background(string(&args, "threadId")).await? {
             return self.background_request(method, args, timeout).await;
         }
         if matches!(method, "turn/start" | "turn/steer" | "turn/interrupt") {
@@ -840,7 +942,7 @@ impl Control {
     }
 
     pub async fn mutate(self: &Arc<Self>, operation: &str, mut args: Value) -> Result<Value> {
-        if matches!(operation, "create" | "send" | "native") {
+        if matches!(operation, "create" | "send" | "resume" | "native") {
             crate::app_replace::check_dispatch()?;
         }
         if matches!(operation, "create" | "send") {
@@ -1115,17 +1217,23 @@ impl Control {
         Ok(records)
     }
     pub async fn task_runtime(&self, id: &str) -> Result<Value> {
+        let ownership = self.observe_ownership(id).await?;
         let path = uuid::Uuid::parse_str(id)
             .ok()
             .map(|_| root().join("tasks").join(format!("{id}.json")));
-        let live = tokio::time::timeout(
-            Duration::from_secs(5),
-            self.request(
-                "thread/read",
-                json!({"threadId":id,"includeTurns":false}),
-                5000,
-            ),
-        )
+        let live = tokio::time::timeout(Duration::from_secs(5), async {
+            if ownership["owner"] == "desktop" {
+                let state = self.ipc().await?.read(id, false).await?;
+                Ok(json!({"thread":crate::control::thread(&state,false)?}))
+            } else {
+                self.request(
+                    "thread/read",
+                    json!({"threadId":id,"includeTurns":false}),
+                    5000,
+                )
+                .await
+            }
+        })
         .await;
         let mut snapshot = match live {
             Ok(Ok(result)) => summary(&result["thread"]),
@@ -1156,6 +1264,7 @@ impl Control {
                 snapshot["archived"] = previous["archived"].clone();
             }
         }
+        snapshot["ownership"] = ownership;
         if let Some(path) = path {
             save(&path, &snapshot)?;
         }
@@ -1194,7 +1303,7 @@ impl Control {
         if std::env::var_os("ARC_FIXTURE_DESKTOP").is_none() {
             return Ok(());
         }
-        if !self.background(thread)? {
+        if !self.effective_background(thread).await? {
             let state = self.ipc().await?.read(thread, true).await?;
             desktop::check_steer(&state, thread, turn)?;
         }
@@ -1211,7 +1320,7 @@ impl Control {
         let _thread_guard = if !thread_key.is_empty()
             && (matches!(
                 operation,
-                "send" | "interrupt" | "review" | "archive" | "release"
+                "send" | "resume" | "interrupt" | "review" | "archive" | "release"
             ) || (operation == "native"
                 && matches!(
                     string(args, "method"),
@@ -1238,6 +1347,93 @@ impl Control {
         if operation == "release" {
             r["threadId"] = args["threadId"].clone();
             return self.release_writer(string(args, "threadId")).await;
+        }
+        if operation == "resume" {
+            let thread = string(args, "threadId");
+            let previous = string(args, "turnId");
+            r["threadId"] = json!(thread);
+            let context = crate::claude_notify::resume_context(thread, previous)?;
+            let ownership = self.observe_ownership(thread).await?;
+            if ownership["state"] == "held"
+                && !matches!(ownership["owner"].as_str(), Some("connector" | "desktop"))
+            {
+                return Err(crate::writer::busy(thread, ownership).to_string());
+            }
+            let desktop = ownership["owner"] == "desktop" || self.handed_to_desktop(thread);
+            let state = if desktop {
+                let state = self.ipc().await?.read(thread, true).await?;
+                crate::control::thread(&state, true)?
+            } else {
+                let rpc = self.utility().await?;
+                let mut state = rpc
+                    .call(
+                        "thread/read",
+                        json!({"threadId":thread,"includeTurns":false}),
+                        10000,
+                    )
+                    .await?["thread"]
+                    .clone();
+                let page = rpc.call("thread/turns/list",json!({"threadId":thread,"limit":1,"sortDirection":"desc","itemsView":"full"}),10000).await?;
+                state["turns"] = json!(page["data"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .rev()
+                    .cloned()
+                    .collect::<Vec<_>>());
+                state
+            };
+            let latest = state["turns"]
+                .as_array()
+                .and_then(|turns| turns.last())
+                .ok_or("RESUME_TURN_MISSING")?;
+            if latest["id"] != previous
+                || !matches!(string(latest, "status"), "interrupted" | "cancelled")
+                || state["status"]["type"] == "active"
+            {
+                return Err(json!({"code":"RESUME_TURN_ADVANCED","message":"Only the latest interrupted turn can resume. No input was submitted.","next":{"via":"query","op":"codex_read","args":{"threadId":thread,"statusOnly":true}}}).to_string());
+            }
+            if !desktop {
+                if state["status"]["type"] == "notLoaded" {
+                    self.utility()
+                        .await?
+                        .call(
+                            "thread/resume",
+                            json!({"threadId":thread,"excludeTurns":true}),
+                            10000,
+                        )
+                        .await?;
+                }
+                save(
+                    &root().join("execution").join(format!("{thread}.json")),
+                    &json!({"owner":"connector","reason":"explicit-interrupted-resume"}),
+                )?;
+            }
+            r["state"] = json!("submitting");
+            self.checkpoint(r)?;
+            let params = json!({"threadId":thread,"input":[],"turnTrigger":"resume_interrupted_task","parentTurnId":previous,"rootTurnId":previous});
+            let result = if desktop {
+                self.ipc().await?.mutate("turn/start", &params).await?
+            } else {
+                self.request("turn/start", params, 10000).await?
+            };
+            let turn = string(&result["turn"], "id");
+            if turn.is_empty() {
+                return Err(
+                    "RESUME_UNCONFIRMED: read the original receipt and thread before retrying"
+                        .into(),
+                );
+            }
+            r["turnId"] = json!(turn);
+            r["dispatchMode"] = json!("resumed");
+            r["executionOwner"] = json!(if desktop { "desktop" } else { "connector" });
+            crate::claude_notify::record_binding(
+                r,
+                crate::claude_notify::resumed(thread, previous, turn, context).await,
+            );
+            return Ok(
+                json!({"threadId":thread,"turnId":turn,"resumedFrom":previous,"executionOwner":r["executionOwner"]}),
+            );
         }
         if operation == "archive" {
             let thread = string(args, "threadId");
@@ -1280,6 +1476,7 @@ impl Control {
                 }
                 return Err(error);
             }
+            crate::claude_notify::ownership::end_scope(thread, "thread-archived").await?;
             return Ok(json!({"threadId":thread,"archived":true,"nativeMethod":"thread/archive"}));
         }
         if operation == "review" {
@@ -1491,7 +1688,7 @@ impl Control {
             let step = std::time::Instant::now();
             self.prepare_thread(thread).await?;
             r["seedTimings"]["ownerMs"] = json!(step.elapsed().as_millis());
-            let background = self.background(thread)?;
+            let background = self.effective_background(thread).await?;
             r["executionOwner"] = json!(if background { "connector" } else { "desktop" });
             r["state"] = json!("turn-submitting");
             r["task"]["dispatch"]["submittedAt"] = json!(now());
@@ -1539,7 +1736,7 @@ impl Control {
                 self.request("thread/resume", resume, timeout).await?;
             }
             self.prepare_thread(thread).await?;
-            r["executionOwner"] = json!(if self.background(thread)? {
+            r["executionOwner"] = json!(if self.effective_background(thread).await? {
                 "connector"
             } else {
                 "desktop"
@@ -1802,12 +1999,13 @@ impl Control {
             "codex_changes" => crate::changes::query(self, &args).await,
             "codex_create" => self.mutate("create", args).await,
             "codex_send" => self.mutate("send", args).await,
+            "codex_resume" => self.mutate("resume", args).await,
             "codex_queue" => crate::dispatch_queue::query(&args).await,
             "codex_queue_control" => crate::dispatch_queue::control(self, &args).await,
             "acceptance_fault" => crate::acceptance_fault::control(&args),
             "codex_release" => self.mutate("release", args).await,
             "codex_owner" => {
-                let mut owner = self.writer_ownership(string(&args, "threadId")).await;
+                let mut owner = self.observe_ownership(string(&args, "threadId")).await?;
                 if owner["state"] == "held" {
                     owner["processes"] = crate::writer::processes(string(&args, "threadId")).await;
                     owner["next"] = crate::writer::release_step(string(&args, "threadId"), &owner);
@@ -1837,14 +2035,21 @@ impl Control {
                     .await
                 }
             }
-            "notify_status" => crate::claude_notify::notify_status(&args).await,
+            "notify_status" => {
+                if let Some(thread) = args["threadId"].as_str() {
+                    if uuid::Uuid::parse_str(thread).is_ok() {
+                        let _ = self.observe_ownership(thread).await;
+                    }
+                }
+                crate::claude_notify::notify_status(&args).await
+            }
             "notify_control" => crate::claude_notify::notify_control(&args).await,
             "inbox_wait" => crate::claude_notify::inbox_wait(self, &args).await,
             "notification_ack" => crate::claude_notify::acknowledge(&args).await,
             "codex_interactions" => crate::egress::interaction_history(&args),
             "codex_pending" => {
                 if let Some(thread) = args["threadId"].as_str() {
-                    if !self.background(thread)? {
+                    if !self.effective_background(thread).await? {
                         self.ipc().await?.read(thread, true).await?;
                     }
                 }
@@ -2207,6 +2412,7 @@ impl Control {
 fn task_details(operation: &str, args: &Value) -> Result<Option<Value>> {
     let kind = match operation {
         "create" | "send" | "interrupt" => operation,
+        "resume" => "send",
         "native" => match string(args, "method") {
             "thread/start" => "create",
             "turn/start" | "turn/steer" | "thread/resume" => "send",
@@ -2223,7 +2429,7 @@ fn task_details(operation: &str, args: &Value) -> Result<Option<Value>> {
     };
     let input = if native {
         p["input"].clone()
-    } else if kind != "interrupt" {
+    } else if kind != "interrupt" && operation != "resume" {
         task_input(args)?
     } else {
         json!([])

@@ -342,7 +342,10 @@ pub(super) fn status_in(
                 .iter()
                 .filter(|other| other.thread_id == b.thread_id)
                 .collect::<Vec<_>>();
-            let latest = bs.iter().max_by_key(|b| b.created_at).unwrap();
+            let latest = bs
+                .iter()
+                .max_by_key(|b| (b.scope_end.is_none(), !b.continuation_bound, b.created_at))
+                .unwrap();
             let historical = bs
                 .iter()
                 .flat_map(|b| &b.deliveries)
@@ -354,7 +357,8 @@ pub(super) fn status_in(
                 })
                 .filter_map(|d| d.timing.finished_at.map(|ms| ms / 1000))
                 .max();
-            threads.push(json!({"threadId":b.thread_id,"title":latest.title,"channel":latest.channel,"target":latest.target,"mode":rule.map(|r|r.mode(now)).unwrap_or("normal"),"until":rule.and_then(|r|r.until),"lastDeliveredAt":rule.and_then(|r|r.last_delivered_at).into_iter().chain(historical).max(),"lastAckAt":rule.and_then(|r|r.last_ack_at),"turns":bs.iter().map(|b|json!({"turnId":b.turn_id,"channel":b.channel,"target":b.target,"causedBy":b.caused_by})).collect::<Vec<_>>()}));
+            let ownership = ownership::read(&b.thread_id).unwrap_or(Value::Null);
+            threads.push(json!({"threadId":b.thread_id,"title":latest.title,"ownership":ownership,"channel":latest.channel,"target":latest.target,"mode":rule.map(|r|r.mode(now)).unwrap_or("normal"),"until":rule.and_then(|r|r.until),"lastDeliveredAt":rule.and_then(|r|r.last_delivered_at).into_iter().chain(historical).max(),"lastAckAt":rule.and_then(|r|r.last_ack_at),"turns":bs.iter().map(|b|json!({"turnId":b.turn_id,"channel":b.channel,"target":b.target,"causedBy":b.caused_by})).collect::<Vec<_>>()}));
         }
     }
     let subscriptions = state
@@ -429,7 +433,7 @@ pub(super) fn status_in(
             let latest = bindings
                 .iter()
                 .filter(|b| b.thread_id == t["threadId"])
-                .max_by_key(|b| b.created_at)
+                .max_by_key(|b| (b.scope_end.is_none(), !b.continuation_bound, b.created_at))
                 .unwrap();
             t["turns"]
                 .as_array_mut()
