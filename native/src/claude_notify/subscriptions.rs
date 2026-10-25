@@ -151,7 +151,7 @@ pub(super) fn route(state: &State, bindings: &mut [Binding], now: i64) {
                 // destination. Never fan it out through task subscriptions.
                 if source.task_state == "recovered"
                     || !sub.matches(b)
-                    || source.status == "resolved"
+                    || matches!(source.status.as_str(), "resolved" | "inbox-only")
                     || source.interaction["resolved"] == true
                 {
                     continue;

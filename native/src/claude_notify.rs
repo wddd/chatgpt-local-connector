@@ -116,6 +116,7 @@ struct Delivery {
 impl Delivery {
     fn urgent(&self) -> bool {
         self.task_state == "interaction-required"
+            || (self.key.starts_with("update:") && self.key.ends_with(":settling"))
     }
 }
 #[derive(Clone, Serialize, Deserialize)]
@@ -601,7 +602,9 @@ fn event(b: &Binding, d: &Delivery) -> Value {
         _ => "needs-input",
     };
     let agent = !b.agent.is_empty() && b.agent != "codex";
-    let next = if kind == "recovered" {
+    let next = if d.key.starts_with("update:") {
+        json!({"via":"query","op":"update_status","args":{},"hint":"Read update progress, affected tasks and the outcome."})
+    } else if kind == "recovered" {
         json!({"via":"query","op":"notify_status","args":{"target":d.target},"hint":"Inspect affected bindings and reconnect the control-source client if needed."})
     } else if kind == "handoff" {
         json!({"via":"query","op":"codex_owner","args":{"threadId":b.thread_id},"hint":"Inspect the current writer and observed handoff history before continuing."})
@@ -1898,6 +1901,22 @@ async fn flush(
         routing::refresh(dir, b)?;
     }
     subscriptions::route(&state, &mut all, now);
+    if all.iter().any(|b| {
+        b.deliveries
+            .iter()
+            .any(|d| d.task_state == "cancelled" && d.status == "pending")
+    }) {
+        let replacement = crate::app_replace::status().unwrap_or(Value::Null);
+        for b in &mut all {
+            if recovery::interrupted_by_update(b, &replacement) {
+                for d in &mut b.deliveries {
+                    if d.task_state == "cancelled" && d.status == "pending" {
+                        d.status = "inbox-only".into();
+                    }
+                }
+            }
+        }
+    }
     let mut targets = Vec::new();
     for b in &mut all {
         if let Some(rule) = state.rule(b) {
@@ -2481,8 +2500,10 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
     let control = &service.control;
     // Capture before the worker can finish recovery. The same journal drives
     // replacement resumes and its outcome, even if bindings are already terminal.
-    let replacement = crate::app_replace::status()
-        .map(|receipt| crate::app_replace::recovery_turns(&receipt, &control.session));
+    let replacement = crate::app_replace::status().map(|receipt| {
+        crate::app_replace::recovery_turns(&receipt, &control.session)
+            .map(|turns| (string(&receipt, "id").to_owned(), turns))
+    });
     let agents = &service.agents;
     let executor = Cli {
         service: Arc::downgrade(service),
@@ -2528,6 +2549,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
         let mut recovering = true;
         let restart = id();
         let mut interrupted = std::collections::HashSet::new();
+        let mut outcome_reconciled = false;
         loop {
             let Some(control) = weak.upgrade() else {
                 break;
@@ -2538,7 +2560,9 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
             let cycle = async {
                 let replacement = replacement.as_ref().map_err(Clone::clone)?;
                 if recovering {
-                    interrupted.extend(replacement.iter().flatten().cloned());
+                    if let Some((_, turns)) = replacement {
+                        interrupted.extend(turns.iter().cloned());
+                    }
                 }
                 let mut reads = tokio::task::JoinSet::new();
                 let permits = Arc::new(tokio::sync::Semaphore::new(8));
@@ -2680,14 +2704,55 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                     let _ = control.observe_ownership(&thread).await;
                 }
                 if recovering {
-                    recovery::enqueue(
-                        &directory(),
-                        &LOCK,
-                        &restart,
-                        chrono::Utc::now().timestamp(),
-                        &interrupted,
-                    )
-                    .await?;
+                    if replacement.is_some() {
+                        // The worker merges recovery and task resume into the outcome.
+                        let receipt = crate::app_replace::status()?;
+                        recovery::update(
+                            &directory(),
+                            &LOCK,
+                            &receipt,
+                            "recovered",
+                            chrono::Utc::now().timestamp(),
+                        )
+                        .await?;
+                    } else {
+                        recovery::enqueue(
+                            &directory(),
+                            &LOCK,
+                            &restart,
+                            chrono::Utc::now().timestamp(),
+                            &interrupted,
+                        )
+                        .await?;
+                    }
+                }
+                // Reuse the observer to reconcile delayed resume receipts. The
+                // outcome keeps its event ID and can become deliverable only once.
+                if !outcome_reconciled && replacement.is_some() {
+                    let receipt = crate::app_replace::status()?;
+                    if replacement
+                        .as_ref()
+                        .is_some_and(|(id, _)| receipt["id"] == *id)
+                        && receipt["shutdownRequested"] == true
+                        && matches!(
+                            string(&receipt, "state"),
+                            "succeeded" | "rolled-back" | "failed" | "cancelled"
+                        )
+                    {
+                        recovery::update(
+                            &directory(),
+                            &LOCK,
+                            &receipt,
+                            "outcome",
+                            chrono::Utc::now().timestamp(),
+                        )
+                        .await?;
+                        outcome_reconciled = !receipt["interruptedTurns"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .any(recovery::resume_pending);
+                    }
                 }
                 Ok::<_, String>(())
             };
@@ -3604,7 +3669,7 @@ mod tests {
             &Mutex::new(()),
             "schema-restart",
             chrono::Utc::now().timestamp(),
-            &Default::default(),
+            &[(b.thread_id.clone(), b.turn_id.clone())].into(),
         )
         .await
         .unwrap();
@@ -4349,6 +4414,260 @@ mod tests {
         }
     }
 
+    async fn update_phases(dir: &Path, receipt: &Value, at: i64) {
+        for phase in [
+            "settling",
+            "interrupting",
+            "recovered",
+            "outcome",
+            "outcome",
+        ] {
+            recovery::update(dir, &Mutex::new(()), receipt, phase, at)
+                .await
+                .unwrap();
+        }
+        flush(
+            &Fake::success(),
+            dir,
+            &Mutex::new(()),
+            at + 31,
+            0,
+            &json!({}),
+        )
+        .await
+        .unwrap();
+    }
+
+    fn lifecycle_status(dir: &Path, source: &str, at: i64) -> Value {
+        governance::status_in(dir, source, &json!({"all":true}), at + 31, &json!({})).unwrap()
+    }
+
+    #[tokio::test]
+    async fn update_and_restart_leave_unaffected_bound_conversations_inbox_only() {
+        // Regression: ded33bbf woke unrelated conversations, including long-finished bindings, at every update phase.
+        let dir = Sandbox::new();
+        let mut b = fixture(&dir.0);
+        let at = chrono::Utc::now().timestamp();
+        for terminal in [false, true] {
+            b.terminal = terminal;
+            persist(&dir.0, &b).unwrap();
+            let receipt = json!({"id":format!("unaffected-{terminal}"),"state":"succeeded","shutdownRequested":true,
+                "waiting":{"blockingTurns":[{"taskId":b.thread_id,"turnId":if terminal {&b.turn_id} else {"other-turn"},"question":{"id":1}}]},
+                "interruptedTurns":[{"threadId":b.thread_id,"turnId":if terminal {&b.turn_id} else {"other-turn"},"state":if terminal {"finished-before-shutdown"} else {"receipt-returned"}}]});
+            update_phases(&dir.0, &receipt, at).await;
+        }
+        recovery::enqueue(
+            &dir.0,
+            &Mutex::new(()),
+            "unaffected-restart",
+            at,
+            &Default::default(),
+        )
+        .await
+        .unwrap();
+        flush(
+            &Fake::success(),
+            &dir.0,
+            &Mutex::new(()),
+            at + 31,
+            0,
+            &json!({}),
+        )
+        .await
+        .unwrap();
+        let status = lifecycle_status(&dir.0, &b.source_id, at);
+        assert!(status["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|d| d["state"] == "inbox-only"));
+        let inbox = inbox_select(
+            &dir.0,
+            &b.source_id,
+            &[],
+            true,
+            b.target.as_deref(),
+            Some(&json!({})),
+        )
+        .unwrap();
+        assert!(inbox["unread"].as_u64().unwrap() >= 9);
+    }
+
+    #[tokio::test]
+    async fn update_merges_recovery_with_the_named_resumed_task() {
+        // Regression: ded33bbf sent pre-restart and separate recovered/outcome wakeups for one resumed task.
+        let dir = Sandbox::new();
+        let mut b = fixture(&dir.0);
+        super::process(
+            &dir.0,
+            &Mutex::new(()),
+            &mut b,
+            &json!({"state":"cancelled"}),
+        )
+        .await
+        .unwrap();
+        b.thread_title = "Resume fixture".into();
+        b.terminal = true;
+        b.continuation_bound = true;
+        persist(&dir.0, &b).unwrap();
+        let mut successor = b.clone();
+        successor.deliveries.clear();
+        successor.turn_id = "resumed-turn".into();
+        successor.terminal = false;
+        successor.continuation_bound = false;
+        persist(&dir.0, &successor).unwrap();
+        let at = chrono::Utc::now().timestamp();
+        let receipt = json!({"id":"resumed-update","state":"succeeded","shutdownRequested":true,
+            "waiting":{"willResume":[{"taskId":b.thread_id,"turnId":b.turn_id}]},
+            "interruptedTurns":[{"threadId":b.thread_id,"turnId":b.turn_id,"state":"receipt-returned",
+                "resumeReceipt":{"state":"completed","turnId":successor.turn_id}}]});
+        update_phases(&dir.0, &receipt, at).await;
+        let status = lifecycle_status(&dir.0, &b.source_id, at);
+        let sent = status["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["state"] == "delivered")
+            .collect::<Vec<_>>();
+        assert_eq!(sent.len(), 1);
+        let inbox = inbox_in(&dir.0, &b.source_id, &[], false, None).unwrap();
+        assert!(inbox["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["kind"] == "interrupted"));
+        let outcome = inbox["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["eventId"] == sent[0]["eventId"])
+            .unwrap();
+        assert_eq!(outcome["threadId"], b.thread_id);
+        assert_eq!(outcome["recovery"]["affectedTasks"], 1);
+        let summary = outcome["summary"].as_str().unwrap();
+        assert!(
+            summary.contains(&b.thread_title)
+                && summary.contains(&b.thread_id)
+                && summary.contains("resumed")
+        );
+        jsonschema::validator_for(&mcp_events::list()["events"][0]["payloadSchema"])
+            .unwrap()
+            .validate(&mcp_events::payload("task_status", outcome))
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn delayed_resume_promotes_one_outcome_without_an_early_wakeup() {
+        // Regression: replacement resume receipts can still be pending when the worker publishes its terminal outcome.
+        let dir = Sandbox::new();
+        let b = fixture(&dir.0);
+        let at = chrono::Utc::now().timestamp();
+        let mut receipt = json!({"id":"pending-resume","state":"succeeded","shutdownRequested":true,
+            "interruptedTurns":[{"threadId":b.thread_id,"turnId":b.turn_id,"state":"receipt-returned",
+                "resumeReceipt":{"state":"pending"}}]});
+        update_phases(&dir.0, &receipt, at).await;
+        assert!(lifecycle_status(&dir.0, &b.source_id, at)["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|d| d["state"] == "inbox-only"));
+        let before = inbox_in(&dir.0, &b.source_id, &[], false, None).unwrap();
+        receipt["interruptedTurns"][0]["resumeReceipt"] =
+            json!({"state":"completed","turnId":"resumed"});
+        update_phases(&dir.0, &receipt, at + 1).await;
+        let status = lifecycle_status(&dir.0, &b.source_id, at + 1);
+        let sent = status["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["state"] == "delivered")
+            .collect::<Vec<_>>();
+        assert_eq!(sent.len(), 1);
+        let after = inbox_in(&dir.0, &b.source_id, &[], false, None).unwrap();
+        assert_eq!(before["unread"], after["unread"]);
+        let outcome = after["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["eventId"] == sent[0]["eventId"])
+            .unwrap();
+        assert!(before["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["eventId"] == outcome["eventId"]));
+        assert!(outcome["summary"].as_str().unwrap().contains("resumed"));
+    }
+
+    #[tokio::test]
+    async fn settling_wakes_only_the_owner_of_the_blocking_question() {
+        // Regression: ded33bbf broadcast settling blockers to every bound conversation instead of asking their owner.
+        let dir = Sandbox::new();
+        let b = fixture(&dir.0);
+        let mut unrelated = b.clone();
+        unrelated.thread_id = "unrelated".into();
+        unrelated.source_id = "other-source".into();
+        verified_fixture_target(&dir.0, &unrelated);
+        persist(&dir.0, &unrelated).unwrap();
+        let at = chrono::Utc::now().timestamp();
+        let receipt = json!({"id":"question-update","state":"cancelled","waiting":{"blockingTurns":[
+            {"agent":"codex","taskId":b.thread_id,"turnId":b.turn_id,"question":{"id":7}}]}});
+        update_phases(&dir.0, &receipt, at).await;
+        let status = lifecycle_status(&dir.0, &b.source_id, at);
+        let sent = status["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["state"] == "delivered")
+            .collect::<Vec<_>>();
+        assert_eq!(sent.len(), 1);
+        let inbox = inbox_in(&dir.0, &b.source_id, &[], false, None).unwrap();
+        let question = inbox["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["eventId"] == sent[0]["eventId"])
+            .unwrap();
+        assert_eq!(question["threadId"], b.thread_id);
+        assert!(question["summary"].as_str().unwrap().contains("Answer"));
+        assert!(
+            lifecycle_status(&dir.0, &unrelated.source_id, at)["deliveries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|d| d["state"] == "inbox-only")
+        );
+    }
+
+    #[tokio::test]
+    async fn update_submitter_receives_only_the_outcome_even_with_a_blocker() {
+        // Regression: ded33bbf woke the update submitter at settling, interruption and recovery before the outcome.
+        let dir = Sandbox::new();
+        let b = fixture(&dir.0);
+        let at = chrono::Utc::now().timestamp();
+        let receipt = json!({"id":"submitted-update","state":"cancelled",
+            "continuationBinding":{"threadId":b.thread_id,"turnId":b.turn_id,"origin":{"sourceId":b.source_id}},
+            "waiting":{"blockingTurns":[{"taskId":b.thread_id,"turnId":b.turn_id,"question":{"id":7}}]}});
+        update_phases(&dir.0, &receipt, at).await;
+        let status = lifecycle_status(&dir.0, &b.source_id, at);
+        let sent = status["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["state"] == "delivered")
+            .collect::<Vec<_>>();
+        assert_eq!(sent.len(), 1);
+        let inbox = inbox_in(&dir.0, &b.source_id, &[], false, None).unwrap();
+        let outcome = inbox["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["eventId"] == sent[0]["eventId"])
+            .unwrap();
+        assert_eq!(outcome["next"]["op"], "update_status");
+        assert_eq!(outcome["recovery"]["affectedTasks"], 0);
+    }
+
     #[tokio::test]
     async fn recovery_aggregates_interrupted_turns_per_verified_target_and_restart() {
         // Regression: disconnected conversations received no recovery wakeup and per-thread restart notices flooded targets.
@@ -4406,7 +4725,12 @@ mod tests {
         let status =
             governance::status_in(&dir.0, "claude", &json!({"all":true}), at + 32, &json!({}))
                 .unwrap();
-        let deliveries = status["deliveries"].as_array().unwrap();
+        let deliveries = status["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["target"] == b.target.as_deref().unwrap())
+            .collect::<Vec<_>>();
         assert_eq!(
             deliveries
                 .iter()
@@ -4422,15 +4746,21 @@ mod tests {
             1
         );
         let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
-        for event in inbox["events"].as_array().unwrap() {
+        for event in inbox["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["target"] == b.target.as_deref().unwrap())
+        {
             assert_eq!(event["recovery"]["affectedTasks"], 2);
             assert_eq!(event["target"], b.target.clone().unwrap());
         }
-        assert!(
-            inbox_in(&dir.0, "foreign-source", &[], false, None).unwrap()["events"]
-                .as_array()
-                .is_none_or(|e| e.is_empty())
-        );
+        let foreign = inbox_in(&dir.0, "foreign-source", &[], false, None).unwrap();
+        assert!(foreign["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["threadId"] == "foreign" && e["recovery"]["affectedTasks"] == 0));
     }
 
     #[tokio::test]
@@ -4559,7 +4889,11 @@ mod tests {
             &Mutex::new(()),
             "disabled-restart",
             at,
-            &Default::default(),
+            &[
+                (b.thread_id.clone(), b.turn_id.clone()),
+                (unverified.thread_id.clone(), unverified.turn_id.clone()),
+            ]
+            .into(),
         )
         .await
         .unwrap();
@@ -4570,7 +4904,12 @@ mod tests {
         let waiting =
             governance::status_in(&dir.0, "claude", &json!({"all":true}), at + 31, &disabled)
                 .unwrap();
-        let deliveries = waiting["deliveries"].as_array().unwrap();
+        let deliveries = waiting["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["target"] == b.target.as_deref().unwrap())
+            .collect::<Vec<_>>();
         assert_eq!(deliveries.len(), 1);
         assert_eq!(deliveries[0]["kind"], "recovered");
         assert_eq!(deliveries[0]["target"], b.target.as_deref().unwrap());
@@ -4603,12 +4942,20 @@ mod tests {
         let delivered =
             governance::status_in(&dir.0, "claude", &json!({"all":true}), at + 32, &json!({}))
                 .unwrap();
-        assert_eq!(delivered["deliveries"].as_array().unwrap().len(), 1);
-        assert_eq!(
-            delivered["deliveries"][0]["eventId"],
-            deliveries[0]["eventId"]
-        );
-        assert_eq!(delivered["deliveries"][0]["state"], "delivered");
+        let sent = delivered["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["target"] == b.target.as_deref().unwrap())
+            .unwrap();
+        assert!(delivered["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["target"] == unverified.target.as_deref().unwrap()
+                && d["state"] == "inbox-only"));
+        assert_eq!(sent["eventId"], deliveries[0]["eventId"]);
+        assert_eq!(sent["state"], "delivered");
         let unverified = delivered["targets"]
             .as_array()
             .unwrap()
@@ -4642,7 +4989,7 @@ mod tests {
             &Mutex::new(()),
             "restart-1",
             at,
-            &Default::default(),
+            &[(b.thread_id.clone(), b.turn_id.clone())].into(),
         )
         .await
         .unwrap();
@@ -4664,7 +5011,7 @@ mod tests {
                 &Mutex::new(()),
                 restart,
                 at + 32,
-                &Default::default(),
+                &[(b.thread_id.clone(), b.turn_id.clone())].into(),
             )
             .await
             .unwrap();
@@ -4755,9 +5102,17 @@ mod tests {
         let status =
             governance::status_in(&dir.0, "claude", &json!({"all":true}), at + 31, &json!({}))
                 .unwrap();
-        assert_eq!(status["deliveries"].as_array().unwrap().len(), 1);
-        assert_eq!(status["deliveries"][0]["target"], "verified-callback");
-        assert_eq!(status["deliveries"][0]["state"], "callback-accepted");
+        let deliveries = status["deliveries"].as_array().unwrap();
+        assert!(deliveries
+            .iter()
+            .any(|d| d["target"] == "verified-callback" && d["state"] == "callback-accepted"));
+        assert!(deliveries
+            .iter()
+            .filter(|d| d["target"] != "verified-callback")
+            .all(|d| d["state"] == "inbox-only"));
+        assert!(!deliveries
+            .iter()
+            .any(|d| d["target"] == "foreign-callback" || d["target"] == "no-binding"));
         let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
         assert_eq!(inbox["events"][0]["recovery"]["affectedTasks"], 1);
     }
@@ -5399,13 +5754,12 @@ pub(crate) async fn account_sessions() -> Result<Vec<Value>> {
 }
 
 pub(crate) async fn update_notice(args: &Value) -> Result<Value> {
-    recovery::enqueue_notice(
+    recovery::update(
         &directory(),
         &LOCK,
-        string(args, "id"),
+        &args["receipt"],
+        string(args, "phase"),
         chrono::Utc::now().timestamp(),
-        Some(string(args, "message")),
-        &Default::default(),
     )
     .await?;
     Ok(json!({"queued":true}))

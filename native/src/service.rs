@@ -694,7 +694,9 @@ impl Service {
             return Ok(readiness);
         }
         match (method, route) {
-            ("POST", "updates/notice") => return crate::claude_notify::update_notice(&body).await,
+            ("POST", "updates/task-notice") => {
+                return crate::claude_notify::update_notice(&body).await
+            }
             ("GET", "updates/status") => return crate::app_replace::update_status(true).await,
             ("POST", "updates/request") => {
                 return crate::kernel::origin::ORIGIN

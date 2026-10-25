@@ -399,24 +399,7 @@ async fn wait_idle(path: &Path, receipt: &mut Value) -> Result<()> {
             receipt["waiting"]["idle"] = json!(false);
         }
         if receipt["settleNoticeSent"] != true {
-            let blockers = receipt["waiting"]["blockingTurns"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|v| format!("{} {}", string(v, "agent"), string(v, "taskId")))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let message = format!(
-                "ARC update settling: {}. Writes: {}; pending interactions: {}.",
-                if blockers.is_empty() {
-                    "no turn blockers"
-                } else {
-                    &blockers
-                },
-                receipt["waiting"]["activeWrites"],
-                receipt["waiting"]["pendingInteractions"]
-            );
-            if notice(receipt, "settling", &message).await.is_ok() {
+            if notice(receipt, "settling").await.is_ok() {
                 receipt["settleNoticeSent"] = json!(true);
             }
         }
@@ -753,8 +736,7 @@ pub async fn run_worker(id: &str) -> Result<()> {
         }
         receipt["droppedInteractions"] = if receipt["immediate"] == true { snapshot["pendingInteractions"].clone() } else { json!(0) };
         super::resume::apply_snapshot(&mut receipt, snapshot);
-        let count = receipt["interruptedTurns"].as_array().map_or(0, Vec::len);
-        let _ = notice(&receipt, "interrupting", &format!("ARC update: {count} ARC-owned turns will be interrupted; eligible turns resume after verified recovery. {} pending interactions dropped.", receipt["droppedInteractions"])).await;
+        let _ = notice(&receipt, "interrupting").await;
         receipt["shutdownRequested"] = json!(true);
         phase(&path, &mut receipt, "stopping", None).await?;
         request("app/quit", "POST").await?;
@@ -853,21 +835,7 @@ pub async fn run_worker(id: &str) -> Result<()> {
     super::resume::status_details(&mut receipt)?;
     save(&path.join("status.json"), &receipt)?;
     super::unified::record_history(&receipt)?;
-    let _ = notice(
-        &receipt,
-        "outcome",
-        &format!(
-            "ARC update {}. Resumed: {}.{}",
-            string(&receipt, "state"),
-            receipt["resumedCount"],
-            if receipt["error"].is_string() {
-                format!(" {}", string(&receipt, "error"))
-            } else {
-                String::new()
-            }
-        ),
-    )
-    .await;
+    let _ = notice(&receipt, "outcome").await;
     // Terminal recovery keeps no duplicate app copies; success keeps only its latest backup.
     let _ = fs::remove_dir_all(&staged);
     let _ = fs::remove_file(path.join("arc-replace"));
@@ -876,11 +844,11 @@ pub async fn run_worker(id: &str) -> Result<()> {
     Ok(())
 }
 
-async fn notice(receipt: &Value, phase: &str, message: &str) -> Result<Value> {
+async fn notice(receipt: &Value, phase: &str) -> Result<Value> {
     crate::transport::forward_request(
-        "updates/notice",
+        "updates/task-notice",
         "POST",
-        json!({"id":format!("{}:{phase}",string(receipt,"id")),"message":message}),
+        json!({"receipt":receipt,"phase":phase}),
     )
     .await
 }

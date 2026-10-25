@@ -201,7 +201,9 @@ pub(crate) fn list() -> Value {
 pub(crate) fn payload(op: &str, event: &Value) -> Value {
     let agent = event["agent"] != "codex";
     let pending = event["kind"] == "needs-input";
-    let query = if event["kind"] == "recovered" {
+    let query = if event["next"]["op"] == "update_status" {
+        json!({"op":"update_status","args":{}})
+    } else if event["kind"] == "recovered" {
         json!({"op":"notify_status","args":{"target":event["target"]}})
     } else if agent {
         json!({"op":if pending {"agent_pending"} else {"agent_read"},"args":{"agent":event["agent"],"taskId":event["taskId"]}})
@@ -224,6 +226,10 @@ pub(crate) fn payload(op: &str, event: &Value) -> Value {
         "recovery",
     ] {
         data[key] = event[key].clone();
+    }
+    // Lifecycle text lives in summary, outside the strict recovery payload.
+    if let Some(recovery) = data["recovery"].as_object_mut() {
+        recovery.remove("message");
     }
     data
 }
