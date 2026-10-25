@@ -1,6 +1,8 @@
 //! Observed writer handoffs. Observation never loads, releases, or acquires a writer.
 use super::*;
 
+static ACQUISITION_SESSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(id);
+
 fn path(thread: &str) -> Result<PathBuf> {
     uuid::Uuid::parse_str(thread).map_err(|_| "INVALID_THREAD_ID")?;
     Ok(root()
@@ -17,8 +19,40 @@ fn stored(thread: &str) -> Result<Value> {
 }
 pub(crate) fn read(thread: &str) -> Result<Value> {
     let mut state = stored(thread)?;
-    state.as_object_mut().map(|state| state.remove("enqueued"));
+    state.as_object_mut().map(|state| {
+        state.remove("enqueued");
+        state.remove("acquisition");
+    });
     Ok(state)
+}
+// Attribute only the acquisition bracketed by an explicit source operation.
+pub(crate) async fn begin_acquisition(thread: &str) -> Result<String> {
+    let source = string(&crate::kernel::origin::current_origin(), "sourceId").to_owned();
+    if source.is_empty() {
+        return Ok(String::new());
+    }
+    let _guard = LOCK.lock().await;
+    let mut state = stored(thread)?;
+    if state["currentOwner"] != "unheld" {
+        return Ok(String::new());
+    }
+    let token = id();
+    state["acquisition"] =
+        json!({"id":token,"sourceId":source,"observerSession":*ACQUISITION_SESSION});
+    save(&path(thread)?, &state)?;
+    Ok(token)
+}
+pub(crate) async fn end_acquisition(thread: &str, token: &str) -> Result<()> {
+    if token.is_empty() {
+        return Ok(());
+    }
+    let _guard = LOCK.lock().await;
+    let mut state = stored(thread)?;
+    if state["acquisition"]["id"] == token {
+        state.as_object_mut().unwrap().remove("acquisition");
+        save(&path(thread)?, &state)?;
+    }
+    Ok(())
 }
 pub(crate) async fn observe(thread: &str, ownership: &Value) -> Result<Value> {
     let owner = ownership["owner"]
@@ -45,13 +79,22 @@ pub(crate) async fn observe(thread: &str, ownership: &Value) -> Result<Value> {
             });
         if owner != "unknown" {
             if let Some(previous) = previous.filter(|p| p != owner) {
+                let cause = if previous == "unheld"
+                    && owner == "connector"
+                    && state["acquisition"]["observerSession"] == *ACQUISITION_SESSION
+                {
+                    state["acquisition"]["sourceId"].clone()
+                } else {
+                    Value::Null
+                };
+                state.as_object_mut().unwrap().remove("acquisition");
                 let history = state["history"]
                     .as_array_mut()
                     .ok_or("INVALID_HANDOFF_HISTORY")?;
                 let id = hash(json!([thread, history.len(), previous, owner]).to_string());
                 history.push(
                     json!({"eventId":id,"from":previous,"to":owner,"observedAt":now(),
-                    "evidence":ownership["evidence"],"timeBasis":"observed-not-transition-time"}),
+                    "causedBySourceId":cause,"evidence":ownership["evidence"],"timeBasis":"observed-not-transition-time"}),
                 );
             }
             state["currentOwner"] = json!(owner);
@@ -105,7 +148,10 @@ pub(crate) async fn observe(thread: &str, ownership: &Value) -> Result<Value> {
         current["enqueued"][&b.source_id] = json!(enqueued.max(history.len() as u64));
         save(&path(thread)?, &current)?;
     }
-    state.as_object_mut().map(|state| state.remove("enqueued"));
+    state.as_object_mut().map(|state| {
+        state.remove("enqueued");
+        state.remove("acquisition");
+    });
     state["ownership"] = ownership.clone();
     Ok(state)
 }

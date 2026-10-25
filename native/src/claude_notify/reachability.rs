@@ -13,6 +13,7 @@ pub(super) struct Reachability {
     source_id: String,
     expires_at: i64,
     identity_evidence: Value,
+    pub verified_at: i64,
 }
 impl Default for Reachability {
     fn default() -> Self {
@@ -26,6 +27,7 @@ impl Default for Reachability {
             source_id: String::new(),
             expires_at: 0,
             identity_evidence: Value::Null,
+            verified_at: 0,
         }
     }
 }
@@ -126,7 +128,7 @@ pub(super) async fn verify_in(
         state.save(&dir)?;
     }
     // The code exists only in the delivered message; receipts and status cannot confirm it.
-    let body = format!("[ARC] Notification reachability check. Only after receiving this message in this conversation, call act with {}. This confirms delivery, not task acceptance.", json!({"op":"notification_ack","args":{"target":target,"code":code}}));
+    let body = format!("{RECEIPT_HEADER}\nNotification reachability check. Only after receiving this message in this conversation, call act with {}. This confirms delivery, not task acceptance.", json!({"op":"notification_ack","args":{"target":target,"code":code}}));
     let delivery = deliver_target(executor, source_id, &target, &body).await;
     let missing = delivery
         .as_ref()
@@ -206,6 +208,7 @@ pub(super) fn acknowledge(dir: &Path, source_id: &str, args: &Value) -> Result<V
     } else {
         json!({"state":"unresolved","reason":"No provider identity was available for the sending profile. Verify again after signing in."})
     };
+    r.verified_at = chrono::Utc::now().timestamp_millis();
     r.state = "verified".into();
     r.reason = "handshake-confirmed".into();
     r.challenge_hash.clear();

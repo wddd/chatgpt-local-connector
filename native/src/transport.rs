@@ -652,7 +652,6 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
     }.await;
     let mut images = Vec::new();
     let mut reads = Vec::new();
-    let mut notify_requested = args["notify"].is_object();
     let (mut value, error) = match result {
         Ok(mut value) => {
             if matches!(
@@ -662,9 +661,6 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
                 && value["operation"].is_null()
             {
                 value["stateScope"] = json!("turn");
-            }
-            if crate::egress::dispatch_receipt(&value) && value["arguments"].is_object() {
-                notify_requested = value["arguments"]["notify"].is_object();
             }
             if let Some(limit) = wait_limit {
                 value["waitLimit"] = limit;
@@ -749,8 +745,7 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
                 }
             }
         }
-        let available =
-            notify_requested && crate::claude_notify::push_available(&value["notification"]);
+        let available = crate::claude_notify::push_available(&value["notification"]);
         crate::egress::next(&mut value, name, &args, available);
     }
     if error {

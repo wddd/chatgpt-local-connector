@@ -293,12 +293,21 @@ impl Control {
                 )
                 .await?;
             if state["thread"]["status"]["type"] == "notLoaded" {
-                rpc.call(
-                    "thread/resume",
-                    json!({"threadId":args["threadId"],"excludeTurns":true}),
-                    60000,
-                )
-                .await?;
+                let thread = string(&args, "threadId");
+                // Record the triggering source before the observer can see acquisition.
+                self.observe_ownership(thread).await?;
+                let token = crate::claude_notify::ownership::begin_acquisition(thread).await?;
+                let resumed = rpc
+                    .call(
+                        "thread/resume",
+                        json!({"threadId":thread,"excludeTurns":true}),
+                        60000,
+                    )
+                    .await;
+                // An uncertain resume may still have acquired the writer.
+                let _ = self.observe_ownership(thread).await;
+                crate::claude_notify::ownership::end_acquisition(thread, &token).await?;
+                resumed?;
             }
         }
         let mut result = rpc.call(method, args, timeout).await?;

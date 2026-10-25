@@ -18,6 +18,9 @@ async fn enqueue_notice(
     update: Option<(&Value, &str)>,
     interrupted: &std::collections::HashSet<(String, String)>,
 ) -> Result<()> {
+    // Serialize phase admission with transport: a later phase cannot overtake
+    // an already reserved send to the same destination.
+    let _operation = mcp_events::OPERATION.lock().await;
     let _guard = lock.lock().await;
     let mut all = records(dir)?;
     if let Some((receipt, _)) = update {
@@ -49,6 +52,25 @@ async fn enqueue_notice(
                     persist(dir, &b)?;
                     all.push(b);
                 }
+            }
+        }
+    }
+    if let Some((receipt, "outcome")) = update {
+        let prefix = format!("update:{}:", string(receipt, "id"));
+        for b in &mut all {
+            let mut changed = false;
+            for d in &mut b.deliveries {
+                if d.key.starts_with(&prefix)
+                    && !d.key.ends_with(":outcome")
+                    && matches!(d.status.as_str(), "pending" | "sending")
+                {
+                    supersede(d);
+                    changed = true;
+                }
+            }
+            if changed {
+                inbox_refresh(dir, b)?;
+                persist(dir, b)?;
             }
         }
     }
@@ -139,6 +161,21 @@ async fn enqueue_notice(
                 }
             })
             .collect::<Vec<_>>();
+        if update.is_some_and(|(_, phase)| phase == "settling") && affected.is_empty() {
+            continue;
+        }
+        let superseded = update.is_some_and(|(receipt, phase)| {
+            phase != "outcome"
+                && all
+                    .iter()
+                    .filter(|b| b.source_id == source)
+                    .flat_map(|b| &b.deliveries)
+                    .any(|d| {
+                        d.channel == channel
+                            && d.target == target
+                            && d.key == format!("update:{}:outcome", string(receipt, "id"))
+                    })
+        });
         let Some(index) = initiator
             .or_else(|| affected.first().copied())
             .or_else(|| members.first().copied())
@@ -190,11 +227,7 @@ async fn enqueue_notice(
             ),
             Some((_, "settling")) => format!(
                 "ARC update settling. Answer the pending interaction for: {}.",
-                if names.is_empty() {
-                    "no tasks in this conversation"
-                } else {
-                    &names
-                }
+                names
             ),
             Some((receipt, "outcome")) => {
                 let tasks = affected
@@ -255,6 +288,7 @@ async fn enqueue_notice(
             Channel::McpEvents => s.webhook.as_ref().is_some_and(|w| w.verified_until > at),
         });
         let wake = verified
+            && !superseded
             && !awaiting_resume
             && match update {
                 Some((_, phase)) if initiator.is_some() => phase == "outcome",
@@ -276,8 +310,11 @@ async fn enqueue_notice(
             // Promote the original inbox event once; never stack a second wakeup.
             let b = &mut all[bi];
             let d = &mut b.deliveries[di];
-            if d.status == "inbox-only" && wake {
-                d.status = "pending".into();
+            let status = if wake { "pending" } else { "inbox-only" };
+            if matches!(d.status.as_str(), "inbox-only" | "pending")
+                && (d.status != status || d.recovery != recovery)
+            {
+                d.status = status.into();
                 d.recovery = recovery;
                 inbox_refresh(dir, b)?;
                 persist(dir, b)?;
@@ -362,4 +399,55 @@ pub(super) async fn update(
 pub(super) fn resume_pending(row: &Value) -> bool {
     let result = row.get("resumeReceipt").unwrap_or(&row["receipt"]);
     matches!(string(result, "state"), "reserved" | "pending" | "running")
+}
+
+// Older versions may have persisted a failed pre-outcome send. Never replay it
+// after the destination already has an outcome, including after another restart.
+pub(super) fn supersede_phases(bindings: &mut [Binding]) -> Vec<usize> {
+    let outcomes: std::collections::HashSet<_> = bindings
+        .iter()
+        .flat_map(|b| {
+            b.deliveries.iter().filter_map(|d| {
+                d.key
+                    .strip_suffix(":outcome")
+                    .filter(|key| key.starts_with("update:"))
+                    .map(|job| {
+                        (
+                            b.source_id.clone(),
+                            d.channel,
+                            d.target.clone(),
+                            job.to_owned(),
+                        )
+                    })
+            })
+        })
+        .collect();
+    let mut changed = Vec::new();
+    for (index, b) in bindings.iter_mut().enumerate() {
+        for d in &mut b.deliveries {
+            if !matches!(d.status.as_str(), "pending" | "sending") || d.key.ends_with(":outcome") {
+                continue;
+            }
+            if let Some((job, _)) = d.key.rsplit_once(':') {
+                if outcomes.contains(&(
+                    b.source_id.clone(),
+                    d.channel,
+                    d.target.clone(),
+                    job.to_owned(),
+                )) {
+                    supersede(d);
+                    if changed.last() != Some(&index) {
+                        changed.push(index);
+                    }
+                }
+            }
+        }
+    }
+    changed
+}
+
+fn supersede(d: &mut Delivery) {
+    d.status = "resolved".into();
+    queued(d, "superseded");
+    d.recovery["message"] = json!("Earlier ARC update notice superseded by its outcome. Read update_status for the current result.");
 }

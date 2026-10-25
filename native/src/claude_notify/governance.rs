@@ -336,7 +336,7 @@ pub(super) fn status_in(
                 }
             }
             let pending=bindings.iter().flat_map(|b|b.deliveries.iter().filter(|d|d.channel==channel && d.target==target && matches!(d.status.as_str(),"pending"|"sending")).map(|d|json!({"threadId":b.thread_id,"turnId":b.turn_id,"eventId":d.event_id,"kind":event(b,d)["kind"],"status":d.status,"createdAt":d.created_at,"nextAttemptAt":d.next_attempt_at,"timing":d.timing}))).collect::<Vec<_>>();
-            targets.push(json!({"channel":channel,"target":target,"reachability":t.reachability.state,"reason":t.reachability.reason,"verificationAttempts":t.reachability.attempts,"lastVerificationDelivery":t.reachability.delivery_status,"lastVerificationError":t.reachability.last_error,"registered":t.registered,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"nextTokenAt":if t.tokens<capacity(settings){Some(t.refilled_at+refill_seconds(settings))}else{None},"breaker":t.breaker,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error,"pending":pending,"recentBatches":batches}));
+            targets.push(json!({"channel":channel,"target":target,"reachability":t.reachability.state,"reason":t.reachability.reason,"verificationAttempts":t.reachability.attempts,"verifiedAt":t.reachability.verified_at,"lastVerificationDelivery":t.reachability.delivery_status,"lastVerificationError":t.reachability.last_error,"registered":t.registered,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"nextTokenAt":if t.tokens<capacity(settings){Some(t.refilled_at+refill_seconds(settings))}else{None},"breaker":t.breaker,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error,"pending":pending,"recentBatches":batches}));
         }
         if !threads.iter().any(|v: &Value| v["threadId"] == b.thread_id) {
             let rule = state.rule(b);
@@ -385,7 +385,7 @@ pub(super) fn status_in(
             t["target"] == s.target && t["channel"] == serde_json::to_value(s.channel).unwrap()
         }) {
             let t = state.target(source_id, s.channel, &s.target, now, settings);
-            targets.push(json!({"channel":s.channel,"target":s.target,"reachability":t.reachability.state,"reason":t.reachability.reason,"verificationAttempts":t.reachability.attempts,"lastVerificationDelivery":t.reachability.delivery_status,"lastVerificationError":t.reachability.last_error,"registered":t.registered,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"breaker":t.breaker,"pending":[],"recentBatches":t.batches,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error}));
+            targets.push(json!({"channel":s.channel,"target":s.target,"reachability":t.reachability.state,"reason":t.reachability.reason,"verificationAttempts":t.reachability.attempts,"verifiedAt":t.reachability.verified_at,"lastVerificationDelivery":t.reachability.delivery_status,"lastVerificationError":t.reachability.last_error,"registered":t.registered,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"breaker":t.breaker,"pending":[],"recentBatches":t.batches,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error}));
         }
     }
     for t in state.targets.iter_mut().filter(|t| {
@@ -399,7 +399,7 @@ pub(super) fn status_in(
             .iter()
             .any(|v| v["target"] == t.target && v["channel"] == "claude-session")
         {
-            targets.push(json!({"channel":t.channel,"target":t.target,"registered":true,"reachability":t.reachability.state,"reason":t.reachability.reason,"verificationAttempts":t.reachability.attempts,"lastVerificationDelivery":t.reachability.delivery_status,"lastVerificationError":t.reachability.last_error,"tokens":t.tokens,"breaker":t.breaker,"pending":[],"recentBatches":[]}));
+            targets.push(json!({"channel":t.channel,"target":t.target,"registered":true,"reachability":t.reachability.state,"reason":t.reachability.reason,"verificationAttempts":t.reachability.attempts,"verifiedAt":t.reachability.verified_at,"lastVerificationDelivery":t.reachability.delivery_status,"lastVerificationError":t.reachability.last_error,"tokens":t.tokens,"breaker":t.breaker,"pending":[],"recentBatches":[]}));
         }
     }
     let deliveries=bindings.iter().flat_map(|b|b.deliveries.iter().filter(|d|args["target"].as_str().is_none_or(|t|d.target==t || d.subscription==t)).map(|d|json!({"subscriptionId":d.subscription,"channel":d.channel,"target":d.target,"op":"task_status","eventId":d.event_id,"kind":event(b,d)["kind"],"threadId":event(b,d)["threadId"],"taskId":event(b,d)["taskId"],"turnId":b.turn_id,"state":d.status,"attempts":d.failures+u32::from(matches!(d.status.as_str(),"sending"|"delivered"|"digested"|"callback-accepted")),"nextAttemptAt":d.next_attempt_at,"error":d.error,"timing":d.timing}))).collect::<Vec<_>>();

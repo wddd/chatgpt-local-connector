@@ -252,7 +252,7 @@ fn bind_in(dir: &Path, session: Option<&str>, thread: &str, turn: &str, cwd: &st
 }
 pub(crate) static LOCK: Mutex<()> = Mutex::const_new(());
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 enum Channel {
     #[default]
@@ -732,10 +732,12 @@ fn task_title(b: &Binding) -> &str {
         .find(|title| !title.is_empty())
         .unwrap_or("")
 }
+const RECEIPT_HEADER: &str = "⟢ ARC receipt — automated, not a user message";
+
 fn receipt(b: &Binding, d: &Delivery) -> String {
     if d.task_state == "recovered" {
         if let Some(message) = d.recovery["message"].as_str() {
-            return message.into();
+            return format!("{RECEIPT_HEADER}\n{message}");
         }
         let count = d.recovery["affectedTasks"].as_u64().unwrap_or(0);
         let outcome = match count {
@@ -744,7 +746,7 @@ fn receipt(b: &Binding, d: &Delivery) -> String {
             _ => format!("{count} turns interrupted"),
         };
         return format!(
-            "ARC recovered at {}; {outcome}.",
+            "{RECEIPT_HEADER}\nARC recovered at {}; {outcome}.",
             string(&d.recovery, "recoveredAt")
         );
     }
@@ -760,6 +762,7 @@ fn receipt(b: &Binding, d: &Delivery) -> String {
     let (icon, state) = match d.task_state.as_str() {
         "completed" => ("✓", "completed"),
         "failed" => ("✗", "failed"),
+        "cancelled" | "interrupted" if d.continuation.is_object() => ("↪", "superseded"),
         "cancelled" | "interrupted" => ("■", "interrupted"),
         _ if d.state == "waiting for approval" => ("?", "approval"),
         _ => ("?", "needs-input"),
@@ -1365,9 +1368,19 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     for (key, state) in events {
         let handoff = key.starts_with("handoff:");
         let inbox_only = handoff
-            && b.replacement_resume["handoffEventId"]
+            && (b.replacement_resume["handoffEventId"]
                 .as_str()
-                .is_some_and(|id| key == format!("handoff:{id}"));
+                .is_some_and(|id| key == format!("handoff:{id}"))
+                || observation["handoffs"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|h| {
+                        key == format!("handoff:{}", string(h, "eventId"))
+                            && h["from"] == "unheld"
+                            && h["to"] == "connector"
+                            && h["causedBySourceId"] == b.source_id
+                    }));
         b.deliveries.push(Delivery {
             subscription: String::new(),
             channel: b.channel,
@@ -1970,6 +1983,9 @@ async fn flush(
             }
         }
     }
+    for index in recovery::supersede_phases(&mut all) {
+        inbox_refresh(dir, &all[index])?;
+    }
     let continuations = all
         .iter()
         .map(|b| {
@@ -1994,6 +2010,11 @@ async fn flush(
             }
         }
         for d in &mut b.deliveries {
+            if d.task_state == "cancelled" && d.status == "pending" && b.scope_end.is_some() {
+                d.status = "resolved".into();
+                queued(d, "superseded");
+                changed = true;
+            }
             if d.key == "terminal"
                 && d.status == "pending"
                 && continuation.is_object()
@@ -2001,6 +2022,11 @@ async fn flush(
             {
                 changed |= d.continuation != continuation;
                 d.continuation = continuation.clone();
+                if d.task_state == "cancelled" && continuation["state"] != "unknown" {
+                    d.status = "resolved".into();
+                    queued(d, "superseded");
+                    changed = true;
+                }
             }
         }
         if changed {
@@ -2171,7 +2197,7 @@ async fn flush(
                     .flat_map(|b| &b.deliveries)
                     .filter(|d| d.channel == channel && d.target == target && d.status == "pending")
                     .count();
-                alerts.push((source_id.clone(),channel,target.clone(),format!("Target {target}. Reason: {reason}. Pending deliveries: {pending}. Threads: {}. Read ARC notify_status.",threads.into_iter().collect::<Vec<_>>().join(", "))));
+                alerts.push((source_id.clone(),channel,target.clone(),format!("{RECEIPT_HEADER}\nTarget {target}. Reason: {reason}. Pending deliveries: {pending}. Threads: {}. Read ARC notify_status.",threads.into_iter().collect::<Vec<_>>().join(", "))));
             }
         }
         let mut selected = Vec::new();
@@ -2280,11 +2306,71 @@ async fn flush(
             );
         }
     }
-    for (batch, body) in batches {
+    for (mut batch, mut body) in batches {
         let started_at = chrono::Utc::now().timestamp_millis();
         {
             let _guard = lock.lock().await;
             let mut state = State::load(dir)?;
+            // Another destination can take time to send. Recheck a reserved
+            // interruption against successor evidence immediately before transport.
+            if batch
+                .iter()
+                .flat_map(|b| &b.deliveries)
+                .any(|d| d.task_state == "cancelled")
+            {
+                let latest = records(dir)?;
+                let batch_id = batch[0].deliveries[0].batch.clone();
+                for reserved in &mut batch {
+                    if let Some(mut current) = latest
+                        .iter()
+                        .find(|b| {
+                            b.thread_id == reserved.thread_id && b.turn_id == reserved.turn_id
+                        })
+                        .cloned()
+                    {
+                        let continuation = continuation::notice(&current, &Value::Null, &latest);
+                        if current.scope_end.is_some()
+                            || (continuation.is_object() && continuation["state"] != "unknown")
+                        {
+                            for d in &mut current.deliveries {
+                                if d.batch == batch_id
+                                    && d.status == "sending"
+                                    && d.task_state == "cancelled"
+                                {
+                                    if continuation.is_object() {
+                                        d.continuation = continuation.clone();
+                                    }
+                                    d.status = "resolved".into();
+                                    queued(d, "superseded");
+                                }
+                            }
+                            inbox_refresh(dir, &current)?;
+                            persist(dir, &current)?;
+                            reserved.deliveries.retain(|d| {
+                                current.deliveries.iter().any(|c| {
+                                    c.event_id == d.event_id
+                                        && c.subscription == d.subscription
+                                        && c.status == "sending"
+                                })
+                            });
+                        }
+                    }
+                }
+                batch.retain(|b| !b.deliveries.is_empty());
+                if batch.is_empty() {
+                    for record in state
+                        .targets
+                        .iter_mut()
+                        .flat_map(|t| &mut t.batches)
+                        .filter(|r| r.id == batch_id)
+                    {
+                        record.status = "cancelled".into();
+                    }
+                    state.save(dir)?;
+                    continue;
+                }
+                body = batch.iter().map(message).collect::<Vec<_>>().join("\n\n");
+            }
             let breaker = state.targets.iter().any(|t| {
                 t.source_id == batch[0].source_id
                     && t.channel == batch[0].channel
@@ -2398,9 +2484,8 @@ async fn flush(
                 && t.channel == batch[0].channel
                 && Some(t.target.as_str()) == batch[0].target.as_deref()
         }) {
-            if status == "failed" {
-                t.reachability.fail("delivery-failed");
-            }
+            // Delivery failures remain on the batch/event. A transient transport
+            // failure does not revoke a completed source/account handshake.
             if let Some(record) = t
                 .batches
                 .iter_mut()
@@ -4624,7 +4709,11 @@ mod tests {
             Some(&json!({})),
         )
         .unwrap();
-        assert!(inbox["unread"].as_u64().unwrap() >= 9);
+        assert!(inbox["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["next"]["op"].is_string()));
     }
 
     #[tokio::test]
@@ -4877,9 +4966,21 @@ mod tests {
         verified_fixture_target(&dir.0, &unrelated);
         persist(&dir.0, &unrelated).unwrap();
         let at = chrono::Utc::now().timestamp();
-        let receipt = json!({"id":"question-update","state":"cancelled","waiting":{"blockingTurns":[
+        let receipt = json!({"id":"question-update","state":"settling","waiting":{"blockingTurns":[
             {"agent":"codex","taskId":b.thread_id,"turnId":b.turn_id,"question":{"id":7}}]}});
-        update_phases(&dir.0, &receipt, at).await;
+        recovery::update(&dir.0, &Mutex::new(()), &receipt, "settling", at)
+            .await
+            .unwrap();
+        flush(
+            &Fake::success(),
+            &dir.0,
+            &Mutex::new(()),
+            at + 31,
+            0,
+            &json!({}),
+        )
+        .await
+        .unwrap();
         let status = lifecycle_status(&dir.0, &b.source_id, at);
         let sent = status["deliveries"]
             .as_array()
@@ -5204,7 +5305,10 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(recovered.len(), 1);
         assert_eq!(recovered[0]["recovery"]["affectedTasks"], 0);
-        assert_eq!(recovered[0]["summary"].as_str().unwrap().lines().count(), 1);
+        assert!(recovered[0]["summary"]
+            .as_str()
+            .unwrap()
+            .starts_with(RECEIPT_HEADER));
         let schema = mcp_events::list()["events"][0]["payloadSchema"].clone();
         let validator = jsonschema::validator_for(&schema).unwrap();
         let payload = mcp_events::payload("task_status", recovered[0]);
@@ -5598,6 +5702,8 @@ mod tests {
         }
     }
 
+    include!("claude_notify/ax_tests.rs");
+
     #[tokio::test]
     async fn pending_interruption_refreshes_when_continuation_finishes() {
         // Regression: an interruption waiting for bucket tokens lost the continuation's completed outcome.
@@ -5627,6 +5733,10 @@ mod tests {
         let restored = binding(&dir.0, &old.thread_id, &old.turn_id)
             .unwrap()
             .unwrap();
+        assert_eq!(
+            notification(Some(restored.clone()))["deliveries"][0]["state"],
+            "resolved"
+        );
         let data = mcp_events::payload("task_status", &event(&restored, &restored.deliveries[0]));
         assert_eq!(
             data["continuation"],
@@ -5634,6 +5744,9 @@ mod tests {
         );
         let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
         assert_eq!(inbox["events"][0]["continuation"], data["continuation"]);
+        assert!(inbox_in(&dir.0, "claude", &[], true, old.target.as_deref())
+            .unwrap()
+            .is_null());
     }
 
     #[tokio::test]
@@ -5929,26 +6042,28 @@ mod tests {
 }
 
 pub(crate) fn push_available(notification: &Value) -> bool {
-    if notification["reachability"] != "verified"
-        || notification["channel"] != "claude-session"
-        || !notification["target"].is_string()
-    {
-        return false;
-    }
-    let Ok(settings) = settings() else {
+    let (Ok(settings), Ok(state)) = (settings(), State::load(&directory())) else {
         return false;
     };
-    if settings["notificationsEnabled"] == false
-        || crate::agents::driver::discover("claude").is_none()
-    {
-        return false;
-    }
-    let Ok(state) = State::load(&directory()) else {
-        return false;
-    };
-    !state.targets.iter().any(|t| {
-        t.channel == Channel::ClaudeSession && notification["target"] == t.target && t.breaker
-    })
+    effective_push(
+        notification,
+        &settings,
+        &state,
+        crate::agents::driver::discover("claude").is_some(),
+    )
+}
+fn effective_push(notification: &Value, settings: &Value, state: &State, cli: bool) -> bool {
+    notification["reachability"] == "verified"
+        && notification["channel"] == "claude-session"
+        && notification["target"].is_string()
+        && settings["notificationsEnabled"] != false
+        && cli
+        && !state.targets.iter().any(|t| {
+            notification["sourceId"] == t.source_id
+                && t.channel == Channel::ClaudeSession
+                && notification["target"] == t.target
+                && t.breaker
+        })
 }
 
 // Both explicit reads and the background observer can publish the first terminal
