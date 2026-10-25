@@ -1391,5 +1391,14 @@
   "updates.state.failed": "更新失败",
   "updates.state.cancelled": "更新已取消",
   "updates.pipelineUnsupported": "等待工作就绪、备份和任务恢复仅支持 macOS。",
-  "updates.localNotes": "变更内容"
+  "updates.localNotes": "变更内容",
+  "accounts.provider.google": "Google",
+  "accounts.provider.xai": "X",
+  "accounts.merge": "合并账号",
+  "accounts.mergeTitle": "合并到 {alias}",
+  "accounts.mergeConsequence": "所选账号将共用来源连接、Agent 配置、通知及额度归属。历史任务保留原始账号 ID。",
+  "accounts.mergeConfirm": "合并所选账号",
+  "accounts.mergeAlias": "账号名称",
+  "accounts.mergeQuota": "共享额度来源",
+  "accounts.mergeNativeQuota": "原生账号额度"
 }

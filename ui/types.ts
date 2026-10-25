@@ -224,10 +224,11 @@ export interface SourceIdentityResolution {
   authorization?: { kind: "authorization"; identityKey: string; observedAt: string };
   evidence?: { kind: "claude-session-handshake"; sourceId: string; target: string; profileId: string; accountId: string; identityKey: string; confirmedAt: string };
   previousEvidence?: SourceIdentityResolution["evidence"];
+  confirmation?: { kind: "user-confirmed-merge"; confirmedAt: string };
 }
 export interface ProviderAccount {
   id: string;
-  provider: "anthropic" | "openai" | "deepseek" | "other";
+  provider: string;
   identityKey: string;
   alias: string;
   email?: string | null;
@@ -250,6 +251,8 @@ export interface ProviderAccount {
   health: { state: "ready" | "attention" | "removed" };
   removedAt?: string;
   mergedInto?: string;
+  mergedAccountIds?: string[];
+  quotaProviderId?: string | null;
   displayName?: string;
 }
 export interface AccountLogin {

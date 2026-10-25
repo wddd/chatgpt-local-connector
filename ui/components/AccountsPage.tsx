@@ -5,6 +5,8 @@ import type { ProviderAccount as Account, AccountLogin } from '../types';
 import { t } from '../i18n';
 import { accounts, refreshAccounts, useAccounts, isUnidentified } from '../state/accounts';
 import { connector } from '../state/connector';
+import { subscriptions } from '../state/subscriptions';
+import { accountPlatform, accountOwns } from '../accountPresentation';
 import { name as agentName } from '../state/agents';
 import { sourceDate } from '../sourcePresentation';
 import { navigation } from '../state/navigation';
@@ -15,6 +17,8 @@ import { Sensitive, SensitiveIdentity } from './Sensitive';
 import { AccountNotifications, AccountQuota, AccountSharedNotice } from './AccountCards';
 import AddAccount from './AddAccount';
 import { openSourceWorkspace } from './SourcePanel';
+import AccountAvatar from './AccountAvatar';
+import MergeAccounts from './MergeAccounts';
 
 export function AccountsActions() {
   const { items } = accounts.use();
@@ -22,19 +26,25 @@ export function AccountsActions() {
 }
 export default function AccountsPage() {
   const state = useAccounts(), nav = navigation.use();
+  const { sources } = connector.use(), { snapshot } = subscriptions.use();
   const [selected, setSelected] = useState<string>();
-  const account = state.items.find(a => a.id === (nav.accountId ?? selected)) ?? state.items[0];
+  const account = state.items.find(a => accountOwns(a, nav.accountId ?? selected)) ?? state.items[0];
   const [login, setLogin] = useState<AccountLogin>();
   const [roleAccount, setRoleAccount] = useState<Account>();
+  const groups = new Map<string, { label: string; accounts: Account[] }>();
+  for (const item of state.items) {
+    const platform = accountPlatform(item, sources, snapshot?.providers ?? []);
+    const group = groups.get(platform.id) ?? { label: platform.label, accounts: [] };
+    group.accounts.push(item); groups.set(platform.id, group);
+  }
   return <div className="accounts-workspace">
     {state.error && <Notice action={<Button onClick={() => void refreshAccounts()}>{t('retry')}</Button>}>{state.error}</Notice>}
     {state.loading && <p role="status">{t('loading')}</p>}
     {!state.loading && !state.error && !state.items.length && <Empty>{t('accounts.empty')}</Empty>}
     <div className="accounts-columns">
-      <nav className="account-list" aria-label={t('accounts.title')}><HoverScope>{['anthropic', 'openai', 'deepseek', 'other'].map(provider => {
-        const rows = state.items.filter(a => a.provider === provider);
-        return rows.length > 0 && <section key={provider}><h3>{t(`accounts.provider.${provider}`)}</h3>{rows.map(row => <Button key={row.id} variant="ghost" className="account-list-row" data-hover-target={row.id} aria-current={account?.id === row.id ? 'true' : undefined} onClick={() => { setSelected(row.id); navigation.set(old => ({ ...old, accountId: undefined })); }}>
-          <span className="account-avatar" data-provider={row.provider}>{row.alias.slice(0, 1).toUpperCase()}</span><span className="account-row-copy"><strong>{row.alias}</strong><Sensitive>{row.email}</Sensitive><span className="account-roles">{!!row.sources.length && <Tag tone="source">SRC</Tag>}{!!row.agentProfiles.length && <Tag tone="agent">AGENT</Tag>}</span></span>
+      <nav className="account-list" aria-label={t('accounts.title')}><HoverScope>{[...groups].map(([provider, group]) => {
+        return <section key={provider}><h3>{group.label}</h3>{group.accounts.map(row => <Button key={row.id} variant="ghost" className="account-list-row" data-hover-target={row.id} aria-current={account?.id === row.id ? 'true' : undefined} onClick={() => { setSelected(row.id); navigation.set(old => ({ ...old, accountId: undefined })); }}>
+          <AccountAvatar account={row} /><span className="account-row-copy"><strong>{row.alias}</strong>{row.email && <Sensitive>{row.email}</Sensitive>}<span className="account-roles">{!!row.sources.length && <Tag tone="source">SRC</Tag>}{!!row.agentProfiles.length && <Tag tone="agent">AGENT</Tag>}</span></span>
           {(row.notifications.state === 'not-bound' || row.agentProfiles.some(p => p.state !== 'signed-in')) && <span className="account-warning" role="img" aria-label={t('accounts.attention')} />}
         </Button>)}</section>;
       })}</HoverScope></nav>
@@ -47,14 +57,16 @@ function AccountDetail({ account, onLogin, onAdd }: { account: Account; onLogin:
   const { sources, status } = connector.use();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false), [remove, setRemove] = useState(false);
+  const [merging, setMerging] = useState(false);
   async function action(work: () => Promise<unknown>) { setBusy(true); setError(''); try { await work(); await refreshAccounts(); return true; } catch (e) { setError(String(e)); return false; } finally { setBusy(false); } }
   return <div className="account-detail">
     <header className="account-detail-header">
-      <span className="account-avatar" data-provider={account.provider} aria-hidden="true">{account.alias.slice(0, 1).toUpperCase()}</span>
+      <AccountAvatar account={account} />
       <div className="account-detail-identity">
         <AccountAlias account={account} busy={busy} onSave={alias => action(() => accountsApi.update({ id: account.id, alias }))} />
         <div className="account-detail-meta"><SensitiveIdentity email={account.email} orgName={account.orgName} />{account.plan && <>{(account.email || account.orgName) && <span aria-hidden="true"> · </span>}<Tag>{account.plan}</Tag></>}</div>
       </div>
+      <Button variant="ghost" onClick={() => setMerging(true)}>{t('accounts.merge')}</Button>
     </header>
     {isUnidentified(account) && <p className="muted">{t(account.sources.length ? 'accounts.unidentified' : 'accounts.nativeAuth')}</p>}
     {error && !remove && <Notice>{error}</Notice>}
@@ -66,9 +78,10 @@ function AccountDetail({ account, onLogin, onAdd }: { account: Account; onLogin:
       <section className="account-card"><h3>Agent</h3>{account.agentProfiles.length ? account.agentProfiles.map(profile => <div key={profile.profileId} className="account-profile"><div className="source-section-heading"><strong>{agentName(profile)}</strong><Status tone={profile.state === 'signed-in' ? 'success' : 'warning'}>{t(`accounts.profile.${profile.state}`)}</Status></div><span className="muted small">{profile.kind}</span><div className="source-section-heading"><span>{t('accounts.default')}</span><Switch label={`${agentName(profile)} · ${t('accounts.default')}`} checked={profile.default} disabled={busy || profile.default || profile.state !== 'signed-in'} onChange={() => void action(() => accountsApi.update({ id: account.id, defaultFor: profile.agent }))} /></div>{['claude', 'codex'].includes(profile.agent) ? <Button variant="link" disabled={busy} onClick={() => void action(async () => onLogin(await accountsApi.reauth({ id: account.id, agent: profile.agent })))}>{t('accounts.reauth')}</Button> : <p className="muted">{t('accounts.nativeAuth')}</p>}</div>) : <><p className="muted">{t('accounts.noAgent')}</p><Button variant="link" onClick={onAdd}>{t('accounts.addAgent')}</Button></>}</section>
     </div>
     {!!account.sources.length && !!account.agentProfiles.length && <AccountSharedNotice />}
-    <AccountNotifications account={account} /><AccountQuota account={account} />
+    <AccountQuota account={account} /><AccountNotifications account={account} />
     <div className="account-remove"><p className="muted">{t('accounts.removeConsequence')}</p><Button variant="danger-outline" disabled={busy} onClick={() => setRemove(true)}>{t('remove')}</Button></div>
     {remove && <Dialog centered title={t('accounts.removeTitle', { alias: account.alias })} busy={busy} onClose={() => setRemove(false)} footer={<><Button disabled={busy} onClick={() => setRemove(false)}>{t('cancel')}</Button><Button variant="danger" busy={busy} onClick={() => void action(() => accountsApi.remove({ id: account.id, running: 'finish' }))}>{t('remove')}</Button></>}><p>{t('accounts.removeConsequence')}</p>{error && <Notice>{error}</Notice>}</Dialog>}
+    {merging && <MergeAccounts account={account} onClose={() => setMerging(false)} />}
   </div>;
 }
 

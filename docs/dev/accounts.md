@@ -2,7 +2,7 @@
 
 [UI conventions](ui.md) · [Coding lanes](worktrees.md) · [Architecture](architecture.md) · [Tools](../reference/tools.md)
 
-Status: design approved 2026-10-25 from an interactive prototype. This page is the shared contract for the parallel lanes `accounts-core`, `accounts-ui` and `topology-accounts`. Only the control source changes it.
+This page describes account ownership, identity resolution and the Accounts workspace.
 
 ## Model
 
@@ -10,11 +10,12 @@ ARC manages control sources and Agents by Platform → Account → Task.
 
 - Platform: a control-source product (Claude, ChatGPT, ...) or an Agent (claude, codex, dsh, ...). Unchanged.
 - Account: one provider identity, independent of side.
-  - `id` (stable ARC ID), `provider` (`anthropic`, `openai`, `deepseek`, `other`), `identityKey` (provider account ID when known, else a hash of normalized email + organization), `alias` (user-editable; defaults to the organization name or `Personal`), optional `email`, `orgName`, `plan`, plus `createdAt` and `observedAt`.
+  - `id` (stable ARC ID), `provider` (provider family, including `anthropic`, `openai`, `deepseek`, `google`, `xai`, or another known platform), `identityKey` (provider account ID when known, else a hash of normalized email + organization), `alias` (user-editable; defaults to the organization name or `Personal`), optional `email`, `orgName`, `plan`, plus `createdAt` and `observedAt`.
   - `sources`: control-source IDs authorized as this account. Several connections or devices of one account are several sources sharing one `accountId`; they never add account nodes.
   - `agentProfiles`: list of `{ agent, profileId, kind, state, default }` with kind `cli-profile`, `codex-home` or `api-key` and state `signed-in`, `signed-out`, `unfinished` or `invalid`. The isolated Claude CLI profiles in `native/src/claude_accounts` become `claude` profiles. Codex's current login is one `codex-home` profile. Key-based Agents expose one `api-key` profile.
   - `notifications`: Claude routes and bound cloud sessions move under the account. ChatGPT accounts report MCP Events reachability. Agent-only accounts report `n/a`.
-  - `quota`: subscription windows belong to the account. An account with both sources and agent profiles shows one shared quota.
+  - `quota`: subscription windows belong to the account. An account with both sources and agent profiles shows one shared quota. Optional `quotaProviderId` selects an existing shared SubscriptionService provider; otherwise detail reads use the native account profile.
+  - `identityAliases` retains identities explicitly confirmed to share ownership. `mergedAccountIds` lists previous ARC account IDs; retained tombstones point to the current owner with `mergedInto`.
 - Same identity: an account with both `sources` and `agentProfiles`. This includes a ChatGPT account and the Codex login of the same ChatGPT identity.
 - Default account: at most one default profile per Agent; dispatch without an explicit account uses it.
 
@@ -38,7 +39,9 @@ A second resolution path is the confirmed Claude cloud-session handshake. `notif
 
 External `whoami.identityResolution` and source reads report `state:unresolved|resolved|conflict`. Accounts expose `sourceIdentities` keyed by source ID. Authorization evidence records `kind:authorization`, `identityKey` and `observedAt`. Handshake evidence records `kind:claude-session-handshake`, `sourceId`, `target`, `profileId`, `accountId`, `identityKey` and `confirmedAt`. A conflicting handshake never replaces a confirmed account silently: keep the existing account and return `ACCOUNT_IDENTITY_CONFLICT` in the resolution with its reason and proposed evidence. Later provider facts take precedence while retaining the disagreement. Conflicts set account health to attention and remain visible until a new matching handshake reconciles them. Notification delivery may still be verified. Source IDs and historical origins are never rewritten.
 
-An external control source without either resolution path has its own `Unidentified` account. A later confirmed identity merges its membership into the provider account and retains the provisional account tombstone.
+A third path is an explicit user-confirmed account merge. `account_merge` joins selected account IDs into one owner without inferring identity from aliases, platform or email similarity. It preserves source IDs, native profile IDs and credential paths. Identity aliases let subsequent observations retain confirmed memberships. New contradictory authorization facts still resolve through the normal identity rules. Source resolutions retain their authorization and handshake evidence and record the user confirmation separately. Old account IDs resolve to the canonical owner; task and receipt records retain their original IDs. Panels, topology, notification membership and cancellation include those previous IDs. An optional shared subscription supplies the account quota; unified billing observations identify X Pass under X.
+
+An external control source without a resolution path has its own `Unidentified` account. A later confirmed identity merges its membership into the provider account and retains the provisional account tombstone.
 
 Migration: existing Claude accounts become accounts with `claude` profiles and their routes. Sources and profiles with the same `identityKey` merge into one account. Records keep their source IDs; history is never rewritten.
 
@@ -57,6 +60,7 @@ Queries:
 Actions:
 
 - `account_update({ id, alias?, defaultFor?, default? })`: rename; `defaultFor` names an Agent whose default becomes this account's profile. `default:false` with `defaultFor` clears only this account's default without selecting a replacement. `default` requires `defaultFor`; omission means true. Clearing survives refresh/restart. The first profile of a previously unconfigured Agent is initially default.
+- `account_merge({ into, ids, alias?, quotaProviderId? })`: merge explicitly confirmed active accounts into `into`. All references are checked before saving. Replay resolves previous IDs without duplicating memberships. A null `quotaProviderId` returns to native quota; omission retains the existing association.
 - `account_add({ kind, browserId? })` with kind `claude`, `codex`, `api-key` or `detect`: starts a login and returns `{ loginId, state, loginUrl? }`. Agents run the whole flow; only the sign-in itself needs the user.
 - `account_login({ loginId, action, code? })` with action `code` or `cancel`.
 - `account_reauth({ id, agent })` restarts login for one profile.
@@ -74,12 +78,12 @@ The bottom-left capsule becomes horizontal: Tasks, Records, Remote link, Account
 ### Accounts workspace
 
 - Title bar: Accounts, count line, Privacy toggle, primary Add account, close.
-- Left list (about 330px) grouped by provider. Rows: avatar initial in the account color, alias, email (blurred in privacy mode), role chips SRC / AGENT, and a warning dot when notifications or a profile need attention.
-- Detail: header with inline-editable alias, `email · org`, plan pill.
+- Left list (about 330px) grouped by known provider family or platform. List and detail scroll independently below the fixed title bar. Rows use platform logos, alias, an email line only when present, role chips SRC / AGENT, and a warning dot when notifications or a profile need attention. Row height follows its content.
+- Detail: header with platform logo, inline-editable alias, `email · org`, plan pill, and Merge accounts. The merge dialog selects confirmed account IDs, the resulting alias and an optional shared quota provider.
 - Where this account works: two cards. Control source lists connections with state dots and last seen, plus Open source panel. Agent shows profile state and kind, a Default for new dispatches switch and Sign in again. An empty side says so and offers to add that role.
 - Same identity notice: dispatching to this Agent draws from the same subscription quota.
 - Notifications card: state pill (Verified, Not bound, MCP Events, n/a), bound sessions with last delivery, Send test, and a secondary Bind manually. Sessions bind themselves through `notify_control`; nobody pastes IDs in the normal path.
-- Quota: reuse the Agent panel window cards, including remaining/used display, reset times, pace, update age, and refresh.
+- Quota: before notifications, reuse the Agent panel window cards, including remaining/used display, reset times, pace, update age, and refresh. Percentage and pace text align at the bottom.
 - Bottom: Remove with its consequence (running tasks finish first; history keeps the tombstone).
 
 ### Add account

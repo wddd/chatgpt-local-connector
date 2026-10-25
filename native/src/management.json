@@ -3183,6 +3183,59 @@
       "localOnly": true
     },
     {
+      "name": "accounts.merge",
+      "method": "POST",
+      "route": "accounts/merge",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "into": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "maxItems": 32,
+                "uniqueItems": true
+              },
+              "alias": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "quotaProviderId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "description": "An existing shared subscription provider ID; null selects native account quota."
+              }
+            },
+            "required": [
+              "into",
+              "ids"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Merge explicitly user-confirmed account ownership. Retain old IDs and immutable task history; optionally link a shared subscription provider.",
+      "localOnly": true
+    },
+    {
       "name": "accounts.add",
       "method": "POST",
       "route": "accounts/add",

@@ -3,6 +3,7 @@ import { appEnvironment, envOverrides } from "../state/appEnvironment";
 import { controlSource } from '../controlSources';
 import { orderedSubset } from '../topology/order';
 import { accountViews } from '../topology/accountViews';
+import { accountOwns } from '../accountPresentation';
 import { useTopologyAccounts, topologyMode, topologyAccountOrder } from '../topology/accountState';
 import { scenarioName } from "../scenarioMode";
 import { agentPanel, selectAgentPanel, ingressPanel, selectIngressPanel } from "../state/overviewPanels";
@@ -247,26 +248,30 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   });
   const agentViews: NodeView[] = agents.map(agent => {
     const sessions = orderActivity(tracked[agent.agent] ?? [], manualOrder[agent.agent] ?? []), selected = !selection?.closing && selection?.agent === agent.agent;
-    const accountIds = accounts.filter(a => a.agentProfiles.some(p => p.agent === agent.agent)).map(a => a.id);
-    const accountGroup = (id: string | null | undefined) => id && accountIds.includes(id) ? id : undefined;
+    const agentAccounts = accounts.filter(a => a.agentProfiles.some(p => p.agent === agent.agent));
+    const sharedAccount = agentAccounts.length === 1 && agentAccounts[0].quotaProviderId ? agentAccounts[0] : undefined;
+    const accountIds = agentAccounts.map(a => a.id);
+    const accountGroup = (id: string | null | undefined) => agentAccounts.find(account => accountOwns(account, id))?.id;
+    const origin = (session: typeof sessions[number]) => session.origin && { ...session.origin,
+      accountId: accounts.find(account => accountOwns(account, session.origin?.accountId))?.id ?? session.origin.accountId };
     const groups = accountIds.length > 1 ? [...new Set(sessions.map(s => accountGroup(s.agentAccountId)))].map(id => sessions.filter(s => accountGroup(s.agentAccountId) === id)) : [sessions];
     const queueKey = (group: typeof sessions) => JSON.stringify([agent.agent, accountIds.length > 1 ? accountGroup(group[0]?.agentAccountId) : null]);
     const shownGroups = groups.map(group => ({ ...visibleActivity(group, selected ? selection.session?.id : undefined, expandedQueue === queueKey(group)), group }));
     const shown = { sessions: shownGroups.flatMap(group => group.sessions) };
     const effectiveDensity = effectiveBubbleDensity(density, autoCompact, sessions.length);
     return {
-      id: agent.agent, platform: agent.agent, platformLabel: name(agent), icon: <AgentQuotaIcon agent={agent.agent} />,
-      selectedAccountId: selection?.accountId, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled && !panelOpen,
+      id: agent.agent, platform: agent.agent, platformLabel: name(agent), icon: <AgentQuotaIcon agent={agent.agent} quota={sharedAccount?.quota} />,
+      selectedAccountId: accountGroup(selection?.accountId), state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled && !panelOpen,
       content: <GraphNode label={`${name(agent)}: ${t(agentState(agent))}`} state={wireState(agentState(agent))}
         onMove={agent.enabled && !panelOpen ? by => moveVisibleAgent(agent.agent, by) : undefined}
-        highlighted={selected} onOpen={() => selectAgentPanel({ type: "toggle", agent: agent.agent })}>
-        <AgentQuotaIcon agent={agent.agent} />
+        highlighted={selected} onOpen={() => selectAgentPanel({ type: "toggle", agent: agent.agent, accountId: sharedAccount?.id })}>
+        <AgentQuotaIcon agent={agent.agent} quota={sharedAccount?.quota} />
         {selection && !selected && sessions.some(s => s.endedAt === undefined) && <span className="agent-task-count" data-attention={sessions.some(s => !!s.interaction) || undefined}>{sessions.filter(s => s.endedAt === undefined).length}</span>}
         <span className="graph-node-name">{name(agent)}</span>
         {effectiveDensity !== density && <span className="agent-auto-compact">{t("activity.autoCompacted")}</span>}
       </GraphNode>,
       tasks: [
-        ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]), activityQueue: queueKey([session]), width, height: bubbleHeights[effectiveDensity], taskId: session.id, threadId: session.nativeSessionId, agentAccountId: session.agentAccountId, origin: session.origin,
+        ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]), activityQueue: queueKey([session]), width, height: bubbleHeights[effectiveDensity], taskId: session.id, threadId: session.nativeSessionId, agentAccountId: accountGroup(session.agentAccountId) ?? session.agentAccountId, origin: origin(session),
           state: (session.endedAt !== undefined ? "completed" : session.interaction ? "attention" : session.source === "transcript" ? "external" : "running") as import("../topology/render").TaskState,
           selected: selected && selection.session?.id === session.id, reorderable: !panelOpen,
           content: <ActivityBubble agent={agent.agent} session={session} now={now} density={effectiveDensity} onRead={() => markRead(agent.agent, session.id)} onMove={panelOpen ? undefined : by => {
@@ -278,7 +283,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
           }} />,
         })),
         ...shownGroups.flatMap(group => group.hidden ? [{ id: JSON.stringify(accountIds.length > 1 ? [agent.agent, null, accountGroup(group.group[0]?.agentAccountId)] : [agent.agent, null]), activityQueue: queueKey(group.group),
-          members: group.group.filter(s => !group.sessions.includes(s)).map(s => ({ origin: s.origin, agentAccountId: s.agentAccountId, pending: !!s.interaction })),
+          members: group.group.filter(s => !group.sessions.includes(s)).map(s => ({ origin: origin(s), agentAccountId: accountGroup(s.agentAccountId) ?? s.agentAccountId, pending: !!s.interaction })),
           agentAccountId: accountIds.length > 1 ? accountGroup(group.group[0]?.agentAccountId) : undefined, count: group.hidden, pending: group.group.some(s => !!s.interaction && !group.sessions.includes(s)), width, height: bubbleHeights.compact, state: "summary" as const, selected: false,
           content: <button type="button" className="activity-bubble activity-summary" aria-expanded={false} onClick={event => {
             setExpandedQueue(queueKey(group.group));

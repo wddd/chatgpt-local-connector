@@ -71,6 +71,7 @@ impl Execution {
                 | "whoami"
                 | "accounts"
                 | "account_update"
+                | "account_merge"
                 | "account_add"
                 | "account_login"
                 | "account_reauth"
@@ -90,7 +91,7 @@ impl Execution {
             crate::egress::validate_op(spec, &args)?;
             return self
                 .accounts
-                .op(&self.control, &self.agents, name, args)
+                .op(&self.control, &self.agents, &self.subscriptions, name, args)
                 .await;
         }
         if matches!(

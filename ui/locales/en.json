@@ -1391,5 +1391,14 @@
   "updates.state.failed": "Update failed",
   "updates.state.cancelled": "Update cancelled",
   "updates.pipelineUnsupported": "Settling, backups and task recovery require macOS.",
-  "updates.localNotes": "Changes"
+  "updates.localNotes": "Changes",
+  "accounts.provider.google": "Google",
+  "accounts.provider.xai": "X",
+  "accounts.merge": "Merge accounts",
+  "accounts.mergeTitle": "Merge into {alias}",
+  "accounts.mergeConsequence": "Selected accounts will share source connections, Agent profiles, notifications and quota ownership. Old task records keep their original IDs.",
+  "accounts.mergeConfirm": "Merge selected accounts",
+  "accounts.mergeAlias": "Account name",
+  "accounts.mergeQuota": "Shared quota source",
+  "accounts.mergeNativeQuota": "Native account quota"
 }

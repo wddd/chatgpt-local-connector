@@ -24,7 +24,7 @@ export function useTopologyAccounts(revision: unknown) {
     }).catch(() => { /* Keep the last complete snapshot if a refresh fails. */ });
     return () => { active = false; };
   }, [revision]);
-  const quotaIds = JSON.stringify(accounts.filter(account => account.agentProfiles.some(profile => ['claude', 'codex'].includes(profile.agent))).map(account => account.id).sort());
+  const quotaIds = JSON.stringify(accounts.filter(account => account.quotaProviderId || account.agentProfiles.some(profile => ['claude', 'codex'].includes(profile.agent))).map(account => account.id).sort());
   useEffect(() => {
     const ids = JSON.parse(quotaIds) as string[];
     if (!ids.length) return;

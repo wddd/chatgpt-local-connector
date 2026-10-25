@@ -6531,6 +6531,72 @@
       }
     },
     {
+      "name": "account_merge",
+      "description": "Merge explicitly user-confirmed accounts into one ownership record. Preserves old IDs as merge history, sources, execution profiles, notification associations, defaults and recorded task IDs. Never infer account identity from matching labels or platform alone. quotaProviderId explicitly links an existing shared subscription.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "into": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "maxItems": 32,
+            "uniqueItems": true
+          },
+          "alias": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "quotaProviderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "An existing shared subscription provider ID; null selects native account quota."
+          }
+        },
+        "required": [
+          "into",
+          "ids"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "into": "<target-account-id>",
+        "ids": [
+          "<confirmed-account-id>"
+        ]
+      }
+    },
+    {
       "name": "account_add",
       "description": "Start official login or detect native authentication. Returns loginId, state and loginUrl when available. Only sign-in requires the user. Read accounts to poll progress.",
       "inputSchema": {
@@ -8227,6 +8293,17 @@
           "common"
         ],
         "requires": [],
+        "tier": "default",
+        "conditional": false
+      },
+      "account_merge": {
+        "group": "accounts",
+        "presets": [
+          "common"
+        ],
+        "requires": [
+          "accounts"
+        ],
         "tier": "default",
         "conditional": false
       }

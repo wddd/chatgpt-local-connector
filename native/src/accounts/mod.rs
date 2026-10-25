@@ -4,7 +4,9 @@ use crate::*;
 pub mod claude;
 mod identity;
 mod login;
+mod merge;
 pub use identity::link_source_identity;
+pub use merge::merge_accounts;
 static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn path() -> PathBuf {
@@ -47,12 +49,15 @@ pub fn identity_key(provider: &str, facts: &Value) -> Option<String> {
         hash(format!("{email}\n{org}"))
     ))
 }
-fn provider(platform: &str) -> &'static str {
+fn provider(platform: &str) -> &str {
     match platform {
         "claude" | "anthropic" => "anthropic",
         "chatgpt" | "codex" | "openai" => "openai",
         "dsh" | "deepseek" => "deepseek",
-        _ => "other",
+        "gemini" | "antigravity" | "google" => "google",
+        "grok" | "grok-bot" | "xai" => "xai",
+        "" | "custom" => "other",
+        _ => platform,
     }
 }
 fn new_account(id: String, provider: &str, key: &str, facts: &Value) -> Value {
@@ -108,9 +113,11 @@ fn observe(
     let changed_identity = old.is_some_and(|i| {
         confirmed.is_some()
             && !string(&rows[i], "identityKey").contains(":unidentified:")
-            && rows[i]["identityKey"] != key
+            && !merge::matches_identity(&rows[i], &key)
     });
-    let matched = rows.iter().position(|a| live(a) && a["identityKey"] == key);
+    let matched = rows
+        .iter()
+        .position(|a| live(a) && merge::matches_identity(a, &key));
     let index = matched
         .or(old.filter(|_| !changed_identity))
         .unwrap_or_else(|| {
@@ -188,7 +195,12 @@ fn observe(
     }
     let row = &mut rows[index];
     let before = row.clone();
-    row["identityKey"] = json!(key);
+    if !merge::matches_identity(row, &key) {
+        row["identityKey"] = json!(key);
+    }
+    if row["provider"] == "other" && provider != "other" {
+        row["provider"] = json!(provider);
+    }
     // Keep last confirmed identity on signed-out observations, but never fabricate an identity.
     for (field, names) in [
         ("email", vec!["email"]),
@@ -340,8 +352,18 @@ pub(crate) fn confirm_source(source: &str, evidence: Value) -> Result<Value> {
 
 pub(crate) fn resolve(reference: &str) -> Result<Value> {
     let rows = read()?;
-    if let Some(row) = rows.iter().find(|a| a["id"] == reference) {
-        return Ok(row.clone());
+    let canonical = merge::canonical(&rows, reference)?;
+    if let Some(row) = rows.iter().find(|a| a["id"] == canonical) {
+        let mut row = row.clone();
+        row["mergedAccountIds"] = json!(rows
+            .iter()
+            .filter_map(|previous| {
+                let id = previous["id"].as_str()?;
+                (id != canonical && merge::canonical(&rows, id).ok()? == canonical)
+                    .then(|| json!(id))
+            })
+            .collect::<Vec<_>>());
+        return Ok(row);
     }
     let matches: Vec<_> = rows
         .iter()
@@ -524,7 +546,20 @@ impl Manager {
             }
         }
         let mut rows = read()?;
+        let canonical = rows
+            .iter()
+            .map(|row| {
+                let id = string(row, "id");
+                Ok((id.to_owned(), merge::canonical(&rows, id)?))
+            })
+            .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
         for row in &mut rows {
+            row["mergedAccountIds"] = json!(canonical
+                .iter()
+                .filter_map(|(id, owner)| {
+                    (id != owner && row["id"] == owner.as_str()).then(|| json!(id))
+                })
+                .collect::<Vec<_>>());
             let ids: Vec<_> = profiles(row)
                 .filter(|p| p["agent"] == "claude")
                 .map(|p| p["profileId"].clone())
@@ -532,7 +567,10 @@ impl Manager {
             let mut sessions: Vec<Value> = notifications
                 .iter()
                 .filter(|s| {
-                    s["accountId"] == row["id"]
+                    s["accountId"]
+                        .as_str()
+                        .and_then(|id| canonical.get(id))
+                        .is_some_and(|id| row["id"] == id.as_str())
                         || ids.contains(&s["accountId"])
                         || row["sources"]
                             .as_array()
@@ -597,6 +635,7 @@ impl Manager {
         &self,
         control: &Arc<control::Control>,
         agents: &Arc<agents::AgentHost>,
+        subscriptions: &crate::subscriptions::SubscriptionService,
         name: &str,
         args: Value,
     ) -> Result<Value> {
@@ -605,7 +644,25 @@ impl Manager {
         if name == "accounts" && args["id"].is_string() {
             let account = resolve(string(&args, "id"))?;
             if live(&account) {
-                if let Some(p) =
+                if let Some(provider) = account["quotaProviderId"].as_str() {
+                    let snapshot = subscriptions.snapshot().await;
+                    if let Some(provider) = snapshot["providers"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .find(|row| row["providerId"] == provider)
+                    {
+                        let quota = merge::shared_quota(provider);
+                        change(|rows| {
+                            if let Some(row) =
+                                rows.iter_mut().find(|row| row["id"] == account["id"])
+                            {
+                                row["quota"] = quota;
+                            }
+                            Ok(())
+                        })?;
+                    }
+                } else if let Some(p) =
                     profiles(&account).find(|p| matches!(string(p, "agent"), "claude" | "codex"))
                 {
                     let observed = account["quota"]["observedAt"]
@@ -683,6 +740,11 @@ impl Manager {
                 update(&args)?;
                 self.query(&json!({"id":args["id"]})).await
             }
+            "account_merge" => {
+                let snapshot = subscriptions.snapshot().await;
+                let account = change(|rows| merge_accounts(rows, &args, &snapshot, &now()))?;
+                self.query(&json!({"id":account["id"]})).await
+            }
             "account_add" | "account_login" | "account_reauth" => {
                 self.login_op(control, agents, name, args).await
             }
@@ -713,6 +775,7 @@ impl Manager {
         &self,
         control: &Arc<control::Control>,
         agents: &Arc<agents::AgentHost>,
+        subscriptions: &crate::subscriptions::SubscriptionService,
         route: &str,
         method: &str,
         body: Value,
@@ -721,12 +784,14 @@ impl Manager {
             return self.claude.request("profiles/browsers", "GET", body).await;
         }
         if route == "accounts" && method == "GET" {
-            return self.op(control, agents, "accounts", body).await;
+            return self
+                .op(control, agents, subscriptions, "accounts", body)
+                .await;
         }
         if let Some(op) = route.strip_prefix("accounts/").filter(|op| {
             matches!(
                 *op,
-                "query" | "whoami" | "add" | "login" | "reauth" | "update" | "remove"
+                "query" | "whoami" | "add" | "login" | "reauth" | "update" | "remove" | "merge"
             )
         }) {
             if method == "POST" || op == "whoami" && method == "GET" {
@@ -739,11 +804,11 @@ impl Manager {
                     return crate::kernel::origin::ORIGIN
                         .scope(
                             crate::sources::panel_origin().await?,
-                            self.op(control, agents, &name, body),
+                            self.op(control, agents, subscriptions, &name, body),
                         )
                         .await;
                 }
-                return self.op(control, agents, &name, body).await;
+                return self.op(control, agents, subscriptions, &name, body).await;
             }
         }
         if route == "accounts/routes" && method == "PUT" {
@@ -757,7 +822,9 @@ impl Manager {
         if let Some(tail) = route.strip_prefix("accounts/") {
             let (id, action) = tail.split_once('/').unwrap_or((tail, ""));
             if action.is_empty() && method == "GET" {
-                return self.op(control, agents, "accounts", json!({"id":id})).await;
+                return self
+                    .op(control, agents, subscriptions, "accounts", json!({"id":id}))
+                    .await;
             }
             if matches!(action, "send" | "test") && method == "POST" {
                 let mut body = body;
@@ -885,7 +952,11 @@ pub(crate) fn decorate(value: &mut Value) {
 pub fn decorate_labels(value: &mut Value, rows: &[Value]) {
     let labels: std::collections::BTreeMap<_, _> = rows
         .iter()
-        .filter_map(|account| Some((account["id"].as_str()?, account)))
+        .filter_map(|account| {
+            let id = account["id"].as_str()?;
+            let canonical = merge::canonical(rows, id).ok()?;
+            Some((id, rows.iter().find(|row| row["id"] == canonical)?))
+        })
         .collect();
     fn visit(v: &mut Value, labels: &std::collections::BTreeMap<&str, &Value>) {
         match v {

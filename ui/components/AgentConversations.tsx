@@ -2,7 +2,8 @@ import { useAppNow } from "../state/appEnvironment";
 import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 import { api } from "../api";
 import { locale, t } from "../i18n";
-import type { AgentActivitySession, AgentConversation, AgentConversationPage } from "../types";
+import type { AgentActivitySession, AgentConversation, AgentConversationPage, ProviderAccount } from "../types";
+import { accountOwns } from "../accountPresentation";
 import { agentActivity } from "../state/activity";
 import { trackedActivity } from "../state/activityBubbles";
 import { selectAgentPanel } from "../state/overviewPanels";
@@ -23,7 +24,7 @@ const ConversationRow = memo(function ConversationRow({ agent, session, live, no
   </button>;
 });
 
-export default function AgentConversations({ agent, accountId, active }: { agent: string; accountId?: string; active: boolean }) {
+export default function AgentConversations({ agent, account, accountId, active }: { agent: string; account?: ProviderAccount; accountId?: string; active: boolean }) {
   const language = locale.use();
   const { snapshot } = agentActivity.use();
   const tracked = trackedActivity.use(), retained = tracked[agent] ?? [];
@@ -34,7 +35,9 @@ export default function AgentConversations({ agent, accountId, active }: { agent
   const [loading, setLoading] = useState(true), [error, setError] = useState("");
   const loaded = useRef<string | undefined>(undefined), marker = useRef<HTMLDivElement>(null);
   const pending = useRef<{ key: string; request: Promise<AgentConversationPage> } | undefined>(undefined);
-  const belongs = (session: Pick<TrackedActivity, "agentAccountId" | "dispatchSummary">) => !accountId || (session.agentAccountId ?? session.dispatchSummary?.agentAccountId) === accountId;
+  const belongs = (session: Pick<TrackedActivity, "agentAccountId" | "dispatchSummary">) => !accountId || (account
+    ? accountOwns(account, session.agentAccountId ?? session.dispatchSummary?.agentAccountId)
+    : (session.agentAccountId ?? session.dispatchSummary?.agentAccountId) === accountId);
   const live = new Map(snapshot?.agents[agent]?.sessions.filter(belongs).map(session => [session.id, session]) ?? []);
   const now = useAppNow(active && live.size ? 1000 : 60000);
   useEffect(() => {

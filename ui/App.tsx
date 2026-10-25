@@ -330,7 +330,7 @@ export default function App() {
               />
             </header>
             <main
-              className={`workspace ${page === "logs" ? "records-workspace" : ""}`}
+              className={`workspace ${page === "logs" ? "records-workspace" : page === "accounts" ? "accounts-workspace-container" : ""}`}
             >
               {page === "tasks" ? (
                 <TasksPage />

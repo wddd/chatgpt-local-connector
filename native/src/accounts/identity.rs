@@ -1,4 +1,4 @@
-//! Source linkage uses authorization facts or a source-bound, profile-pinned handshake.
+//! Source linkage retains authorization, handshake and explicit ownership confirmation.
 use super::*;
 
 pub(super) fn has_conflict(account: &Value) -> bool {
@@ -34,10 +34,17 @@ pub(super) fn observe_source(rows: &mut Vec<Value>, source: &Value) -> String {
                 json!({"kind":"authorization","identityKey":key,"observedAt":now()});
             let conflict = previous["evidence"]["identityKey"]
                 .as_str()
-                .is_some_and(|k| k != key);
+                .is_some_and(|k| {
+                    k != key
+                        && !(merge::matches_identity(row, k) && merge::matches_identity(row, &key))
+                });
             row["sourceIdentities"][source_id] = json!({"state":if conflict {"conflict"} else {"resolved"},"accountId":account_id,"authorization":authorization});
             if !previous["evidence"].is_null() {
                 row["sourceIdentities"][source_id]["evidence"] = previous["evidence"].clone();
+            }
+            if !previous["confirmation"].is_null() {
+                row["sourceIdentities"][source_id]["confirmation"] =
+                    previous["confirmation"].clone();
             }
             if conflict {
                 row["sourceIdentities"][source_id]["code"] = json!("ACCOUNT_IDENTITY_CONFLICT");
@@ -63,16 +70,23 @@ pub fn link_source_identity(rows: &mut [Value], source: &str, evidence: Value) -
     let target = rows.iter().position(|a| {
         live(a)
             && a["id"] == evidence["accountId"]
-            && a["identityKey"] == evidence["identityKey"]
+            && merge::matches_identity(a, string(&evidence, "identityKey"))
             && profiles(a)
                 .any(|p| p["agent"] == "claude" && p["profileId"] == evidence["profileId"])
     });
     let known = !string(&rows[old], "identityKey").contains(":unidentified:");
-    let conflict = target.is_none() || known && rows[old]["identityKey"] != evidence["identityKey"];
+    let conflict = target.is_none()
+        || known
+            && !target.is_some_and(|target| {
+                merge::matches_identity(&rows[target], string(&rows[old], "identityKey"))
+            });
     let mut resolution = json!({"state":if conflict {"conflict"} else {"resolved"},"accountId":rows[old]["id"],"evidence":evidence});
     let previous = rows[old]["sourceIdentities"][source].clone();
     if !previous["authorization"].is_null() {
         resolution["authorization"] = previous["authorization"].clone();
+    }
+    if !previous["confirmation"].is_null() {
+        resolution["confirmation"] = previous["confirmation"].clone();
     }
     if conflict {
         resolution["code"] = json!("ACCOUNT_IDENTITY_CONFLICT");

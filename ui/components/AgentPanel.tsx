@@ -19,6 +19,7 @@ import AgentConversations from "./AgentConversations";
 import ActivityTimeline from "./ActivityTimeline";
 import type { SurfaceRect } from "../motion/surface";
 import type { ProviderAccount } from "../types";
+import { accountOwns } from "../accountPresentation";
 
 function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWidth, active }: {
   agent: Agent; active: boolean; account?: ProviderAccount; accountId?: string;
@@ -30,6 +31,9 @@ function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWi
   const provider = accountId ? account ? accountQuotaProvider(agent.agent, account.quota) : undefined
     : snapshot?.settings.enabled ? snapshot.providers.find(p => p.agentIds.includes(agent.agent) && p.eligible) : undefined;
   const title = account?.alias ?? name(agent);
+  const sessions = activity?.agents[agent.agent]?.sessions.filter(session => !accountId || (account
+    ? accountOwns(account, session.agentAccountId ?? session.dispatchSummary?.agentAccountId)
+    : (session.agentAccountId ?? session.dispatchSummary?.agentAccountId) === accountId)) ?? [];
   const providerError = provider?.error && !["no-subscription", "no-limits-reported", "unsupported-platform"].includes(provider.error.code)
     ? provider.error.message || t(errorLabels[provider.error.code] || "usageUnavailable") : undefined;
   async function refresh() {
@@ -49,7 +53,7 @@ function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWi
             setError(""); void api("agents/open", "POST", { agent: agent.agent }).catch(error => setError(String(error)));
           }} />}
         </div>
-        <span className="activity-panel-meta" title={agent.version || undefined}>{[compactAgentVersion(agent.version), t("agentPanel.inProgress", { count: activity?.agents[agent.agent]?.sessions.filter(session => !accountId || (session.agentAccountId ?? session.dispatchSummary?.agentAccountId) === accountId).length ?? 0 })].filter(Boolean).join(" · ")}</span>
+        <span className="activity-panel-meta" title={agent.version || undefined}>{[compactAgentVersion(agent.version), t("agentPanel.inProgress", { count: sessions.length })].filter(Boolean).join(" · ")}</span>
       </div>
       <div className="actions">
         <IconButton icon={Settings} label={t("agentDisplaySettings")} onClick={onSettings} />
@@ -62,7 +66,7 @@ function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWi
       {providerError && <Notice action={<IconButton icon={RefreshCw} size={16} label={t("usageRefresh")}
         busy={refreshing || provider?.refreshing} onClick={() => void refresh()} />}>{providerError}</Notice>}
       {provider ? <AgentQuota provider={provider} onRefresh={() => void refresh()} refreshing={refreshing} /> : <p className="timeline-meta agent-no-quota">{t("agentPanel.noQuota")}</p>}
-      <AgentConversations key={`${agent.agent}:${accountId ?? ""}`} agent={agent.agent} accountId={accountId} active={active} />
+      <AgentConversations key={`${agent.agent}:${accountId ?? ""}`} agent={agent.agent} account={account} accountId={accountId} active={active} />
     </div>
   </section>;
 }
@@ -73,7 +77,7 @@ export default function AgentPanel({ agent, onSettings, onPanelFrame, width, exp
   expanded: boolean; onToggleWidth: () => void;
 }) {
   const selected = agentPanel.use()!, { error } = agentActivity.use();
-  const accountState = useAccounts(), account = accountState.items.find(account => account.id === selected.accountId);
+  const accountState = useAccounts(), account = accountState.items.find(account => accountOwns(account, selected.accountId));
   const reduced = useReducedMotion(), previous = useRef(selected), content = useRef<HTMLDivElement>(null);
   const session = selected.session, taskTitleId = useId();
   const returning = previous.current.agent === selected.agent && previous.current.accountId === selected.accountId && !!previous.current.session && !session;
@@ -92,7 +96,7 @@ export default function AgentPanel({ agent, onSettings, onPanelFrame, width, exp
     originKey={`${agent.agent}:${selected.accountId ?? ""}`} closeRequested={selected.closing}
     onCloseStart={() => agentPanel.set(old => old?.agent === agent.agent && old.accountId === selected.accountId ? { ...old, closing: true } : old)}
     onClose={() => { const current = agentPanel.get(); if (current?.agent === agent.agent && current.accountId === selected.accountId && current.closing) selectAgentPanel({ type: "closed" }); }}
-    returnFocus={`[data-agent-node="${CSS.escape(agent.agent)}"]${selected.accountId ? `[data-account-id="${CSS.escape(selected.accountId)}"]` : ""} button`} onPanelFrame={onPanelFrame}>
+    returnFocus={`[data-agent-node="${CSS.escape(agent.agent)}"]${selected.accountId ? `[data-account-id="${CSS.escape(account?.id ?? selected.accountId)}"]` : ""} button`} onPanelFrame={onPanelFrame}>
     {error && <span className="sr-only" role="status">{t("activity.disconnected")}</span>}
     <div ref={content} className="agent-panel-view">
       <motion.div className="agent-panel-view" key={`${agent.agent}:${selected.accountId ?? ""}`} style={{ display: session ? "none" : "flex" }}

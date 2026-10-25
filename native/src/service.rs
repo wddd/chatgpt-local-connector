@@ -644,7 +644,14 @@ impl Service {
         if route == "accounts" || route.starts_with("accounts/") {
             return self
                 .accounts
-                .request(&self.control, &self.agents, route, method, body)
+                .request(
+                    &self.control,
+                    &self.agents,
+                    &self.subscriptions,
+                    route,
+                    method,
+                    body,
+                )
                 .await;
         }
         if route.starts_with("relay/") {

@@ -18,7 +18,15 @@ export function accountScenario(status: Status, sources: ControlSource[]) {
   ];
   let polls = 0, sequence = 0, login: AccountLogin | null = null;
   let loginAccount: string | undefined;
-  const requireAccount = (id: string) => { const account = accounts.find(a => a.id === id); if (!account) throw new Error('ACCOUNT_NOT_FOUND'); return account; };
+  const requireAccount = (id: string): ProviderAccount => {
+    for (let hop = 0; hop <= accounts.length; hop++) {
+      const account = accounts.find(a => a.id === id);
+      if (!account) throw new Error('ACCOUNT_NOT_FOUND');
+      if (!account.mergedInto) return account;
+      id = account.mergedInto;
+    }
+    throw new Error('ACCOUNT_MERGE_CYCLE');
+  };
   function completeLogin() {
     if (!login || !['claude', 'codex'].includes(login.kind)) return;
     const account = requireAccount(loginAccount ?? (login.kind === 'claude' ? 'account-claude' : 'account-openai'));
@@ -37,6 +45,32 @@ export function accountScenario(status: Status, sources: ControlSource[]) {
     if (route === 'accounts/whoami' && ['POST', 'GET'].includes(method)) {
       const account = requireAccount('account-source');
       return { id: account.id, alias: account.alias, provider: account.provider, email: null, orgName: null, plan: null, sourceId: sources[0].id, platform: sources[0].platform, agentProfiles: account.agentProfiles, notifications: account.notifications };
+    }
+    if (route === 'accounts/merge' && method === 'POST') {
+      const request = raw as { into: string; ids: string[]; alias?: string; quotaProviderId?: string | null };
+      const target = requireAccount(request.into);
+      for (const id of request.ids) {
+        const member = requireAccount(id);
+        if (member.id === target.id) continue;
+        target.sources = [...new Set([...target.sources, ...member.sources])];
+        target.agentProfiles = [...new Map([...target.agentProfiles, ...member.agentProfiles].map(profile => [`${profile.agent}:${profile.profileId}`, profile])).values()];
+        target.mergedAccountIds = [...new Set([...(target.mergedAccountIds ?? []), member.id, ...(member.mergedAccountIds ?? [])])];
+        target.notifications.sessions = [...new Map([...target.notifications.sessions, ...member.notifications.sessions].map(session => [`${session.sourceId ?? ''}:${session.target}`, session])).values()];
+        target.email ??= member.email; target.orgName ??= member.orgName; target.plan ??= member.plan;
+        if (!target.quota.windows.length) target.quota = member.quota;
+        member.sources = []; member.agentProfiles = []; member.mergedInto = target.id; member.removedAt = now;
+      }
+      if (request.alias) target.alias = request.alias.trim();
+      if (request.quotaProviderId !== undefined) target.quotaProviderId = request.quotaProviderId;
+      if (request.quotaProviderId === null) target.quota = { state: 'unavailable', windows: [] };
+      const defaults = new Set<string>();
+      for (const account of accounts.filter(account => !account.removedAt)) for (const profile of account.agentProfiles) {
+        if (!profile.default) continue;
+        if (defaults.has(profile.agent)) profile.default = false;
+        else defaults.add(profile.agent);
+      }
+      target.observedAt = now;
+      return target;
     }
     if (['accounts/add', 'accounts/reauth'].includes(route) && method === 'POST') {
       const kind = (body.kind ?? body.agent) as AccountLogin['kind'];

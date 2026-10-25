@@ -373,10 +373,16 @@ impl AgentHost {
         control: &Arc<control::Control>,
         account: &str,
     ) -> Result<()> {
+        let owner = crate::accounts::resolve(account)?;
+        let mut account_ids = owner["mergedAccountIds"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        account_ids.push(owner["id"].clone());
         let processes: Vec<_> = self.processes.lock().await.values().cloned().collect();
         for process in processes {
             let state = process.state.lock().await.clone();
-            if state["agentAccountId"] == account
+            if account_ids.contains(&state["agentAccountId"])
                 && matches!(
                     string(&state, "status"),
                     "running" | "starting" | "waiting-permission"
@@ -403,7 +409,7 @@ impl AgentHost {
         for task in active {
             if records
                 .iter()
-                .any(|r| r["agentAccountId"] == account && r["threadId"] == task)
+                .any(|r| account_ids.contains(&r["agentAccountId"]) && r["threadId"] == task)
             {
                 control
                     .mutate("interrupt", json!({"threadId":task,"approval":"bypass"}))
