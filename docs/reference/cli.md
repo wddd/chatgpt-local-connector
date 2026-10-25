@@ -475,6 +475,8 @@ Task detail actions use `cli control` with the same operation arguments as contr
 
 `cli app snapshot --stdin` accepts `{ "modelOnly": true }` to return the live model inline without writing files or capturing a screenshot. Its `taskDetail` contains the selected task's current follow and queue state. An optional `taskPanel` object accepts the same navigation arguments as `task_panel_control`.
 
+Send `{ "agent": "codex", "id": "<threadId>" }` to `cli control task_mark_read --stdin` to dismiss a completed homepage bubble without opening details. Use `cli control task_bubble --stdin` with the same arguments to read `completed`, `unread`, `readAt`, and `retained`. The same renderer-scoped read state appears in snapshot `model.taskBubbles`, including dismissed completions. It resets on a new turn, Core switch, or renderer reload. This does not acknowledge notification inbox events.
+
 ## Explicit instance targeting
 
 Run `npm run dev:isolated` from a source checkout to start a supported side-by-side development Desktop and Core. The launcher allocates a fresh private ARC state directory and uses the existing development bundle identity (`com.whzxc.agent-remote-control.dev`). Core and Desktop bind independent ephemeral loopback ports. The installed application and its state keep running. Signing and the development build remain owned by the normal development supervisor.

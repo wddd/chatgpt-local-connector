@@ -91,6 +91,8 @@ impl Execution {
                 | "task_review_undo"
                 | "task_panel"
                 | "task_panel_control"
+                | "task_bubble"
+                | "task_mark_read"
                 | "task_open"
                 | "task_resource"
         ) {
@@ -102,6 +104,23 @@ impl Execution {
                 .unwrap();
             crate::egress::validate_op(spec, &args)?;
             return match name {
+                "task_bubble" | "task_mark_read" => {
+                    let mut bubble_args = args.clone();
+                    if name == "task_mark_read" {
+                        bubble_args["action"] = json!("mark-read");
+                    }
+                    let result = crate::transport::forward_request(
+                        "app/snapshot",
+                        "POST",
+                        json!({"modelOnly":true,"taskBubble":bubble_args}),
+                    )
+                    .await?;
+                    result["model"]["taskBubbles"]
+                        .as_array()
+                        .and_then(|rows| rows.iter().find(|row| row["agent"] == args["agent"] && row["id"] == args["id"]))
+                        .cloned()
+                        .ok_or_else(|| "TASK_BUBBLE_NOT_FOUND: read app.snapshot model.taskBubbles for current renderer task IDs".into())
+                }
                 "task_timeline" => {
                     let mut result = self
                         .agents

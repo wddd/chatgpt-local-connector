@@ -2679,7 +2679,7 @@
       "name": "app.snapshot",
       "method": "POST",
       "route": "app/snapshot",
-      "description": "Read the live UI model. modelOnly:true returns model inline without files or screenshots. Otherwise export view-model.json and macOS snapshot.png; other desktops report png.code=NOT_SUPPORTED. taskPanel reads or navigates one task detail. out defaults to state/acceptance/<unique id>; width/height are logical pixels; panel.id is required for agent/source.",
+      "description": "Read the live UI model. modelOnly:true returns model inline without files or screenshots. Otherwise export view-model.json and macOS snapshot.png; other desktops report png.code=NOT_SUPPORTED. taskPanel reads or navigates one task detail. taskBubble reads or marks one completed homepage bubble read; model.taskBubbles exposes renderer-scoped read state. out defaults to state/acceptance/<unique id>; width/height are logical pixels; panel.id is required for agent/source.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2689,6 +2689,29 @@
               "modelOnly": {
                 "type": "boolean",
                 "default": false
+              },
+              "taskBubble": {
+                "type": "object",
+                "properties": {
+                  "agent": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "enum": [
+                      "mark-read"
+                    ]
+                  }
+                },
+                "required": [
+                  "agent",
+                  "id"
+                ],
+                "additionalProperties": false
               },
               "taskPanel": {
                 "type": "object",

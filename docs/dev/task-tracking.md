@@ -121,6 +121,8 @@ Running tentacles widen from 2px to 4px before the root flare and use contrastin
 
 When a full backend snapshot removes a session, retain final summary/actual end time as completed. Unread bubbles keep a dot indefinitely and count toward slots/aggregate. This is current-page ARC read state, not native-app/Dock state, and does not persist across reload. Viewing details marks read, including completion while already open. Details retain task data while panel-open behavior hides bubbles. Leaving details waits about 2s before spring fade, port retraction, and slot closure. Elapsed duration remains fixed at actual end. A new turn clears prior completion/unread state. Keep a selected slot visible if it would otherwise overflow.
 
+The renderer shares completion read state between the topology and agent operations. `task_mark_read({agent,id})` dismisses only a completed bubble without selecting details. `task_bubble({agent,id})` and snapshot `model.taskBubbles` expose completed/unread/readAt/retained, including read acknowledgements after dismissal. Active and unknown IDs are rejected for writes. Read acknowledgements reset on a new turn, Core switch, or renderer reload. They do not acknowledge the notification inbox or alter task execution.
+
 External transcript tentacles use text-tertiary `3 5` dashes. Ongoing ARC and external sessions show contrasting 3px flow dots on their tentacles. reduced-motion stops the flow. All bubbles open details. Native navigation is in the header. Narrow windows clip bubbles/tentacles with a 32px right fade without shrinking, hiding the whole group, or horizontal scrolling. Visible parts remain clickable. New tasks grow/fade from their outer-arc port.
 
 ### Agent view and task details

@@ -75,7 +75,7 @@ pub async fn capture(app: &tauri::AppHandle, body: &Value) -> Result<Value, Stri
                 &handle,
                 Some((
                     "acceptance:snapshot".into(),
-                    json!({"id":id,"panel":request["panel"],"taskPanel":request["taskPanel"]}),
+                    json!({"id":id,"panel":request["panel"],"taskPanel":request["taskPanel"],"taskBubble":request["taskBubble"]}),
                 )),
             )
         })();
