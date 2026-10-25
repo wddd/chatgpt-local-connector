@@ -173,7 +173,94 @@ test("agents and UI share completion read state without opening details or mutat
     await snapshot([pending], 4);
     assert.equal(controlActivityBubble(request).completed, true); assert.equal(controlActivityBubble(request).unread, false);
     assert.equal(controlActivityBubble(request).retained, true);
+    const acknowledgements = () => viewModel().taskBubbles.filter((row: any) => row.completed && row.readAt !== null)
+      .map(({ agent, id, readAt }: any) => ({ agent, id, readAt })).sort((a: any, b: any) => a.id.localeCompare(b.id));
+    const acknowledged = acknowledgements();
     await act(() => resetActivityCore("second"));
-    assert.deepEqual(viewModel().taskBubbles, []);
+    assert.deepEqual(acknowledgements(), acknowledged);
+    assert.equal(viewModel().taskBubbles.every((row: any) => !row.unread && !row.retained), true);
   } finally { await act(() => root.unmount()); await server.close(); await window.happyDOM.close(); }
+});
+
+test("read acknowledgements survive a fresh renderer and task replay while a new turn becomes unread", async () => {
+  // Regression: accepted completion reads disappeared on reload and app window recreation.
+  async function renderer(storage: [string, string][] = []) {
+    const window = new Window({ url: "http://localhost" });
+    for (const [key, value] of storage) window.localStorage.setItem(key, value);
+    const media = { matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} };
+    window.matchMedia = () => media as unknown as MediaQueryList;
+    Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
+      Node: window.Node, localStorage: window.localStorage, getComputedStyle: window.getComputedStyle.bind(window),
+      matchMedia: window.matchMedia, innerWidth: 1280, innerHeight: 800, devicePixelRatio: 1,
+      requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0),
+      cancelAnimationFrame: clearTimeout, IS_REACT_ACT_ENVIRONMENT: true });
+    const server = await createServer({ configFile: false, server: { middlewareMode: true, watch: null, ws: false } });
+    const { createRoot } = await import("react-dom/client");
+    const mount = document.createElement("main"); document.body.append(mount); const root = createRoot(mount);
+    const { useActivityTracking, acceptActivity } = await server.ssrLoadModule("/ui/state/activity.ts");
+    const { controlActivityBubble } = await server.ssrLoadModule("/ui/state/activityBubbles.ts");
+    const { viewModel } = await server.ssrLoadModule("/ui/acceptance.ts");
+    const { ActivityBubble } = await server.ssrLoadModule("/ui/components/ActivityBubbles.tsx");
+    const { t } = await server.ssrLoadModule("/ui/i18n.ts");
+    function Harness() {
+      const { tracked, markRead } = useActivityTracking();
+      return h("div", null, Object.entries(tracked).flatMap(([agent, sessions]: any) => sessions.map((session: any) =>
+        h("section", { key: `${agent}/${session.id}`, "aria-label": `${agent}/${session.id}` },
+          h(ActivityBubble, { agent, session, now: 1, onRead: () => markRead(agent, session.id) })))));
+    }
+    await act(() => root.render(h(Harness)));
+    let time = 0;
+    return { window, page: within(mount), t, viewModel, controlActivityBubble,
+      hideTopology: async () => act(() => root.render(h("div"))),
+      snapshot: async (codex: any[], claude: any[] = []) => act(() => acceptActivity({ observedAt: new Date(++time).toISOString(),
+        agents: { codex: { sessions: codex }, claude: { sessions: claude } }, activeAgents: ["codex", "claude"] })),
+      close: async () => { await act(() => root.unmount()); await server.close(); await window.happyDOM.close(); } };
+  }
+  const uiTask = { id: "same-task", title: "Stored task", source: "arc-task", phase: "idle", phaseSince: null, headline: "", turnId: "first" };
+  const agentTask = { ...uiTask, id: "agent-task", turnId: undefined, turnStartedAt: new Date(1).toISOString() };
+  let runtime = await renderer();
+  try {
+    await runtime.snapshot([uiTask, agentTask], [uiTask]); await runtime.snapshot([]);
+    await act(() => fireEvent.click(within(runtime.page.getByRole("region", { name: `codex/${uiTask.id}` }))
+      .getByRole("button", { name: runtime.t("activity.markRead"), exact: true })));
+    await act(() => runtime.controlActivityBubble({ agent: "codex", id: agentTask.id, action: "mark-read" }));
+    const before = runtime.viewModel().taskBubbles.filter((row: any) => row.agent === "codex");
+    assert.equal(before.every((row: any) => !row.unread && !row.retained && typeof row.readAt === "number"), true);
+    const storage: [string, string][] = [];
+    for (let i = 0; i < runtime.window.localStorage.length; i++) {
+      const key = runtime.window.localStorage.key(i)!; storage.push([key, runtime.window.localStorage.getItem(key)!]);
+    }
+    await runtime.close(); runtime = await renderer(storage);
+    assert.deepEqual(runtime.viewModel().taskBubbles, before);
+    // Re-observing the same turn must not erase a durable read acknowledgement.
+    await runtime.snapshot([uiTask, agentTask], [uiTask]); await runtime.snapshot([]);
+    for (const expected of before) {
+      const request = { agent: expected.agent, id: expected.id };
+      assert.deepEqual(runtime.controlActivityBubble(request), expected);
+      assert.deepEqual(runtime.controlActivityBubble({ ...request, action: "mark-read" }), expected);
+      assert.equal(runtime.page.queryByRole("region", { name: `${expected.agent}/${expected.id}` }), null);
+    }
+    assert.equal(runtime.controlActivityBubble({ agent: "claude", id: uiTask.id }).unread, true);
+    // Agent reads and writes remain current while another page owns the window.
+    await runtime.hideTopology();
+    const next = { ...uiTask, turnId: "second" };
+    await runtime.snapshot([next]);
+    assert.throws(() => runtime.controlActivityBubble({ agent: "codex", id: next.id, action: "mark-read" }), /TASK_BUBBLE_ACTIVE/);
+    await runtime.snapshot([]);
+    assert.equal(runtime.controlActivityBubble({ agent: "codex", id: next.id }).unread, true);
+    assert.equal(runtime.controlActivityBubble({ agent: "codex", id: next.id }).readAt, null);
+    const webStorage = globalThis.localStorage;
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
+      getItem: webStorage.getItem.bind(webStorage), setItem: () => { throw new Error("storage unavailable"); },
+    } });
+    try {
+      assert.throws(() => runtime.controlActivityBubble({ agent: "codex", id: next.id, action: "mark-read" }), /TASK_READ_PERSIST_FAILED/);
+      assert.equal(runtime.controlActivityBubble({ agent: "codex", id: next.id }).unread, true);
+    } finally { Object.defineProperty(globalThis, "localStorage", { configurable: true, value: webStorage }); }
+    assert.deepEqual(runtime.viewModel().taskBubbles.find((row: any) => row.agent === "codex" && row.id === agentTask.id), before.find((row: any) => row.id === agentTask.id));
+    // Sources without a native turn ID still distinguish turns by start time.
+    await runtime.snapshot([{ ...agentTask, turnStartedAt: new Date(2).toISOString() }]); await runtime.snapshot([]);
+    assert.equal(runtime.controlActivityBubble({ agent: "codex", id: agentTask.id }).unread, true);
+    assert.equal(runtime.controlActivityBubble({ agent: "codex", id: agentTask.id }).readAt, null);
+  } finally { await runtime.close(); }
 });

@@ -426,3 +426,20 @@ test("final answers prefer native markers and only infer trailing text after com
   const unmarked = { ...final, phase: undefined };
   assert.equal(turnEntries([text, tool, unmarked], false).final, unmarked);
 });
+
+test("durable activity reads retain only recent unique agent-task acknowledgements within the capacity", async () => {
+  // Property: read retention keeps the newest unique agent-task records within both age and count limits.
+  const { pruneActivityReads, activityReadRetention } = await import("../ui/state/activityModel.ts");
+  const now = Date.now();
+  const invalid = [null, {}, { agent: "codex", id: "expired", readAt: now - activityReadRetention.maxAge }, { agent: "codex", id: "future", readAt: now + 1 }];
+  assert.deepEqual(pruneActivityReads(invalid, now), []);
+  const duplicate = { agent: "codex", id: "same", readAt: now };
+  const otherAgent = { agent: "claude", id: "same", readAt: now - 1 };
+  const rows = pruneActivityReads([duplicate, { ...duplicate, readAt: now - 2 }, otherAgent, ...invalid], now);
+  assert.deepEqual(rows, [duplicate, otherAgent]);
+  const crowded = Array.from({ length: activityReadRetention.maxEntries + 20 }, (_, index) => ({ agent: "codex", id: String(index), readAt: now - index }));
+  const bounded = pruneActivityReads(crowded.reverse(), now);
+  assert.equal(bounded.length, activityReadRetention.maxEntries);
+  assert.equal(bounded.every(row => now - row.readAt < activityReadRetention.maxAge), true);
+  assert.deepEqual(bounded.map(row => row.readAt), Array.from({ length: activityReadRetention.maxEntries }, (_, index) => now - index));
+});

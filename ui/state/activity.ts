@@ -1,4 +1,4 @@
-import { trackedActivity, resetActivityBubbles, forgetActivityRead, rememberActivityRead, controlActivityBubble } from "./activityBubbles";
+import { trackedActivity, resetActivityBubbles, observeActivityTurn, restoreActivityReads, rememberActivityRead, controlActivityBubble } from "./activityBubbles";
 import { agentPanel } from "./overviewPanels";
 import { useEffect, useRef } from "react";
 import { createStore } from "./store";
@@ -21,6 +21,14 @@ export const activityApprovals = createStore<Record<string, ApprovalSubmission>>
 export function acceptActivity(snapshot: AgentActivitySnapshot) {
   const next = mergeActivity(agentActivity.get().snapshot, snapshot);
   if (next !== snapshot) return;
+  const selected = agentPanel.get();
+  trackedActivity.set(old => Object.fromEntries([...new Set([...Object.keys(old), ...Object.keys(snapshot.agents)])]
+    .map(agent => {
+      const previous = old[agent] ?? [], live = snapshot.agents[agent]?.sessions ?? [];
+      for (const session of live) observeActivityTurn(agent, session, previous.find(row => row.id === session.id));
+      const now = Date.now(), pinnedId = selected?.agent === agent ? selected.session?.id : undefined;
+      return [agent, restoreActivityReads(agent, trackActivity(previous, live, now, pinnedId), now, pinnedId)];
+    })));
   agentActivity.set({ snapshot: next, error: "" });
   const keys = new Set(Object.entries(next.agents).flatMap(([agent, value]) => value.sessions
     .filter(session => session.interaction).map(session => interactionKey(agent, session))));
@@ -100,27 +108,10 @@ export async function openActivitySession(agent: string, session: AgentActivityS
   if (session.open) await openAgentTask(agent, session.open.taskId);
 }
 
-// Renderer-scoped lifetime: UI and agent operations share completion read state.
+// Renderer-scoped geometry with durable completion read acknowledgements.
 export function useActivityTracking() {
-  const { snapshot } = agentActivity.use();
   const selected = agentPanel.use(), previousSelection = useRef(selected);
   const tracked = trackedActivity.use(), setTracked = trackedActivity.set;
-  const trackingCore = useRef(activityCore);
-  useEffect(() => {
-    if (!snapshot) return;
-    const changedCore = trackingCore.current !== activityCore;
-    trackingCore.current = activityCore;
-    for (const [agent, value] of Object.entries(snapshot.agents)) for (const session of value.sessions) forgetActivityRead(agent, session.id);
-    setTracked(old => {
-      if (changedCore) old = {};
-      return Object.fromEntries([...new Set([...Object.keys(old), ...Object.keys(snapshot.agents)])]
-        .map(agent => {
-          const sessions = trackActivity(old[agent] ?? [], snapshot.agents[agent]?.sessions ?? [], Date.now(), selected?.agent === agent ? selected.session?.id : undefined);
-          for (const session of sessions) if (session.readAt !== undefined) rememberActivityRead(agent, session.id, session.readAt);
-          return [agent, sessions];
-        }));
-    });
-  }, [snapshot]);
   useEffect(() => {
     const previous = previousSelection.current;
     previousSelection.current = selected;
@@ -130,7 +121,7 @@ export function useActivityTracking() {
       if (session.endedAt === undefined || !((selected?.agent === agent && selected.session?.id === session.id)
         || (previous?.agent === agent && previous.session?.id === session.id))) return session;
       const readAt = Date.now();
-      rememberActivityRead(agent, session.id, readAt);
+      rememberActivityRead(agent, session, readAt);
       return { ...session, readAt };
     })])));
   }, [selected]);

@@ -71,7 +71,7 @@ export async function captureRequest(request: { id: string; panel?: PanelRequest
     await Promise.all([refreshConnector(), refreshAgents(), refreshTasks(), api<AgentActivitySnapshot>('agents/activity').then(acceptActivity)]);
     if (request.panel) { navigate(); openSnapshotPanel(request.panel); }
     if (request.taskPanel) { if (request.taskPanel.action === "open") navigate(); await controlTaskPanel(request.taskPanel); }
-    if (request.taskBubble) { await settledViewModel(); controlActivityBubble(request.taskBubble); }
+    if (request.taskBubble) controlActivityBubble(request.taskBubble);
     const model = await settledViewModel();
     await invoke('snapshot_ready', { id: request.id, model, error: null });
   } catch (error) { await invoke('snapshot_ready', { id: request.id, model: null, error: String(error) }); }

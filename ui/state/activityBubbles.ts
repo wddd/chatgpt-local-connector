@@ -1,21 +1,66 @@
 import { createStore } from "./store";
-import type { TrackedActivity } from "./activityModel";
+import { activityLayout, activityReadMatches, pruneActivityReads, type ActivityRead, type TrackedActivity } from "./activityModel";
+import type { AgentActivitySession } from "../types";
 
-// Renderer-scoped state shared by topology controls and agent operations.
+// Geometry remains renderer-scoped. Read acknowledgements use durable WebView
+// storage shared by UI and agent operations, including after window recreation.
 export const trackedActivity = createStore<Record<string, TrackedActivity[]>>({});
-const reads = new Map<string, { agent: string; id: string; readAt: number }>();
+const storageKey = "arc.activity-reads";
 const key = (agent: string, id: string) => JSON.stringify([agent, id]);
-export function resetActivityBubbles() { reads.clear(); trackedActivity.set({}); }
-export function forgetActivityRead(agent: string, id: string) { reads.delete(key(agent, id)); }
-export function rememberActivityRead(agent: string, id: string, readAt: number) { reads.set(key(agent, id), { agent, id, readAt }); }
+function saveReads(rows: ActivityRead[], now = Date.now()) {
+  const value = JSON.stringify(pruneActivityReads(rows, now));
+  try { if (localStorage.getItem(storageKey) !== value) localStorage.setItem(storageKey, value); }
+  catch { throw new Error("TASK_READ_PERSIST_FAILED: read state was not saved; free WebView storage and retry task_mark_read"); }
+}
+function loadReads(now = Date.now()): ActivityRead[] {
+  const raw = localStorage.getItem(storageKey);
+  let value: unknown;
+  try { value = raw ? JSON.parse(raw) : []; } catch { value = []; }
+  const rows = pruneActivityReads(value, now);
+  if (raw !== null) saveReads(rows, now);
+  return rows;
+}
+export function resetActivityBubbles() { trackedActivity.set({}); }
+export function observeActivityTurn(agent: string, session: AgentActivitySession, previous?: TrackedActivity) {
+  const rows = loadReads(), read = rows.find(row => row.agent === agent && row.id === session.id);
+  if (!read) return;
+  const comparable = !!(read.turnId && session.turnId || read.turnStartedAt && session.turnStartedAt);
+  if (!activityReadMatches(read, session) || previous?.endedAt !== undefined && !comparable) {
+    saveReads(rows.filter(row => row !== read));
+  }
+}
+export function rememberActivityRead(agent: string, session: AgentActivitySession, readAt: number) {
+  const rows = loadReads();
+  saveReads([{ agent, id: session.id, readAt,
+    ...(session.turnId ? { turnId: session.turnId } : {}), ...(session.turnStartedAt ? { turnStartedAt: session.turnStartedAt } : {}) },
+    ...rows.filter(row => row.agent !== agent || row.id !== session.id)]);
+}
+export function restoreActivityReads(agent: string, sessions: TrackedActivity[], now: number, pinnedId?: string) {
+  const reads = new Map(loadReads(now).map(row => [key(row.agent, row.id), row]));
+  return sessions.flatMap(session => {
+    if (session.endedAt === undefined) return [session];
+    const read = reads.get(key(agent, session.id));
+    const restored = read && activityReadMatches(read, session);
+    let readAt = restored ? read.readAt : session.readAt;
+    if (!read && readAt !== undefined && session.id === pinnedId) readAt = now;
+    if (!read && readAt !== undefined) rememberActivityRead(agent, session, readAt);
+    // A completion rediscovered after reload or transcript resampling must not
+    // reappear. An already displayed detail keeps its existing dismissal delay.
+    if (restored && session.readAt === undefined && session.id !== pinnedId) return [];
+    if (readAt !== undefined && session.id !== pinnedId && now >= readAt + activityLayout.hold + activityLayout.fade) return [];
+    return [{ ...session, ...(readAt === undefined ? {} : { readAt }) }];
+  });
+}
 export function activityBubbleSnapshot() {
-  const current = Object.entries(trackedActivity.get()).flatMap(([agent, sessions]) => sessions.map(session => ({
-    agent, id: session.id, completed: session.endedAt !== undefined, unread: session.endedAt !== undefined && session.readAt === undefined,
-    readAt: session.readAt ?? null, retained: true,
-  })));
+  const reads = new Map(loadReads().map(row => [key(row.agent, row.id), row]));
+  const current = Object.entries(trackedActivity.get()).flatMap(([agent, sessions]) => sessions.map(session => {
+    const completed = session.endedAt !== undefined, read = reads.get(key(agent, session.id));
+    const readAt = completed && read && activityReadMatches(read, session) ? read.readAt : null;
+    return { agent, id: session.id, completed, unread: completed && readAt === null, readAt, retained: true };
+  }));
   const keys = new Set(current.map(row => key(row.agent, row.id)));
   return [...current, ...[...reads.values()].filter(row => !keys.has(key(row.agent, row.id)))
-    .map(row => ({ ...row, completed: true, unread: false, retained: false }))];
+    .map(row => ({ agent: row.agent, id: row.id, readAt: row.readAt, completed: true, unread: false, retained: false }))];
 }
 export interface ActivityBubbleRequest { agent: string; id: string; action?: "mark-read" }
 export function controlActivityBubble(request: ActivityBubbleRequest) {
@@ -26,7 +71,9 @@ export function controlActivityBubble(request: ActivityBubbleRequest) {
   if (request.action === "mark-read") {
     if (!bubble.completed) throw new Error("TASK_BUBBLE_ACTIVE: only completed bubbles can be marked read; read task_bubble again after completion");
     if (bubble.unread) {
-      rememberActivityRead(request.agent, request.id, Date.now());
+      const session = trackedActivity.get()[request.agent]?.find(row => row.id === request.id)!;
+      // Persist before dismissing or returning success to an agent.
+      rememberActivityRead(request.agent, session, Date.now());
       trackedActivity.set(old => ({ ...old, [request.agent]: (old[request.agent] ?? []).filter(session => session.id !== request.id) }));
     }
   }

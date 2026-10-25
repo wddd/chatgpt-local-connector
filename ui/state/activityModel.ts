@@ -18,6 +18,29 @@ export function effectiveBubbleDensity(density: BubbleDensity, autoCompact: bool
   return autoCompact && count > 4 ? density === "detailed" ? "standard" : "compact" : density;
 }
 export type TrackedActivity = AgentActivitySession & { orderAt: number; endedAt?: number; readAt?: number; conversation?: boolean; status?: string | null };
+export interface ActivityRead {
+  agent: string; id: string; readAt: number; turnId?: string; turnStartedAt?: string;
+}
+export const activityReadRetention = { maxAge: 30 * 24 * 60 * 60 * 1000, maxEntries: 1000 };
+export function pruneActivityReads(value: unknown, now: number): ActivityRead[] {
+  const entries = Array.isArray(value) ? value.filter((row): row is ActivityRead => row && typeof row.agent === "string" && row.agent.length > 0
+    && typeof row.id === "string" && row.id.length > 0 && Number.isFinite(row.readAt)
+    && row.readAt > now - activityReadRetention.maxAge && row.readAt <= now) : [];
+  const unique = new Map<string, ActivityRead>();
+  for (const row of entries.sort((a, b) => b.readAt - a.readAt)) {
+    const key = JSON.stringify([row.agent, row.id]);
+    if (!unique.has(key)) unique.set(key, { agent: row.agent, id: row.id, readAt: row.readAt,
+      ...(typeof row.turnId === "string" && row.turnId ? { turnId: row.turnId } : {}),
+      ...(typeof row.turnStartedAt === "string" && row.turnStartedAt ? { turnStartedAt: row.turnStartedAt } : {}) });
+    if (unique.size === activityReadRetention.maxEntries) break;
+  }
+  return [...unique.values()];
+}
+export function activityReadMatches(read: ActivityRead, session: AgentActivitySession) {
+  if (read.turnId && session.turnId) return read.turnId === session.turnId;
+  if (read.turnStartedAt && session.turnStartedAt) return read.turnStartedAt === session.turnStartedAt;
+  return true;
+}
 export type AgentPanelSelection = { agent: string; session?: TrackedActivity; closing?: boolean } | undefined;
 export type AgentPanelAction = { type: "agent" | "toggle"; agent: string } | { type: "task"; agent: string; session: TrackedActivity } | { type: "back" } | { type: "dismiss" } | { type: "closed" };
 export function agentPanelSelection(current: AgentPanelSelection, action: AgentPanelAction): AgentPanelSelection {
