@@ -70,7 +70,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   }, [newSourceId, flow]);
   const detailOpen = !!selection || !!sourceSelection, panelOpen = detailOpen || !!flow || !!newConnection;
   const [panelExpanded, setPanelExpanded] = useState(false);
-  const panelKey = selection && !selection.closing ? `agent:${selection.agent}`
+  const panelKey = selection && !selection.closing ? `agent:${selection.agent}:${selection.accountId ?? ""}`
     : sourceSelection && !sourceSelection.closing ? `source:${sourceSelection.client?.id ?? sourceSelection.ingress.id}` : undefined;
   appEnvironment.use();
   const [panelLayout, setPanelLayout] = useState<PanelLayout>({ width: PANEL_MIN_WIDTH, expanded: false });
@@ -85,8 +85,6 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const { status, sources: sourceRecords, sourcesLoaded, busy, loading, error } = connector.use();
   const inventory = agentStore.use();
   const accounts = useTopologyAccounts(sourceRecords), mode = topologyMode.use(), accountOrders = topologyAccountOrder.use();
-  const [accountSelection, setAccountSelection] = useState<string>();
-  useEffect(() => { if (selection?.session) setAccountSelection(selection.session.agentAccountId ?? undefined); }, [selection?.session?.id, selection?.session?.agentAccountId]);
   const max = maxVisibleAgents.use();
   const density = bubbleDensity.use(), width = bubbleWidths[bubbleWidth.use()], autoCompact = bubbleAutoCompact.use();
   const [expandedQueue, setExpandedQueue] = useState<string>();
@@ -258,7 +256,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     const effectiveDensity = effectiveBubbleDensity(density, autoCompact, sessions.length);
     return {
       id: agent.agent, platform: agent.agent, platformLabel: name(agent), icon: <AgentQuotaIcon agent={agent.agent} />,
-      selectedAccountId: selection?.session ? selection.session.agentAccountId : accountSelection, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled && !panelOpen,
+      selectedAccountId: selection?.accountId, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled && !panelOpen,
       content: <GraphNode label={`${name(agent)}: ${t(agentState(agent))}`} state={wireState(agentState(agent))}
         onMove={agent.enabled && !panelOpen ? by => moveVisibleAgent(agent.agent, by) : undefined}
         highlighted={selected} onOpen={() => selectAgentPanel({ type: "toggle", agent: agent.agent })}>
@@ -298,8 +296,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   });
   const openAccountNode = (side: -1 | 1, platform: string, sourceId?: string, accountId?: string) => {
     if (side === 1) {
-      setAccountSelection(accountId);
-      selectAgentPanel({ type: accountId !== accountSelection ? 'agent' : 'toggle', agent: platform });
+      selectAgentPanel({ type: 'toggle', agent: platform, accountId });
     } else {
       const source = controlSources.find(s => s.id === sourceId), ingress = source && sources.find(i => i.id === source.ingressId);
       if (source && ingress) selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } });

@@ -16,6 +16,7 @@ import { quotaPace } from "./pace";
 import { quotaPeriod } from "./quotaTiming";
 import type { ProviderSnapshot, QuotaWindow } from "./types";
 import type { ProviderAccount } from "../types";
+import { accountQuotaProvider } from "./accountQuota";
 
 export function agentQuotaWindows(provider: ProviderSnapshot) {
   const windows = provider.windows.filter(window => Number.isFinite(window.usedPercent));
@@ -76,14 +77,7 @@ export function AgentQuotaIcon({ agent, dual = false, quota }: { agent: string; 
       )
     : undefined;
   // Undefined uses the platform subscription; null renders the platform logo alone.
-  const provider: ProviderSnapshot | undefined = quota === undefined ? platformProvider : quota ? {
-      providerId: agent, agentId: agent, agentIds: [agent], name: agent, eligible: true,
-      state: quota.error ? "unavailable" : quota.state, refreshing: false,
-      windows: quota.windows, observedAt: quota.observedAt,
-      displayWindowId: quota.windows.find(window => isWeekly(window.label))?.id ?? quota.windows[0]?.id,
-      accountBlocked: quota.accountBlocked ?? undefined, blockedPoolIds: quota.blockedPoolIds ?? [],
-      hasCredential: false, acceptsKey: false,
-    } : undefined;
+  const provider = quota === undefined ? platformProvider : quota ? accountQuotaProvider(agent, quota) : undefined;
   const windows =
     provider && ["ready", "stale"].includes(provider.state)
       ? provider.windows.filter(

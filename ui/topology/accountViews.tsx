@@ -1,5 +1,3 @@
-import { Link } from 'lucide-react';
-import { Icon } from '../components/ui';
 import GraphNode from '../components/GraphNode';
 import type { NodeView } from './Topology';
 import { accountNodeId, type TopologyAccount } from './accounts';
@@ -51,7 +49,6 @@ export function accountViews(views: NodeView[], side: -1 | 1, accounts: Topology
           {icon}
           <span className={`graph-node-name${suffix ? ' topology-unidentified-label' : ''}`}>
             {suffix ? <><span>{mode === 'flat' ? `${label} · ${account.alias}` : account.alias}</span><span> · {suffix}</span></> : nodeLabel}
-            {sameIdentity && <Icon icon={Link} />}
           </span>
         </GraphNode>,
       } satisfies NodeView;

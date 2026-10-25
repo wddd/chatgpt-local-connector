@@ -18,8 +18,12 @@ export function installTopologyAccounts(status: Status, activity: AgentActivityS
       reachable: identity.provider === 'openai', sessions: [] },
     quota: identity.provider === 'anthropic' && identity.agentProfiles.length ? {
       state: 'ready', observedAt: activity.observedAt,
-      windows: [{ id: 'weekly', poolId: 'main', label: 'weekly', usedPercent: identity.id === 'example-personal' ? 27 : 73,
-        resetsAt: new Date(Date.parse(activity.observedAt) + 3 * 86400000).toISOString() }],
+      windows: [
+        { id: 'five-hour', poolId: 'main', label: 'five_hour', usedPercent: identity.id === 'example-personal' ? 18 : 58,
+          resetsAt: new Date(Date.parse(activity.observedAt) + 2 * 3600000).toISOString() },
+        { id: 'weekly', poolId: 'main', label: 'weekly', usedPercent: identity.id === 'example-personal' ? 27 : 73,
+          resetsAt: new Date(Date.parse(activity.observedAt) + 3 * 86400000).toISOString() },
+      ],
     } : { state: 'unavailable', windows: [] },
     health: { state: identity.sources.length && identity.provider === 'anthropic' ? 'attention' : 'ready' },
   }));
@@ -29,7 +33,10 @@ export function installTopologyAccounts(status: Status, activity: AgentActivityS
     session.agentAccountId = account.id;
     const origin = agent === 'dsh' ? accounts[1] : account;
     session.origin = { accountId: origin.id, sourceId: origin.sources[0], ingressId: base.ingressId };
-    if (session.dispatchSummary) session.dispatchSummary.controlSource = { id: origin.sources[0], kind: origin.provider === 'openai' ? 'chatgpt' : 'claude', label: origin.provider === 'openai' ? 'ChatGPT' : 'Claude' };
+    if (session.dispatchSummary) {
+      session.dispatchSummary.agentAccountId = account.id;
+      session.dispatchSummary.controlSource = { id: origin.sources[0], kind: origin.provider === 'openai' ? 'chatgpt' : 'claude', label: origin.provider === 'openai' ? 'ChatGPT' : 'Claude' };
+    }
   });
   return accounts;
 }

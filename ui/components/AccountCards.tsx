@@ -2,22 +2,25 @@ import { useState } from 'react';
 import { Link } from 'lucide-react';
 import type { ProviderAccount as Account } from '../types';
 import { accountsApi } from '../api';
-import { t, locale } from '../i18n';
+import { t } from '../i18n';
 import { copyText } from '../platform';
 import { sourceDate } from '../sourcePresentation';
 import { boundNotificationSessions, refreshAccounts } from '../state/accounts';
 import { Button, Dialog, Field, Icon, Notice, Status } from './ui';
 import { Sensitive, SensitiveInput, useSensitiveText } from './Sensitive';
-export const accountDate = (value?: string) => value ? new Date(value).toLocaleString(locale.get()) : '—';
+import AgentQuota from './AgentQuota';
+import { accountQuotaProvider } from '../subscriptions/accountQuota';
 export function AccountSharedNotice() {
   return <div className="account-shared-notice" role="note"><Icon icon={Link} /><span>{t('accounts.sharedQuota')}</span></div>;
 }
 export function AccountQuota({ account }: { account: Account }) {
-  return <section className="account-card"><h3>{t('accounts.quota')}</h3>{account.quota.windows.length ? account.quota.windows.map(window => <div className="account-window" key={window.id}>
-    <div className="source-section-heading"><span>{window.label}</span><strong>{t('accounts.used', { percent: Math.round(window.usedPercent) })}</strong></div>
-    <progress max={100} value={Math.max(0, Math.min(100, window.usedPercent))} aria-label={window.label} />
-    {window.resetsAt && <span className="muted small">{t('accounts.resets', { time: accountDate(window.resetsAt) })}</span>}
-  </div>) : <p className="muted">{t('accounts.noQuota')}</p>}</section>;
+  const [refreshing, setRefreshing] = useState(false);
+  const provider = accountQuotaProvider(account.agentProfiles[0]?.agent ?? account.provider, account.quota);
+  async function refresh() {
+    setRefreshing(true);
+    try { await refreshAccounts(); } finally { setRefreshing(false); }
+  }
+  return <AgentQuota provider={provider} refreshing={refreshing} onRefresh={() => void refresh()} />;
 }
 export function AccountNotifications({ account }: { account: Account }) {
   const [manual, setManual] = useState(false), [target, setTarget] = useState(''), [error, setError] = useState(''), [fieldError, setFieldError] = useState('');

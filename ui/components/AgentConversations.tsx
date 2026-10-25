@@ -23,7 +23,7 @@ const ConversationRow = memo(function ConversationRow({ agent, session, live, no
   </button>;
 });
 
-export default function AgentConversations({ agent, active }: { agent: string; active: boolean }) {
+export default function AgentConversations({ agent, accountId, active }: { agent: string; accountId?: string; active: boolean }) {
   const language = locale.use();
   const { snapshot } = agentActivity.use();
   const tracked = trackedActivity.use(), retained = tracked[agent] ?? [];
@@ -34,7 +34,8 @@ export default function AgentConversations({ agent, active }: { agent: string; a
   const [loading, setLoading] = useState(true), [error, setError] = useState("");
   const loaded = useRef<string | undefined>(undefined), marker = useRef<HTMLDivElement>(null);
   const pending = useRef<{ key: string; request: Promise<AgentConversationPage> } | undefined>(undefined);
-  const live = new Map(snapshot?.agents[agent]?.sessions.map(session => [session.id, session]) ?? []);
+  const belongs = (session: Pick<TrackedActivity, "agentAccountId" | "dispatchSummary">) => !accountId || (session.agentAccountId ?? session.dispatchSummary?.agentAccountId) === accountId;
+  const live = new Map(snapshot?.agents[agent]?.sessions.filter(belongs).map(session => [session.id, session]) ?? []);
   const now = useAppNow(active && live.size ? 1000 : 60000);
   useEffect(() => {
     const sessions = [...(tracked[agent] ?? []), ...(snapshot?.agents[agent]?.sessions ?? [])];
@@ -75,6 +76,7 @@ export default function AgentConversations({ agent, active }: { agent: string; a
     id: conversation.id, source: conversation.source, status: conversation.status, title: conversation.title || undefined, phase: "idle", phaseSince: null,
     headline: "", startedAt: conversation.createdAt, project: conversation.project, projectName: conversation.projectName,
     dispatchSummary: conversation.dispatchSummary ?? undefined, turnCount: conversation.turnCount ?? undefined,
+    agentAccountId: conversation.dispatchSummary?.agentAccountId,
     nativeSessionId: conversation.nativeSessionId ?? undefined, open: conversation.open,
     timeline: true, orderAt: Date.parse(conversation.createdAt ?? "") || 0, conversation: true,
   }]));
@@ -97,7 +99,8 @@ export default function AgentConversations({ agent, active }: { agent: string; a
   type Group = { id: string; label: string; entries: TrackedActivity[] };
   const groups = Object.fromEntries(["attention", "running", "unread", "today", "yesterday", "earlier"].map(id => [id, { id, label: t(`agentPanel.${id}`), entries: [] as TrackedActivity[] }])) as Record<string, Group>;
   const dates = new Map<number, Group>();
-  for (const session of [...sessions.values()].sort((a, b) => b.orderAt - a.orderAt || b.id.localeCompare(a.id))) {
+  const visibleSessions = [...sessions.values()].filter(belongs).sort((a, b) => b.orderAt - a.orderAt || b.id.localeCompare(a.id));
+  for (const session of visibleSessions) {
     let group = live.has(session.id) ? groups[session.interaction ? "attention" : "running"]
       : unread.has(session.id) ? groups.unread
       : session.orderAt >= midnight.getTime() ? groups.today
@@ -121,7 +124,7 @@ export default function AgentConversations({ agent, active }: { agent: string; a
     </section>)}
     {loading && <Loading label={t("timeline.loading")} />}
     {error && <Notice action={<Button onClick={() => setRetry(value => value + 1)}>{t("retry")}</Button>}>{error}</Notice>}
-    {!loading && !error && !sessions.size && <p className="timeline-meta">{t("agentPanel.noConversations")}</p>}
+    {!loading && !error && !visibleSessions.length && <p className="timeline-meta">{t("agentPanel.noConversations")}</p>}
     {next && <div ref={marker} className="agent-conversation-more" aria-hidden="true" />}
   </div>;
 }

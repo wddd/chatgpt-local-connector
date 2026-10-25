@@ -79,7 +79,7 @@ The bottom-left capsule becomes horizontal: Tasks, Records, Remote link, Account
 - Where this account works: two cards. Control source lists connections with state dots and last seen, plus Open source panel. Agent shows profile state and kind, a Default for new dispatches switch and Sign in again. An empty side says so and offers to add that role.
 - Same identity notice: dispatching to this Agent draws from the same subscription quota.
 - Notifications card: state pill (Verified, Not bound, MCP Events, n/a), bound sessions with last delivery, Send test, and a secondary Bind manually. Sessions bind themselves through `notify_control`; nobody pastes IDs in the normal path.
-- Quota card: shared windows with bars and reset times.
+- Quota: reuse the Agent panel window cards, including remaining/used display, reset times, pace, update age, and refresh.
 - Bottom: Remove with its consequence (running tasks finish first; history keeps the tombstone).
 
 ### Add account
@@ -94,7 +94,7 @@ One persisted preference, toggled from the Accounts title bar and the source pan
 
 One side panel replaces the source panel layer one plus the Remote link source detail. Remote link keeps the source and connection lists; opening a source opens this panel.
 
-- Header: product icon with a small account-initial badge, `Platform · Alias`, `email · org`, connection enable switch, privacy toggle, close. Chips: state, connection, notification state.
+- Header: product icon with a small account-initial badge, `Platform · Alias`, email only, connection enable switch, privacy toggle, close. Chips: state, connection, notification state.
 - Tabs: Activity (needs you / running / today counts, recent dispatches with pending rows first), Account (identity card, `whoami` line, link to the same-identity Agent with quota, notification binding with Copy bind prompt and Bind manually), Connection (connection card with Change, address copy, authorized / last seen / client reports / tools facts, collapsed Advanced with product correction, Disconnect at the bottom).
 
 ### Topology
@@ -103,10 +103,11 @@ One side panel replaces the source panel layer one plus the Remote link source d
 - Tree: L1 is the platform. A platform with more than one account grows L2 account nodes (about 36px, platform logo, alias label). Agent tasks attach to their account node (L3). A single-account platform has no L2; tasks attach to the platform.
 - Flat: L1 is `Platform · Alias` (platform name alone for single-account platforms); same-platform nodes stay adjacent.
 - Account visuals: both control-source and Agent account nodes reuse their platform logo. For multi-account Agents, the platform node shows only the logo; each account node shows its own quota ring from that account's profile quota. Missing account quota never falls back to another account's reading.
-- Same identity: account labels carry a link icon sized to the label text; hovering one also lights its counterpart on the other side.
+- Same identity: hovering an account also lights its counterpart on the other side. Account labels contain no link icon.
 - Collapse: a hover-only 20px filled circle in the side's theme color (control sources orange, Agents blue-purple) with a white minus or plus, placed between the node and its outer arc, nearer the node. It collapses or expands the node's whole outer arc and children. Hovering the toggle keeps the node's path lit. Keyboard focus counts as hover.
 - Auto rules: L2 expands when a platform has more than one account; L3 expands when an account has tasks; manual choices persist and win. A collapsed node shows a badge with the hidden task count, in warning color when any is pending. Pending work is never hidden without that badge.
 - Path highlight: hovering a task or node lights the union of its paths (source account → source platform → hub → agent platform → agent account → task). Everything else dims (lines about 0.18, nodes 0.32, bubbles 0.35). Lit nodes scale slightly with a soft ring; lit bubbles shift about 6px outward with a stronger shadow. When the target is collapsed, the nearest visible ancestor lights.
+- Account panels: Agent account nodes open an account-scoped panel with the account alias, its quota, and tasks with recorded attribution to that account. Task details and Back retain the selected account. Selected nodes keep an outer arc on both sides, including when they have no tasks.
 - Geometry stays in `ui/topology/solve.ts` and the existing animator; no per-frame React renders.
 
 ## Fixtures

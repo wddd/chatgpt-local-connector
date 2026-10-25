@@ -31,7 +31,7 @@ export default function SourcePanel({ source, widthControl }: { source: ControlS
   const platform = controlSource(source.product)?.displayName ?? agentName({ agent: source.product });
   return <>
     <header className="dialog-header source-account-header"><div className="source-account-brand"><SourceIcon platform={source.product} /><span className="source-account-badge">{(account?.alias ?? t('accounts.identityUnavailable')).slice(0, 1)}</span></div>
-      <div className="source-account-heading"><h2>{platform} · {account?.alias ?? t('accounts.identityUnavailable')}</h2><SensitiveIdentity email={account?.email} orgName={account?.orgName} /></div>
+      <div className="source-account-heading"><h2>{platform} · {account?.alias ?? t('accounts.identityUnavailable')}</h2><Sensitive>{account?.email}</Sensitive></div>
       <div className="actions"><Switch label={t('sourcePanel.enabled')} checked={!!ingress?.enabled} disabled={!ingress || busy} onChange={enabled => {
         if (!ingress) return;
         setBusy(true); setError(''); void api(`ingress/${ingress.id}`, 'PUT', { enabled }).then(refreshConnector).catch(e => setError(String(e))).finally(() => setBusy(false));
@@ -44,9 +44,9 @@ export default function SourcePanel({ source, widthControl }: { source: ControlS
       <SingleChoice label={t('accounts.sourceTabs')} value={tab} onChange={setTab} options={['activity', 'account', 'connection'].map(value => ({ value, label: t(`accounts.tab.${value}`) }))} />
       {tab === 'activity' && <SourceDispatches sourceId={source.id} summary />}
       {tab === 'account' && <>{state.error && <Notice>{state.error}</Notice>}{account ? <>
-        <section className="account-card"><div className="source-section-heading"><h3>{account.alias}</h3>{account.plan && <Tag>{account.plan}</Tag>}</div><SensitiveIdentity email={account.email} orgName={account.orgName} /><div><Sensitive>{account.identityKey}</Sensitive></div><p className="muted">{t(isUnidentified(account) ? 'accounts.unidentified' : 'accounts.whoami')}</p>
+        <section className="account-card"><div className="source-section-heading"><h3>{account.alias}</h3>{account.plan && <Tag>{account.plan}</Tag>}</div><SensitiveIdentity email={account.email} orgName={account.orgName} wrap /><div><Sensitive wrap>{account.identityKey}</Sensitive></div><p className="muted">{t(isUnidentified(account) ? 'accounts.unidentified' : 'accounts.whoami')}</p>
           <Button variant="link" onClick={() => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: 'accounts', accountId: account.id, remoteSourceId: undefined })); }}>{t('accounts.openAccount')}</Button></section>
-        {!!account.agentProfiles.length && <section className="account-card"><AccountSharedNotice />{account.agentProfiles.map(profile => <Button key={profile.profileId} variant="link" onClick={() => { selectAgentPanel({ type: 'agent', agent: profile.agent }); navigation.set(old => ({ ...old, page: 'overview', remoteSourceId: undefined })); }}>{agentName(profile)} · {account.alias}</Button>)}</section>}
+        {!!account.agentProfiles.length && <section className="account-card"><AccountSharedNotice />{account.agentProfiles.map(profile => <Button key={profile.profileId} variant="link" onClick={() => { selectAgentPanel({ type: 'agent', agent: profile.agent, accountId: account.id }); navigation.set(old => ({ ...old, page: 'overview', remoteSourceId: undefined })); }}>{agentName(profile)} · {account.alias}</Button>)}</section>}
         <AccountQuota account={account} /><AccountNotifications account={account} />
       </> : <p role="status" className="muted">{t(state.loading ? 'loading' : 'accounts.identityUnavailable')}</p>}</>}
       {tab === 'connection' && <SourceConnection source={source} onConnection={id => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: 'remote', remoteSourceId: undefined, remoteConnectionId: id })); }} />}

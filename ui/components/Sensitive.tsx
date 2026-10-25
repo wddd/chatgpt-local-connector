@@ -5,13 +5,13 @@ import { usePrivacy } from '../state/privacy';
 import { accounts } from '../state/accounts';
 import { connector } from '../state/connector';
 
-export function Sensitive({ children = '' }: { children?: string | null }) {
+export function Sensitive({ children = '', wrap = false }: { children?: string | null; wrap?: boolean }) {
   const hidden = usePrivacy(), element = useRef<HTMLSpanElement>(null);
   const value = children ?? '', replacement = maskSensitive(value);
   const [metrics, setMetrics] = useState<{ width: number; scale: number }>();
   useLayoutEffect(() => {
     const node = element.current;
-    if (!node || !value) { setMetrics(undefined); return; }
+    if (!node || !value || wrap) { setMetrics(undefined); return; }
     // Measure off-DOM: no invisible raw-text mirror, title or data attribute.
     const context = document.createElement('canvas').getContext('2d');
     if (!context) return;
@@ -27,17 +27,17 @@ export function Sensitive({ children = '' }: { children?: string | null }) {
     observer.observe(node);
     document.fonts?.addEventListener('loadingdone', measure);
     return () => { observer.disconnect(); document.fonts?.removeEventListener('loadingdone', measure); };
-  }, [value, replacement]);
-  return <span ref={element} className="sensitive-value" style={metrics ? { inlineSize: metrics.width } : undefined}
+  }, [value, replacement, wrap]);
+  return <span ref={element} className={`sensitive-value${wrap ? ' sensitive-value-wrap' : ''}`} style={metrics && !wrap ? { inlineSize: metrics.width } : undefined}
     aria-label={hidden && value ? t('accounts.hidden') : undefined}
     onCopy={hidden ? event => { event.preventDefault(); event.clipboardData.setData('text/plain', value); } : undefined}>
     <span className={hidden ? 'pii' : undefined} aria-hidden={hidden || undefined}
-      style={hidden && metrics ? { transform: `scaleX(${metrics.scale})` } : undefined}>{hidden ? replacement : value}</span>
+      style={hidden && metrics && !wrap ? { transform: `scaleX(${metrics.scale})` } : undefined}>{hidden ? replacement : value}</span>
   </span>;
 }
 
-export function SensitiveIdentity({ email, orgName }: { email?: string | null; orgName?: string | null }) {
-  return <span className="sensitive-identity">{email && <Sensitive>{email}</Sensitive>}{email && orgName && ' · '}{orgName && <Sensitive>{orgName}</Sensitive>}</span>;
+export function SensitiveIdentity({ email, orgName, wrap = false }: { email?: string | null; orgName?: string | null; wrap?: boolean }) {
+  return <span className="sensitive-identity">{email && <Sensitive wrap={wrap}>{email}</Sensitive>}{email && orgName && ' · '}{orgName && <Sensitive wrap={wrap}>{orgName}</Sensitive>}</span>;
 }
 
 // Editable sensitive fields are read-only while hidden. Values remain in React state.

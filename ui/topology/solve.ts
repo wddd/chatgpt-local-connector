@@ -211,6 +211,7 @@ export function solve(sc: Scene, p: Params = DEFAULTS, drag: Drag | null = null)
     if (sc.panel?.side !== wing.side) return wing;
     const hidden = new Set<string>();
     for (const n of wing.nodes) {
+      if (n.id === sc.panel.selected && !n.arc) n.arc = { R: n.size * n.scale / 2 + p.arcGap, lo: -14, hi: 14 };
       if (n.parent && (n.parent === sc.panel.selected || hidden.has(n.parent))) { n.opacity = 0; hidden.add(n.id); }
     }
     for (const t of wing.tasks) { t.hidden = true; t.x -= wing.side * 12; }

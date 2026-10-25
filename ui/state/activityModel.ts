@@ -41,14 +41,15 @@ export function activityReadMatches(read: ActivityRead, session: AgentActivitySe
   if (read.turnStartedAt && session.turnStartedAt) return read.turnStartedAt === session.turnStartedAt;
   return true;
 }
-export type AgentPanelSelection = { agent: string; session?: TrackedActivity; closing?: boolean } | undefined;
-export type AgentPanelAction = { type: "agent" | "toggle"; agent: string } | { type: "task"; agent: string; session: TrackedActivity } | { type: "back" } | { type: "dismiss" } | { type: "closed" };
+export type AgentPanelSelection = { agent: string; accountId?: string; session?: TrackedActivity; closing?: boolean } | undefined;
+export type AgentPanelAction = { type: "agent" | "toggle"; agent: string; accountId?: string } | { type: "task"; agent: string; session: TrackedActivity } | { type: "back" } | { type: "dismiss" } | { type: "closed" };
 export function agentPanelSelection(current: AgentPanelSelection, action: AgentPanelAction): AgentPanelSelection {
   if (action.type === "closed") return undefined;
   if (action.type === "dismiss") return current && { ...current, closing: true };
-  if (action.type === "back") return current && { agent: current.agent };
-  if (action.type === "toggle" && current?.agent === action.agent) return { ...current, closing: true };
-  return { agent: action.agent, ...(action.type === "task" ? { session: action.session } : {}) };
+  if (action.type === "back") return current && { agent: current.agent, ...(current.accountId ? { accountId: current.accountId } : {}) };
+  if (action.type === "toggle" && current?.agent === action.agent && current.accountId === action.accountId) return { ...current, closing: true };
+  const accountId = action.type === "task" ? action.session.agentAccountId ?? action.session.dispatchSummary?.agentAccountId : action.accountId;
+  return { agent: action.agent, ...(accountId ? { accountId } : {}), ...(action.type === "task" ? { session: action.session } : {}) };
 }
 // Freeze the start order on first observation; changing phases/headlines never moves a task.
 export function trackActivity(previous: readonly TrackedActivity[], sessions: readonly AgentActivitySession[], now: number, pinnedId?: string): TrackedActivity[] {
