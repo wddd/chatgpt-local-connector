@@ -1,0 +1,369 @@
+//! Allowlisted coordination metadata. Never pass task records or diagnostic text here.
+use crate::*;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum Principal {
+    Source {
+        #[serde(rename = "sourceId")]
+        source_id: String,
+        #[serde(rename = "accountId", skip_serializing_if = "Option::is_none")]
+        account_id: Option<String>,
+    },
+    LocalAuthority,
+    Arc,
+}
+impl Principal {
+    /// Project server-captured origin only. Null is unknown, never local authority.
+    pub fn from_origin(origin: &Value) -> Result<Option<Self>> {
+        if origin.is_null() {
+            return Ok(None);
+        }
+        if origin["authType"] == "local"
+            && matches!(string(origin, "ingressId"), "local-cli" | "local-ui")
+        {
+            return Ok(Some(Self::LocalAuthority));
+        }
+        let source_id = identifier(string(origin, "sourceId"))?;
+        let account_id = origin["accountId"].as_str().map(identifier).transpose()?;
+        Ok(Some(Self::Source {
+            source_id,
+            account_id,
+        }))
+    }
+}
+
+pub(crate) fn identifier(value: &str) -> Result<String> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+        || matches!(value, "." | "..")
+    {
+        return Err("INVALID_ARGUMENT: expected an opaque coordination identifier".into());
+    }
+    Ok(value.into())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct ResourceKey(String);
+impl From<ResourceKey> for String {
+    fn from(key: ResourceKey) -> Self {
+        key.0
+    }
+}
+impl TryFrom<String> for ResourceKey {
+    type Error = String;
+    fn try_from(value: String) -> Result<Self> {
+        Self::parse(&value)
+    }
+}
+impl ResourceKey {
+    pub fn parse(value: &str) -> Result<Self> {
+        let valid = match value.split_once(':') {
+            Some(("app", "installed")) => true,
+            Some(("project", rest)) => rest
+                .strip_suffix("/main")
+                .is_some_and(|p| identifier(p).is_ok()),
+            Some(("lane", rest)) => match rest.split_once('/') {
+                Some((p, name)) => identifier(p).is_ok() && identifier(name).is_ok(),
+                None => identifier(rest).is_ok(),
+            },
+            Some(("host" | "isolated", rest)) => identifier(rest).is_ok(),
+            _ => false,
+        };
+        if !valid {
+            return Err("INVALID_ARGUMENT: use a canonical coordination resource key".into());
+        }
+        Ok(Self(value.into()))
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+    pub fn project(project_id: &str) -> Result<Self> {
+        Self::parse(&format!("project:{}/main", identifier(project_id)?))
+    }
+    /// Producers resolve the parent from the registered project, never a personal path.
+    pub fn lane(project_id: &str, name: &str) -> Result<Self> {
+        Self::parse(&format!(
+            "lane:{}/{}",
+            identifier(project_id)?,
+            identifier(name)?
+        ))
+    }
+    pub(crate) fn shorthand(&self) -> Option<&str> {
+        self.0.strip_prefix("lane:").filter(|v| !v.contains('/'))
+    }
+}
+
+/// A projection of registered project/lane identities, not a second registry.
+#[derive(Default)]
+pub struct Resources {
+    projects: BTreeSet<String>,
+    lanes: BTreeSet<ResourceKey>,
+}
+impl Resources {
+    pub fn project(&mut self, project_id: &str) -> Result<ResourceKey> {
+        let key = ResourceKey::project(project_id)?;
+        self.projects.insert(project_id.into());
+        Ok(key)
+    }
+    pub fn lane(&mut self, project_id: &str, name: &str) -> Result<ResourceKey> {
+        if !self.projects.contains(project_id) {
+            return Err("RESOURCE_UNKNOWN: resolve the registered parent project first".into());
+        }
+        let key = ResourceKey::lane(project_id, name)?;
+        self.lanes.insert(key.clone());
+        Ok(key)
+    }
+    pub fn resolve(&self, value: &str) -> Result<ResourceKey> {
+        let key = resolve_resource(value, self.lanes.iter())?;
+        if let Some(project) = key
+            .as_str()
+            .strip_prefix("project:")
+            .and_then(|p| p.strip_suffix("/main"))
+        {
+            if !self.projects.contains(project) {
+                return Err("RESOURCE_UNKNOWN: project is not registered".into());
+            }
+        }
+        if key.as_str().starts_with("lane:") && !self.lanes.contains(&key) {
+            return Err("RESOURCE_UNKNOWN: lane has no registered parent association".into());
+        }
+        Ok(key)
+    }
+}
+pub(crate) fn resolve_resource<'a>(
+    value: &str,
+    keys: impl Iterator<Item = &'a ResourceKey>,
+) -> Result<ResourceKey> {
+    let key = ResourceKey::parse(value)?;
+    let Some(name) = key.shorthand() else {
+        return Ok(key);
+    };
+    let choices: BTreeSet<_> = keys
+        .filter(|key| key.0.starts_with("lane:") && key.0.ends_with(&format!("/{name}")))
+        .take(17)
+        .cloned()
+        .collect();
+    if choices.len() == 1 {
+        return Ok(choices.into_iter().next().unwrap());
+    }
+    Err(if choices.is_empty() {
+        "RESOURCE_UNKNOWN: use a qualified lane:<project>/<name> key".into()
+    } else {
+        format!(
+            "RESOURCE_AMBIGUOUS: use one of {}",
+            choices
+                .into_iter()
+                .take(16)
+                .map(|key| key.0)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum EventKind {
+    #[serde(rename = "dispatch.accepted")]
+    DispatchAccepted,
+    #[serde(rename = "turn.terminal")]
+    TurnTerminal,
+    #[serde(rename = "turn.successor")]
+    TurnSuccessor,
+    #[serde(rename = "app.replace")]
+    AppReplace,
+    #[serde(rename = "app.restarted")]
+    AppRestarted,
+    #[serde(rename = "git.ref-moved")]
+    GitRefMoved,
+    #[serde(rename = "notification.delivery-failed")]
+    NotificationDeliveryFailed,
+    #[serde(rename = "receipt.stalled")]
+    ReceiptStalled,
+    #[serde(rename = "ax.created")]
+    AxCreated,
+    #[serde(rename = "ax.changed")]
+    AxChanged,
+}
+impl EventKind {
+    fn summary(&self) -> &'static str {
+        match self {
+            Self::DispatchAccepted => "Dispatch accepted",
+            Self::TurnTerminal => "Turn reached a terminal state",
+            Self::TurnSuccessor => "Successor turn observed",
+            Self::AppReplace => "Application replacement state changed",
+            Self::AppRestarted => "ARC instance restarted",
+            Self::GitRefMoved => "Registered Git ref changed",
+            Self::NotificationDeliveryFailed => "Notification delivery attempt failed",
+            Self::ReceiptStalled => "Receipt progress stalled",
+            Self::AxCreated => "AX entry created",
+            Self::AxChanged => "AX entry changed",
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EventStatus {
+    Accepted,
+    Submitted,
+    Running,
+    Completed,
+    Failed,
+    Interrupted,
+    RolledBack,
+    Succeeded,
+    Unknown,
+    Candidate,
+    Open,
+    Triaged,
+    Closed,
+    Merged,
+    Rejected,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TimeBasis {
+    Observed,
+    Upstream,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AttributionConfidence {
+    Correlated,
+    Ambiguous,
+    Unknown,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Attribution {
+    pub confidence: AttributionConfidence,
+    pub thread_ids: Vec<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ThreadRef {
+    pub thread_id: String,
+    pub turn_id: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EvidenceKind {
+    Receipt,
+    Request,
+    Thread,
+    Turn,
+    Dispatch,
+    Replacement,
+    Ax,
+    GitObject,
+    GitRef,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceRef {
+    pub kind: EvidenceKind,
+    pub id: String,
+}
+
+/// Internal-only input. Persist this descriptor with the owner's stable transition ID
+/// BEFORE emit. No prompt/title/error/summary or arbitrary JSON field is accepted.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EventInput {
+    pub transition_id: String,
+    pub kind: EventKind,
+    pub resources: Vec<ResourceKey>,
+    pub origin: Option<Principal>,
+    pub occurred_at: Option<String>,
+    pub status: Option<EventStatus>,
+    #[serde(default)]
+    pub thread_refs: Vec<ThreadRef>,
+    #[serde(default)]
+    pub evidence_refs: Vec<EvidenceRef>,
+    pub attribution: Option<Attribution>,
+}
+impl EventInput {
+    pub fn new(transition_id: String, kind: EventKind, resources: Vec<ResourceKey>) -> Self {
+        Self {
+            transition_id,
+            kind,
+            resources,
+            origin: None,
+            occurred_at: None,
+            status: None,
+            thread_refs: vec![],
+            evidence_refs: vec![],
+            attribution: None,
+        }
+    }
+    pub(crate) fn project(&self, epoch: &str, sequence: u64, time: i64) -> Result<Value> {
+        identifier(&self.transition_id)?;
+        if chrono::DateTime::from_timestamp_millis(time).is_none() {
+            return Err("INVALID_ARGUMENT: observed time is out of range".into());
+        }
+        if self.resources.is_empty()
+            || self.resources.len() > 16
+            || self.thread_refs.len() > 16
+            || self.evidence_refs.len() > 16
+        {
+            return Err("COORDINATION_CAPACITY: metadata arrays exceed their bounds".into());
+        }
+        if self.resources.iter().any(|r| r.shorthand().is_some()) {
+            return Err(
+                "INVALID_ARGUMENT: producers must qualify lanes with their registered parent"
+                    .into(),
+            );
+        }
+        if let Some(Principal::Source {
+            source_id,
+            account_id,
+        }) = &self.origin
+        {
+            identifier(source_id)?;
+            if let Some(account) = account_id {
+                identifier(account)?;
+            }
+        }
+        for thread in &self.thread_refs {
+            identifier(&thread.thread_id)?;
+            if let Some(turn) = &thread.turn_id {
+                identifier(turn)?;
+            }
+        }
+        for evidence in &self.evidence_refs {
+            identifier(&evidence.id)?;
+        }
+        if let Some(attribution) = &self.attribution {
+            if attribution.thread_ids.len() > 16 {
+                return Err("COORDINATION_CAPACITY: attribution exceeds 16 threads".into());
+            }
+            for thread in &attribution.thread_ids {
+                identifier(thread)?;
+            }
+        }
+        if let Some(time) = &self.occurred_at {
+            chrono::DateTime::parse_from_rfc3339(time)
+                .map_err(|_| "INVALID_ARGUMENT: occurredAt must be RFC3339")?;
+        }
+        Ok(
+            json!({"eventId":hash(format!("{epoch}:{}",self.transition_id)),"sequence":sequence,
+            "kind":self.kind,"provenance":"arc-observed","resources":self.resources,
+            "observedAt":timestamp(time),"occurredAt":self.occurred_at,
+            "timeBasis":if self.occurred_at.is_some() {TimeBasis::Upstream} else {TimeBasis::Observed},
+            "origin":self.origin,"threadRefs":self.thread_refs,"summary":self.kind.summary(),
+            "evidenceRefs":self.evidence_refs,"status":self.status,
+            "attribution":self.attribution.as_ref().map(|a|json!({"basis":"turn-baseline","confidence":a.confidence,"threadIds":a.thread_ids}))}),
+        )
+    }
+}
+pub(crate) fn timestamp(time: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(time)
+        .unwrap()
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}

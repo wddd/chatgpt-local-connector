@@ -663,3 +663,47 @@ Use `query update_status` for compact state, source, instance, blocking/resumabl
 Authenticated local administration can submit `source: {kind: local, path}` with `when: settled | now | defer` and optional `continuation: {threadId, prompt}`. Release jobs originate only in Desktop. `arc cli app replace` and the local management routes remain local-submit aliases; `--now` maps to `when: now`. End the replacing turn after the receipt. New ARC dispatches while settling or later receive durable held receipts and start after a terminal outcome. Query their original request IDs with `receipt`. Desktop-owned and external turns remain unaffected.
 
 See [app replacement](app-replacement.md) for acknowledgment, validation, rollback and recovery details.
+
+## Shared coordination events
+
+Use `query({op:"events",args:{since?,resource?,kinds?,limit?}})` for the instance's
+bounded metadata feed. All of the user's authorized sources/accounts see the same
+metadata by default. Existing ingress op allowlists and revocation still apply.
+This increment exposes storage and pull queries only; no observers, source report
+operation, AX store or resource push are attached.
+
+The result contains `events`, `nextCursor`, `hasMore`, `oldestCursor`, `coverage`,
+and `observedAt`. Each event includes `eventId`, `sequence`, `kind`,
+`provenance:arc-observed`, canonical `resources`, `observedAt`, nullable
+`occurredAt`, `timeBasis`, nullable `origin`, `threadRefs`, a fixed one-line
+`summary`, `evidenceRefs`, nullable `status`, and nullable `attribution`.
+Origin is a source principal (`sourceId`, optional attributed `accountId`),
+`local-authority`, `arc`, or null for unknown. References are opaque metadata;
+they grant no access to the underlying task, receipt or private routing data.
+Prompts, task titles, output, raw errors and source/account labels are excluded.
+
+`since` is an exclusive opaque cursor, not a timestamp or duration. Omit it for
+the newest bounded page. Save `nextCursor` for subsequent observations; start at
+`oldestCursor` to page all retained history. Pages default to 50 and cap at 200
+rows or 128 KiB. Continue while `hasMore`; appends after the page's high-water mark
+appear on the next completed pagination cycle. Filtered-out rows still advance
+the cursor. Idle reads do not scan directories or reload historical records.
+
+Resource keys are `project:<registered-id>/main`, `lane:<project-id>/<name>`,
+`app:installed`, `host:<opaque-id>`, and `isolated:<id>`. A unique retained lane
+may be queried as `lane:<name>`; ambiguity returns qualified choices. Filters
+select metadata, not permission. Use the op guide for current event kinds.
+Each source/filter combination has its own cursor. Credential/connection scope
+changes produce `CURSOR_SCOPE_CHANGED`; retention, reset or invalid cursors
+produce `CURSOR_EXPIRED`. Both are failed results with `resetCursor`, explicit
+partial coverage, and a schema-valid `next` query. Never interpret a failure as
+an empty feed. Account merging does not grant task access.
+
+Retention ends at the first of seven days, 20,000 records or 16 MiB, including
+bounded journal maintenance space. Whole oldest segments may expire together.
+Each record and projection fits 2 KiB; segments fit 256 KiB. Partial final records
+are quarantined before truncation, and reserved sequence gaps remain visible in
+coverage. An unreadable store returns a failure, never fabricated empty history.
+Reads allow 60 requests/minute/source with burst 10; internal emission allows
+100 events/second with bounded drop counts. No subscription or acknowledgement
+is required. Inspect coverage and the owning task/receipt before acting.

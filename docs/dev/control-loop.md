@@ -8,7 +8,7 @@ The fixed guide/query/act surface exposes source-specific dispatch, waiting, rev
 
 ## Constraints
 
-Reuse claude_notify.rs and per-turn delivery records as a thin layer. Do not build a generic event bus, pluggable channel registry, retry framework, or workflow engine. Channels are a small fixed enum. Derive state from task records where possible. Persist only bindings, delivery records, inbox read positions, and MCP subscriptions in small state files or existing storage.
+Reuse claude_notify.rs and per-turn delivery records as a thin layer. Do not build a generic event bus, pluggable channel registry, retry framework, or workflow engine. Channels are a small fixed enum. Derive state from task records where possible. Persist bindings, delivery records, inbox read positions, and MCP subscriptions in small state files or existing storage. The separate bounded coordination journal projects metadata through query events; task inboxes remain source-scoped delivery records, not a global bus. The journal does not introduce a new delivery stack.
 
 Retain ingress authorization. Webhooks validate HTTPS, public addresses, signatures, and challenges according to the official protocol. Execution Agents MUST NOT own notification delivery. Never append notification steps to task prompts. Failure, interruption, or approvals may prevent those steps, and they pollute the task.
 

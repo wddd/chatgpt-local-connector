@@ -29,6 +29,7 @@ pub mod context_provider;
 pub mod control;
 mod control_metrics;
 pub mod control_sources;
+pub mod coordination;
 pub mod desktop;
 pub mod diagnostics;
 mod dispatch_policy;

@@ -213,6 +213,18 @@ pub fn get(id: &str) -> Result<Value> {
         .find(|s| s["id"] == id)
         .ok_or("SOURCE_NOT_FOUND".into())
 }
+/// One cached source snapshot per coordination query; the caller validates it before reading.
+/// Never resolve accounts per event.
+pub(crate) fn coordination_source(origin: &Value) -> Result<Value> {
+    let cache = cache()?.read().map_err(|e| e.to_string())?;
+    let source = cache.current["sources"]
+        .as_array()
+        .ok_or("Invalid source store")?
+        .iter()
+        .find(|source| source["id"] == origin["sourceId"])
+        .ok_or("SOURCE_NOT_FOUND")?;
+    Ok(source.clone())
+}
 fn product(id: &str) -> Result<Value> {
     crate::control_sources::presets()
         .iter()

@@ -2055,6 +2055,7 @@ impl Control {
             return self.mutate("native", native_args).await;
         }
         match name {
+            "events" => crate::coordination::query(&args),
             "codex_review" => self.mutate("review", args).await,
             "screen" => crate::screen::call(args).await,
             "projects" => Ok(
