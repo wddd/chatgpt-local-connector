@@ -62,7 +62,7 @@
     },
     {
       "name": "update_status",
-      "description": "Read the current or latest update job. Compact (default) returns id, state, source build, work group counts and task titles, outcome, error and next, plus at most three single-line earlier-job summaries. Full retains detailed work, timing, notes, recovery paths and the last 20 outcomes.",
+      "description": "Read the current or latest update job. Compact (default) returns id, state, source build, work group counts and task titles, outcome, error and next, plus at most three single-line earlier-job summaries. Full retains detailed work, timing, notes, recovery paths and the last 20 outcomes. Work groups are blocking, willResume, unaffected and stale. Interactions from terminal turns are stale and never block settling. Desktop interactions remain unaffected. Interaction owners match codex_pending.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3066,7 +3066,7 @@
     },
     {
       "name": "codex_pending",
-      "description": "Read unanswered questions and approval/input requests owned by ARC or Desktop. threadId forces a current Desktop read.",
+      "description": "Read unanswered questions and approval/input requests owned by ARC or Desktop. threadId forces a current Desktop read. Requests retain native owner and expose stale plus turnStatus when known. Requests from terminal turns never block replacement. Desktop asynchronous questions remain answerable; a late answer steers the active turn or starts a new turn.",
       "inputSchema": {
         "type": "object",
         "properties": {

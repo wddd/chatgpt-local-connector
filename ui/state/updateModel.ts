@@ -6,7 +6,7 @@ export type UpdateSnapshot = {
   state: UpdateState;
   source?: { kind: "release" | "local"; version?: string; build?: string; branch?: string; landedLanes?: string[] } | null;
   instance?: string;
-  work: { blocking: UpdateWork[]; willResume: UpdateWork[]; unaffected: UpdateWork[] };
+  work: { blocking: UpdateWork[]; willResume: UpdateWork[]; unaffected: UpdateWork[]; stale?: UpdateWork[] };
   when: UpdateTiming;
   deferUntil?: string | null;
   restartAt?: string | null;
@@ -29,7 +29,7 @@ export type UpdateSnapshot = {
   droppedInteractions?: number;
   recent?: UpdateSnapshot[];
 };
-export const idleUpdate = (): UpdateSnapshot => ({ state: "idle", when: "settled", work: { blocking: [], willResume: [], unaffected: [] } });
+export const idleUpdate = (): UpdateSnapshot => ({ state: "idle", when: "settled", work: { blocking: [], willResume: [], unaffected: [], stale: [] } });
 export const updateTerminal = (value: UpdateSnapshot) => ["succeeded", "rolled-back", "failed", "cancelled"].includes(value.state);
 export const updateActive = (value: UpdateSnapshot) => !["idle", "available", "checking", "succeeded", "rolled-back", "failed", "cancelled"].includes(value.state);
 export function mergeUpdateSnapshot(previous: UpdateSnapshot | undefined, next: UpdateSnapshot): UpdateSnapshot {

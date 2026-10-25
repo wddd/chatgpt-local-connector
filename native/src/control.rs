@@ -2202,12 +2202,11 @@ impl Control {
                     .events
                     .lock()
                     .await
-                    .pending
-                    .values()
+                    .pending_interactions()
+                    .into_iter()
                     .filter(|r| {
                         args["threadId"].is_null() || r["params"]["threadId"] == args["threadId"]
                     })
-                    .cloned()
                     .map(|mut r| {
                         if r["responseId"].is_null() {
                             r["responseId"] = json!(r["id"].to_string());

@@ -5,7 +5,9 @@ mod backups;
 mod resume;
 mod unified;
 pub use backups::{cleanup_candidate, legacy_backup_name};
-pub use resume::{apply_snapshot, resumable_waiting, resume_request};
+pub use resume::{
+    apply_snapshot, interaction_waiting, interaction_work, resumable_waiting, resume_request,
+};
 pub(crate) use resume::{capture_shutdown, continuation_entry, snapshot};
 pub use unified::{history, project, update_request, update_status};
 

@@ -58,7 +58,7 @@ One snapshot replaces both `UpdateSnapshot` and `Replacement` in `ui/state/updat
 state: idle | checking | available | downloading | settling | countdown | swapping | starting | verifying | resuming | succeeded | rolling-back | rolled-back | failed | cancelled
 source: { kind: release | local, version, build?, landedLanes? }
 instance: production | dev | isolated:<id>
-work: { blocking[], willResume[], unaffected[] }   // item: kind, agent, taskId, title, owner, question?
+work: { blocking[], willResume[], unaffected[], stale[] }   // item: kind, agent, taskId, turnId, title, owner, question?
 when: settled | now | defer, deferUntil?
 notes: release notes (release) or commits since the installed build (local)
 error, backup, statusPath, logPath
@@ -90,6 +90,8 @@ Add ops on the frozen tools. Add no new tools.
 - A lifecycle notice MUST wake only a conversation whose own task had an active turn affected by settling or shutdown. Retained bindings on finished tasks MUST NOT cause wakeups. Desktop-owned and external work MUST remain unaffected.
 - An interrupted and resumed task MUST produce one merged notice after recovery, naming the task and stating that it resumed. Pre-restart and separate recovery notices MUST NOT wake that conversation. The interruption record remains in the inbox.
 - A pending interaction that blocks settling MUST produce one settling notice to its owning conversation, asking for the answer. Other blockers MUST NOT cause settling wakeups.
+- Interaction classification MUST preserve the owner returned by `codex_pending`. Desktop-owned interactions MUST remain unaffected. Interactions whose own turn is completed, failed or cancelled MUST appear in `work.stale` and MUST NOT block settling or automatic continuation of a newer turn in the same thread. Unknown turn status MUST NOT imply completion. These rules apply when automatic resumption is disabled as well.
+- Unanswered Desktop asynchronous questions MUST remain answerable after their originating turn ends. `codex_pending` MUST expose `turnStatus` and `stale` with a late-answer hint. Late answers MAY steer the active turn or start a new turn through Desktop's existing response path. Finished-turn questions MUST NOT reactivate task input work.
 - The conversation identified by the submitted replacement's persisted command submitter or continuation binding MUST receive only the outcome notice, even if it also owns a blocker or interrupted task. A local submission without conversation attribution MUST NOT infer a destination from other bindings.
 - Notices MUST use short text scoped to the receiving conversation. Existing verification, subscription filters, buckets, breakers, mutes and transport retries MUST apply. Frozen tool and notification subscription envelopes MUST remain unchanged.
 - Control-source commands MUST carry source attribution and their uniquely bound notification destination in the spawned command environment (`ARC_COMMAND_SUBMITTER`). Local replacement MUST persist it as `submitter` without requiring a Codex continuation. When no open task binding exists, the update job MUST supply its own binding for the registered target through the existing notification router. This context MUST NOT grant authorization. Local terminal commands MAY omit it. Multiple possible destinations MUST NOT select an arbitrary conversation.

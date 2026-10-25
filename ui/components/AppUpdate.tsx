@@ -35,10 +35,14 @@ function WorkItem({ item, answerable }: { item: UpdateWork; answerable: boolean 
   </li>;
 }
 function WorkGroups({ job }: { job: UpdateSnapshot }) {
-  return <>{(["blocking", "willResume", "unaffected"] as const).map(group => <section key={group} className="update-work-group" aria-label={t(`updates.${group}`)}>
-    <h3>{t(`updates.${group}`)} <span>{job.work[group].length}</span></h3>
-    {!!job.work[group].length && <ul>{job.work[group].map((item, index) => <WorkItem key={`${item.agent}:${item.taskId}:${index}`} item={item} answerable={group === "blocking"} />)}</ul>}
-  </section>)}</>;
+  return <>{(["blocking", "willResume", "unaffected", "stale"] as const).map(group => {
+    const items = job.work[group] ?? [];
+    if (group === "stale" && !items.length) return null;
+    return <section key={group} className="update-work-group" aria-label={t(`updates.${group}`)}>
+      <h3>{t(`updates.${group}`)} <span>{items.length}</span></h3>
+      {!!items.length && <ul>{items.map((item, index) => <WorkItem key={`${item.agent}:${item.taskId}:${index}`} item={item} answerable={group === "blocking"} />)}</ul>}
+    </section>;
+  })}</>;
 }
 function Steps({ job }: { job: UpdateSnapshot }) {
   const step = updateStep(job);

@@ -279,6 +279,12 @@ pub(crate) struct Timeline {
     buffers: HashMap<String, String>,
 }
 impl Timeline {
+    pub fn turn_status(&self, turn: &str) -> Option<&str> {
+        self.turn_statuses
+            .get(turn)
+            .map(String::as_str)
+            .or_else(|| (!turn.is_empty() && self.turn == turn).then_some(self.status.as_str()))
+    }
     pub fn lose_observation(&mut self) {
         self.observation_lost = true;
         self.history_loaded = false;
@@ -674,6 +680,14 @@ impl Timeline {
     pub fn sync_interactions(&mut self, requests: &[Value], at: &str) {
         let mut ids = std::collections::HashSet::new();
         for req in requests {
+            // Late asynchronous answers remain available through codex_pending,
+            // but must not revive a finished turn as active input work.
+            let status = self
+                .turn_status(string(&req["params"], "turnId"))
+                .unwrap_or_else(|| string(req, "turnStatus"));
+            if matches!(status, "completed" | "failed" | "cancelled" | "interrupted") {
+                continue;
+            }
             let id = format!("interaction:{}", req["id"]);
             ids.insert(id.clone());
             let params = &req["params"];
@@ -1420,6 +1434,45 @@ pub(crate) fn observe(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finished_async_questions_do_not_reactivate_input_work_or_move_to_a_new_turn() {
+        // Regression: repeated pending sync revived a terminal turn as waiting for an asynchronous answer.
+        let mut timeline = Timeline::default();
+        let at = "2026-01-01T00:00:00Z";
+        timeline.codex("turn/started", &json!({"turn":{"id":"old"}}), at);
+        let question = json!({"id":"question","method":"request_user_input_async","params":{"threadId":"thread","turnId":"old","question":"Choose"}});
+        timeline.sync_interactions(&[question.clone()], at);
+        assert_eq!(
+            timeline.session(&json!({"id":"thread"}), "codex-thread", None)["phase"],
+            "interaction"
+        );
+        timeline.codex(
+            "turn/completed",
+            &json!({"turn":{"id":"old","status":"completed"}}),
+            at,
+        );
+        timeline.sync_interactions(&[question.clone()], at);
+        assert_ne!(
+            timeline.session(&json!({"id":"thread"}), "codex-thread", None)["phase"],
+            "interaction"
+        );
+        timeline.codex("turn/started", &json!({"turn":{"id":"new"}}), at);
+        timeline.sync_interactions(&[question], at);
+        let response = timeline.response("thread", 0);
+        assert!(response["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row["type"] != "interaction"
+                || (row["status"] != "pending" && row["turnId"] == "old")));
+        let active = json!({"id":"active-question","params":{"threadId":"thread","turnId":"new"}});
+        timeline.sync_interactions(&[active], at);
+        assert_eq!(
+            timeline.session(&json!({"id":"thread"}), "codex-thread", None)["phase"],
+            "interaction"
+        );
+    }
 
     #[test]
     fn silent_command_output_is_empty_without_hiding_literal_null() {

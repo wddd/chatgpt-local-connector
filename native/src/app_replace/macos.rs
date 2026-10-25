@@ -399,6 +399,9 @@ async fn wait_idle(path: &Path, receipt: &mut Value) -> Result<()> {
         if let Ok(snapshot) = request("app/replace/snapshot", "GET").await {
             if receipt["resumeInterrupted"] != false {
                 receipt["waiting"] = resumable_waiting(receipt["waiting"].clone(), &snapshot);
+            } else {
+                receipt["waiting"] =
+                    super::resume::interaction_waiting(receipt["waiting"].clone(), &snapshot);
             }
         }
         receipt["waiting"]["updatePhase"] = update["phase"].clone();

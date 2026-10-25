@@ -11,7 +11,10 @@ pub fn project(receipt: &Value) -> Value {
     let item = |row: &Value| {
         let mut row = row.clone();
         row["kind"] = json!("turn");
-        row["owner"] = row["executionOwner"].clone();
+        row["owner"] = row["question"]
+            .get("owner")
+            .unwrap_or(&row["executionOwner"])
+            .clone();
         row
     };
     let waiting = &receipt["waiting"];
@@ -21,14 +24,28 @@ pub fn project(receipt: &Value) -> Value {
         .flatten()
         .map(item)
         .collect();
+    for interaction in waiting["blockingInteractions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        if !blocking
+            .iter()
+            .any(|row| row["question"] == interaction["question"])
+        {
+            blocking.push(interaction.clone());
+        }
+    }
     for (field, kind) in [
         ("activeWrites", "writes"),
         ("pendingInteractions", "interactions"),
     ] {
         if waiting[field].as_u64().is_some_and(|n| n > 0)
-            && (kind != "interactions" || !blocking.iter().any(|v| v["question"].is_object()))
+            && (kind != "interactions"
+                || (!waiting["blockingInteractions"].is_array()
+                    && !blocking.iter().any(|v| v["question"].is_object())))
         {
-            blocking.push(json!({"kind":kind,"count":waiting[field],"owner":"connector"}));
+            blocking.push(json!({"kind":kind,"count":waiting[field],"owner":if kind == "interactions" {"unknown"} else {"connector"}}));
         }
     }
     if state == "settling"
@@ -39,7 +56,7 @@ pub fn project(receipt: &Value) -> Value {
         blocking.push(json!({"kind":"unknown","owner":"unknown"}));
     }
     let mut value = json!({"state":state,"source":receipt["updateSource"],"instance":receipt["instance"],
-        "work":{"blocking":blocking,"willResume":waiting["willResume"].as_array().into_iter().flatten().map(item).collect::<Vec<_>>(),"unaffected":waiting["unaffected"].as_array().cloned().unwrap_or_default()},
+        "work":{"blocking":blocking,"willResume":waiting["willResume"].as_array().into_iter().flatten().map(item).collect::<Vec<_>>(),"unaffected":waiting["unaffected"].as_array().cloned().unwrap_or_default(),"stale":waiting["staleInteractions"].as_array().cloned().unwrap_or_default()},
         "when":receipt["when"].as_str().unwrap_or(if receipt["immediate"] == true {"now"} else {"settled"}),
         "notes":receipt["notes"],"supported":cfg!(target_os="macos"),
         "next":{"op":"update_status","args":{},"hint":if active(receipt) {"End the replacing turn after its receipt. Held dispatches start after the terminal outcome."} else {"Read the outcome and continuation receipts before retrying."}}});
@@ -127,7 +144,7 @@ pub async fn update_status(full: bool) -> Result<Value> {
                 || acquisition["update"]["available"] == true
                 || acquisition["error"].is_string()
             {
-                value = json!({"state":if phase == "installing" {"swapping"} else if phase == "idle" {if acquisition["update"]["available"] == true {"available"} else {"idle"}} else {phase},"source":{"kind":"release","version":acquisition["update"]["version"]},"notes":acquisition["update"]["notes"],"when":"settled","work":{"blocking":[],"willResume":[],"unaffected":[]},"supported":cfg!(target_os="macos"),"downloaded":acquisition["downloaded"],"total":acquisition["total"],"error":acquisition["error"],"revision":acquisition["revision"],"next":{"op":"update_status","args":{},"hint":"Release updates start from Desktop."}});
+                value = json!({"state":if phase == "installing" {"swapping"} else if phase == "idle" {if acquisition["update"]["available"] == true {"available"} else {"idle"}} else {phase},"source":{"kind":"release","version":acquisition["update"]["version"]},"notes":acquisition["update"]["notes"],"when":"settled","work":{"blocking":[],"willResume":[],"unaffected":[],"stale":[]},"supported":cfg!(target_os="macos"),"downloaded":acquisition["downloaded"],"total":acquisition["total"],"error":acquisition["error"],"revision":acquisition["revision"],"next":{"op":"update_status","args":{},"hint":"Release updates start from Desktop."}});
             }
         }
     }
@@ -195,7 +212,7 @@ pub fn compact(value: &Value) -> Value {
         result["outcome"] = current["state"].clone();
     }
     result["work"] = json!({});
-    for group in ["blocking", "willResume", "unaffected"] {
+    for group in ["blocking", "willResume", "unaffected", "stale"] {
         let rows = current["work"][group].as_array();
         let count: u64 = rows
             .into_iter()

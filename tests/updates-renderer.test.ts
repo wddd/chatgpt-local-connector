@@ -58,6 +58,12 @@ test('update reminder opens on request and answers blocking questions through th
     await act(async () => { fireEvent.click(panel.getByRole('button', { name: t('detail.sendAnswer') })); });
     assert.equal(response?.op, 'codex_respond');
     assert.deepEqual(response?.args.result.answers.target.answers, ['staging']);
+    await act(async () => {
+      acceptUpdateSnapshot({ ...idleUpdate(), id: 'job', state: 'settling', work: { blocking: [], willResume: [], unaffected: [], stale: [{ kind: 'interaction', taskId: 'task', owner: 'desktop', title: 'Earlier question' }] } });
+    });
+    const stale = within(panel.getByRole('region', { name: t('updates.stale') }));
+    assert.ok(stale.getByText('Earlier question'));
+    assert.equal(panel.queryByRole('button', { name: t('detail.sendAnswer') }), null);
     await act(async () => { updates.set((old: any) => ({ ...old, panelOpen: false })); });
     assert.equal(page.queryByRole('dialog'), null);
   } finally {

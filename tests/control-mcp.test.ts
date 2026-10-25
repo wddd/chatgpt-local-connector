@@ -113,6 +113,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         const overload=row.model.includes('overload') && (row.model.includes('exhausted') || row.model.includes('side-effect') || row.turns.length<2);
         row.turns.push({id:randomUUID(),status:overload?'failed':(row.model.includes('queue')||(row.model.includes('question')&&row.turns.length===0))?'inProgress':'completed',error:overload?{codexErrorInfo:'serverOverloaded',message:'Selected model is at capacity'}:null,items:overload?(row.model.includes('side-effect')?[{type:'commandExecution',status:'completed'}]:[]):[{id:randomUUID(),type:'agentMessage',status:'completed',text:'pong'}],input:params.input,model:params.model||row.model});
         saveFixture(saved);
+        if(row.model==='fixture-dispatch-question-terminal')emit({method:'turn/started',params:{threadId:params.threadId,turn:row.turns.at(-1)}});
         if(row.model.includes('queue'))emit({method:'item/completed',params:{threadId:params.threadId,turnId:row.turns.at(-1).id,item:row.turns.at(-1).items[0]}});
         if(row.model.includes('question')&&row.turns.length===1) {row.pendingId='question:'+params.threadId;saveFixture(saved);emit({id:row.pendingId,method:'item/tool/requestUserInput',params:{threadId:params.threadId,turnId:row.turns.at(-1).id,questions:[{id:'q',question:'2+2?',options:[]}]}});}
         if (row.model === 'fixture-dispatch-uncertain') return process.exit(0);
@@ -121,6 +122,11 @@ for await (const line of createInterface({ input: process.stdin })) {
       if (method === 'turn/steer') { row.turns.at(-1).input.push(...params.input);saveFixture(saved);return emit({id,result:{turnId:row.turns.at(-1).id}}); }
       if (method === 'turn/interrupt') { if(row.turns.at(-1)?.id!==params.turnId)return emit({id,error:{code:-32600,message:'stale turn'}}); row.turns.at(-1).status='interrupted';saveFixture(saved);return emit({id,result:{}}); }
       if (method === 'fixture/finish-turn') { row.turns.at(-1).status=params.status||'completed';saveFixture(saved);return emit({id,result:{}}); }
+      if (method === 'fixture/finish-with-pending') {
+        row.turns.at(-1).status='completed';saveFixture(saved);
+        emit({method:'turn/completed',params:{threadId:params.threadId,turn:row.turns.at(-1)}});
+        return emit({id,result:{}});
+      }
       if (method === 'fixture/update-turn') {
         Object.assign(row.turns.find(turn=>turn.id===params.turnId),params.patch);
         saveFixture(saved);return emit({id,result:{}});
@@ -1012,6 +1018,34 @@ server.listen(Number(endpoint.split(':')[1]),'127.0.0.1',()=>fs.writeFileSync(${
     assert.equal((await management(`ingress/${id}`)).state,'stopped');
     await assert.rejects(()=>fetch(ready));
   } finally { await management(`ingress/${id}`,'DELETE'); }
+});
+
+test('replacement snapshots and codex_pending agree on terminal interaction ownership and staleness', async () => {
+  // Regression: a question from a terminal turn blocked replacement and its native owner differed from the settle owner.
+  const created = await dispatchFixture('fixture-dispatch-question-terminal');
+  const readPending = async () => (await call('codex_pending', { threadId: created.threadId })).result;
+  const initial = await eventually(readPending, value => value.requests?.length > 0);
+  const request = initial.requests[0];
+  const before = await management('app/replace/snapshot');
+  const blocker = before.interactionWork.blocking.find((item: any) => item.taskId === created.threadId);
+  assert.equal(blocker.owner, request.owner);
+  assert.equal(blocker.question.responseId, request.responseId);
+  assert.ok(before.turns.some((turn: any) => turn.threadId === created.threadId && turn.state === 'needs-attention'));
+  try {
+    await completed('codex_call', { method: 'fixture/finish-with-pending', params: { threadId: created.threadId }, requestId: randomUUID() });
+    const terminal = await eventually(readPending, value => value.requests?.[0]?.stale === true);
+    assert.equal(terminal.requests[0].turnStatus, 'completed');
+    assert.equal(terminal.requests[0].owner, request.owner);
+    const after = await management('app/replace/snapshot');
+    assert.equal(after.turns.some((turn: any) => turn.threadId === created.threadId), false);
+    assert.equal(after.interactionWork.blocking.some((item: any) => item.taskId === created.threadId), false);
+    const stale = after.interactionWork.stale.find((item: any) => item.taskId === created.threadId);
+    assert.equal(stale.owner, terminal.requests[0].owner);
+    assert.equal(stale.turnId, request.params.turnId);
+    assert.equal(stale.question.responseId, request.responseId);
+  } finally {
+    await completed('codex_respond', { backendSession: initial.backendSession, id: request.responseId, result: { answers: { q: { answers: ['4'] } } }, requestId: randomUUID() });
+  }
 });
 
 test('respond tokens preserve legacy responses, bind thread and reject reuse', async () => {

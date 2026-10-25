@@ -82,7 +82,7 @@ pub(crate) fn pending(state: &Value, session: &str) -> Vec<Value> {
         );
         requests.push(r);
     }
-    for turn in turns {
+    for turn in &turns {
         for item in turn["items"].as_array().into_iter().flatten() {
             if item["type"] != "agentMessage" {
                 continue;
@@ -105,6 +105,12 @@ pub(crate) fn pending(state: &Value, session: &str) -> Vec<Value> {
         }
     }
     for r in &mut requests {
+        if let Some(turn) = turns
+            .iter()
+            .find(|turn| turn["turnId"] == r["params"]["turnId"])
+        {
+            r["turnStatus"] = turn["status"].clone();
+        }
         r["id"] = json!(json!([
             "desktop",
             thread,
@@ -237,5 +243,39 @@ impl Ipc {
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unanswered_async_questions_retain_terminal_evidence_until_the_owner_records_a_reply() {
+        // Regression: Desktop history kept finished-turn async questions pending without exposing their terminal status.
+        let mut state = json!({"id":"thread","turnHistory":{"history":{"entitiesByKey":{
+            "old":{"turnId":"old","status":"completed","items":[{"id":"message","type":"agentMessage","questions":[{"title":"Choose","options":["A","B"]}]}]},
+            "new":{"turnId":"new","status":"inProgress","items":[]}
+        }}}});
+        let requests = pending(&state, "session");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0]["owner"], "desktop");
+        assert_eq!(requests[0]["turnStatus"], "completed");
+        let mut events = Events::default();
+        events
+            .pending
+            .insert("question".into(), requests[0].clone());
+        events.timelines.entry("thread".into()).or_default().codex(
+            "turn/started",
+            &json!({"turn":{"id":"old"}}),
+            "2026-01-01T00:00:00Z",
+        );
+        let surfaced = events.pending_interactions();
+        assert_eq!(surfaced[0]["stale"], true);
+        assert_eq!(surfaced[0]["canRespond"], true);
+        assert_eq!(surfaced[0]["params"]["turnId"], "old");
+        let reply = json!([{"questionItemId":requests[0]["nativeId"],"answer":"A"}]);
+        state["turnHistory"]["history"]["entitiesByKey"]["new"]["items"] = json!([{"type":"userMessage","content":[{"type":"text","text":format!("<send_user_message_question_reply>{reply}</send_user_message_question_reply>")}]}]);
+        assert!(pending(&state, "session").is_empty());
     }
 }

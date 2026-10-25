@@ -275,6 +275,31 @@ pub struct Events {
     desktop_states: std::collections::HashMap<(String, String), String>,
 }
 pub type SharedEvents = Arc<Mutex<Events>>;
+impl Events {
+    /// Preserve native interaction ownership and annotate the originating turn,
+    /// including older turns when the thread already has a newer active turn.
+    pub fn pending_interactions(&self) -> Vec<Value> {
+        self.pending.values().cloned().map(|mut request| {
+            let params = &request["params"];
+            if let Some(status) = self.timelines
+                .get(string(params, "threadId"))
+                .and_then(|timeline| timeline.turn_status(string(params, "turnId")))
+            {
+                // Desktop sync can precede the corresponding timeline event.
+                // Never overwrite native terminal evidence with an older observation.
+                if !matches!(string(&request, "turnStatus"), "completed" | "failed" | "cancelled" | "interrupted") {
+                    request["turnStatus"] = json!(status);
+                }
+            }
+            request["stale"] = json!(matches!(string(&request, "turnStatus"),
+                "completed" | "failed" | "cancelled" | "interrupted"));
+            if request["stale"] == true && request["method"] == "request_user_input_async" {
+                request["next"]["hint"] = json!("The originating turn has ended. Supply result: {answer: <chosen option or free text>} only to deliver a late answer to the active turn or start a new turn.");
+            }
+            request
+        }).collect()
+    }
+}
 pub async fn event(events: &SharedEvents, session: &str, method: &str, params: Value) {
     let mut e = events.lock().await;
     // All short-lived IPC readers share this event stream. Deduplicate here,
