@@ -795,3 +795,78 @@ only after 180 days and an explicit local export of their current revision.
 New entries and changes project compact `ax.created` / `ax.changed` events through
 the coordination journal. `projectionPending:true` means AX is durable but its
 feed projection still needs reconciliation; reads and retries reconcile it.
+
+## Shared bulletin and blockers
+
+Pull `query board` at turn start and before land, application replacement,
+`dev:isolated` or push. Post a notice before multi-step work on shared resources.
+Prefer `board` and cursor-based `events` pulls to proactive wakeups.
+
+```text
+query board({resource?, id?, state?, view:summary|full?, includeSessions?, cursor?, limit?})
+act coordination_session({action:register|close, sessionId?, requestId?})
+act notice_post({sessionId?, intent, resources, expectedDurationSeconds, threadIds?, requestId?})
+act notice_update({id, expectedRevision, intent?, resources?, expectedDurationSeconds?, threadIds?, requestId?})
+act notice_close({id, reason:owner-closed|completed|cancelled?, requestId?})
+act blocker_open({sessionId?, resources, causeCode, summary, evidenceIds?, requestId?})
+act blocker_clear({id, expectedRevision, fixingCommit?, reason?, evidenceIds, suggestedNextStep, requestId?})
+```
+
+All authorized sources can read shared metadata; only owners or built-in local
+authority may mutate a record. Session registration returns an opaque handle;
+close requires that handle. Sessions are optional for notices and blockers and
+are pull-only in this phase. They do not isolate holders of the same credential.
+Intent/summary is one line of at most 240 characters. Never include prompt content,
+credentials, task output or private routing details. Resources are one to 16
+canonical keys. Writes require qualified lane keys. Thread links cap at 16 and
+require the caller's evidenced dispatch origin; opaque references grant no access
+to tasks. Expected duration ranges from one second to seven days and is not expiry.
+
+`board` returns `summary`, compact `notices`/`blockers`, `nextCursor`, `observedAt`,
+`activityCoverage` and `projectionPending`. Each summary line identifies a record,
+state, inactivity age, resources and intent. Use `view:full` for editable metadata,
+thread scope and clearance evidence. Default filters return active notices and
+uncleared blockers. `id` also reads terminal history; `state:all` lists it.
+`includeSessions:true` adds logical session metadata. Pages default to 50 and cap
+at 100 / 128 KiB; cursors expire after 15 minutes or lifecycle/filter/authority
+changes. On `COORDINATION_CURSOR_EXPIRED`, restart the board query without a cursor.
+
+Every notice projection includes `lastActiveAt`, `inactivityAgeSeconds`,
+`observedAt` and `activityCoverage`. Weigh old inactivity less heavily. ARC refreshes
+activity from authenticated owner ops and observed running linked threads without
+a heartbeat op. Another source reading the board does not renew the owner.
+Unavailable observations disclose gaps. Clock uncertainty returns null age.
+Restart keeps timestamps and cannot manufacture fresh running evidence.
+
+All linked scopes completing closes a notice. Interrupted scopes remain open and
+follow evidenced resumed successors; late predecessor events cannot end a running
+successor. Six inactive hours withdraw a notice with `closedReason:owner-inactive`.
+Source revocation or explicit closure ends claims. Closed/withdrawn scopes require
+a new notice. Terminal metadata is retained for seven days.
+
+Post/update returns advisory `conflicts` containing `noticeId`, `resource`, `state`,
+`lastActiveAt` and `inactivityAgeSeconds`. The same warning shape accompanies
+observable shared-resource operations. Warnings include same-source sessions,
+never block execution and grant neither permission nor exclusive ownership.
+Warnings cap at 100 with `conflictCoverage:partial`; pull the paginated board
+for complete metadata. Unknown conflict coverage is not an empty board. Read `board` explicitly before
+shell scripts, external pushes or operations outside registered project coverage.
+
+Blockers remain `active|uncertain|stale|cleared`. Six-hour inactivity makes a blocker
+stale; source revocation makes it uncertain. Neither is clearance. Clear requires
+the current revision and one to 16 evidence IDs. For code fixes, supply
+`fixingCommit:{projectId,oid}` with a full object ID present as a commit in the
+registered local project. ARC does not fetch. Object existence proves neither
+remediation nor deployment. Non-code recovery omits fixingCommit and gives a
+single-line reason. `suggestedNextStep` is `inspect`, `consider-resume` or `ask-user`.
+Phase 2 records clearance with `recovery:not-broadcast`; it never resumes tasks.
+`notice.changed` and `blocker.changed` appear in `events` with typed state and
+opaque record references. No new notification event or guide topic is introduced.
+
+Writes return a durable receipt and chosen `requestId`. Supply a UUID before the
+first attempt when response-loss safety matters. The same caller/ID/arguments
+replay the result; conflicting arguments return `REQUEST_ID_CONFLICT`. Preserve
+the original ID after a storage error. `projectionPending:true` means the owner
+record is durable while feed projection needs reconciliation. Read the op guide
+for bounded capacity and actionable errors. Existing ingress allowlists require
+local adoption of the new ops; upgrades do not broaden explicit grants.

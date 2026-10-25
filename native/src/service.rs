@@ -553,6 +553,9 @@ impl Service {
         if self.closing.load(Ordering::SeqCst) {
             return Err("core shutting down".into());
         }
+        if route == "coordination/conflicts" && method == "POST" {
+            return Ok(crate::coordination::bulletin::tooling_warnings(&body));
+        }
         if route == "coordination/observe" && method == "POST" {
             return crate::coordination::lifecycle::report(&self.control, body).await;
         }

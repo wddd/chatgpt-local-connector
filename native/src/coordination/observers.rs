@@ -101,6 +101,10 @@ pub(super) fn durable(path: &Path, value: &Value) -> Result<()> {
             for directory in ["observations", "checkpoints", "tooling", "ref-watch", ""] {
                 if let Ok(entries) = std::fs::read_dir(coordination.join(directory)) {
                     for entry in entries.take(8193).flatten() {
+                        // The bulletin owns its separate snapshot/temporary budget.
+                        if entry.path() == coordination.join("state.json") {
+                            continue;
+                        }
                         if entry.file_type().is_ok_and(|v| v.is_file())
                             && entry.path().extension().is_some_and(|v| v == "json")
                         {
@@ -247,6 +251,23 @@ pub(super) fn inputs_on(
                 evidence(&mut input, EvidenceKind::Request, request);
                 events.push(input);
             }
+            if row["retryOf"].is_string() {
+                let mut input = base(
+                    row,
+                    &format!("successor:{request}"),
+                    EventKind::TurnSuccessor,
+                )?;
+                input.thread_refs.insert(
+                    0,
+                    ThreadRef {
+                        thread_id: string(row, "threadId").into(),
+                        turn_id: Some(string(row, "retryOf").into()),
+                    },
+                );
+                input.status = Some(EventStatus::Submitted);
+                evidence(&mut input, EvidenceKind::Request, request);
+                events.push(input);
+            }
             let state = string(&row["terminal"], "state");
             if terminal(state) {
                 super::git_watch::terminal(string(row, "threadId"), string(row, "turnId"));
@@ -265,6 +286,26 @@ pub(super) fn inputs_on(
             }
         }
         Owner::Receipt => {
+            if row["operation"] == "resume"
+                && row["state"] == "completed"
+                && row["turnId"].is_string()
+            {
+                let mut input = base(
+                    row,
+                    &format!("successor:{request}"),
+                    EventKind::TurnSuccessor,
+                )?;
+                input.thread_refs.insert(
+                    0,
+                    ThreadRef {
+                        thread_id: string(row, "threadId").into(),
+                        turn_id: Some(string(&row["arguments"], "turnId").into()),
+                    },
+                );
+                input.status = Some(EventStatus::Submitted);
+                evidence(&mut input, EvidenceKind::Receipt, request);
+                events.push(input);
+            }
             if row["state"] == "unconfirmed" {
                 let mut input = base(
                     row,
@@ -537,6 +578,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) -> tokio::task::Join
                 for path in &receipts {
                     pending.insert(path.clone());
                 }
+                super::bulletin::tick(&service.control, &service.agents).await;
                 slow_at = Instant::now();
             }
             let batch = std::mem::take(&mut pending);

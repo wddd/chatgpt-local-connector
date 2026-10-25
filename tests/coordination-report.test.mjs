@@ -37,3 +37,28 @@ test('local lifecycle requires identity and transition readback', async () => {
     assert.equal((await reportLifecycle(body, { stateDirectory: directory, request: confirmed })).coverage, 'readback-confirmed');
   });
 });
+
+test('shared action warnings survive lifecycle readback without blocking completion', async () => {
+  // Contract: local coordination-conflicts and observed lifecycle responses expose advisory claims without changing action success.
+  const { reportConflicts, beginLifecycle } = await import('../tooling/coordination-report.mjs');
+  await fixture(async directory => {
+    const conflicts = [{ noticeId: 'notice-one', resource: 'project:fixture/main', state: 'active', lastActiveAt: '2026-10-01T00:00:00Z', inactivityAgeSeconds: 120 }];
+    let transition;
+    const request = async (url, options) => {
+      if (url.endsWith('healthz')) return Response.json({ instance: 'fixture', pid: 10, owner: 'core' });
+      if (url.endsWith('/conflicts')) return Response.json({ conflicts, conflictCoverage: 'observed' });
+      if (url.endsWith('/observe')) { transition = JSON.parse(options.body); return Response.json({ state: 'observed' }); }
+      return Response.json({ transitionId: transition.transitionId, kind: transition.kind, state: 'observed', conflicts, conflictCoverage: 'observed' });
+    };
+    const options = { stateDirectory: directory, request };
+    assert.deepEqual((await reportConflicts(body, options)).conflicts, conflicts);
+    const finish = await beginLifecycle(path.join(directory, 'outbox'), { ...body, kind: 'lane.landed' }, options);
+    const result = await finish(true);
+    assert.equal(result.coverage, 'readback-confirmed');
+    assert.deepEqual(result.conflicts, conflicts);
+    assert.equal(result.conflictCoverage, 'observed');
+    assert.equal(JSON.stringify(result).includes('fixture-token'), false);
+    const unavailable = await reportConflicts(body, { stateDirectory: directory, request: async () => { throw new Error('offline'); } });
+    assert.equal(unavailable.conflictCoverage, 'unknown');
+  });
+});

@@ -68,9 +68,15 @@ pub(crate) fn read(id: &str) -> Result<Value> {
             .join(format!("{id}.json")),
         super::emit,
     )?;
-    Ok(
-        json!({"transitionId":id,"state":"observed","kind":row["coordinationPending"][0]["kind"],"coverage":"readback-confirmed"}),
-    )
+    let resources: Vec<ResourceKey> =
+        serde_json::from_value(row["coordinationPending"][0]["resources"].clone())
+            .map_err(|_| "COORDINATION_STORAGE: invalid lifecycle resources")?;
+    let mut result = super::bulletin::warnings(&resources);
+    result["transitionId"] = json!(id);
+    result["state"] = json!("observed");
+    result["kind"] = row["coordinationPending"][0]["kind"].clone();
+    result["coverage"] = json!("readback-confirmed");
+    Ok(result)
 }
 pub(crate) async fn report(c: &crate::control::Control, body: Value) -> Result<Value> {
     let report: Report = serde_json::from_value(body.clone())

@@ -71,6 +71,34 @@ fn save_task(task: &Value) -> Result<()> {
 const RECEIPTS: crate::kernel::receipts::ReceiptStore =
     crate::kernel::receipts::ReceiptStore::new("agents/requests");
 impl AgentHost {
+    /// Bounded metadata from existing live processes; no launch, disk scan or upstream read.
+    pub(crate) async fn coordination_observations(
+        &self,
+        threads: &[String],
+    ) -> Vec<(String, String, String)> {
+        let processes: Vec<_> = {
+            let processes = self.processes.lock().await;
+            threads
+                .iter()
+                .filter_map(|id| processes.get(id).map(|p| (id.clone(), p.clone())))
+                .collect()
+        };
+        let mut result = vec![];
+        for (thread, process) in processes {
+            let events = process.events.lock().await;
+            if let Some(t) = events.timelines.get(&thread) {
+                let status = if !process.alive.load(std::sync::atomic::Ordering::SeqCst)
+                    || t.observation_lost
+                {
+                    "unknown".into()
+                } else {
+                    t.status.clone()
+                };
+                result.push((thread, t.turn.clone(), status));
+            }
+        }
+        result
+    }
     pub(crate) fn backend_session(&self) -> &str {
         &self.session
     }

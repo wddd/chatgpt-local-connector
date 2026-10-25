@@ -8,7 +8,7 @@ query. `guide`, `query`, `act`, and `notification` retain their frozen envelopes
 AX source writes use the owner store below. Resource push remains a later phase.
 ARC observers project dispatch, terminal, receipt, replacement, restart, local
 tooling lifecycle and registered Git facts. Source event-report writes and resource
-push are not implemented. AX owns its separate records and producers.
+push are not implemented. AX and the bulletin own their separate records and producers.
 
 ## Producer interface
 
@@ -200,4 +200,110 @@ original command exit result. Prepared-but-unconfirmed actions are not replayed.
 `events.coverage.observers` exposes sampled coverage, last gaps, HEAD state and
 registry age. Journal coverage and observer coverage are separate: a healthy journal
 cannot imply that an offline tool, inaccessible repository or missing baseline was
-observed. Observers add no resource subscription, source claim, lease or message.
+observed. Observers add no resource subscription or message. Bulletin claims are advisory and never execution leases.
+
+## Bulletin and resource blockers
+
+`coordination::bulletin` owns `coordination/state.json`. The source-facing ops are
+`board`, `coordination_session`, `notice_post`, `notice_update`, `notice_close`,
+`blocker_open` and `blocker_clear`. These are catalog operations behind the existing
+frozen tools, not new MCP tools or guide topics. Existing explicit op allowlists
+still require local adoption. There is no notification subscription or recovery
+broadcast in this phase.
+
+All authorized sources share the metadata board. Source/account labels, task
+prompts, transcript excerpts, private routes and arbitrary owner records are never
+projected. Intent and blocker summary are single-line, source-reported metadata,
+limited to 240 characters. Source authority comes from authenticated origin;
+account membership does not grant mutation authority. A source can mutate its own
+records; built-in local authority can administer them. Optional logical sessions
+are ARC-issued, source-owned, pull-only handles. They provide no stronger isolation
+than the source credential and contain no delivery binding.
+
+Read `board` at turn start and before shared-resource work. Its default summary
+contains one line per active notice or uncleared blocker, plus compact IDs,
+revisions, owners and activity metadata. Use `view:full` for resources, editable
+fields, thread links and clearance evidence. `id` reads a retained terminal record;
+`state:all` includes history. Resource filters select metadata, not visibility.
+Pages default to 50, cap at 100 and fit 128 KiB. Cursors bind snapshot lifecycle
+revision, filters and source authority, expiring after 15 minutes or a scope
+change. Activity refresh alone does not invalidate pagination.
+
+Every notice includes `lastActiveAt`, `inactivityAgeSeconds`, `observedAt` and
+`activityCoverage`. Expected duration is an estimate, never expiry. Authenticated
+owner operations, including guide reads, refresh activity automatically. Another
+source's pull, delivery retries and repeated terminal observations do not refresh
+it. Existing live Codex/Agent timeline caches supply running-thread observations;
+no new upstream request, process discovery or directory scan is introduced.
+Disconnected or unavailable observation becomes a gap. A missing observation never
+proves completion or supplies a fresh heartbeat.
+
+All linked scopes reaching a confirmed completed/failed terminal state closes the
+notice with `closedReason:threads-ended`. Interrupted/cancelled scopes remain open
+for continuation. A source-matched durable `turn.successor` descriptor advances a
+link from predecessor to successor; an arbitrary newer turn cannot inherit it.
+Resume receipts and observed native retry records own these descriptors. Delayed
+predecessor terminal frames cannot end a successor. Bounded per-link terminal
+metadata handles successor/terminal projection arriving out of order. Only the
+latest 16 terminal facts per link are retained; missing older observations remain
+a coverage gap until current live observation or explicit owner correction.
+
+Six hours without evidenced activity withdraws an otherwise active notice with
+`closedReason:owner-inactive`. Explicit closure and source revocation end its
+claims. Source blockers become stale after six hours; revocation makes them
+uncertain. Neither state means cleared. Clearance requires evidence IDs and either
+a locally verified `{projectId,oid}` commit or an explicit non-code recovery reason.
+Commit existence does not prove deployment or remediation. Clearance records
+`suggestedNextStep:inspect|consider-resume|ask-user` and never resumes a task.
+
+Runtime age uses monotonic elapsed time anchored to UTC. A wall-clock discrepancy
+of at least 60 seconds makes age unknown and suspends automatic expiry. Restart
+preserves persisted timestamps and marks previously running links unknown; it
+never renews them. UTC is the restart age basis, so undetectable wall-clock changes
+while Core was stopped cannot be reconstructed. Activity is coalesced in memory
+and persisted at most once per minute, or with a durable mutation/observation;
+a crash can lose up to that interval of freshness. Restart coverage discloses the
+gap. Failed persistence leaves the last readable snapshot intact.
+
+The snapshot and one atomic temporary share 4 MiB. Limits are 256 notices,
+128 blockers, 128 sessions, 512 pending event parts and 2,048 mutation replay
+records. Each notice has at most 16 resources and 16 thread links. Per source,
+limits are 16 active notices, eight uncleared blockers, eight active sessions and
+four session registrations/hour. Writes share 30 mutations/minute/source;
+request-ID replay does not consume the budget twice. Terminal rows and mutation
+replay records retain seven days. Pending transitions prevent owner-row pruning.
+Capacity errors preserve existing state and require local cleanup/recovery. Incomplete
+receipts older than the replay retention cannot reapply an evicted mutation; inspect
+the original receipt and board before explicitly starting a new work scope.
+
+Acquire and release the source authorization snapshot before the bulletin lock.
+Acquire request-ID locks before mutation. Thread-origin and fixing-commit evidence
+reads run outside the bulletin lock. Mutations atomically persist the owner record,
+request digest/result and pending descriptors, release the lock, call
+`crate::coordination::emit`, then checkpoint projection. Event parts contain at
+most four resources to fit the existing 2 KiB journal budget. `notice.changed` and
+`blocker.changed` expose typed state and opaque owner-record references, not intent
+or blocker free text. Pending projection is retried in bounded batches on reads
+and in the existing observer loop. Terminal/successor evidence is saved before the
+upstream observer checkpoint. No new polling task is added.
+
+## Advisory action warnings
+
+Posting/updating notices and local shared actions return
+`conflicts:[{noticeId,resource,state,lastActiveAt,inactivityAgeSeconds}]`.
+Conflicts include same-source sessions and never reserve or block resources.
+Responses cap warnings at 100; `conflictCoverage:partial` requires a board pull
+for the complete paginated resource picture.
+`conflictCoverage:unknown` means the board/resource mapping could not be read;
+it is not evidence of an empty board. Sources should weigh inactivity age.
+
+The authenticated local `coordination/conflicts` route reads the cached registered
+project projection. Worktree land and isolated startup print advisory preflight
+warnings, then execute independently and return current warnings with lifecycle
+readback. Missing Core leaves the original command result unchanged. Main-only
+worktree/isolated guards remain authoritative. Replacement submission persists
+`app:installed` warnings in its normal receipt. Explicit simple `git push`
+submissions through `command`, including its native argv form and `git -C`, return
+warnings when their directory maps to one registered project. Shell scripts,
+aliases, arbitrary external pushes and unregistered directories are not inferred;
+ref movement alone never proves a push. Pull `board` before those actions.

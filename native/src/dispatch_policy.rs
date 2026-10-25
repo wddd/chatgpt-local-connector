@@ -652,7 +652,11 @@ pub(crate) fn record_native_retry(thread: &str, previous: &str, retry: &Value) -
         "submittedAt":started.to_rfc3339(),"observedAt":now(),
         "purpose":parent["purpose"],"reason":"Native retry of failed or interrupted ARC dispatch"
     });
-    save(&directory(thread)?.join(format!("{turn}.json")), &row)?;
+    crate::coordination::observers::save_owner(
+        &directory(thread)?.join(format!("{turn}.json")),
+        &row,
+        crate::coordination::observers::Owner::Dispatch,
+    )?;
     Ok(true)
 }
 // Reconciliation time is an observation, never evidence of continued execution.

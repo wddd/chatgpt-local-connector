@@ -17,33 +17,47 @@ async function durable(file, value) {
     try { await directory.sync(); } finally { await directory.close(); }
   }
 }
+async function coreCaller(stateDirectory, request) {
+  const endpoint = JSON.parse(await readFile(path.join(stateDirectory, 'app/native.json'), 'utf8'));
+  if (!Number.isInteger(endpoint.port) || endpoint.port < 1 || endpoint.port > 65535 || typeof endpoint.token !== 'string') throw new Error('invalid endpoint');
+  const call = async (route, method, payload) => {
+    const response = await request(`http://127.0.0.1:${endpoint.port}/${route}`, {
+      method, headers: { Authorization: `Bearer ${endpoint.token}`, 'Content-Type': 'application/json' },
+      ...(payload ? { body: JSON.stringify(payload) } : {}), signal: AbortSignal.timeout(2500),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error('report unavailable');
+    return result;
+  };
+  const health = await call('healthz', 'GET');
+  if (health.instance !== endpoint.instance || health.pid !== endpoint.pid || health.owner !== 'core') throw new Error('identity changed');
+  return call;
+}
+export async function reportConflicts(body, { stateDirectory = defaultState(), request = fetch } = {}) {
+  try {
+    const call = await coreCaller(stateDirectory, request);
+    return await call('api/coordination/conflicts', 'POST', body);
+  } catch { return { conflicts: [], conflictCoverage: 'unknown' }; }
+}
 // Each report has a fixed ID and payload across retries. An unavailable Core never
 // changes the command's exit code. Endpoint tokens never enter reports or console output.
 export async function reportLifecycle(body, { stateDirectory = defaultState(), request = fetch } = {}) {
   try {
-    const endpoint = JSON.parse(await readFile(path.join(stateDirectory, 'app/native.json'), 'utf8'));
-    if (!Number.isInteger(endpoint.port) || endpoint.port < 1 || endpoint.port > 65535 || typeof endpoint.token !== 'string') throw new Error('invalid endpoint');
-    const call = async (route, method, payload) => {
-      const response = await request(`http://127.0.0.1:${endpoint.port}/${route}`, {
-        method, headers: { Authorization: `Bearer ${endpoint.token}`, 'Content-Type': 'application/json' },
-        ...(payload ? { body: JSON.stringify(payload) } : {}), signal: AbortSignal.timeout(2500),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error('report unavailable');
-      return result;
-    };
-    const health = await call('healthz', 'GET');
-    if (health.instance !== endpoint.instance || health.pid !== endpoint.pid || health.owner !== 'core') throw new Error('identity changed');
+    const call = await coreCaller(stateDirectory, request);
     await call('api/coordination/observe', 'POST', body);
     const result = await call(`api/coordination/observations/${body.transitionId}`, 'GET');
     if (result.transitionId !== body.transitionId || result.state !== 'observed' || result.kind !== body.kind) throw new Error('readback missing');
-    return { transitionId: body.transitionId, kind: body.kind, coverage: 'readback-confirmed' };
+    return { transitionId: body.transitionId, kind: body.kind, coverage: 'readback-confirmed', conflicts: result.conflicts || [], conflictCoverage: result.conflictCoverage || 'unknown' };
   } catch {
     return { transitionId: body.transitionId, kind: body.kind, coverage: 'missing', reason: 'Core reporting or readback unavailable; the tooling result is unchanged' };
   }
 }
 export async function beginLifecycle(directory, body, options = {}) {
   const report = { ...body, transitionId: randomUUID() };
+  if (['lane.landed', 'isolated.started'].includes(body.kind)) {
+    const warnings = await reportConflicts(body, options);
+    console.log(JSON.stringify({ event: 'coordination-conflicts', ...warnings }));
+  }
   const file = path.join(directory, `${report.transitionId}.json`);
   let stored = false;
   try {

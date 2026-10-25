@@ -118,6 +118,35 @@ impl Control {
     async fn follow(&self, thread: &str) -> Result<()> {
         self.ipc().await?.follow(thread).await
     }
+    /// Sample only existing observation streams. Never start an app-server, discover
+    /// an owner or turn persisted running history into a fresh liveness claim.
+    pub(crate) async fn coordination_observations(
+        &self,
+        threads: &[String],
+    ) -> Vec<(String, String, String)> {
+        let rpc = self.rpc.lock().await.clone();
+        let monitor = self.monitor.lock().await.clone();
+        let connected = (rpc.is_some() || monitor.is_some())
+            && rpc.as_ref().is_none_or(|r| r.alive())
+            && monitor.as_ref().is_none_or(|m| m.alive());
+        let events = self.events.lock().await;
+        threads
+            .iter()
+            .filter_map(|thread| {
+                events.timelines.get(thread).map(|t| {
+                    (
+                        thread.clone(),
+                        t.turn.clone(),
+                        if connected && !t.observation_lost && t.observed_events > 0 {
+                            t.status.clone()
+                        } else {
+                            "unknown".into()
+                        },
+                    )
+                })
+            })
+            .collect()
+    }
     pub async fn health(&self) -> Value {
         // Reading diagnostics never calls utility(), which can start app-server.
         let rpc = self.rpc.lock().await.clone();
@@ -2015,7 +2044,12 @@ impl Control {
         Ok(result)
     }
     pub async fn tool(self: &Arc<Self>, name: &str, args: Value) -> Result<Value> {
-        let result = self.tool_inner(name, args.clone()).await;
+        let warnings = crate::coordination::bulletin::command_warnings(name, &args);
+        let mut result = self.tool_inner(name, args.clone()).await;
+        if let (Some(warnings), Ok(value)) = (warnings, &mut result) {
+            value["conflicts"] = warnings["conflicts"].clone();
+            value["conflictCoverage"] = warnings["conflictCoverage"].clone();
+        }
         crate::coordination::ax::observe_control_result(name, &args, &result);
         result
     }
@@ -2076,6 +2110,15 @@ impl Control {
         }
         match name {
             "events" => crate::coordination::query(&args),
+            "board"
+            | "notice_post"
+            | "notice_update"
+            | "notice_close"
+            | "blocker_open"
+            | "blocker_clear"
+            | "coordination_session" => {
+                crate::coordination::bulletin::call(name, args, &self.session).await
+            }
             "ax_report" | "ax_list" | "ax_candidate" | "ax_triage" => {
                 crate::coordination::ax::call(name, args, &self.session).await
             }

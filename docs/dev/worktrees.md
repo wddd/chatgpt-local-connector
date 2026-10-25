@@ -65,3 +65,8 @@ prints `coordination-observation` with `coverage:missing`; the original command 
 is unchanged. A bounded outbox under the main Git directory retains completed
 reports for later reconciliation with the same transition IDs. Ref movement alone
 never implies that a land command ran. See [Coordination](coordination.md).
+
+Land preflight prints `coordination-conflicts` from the shared board when the running
+Core can map the registered parent. Lifecycle readback also returns current advisory
+conflicts and activity ages. Unknown coverage is explicit. Warnings never bypass the
+main-only guard or block an otherwise authorized action; pull `board` before landing.

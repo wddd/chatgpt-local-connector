@@ -636,6 +636,7 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
                 return Err(json!({"code":"WRONG_TOOL","op":op_name,"message":"Use the op's assigned tool.","via":crate::egress::via(op),"example":crate::egress::example(op)}).to_string());
             }
         }
+        crate::coordination::bulletin::authenticated_activity();
         if name == "guide" {
             return Ok(crate::egress::guide(&s.origin().await, &args, &crate::i18n::locale(), &enabled_ops(s).await));
         }

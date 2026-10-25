@@ -192,6 +192,12 @@ pub async fn prepare(body: Value) -> Result<Value> {
         target.file_name().unwrap().to_string_lossy()
     ));
     let mut receipt = json!({"replacementReceipt":true,"id":id,"state":"preparing","immediate":body["immediate"]==true,"backupDirectory":backup_directory,"source":source,"target":target,"backup":backup,"staged":staged,"backupMoved":false,"package":expected,"oldPackage":{"coreBuild":old_core,"desktopBuild":old_desktop,"identifier":identifier},"desktopPid":app["pid"],"corePid":core["pid"],"coreInstance":core["instance"],"service":service,"createdAt":now(),"statusPath":path.join("status.json"),"logPath":path.join("worker.log"),"next":"End this turn after the receipt. Do not continue work depending on ARC. Query app replace --status after reconnecting."});
+    let warnings =
+        crate::coordination::bulletin::warnings(&[crate::coordination::ResourceKey::parse(
+            "app:installed",
+        )?]);
+    receipt["conflicts"] = warnings["conflicts"].clone();
+    receipt["conflictCoverage"] = warnings["conflictCoverage"].clone();
     receipt["when"] = json!(when);
     receipt["immediate"] = json!(when == "now");
     if when == "defer" {

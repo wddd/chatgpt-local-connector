@@ -202,6 +202,10 @@ pub enum EventKind {
     AxCreated,
     #[serde(rename = "ax.changed")]
     AxChanged,
+    #[serde(rename = "notice.changed")]
+    NoticeChanged,
+    #[serde(rename = "blocker.changed")]
+    BlockerChanged,
 }
 impl EventKind {
     fn summary(&self) -> &'static str {
@@ -222,12 +226,19 @@ impl EventKind {
             Self::ReceiptStalled => "Receipt progress stalled",
             Self::AxCreated => "AX entry created",
             Self::AxChanged => "AX entry changed",
+            Self::NoticeChanged => "Notice state changed",
+            Self::BlockerChanged => "Blocker state changed",
         }
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum EventStatus {
+    Active,
+    Uncertain,
+    Stale,
+    Cleared,
+    Withdrawn,
     Accepted,
     Cancelled,
     Settling,
@@ -276,6 +287,8 @@ pub struct ThreadRef {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum EvidenceKind {
+    Notice,
+    Blocker,
     Receipt,
     Request,
     Thread,

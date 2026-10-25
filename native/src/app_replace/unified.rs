@@ -63,6 +63,8 @@ pub fn project(receipt: &Value) -> Value {
         "resumedCount",
         "droppedInteractions",
         "interruptedTurns",
+        "conflicts",
+        "conflictCoverage",
     ] {
         value[key] = receipt[key].clone();
     }

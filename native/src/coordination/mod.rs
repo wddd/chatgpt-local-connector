@@ -1,6 +1,7 @@
 //! Bounded, metadata-only coordination feed. Observers and AX persist their owner
 //! record first, release owner locks, then call emit with the same transition ID.
 pub mod ax;
+pub(crate) mod bulletin;
 pub(crate) mod git_watch;
 mod journal;
 pub(crate) mod lifecycle;
@@ -43,6 +44,7 @@ pub fn emit(input: EventInput) -> Result<Value> {
         with_journal(|journal| journal.emit(input, chrono::Utc::now().timestamp_millis()))?;
     // Projection failure leaves the owner transition retryable; AX coalesces retries.
     ax::from_event(&observation)?;
+    bulletin::from_event(&observation)?;
     Ok(result)
 }
 fn reader(origin: &Value, source: &Value) -> Result<Reader> {
