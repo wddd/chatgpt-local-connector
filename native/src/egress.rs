@@ -1,5 +1,15 @@
 //! Pure MCP output projection. Storage and execution live outside this module.
 use crate::*;
+fn interrupted_turn(value: &Value) -> bool {
+    value["state"] == "cancelled"
+        && value["stateScope"] != "operation"
+        && value["operation"].is_null()
+        && (value["stateScope"] == "turn"
+            || matches!(
+                value["recordedStatus"].as_str(),
+                Some("interrupted" | "cancelled")
+            ))
+}
 /// Classify the returned operation, never errors embedded in history arrays or user text.
 pub fn outcome_error(value: &Value) -> Option<Value> {
     let mut current = value;
@@ -8,7 +18,7 @@ pub fn outcome_error(value: &Value) -> Option<Value> {
         let failed = matches!(
             state,
             "failed" | "rejected" | "not-executed" | "cancelled" | "unconfirmed" | "rolled-back"
-        );
+        ) && !interrupted_turn(current);
         let exit = current["exitCode"].as_i64().filter(|code| *code != 0);
         if failed || exit.is_some() || current["ok"] == false {
             let reason = current
@@ -953,6 +963,11 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
         value["error"]["next"].clone()
     } else if value["state"] == "running" && (thread.is_some() || task.is_some()) {
         json!({"via":"query","op":wait_tool,"args":wait_args,"hint":"Wait on the same turn; do not submit another task."})
+    } else if interrupted_turn(value) && ((agent && task.is_some()) || (!agent && thread.is_some()))
+    {
+        json!({"via":"query","op":if agent {"agent_read"}else{"codex_read"},
+            "args":if agent {json!({"agent":wait_args["agent"],"taskId":task})}else{json!({"threadId":thread})},
+            "hint":"Read the interrupted turn's recorded output before deciding whether to resume."})
     } else if value["state"] == "unconfirmed" && (thread.is_some() || task.is_some()) {
         json!({"via":"query","op":if agent {"agent_read"} else {"codex_read"},"args":if agent {json!({"agent":wait_args["agent"],"taskId":task})} else {json!({"threadId":thread,"statusOnly":true})},"hint":"Runtime ownership or progress is unknown. Inspect the owning session and this original task. Do not redispatch; notLoaded does not prove no native writer exists."})
     } else if value["requestId"].is_string()
@@ -989,6 +1004,22 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interrupted_turn_reads_succeed_while_cancelled_operations_fail() {
+        // Contract: task interruption is a valid terminal read; cancelled operations retain OPERATION_FAILED and MCP isError.
+        let turn = json!({"state":"cancelled","stateScope":"turn","recordedStatus":"interrupted","threadId":"thread","turnId":"turn"});
+        assert!(outcome_error(&turn).is_none());
+        assert_eq!(tool(turn.clone(), false)["isError"], false);
+        let mut operation = turn;
+        operation["stateScope"] = json!("operation");
+        operation["operation"] = json!("send");
+        assert_eq!(
+            outcome_error(&operation).unwrap()["code"],
+            "OPERATION_FAILED"
+        );
+        assert_eq!(tool(operation, false)["isError"], true);
+    }
 
     #[test]
     fn generated_continuations_validate_against_operation_schemas() {

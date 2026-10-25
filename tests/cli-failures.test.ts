@@ -48,3 +48,34 @@ test('Resume guide and validation retain the interrupted-turn guard and receipt 
     assert.equal(missing.next.op,'guide');
   }finally{await fixture.close();}
 });
+
+
+test('Interrupted task reads and waits succeed through the CLI envelope',async()=>{
+  // Regression: normal interruption was presented as OPERATION_FAILED with CLI exit 1.
+  const threadId='00000000-0000-4000-8000-000000000005';
+  const turnId='00000000-0000-4000-8000-000000000006';
+  const fixture=await nativeControl(`import {createInterface} from 'node:readline';
+for await(const line of createInterface({input:process.stdin})) {
+ const {id,method,params}=JSON.parse(line);if(id===undefined)continue;
+ const turn={id:'${turnId}',status:'interrupted',items:[]};
+ let result={};
+ if(method==='thread/start'||method==='thread/read')result={thread:{id:'${threadId}',cwd:params.cwd||'/tmp',status:{type:'notLoaded'}}};
+ if(method==='turn/start')result={turn};
+ if(method==='thread/turns/list')result={data:[turn],nextCursor:null};
+ process.stdout.write(JSON.stringify({id,result})+'\\n');
+}`);
+  try {
+    await fixture.api('task-settings',{autoOpenCodex:false},'PUT');
+    assert.equal((await fixture.completed('codex_create',{prompt:'Interrupted read fixture',thread:{cwd:'/tmp'}})).state,'completed');
+    for(const [op,args] of [
+      ['codex_read',{threadId,statusOnly:true}],['codex_wait',{threadId,turnId,timeoutMs:1000}],
+    ] as const) {
+      const {stdout}=await fixture.shell(`echo '${JSON.stringify(args)}' | arc cli control ${op} --stdin`);
+      const response=JSON.parse(stdout);
+      assert.equal(response.ok,true,JSON.stringify(response));assert.equal(response.schemaVersion,1);
+      assert.equal(response.result.state,'cancelled');assert.equal(response.result.recordedStatus,'interrupted');
+      assert.equal(response.result.stateScope,'turn');assert.equal(response.error,undefined);
+      assertNextCalls(response);
+    }
+  }finally{await fixture.close();}
+});

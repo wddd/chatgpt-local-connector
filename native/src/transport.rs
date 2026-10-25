@@ -584,6 +584,14 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
     let mut notify_requested = args["notify"].is_object();
     let (mut value, error) = match result {
         Ok(mut value) => {
+            if matches!(
+                name,
+                "codex_read" | "codex_wait" | "agent_read" | "agent_wait"
+            ) && value["state"].is_string()
+                && value["operation"].is_null()
+            {
+                value["stateScope"] = json!("turn");
+            }
             if crate::egress::dispatch_receipt(&value) && value["arguments"].is_object() {
                 notify_requested = value["arguments"]["notify"].is_object();
             }
