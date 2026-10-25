@@ -651,8 +651,16 @@ fn receipt(b: &Binding, d: &Delivery) -> String {
         if let Some(message) = d.recovery["message"].as_str() {
             return message.into();
         }
-        return format!("⟢ ARC receipt — automated, not a user message\nARC recovered at {}; {} tasks affected.",
-            string(&d.recovery, "recoveredAt"), d.recovery["affectedTasks"]);
+        let count = d.recovery["affectedTasks"].as_u64().unwrap_or(0);
+        let outcome = match count {
+            0 => "no turns interrupted".into(),
+            1 => "1 turn interrupted".into(),
+            _ => format!("{count} turns interrupted"),
+        };
+        return format!(
+            "ARC recovered at {}; {outcome}.",
+            string(&d.recovery, "recoveredAt")
+        );
     }
     if d.task_state == "handoff" {
         return format!(
@@ -2515,6 +2523,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
         crate::logs::record("INFO", "Control-source notification observer started", None);
         let mut recovering = true;
         let restart = id();
+        let mut interrupted = std::collections::HashSet::new();
         loop {
             let Some(control) = weak.upgrade() else {
                 break;
@@ -2622,6 +2631,11 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                             continue;
                         }
                     };
+                    // A retained binding is not evidence of interruption. Count only
+                    // previously live turns confirmed interrupted during this recovery.
+                    if recovering && !old.terminal && observed["state"] == "cancelled" {
+                        interrupted.insert((old.thread_id.clone(), old.turn_id.clone()));
+                    }
                     let mut b = old;
                     let mut observed = observed;
                     for request in observed["interaction"].as_array_mut().into_iter().flatten() {
@@ -2659,6 +2673,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                         &LOCK,
                         &restart,
                         chrono::Utc::now().timestamp(),
+                        &interrupted,
                     )
                     .await?;
                 }
@@ -3577,6 +3592,7 @@ mod tests {
             &Mutex::new(()),
             "schema-restart",
             chrono::Utc::now().timestamp(),
+            &Default::default(),
         )
         .await
         .unwrap();
@@ -4322,10 +4338,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn recovery_aggregates_open_tasks_per_verified_target_and_restart() {
+    async fn recovery_aggregates_interrupted_turns_per_verified_target_and_restart() {
         // Regression: disconnected conversations received no recovery wakeup and per-thread restart notices flooded targets.
         let dir = Sandbox::new();
         let b = fixture(&dir.0);
+        let interrupted = [
+            ("thread-1".into(), "turn-1".into()),
+            ("thread-1".into(), "turn-2".into()),
+        ]
+        .into();
         for (thread, turn, source, target, closed) in [
             ("thread-1", "turn-2", "claude", b.target.clone(), false),
             ("thread-2", "turn-1", "claude", b.target.clone(), false),
@@ -4355,7 +4376,7 @@ mod tests {
         }
         let at = chrono::Utc::now().timestamp();
         for _ in 0..3 {
-            recovery::enqueue(&dir.0, &Mutex::new(()), "restart-1", at)
+            recovery::enqueue(&dir.0, &Mutex::new(()), "restart-1", at, &interrupted)
                 .await
                 .unwrap();
         }
@@ -4366,7 +4387,7 @@ mod tests {
         // The same recovery cannot replay after delivery. A later restart gets
         // one new wakeup, and another rapid restart shares that pending event.
         for restart in ["restart-1", "restart-2", "restart-2", "restart-3"] {
-            recovery::enqueue(&dir.0, &Mutex::new(()), restart, at + 32)
+            recovery::enqueue(&dir.0, &Mutex::new(()), restart, at + 32, &interrupted)
                 .await
                 .unwrap();
         }
@@ -4401,6 +4422,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn recovery_excludes_finished_turns_with_retained_bindings() {
+        // Regression: finished tasks with notification bindings were reported as affected after replacement with no interrupted turns.
+        let dir = Sandbox::new();
+        let b = fixture(&dir.0);
+        let lock = Mutex::new(());
+        for (thread, state) in [
+            ("finished", "completed"),
+            ("failed", "failed"),
+            ("previously-interrupted", "cancelled"),
+        ] {
+            let mut ended = b.clone();
+            ended.thread_id = thread.into();
+            persist(&dir.0, &ended).unwrap();
+            super::process(&dir.0, &lock, &mut ended, &json!({"state":state}))
+                .await
+                .unwrap();
+        }
+        let at = chrono::Utc::now().timestamp();
+        recovery::enqueue(&dir.0, &lock, "idle-restart", at, &Default::default())
+            .await
+            .unwrap();
+        let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
+        let recovered = inbox["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["kind"] == "recovered")
+            .collect::<Vec<_>>();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0]["recovery"]["affectedTasks"], 0);
+        assert_eq!(recovered[0]["summary"].as_str().unwrap().lines().count(), 1);
+        let schema = mcp_events::list()["events"][0]["payloadSchema"].clone();
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        let payload = mcp_events::payload("task_status", recovered[0]);
+        validator.validate(&payload).unwrap();
+        let mut invalid = payload;
+        invalid["recovery"]["affectedTasks"] = json!(-1);
+        assert!(validator.validate(&invalid).is_err());
+    }
+
+    #[tokio::test]
     async fn recovery_honors_disabled_notifications_without_verifying_targets() {
         // Regression: recovery must preserve 6ed4ed8 verification gates and never promote an unverified target.
         let dir = Sandbox::new();
@@ -4422,9 +4484,15 @@ mod tests {
         state.save(&dir.0).unwrap();
         let before =
             governance::status_in(&dir.0, "claude", &json!({"all":true}), at, &disabled).unwrap();
-        recovery::enqueue(&dir.0, &Mutex::new(()), "disabled-restart", at)
-            .await
-            .unwrap();
+        recovery::enqueue(
+            &dir.0,
+            &Mutex::new(()),
+            "disabled-restart",
+            at,
+            &Default::default(),
+        )
+        .await
+        .unwrap();
         let fake = Fake::success();
         flush(&fake, &dir.0, &Mutex::new(()), at + 31, 0, &disabled)
             .await
@@ -4499,9 +4567,15 @@ mod tests {
         target.tokens = 0;
         target.refilled_at = at;
         state.save(&dir.0).unwrap();
-        recovery::enqueue(&dir.0, &Mutex::new(()), "restart-1", at)
-            .await
-            .unwrap();
+        recovery::enqueue(
+            &dir.0,
+            &Mutex::new(()),
+            "restart-1",
+            at,
+            &Default::default(),
+        )
+        .await
+        .unwrap();
         let fake = Fake::success();
         flush(&fake, &dir.0, &Mutex::new(()), at + 31, 0, &settings)
             .await
@@ -4515,9 +4589,15 @@ mod tests {
             "token-wait"
         );
         for restart in ["restart-1", "restart-2", "restart-3"] {
-            recovery::enqueue(&dir.0, &Mutex::new(()), restart, at + 32)
-                .await
-                .unwrap();
+            recovery::enqueue(
+                &dir.0,
+                &Mutex::new(()),
+                restart,
+                at + 32,
+                &Default::default(),
+            )
+            .await
+            .unwrap();
         }
         flush(&fake, &dir.0, &Mutex::new(()), at + 601, 0, &settings)
             .await
@@ -4582,9 +4662,15 @@ mod tests {
         }
         state.save(&dir.0).unwrap();
         for _ in 0..3 {
-            recovery::enqueue(&dir.0, &Mutex::new(()), "restart-callback", at)
-                .await
-                .unwrap();
+            recovery::enqueue(
+                &dir.0,
+                &Mutex::new(()),
+                "restart-callback",
+                at,
+                &[(b.thread_id.clone(), b.turn_id.clone())].into(),
+            )
+            .await
+            .unwrap();
         }
         flush(
             &Fake::success(),
@@ -5249,6 +5335,7 @@ pub(crate) async fn update_notice(args: &Value) -> Result<Value> {
         string(args, "id"),
         chrono::Utc::now().timestamp(),
         Some(string(args, "message")),
+        &Default::default(),
     )
     .await?;
     Ok(json!({"queued":true}))

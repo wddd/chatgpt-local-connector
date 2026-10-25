@@ -1,8 +1,14 @@
 //! One durable recovery wakeup per verified destination, using the shared queue.
 use super::*;
 
-pub(super) async fn enqueue(dir: &Path, lock: &Mutex<()>, restart: &str, at: i64) -> Result<()> {
-    enqueue_notice(dir, lock, restart, at, None).await
+pub(super) async fn enqueue(
+    dir: &Path,
+    lock: &Mutex<()>,
+    restart: &str,
+    at: i64,
+    interrupted: &std::collections::HashSet<(String, String)>,
+) -> Result<()> {
+    enqueue_notice(dir, lock, restart, at, None, interrupted).await
 }
 pub(super) async fn enqueue_notice(
     dir: &Path,
@@ -10,6 +16,7 @@ pub(super) async fn enqueue_notice(
     restart: &str,
     at: i64,
     message: Option<&str>,
+    interrupted: &std::collections::HashSet<(String, String)>,
 ) -> Result<()> {
     let _guard = lock.lock().await;
     let mut all = records(dir)?;
@@ -85,7 +92,8 @@ pub(super) async fn enqueue_notice(
         }
         let affected = members
             .iter()
-            .map(|&i| &all[i].thread_id)
+            .map(|&i| (all[i].thread_id.clone(), all[i].turn_id.clone()))
+            .filter(|turn| interrupted.contains(turn))
             .collect::<std::collections::BTreeSet<_>>()
             .len();
         let b = &mut all[index];
@@ -93,12 +101,25 @@ pub(super) async fn enqueue_notice(
             .iter()
             .find(|s| s.matches(b))
             .expect("member has a matching subscription");
+        let mut recovery = json!({"recoveredAt":chrono::DateTime::from_timestamp(at,0).ok_or("INVALID_RECOVERY_TIME")?.to_rfc3339(),"affectedTasks":affected});
+        if let Some(message) = message {
+            recovery["message"] = json!(message);
+        }
         b.deliveries.push(Delivery {
-            subscription: subscription.id.clone(), channel, target,
-            event_id, key: format!("recovery:{restart}"), created_at: at,
-            state: "recovered".into(), task_state: "recovered".into(), status: "pending".into(),
-            recovery: json!({"recoveredAt":chrono::DateTime::from_timestamp(at,0).ok_or("INVALID_RECOVERY_TIME")?.to_rfc3339(),"affectedTasks":affected,"message":message}),
-            timing: DeliveryTiming { queued_at: Some(at.saturating_mul(1000)), ..Default::default() },
+            subscription: subscription.id.clone(),
+            channel,
+            target,
+            event_id,
+            key: format!("recovery:{restart}"),
+            created_at: at,
+            state: "recovered".into(),
+            task_state: "recovered".into(),
+            status: "pending".into(),
+            recovery,
+            timing: DeliveryTiming {
+                queued_at: Some(at.saturating_mul(1000)),
+                ..Default::default()
+            },
             ..Default::default()
         });
         inbox_append(dir, &source, event(b, b.deliveries.last().unwrap()))?;
