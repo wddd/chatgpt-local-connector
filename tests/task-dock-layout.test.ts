@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import copy from "../ui/locales/en.json" with { type: "json" };
 
 test("pending input actions and routing stay inside short panels and narrow sheets while content scrolls", { timeout: 30000 }, async () => {
-  // Regression: a real pending question clipped Submit and next-check routing in an 840x578 window.
+  // Regression: pending input clipped actions and routing; long approval previews collapsed to 20px at 840x578 and in 320px sheets.
   // Compile only the DOM fixture in memory. No app, dev server or Core is started.
   const built = await build({ configFile: false, logLevel: "error", plugins: [react()],
     define: { __CONNECTOR_VERSION__: JSON.stringify("test"), "process.env.NODE_ENV": JSON.stringify("production") },
@@ -28,7 +28,7 @@ test("pending input actions and routing stay inside short panels and narrow shee
       assert.ok(a && b);
       assert.ok(a.x >= b.x && a.y >= b.y && a.x + a.width <= b.x + b.width && a.y + a.height <= b.y + b.height, JSON.stringify({ scenario, child: a, parent: b }));
     };
-    for (const viewport of [{ width: 840, height: 578 }, { width: 840, height: 480 }, { width: 360, height: 600 }, { width: 320, height: 578 }]) {
+    for (const viewport of [{ width: 840, height: 578 }, { width: 840, height: 480 }, { width: 360, height: 600 }, { width: 320, height: 800 }, { width: 320, height: 578 }]) {
       for (const width of [420, 320]) for (const options of [2, 12, -12]) {
         scenario = JSON.stringify({ viewport, width, options });
         await page.setViewportSize(viewport);
@@ -58,6 +58,18 @@ test("pending input actions and routing stay inside short panels and narrow shee
         await routing.waitFor();
         await inside(dock, surface); await inside(submit, surface); await inside(routing, surface);
         const scrollTarget = options < 0 ? dock.getByText(/Preview line 1:/) : dock.getByRole("radio", { name: /Route 1\b/ });
+        if (options < 0 && (viewport.height === 800 || viewport.width === 840 && viewport.height === 578 && !narrow)) {
+          const visiblePreview = await scrollTarget.evaluate(element => {
+            let top = element.getBoundingClientRect().top, bottom = element.getBoundingClientRect().bottom;
+            for (let node = element.parentElement; node; node = node.parentElement) {
+              const bounds = node.getBoundingClientRect();
+              top = Math.max(top, bounds.top); bottom = Math.min(bottom, bounds.bottom);
+            }
+            return bottom - top;
+          });
+          // Five 19.2px text lines plus the preview's vertical padding must fit before scrolling.
+          assert.ok(visiblePreview >= 116, JSON.stringify({ scenario, visiblePreview }));
+        }
         if (options > 0) await scrollTarget.click();
         assert.equal(await submit.isEnabled(), true);
         const before = await submit.boundingBox(), routingBefore = await routing.boundingBox();
@@ -75,6 +87,7 @@ test("pending input actions and routing stay inside short panels and narrow shee
         assert.deepEqual(await submit.boundingBox(), before);
         assert.deepEqual(await routing.boundingBox(), routingBefore);
         await inside(submit, surface); await inside(routing, surface);
+        if (options < 0) await inside(dock.getByText("Review the complete proposed operation before allowing this one request.", { exact: true }), dock);
         const panelBounds = await panel.boundingBox(), dockBounds = await dock.boundingBox(), sheetBounds = await surface.boundingBox();
         assert.ok(panelBounds && dockBounds && sheetBounds);
         assert.ok(dockBounds.height <= panelBounds.height * .6, scenario);
