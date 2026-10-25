@@ -64,6 +64,28 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   followAllowed.current = running;
   useInterval(() => setNow(Date.now()), running ? 1000 : null);
   useEffect(() => {
+    const node = viewport.current;
+    if (!node) return;
+    const wheel = (event: WheelEvent) => {
+      if (!event.cancelable || event.defaultPrevented || event.ctrlKey || !(event.target instanceof Element)) return;
+      const nested = event.target.closest<HTMLElement>("pre, .timeline-table, .timeline-files");
+      if (!nested || !node.contains(nested)) return;
+      const line = Number.parseFloat(getComputedStyle(nested).lineHeight) || 16;
+      const dx = event.deltaX * (event.deltaMode === 1 ? line : event.deltaMode === 2 ? nested.clientWidth : 1);
+      const dy = event.deltaY * (event.deltaMode === 1 ? line : event.deltaMode === 2 ? node.clientHeight : 1);
+      const left = Math.max(0, Math.min(nested.scrollWidth - nested.clientWidth, nested.scrollLeft + dx));
+      const top = Math.max(0, Math.min(node.scrollHeight - node.clientHeight, node.scrollTop + dy));
+      if (left === nested.scrollLeft && top === node.scrollTop) return;
+      // Deliver each axis to its owner before cancelling the browser's combined default scroll.
+      // Leave unconsumed boundary events alone so they can chain normally.
+      nested.scrollLeft = left;
+      node.scrollTop = top;
+      event.preventDefault();
+    };
+    node.addEventListener("wheel", wheel, { passive: false });
+    return () => node.removeEventListener("wheel", wheel);
+  }, []);
+  useEffect(() => {
     if (agent !== "codex") return;
     let stopped = false;
     void api<TaskRuntime>(`tasks/runtime/${encodeURIComponent(session.id)}`).then(task => {

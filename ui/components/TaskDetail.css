@@ -54,7 +54,7 @@
 .task-tool-entry > .timeline-summary { padding: 4px 0; gap: 6px; font: inherit; }
 .task-tool-entry > .timeline-summary > span:last-of-type { flex: none; }
 .task-tool-row[data-failed] { color: var(--danger); }
-.task-live-log { white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 10px; background: var(--task-log-bg); color: var(--task-log-ink); max-height: 160px; overflow: auto; }
+.task-live-log { white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 10px; background: var(--task-log-bg); color: var(--task-log-ink); overflow-x: auto; }
 .task-thinking { font-size: 13px; color: var(--text-tertiary); white-space: nowrap; text-overflow: ellipsis; overflow: hidden; animation: task-shimmer 1.8s infinite; }
 .task-process > .timeline-summary { padding: 8px 14px; border: 1px dashed var(--border-strong); border-radius: 12px; font-size: 12px; color: var(--text-secondary); }
 .task-process-rows { padding: 6px 0; }
@@ -101,7 +101,7 @@
 .task-outcome { border: 1px solid var(--border-strong); background: var(--surface-subtle); padding: 14px; border-radius: 18px; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
 .task-outcome[data-state=failed] { border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); background: var(--danger-soft); }
 .task-outcome[data-state=failed] > strong { color: var(--danger); }
-.task-outcome pre { font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
+.task-outcome pre { font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; }
 .task-outcome .actions { flex-wrap: wrap; margin-top: 10px; }
 .task-stop-divider { display: flex; align-items: center; gap: 10px; color: var(--text-tertiary); font-size: 11px; }
 .task-stop-divider::before, .task-stop-divider::after { content: ""; height: 1px; background: var(--border); flex: 1; }

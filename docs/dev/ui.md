@@ -8,6 +8,8 @@ Activity model badges retain their intrinsic width. Codex project labels use the
 
 Timeline groups follow native turn IDs regardless of dispatch origin. External Codex history remains readable after the activity monitor no longer retains the session. History read failures stay visible and retryable instead of becoming a cached partial result. Only actual coverage limits show a partial-history notice; external origin alone does not imply missing history. Incomplete coverage is distinct from a clipped output excerpt, whose notice stays beside that output. Every turn keeps a card surface in both disclosure states, including the latest and running turn. Clicking the title row toggles the turn; its right edge shows that turn’s execution duration. The task header sums known turn execution spans and excludes gaps between turns. Native lifecycle timestamps backfill historical turn timing; missing timing is not inferred from the time the panel opened. Work blocks have no outer border or extra padding. Reasoning rows show their available summary and disappear when it is empty.
 
+The timeline owns vertical scrolling. Tables, code blocks, file lists, diffs and command logs scroll horizontally within the stream and expand to their full content height. Wheel gestures over these blocks send horizontal deltas to the block and vertical deltas to the timeline, including diagonal gestures. Unconsumed boundary events retain native scroll chaining.
+
 ## Homepage and layout
 
 The homepage uses the ARC mark and arc-shaped earcup connections in both themes. Five two-color palettes are ARC, cyan/blue, pink/purple, red/orange, and yellow/green. ARC retains orange and blue-purple gradients. Other palettes apply to the control-source and Agent sides.

@@ -1043,8 +1043,8 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .timeline-failure { flex: none; border-radius: 4px; padding: 1px 4px; font-size: var(--text-xs); color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .timeline-output { display: grid; gap: 8px; padding: 8px 6px 10px 23px; font-size: var(--text-xs); overflow-wrap: anywhere; }
 .timeline-output section { min-width: 0; }
-.timeline-output pre, .timeline-error-text { margin: 4px 0 0; padding: 8px; background: var(--surface-subtle); border-radius: 6px; max-height: 240px; overflow: auto; overscroll-behavior: contain; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--text-xs)/1.6 var(--font-mono); }
-.timeline-files { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+.timeline-output pre, .timeline-error-text { margin: 4px 0 0; padding: 8px; background: var(--surface-subtle); border-radius: 6px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--text-xs)/1.6 var(--font-mono); }
+.timeline-files { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; min-width: 0; overflow-x: auto; }
 .timeline-work { margin: 0; padding: 0; min-width: 0; font-size: var(--text-xs); }
 .timeline-work button.timeline-summary { font-size: inherit; }
 .timeline-work .markdown, .timeline-work .markdown :is(h1, h2, h3, h4, h5, h6) { font-size: var(--text-xs); }
@@ -1072,12 +1072,12 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .timeline-markdown { min-width: 0; }
 .timeline-markdown > :first-child { margin-top: 0; }
 .timeline-markdown > :last-child { margin-bottom: 0; }
-.timeline-markdown pre { max-height: 320px; overflow: auto; overscroll-behavior: contain; white-space: pre; }
+.timeline-markdown pre { overflow-x: auto; white-space: pre; }
 .timeline-markdown img { max-width: 100%; }
 .timeline-image-placeholder { display: inline-flex; vertical-align: middle; color: var(--text-tertiary); }
 .timeline-link-error { display: block; color: var(--danger); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .timeline-markdown a { color: var(--accent); text-decoration: underline; }
-.timeline-table { max-width: 100%; overflow: auto; overscroll-behavior: contain; }
+.timeline-table { max-width: 100%; overflow-x: auto; }
 .timeline-table table { border-collapse: collapse; width: max-content; min-width: 100%; }
 .timeline-table th, .timeline-table td { padding: 6px 8px; border: 1px solid var(--border); }
 .timeline-markdown .contains-task-list { list-style: none; padding-left: 4px; }
