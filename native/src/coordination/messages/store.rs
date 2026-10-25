@@ -200,13 +200,14 @@ impl Store {
             .negotiations
             .iter()
             .find(|n| row.envelope["negotiationId"] == n.id);
-        json!({"message":row.envelope,"negotiation":n,"deliveryMode":if row.route.is_some(){"proactive"}else{"pull-only"}})
+        json!({"message":row.envelope,"negotiation":n,"deliveryMode":if row.route.is_some(){"proactive"}else{"pull-only"},"routing":crate::claude_notify::coordination_delivery::routing_description(row.route.is_some(), row.envelope["deliveryReason"].as_str().unwrap_or("no-verified-target"))})
     }
     pub fn send(
         &mut self,
         args: &Value,
         actor: &str,
         route: Option<Route>,
+        reason: &str,
         time: i64,
     ) -> Result<Value> {
         let digest = hash(json!([actor, args]).to_string());
@@ -221,13 +222,14 @@ impl Store {
             }
             return Ok(self.result(row));
         }
-        self.transaction(|s| s.insert(args, actor, route, time, digest))
+        self.transaction(|s| s.insert(args, actor, route, reason, time, digest))
     }
     fn insert(
         &mut self,
         args: &Value,
         actor: &str,
         route: Option<Route>,
+        reason: &str,
         time: i64,
         digest: String,
     ) -> Result<Value> {
@@ -357,7 +359,7 @@ impl Store {
             }
             .into();
         }
-        let envelope = json!({"messageId":mid,"negotiationId":ni.map(|n|&self.data.negotiations[n].id),"inReplyTo":args["inReplyTo"],"fromSourceId":actor,"fromSessionId":args["sessionId"],"toSourceId":target,"toSessionId":args["toSessionId"],"type":args["type"],"resources":resources,"summary":args["summary"],"conditions":args["conditions"],"relatedIds":args["relatedIds"],"automatic":true,"createdAt":time,"expiresAt":time+args["ttlSeconds"].as_i64().unwrap_or(DAY),"deliveryState":if route.is_some(){"pending"}else{"pull-only"},"escalated":escalated,"dataOnly":true});
+        let envelope = json!({"messageId":mid,"negotiationId":ni.map(|n|&self.data.negotiations[n].id),"inReplyTo":args["inReplyTo"],"fromSourceId":actor,"fromSessionId":args["sessionId"],"toSourceId":target,"toSessionId":args["toSessionId"],"type":args["type"],"resources":resources,"summary":args["summary"],"conditions":args["conditions"],"relatedIds":args["relatedIds"],"automatic":true,"createdAt":time,"expiresAt":time+args["ttlSeconds"].as_i64().unwrap_or(DAY),"deliveryReason":reason,"deliveryState":if route.is_some(){"pending"}else{"pull-only"},"escalated":escalated,"dataOnly":true});
         if envelope.to_string().len() > 4096 {
             return Err("COORDINATION_CAPACITY: message envelope exceeds 4 KiB".into());
         }
@@ -557,6 +559,7 @@ impl Store {
                     r.envelope["deliveryState"] == "pending"
                         && r.route.as_ref().is_some_and(|t| t.key() == key)
                 })
+                .take(16)
                 .cloned()
                 .collect();
         }

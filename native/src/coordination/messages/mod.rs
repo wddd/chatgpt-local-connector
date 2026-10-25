@@ -141,11 +141,22 @@ pub(crate) async fn call(op: &str, mut args: Value, backend: &str) -> Result<Val
         if op!="message_route" || !args["target"].is_null() {session(actor,args["sessionId"].as_str())?;}
         if op=="message_route" {
             let route=if args["target"].is_null(){None}else{Some(deliver(Request::Resolve{source_id:actor.into(),target:Some(crate::claude_notify::session_id(string(&args,"target"))?)}).await?.route.ok_or("MESSAGE_ROUTE_UNVERIFIED: bind and verify this source-owned target through notify_control first")?)};
-            return with_store(|s|s.bind(actor,string(&args,"sessionId"),route));
+            let explicit=route.is_some();
+            let mut result=with_store(|s|s.bind(actor,string(&args,"sessionId"),route))?;
+            let routing=if explicit {crate::claude_notify::coordination_delivery::routing_description(true,"explicit-route")}else{
+                let fallback=deliver(Request::Resolve{source_id:actor.into(),target:None}).await?;
+                crate::claude_notify::coordination_delivery::routing_description(fallback.route.is_some(),&fallback.state)
+            };
+            result["deliveryMode"]=routing["deliveryMode"].clone();result["routing"]=routing;
+            return Ok(result);
         }
         let target=string(&args,"toSourceId"); authorized(target)?;
-        let routable=session(target,args["toSessionId"].as_str())?;
-        let route=if routable {deliver(Request::Resolve{source_id:target.into(),target:None}).await?.route}else{with_store(|s|Ok(s.route(target,string(&args,"toSessionId"))))?};
+        session(target,args["toSessionId"].as_str())?;
+        let explicit=with_store(|s|Ok(s.route(target,string(&args,"toSessionId"))))?;
+        let (route,reason)=if let Some(route)=explicit {(Some(route),"explicit-route".to_owned())}else{
+            let resolved=deliver(Request::Resolve{source_id:target.into(),target:None}).await?;
+            (resolved.route,resolved.state)
+        };
         if args["requestId"].is_null(){args["requestId"]=json!(id());}
         let request=string(&args,"requestId").to_owned();
         let _request=REQUESTS.lock(&request).await;
@@ -155,11 +166,11 @@ pub(crate) async fn call(op: &str, mut args: Value, backend: &str) -> Result<Val
             Some(r)=>r,
             None=>{let r=json!({"requestId":request,"origin":origin,"backendSession":backend,"digest":digest,"operation":op,"state":"reserved","createdAt":now()}); RECEIPTS.reserve(&r)?;r}
         };
-        let mut value=with_store(|s|s.send(&args,actor,route,chrono::Utc::now().timestamp()))?;
+        let mut value=with_store(|s|s.send(&args,actor,route,&reason,chrono::Utc::now().timestamp()))?;
         value["projectionPending"]=json!(reconcile().is_err());
         // Receipts are discoverable independently; private bodies stay in messages.
         receipt["state"]=json!("completed");
-        receipt["result"]=json!({"messageId":value["message"]["messageId"],"negotiationId":value["message"]["negotiationId"],"deliveryMode":value["deliveryMode"],"next":{"via":"query","op":"messages","args":{"direction":"outbox"}}});
+        receipt["result"]=json!({"messageId":value["message"]["messageId"],"negotiationId":value["message"]["negotiationId"],"deliveryMode":value["deliveryMode"],"routing":value["routing"],"next":{"via":"query","op":"messages","args":{"direction":"outbox"}}});
         RECEIPTS.checkpoint(&mut receipt)?;value["receipt"]=receipt;Ok(value)
     }.await;
     Ok(result.unwrap_or_else(|e| failure(e, op)))
@@ -209,9 +220,12 @@ async fn flush() -> Result<()> {
                 .all(|r| session(&route.source_id, r.envelope["toSessionId"].as_str()).is_ok());
         let current_bindings = with_store(|s| {
             Ok(rows.iter().all(|r| {
-                r.envelope["toSessionId"]
-                    .as_str()
-                    .is_none_or(|id| s.route(&route.source_id, id).as_ref() == r.route.as_ref())
+                r.envelope["toSessionId"].as_str().is_none_or(|id| {
+                    match s.route(&route.source_id, id) {
+                        Some(current) => Some(&current) == r.route.as_ref(),
+                        None => r.route.as_ref().is_some_and(|r| r.binding_id.is_none()),
+                    }
+                })
             }))
         })?;
         if !valid
@@ -232,7 +246,7 @@ async fn flush() -> Result<()> {
         }
         let result = deliver(Request::Push {
             route,
-            count: rows.len(),
+            messages: rows.iter().map(|r| r.envelope.clone()).collect(),
             escalated: rows.iter().any(|r| r.envelope["escalated"] == true),
             batch_id: string(&rows[0].envelope, "messageId").into(),
         })

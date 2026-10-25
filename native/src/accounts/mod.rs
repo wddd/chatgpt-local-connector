@@ -724,6 +724,10 @@ impl Manager {
                 };
                 let account = self.query(&json!({"id":account_id})).await?;
                 let mut result = json!({"sourceId":source["id"],"platform":source["platform"],"identityResolution":source_resolution(string(&source,"id"))?});
+                result["coordinationDelivery"] =
+                    crate::claude_notify::coordination_delivery::routing_status(string(
+                        &source, "id",
+                    ))?;
                 for key in [
                     "id",
                     "alias",

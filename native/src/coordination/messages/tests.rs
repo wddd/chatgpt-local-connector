@@ -25,8 +25,10 @@ impl Fixture {
         if args["requestId"].is_null() {
             args["requestId"] = json!(id());
         }
-        let result = validate("message_send", &args)
-            .and_then(|_| self.store.send(&args, actor, route, self.time));
+        let result = validate("message_send", &args).and_then(|_| {
+            self.store
+                .send(&args, actor, route, "no-verified-target", self.time)
+        });
         result.unwrap_or_else(|e| failure(e, "message_send"))
     }
     fn list(&mut self, actor: &str, args: Value) -> Value {
@@ -140,7 +142,7 @@ fn message_cap_retries_restart_and_evasion() {
     assert!(f.send("one", request())["message"].is_object());
 }
 #[test]
-// Contract: bursts produce one target batch with all pending messages, persisted cooldown and no pull-only pushes.
+// Contract: bursts use bounded destination batches without losing mail; cooldown and pull-only routing survive restart.
 fn message_coalescing_and_pull_only() {
     let mut f = Fixture::new();
     let mut args = request();
@@ -151,13 +153,25 @@ fn message_coalescing_and_pull_only() {
     assert!(f.store.batches(f.time + 29).unwrap().is_empty());
     let batches = f.store.batches(f.time + 30).unwrap();
     assert_eq!(batches.len(), 1);
-    assert_eq!(batches[0].len(), 20);
+    let delivered_ids: std::collections::BTreeSet<_> = batches[0]
+        .iter()
+        .map(|r| string(&r.envelope, "messageId").to_owned())
+        .collect();
+    assert!(!delivered_ids.is_empty());
     f.store.mark(&batches[0], "sending", f.time + 30).unwrap();
     f.store.mark(&batches[0], "delivered", f.time + 30).unwrap();
     f.restart();
     f.time += 31;
     f.send_route("one", args.clone(), Some(route()));
     assert!(f.store.batches(f.time + 30).unwrap().is_empty());
+    let remaining = f.store.batches(f.time + 60).unwrap();
+    let queued_ids: std::collections::BTreeSet<_> = remaining
+        .iter()
+        .flatten()
+        .map(|r| string(&r.envelope, "messageId").to_owned())
+        .collect();
+    assert!(delivered_ids.is_disjoint(&queued_ids));
+    assert_eq!(delivered_ids.len() + queued_ids.len(), 21);
     let mut other = Fixture::new();
     for _ in 0..20 {
         assert_eq!(other.send("one", args.clone())["deliveryMode"], "pull-only");
@@ -435,4 +449,48 @@ fn recovery_mail_rechecks_completion_and_pages() {
         f.list("two", json!({}))["messages"][0]["deliveryState"],
         "suppressed"
     );
+}
+
+#[test]
+fn fallback_mail_coalesces_and_pull_only_reason_survives_replay() {
+    // Regression: ax-4e72538c accepted messages concealed missing recipient routes and fallback sends must retain destination coalescing.
+    let mut f = Fixture::new();
+    let mut args = request();
+    args["type"] = json!("notice");
+    args["requestId"] = json!(id());
+    let first = f
+        .store
+        .send(&args, "one", None, "ambiguous-verified-targets", f.time)
+        .unwrap();
+    assert_eq!(first["deliveryMode"], "pull-only");
+    assert_eq!(first["routing"]["reason"], "ambiguous-verified-targets");
+    f.restart();
+    let replay = f
+        .store
+        .send(&args, "one", Some(route()), "resolved", f.time)
+        .unwrap();
+    assert_eq!(replay["routing"], first["routing"]);
+    for _ in 0..3 {
+        args["requestId"] = json!(id());
+        f.store
+            .send(&args, "one", Some(route()), "resolved", f.time)
+            .unwrap();
+    }
+    assert!(f.store.batches(f.time + 29).unwrap().is_empty());
+    let batches = f.store.batches(f.time + 30).unwrap();
+    assert_eq!(batches.len(), 1);
+    assert_eq!(batches[0].len(), 3);
+    f.store.mark(&batches[0], "sending", f.time + 30).unwrap();
+    f.store.mark(&batches[0], "delivered", f.time + 31).unwrap();
+    let inbox = f.list("two", json!({}));
+    assert_eq!(
+        inbox["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| m["deliveryState"] == "delivered")
+            .count(),
+        3
+    );
+    assert!(f.store.batches(f.time + 90).unwrap().is_empty());
 }
