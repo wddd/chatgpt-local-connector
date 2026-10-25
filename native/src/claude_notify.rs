@@ -2479,6 +2479,10 @@ pub(crate) async fn migrate() -> Result<()> {
 
 pub(crate) fn start(service: &Arc<crate::service::Service>) {
     let control = &service.control;
+    // Capture before the worker can finish recovery. The same journal drives
+    // replacement resumes and its outcome, even if bindings are already terminal.
+    let replacement = crate::app_replace::status()
+        .map(|receipt| crate::app_replace::recovery_turns(&receipt, &control.session));
     let agents = &service.agents;
     let executor = Cli {
         service: Arc::downgrade(service),
@@ -2532,6 +2536,10 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                 break;
             };
             let cycle = async {
+                let replacement = replacement.as_ref().map_err(Clone::clone)?;
+                if recovering {
+                    interrupted.extend(replacement.iter().flatten().cloned());
+                }
                 let mut reads = tokio::task::JoinSet::new();
                 let permits = Arc::new(tokio::sync::Semaphore::new(8));
                 let mut owner_threads = std::collections::HashSet::new();
@@ -2631,9 +2639,13 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                             continue;
                         }
                     };
-                    // A retained binding is not evidence of interruption. Count only
-                    // previously live turns confirmed interrupted during this recovery.
-                    if recovering && !old.terminal && observed["state"] == "cancelled" {
+                    // Replacement owns its interruption record. For ordinary restarts,
+                    // count previously live turns confirmed interrupted during recovery.
+                    if recovering
+                        && replacement.is_none()
+                        && !old.terminal
+                        && observed["state"] == "cancelled"
+                    {
                         interrupted.insert((old.thread_id.clone(), old.turn_id.clone()));
                     }
                     let mut b = old;
@@ -4419,6 +4431,64 @@ mod tests {
                 .as_array()
                 .is_none_or(|e| e.is_empty())
         );
+    }
+
+    #[tokio::test]
+    async fn recovery_counts_a_replacement_turn_already_interrupted_and_resumed() {
+        // Regression: 4ffbe47 reported zero interrupted turns after replacement resumed one journaled turn.
+        let dir = Sandbox::new();
+        let mut old = fixture(&dir.0);
+        let lock = Mutex::new(());
+        super::process(&dir.0, &lock, &mut old, &json!({"state":"cancelled"}))
+            .await
+            .unwrap();
+        old.continuation_bound = true;
+        persist(&dir.0, &old).unwrap();
+        let mut resumed = old.clone();
+        resumed.turn_id = "resumed-turn".into();
+        resumed.terminal = false;
+        resumed.continuation_bound = false;
+        resumed.deliveries.clear();
+        persist(&dir.0, &resumed).unwrap();
+        let mut replacement = json!({
+            "state":"resuming", "shutdownRequested":true, "coreInstance":"old-core",
+            "resumedCount":1, "interruptedTurns":[{
+                "threadId":old.thread_id, "turnId":old.turn_id, "state":"receipt-returned",
+                "resumeReceipt":{"state":"completed", "turnId":resumed.turn_id}
+            }]
+        });
+        let interrupted = crate::app_replace::recovery_turns(&replacement, "new-core").unwrap();
+        recovery::enqueue(
+            &dir.0,
+            &lock,
+            "replacement-restart",
+            chrono::Utc::now().timestamp(),
+            &interrupted,
+        )
+        .await
+        .unwrap();
+        let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
+        let recovered = inbox["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["kind"] == "recovered")
+            .collect::<Vec<_>>();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(
+            recovered[0]["recovery"]["affectedTasks"],
+            replacement["resumedCount"]
+        );
+        assert!(crate::app_replace::recovery_turns(&replacement, "old-core").is_none());
+        replacement["interruptedTurns"][0]["state"] = json!("finished-before-shutdown");
+        assert!(crate::app_replace::recovery_turns(&replacement, "new-core")
+            .unwrap()
+            .is_empty());
+        replacement["state"] = json!("succeeded");
+        assert!(crate::app_replace::recovery_turns(&replacement, "later-core").is_none());
+        replacement["state"] = json!("countdown");
+        replacement["shutdownRequested"] = json!(false);
+        assert!(crate::app_replace::recovery_turns(&replacement, "other-core").is_none());
     }
 
     #[tokio::test]

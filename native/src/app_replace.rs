@@ -251,6 +251,33 @@ pub fn active(value: &Value) -> bool {
     )
 }
 
+/// Read the shutdown journal only while a replacement is recovering a new Core.
+pub fn recovery_turns(
+    receipt: &Value,
+    session: &str,
+) -> Option<std::collections::HashSet<(String, String)>> {
+    if !active(receipt)
+        || receipt["shutdownRequested"] != true
+        || string(receipt, "coreInstance").is_empty()
+        || receipt["coreInstance"] == session
+    {
+        return None;
+    }
+    Some(
+        receipt["interruptedTurns"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|entry| entry["state"] != "finished-before-shutdown")
+            .filter_map(|entry| {
+                let thread = string(entry, "threadId");
+                let turn = string(entry, "turnId");
+                (!thread.is_empty() && !turn.is_empty()).then(|| (thread.into(), turn.into()))
+            })
+            .collect(),
+    )
+}
+
 #[cfg(not(target_os = "macos"))]
 pub async fn prepare(_body: Value) -> Result<Value> {
     Err("NOT_SUPPORTED: app replace requires macOS".into())
