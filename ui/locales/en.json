@@ -1217,5 +1217,11 @@
   "detail.noHandoffs": "No handoffs observed.",
   "detail.timeUnknown": "Time unavailable",
   "detail.turnProgress": "Turn {count} · {state}",
-  "detail.planProgress": "Plan {completed} of {total} steps completed"
+  "detail.planProgress": "Plan {completed} of {total} steps completed",
+  "topology.mode": "Topology layout",
+  "topology.tree": "Tree",
+  "topology.flat": "Flat",
+  "topology.expand": "Expand",
+  "topology.collapse": "Collapse",
+  "topology.hiddenTasks": "{count} hidden tasks"
 }

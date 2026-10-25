@@ -45,12 +45,12 @@ export type Params = Record<ParameterKey, number>;
 export const DEFAULTS = Object.fromEntries(PARAMETERS.map(p => [p.key, p.default])) as Params;
 export type Side = -1 | 1;
 export interface Task { id: string; width: number; height: number }
-export interface Entity { id: string; tasks: readonly Task[] }
+export interface Entity { id: string; tasks: readonly Task[]; children?: readonly Entity[]; collapsed?: boolean }
 export interface Scene { vw: number; vh: number; left: readonly Entity[]; right: readonly Entity[]; panel?: { side: Side; edge: number; selected: string; narrow?: boolean } }
 export interface Drag extends Point { kind: "node" | "task"; side: Side; id: string }
 export interface Point { x: number; y: number }
 export interface NodeGeometry extends Point {
-  id: string; tasks: readonly Task[]; active: boolean; size: number; scale: number; opacity: number; dim: boolean; side: Side;
+  id: string; parent?: string; tasks: readonly Task[]; active: boolean; size: number; scale: number; opacity: number; dim: boolean; side: Side;
   port: number; arc: { R: number; lo: number; hi: number } | null;
 }
 export interface TaskGeometry extends Task, Point { parent: string; side: Side; port: number; hidden?: boolean }
@@ -90,10 +90,11 @@ export function distribute(raw: number[], follow: number, sep: number, max: numb
 // Without tasks, both wings use the same regular rows and node styling.
 function wingRows(list: readonly Entity[], p: Params, opt: Pick<WingOptions, "idleStyle" | "rowScale">): Row[] {
   return list.map((e) => {
-    const n = e.tasks.length;
+    const n = e.collapsed ? 0 : e.tasks.length;
     const base = opt.idleStyle ? Math.max(p.minIdleRow, p.idleRow * opt.rowScale) : Math.max(56, p.sourceRow * opt.rowScale);
-    const taskHeight = e.tasks.reduce((height, task) => height + task.height, 0) + Math.max(0, n - 1) * p.taskGap;
-    return { e, n, h: n > 0 ? Math.max(base, taskHeight + 20) : base };
+    const taskHeight = (e.collapsed ? [] : e.tasks).reduce((height, task) => height + task.height, 0) + Math.max(0, n - 1) * p.taskGap;
+    const childrenHeight = !e.collapsed && e.children?.length ? wingHeight(wingRows(e.children, p, { ...opt, idleStyle: false }), p) : 0;
+    return { e, n: n + (e.collapsed ? 0 : e.children?.length ?? 0), h: Math.max(base, (n > 0 ? taskHeight + 20 : 0) + childrenHeight + (n > 0 && childrenHeight ? p.rowGap : 0)) };
   });
 }
 function wingHeight(rows: Row[], p: Params) { return rows.reduce((s, r) => s + r.h, 0) + p.rowGap * Math.max(0, rows.length - 1); }
@@ -113,7 +114,7 @@ function solveWing(list: readonly Entity[], side: Side, hub: Point, Re: number, 
     const active = r.n > 0, idle = opt.idleStyle && !active;
     const ny = y + r.h / 2; y += r.h + p.rowGap;
     const nodeDrag = drag && drag.kind === 'node' && drag.id === r.e.id;
-    return { id: r.e.id, port: 0, arc: null, tasks: r.e.tasks, active, x: nodeDrag ? drag.x : colX - side * (idle ? idleIndent : 0),
+    return { id: r.e.id, port: 0, arc: null, tasks: r.e.collapsed ? [] : r.e.tasks, active, x: nodeDrag ? drag.x : colX - side * (idle ? idleIndent : 0),
       y: nodeDrag ? drag.y : ny, size: p.nodeSize, scale: active ? p.activeScale : idle ? idleScale : 1, opacity: idle ? 0.62 : 1, dim: idle, side };
   });
   // Earmuff ports follow the direction from the hub to each node.
@@ -124,11 +125,11 @@ function solveWing(list: readonly Entity[], side: Side, hub: Point, Re: number, 
   const hi = Math.max(p.earMin, ang.length ? ang[ang.length - 1] + p.earPad : 0);
   // Task dimensions define ordered slots around the node, with ports on an outer arc.
   const tasks: TaskGeometry[] = [];
-  nodes.forEach((n) => {
-    if (!n.active) { n.arc = null; return; }
+  nodes.forEach((n, index) => {
+    if (!n.tasks.length) { n.arc = null; return; }
     const R = n.size / 2 * n.scale + p.arcGap;
     const height = n.tasks.reduce((height, task) => height + task.height, 0) + (n.tasks.length - 1) * p.taskGap;
-    let edge = n.y - height / 2;
+    let edge = rows[index].e.children?.length ? n.y - rows[index].h / 2 + 10 : n.y - height / 2;
     const slots = n.tasks.map(task => {
       const center = edge + task.height / 2;
       edge += task.height + p.taskGap;
@@ -143,6 +144,23 @@ function solveWing(list: readonly Entity[], side: Side, hub: Point, Re: number, 
         x: taskDrag ? drag.x : n.x + side * p.bubbleOffset, y: taskDrag ? drag.y : slots[i] });
     });
   });
+  // Accounts reuse the mirrored wing algorithm, including their own task arcs.
+  const descendants: NodeGeometry[] = [];
+  rows.forEach((row, index) => {
+    if (row.e.collapsed || !row.e.children?.length) return;
+    const parent = nodes[index];
+    const child = solveWing(row.e.children, side,
+      { x: parent.x + side * (p.bubbleOffset - Re * p.colDist * opt.squeeze), y: parent.y + (parent.tasks.length ? (parent.tasks.reduce((h, t) => h + t.height, 0) + (parent.tasks.length - 1) * p.taskGap + 20 + p.rowGap) / 2 : 0) }, Re, p, { ...opt, idleStyle: false }, drag);
+    const angles = distribute(child.nodes.filter(n => !n.parent).map(n => Math.atan2(n.y - parent.y, p.bubbleOffset) * 180 / Math.PI), p.arcFollow, 9, p.arcMax);
+    let i = 0;
+    for (const n of child.nodes) {
+      if (!n.parent) { n.parent = parent.id; n.port = angles[i++]; n.size = 36; n.scale = 1; n.opacity = 1; if (n.arc) n.arc.R = 18 + p.arcGap; }
+      descendants.push(n);
+    }
+    parent.arc = { R: parent.size / 2 * parent.scale + p.arcGap, lo: Math.min(parent.arc?.lo ?? -14, angles[0] - p.arcPad), hi: Math.max(parent.arc?.hi ?? 14, angles.at(-1)! + p.arcPad) };
+    tasks.push(...child.tasks);
+  });
+  nodes.push(...descendants);
   return { side, H, nodes, ear: { lo, hi }, tasks };
 }
 
@@ -157,7 +175,8 @@ export function extentOf(w: Wing, hubX: number, Re: number) {
 export function solve(sc: Scene, p: Params = DEFAULTS, drag: Drag | null = null): Layout {
   const vw = sc.vw, vh = sc.vh, pad = 70, m = p.margin;
   const Re = Math.max(vw < 600 ? 48 : 80, Math.min(130, vw * 0.13, vh * 0.2)) * p.ringScale;
-  const hasTasks = [...sc.left, ...sc.right].some(e => e.tasks.length > 0);
+  const hasTasksIn = (e: Entity): boolean => !e.collapsed && (e.tasks.length > 0 || !!e.children?.some(hasTasksIn));
+  const hasTasks = [...sc.left, ...sc.right].some(hasTasksIn);
   // Vertical: each wing compresses its own rows; whatever still overflows scrolls.
   const fitRow = (list: readonly Entity[], idleStyle: boolean) => {
     const available = vh - 2 * pad;
@@ -182,13 +201,17 @@ export function solve(sc: Scene, p: Params = DEFAULTS, drag: Drag | null = null)
   // Horizontal: squeeze column distances only when the whole scene cannot fit.
   const panelWing = (wing: Wing) => {
     if (sc.panel?.side !== wing.side) return wing;
+    const hidden = new Set<string>();
+    for (const n of wing.nodes) {
+      if (n.parent && (n.parent === sc.panel.selected || hidden.has(n.parent))) { n.opacity = 0; hidden.add(n.id); }
+    }
     for (const t of wing.tasks) { t.hidden = true; t.x -= wing.side * 12; }
     return wing;
   };
   const measure = () => {
     const L = solveWing(sc.left, -1, at(0), Re, p, optL, null);
     const R = solveWing(sc.right, 1, at(0), Re, p, optR, null);
-    const extent = (wing: Wing) => extentOf(sc.panel?.side === wing.side ? { ...panelWing(wing), tasks: [] } : wing, 0, Re);
+    const extent = (wing: Wing) => extentOf(sc.panel?.side === wing.side ? { ...panelWing(wing), nodes: wing.nodes.filter(n => n.opacity > 0), tasks: [] } : wing, 0, Re);
     return { eL: extent(L), eR: extent(R) };
   };
   let e = measure();

@@ -1478,3 +1478,15 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .pairing-claim .task-tag { padding: 6px 12px; border-radius: var(--radius-pill); font-size: var(--text-md); white-space: normal; overflow-wrap: anywhere; }
 .pairing-card .pairing-fact { font-size: var(--text-xs); color: var(--text-secondary); }
 .pairing-card .pairing-summary { font-size: var(--text-sm); }
+
+.topology-mode { position: absolute; top: 16px; right: 20px; width: 154px; z-index: 8; }
+.topology-node.sources { --account-color: var(--topology-source); --collapse-side: -1; }
+.topology-node.agents { --account-color: var(--topology-agent); --collapse-side: 1; }
+.topology-account .graph-node { background: var(--topology-account-fill); border: 2px solid var(--account-color); border-radius: 50%; }
+.topology-account-initial { color: var(--account-color); font-weight: 600; font-size: 18px; }
+.topology-node .graph-node-name .icon { display: inline-flex; vertical-align: middle; margin-left: 3px; }
+.topology-collapse { position: absolute; top: 50%; left: calc(50% + var(--collapse-side) * var(--collapse-offset, 27px)); transform: translate(-50%, -50%) scale(var(--node-inverse, 1)); width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--account-color); color: white; opacity: 0; pointer-events: none; cursor: pointer; }
+.topology-node:hover .topology-collapse, .topology-node:focus-within .topology-collapse { opacity: 1; pointer-events: auto; }
+.topology-collapse:focus-visible { outline: 2px solid var(--account-color); outline-offset: 3px; }
+.topology-node[data-path-lit="true"] .graph-node { box-shadow: 0 0 0 4px color-mix(in srgb, var(--account-color) 14%, transparent); }
+.activity-slot[data-path-lit="true"] .activity-bubble { box-shadow: inset 0 0 0 1px var(--border-strong), 0 6px 18px color-mix(in srgb, var(--text) 18%, transparent); }

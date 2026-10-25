@@ -1,3 +1,4 @@
+import { installTopologyAccounts } from './topology/scenarioAccounts';
 import { beginScenario, finishScenario } from "./state/scenarioReadiness";
 import { updates, acceptUpdateSnapshot } from './state/updates';
 import type { UpdateSnapshot, Replacement } from './state/updateModel';
@@ -118,6 +119,8 @@ export async function installScenario(name: string) {
       ...(task.question ? { interaction: { kind: 'question' as const, method: 'item/tool/requestUserInput', summary: 'Select a fixture option', questions: [{id:'choice',question:'Choose an option',options:[{label:'Alpha'},{label:'Beta'}]}], canRespond:true, respond:{op:'codex_respond' as const,args:{id:`fixture-interaction-${index}`,backendSession:'fixture'}} } } : {}),
     });
   });
+  const topologyAccounts = name === 'topology-accounts' ? installTopologyAccounts(status, activity) : [];
+  if (topologyAccounts.length) sources.splice(0, sources.length, ...status.ingresses.flatMap(i => i.sources ?? []));
   const timelines: Record<string, AgentTimeline> = {};
   fixture.tasks.forEach((task, taskIndex) => {
     const session = activity.agents[task.agent].sessions.find(session => session.id === `fixture-task-${taskIndex}`)!;
@@ -193,6 +196,7 @@ export async function installScenario(name: string) {
     ],
   }] : [] };
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
+  responses['accounts'] = { accounts: topologyAccounts };
   responses['service'] = { supported: true, enabled: false };
   responses['claude-accounts/system'] = { initialized: true, accountId: '00000000-0000-4000-8000-000000000001', identity: { loggedIn: true, email: 'host@example.invalid', authMethod: 'claude.ai' }, observedAt: now };
   responses['claude-accounts/routes'] = { routes: {} };

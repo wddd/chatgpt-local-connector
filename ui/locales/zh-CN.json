@@ -1217,5 +1217,11 @@
   "detail.noHandoffs": "尚无交接记录。",
   "detail.timeUnknown": "时间不可用",
   "detail.turnProgress": "第 {count} 轮 · {state}",
-  "detail.planProgress": "计划已完成 {completed} / {total} 步"
+  "detail.planProgress": "计划已完成 {completed} / {total} 步",
+  "topology.mode": "拓扑布局",
+  "topology.tree": "树形",
+  "topology.flat": "平铺",
+  "topology.expand": "展开",
+  "topology.collapse": "收起",
+  "topology.hiddenTasks": "{count} 个隐藏任务"
 }

@@ -33,17 +33,18 @@ export class TopologyAnimator {
     for (const w of layout.wings) {
       this.spring(`ear${w.side}`, w.ear);
       for (const n of w.nodes) {
+        const parent = n.parent ? this.values(nodeKey(w.side, n.parent)) : undefined;
         const s = this.spring(nodeKey(w.side, n.id), { x: n.x, y: n.y, size: n.size, scale: n.scale, op: n.opacity, port: n.port,
-          radius: n.arc?.R ?? n.size / 2 * n.scale + this.params.arcGap, alo: n.arc?.lo ?? 0, ahi: n.arc?.hi ?? 0, aop: n.arc ? 1 : 0 },
-        { aop: 0, alo: 0, ahi: 0 });
-        s.side = w.side;
+          radius: n.arc?.R ?? n.size / 2 * n.scale + this.params.arcGap, alo: n.arc?.lo ?? 0, ahi: n.arc?.hi ?? 0, aop: n.arc ? 1 : 0, presence: n.opacity === 0 ? 0 : 1, light: 1, emphasis: 1 },
+        { aop: 0, alo: 0, ahi: 0, ...(parent ? { x: parent.x + w.side * parent.radius, y: parent.y, op: 0, presence: 0, scale: 0.6 } : {}) });
+        s.side = w.side; s.parent = n.parent ? nodeKey(w.side, n.parent) : undefined;
         if (drag?.kind === "node" && drag.side === w.side && drag.id === n.id) {
           s.fields.x.pin = drag.x; s.fields.y.pin = drag.y;
         }
       }
       for (const t of w.tasks) {
         const parent = nodeKey(w.side, t.parent), n = this.values(parent)!;
-        const s = this.spring(taskKey(w.side, t.id), { x: t.x, y: t.y, width: t.width, height: t.height, port: t.port, op: t.hidden ? 0 : 1 },
+        const s = this.spring(taskKey(w.side, t.id), { x: t.x, y: t.y, width: t.width, height: t.height, port: t.port, op: t.hidden ? 0 : 1, light: 1, offset: 0 },
           { x: n.x + t.side * n.radius, y: n.y, port: 0, op: 0 });
         s.parent = parent; s.side = w.side;
         if (drag?.kind === "task" && drag.side === w.side && drag.id === t.id) {
@@ -55,7 +56,18 @@ export class TopologyAnimator {
       if (s.alive) continue;
       if (!s.parent) { this.live.delete(key); continue; }
       s.fields.op.t = 0; s.fields.port.t = 0;
+      if (s.fields.presence) s.fields.presence.t = 0;
       s.fields.x.pin = s.fields.y.pin = undefined;
+    }
+  }
+  highlight(nodes: Set<string> | null, selected: readonly string[] = []) {
+    for (const [key, primitive] of this.live) {
+      if (!primitive.alive || !primitive.fields.light) continue;
+      const [kind, side, id] = JSON.parse(key) as [string, Side, string];
+      const lit = !nodes || nodes.has(kind === 'task' ? key : JSON.stringify([side, id]));
+      primitive.fields.light.t = lit ? 1 : kind === 'task' ? 0.35 : 0.32;
+      if (primitive.fields.emphasis) primitive.fields.emphasis.t = nodes && lit && !selected.includes(key) ? 1.04 : 1;
+      if (primitive.fields.offset) primitive.fields.offset.t = nodes && lit ? 6 * side : 0;
     }
   }
   values(key: string) {

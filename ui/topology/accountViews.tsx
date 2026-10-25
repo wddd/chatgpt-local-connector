@@ -1,0 +1,59 @@
+import { Link } from 'lucide-react';
+import { Icon } from '../components/ui';
+import GraphNode from '../components/GraphNode';
+import type { NodeView } from './Topology';
+import { accountNodeId, type TopologyAccount } from './accounts';
+import { orderedSubset } from './order';
+
+export interface AccountNodeActions {
+  open: (side: -1 | 1, platform: string, sourceId?: string, accountId?: string) => void;
+}
+// Stable account keys survive Tree/Flat switches. Connections never create identities.
+export function accountViews(views: NodeView[], side: -1 | 1, accounts: TopologyAccount[], mode: 'tree' | 'flat', orders: Record<string, string[]>, actions: AccountNodeActions): NodeView[] {
+  if (!accounts.length) return views;
+  const platforms = new Map<string, NodeView[]>();
+  views.forEach(view => { const id = view.platform ?? view.id; platforms.set(id, [...platforms.get(id) ?? [], view]); });
+  return [...platforms].flatMap(([platform, members]) => {
+    const linked = orderedSubset(accounts.filter(a => side === 1 ? a.agentProfiles.some(p => p.agent === platform) : a.sources.some(id => members.some(v => v.id === id))), orders[`${side}:${platform}`] ?? []);
+    // Partial snapshots cannot silently hide unassociated sources or tasks.
+    if (!linked.length) return members;
+    const covered = side === -1 ? members.filter(v => linked.some(a => a.sources.includes(v.id))) : members;
+    const first = covered[0], label = first.platformLabel ?? platform;
+    const unmatched = side === -1 ? members.filter(v => !linked.some(a => a.sources.includes(v.id))) : [];
+    const tasks = members.flatMap(v => v.tasks);
+    const childViews = linked.map(account => {
+      const sources = members.filter(v => account.sources.includes(v.id));
+      const selected = side === -1 ? sources.some(v => v.selected) : members.some(v => v.selected) && members.some(v => v.selectedAccountId === account.id);
+      const sameIdentity = account.sources.length > 0 && account.agentProfiles.length > 0;
+      const state = side === -1 ? sources.find(v => v.state === 'normal')?.state ?? sources[0]?.state ?? first.state : first.state;
+      const nodeLabel = mode === 'flat' && linked.length > 1 ? `${label} · ${account.alias}` : account.alias;
+      return {
+        ...first, id: accountNodeId(platform, account.id), accountId: account.id, sourceIds: sources.map(v => v.id),
+        selected, account: true, sameIdentity, label: nodeLabel,
+        attention: tasks.some(t => t.agentAccountId === account.id && (t.state === 'attention' || t.pending)),
+        state,
+        tasks: tasks.filter(t => t.agentAccountId === account.id),
+        content: <GraphNode label={nodeLabel} state={state} highlighted={selected} onOpen={() => actions.open(side, platform, sources[0]?.id, account.id)}>
+          {mode === 'tree' ? <span className="topology-account-initial">{account.alias.slice(0, 1)}</span> : first.icon}
+          <span className="graph-node-name">{nodeLabel}{sameIdentity && <Icon icon={Link} />}</span>
+        </GraphNode>,
+      } satisfies NodeView;
+    });
+    const platformView: NodeView = { ...first, id: side === 1 ? platform : `platform:${platform}`, platform,
+      label, sourceIds: covered.map(v => v.id), accountId: linked.length === 1 ? linked[0].id : undefined,
+      sameIdentity: linked.length === 1 && childViews[0].sameIdentity,
+      selected: covered.some(v => v.selected) && (linked.length === 1 || !childViews.some(v => v.selected)),
+      tasks: tasks.filter(t => linked.length === 1 || !linked.some(a => a.id === t.agentAccountId)),
+      content: <GraphNode label={label} state={first.state} highlighted={members.some(v => v.selected)} onOpen={() => actions.open(side, platform, first.id)}>
+        {first.icon}<span className="graph-node-name">{label}{linked.length === 1 && childViews[0].sameIdentity && <Icon icon={Link} />}</span>
+      </GraphNode>,
+    };
+    if (linked.length === 1) return [platformView, ...unmatched];
+    if (mode === 'flat') {
+      // Legacy unattributed tasks remain attached to their platform, never guessed.
+      if (platformView.tasks.length) return [...childViews, { ...platformView, selected: false }, ...unmatched];
+      return [...childViews, ...unmatched];
+    }
+    return [{ ...platformView, children: childViews }, ...unmatched];
+  });
+}

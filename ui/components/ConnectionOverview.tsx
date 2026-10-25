@@ -1,3 +1,6 @@
+import { orderedSubset } from '../topology/order';
+import { accountViews } from '../topology/accountViews';
+import { useTopologyAccounts, topologyMode, topologyAccountOrder } from '../topology/accountState';
 import { scenarioName } from "../scenarioMode";
 import { agentPanel, selectAgentPanel, ingressPanel, selectIngressPanel } from "../state/overviewPanels";
 import { PhaseTile, PhaseLabel } from "./activity";
@@ -44,7 +47,7 @@ import { onboarding, openOnboarding, connectionSetup, addedSource } from "../sta
 import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
 import AgentDisplaySettings from "./AgentDisplaySettings";
-import { Button, Icon, Notice } from "./ui";
+import { Button, Icon, Notice, SingleChoice } from "./ui";
 import AgentPanel from "./AgentPanel";
 import Hub from "../topology/Hub";
 function wireState(state: string): WireState {
@@ -78,6 +81,9 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   useEffect(() => { if (!detailOpen) setPanelExpanded(false); }, [detailOpen]);
   const { status, sources: sourceRecords, sourcesLoaded, busy, loading, error } = connector.use();
   const inventory = agentStore.use();
+  const accounts = useTopologyAccounts(sourceRecords), mode = topologyMode.use(), accountOrders = topologyAccountOrder.use();
+  const [accountSelection, setAccountSelection] = useState<string>();
+  useEffect(() => { if (selection?.session) setAccountSelection(selection.session.agentAccountId); }, [selection?.session?.id, selection?.session?.agentAccountId]);
   const max = maxVisibleAgents.use();
   const density = bubbleDensity.use(), width = bubbleWidths[bubbleWidth.use()], autoCompact = bubbleAutoCompact.use();
   const { snapshot } = subscriptions.use(), nav = navigation.use();
@@ -207,7 +213,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     const state = source.state === "disconnected" ? "disconnected" : sourceState(ingress);
     const selected = !sourceSelection?.closing && sourceSelection?.client?.id === source.id;
     return [{
-      id: source.id, state: wireState(state), attention: false, selected, tasks: [], reorderable: !panelOpen,
+      id: source.id, platform: source.product, platformLabel: source.product === 'claude' ? 'Claude' : source.product === 'chatgpt' ? 'ChatGPT' : source.product,
+      icon: <SourceIcon platform={source.product} panelVisual />, sourceIds: [source.id], state: wireState(state), attention: false, selected, tasks: [], reorderable: !panelOpen,
       content: <GraphNode label={`${source.label}: ${t(state)}`} state={wireState(state)} highlighted={selected} newlyAdded={source.id === newSourceId && !flow}
         onMove={panelOpen ? undefined : by => moveSource(source.id, by)}
         onOpen={() => selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } })}>
@@ -217,10 +224,13 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   });
   const agentViews: NodeView[] = agents.map(agent => {
     const sessions = orderActivity(tracked[agent.agent] ?? [], manualOrder[agent.agent] ?? []), selected = !selection?.closing && selection?.agent === agent.agent;
-    const shown = visibleActivity(sessions, selected ? selection.session?.id : undefined);
+    const groups = accounts.length ? [...new Set(sessions.map(s => s.agentAccountId))].map(id => sessions.filter(s => s.agentAccountId === id)) : [sessions];
+    const shownGroups = groups.map(group => ({ ...visibleActivity(group, selected ? selection.session?.id : undefined), group }));
+    const shown = { sessions: shownGroups.flatMap(group => group.sessions) };
     const effectiveDensity = effectiveBubbleDensity(density, autoCompact, sessions.length);
     return {
-      id: agent.agent, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled && !panelOpen,
+      id: agent.agent, platform: agent.agent, platformLabel: name(agent), icon: <AgentQuotaIcon agent={agent.agent} />,
+      selectedAccountId: selection?.session ? selection.session.agentAccountId : accountSelection, state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled && !panelOpen,
       content: <GraphNode label={`${name(agent)}: ${t(agentState(agent))}`} state={wireState(agentState(agent))}
         onMove={agent.enabled && !panelOpen ? by => moveVisibleAgent(agent.agent, by) : undefined}
         highlighted={selected} onOpen={() => selectAgentPanel({ type: "toggle", agent: agent.agent })}>
@@ -230,25 +240,46 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         {effectiveDensity !== density && <span className="agent-auto-compact">{t("activity.autoCompacted")}</span>}
       </GraphNode>,
       tasks: [
-        ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]), width, height: bubbleHeights[effectiveDensity], taskId: session.id, threadId: session.nativeSessionId, origin: session.origin,
+        ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]), width, height: bubbleHeights[effectiveDensity], taskId: session.id, threadId: session.nativeSessionId, agentAccountId: session.agentAccountId, origin: session.origin,
           state: (session.endedAt !== undefined ? "completed" : session.interaction ? "attention" : session.source === "transcript" ? "external" : "running") as import("../topology/render").TaskState,
           selected: selected && selection.session?.id === session.id, reorderable: !panelOpen,
           content: <ActivityBubble agent={agent.agent} session={session} now={now} density={effectiveDensity} onRead={() => markRead(agent.agent, session.id)} onMove={panelOpen ? undefined : by => {
-            const group = shown.sessions.filter(s => !!s.interaction === !!session.interaction);
+            const group = shown.sessions.filter(s => s.agentAccountId === session.agentAccountId && !!s.interaction === !!session.interaction);
             const from = group.findIndex(s => s.id === session.id), to = from + by;
             if (to < 0 || to >= group.length) return;
             const ids = group.map(s => s.id); ids.splice(from, 1); ids.splice(to, 0, session.id);
             reorderTasks(agent.agent, ids, sessions);
           }} />,
         })),
-        ...(shown.hidden ? [{ id: JSON.stringify([agent.agent, null]), width, height: bubbleHeights.compact, state: "summary" as const, selected: false,
+        ...shownGroups.flatMap(group => group.hidden ? [{ id: JSON.stringify(accounts.length ? [agent.agent, null, group.group[0]?.agentAccountId] : [agent.agent, null]),
+          members: group.group.filter(s => !group.sessions.includes(s)).map(s => ({ origin: s.origin, agentAccountId: s.agentAccountId, pending: !!s.interaction })),
+          agentAccountId: group.group[0]?.agentAccountId, count: group.hidden, pending: group.group.some(s => !!s.interaction && !group.sessions.includes(s)), width, height: bubbleHeights.compact, state: "summary" as const, selected: false,
           content: <button type="button" className="activity-bubble activity-summary" onClick={() => selectAgentPanel({ type: "agent", agent: agent.agent })}>
-            <PhaseTile phase="tool" animated={false} /><span className="activity-copy"><span className="activity-phase"><PhaseLabel phase="tool">{t("activity.more", { count: shown.hidden })}</PhaseLabel></span><span className="activity-headline">{t("activity.viewAll")}</span></span>
+            <PhaseTile phase="tool" animated={false} /><span className="activity-copy"><span className="activity-phase"><PhaseLabel phase="tool">{t("activity.more", { count: group.hidden })}</PhaseLabel></span><span className="activity-headline">{t("activity.viewAll")}</span></span>
           </button>,
         }] : []),
       ],
     };
   });
+  const openAccountNode = (side: -1 | 1, platform: string, sourceId?: string, accountId?: string) => {
+    if (side === 1) {
+      setAccountSelection(accountId);
+      selectAgentPanel({ type: accountId !== accountSelection ? 'agent' : 'toggle', agent: platform });
+    } else {
+      const source = controlSources.find(s => s.id === sourceId), ingress = source && sources.find(i => i.id === source.ingressId);
+      if (source && ingress) selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } });
+    }
+  };
+  const topologyLeft = accountViews(sourceViews, -1, accounts, mode, accountOrders, { open: openAccountNode });
+  const topologyRight = accountViews(agentViews, 1, accounts, mode, accountOrders, { open: openAccountNode });
+  const flatten = (nodes: NodeView[]): NodeView[] => nodes.flatMap(n => [n, ...flatten(n.children ?? [])]);
+  const reorderNodes = (side: -1 | 1, ids: string[]) => {
+    const nodes = flatten(side === -1 ? topologyLeft : topologyRight), first = nodes.find(n => n.id === ids[0]);
+    if (first?.account) {
+      topologyAccountOrder.set(old => ({ ...old, [`${side}:${first.platform}`]: ids.flatMap(id => nodes.find(n => n.id === id)?.accountId ?? []) }));
+    } else if (side === -1) reorderSources(orderedSubset(controlSources, ids.flatMap(id => nodes.find(n => n.id === id)?.sourceIds ?? [id])).map(s => s.id));
+    else reorderAgents(orderedSubset(agents.map(a => ({ id: a.agent })), ids).map(a => a.id));
+  };
   return (
     <>
       <section ref={core} inert={flow?.step === "welcome"} aria-hidden={flow?.step === "welcome" || undefined} className={`connection-core brand-mode ${panelOpen ? "side-panel-open" : ""}`} aria-label={t("connectionStatus")}>
@@ -269,9 +300,15 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             </span>
           </button>
         </div>
-        <Topology ref={topology} boundary={core} left={sourceViews} right={agentViews} panelKey={panelKey} panelExpanded={panelExpanded} onPanelLayout={updatePanelLayout}
-          onReorderNodes={(side, ids) => side === -1 ? reorderSources(ids) : reorderAgents(ids)}
-          onReorderTasks={(_side, agent, ids) => reorderTasks(agent, ids.map(id => JSON.parse(id)[1] as string), tracked[agent] ?? [])}
+        {accounts.length > 0 && <div className="topology-mode"><SingleChoice label={t('topology.mode')} value={mode}
+          options={[{ value: 'tree', label: t('topology.tree') }, { value: 'flat', label: t('topology.flat') }]}
+          onChange={value => topologyMode.set(value as 'tree' | 'flat')} /></div>}
+        <Topology ref={topology} boundary={core} accountsEnabled={accounts.length > 0} left={topologyLeft} right={topologyRight} panelKey={panelKey} panelExpanded={panelExpanded} onPanelLayout={updatePanelLayout}
+          onReorderNodes={reorderNodes}
+          onReorderTasks={(_side, parent, ids) => {
+            const agent = flatten(topologyRight).find(n => n.id === parent)?.platform ?? parent;
+            reorderTasks(agent, ids.map(id => JSON.parse(id)[1] as string), tracked[agent] ?? []);
+          }}
           brand={<Hub sourceEmpty={!sourceViews.length} agentEmpty={!agents.length}
             onAddSource={() => openOnboarding("product")}
             onManageAgents={() => setAgentsOpen(true)} />} />
