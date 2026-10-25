@@ -382,3 +382,64 @@ fn ax_entry_bound_and_candidate_overflow() {
     assert_eq!(list["counts"]["open"], 0);
     assert_eq!(list["counts"]["candidates"], 20);
 }
+
+#[test]
+fn receipt_observer_transition_replay_does_not_duplicate_ax_candidates() {
+    // Contract: one receipt-stalled transition remains one AX occurrence across restart, cooldown and confirmation.
+    let mut f = Fixture::new();
+    let row = json!({"requestId":"stalled-request","state":"running","updatedAt":timestamp(f.time),"origin":{"sourceId":"one","accountId":"account-one"}});
+    let resource = ResourceKey::parse("host:fixture").unwrap();
+    let first = super::super::observers::stalled_input(&row, f.time + 30_000, resource.clone())
+        .unwrap()
+        .unwrap();
+    let candidate = f
+        .store
+        .candidate(
+            Friction::StalledReceipt,
+            &first.transition_id,
+            first.origin.clone(),
+            first.evidence_refs.clone(),
+            "fixture-build",
+            f.time,
+        )
+        .unwrap()["entry"]
+        .clone();
+    f.restart();
+    f.time += 660_000;
+    let replay = super::super::observers::stalled_input(&row, f.time, resource)
+        .unwrap()
+        .unwrap();
+    assert_eq!(replay.transition_id, first.transition_id);
+    let result = f
+        .store
+        .candidate(
+            Friction::StalledReceipt,
+            &replay.transition_id,
+            replay.origin.clone(),
+            replay.evidence_refs.clone(),
+            "fixture-build",
+            f.time,
+        )
+        .unwrap();
+    assert_eq!(result["id"], candidate["id"]);
+    let listed = f.call("ax_list", json!({}));
+    assert_eq!(listed["counts"]["candidates"], 1);
+    assert_eq!(listed["entries"][0]["revision"], candidate["revision"]);
+    let confirmed = f.decide(&candidate, "confirm");
+    f.restart();
+    f.time += 660_000;
+    f.store
+        .candidate(
+            Friction::StalledReceipt,
+            &replay.transition_id,
+            replay.origin,
+            replay.evidence_refs,
+            "fixture-build",
+            f.time,
+        )
+        .unwrap();
+    let listed = f.call("ax_list", json!({"id":candidate["id"]}));
+    assert_eq!(listed["entries"].as_array().unwrap().len(), 1);
+    assert_eq!(listed["entries"][0]["occurrenceCount"], 1);
+    assert_eq!(listed["entries"][0]["revision"], confirmed["revision"]);
+}

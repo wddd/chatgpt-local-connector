@@ -340,6 +340,12 @@ impl Process {
             self.replies.lock().await.remove(&key.to_string());
             return Err(crate::rpc::submission_error(method, e));
         }
+        if matches!(method, "prompt" | "session/prompt") {
+            let task = self.state.lock().await.clone();
+            if crate::dispatch_policy::agent_submitted(&task).is_err() {
+                crate::coordination::observers::gap("dispatch", "persistence-failed");
+            }
+        }
         let result = tokio::time::timeout(Duration::from_millis(timeout), rx).await;
         self.replies.lock().await.remove(&key.to_string());
         result

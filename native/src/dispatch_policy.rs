@@ -614,9 +614,10 @@ pub(crate) fn record(receipt: &Value) -> Result<()> {
                 row["reworkOf"] = rework["turnId"].clone();
             }
         }
-        save(
+        crate::coordination::observers::save_owner(
             &dir.join(format!("{}.json", string(receipt, "requestId"))),
             &row,
+            crate::coordination::observers::Owner::Dispatch,
         )
     };
     let mut write = write;
@@ -721,9 +722,10 @@ pub(crate) async fn complete(
         if let Some(config) = persisted.configurations.get(turn) {
             row["effectiveConfiguration"] = json!({"model":config["model"],"effort":config["effort"],"serviceTier":config["serviceTier"],"threadServiceTier":config["threadServiceTier"],"source":config["source"]});
         }
-        save(
+        crate::coordination::observers::save_owner(
             &directory(thread)?.join(format!("{}.json", string(row, "requestId"))),
             row,
+            crate::coordination::observers::Owner::Dispatch,
         )?;
     }
     Ok(json!(rows))
@@ -945,6 +947,23 @@ pub(crate) fn agent_record(task: &Value, args: &Value) -> Result<()> {
         "arguments":args,"task":{"dispatch":task["dispatch"]}}),
     )
 }
+/// The Agent transport has flushed the prompt frame; this is submission, not completion.
+pub(crate) fn agent_submitted(task: &Value) -> Result<()> {
+    let _guard = RECORDS_LOCK.lock().map_err(|e| e.to_string())?;
+    let task_id = string(task, "taskId");
+    for mut row in read_records(task_id)?
+        .into_iter()
+        .filter(|r| r["turnId"] == task["turnId"] && r["agent"] == task["agent"])
+    {
+        row["submissionObserved"] = json!(true);
+        crate::coordination::observers::save_owner(
+            &directory(task_id)?.join(format!("{}.json", string(&row, "requestId"))),
+            &row,
+            crate::coordination::observers::Owner::Dispatch,
+        )?;
+    }
+    Ok(())
+}
 pub(crate) fn agent_observe(task: &Value, submission: Option<&str>) -> Result<()> {
     let _guard = RECORDS_LOCK.lock().map_err(|e| e.to_string())?;
     let task_id = string(task, "taskId");
@@ -981,9 +1000,10 @@ pub(crate) fn agent_observe(task: &Value, submission: Option<&str>) -> Result<()
             let message = &task["lastMessage"];
             row["turnEvidence"] = json!({"model":format!("{}/{}",string(message,"provider"),string(message,"model")),"source":"pi-assistant-message","scope":"turn","observedAt":now()});
         }
-        save(
+        crate::coordination::observers::save_owner(
             &directory(task_id)?.join(format!("{}.json", string(&row, "requestId"))),
             &row,
+            crate::coordination::observers::Owner::Dispatch,
         )?;
     }
     Ok(())

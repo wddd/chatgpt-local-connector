@@ -204,6 +204,11 @@ impl AgentDriver {
         args: &Value,
         op: &str,
     ) -> Result<Value> {
+        let cwd = p.state.lock().await["cwd"]
+            .as_str()
+            .unwrap_or("")
+            .to_owned();
+        let baseline = crate::changes::capture(&cwd).await;
         {
             let mut t = p.state.lock().await;
             if !matches!(
@@ -216,6 +221,12 @@ impl AgentDriver {
             let interrupted = t["status"] == "cancelled";
             t["status"] = json!("running");
             t["turnId"] = json!(id());
+            t["origin"] = crate::kernel::origin::current_origin();
+            if crate::changes::record(string(&t, "taskId"), string(&t, "turnId"), &baseline)
+                .is_err()
+            {
+                crate::coordination::observers::gap("baselines", "persistence-failed");
+            }
             t["output"] = json!("");
             t.as_object_mut().unwrap().remove("notification");
             t.as_object_mut().unwrap().remove("notificationError");

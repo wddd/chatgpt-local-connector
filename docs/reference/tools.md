@@ -671,12 +671,14 @@ bounded metadata feed. All of the user's authorized sources/accounts see the sam
 metadata by default. Existing ingress op allowlists and revocation still apply.
 The event surface remains read-only. AX reports and lifecycle changes below emit
 compact events; resource push remains a later phase.
+ARC observes dispatch, terminal, receipt, replacement, restart, registered Git refs
+and local tooling lifecycle. No source event-report operation or resource push is attached.
 
 The result contains `events`, `nextCursor`, `hasMore`, `oldestCursor`, `coverage`,
 and `observedAt`. Each event includes `eventId`, `sequence`, `kind`,
 `provenance:arc-observed`, canonical `resources`, `observedAt`, nullable
 `occurredAt`, `timeBasis`, nullable `origin`, `threadRefs`, a fixed one-line
-`summary`, `evidenceRefs`, nullable `status`, and nullable `attribution`.
+`summary`, `evidenceRefs`, nullable `status`, nullable `observation`, and nullable `attribution`.
 Origin is a source principal (`sourceId`, optional attributed `accountId`),
 `local-authority`, `arc`, or null for unknown. References are opaque metadata;
 they grant no access to the underlying task, receipt or private routing data.
@@ -707,6 +709,23 @@ coverage. An unreadable store returns a failure, never fabricated empty history.
 Reads allow 60 requests/minute/source with burst 10; internal emission allows
 100 events/second with bounded drop counts. No subscription or acknowledgement
 is required. Inspect coverage and the owning task/receipt before acting.
+
+
+Observer details are typed metadata: model/effort, confirmed interruption counts,
+resume-operation submissions, and old/new Git object IDs with movement classification.
+`receipt.stalled` means phase age reached 30 seconds, not that a task failed.
+`receipt.unconfirmed` means the operation result cannot be confirmed. Replacement
+success, recovery summary and successor turn completion are separate facts.
+`git.ref-moved` reports `created`, `moved`, `deleted`, `non-fast-forward` or `unknown`;
+ancestry failure cannot prove non-fast-forward movement. Baseline confidence is
+`correlated`, `ambiguous` or `unknown`; the latter is unattributed.
+
+Inspect `coverage.observers` as well as journal coverage. Registered projects come
+from the last successful ordinary project query; `projectRegistry.observedAt` exposes
+its age. Offline tooling, bounded replay, unavailable repositories and capacity limits
+leave explicit gaps. `lane.created`, `lane.landed`, `lane.removed`, `isolated.started`
+and `isolated.exited` require local tooling reports and readback. A Git ref change
+alone never proves a tooling command, and isolated start never proves readiness.
 
 ## AX reports and triage
 

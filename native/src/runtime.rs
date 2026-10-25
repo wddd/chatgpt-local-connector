@@ -505,6 +505,7 @@ pub async fn serve_mode(daemon: bool) -> Result<()> {
     crate::claude_notify::start(&service);
     crate::dispatch_queue::start(&service.control);
     crate::update_queue::start(&service.execution);
+    let coordination = crate::coordination::observers::start(&service);
     let startup_service = service.clone();
     let startup = tokio::spawn(async move {
         if daemon {
@@ -542,6 +543,8 @@ pub async fn serve_mode(daemon: bool) -> Result<()> {
             }
         }
     }
+    coordination.abort();
+    let _ = coordination.await;
     startup.abort();
     let _ = startup.await;
     monitor.abort();

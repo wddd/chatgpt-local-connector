@@ -31,6 +31,7 @@ impl ReceiptStore {
         {
             receipt["previousState"] = receipt["state"].clone();
             receipt["state"] = json!("unconfirmed");
+            crate::coordination::observers::unconfirmed(&receipt);
         }
         // Labels belong to the response boundary. A task/status poll reads many
         // receipts; resolving accounts here repeats a store scan for every row.
@@ -79,11 +80,16 @@ impl ReceiptStore {
             .map_err(|e| e.to_string())?;
         file.sync_all().map_err(|e| e.to_string())?;
         super::file_cache::changed(&path, before);
+        crate::coordination::observers::watch_receipt(&path);
         Ok(())
     }
     pub fn checkpoint(&self, receipt: &mut Value) -> Result<()> {
         receipt["updatedAt"] = json!(now());
-        save(&self.path(string(receipt, "requestId"))?, receipt)
+        crate::coordination::observers::save_owner(
+            &self.path(string(receipt, "requestId"))?,
+            receipt,
+            crate::coordination::observers::Owner::Receipt,
+        )
     }
 }
 

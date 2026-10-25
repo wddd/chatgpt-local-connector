@@ -587,3 +587,16 @@ when closed/merged and older than 180 days. A changed revision requires another
 export. Open records remain retained. Keep archives with the user's local records;
 export does not delete them. Local triage uses `cli control ax_triage --stdin` with
 the same revision checks and history as the control-source op.
+
+
+## Local coordination observation
+
+Worktree and isolated supervisors use local management `coordination.observe` with
+`body:{transitionId,kind,repository,lane?,instance?,pid?,exitCode?}`. Supported kinds
+are `lane.created`, `lane.landed`, `lane.removed`, `isolated.started` and
+`isolated.exited`. Read `coordination.observation` with `{id:transitionId}` after
+submission. The repository must be an existing registered parent; the operation
+does not register it. Core verifies ref/worktree or process evidence before reporting
+`state:observed`. Reuse the exact ID and payload after an uncertain response. These
+operations record metadata only and cannot execute Git, start a process or resume a
+thread. They are not exposed through control-source MCP ops.

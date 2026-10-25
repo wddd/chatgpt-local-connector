@@ -274,7 +274,7 @@ fn read_command(path: &Path, receipt: &mut Value) -> Result<()> {
         _ => (),
     }
     receipt["updatedAt"] = json!(now());
-    save(&path.join("status.json"), receipt)
+    save_status(path, receipt)
 }
 
 #[cfg(test)]

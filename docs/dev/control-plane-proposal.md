@@ -152,7 +152,7 @@ act   event_report({sessionId, resources, kind:claim, summary, relatedIds?})
 | Event kind | Evidence and limits |
 | --- | --- |
 | `dispatch.accepted`, `turn.terminal`, `turn.successor` | Durable dispatch/queue/receipt and native turn observations. Queue acceptance, submission and terminal task state are separate facts. Retain turn IDs and supersession links to recognize late interrupted events. |
-| `lane.created`, `lane.landed`, `lane.removed` | Future bounded local-management reporting by project worktree tooling, plus registered worktree/ref readback. A ref movement alone is not proof that `wt land` ran. Phase 1 reports only the ref fact; dedicated lifecycle instrumentation lands in phase 2. |
+| `lane.created`, `lane.landed`, `lane.removed` | Bounded local-management reporting by project worktree tooling, plus registered worktree/ref readback. A ref movement alone is not proof that `wt land` ran. Phase 1 observer scope includes this lifecycle instrumentation; activity remains phase 2. |
 | `isolated.started`, `isolated.exited` | Supervisor instance ID, parent project and actual process lifecycle. Ready is distinct from started. A lost supervisor observation is unknown, not a fabricated exit. |
 | `app.replace`, `app.restarted` | Replacement status transitions and observed Core/Desktop instance identities. Separate succeeded, rolled-back, continuation submitted and continuation terminal. |
 | `git.ref-moved` | Registered repository/ref old and new object IDs, including creation/deletion and non-fast-forward movement, observed locally. No commit subject, diff, reflog message or author identity. |

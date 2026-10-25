@@ -337,6 +337,8 @@ pub async fn event(events: &SharedEvents, session: &str, method: &str, params: V
     }
     // Codex owns its history. Only Agent Remote Control-owned Agent streams need an archive.
     if !e.durable {
+        drop(e);
+        crate::coordination::observers::native_terminal(method, &params);
         return;
     }
     let session = session.to_owned();

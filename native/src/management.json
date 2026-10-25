@@ -3600,6 +3600,85 @@
         "properties": {},
         "additionalProperties": false
       }
+    },
+    {
+      "name": "coordination.observe",
+      "method": "POST",
+      "route": "coordination/observe",
+      "localOnly": true,
+      "description": "Record a bounded local tooling lifecycle transition after registered repository and process/ref readback. Retry with the same transitionId and payload. No source report operation is exposed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "transitionId": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "kind": {
+                "enum": [
+                  "lane.created",
+                  "lane.landed",
+                  "lane.removed",
+                  "isolated.started",
+                  "isolated.exited"
+                ]
+              },
+              "repository": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "lane": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "instance": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "pid": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "exitCode": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "transitionId",
+              "kind",
+              "repository"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "coordination.observation",
+      "method": "GET",
+      "route": "coordination/observations/{id}",
+      "localOnly": true,
+      "description": "Read back a locally persisted and projected tooling transition.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
     }
   ]
 }

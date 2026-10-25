@@ -89,7 +89,7 @@ async fn deliver_continuation(path: &Path, receipt: &mut Value) -> Result<()> {
     }
     // Persist intent before submission. A crash is reconciled by this ID, never by a new send.
     receipt["continuationState"] = json!("submitting");
-    save(&path.join("status.json"), receipt)?;
+    save_status(path, receipt)?;
     match crate::cli_acceptance::control("codex_send", args).await {
         Ok(result) => {
             receipt["continuationState"] = json!("receipt-returned");
@@ -101,7 +101,7 @@ async fn deliver_continuation(path: &Path, receipt: &mut Value) -> Result<()> {
         }
     }
     receipt["next"] = json!("ARC recovered. Read continuationReceipt or the original continuation.requestId through cli control receipt. A dispatch receipt is not task completion. Never resend with a new ID after an uncertain result.");
-    save(&path.join("status.json"), receipt)
+    save_status(path, receipt)
 }
 
 fn directory() -> PathBuf {
@@ -723,4 +723,12 @@ mod continuation_tests {
         .is_err());
         assert!(continuation_request(&json!({}), request).unwrap().is_none());
     }
+}
+
+fn save_status(path: &Path, receipt: &Value) -> Result<()> {
+    crate::coordination::observers::save_owner(
+        &path.join("status.json"),
+        receipt,
+        crate::coordination::observers::Owner::Replacement,
+    )
 }

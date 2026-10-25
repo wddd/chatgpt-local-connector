@@ -18,6 +18,7 @@ pub async fn list(c: &Control) -> Result<Vec<Value>> {
         );
         cursor = page["nextCursor"].clone();
         if cursor.is_null() {
+            crate::coordination::git_watch::registered(&out);
             return Ok(out);
         }
         if !seen.insert(cursor.to_string()) {
@@ -232,6 +233,8 @@ async fn git_command(root: &str, args: Vec<String>, identity: bool) -> Result<St
     String::from_utf8(git_bytes(root, args, identity).await?).map_err(|e| e.to_string())
 }
 async fn git_bytes(root: &str, args: Vec<String>, identity: bool) -> Result<Vec<u8>> {
+    let ancestry_query = args.first().is_some_and(|s| s == "merge-base")
+        && args.iter().any(|s| s == "--is-ancestor");
     let config_query = args.first().is_some_and(|s| s == "config");
     let mutation = args.first().is_some_and(|s| s == "-c");
     let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
@@ -274,9 +277,7 @@ async fn git_bytes(root: &str, args: Vec<String>, identity: bool) -> Result<Vec<
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_PAGER", "cat")
         .env("LC_ALL", "C");
-    if mutation {
-        cmd.env("GIT_NO_LAZY_FETCH", "1");
-    }
+    cmd.env("GIT_NO_LAZY_FETCH", "1");
     if !identity {
         cmd.env("GIT_CONFIG_GLOBAL", null);
     }
@@ -312,6 +313,9 @@ async fn git_bytes(root: &str, args: Vec<String>, identity: bool) -> Result<Vec<
         .map_err(|_| "GIT_TIMEOUT")??;
     if config_query && status.code() == Some(1) {
         return Ok(Vec::new());
+    }
+    if ancestry_query && status.code() == Some(1) {
+        return Err("GIT_NOT_ANCESTOR".into());
     }
     if !status.success() {
         return Err(

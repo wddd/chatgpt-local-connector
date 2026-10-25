@@ -39,7 +39,7 @@ impl Fixture {
             .unwrap()
             .query(reader, query, self.time)
             .unwrap_or_else(|message| failure(message, &args));
-        crate::egress::tool(value, false)["structuredContent"]["result"].clone()
+        crate::egress::tool(project_coverage(value), false)["structuredContent"]["result"].clone()
     }
     // Seed a bounded snapshot for capacity boundaries. Tests still cross
     // the boundary through emit and assert only the events op, avoiding tens of
@@ -171,7 +171,7 @@ fn events_shape_and_frozen_query_catalog() {
         .as_str()
         .unwrap()
         .contains('\n'));
-    assert_eq!(result["coverage"]["observers"], "not-attached");
+    assert_eq!(result["coverage"]["retainedEvents"], 1);
     let catalog = catalog();
     let op = catalog["ops"]
         .as_array()
@@ -501,4 +501,373 @@ fn expired_lane_shorthand_cursor_resets_to_its_canonical_parent() {
     assert_eq!(expired["next"]["args"]["resource"], "lane:p1/fix");
     let reset = f.query(expired["next"]["args"].clone());
     assert_eq!(sequences(&reset), Vec::<u64>::new());
+}
+
+fn observer_events(owner: observers::Owner, row: Value) -> Vec<EventInput> {
+    observers::inputs_on(owner, &row, ResourceKey::parse("host:fixture").unwrap()).unwrap()
+}
+fn emit_observation(f: &mut Fixture, input: EventInput) {
+    f.time += 20;
+    f.store.as_mut().unwrap().emit(input, f.time).unwrap();
+}
+#[test]
+fn observed_dispatch_and_all_terminal_states_are_metadata_only() {
+    // Contract: events projects submitted dispatch metadata and observed terminal states without task content.
+    let mut f = Fixture::new();
+    let row = json!({"requestId":"request-one","threadId":"thread-one","turnId":"turn-one","model":"fixture-model","effort":"high","origin":{"sourceId":"source-one","accountId":"account-one"},"title":"secret-title","prompt":"secret-prompt"});
+    for event in observer_events(observers::Owner::Dispatch, row.clone()) {
+        emit_observation(&mut f, event);
+    }
+    for state in ["completed", "failed", "interrupted", "cancelled"] {
+        let mut terminal = row.clone();
+        terminal["turnId"] = json!(state);
+        terminal["terminal"] = json!({"state":state});
+        for event in observer_events(observers::Owner::Dispatch, terminal)
+            .into_iter()
+            .filter(|v| v.kind == EventKind::TurnTerminal)
+        {
+            emit_observation(&mut f, event);
+        }
+    }
+    let result = f.query(json!({}));
+    let events = result["events"].as_array().unwrap();
+    assert_eq!(events.len(), 5);
+    assert_eq!(events[0]["status"], "submitted");
+    assert_eq!(events[0]["origin"]["sourceId"], "source-one");
+    assert_eq!(events[0]["observation"]["model"], "fixture-model");
+    assert_eq!(events[0]["observation"]["effort"], "high");
+    for (event, state) in
+        events[1..]
+            .iter()
+            .zip(["completed", "failed", "interrupted", "cancelled"])
+    {
+        assert_eq!(event["status"], state);
+    }
+    assert!(!result.to_string().contains("secret-"));
+}
+#[test]
+fn replacement_observations_preserve_shutdown_and_recovery_truth() {
+    // Contract: events distinguishes replacement phases and confirmed interruption from resume receipt delivery.
+    let mut f = Fixture::new();
+    let mut row = json!({"id":"replacement-one","interruptedTurns":[{"state":"receipt-returned"},{"state":"finished-before-shutdown"},{"state":"needs-attention"}]});
+    for phase in [
+        "preparing",
+        "waiting-for-turns",
+        "installing",
+        "succeeded",
+        "failed",
+        "rolled-back",
+    ] {
+        row["state"] = json!(phase);
+        row["snapshotFinalized"] = json!(phase != "preparing" && phase != "waiting-for-turns");
+        for input in observer_events(observers::Owner::Replacement, row.clone()) {
+            emit_observation(&mut f, input);
+        }
+    }
+    row["resumedCount"] = json!(1);
+    for input in observer_events(observers::Owner::Replacement, row)
+        .into_iter()
+        .filter(|v| matches!(v.status, Some(EventStatus::RecoverySummary)))
+    {
+        emit_observation(&mut f, input);
+    }
+    let result = f.query(json!({"kinds":["app.replace"]}));
+    let events = result["events"].as_array().unwrap();
+    assert_eq!(events.len(), 7);
+    assert!(events[0]["observation"]["interruptedTurns"].is_null());
+    assert_eq!(events[2]["status"], "interrupted");
+    assert_eq!(events[2]["observation"]["interruptedTurns"], 2);
+    assert!(events[3]["observation"]["resumeSubmissions"].is_null());
+    assert_eq!(events[6]["status"], "recovery-summary");
+    assert_eq!(events[6]["observation"]["resumeSubmissions"], 1);
+}
+#[test]
+fn lifecycle_receipt_and_restart_kinds_are_queryable() {
+    // Contract: events exposes each observer kind through the same frozen query envelope and kind filters.
+    let mut f = Fixture::new();
+    let kinds = [
+        EventKind::ReceiptStalled,
+        EventKind::ReceiptUnconfirmed,
+        EventKind::LaneCreated,
+        EventKind::LaneLanded,
+        EventKind::LaneRemoved,
+        EventKind::IsolatedStarted,
+        EventKind::IsolatedExited,
+        EventKind::AppRestarted,
+    ];
+    for (index, kind) in kinds.iter().enumerate() {
+        let mut input = EventInput::new(
+            format!("observed-{index}"),
+            kind.clone(),
+            vec![ResourceKey::parse("host:fixture").unwrap()],
+        );
+        input.origin = Some(Principal::Arc);
+        emit_observation(&mut f, input);
+    }
+    for kind in kinds {
+        let result = f.query(json!({"kinds":[kind]}));
+        assert_eq!(result["events"].as_array().unwrap().len(), 1);
+        assert_eq!(result["events"][0]["kind"], json!(kind));
+        assert_eq!(result["events"][0]["provenance"], "arc-observed");
+    }
+}
+#[test]
+fn owner_checkpoint_replay_survives_restart_and_journal_retention() {
+    // Contract: events deduplicates an uncheckpointed append after restart and a checkpoint prevents replay after retention.
+    use std::cell::RefCell;
+    let f = RefCell::new(Fixture::new());
+    let scratch = ObserverScratch::new();
+    let directory = scratch.0.clone();
+    let owner = directory.join("transition.json");
+    let checkpoint = directory.join("checkpoint.json");
+    let input = observer_events(
+        observers::Owner::Receipt,
+        json!({"requestId":"request-one","state":"unconfirmed"}),
+    )
+    .remove(0);
+    observers::durable(&owner, &json!({"coordinationPending":[input]})).unwrap();
+    emit_observation(&mut f.borrow_mut(), input); // Crash after append, before producer checkpoint.
+    f.borrow_mut().restart();
+    let emit = |input| {
+        let mut f = f.borrow_mut();
+        f.time += 20;
+        let time = f.time;
+        f.store.as_mut().unwrap().emit(input, time)
+    };
+    observers::project_at(&owner, &checkpoint, &emit).unwrap();
+    assert_eq!(
+        f.borrow_mut().query(json!({}))["events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    f.borrow_mut().time += 8 * 24 * 60 * 60 * 1000;
+    f.borrow_mut().restart();
+    observers::project_at(&owner, &checkpoint, &emit).unwrap();
+    assert!(f.borrow_mut().query(json!({}))["events"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+}
+#[test]
+fn git_attribution_is_correlated_only_with_one_matching_turn_interval() {
+    // Contract: events reports ambiguous or unknown attribution when turn baseline evidence is not unique or continuous.
+    let mut f = Fixture::new();
+    let common = Path::new("/fixture/repository");
+    let oid = "a".repeat(40);
+    let row = json!({"threadId":"thread-one","turnId":"turn-one","commonDir":common,"ref":"refs/heads/main","head":oid,"capturedAt":"2026-01-01T00:00:00Z"});
+    let cases = [
+        (vec![row.clone()], true, "correlated"),
+        (vec![row.clone(), row.clone()], true, "ambiguous"),
+        (vec![], true, "unknown"),
+        (vec![row.clone()], false, "unknown"),
+    ];
+    for (index, (rows, continuous, expected)) in cases.into_iter().enumerate() {
+        let mut input = EventInput::new(
+            format!("correlation-{index}"),
+            EventKind::GitRefMoved,
+            vec![ResourceKey::project("fixture").unwrap()],
+        );
+        input.attribution = Some(git_watch::correlate(
+            &rows,
+            common,
+            "refs/heads/main",
+            Some(&oid),
+            "2026-01-01T00:00:01Z",
+            continuous,
+        ));
+        emit_observation(&mut f, input);
+        let result = f.query(json!({"kinds":["git.ref-moved"],"limit":1}));
+        assert_eq!(result["events"][0]["attribution"]["confidence"], expected);
+    }
+    let mut ended = row.clone();
+    ended["endedAt"] = json!("2026-01-01T00:00:00Z");
+    let attribution = git_watch::correlate(
+        &[ended],
+        common,
+        "refs/heads/main",
+        Some(&oid),
+        "2026-01-01T00:00:01Z",
+        true,
+    );
+    assert!(matches!(
+        attribution.confidence,
+        AttributionConfidence::Unknown
+    ));
+}
+
+fn fixture_git(directory: &Path, args: &[&str]) -> String {
+    let result = std::process::Command::new("git")
+        .args([
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "-C",
+        ])
+        .arg(directory)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "fixture Git failed");
+    String::from_utf8(result.stdout).unwrap().trim().into()
+}
+#[tokio::test]
+async fn registered_refs_report_creation_movement_deletion_and_non_fast_forward() {
+    // Contract: events preserves registered ref old/new objects and never attributes restart gaps to a thread.
+    let fixture = std::sync::Mutex::new(Fixture::new());
+    let directory = fixture.lock().unwrap().dir.join("git-fixture");
+    std::fs::create_dir_all(&directory).unwrap();
+    fixture_git(&directory, &["init", "-b", "main"]);
+    fixture_git(&directory, &["commit", "--allow-empty", "-m", "fixture"]);
+    let first = fixture_git(&directory, &["rev-parse", "HEAD"]);
+    let store = fixture.lock().unwrap().dir.join("watcher-fixture");
+    let emit = |input| {
+        let mut f = fixture.lock().unwrap();
+        f.time += 20;
+        let time = f.time;
+        f.store.as_mut().unwrap().emit(input, time)
+    };
+    let mut watcher = git_watch::Watcher::default();
+    watcher
+        .scan_in("fixture", "fixture", &directory, &store, &emit)
+        .await
+        .unwrap();
+    fixture_git(&directory, &["branch", "wt/example"]);
+    watcher
+        .scan_in("fixture", "fixture", &directory, &store, &emit)
+        .await
+        .unwrap();
+    fixture_git(&directory, &["commit", "--allow-empty", "-m", "next"]);
+    let next = fixture_git(&directory, &["rev-parse", "HEAD"]);
+    watcher
+        .scan_in("fixture", "fixture", &directory, &store, &emit)
+        .await
+        .unwrap();
+    fixture_git(&directory, &["update-ref", "refs/heads/main", &first]);
+    watcher = git_watch::Watcher::default(); // Movement happened while the observer was down.
+    watcher
+        .scan_in("fixture", "fixture", &directory, &store, &emit)
+        .await
+        .unwrap();
+    fixture_git(&directory, &["branch", "-D", "wt/example"]);
+    watcher
+        .scan_in("fixture", "fixture", &directory, &store, &emit)
+        .await
+        .unwrap();
+    let result = fixture
+        .lock()
+        .unwrap()
+        .query(json!({"kinds":["git.ref-moved"]}));
+    let events = result["events"].as_array().unwrap();
+    assert_eq!(events.len(), 4);
+    for (event, movement) in events
+        .iter()
+        .zip(["created", "moved", "non-fast-forward", "deleted"])
+    {
+        assert_eq!(event["observation"]["movement"], movement);
+    }
+    assert_eq!(events[1]["observation"]["oldOid"], first);
+    assert_eq!(events[1]["observation"]["newOid"], next);
+    assert_eq!(events[2]["attribution"]["confidence"], "unknown");
+    assert_eq!(events[0]["resources"][0], "lane:fixture/example");
+}
+#[test]
+fn unchanged_git_polls_open_no_files_or_directories() {
+    // Regression: 2f77284 and 9e956a0 bounded idle polling; ref observation must not reopen unchanged files per poll.
+    let fixture = Fixture::new();
+    let directory = fixture.dir.join("git-cache-fixture");
+    std::fs::create_dir_all(&directory).unwrap();
+    fixture_git(&directory, &["init", "-b", "main"]);
+    fixture_git(&directory, &["commit", "--allow-empty", "-m", "fixture"]);
+    fixture_git(&directory, &["branch", "wt/example"]);
+    fixture_git(&directory, &["pack-refs", "--all"]);
+    let mut reader = git_watch::RefReader::default();
+    let common = reader.common(&directory).unwrap();
+    let initial = reader.refs(&common).unwrap();
+    let budget = (reader.opens, reader.directory_opens);
+    for _ in 0..20 {
+        assert_eq!(reader.refs(&common).unwrap(), initial);
+    }
+    assert_eq!((reader.opens, reader.directory_opens), budget);
+}
+
+struct ObserverScratch(PathBuf);
+impl ObserverScratch {
+    fn new() -> Self {
+        Self(std::env::temp_dir().join(format!("arc-observer-fixture-{}", id())))
+    }
+}
+impl Drop for ObserverScratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[tokio::test]
+async fn unreachable_registered_roots_surface_coverage_without_fabricated_ref_events() {
+    // Contract: events exposes unreachable registered-project coverage without inventing ref movements.
+    let scratch = ObserverScratch::new();
+    let mut watcher = git_watch::Watcher::default();
+    watcher
+        .poll_registered(&[json!({"id":"unreachable-fixture","roots":[{"path":scratch.0}]})])
+        .await;
+    let mut fixture = Fixture::new();
+    let page = fixture.query(json!({"kinds":["git.ref-moved"]}));
+    assert!(page["events"].as_array().unwrap().is_empty());
+    assert_eq!(
+        page["coverage"]["observers"]["unreachable-fixture-0"]["state"],
+        "unreachable-or-ref-capacity"
+    );
+}
+
+#[test]
+fn stalled_receipt_is_phase_age_not_task_failure() {
+    // Contract: events records progressStalled at 30 seconds without claiming execution failure or duplicating a phase.
+    let mut f = Fixture::new();
+    let row =
+        json!({"requestId":"slow-request","state":"running","updatedAt":types::timestamp(f.time)});
+    let resource = ResourceKey::parse("host:fixture").unwrap();
+    assert!(
+        observers::stalled_input(&row, f.time + 29_999, resource.clone())
+            .unwrap()
+            .is_none()
+    );
+    let first = observers::stalled_input(&row, f.time + 30_000, resource.clone())
+        .unwrap()
+        .unwrap();
+    let retry = observers::stalled_input(&row, f.time + 60_000, resource.clone())
+        .unwrap()
+        .unwrap();
+    emit_observation(&mut f, first);
+    emit_observation(&mut f, retry);
+    let result = f.query(json!({"kinds":["receipt.stalled"]}));
+    assert_eq!(result["events"].as_array().unwrap().len(), 1);
+    assert!(result["events"][0]["status"].is_null());
+    assert_eq!(result["events"][0]["evidenceRefs"][0]["id"], "slow-request");
+    let mut done = row;
+    done["state"] = json!("completed");
+    assert!(observers::stalled_input(&done, f.time + 60_000, resource)
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn agent_dispatch_requires_observed_transport_submission() {
+    // Contract: events distinguishes a prepared Agent dispatch from a prompt frame actually submitted to its transport.
+    let row = json!({"agent":"fixture-agent","requestId":"agent-request","threadId":"agent-task","turnId":"agent-turn","submission":"pending","model":"fixture-model"});
+    assert!(observer_events(observers::Owner::Dispatch, row.clone()).is_empty());
+    let mut submitted = row;
+    submitted["submissionObserved"] = json!(true);
+    let mut f = Fixture::new();
+    for input in observer_events(observers::Owner::Dispatch, submitted) {
+        emit_observation(&mut f, input);
+    }
+    let page = f.query(json!({"kinds":["dispatch.accepted"]}));
+    assert_eq!(page["events"].as_array().unwrap().len(), 1);
+    assert_eq!(page["events"][0]["status"], "submitted");
+    assert_eq!(page["events"][0]["threadRefs"][0]["turnId"], "agent-turn");
 }

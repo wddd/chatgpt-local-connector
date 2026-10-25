@@ -34,7 +34,7 @@ async fn phase(path: &Path, receipt: &mut Value, state: &str, error: Option<&str
     if let Some(next) = terminal_next(state) {
         receipt["next"] = json!(next);
     }
-    save(&path.join("status.json"), receipt)?;
+    save_status(path, receipt)?;
     eprintln!("{} {state} {}", now(), error.unwrap_or(""));
     // NSUserNotificationCenter needs a main-thread run loop. A bounded child keeps
     // notification delivery independent of both Desktop and the worker runtime.
@@ -51,7 +51,7 @@ async fn phase(path: &Path, receipt: &mut Value, state: &str, error: Option<&str
         Ok(Err(error)) => json!(error),
         Err(_) => json!("NOTIFICATION_UNAVAILABLE: Read app.replace.status for progress"),
     };
-    save(&path.join("status.json"), receipt)
+    save_status(path, receipt)
 }
 
 pub fn notify(id: &str) -> Result<()> {
@@ -240,7 +240,7 @@ pub async fn prepare(body: Value) -> Result<Value> {
         receipt["continuation"] = args;
         receipt["continuationState"] = json!("waiting-for-recovery");
     }
-    save(&path.join("status.json"), &receipt)?;
+    save_status(&path, &receipt)?;
     save(&directory().join("latest.json"), &json!({"id":id}))?;
     let prepared: Result<()> = async {
         phase(&path, &mut receipt, "preparing", None).await?;
@@ -344,7 +344,7 @@ async fn wait_idle(path: &Path, receipt: &mut Value) -> Result<()> {
                 quiet = 0;
                 receipt["waiting"] = json!({"idle":false,"reason":"owner-unavailable","error":error,"observedAt":now()});
                 receipt["updatedAt"] = json!(now());
-                save(&path.join("status.json"), receipt)?;
+                save_status(path, receipt)?;
                 // Closing a debug Desktop window used to cancel the handoff.
                 // Restore only the validated original package; never adopt unknown code.
                 let target = PathBuf::from(string(receipt, "target"));
@@ -405,7 +405,7 @@ async fn wait_idle(path: &Path, receipt: &mut Value) -> Result<()> {
         }
         receipt["waiting"]["observedAt"] = json!(now());
         receipt["updatedAt"] = json!(now());
-        save(&path.join("status.json"), receipt)?;
+        save_status(path, receipt)?;
         if receipt["waiting"]["idle"] == true {
             quiet += 1;
         } else {
@@ -762,7 +762,7 @@ pub async fn run_worker(id: &str) -> Result<()> {
         phase(&path, &mut receipt, "installing", None).await?;
         // Journal before touching the original: even a partial removal must restore the verified backup.
         receipt["backupMoved"] = json!(true);
-        save(&path.join("status.json"), &receipt)?;
+        save_status(&path, &receipt)?;
         io(fs::remove_dir_all(&target))?;
         io(fs::rename(&staged, &target))?;
         verify_identity(&target, &receipt["package"]).await?;
@@ -831,9 +831,9 @@ pub async fn run_worker(id: &str) -> Result<()> {
         Ok(result) => result,
         Err(error) => json!({"errors":[{"error":error}]}),
     };
-    save(&path.join("status.json"), &receipt)?;
+    save_status(&path, &receipt)?;
     super::resume::status_details(&mut receipt)?;
-    save(&path.join("status.json"), &receipt)?;
+    save_status(&path, &receipt)?;
     super::unified::record_history(&receipt)?;
     let _ = notice(&receipt, "outcome").await;
     // Terminal recovery keeps no duplicate app copies; success keeps only its latest backup.

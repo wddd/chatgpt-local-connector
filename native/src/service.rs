@@ -553,6 +553,14 @@ impl Service {
         if self.closing.load(Ordering::SeqCst) {
             return Err("core shutting down".into());
         }
+        if route == "coordination/observe" && method == "POST" {
+            return crate::coordination::lifecycle::report(&self.control, body).await;
+        }
+        if let Some(id) = route.strip_prefix("coordination/observations/") {
+            if method == "GET" {
+                return crate::coordination::lifecycle::read(id);
+            }
+        }
         if route == "source" && method == "GET" {
             return Ok(json!({"sources":crate::sources::control_sources()?}));
         }

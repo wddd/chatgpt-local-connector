@@ -14,7 +14,9 @@ pub async fn capture(cwd: &str) -> Value {
         let root = git(cwd, &["rev-parse","--show-toplevel"]).await?;
         let head = git(cwd, &["rev-parse","--verify","HEAD"]).await.ok().map(|s| s.trim().to_owned());
         let status = git(cwd, &["status","--porcelain=v1","-z"]).await?;
-        Ok::<_,String>(json!({"cwd":cwd,"root":root.trim(),"head":head,"dirty":!status.is_empty(),"capturedAt":now(),"source":"before-turn-submission"}))
+        let branch = git(cwd, &["symbolic-ref", "-q", "HEAD"]).await.ok();
+        let common = git(cwd, &["rev-parse", "--path-format=absolute", "--git-common-dir"]).await.ok();
+        Ok::<_,String>(json!({"cwd":cwd,"root":root.trim(),"head":head,"ref":branch.map(|v|v.trim().to_owned()),"commonDir":common.and_then(|v|Path::new(v.trim()).canonicalize().ok()),"dirty":!status.is_empty(),"capturedAt":now(),"source":"before-turn-submission"}))
     }.await;
     result.unwrap_or_else(|e| json!({"cwd":cwd,"unavailable":e,"capturedAt":now()}))
 }
@@ -24,7 +26,11 @@ pub fn record(thread: &str, turn: &str, baseline: &Value) -> Result<()> {
     }
     let file = path(thread, turn);
     if !file.exists() {
-        save(&file, baseline)?;
+        let mut row = baseline.clone();
+        row["threadId"] = json!(thread);
+        row["turnId"] = json!(turn);
+        save(&file, &row)?;
+        crate::coordination::git_watch::baseline(&row);
     }
     Ok(())
 }

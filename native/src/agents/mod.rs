@@ -51,7 +51,11 @@ fn task_path(task: &str) -> Result<PathBuf> {
     Ok(root().join("agents/tasks").join(format!("{task}.json")))
 }
 fn save_task(task: &Value) -> Result<()> {
-    save(&task_path(string(task, "taskId"))?, task)?;
+    crate::coordination::observers::save_owner(
+        &task_path(string(task, "taskId"))?,
+        task,
+        crate::coordination::observers::Owner::Agent,
+    )?;
     if task["agent"] != "pi" {
         let facts = dispatch::catalog_facts(
             task,
@@ -67,6 +71,9 @@ fn save_task(task: &Value) -> Result<()> {
 const RECEIPTS: crate::kernel::receipts::ReceiptStore =
     crate::kernel::receipts::ReceiptStore::new("agents/requests");
 impl AgentHost {
+    pub(crate) fn backend_session(&self) -> &str {
+        &self.session
+    }
     pub fn new() -> Result<Arc<Self>> {
         if let Err(error) = adapter::prune() {
             crate::logs::record(

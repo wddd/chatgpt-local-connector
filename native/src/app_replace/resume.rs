@@ -257,7 +257,7 @@ pub(super) async fn deliver(path: &Path, receipt: &mut Value) -> Result<()> {
         }
         let args = receipt["interruptedTurns"][index]["continuation"].clone();
         receipt["interruptedTurns"][index]["state"] = json!("submitting");
-        save(&path.join("status.json"), receipt)?;
+        save_status(path, receipt)?;
         let result = crate::cli_acceptance::control("codex_resume", args).await;
         let entry = &mut receipt["interruptedTurns"][index];
         match result {
@@ -270,7 +270,7 @@ pub(super) async fn deliver(path: &Path, receipt: &mut Value) -> Result<()> {
                 entry["error"] = json!(error);
             }
         }
-        save(&path.join("status.json"), receipt)?;
+        save_status(path, receipt)?;
     }
     Ok(())
 }

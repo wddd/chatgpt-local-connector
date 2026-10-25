@@ -13,6 +13,6 @@ try {
   await run(process.execPath, ['tooling/prune-build-cache.mjs']);
   await run('cargo', ['test', '--locked', '--manifest-path', 'native/Cargo.toml', '--lib']);
   await run(process.execPath, ['--test', 'tests/control-mcp.test.ts', 'tests/app-env.test.ts', 'tests/app-env-renderer.test.ts', 'tests/activity-ui.test.ts', 'tests/topology.test.ts',
-    'tests/topology-render.test.ts', 'tests/topology-orientation.test.ts', 'tests/topology-portrait.test.ts', 'tests/topology-orientation-renderer.test.ts', 'tests/dom-assert.test.ts', 'tests/updates.test.ts', 'tests/updates-renderer.test.ts', 'tests/release.test.mjs']);
+    'tests/topology-render.test.ts', 'tests/topology-orientation.test.ts', 'tests/topology-portrait.test.ts', 'tests/topology-orientation-renderer.test.ts', 'tests/dom-assert.test.ts', 'tests/updates.test.ts', 'tests/updates-renderer.test.ts', 'tests/release.test.mjs', 'tests/coordination-report.test.mjs']);
 } finally { await run(process.execPath, ['tooling/prune-build-cache.mjs', '--keep=target/debug']); }
 await recordTestPass(before);

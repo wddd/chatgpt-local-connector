@@ -1,7 +1,10 @@
 //! Bounded, metadata-only coordination feed. Observers and AX persist their owner
 //! record first, release owner locks, then call emit with the same transition ID.
 pub mod ax;
+pub(crate) mod git_watch;
 mod journal;
+pub(crate) mod lifecycle;
+pub(crate) mod observers;
 mod types;
 use crate::*;
 use journal::{Journal, Query, Reader};
@@ -75,6 +78,7 @@ pub(crate) fn query(args: &Value) -> Result<Value> {
         let query: Query = serde_json::from_value(args.clone())
             .map_err(|_| "INVALID_ARGUMENT: read guide for events")?;
         with_journal(|journal| journal.query(&reader, query, chrono::Utc::now().timestamp_millis()))
+            .map(project_coverage)
     })();
     // Keep error details metadata-only and preserve actionable next across transports.
     Ok(result.unwrap_or_else(|message| failure(message, args)))
@@ -96,3 +100,8 @@ fn failure(message: String, args: &Value) -> Value {
 
 #[cfg(test)]
 mod tests;
+
+fn project_coverage(mut result: Value) -> Value {
+    result["coverage"]["observers"] = observers::coverage();
+    result
+}

@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { laneMarker } from './coding-lane.mjs';
+import { beginLifecycle } from './coordination-report.mjs';
 
 const checkout = fileURLToPath(new URL('../', import.meta.url));
 const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trimEnd();
@@ -154,7 +155,12 @@ try {
   if (command === 'list' && !name) list();
   else if (['create', 'land', 'remove'].includes(command) && /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name || '')
     && options.every(option => command === 'remove' && option === '--force')) {
-    ({ create, land, remove })[command](name, options.includes('--force'));
+    const finish = await beginLifecycle(path.join(git(main, ['rev-parse', '--absolute-git-dir']), 'arc-coordination'), {
+      kind: { create: 'lane.created', land: 'lane.landed', remove: 'lane.removed' }[command], repository: main, lane: name,
+    });
+    try { ({ create, land, remove })[command](name, options.includes('--force')); }
+    catch (error) { await finish(false); throw error; }
+    await finish();
   } else if (['--help', '-h'].includes(command)) {
     console.log('Usage: npm run wt -- <create|land|remove> <name> [--force for remove]\n       npm run wt -- list\nARC_WORKTREE_ROOT overrides the lane parent directory.');
   } else throw new Error('Usage: npm run wt -- <create|list|land|remove> <name> [--force for remove]');

@@ -56,3 +56,12 @@ After acceptance, run `npm run wt -- remove <name>` from main to delete the work
 its private target and branch. Unmerged branches and dirty worktrees are retained
 unless `--force` is supplied. A failed create leaves its lane registered for repair
 or removal with the same command. Do not manually delete the worktree or its target.
+
+
+Successful create, land and remove commands report lifecycle metadata to an already
+running Core through bounded local management and verify the stored transition.
+The parent must be a registered project. A missing Core or failed/partial command
+prints `coordination-observation` with `coverage:missing`; the original command result
+is unchanged. A bounded outbox under the main Git directory retains completed
+reports for later reconciliation with the same transition IDs. Ref movement alone
+never implies that a land command ran. See [Coordination](coordination.md).

@@ -499,8 +499,7 @@ impl Journal {
     fn coverage(&self) -> Value {
         json!({"state":if self.manifest.gaps > 0 || self.manifest.dropped > 0 {"partial"} else {"complete"},
             "gaps":self.manifest.gaps,"dropped":self.manifest.dropped,"retainedAfterSequence":self.manifest.floor,
-            "retainedEvents":self.records.len(),"retainedBytes":self.bytes,
-            "observers":"not-attached"})
+            "retainedEvents":self.records.len(),"retainedBytes":self.bytes})
     }
     fn pull_budget(&mut self, reader: &Reader) -> Result<()> {
         let key = hash(reader.identity().to_string());
@@ -608,7 +607,7 @@ impl Journal {
             Some(Ok(c)) => (c.after, if c.after == c.high { high } else { c.high }),
             None => {
                 let mut start = high;
-                let mut bytes = 4096;
+                let mut bytes = 4096 + super::observers::COVERAGE_BYTES;
                 for record in self.records.values().rev().filter(matches).take(limit) {
                     bytes += record.event_bytes;
                     if bytes > PAGE_BYTES {
@@ -620,7 +619,7 @@ impl Journal {
             }
         };
         let mut events = Vec::new();
-        let mut bytes = 4096; // envelope/cursors/coverage allowance
+        let mut bytes = 4096 + super::observers::COVERAGE_BYTES; // envelope/cursors/coverage allowance
         let mut position = after;
         for (sequence, record) in self.records.range((
             std::ops::Bound::Excluded(after),

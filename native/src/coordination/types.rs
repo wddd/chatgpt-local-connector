@@ -172,6 +172,18 @@ pub(crate) fn resolve_resource<'a>(
 pub enum EventKind {
     #[serde(rename = "dispatch.accepted")]
     DispatchAccepted,
+    #[serde(rename = "receipt.unconfirmed")]
+    ReceiptUnconfirmed,
+    #[serde(rename = "lane.created")]
+    LaneCreated,
+    #[serde(rename = "lane.landed")]
+    LaneLanded,
+    #[serde(rename = "lane.removed")]
+    LaneRemoved,
+    #[serde(rename = "isolated.started")]
+    IsolatedStarted,
+    #[serde(rename = "isolated.exited")]
+    IsolatedExited,
     #[serde(rename = "turn.terminal")]
     TurnTerminal,
     #[serde(rename = "turn.successor")]
@@ -194,6 +206,12 @@ pub enum EventKind {
 impl EventKind {
     fn summary(&self) -> &'static str {
         match self {
+            Self::ReceiptUnconfirmed => "Receipt ended unconfirmed",
+            Self::LaneCreated => "Lane created",
+            Self::LaneLanded => "Lane landed",
+            Self::LaneRemoved => "Lane removed",
+            Self::IsolatedStarted => "Isolated supervisor started",
+            Self::IsolatedExited => "Isolated supervisor exited",
             Self::DispatchAccepted => "Dispatch accepted",
             Self::TurnTerminal => "Turn reached a terminal state",
             Self::TurnSuccessor => "Successor turn observed",
@@ -211,6 +229,10 @@ impl EventKind {
 #[serde(rename_all = "kebab-case")]
 pub enum EventStatus {
     Accepted,
+    Cancelled,
+    Settling,
+    RecoverySummary,
+    Unconfirmed,
     Submitted,
     Running,
     Completed,
@@ -263,12 +285,44 @@ pub enum EvidenceKind {
     Ax,
     GitObject,
     GitRef,
+    CoreInstance,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceRef {
     pub kind: EvidenceKind,
     pub id: String,
+}
+
+/// Typed observation details. No diagnostic strings or task content are accepted.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Observation {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interrupted_turns: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resume_submissions: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_turns: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_oid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_oid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub movement: Option<RefMovement>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RefMovement {
+    Created,
+    Moved,
+    Deleted,
+    NonFastForward,
+    Unknown,
 }
 
 /// Internal-only input. Persist this descriptor with the owner's stable transition ID
@@ -287,6 +341,8 @@ pub struct EventInput {
     #[serde(default)]
     pub evidence_refs: Vec<EvidenceRef>,
     pub attribution: Option<Attribution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation: Option<Observation>,
 }
 impl EventInput {
     pub fn new(transition_id: String, kind: EventKind, resources: Vec<ResourceKey>) -> Self {
@@ -300,6 +356,7 @@ impl EventInput {
             thread_refs: vec![],
             evidence_refs: vec![],
             attribution: None,
+            observation: None,
         }
     }
     pub(crate) fn project(&self, epoch: &str, sequence: u64, time: i64) -> Result<Value> {
@@ -351,13 +408,29 @@ impl EventInput {
             chrono::DateTime::parse_from_rfc3339(time)
                 .map_err(|_| "INVALID_ARGUMENT: occurredAt must be RFC3339")?;
         }
+        if let Some(detail) = &self.observation {
+            for value in [&detail.model, &detail.effort].into_iter().flatten() {
+                if value.len() > 128
+                    || !value
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"-_.:/".contains(&b))
+                {
+                    return Err("INVALID_ARGUMENT: invalid model or effort metadata".into());
+                }
+            }
+            for oid in [&detail.old_oid, &detail.new_oid].into_iter().flatten() {
+                if !matches!(oid.len(), 40 | 64) || !oid.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    return Err("INVALID_ARGUMENT: invalid Git object ID".into());
+                }
+            }
+        }
         Ok(
             json!({"eventId":hash(format!("{epoch}:{}",self.transition_id)),"sequence":sequence,
             "kind":self.kind,"provenance":"arc-observed","resources":self.resources,
             "observedAt":timestamp(time),"occurredAt":self.occurred_at,
             "timeBasis":if self.occurred_at.is_some() {TimeBasis::Upstream} else {TimeBasis::Observed},
             "origin":self.origin,"threadRefs":self.thread_refs,"summary":self.kind.summary(),
-            "evidenceRefs":self.evidence_refs,"status":self.status,
+            "evidenceRefs":self.evidence_refs,"status":self.status,"observation":self.observation,
             "attribution":self.attribution.as_ref().map(|a|json!({"basis":"turn-baseline","confidence":a.confidence,"threadIds":a.thread_ids}))}),
         )
     }
