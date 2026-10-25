@@ -106,6 +106,8 @@ Task-detail fixtures use sanitized payloads matching `AgentTimeline` / `AgentInt
 | `task-routing-paused` | Paused routing with resume and handoff controls. |
 | `task-routing-routed` | Routed status without delay controls. |
 | `task-routing-not-routable` | Next-check status without delay controls. |
+| `task-turn-failed` | Native failed turn, Retry card, and empty footer. |
+| `task-turn-interrupted` | Native cancelled turn, Resume card, and empty footer. |
 
 Target one fixture with `npm run accept:ui -- --scenario=task-owner-desktop` from main. The runner uses browser fixtures and screenshots. A missing route fails readiness with its method and path in `scenario.missingRoutes` and `data-scenario-error`.
 
