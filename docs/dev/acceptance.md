@@ -2,6 +2,12 @@
 
 [Development](development.md) · [CLI contracts](../reference/cli.md)
 
+## Scope: fixtures first
+
+UI/UX acceptance (layout, visual states, copy, light/dark, widths, panel and task interactions) MUST run on browser fixtures only: `npm run accept:ui -- --scenario=<name>` or `dev:ui` with `?scenario=`. It MUST NOT start `dev:isolated`, build packages or touch the installed app. A state without a fixture gets a new or extended fixture; it is not a reason to fall back to a running app. Remaining experience and visual polish is found by the user through real use after delivery, so acceptance favors early delivery over exhaustive runtime checks.
+
+Isolated-instance runtime acceptance is reserved for behavior fixtures cannot simulate: native windows and focus, the replacement/update lifecycle, real Agent dispatch and resume, and notification delivery. Keep it to the scenarios the change affects.
+
 ## Focus policy
 
 Acceptance MUST default to background operation. Development and isolated desktops start with visible, unfocused windows and do not activate the macOS app. Packaged acceptance fixtures MUST use the existing development bundle identifier, `com.whzxc.agent-remote-control.dev`, so both initial launch and replacement restart stay in the background. Explicit deep links, tray actions, OAuth, and permission flows still focus normally. Installed production startup is unchanged.
@@ -118,7 +124,7 @@ At narrow panel widths, open the needs-you banner to inspect the capped bottom s
 
 Target one fixture with `npm run accept:ui -- --scenario=task-owner-desktop` from main. The runner uses browser fixtures and screenshots. A missing route fails readiness with its method and path in `scenario.missingRoutes` and `data-scenario-error`.
 
-For manual inspection, run npm run dev:ui and open `http://127.0.0.1:5187/?scenario=<scenario>`. Only Vite development loads scenarios. Release builds exclude fixture modules. Fixed time and reduced animation support layout comparison. These screenshots do not prove real Agent or native-window behavior.
+For manual inspection, run npm run dev:ui and open `http://127.0.0.1:5187/?scenario=<scenario>`. Only Vite development loads scenarios. Release builds exclude fixture modules. Fixed time and reduced animation support layout comparison. These screenshots are the evidence for UI/UX acceptance; they do not cover real Agent or native-window behavior, which follows the runtime scope above.
 
 ## Notification reachability and guides
 
