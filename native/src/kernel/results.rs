@@ -17,18 +17,41 @@ pub fn prune() -> Result<()> {
 pub fn schema_closure(mut schema: Value, definitions: &Value) -> Value {
     fn refs(value: &Value, pending: &mut Vec<String>) {
         match value {
-            Value::Object(fields) => { if let Some(name) = fields.get("$ref").and_then(Value::as_str).and_then(|r| r.strip_prefix("#/definitions/")) { pending.push(name.replace("~1", "/").replace("~0", "~")); } for child in fields.values() { refs(child, pending); } }
-            Value::Array(values) => for child in values { refs(child, pending); },
+            Value::Object(fields) => {
+                if let Some(name) = fields
+                    .get("$ref")
+                    .and_then(Value::as_str)
+                    .and_then(|r| r.strip_prefix("#/definitions/"))
+                {
+                    pending.push(name.replace("~1", "/").replace("~0", "~"));
+                }
+                for child in fields.values() {
+                    refs(child, pending);
+                }
+            }
+            Value::Array(values) => {
+                for child in values {
+                    refs(child, pending);
+                }
+            }
             _ => (),
         }
     }
-    let mut pending = Vec::new(); refs(&schema, &mut pending);
+    let mut pending = Vec::new();
+    refs(&schema, &mut pending);
     let mut selected = serde_json::Map::new();
     while let Some(name) = pending.pop() {
-        if selected.contains_key(&name) { continue; }
-        if let Some(value) = definitions.get(&name) { selected.insert(name, value.clone()); refs(value, &mut pending); }
+        if selected.contains_key(&name) {
+            continue;
+        }
+        if let Some(value) = definitions.get(&name) {
+            selected.insert(name, value.clone());
+            refs(value, &mut pending);
+        }
     }
-    if !selected.is_empty() { schema["definitions"] = Value::Object(selected); }
+    if !selected.is_empty() {
+        schema["definitions"] = Value::Object(selected);
+    }
     schema
 }
 
@@ -49,9 +72,24 @@ pub fn page_output(result: Value, inline_limit: usize) -> Result<Value> {
     }
     let preview = &text[..end];
     let mut page = json!({"text":preview,"offset":0,"nextOffset":preview.encode_utf16().count(),"outputId":output,"bytes":text.len(),"characters":text.encode_utf16().count(),"sha256":hash(&text),"nextAction":"control_output","format":"JSON; offsets count UTF-16 code units","retention":"temporary-cache","expiresInSeconds":TTL.as_secs()});
-    page["summary"] = json!({"keys":result.as_object().map(|fields| fields.keys().collect::<Vec<_>>())});
-    for key in ["requestId", "state", "operation", "threadId", "taskId", "turnId", "error", "next", "runtimeStatus", "method", "direction"] {
-        if let Some(value) = result.get(key) { page[key] = value.clone(); }
+    page["summary"] =
+        json!({"keys":result.as_object().map(|fields| fields.keys().collect::<Vec<_>>())});
+    for key in [
+        "requestId",
+        "state",
+        "operation",
+        "threadId",
+        "taskId",
+        "turnId",
+        "error",
+        "next",
+        "runtimeStatus",
+        "method",
+        "direction",
+    ] {
+        if let Some(value) = result.get(key) {
+            page[key] = value.clone();
+        }
     }
     Ok(page)
 }
@@ -179,9 +217,15 @@ mod schema_tests {
     #[test]
     fn single_method_excludes_unrelated_definitions_and_keeps_recursion() {
         // Regression: a simple method schema included every native definition and exceeded 125 KB.
-        let schema = schema_closure(json!({"$ref":"#/definitions/A"}), &json!({"A":{"properties":{"b":{"$ref":"#/definitions/B"}}},"B":{"$ref":"#/definitions/A"},"Unrelated":{"type":"string"}}));
+        let schema = schema_closure(
+            json!({"$ref":"#/definitions/A"}),
+            &json!({"A":{"properties":{"b":{"$ref":"#/definitions/B"}}},"B":{"$ref":"#/definitions/A"},"Unrelated":{"type":"string"}}),
+        );
         assert_eq!(schema["definitions"].as_object().unwrap().len(), 2);
         assert_eq!(schema["definitions"]["B"]["$ref"], "#/definitions/A");
-        assert_eq!(schema_closure(json!({"type":"null"}), &json!({"A":{}})), json!({"type":"null"}));
+        assert_eq!(
+            schema_closure(json!({"type":"null"}), &json!({"A":{}})),
+            json!({"type":"null"})
+        );
     }
 }

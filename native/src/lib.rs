@@ -1,6 +1,6 @@
 mod acceptance_fault;
-pub mod archive_index;
 pub mod app_replace;
+pub mod archive_index;
 mod changes;
 pub mod claude_accounts;
 mod claude_notify;

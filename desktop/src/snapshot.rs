@@ -95,7 +95,7 @@ pub async fn capture(app: &tauri::AppHandle, body: &Value) -> Result<Value, Stri
     .await;
     state.pending.lock().map_err(|e| e.to_string())?.take();
     let model = model?;
-    let instance=json!({"desktopPid":std::process::id(),"bundleId":app.config().identifier,"appName":app.config().product_name,"version":env!("ARC_BUILD_VERSION")});
+    let instance = json!({"desktopPid":std::process::id(),"bundleId":app.config().identifier,"appName":app.config().product_name,"version":env!("ARC_BUILD_VERSION")});
     if body["modelOnly"] == true {
         return Ok(json!({"model":model,"instance":instance}));
     }

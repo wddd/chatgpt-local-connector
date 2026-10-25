@@ -379,9 +379,17 @@ pub(super) fn status_in(
             targets.push(json!({"channel":s.channel,"target":s.target,"reachability":t.reachability.state,"reason":t.reachability.reason,"verificationAttempts":t.reachability.attempts,"lastVerificationDelivery":t.reachability.delivery_status,"lastVerificationError":t.reachability.last_error,"registered":t.registered,"tokens":t.tokens,"capacity":capacity(settings),"refillSeconds":refill_seconds(settings),"breaker":t.breaker,"pending":[],"recentBatches":t.batches,"emptySince":t.empty_since,"escalated":t.escalated,"escalationError":t.escalation_error}));
         }
     }
-    for t in state.targets.iter_mut().filter(|t| t.registered && t.source_id == source_id && args["threadId"].is_null() && args["target"].as_str().is_none_or(|v|v==t.target)) {
+    for t in state.targets.iter_mut().filter(|t| {
+        t.registered
+            && t.source_id == source_id
+            && args["threadId"].is_null()
+            && args["target"].as_str().is_none_or(|v| v == t.target)
+    }) {
         t.reachability.expire(now);
-        if !targets.iter().any(|v| v["target"] == t.target && v["channel"] == "claude-session") {
+        if !targets
+            .iter()
+            .any(|v| v["target"] == t.target && v["channel"] == "claude-session")
+        {
             targets.push(json!({"channel":t.channel,"target":t.target,"registered":true,"reachability":t.reachability.state,"reason":t.reachability.reason,"verificationAttempts":t.reachability.attempts,"lastVerificationDelivery":t.reachability.delivery_status,"lastVerificationError":t.reachability.last_error,"tokens":t.tokens,"breaker":t.breaker,"pending":[],"recentBatches":[]}));
         }
     }
@@ -447,16 +455,34 @@ pub(crate) async fn notify_control(args: &Value) -> Result<Value> {
     if args["action"] == "bind" {
         let mut result = {
             let _guard = LOCK.lock().await;
-            bind_target_in(&directory(), &source_id, args, chrono::Utc::now().timestamp(), &settings()?)?
+            bind_target_in(
+                &directory(),
+                &source_id,
+                args,
+                chrono::Utc::now().timestamp(),
+                &settings()?,
+            )?
         };
         if args["verify"] != false {
             match super::reachability::verify(&source_id, args).await {
                 Ok(mut verification) => {
-                    if verification["ok"] == false { result["ok"]=json!(false);result["error"]=verification.as_object_mut().unwrap().remove("error").unwrap_or(Value::Null); }
-                    if let Some(next)=verification.as_object_mut().unwrap().remove("next") {result["next"]=next;}
+                    if verification["ok"] == false {
+                        result["ok"] = json!(false);
+                        result["error"] = verification
+                            .as_object_mut()
+                            .unwrap()
+                            .remove("error")
+                            .unwrap_or(Value::Null);
+                    }
+                    if let Some(next) = verification.as_object_mut().unwrap().remove("next") {
+                        result["next"] = next;
+                    }
                     result["verification"] = verification;
                 }
-                Err(error) => { result["ok"]=json!(false); result["error"] = crate::egress::failure(&error); }
+                Err(error) => {
+                    result["ok"] = json!(false);
+                    result["error"] = crate::egress::failure(&error);
+                }
             }
         }
         return Ok(result);
@@ -514,7 +540,13 @@ pub(super) fn control_in(
             .iter()
             .find(|s| s.source_id == source_id && s.target == target)
             .map(|s| s.channel)
-            .or_else(||state.targets.iter().find(|t|t.registered && t.source_id==source_id && t.target==target).map(|t|t.channel))
+            .or_else(|| {
+                state
+                    .targets
+                    .iter()
+                    .find(|t| t.registered && t.source_id == source_id && t.target == target)
+                    .map(|t| t.channel)
+            })
             .ok_or("NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE")?;
         let t = state.target(source_id, channel, &target, now, settings);
         let previous = t.breaker;
@@ -617,13 +649,29 @@ pub(super) fn apply_rebind(b: &mut Binding, rule: &Thread) {
 }
 
 // Registration is source-scoped; it never becomes an implicit target for another conversation.
-pub(super) fn bind_target_in(dir: &Path, source_id: &str, args: &Value, now: i64, settings: &Value) -> Result<Value> {
-    let target=session_id(string(args,"target"))?;
+pub(super) fn bind_target_in(
+    dir: &Path,
+    source_id: &str,
+    args: &Value,
+    now: i64,
+    settings: &Value,
+) -> Result<Value> {
+    let target = session_id(string(args, "target"))?;
     if args["threadId"].is_string() {
-        control_in(dir, source_id, &json!({"action":"rebind","threadId":args["threadId"],"target":target}), now, settings)?;
+        control_in(
+            dir,
+            source_id,
+            &json!({"action":"rebind","threadId":args["threadId"],"target":target}),
+            now,
+            settings,
+        )?;
     }
-    let mut state=State::load(dir)?;
-    state.target(source_id,Channel::ClaudeSession,&target,now,settings).registered=true;
+    let mut state = State::load(dir)?;
+    state
+        .target(source_id, Channel::ClaudeSession, &target, now, settings)
+        .registered = true;
     state.save(dir)?;
-    Ok(json!({"action":"bind","bound":true,"target":target,"threadId":args["threadId"],"taskBound":args["threadId"].is_string(),"notify":{"channel":"claude-session","target":target},"next":{"via":"act","op":"notify_control","args":{"action":"verify","target":target},"hint":"Binding persists if verification fails. Acknowledge only the code received in the target conversation. Pass the returned notify object on future dispatches; registration alone does not subscribe tasks."}}))
+    Ok(
+        json!({"action":"bind","bound":true,"target":target,"threadId":args["threadId"],"taskBound":args["threadId"].is_string(),"notify":{"channel":"claude-session","target":target},"next":{"via":"act","op":"notify_control","args":{"action":"verify","target":target},"hint":"Binding persists if verification fails. Acknowledge only the code received in the target conversation. Pass the returned notify object on future dispatches; registration alone does not subscribe tasks."}}),
+    )
 }

@@ -18,11 +18,19 @@ pub(crate) fn session_id(value: &str) -> Result<String> {
         .or_else(|| value.strip_prefix("http://"))
         .unwrap_or(value);
     let id = match url.strip_prefix("claude.ai/code/") {
-        Some(id) => id.split(['?', '#']).next().unwrap_or("").trim_end_matches('/'),
+        Some(id) => id
+            .split(['?', '#'])
+            .next()
+            .unwrap_or("")
+            .trim_end_matches('/'),
         None => value,
     };
-    let suffix = id.strip_prefix("session_").or_else(|| id.strip_prefix("cse_"));
-    if !suffix.is_some_and(|suffix| suffix.len() == 24 && suffix.bytes().all(|c| c.is_ascii_alphanumeric())) {
+    let suffix = id
+        .strip_prefix("session_")
+        .or_else(|| id.strip_prefix("cse_"));
+    if !suffix.is_some_and(|suffix| {
+        suffix.len() == 24 && suffix.bytes().all(|c| c.is_ascii_alphanumeric())
+    }) {
         return Err(json!({
             "code":"INVALID_CLAUDE_SESSION",
             "message":"Invalid cloud-session target. Expected session_ or cse_ followed by exactly 24 ASCII letters/digits, or a claude.ai/code URL containing that ID. A local Claude CLI UUID is not a cloud-session ID.",
@@ -638,7 +646,7 @@ trait Executor: Sync {
     }
     fn send(&self, args: Vec<String>) -> impl Future<Output = Result<Vec<u8>>> + Send;
     fn local_account(&self, _target: &str) -> impl Future<Output = Value> + Send {
-        async {json!({"available":false,"reason":"auth-status-unavailable"})}
+        async { json!({"available":false,"reason":"auth-status-unavailable"}) }
     }
     fn escalate(&self, body: String) -> impl Future<Output = Result<()>> + Send;
 }
@@ -648,7 +656,12 @@ struct Cli {
 }
 impl Executor for Cli {
     async fn local_account(&self, target: &str) -> Value {
-        let account_id = match self.account_id.clone().map(Ok).unwrap_or_else(|| crate::claude_accounts::routing::account(target)) {
+        let account_id = match self
+            .account_id
+            .clone()
+            .map(Ok)
+            .unwrap_or_else(|| crate::claude_accounts::routing::account(target))
+        {
             Ok(id) => id,
             Err(error) => return json!({"available":false,"reason":error}),
         };
@@ -685,9 +698,15 @@ impl Executor for Cli {
         if settings()?["notificationsEnabled"] == false {
             return Err("NOTIFICATIONS_DISABLED".into());
         }
-        let target = args.windows(2).find(|pair| pair[0] == "--cloud")
-            .map(|pair| pair[1].as_str()).ok_or("INVALID_CLAUDE_SESSION")?;
-        let account_id = self.account_id.clone().map(Ok)
+        let target = args
+            .windows(2)
+            .find(|pair| pair[0] == "--cloud")
+            .map(|pair| pair[1].as_str())
+            .ok_or("INVALID_CLAUDE_SESSION")?;
+        let account_id = self
+            .account_id
+            .clone()
+            .map(Ok)
             .unwrap_or_else(|| crate::claude_accounts::routing::account(target))?;
         let mut cmd = crate::claude_accounts::account_command(&account_id).await?;
         let output = tokio::time::timeout(
@@ -698,7 +717,9 @@ impl Executor for Cli {
         .map_err(|_| "CLAUDE_SEND_TIMEOUT")?
         .map_err(|e| format!("CLAUDE_SEND_FAILED: {e}"))?;
         if !output.status.success() {
-            if session_not_found(&String::from_utf8_lossy(&output.stderr)) || session_not_found(&String::from_utf8_lossy(&output.stdout)) {
+            if session_not_found(&String::from_utf8_lossy(&output.stderr))
+                || session_not_found(&String::from_utf8_lossy(&output.stdout))
+            {
                 return Err("CLAUDE_SESSION_NOT_FOUND: Session not found".into());
             }
             return Err(format!(
@@ -722,23 +743,42 @@ pub(crate) async fn send_account_notification(args: &Value) -> Result<Value> {
         return Err("INVALID_NOTIFICATION_MESSAGE: Supply 1 to 8000 characters".into());
     }
     crate::claude_accounts::routing::bind(&target, account_id, false).await?;
-    let executor = Cli { service: std::sync::Weak::new(), account_id: Some(account_id.into()) };
+    let executor = Cli {
+        service: std::sync::Weak::new(),
+        account_id: Some(account_id.into()),
+    };
     deliver_target(&executor, &target, message).await?;
-    Ok(json!({"accountId":account_id,"target":target,"deliveryStatus":"delivered",
-        "hint":"Claude CLI accepted the message for this exact session. This does not confirm receiver display or acknowledgement."}))
+    Ok(
+        json!({"accountId":account_id,"target":target,"deliveryStatus":"delivered",
+        "hint":"Claude CLI accepted the message for this exact session. This does not confirm receiver display or acknowledgement."}),
+    )
 }
 
 async fn deliver_message(executor: &impl Executor, b: &Binding, body: &str) -> &'static str {
-    if deliver_target(executor, b.target.as_deref().unwrap(), body).await.is_ok() {"delivered"} else {"failed"}
+    if deliver_target(executor, b.target.as_deref().unwrap(), body)
+        .await
+        .is_ok()
+    {
+        "delivered"
+    } else {
+        "failed"
+    }
 }
 fn session_not_found(error: &str) -> bool {
-    error.to_ascii_lowercase().contains("session not found") || error.contains("CLAUDE_SESSION_NOT_FOUND")
+    error.to_ascii_lowercase().contains("session not found")
+        || error.contains("CLAUDE_SESSION_NOT_FOUND")
 }
 fn safe_account(value: &Value) -> Value {
-    let mut identity=json!({"available":false});
-    if let Some(logged_in)=value["loggedIn"].as_bool() {identity["loggedIn"]=json!(logged_in);identity["available"]=json!(true);}
-    for key in ["email","authMethod"] {
-        if let Some(text)=value[key].as_str() {identity[key]=json!(text.chars().take(320).collect::<String>());identity["available"]=json!(true);}
+    let mut identity = json!({"available":false});
+    if let Some(logged_in) = value["loggedIn"].as_bool() {
+        identity["loggedIn"] = json!(logged_in);
+        identity["available"] = json!(true);
+    }
+    for key in ["email", "authMethod"] {
+        if let Some(text) = value[key].as_str() {
+            identity[key] = json!(text.chars().take(320).collect::<String>());
+            identity["available"] = json!(true);
+        }
     }
     identity
 }
@@ -747,26 +787,38 @@ async fn deliver_target(executor: &impl Executor, session: &str, body: &str) -> 
         .send(arguments(session, body))
         .await
         .and_then(|bytes| {
-            serde_json::from_slice::<Value>(&bytes).map_err(|_| if session_not_found(&String::from_utf8_lossy(&bytes)) {"CLAUDE_SESSION_NOT_FOUND: Session not found".into()} else {"CLAUDE_SEND_UNKNOWN".into()})
+            serde_json::from_slice::<Value>(&bytes).map_err(|_| {
+                if session_not_found(&String::from_utf8_lossy(&bytes)) {
+                    "CLAUDE_SESSION_NOT_FOUND: Session not found".into()
+                } else {
+                    "CLAUDE_SEND_UNKNOWN".into()
+                }
+            })
         });
     let error = match result {
-        Ok(ref v) if v["ok"] == true && v["session_id"].as_str() == Some(session) => {
-            return Ok(())
-        }
+        Ok(ref v) if v["ok"] == true && v["session_id"].as_str() == Some(session) => return Ok(()),
         Ok(ref v) if v["ok"] == true => "CLAUDE_SESSION_MISMATCH".to_owned(),
-        Ok(v) if ["error","errors","message"].iter().any(|key|session_not_found(&v[*key].to_string())) => "CLAUDE_SESSION_NOT_FOUND: Session not found".into(),
+        Ok(v)
+            if ["error", "errors", "message"]
+                .iter()
+                .any(|key| session_not_found(&v[*key].to_string())) =>
+        {
+            "CLAUDE_SESSION_NOT_FOUND: Session not found".into()
+        }
         Ok(v) => format!("CLAUDE_SEND_REJECTED: {}", v["error"]),
         Err(error) => error,
     };
     #[cfg(not(test))]
     crate::logs::record(
         "WARN",
-        &format!(
-            "Claude notification delivery failed: {error}"
-        ),
+        &format!("Claude notification delivery failed: {error}"),
         None,
     );
-    Err(if session_not_found(&error) {"CLAUDE_SESSION_NOT_FOUND: Session not found".into()} else {error})
+    Err(if session_not_found(&error) {
+        "CLAUDE_SESSION_NOT_FOUND: Session not found".into()
+    } else {
+        error
+    })
 }
 fn recover(dir: &Path, b: &mut Binding) -> Result<bool> {
     let retry = |d: &Delivery| {
@@ -1121,11 +1173,15 @@ fn inbox_select(
         visible.as_object_mut().unwrap().remove("attachedHash");
         let fingerprint = hash(visible.to_string());
         if filters.is_none() && !claude && row["attachedHash"] == fingerprint {
-            if repeated.len() < 5 { repeated.push(json!({"eventId":row["eventId"],"kind":row["kind"],"threadId":row["threadId"],"taskId":row["taskId"],"turnId":row["turnId"]})); }
+            if repeated.len() < 5 {
+                repeated.push(json!({"eventId":row["eventId"],"kind":row["kind"],"threadId":row["threadId"],"taskId":row["taskId"],"turnId":row["turnId"]}));
+            }
             continue;
         }
         if events.len() < 5 {
-            if filters.is_none() { row["attachedHash"] = json!(fingerprint); }
+            if filters.is_none() {
+                row["attachedHash"] = json!(fingerprint);
+            }
             if incremental {
                 row["attached"] = json!(true);
             }
@@ -2120,43 +2176,139 @@ mod tests {
     #[tokio::test]
     async fn registered_target_verifies_without_a_task_and_remains_source_scoped() {
         // Regression: a cloud source with no turn binding could never start a reachability handshake.
-        let dir=Sandbox::new();let settings=json!({"notificationsEnabled":true});let args=json!({"target":"session_010000000000000000000001"});
-        let bound=governance::bind_target_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
-        assert_eq!(bound["taskBound"],false);
-        let fake=Fake::success();
-        assert!(reachability::verify_in(&dir.0,"source-b",&args,&settings,&fake).await.unwrap_err().contains("NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE"));
-        let result=reachability::verify_in(&dir.0,"source-a",&args,&settings,&fake).await.unwrap();
-        assert_eq!(result["verificationAttempts"],1);assert_eq!(result["deliveryStatus"],"delivered");assert_ne!(result["reachability"],"verified");
-        let message=fake.calls.lock().unwrap()[0][1].clone();
-        let start=message.find('{').unwrap();let end=message.rfind('}').unwrap();
-        let delivered:Value=serde_json::from_str(&message[start..=end]).unwrap();
-        assert!(!result.to_string().contains(string(&delivered["args"],"code")));
-        assert!(reachability::acknowledge(&dir.0,"source-b",&delivered["args"]).is_err());
-        assert_eq!(reachability::acknowledge(&dir.0,"source-a",&delivered["args"]).unwrap()["reachability"],"verified");
-        let visible=governance::status_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
-        assert_eq!(visible["targets"][0]["verificationAttempts"],1);
-        let failed=reachability::verify_in(&dir.0,"source-a",&args,&settings,&Fake::new(Err("offline".into()))).await.unwrap();
-        assert_eq!(failed["ok"],false);assert_eq!(failed["verificationAttempts"],2);assert_eq!(failed["deliveryStatus"],"failed");assert_eq!(failed["next"]["op"],"notify_control");assert_eq!(failed["next"]["args"]["action"],"verify");
-        assert!(governance::status_in(&dir.0,"source-b",&args,chrono::Utc::now().timestamp(),&settings).unwrap()["targets"].as_array().unwrap().is_empty());
+        let dir = Sandbox::new();
+        let settings = json!({"notificationsEnabled":true});
+        let args = json!({"target":"session_010000000000000000000001"});
+        let bound = governance::bind_target_in(
+            &dir.0,
+            "source-a",
+            &args,
+            chrono::Utc::now().timestamp(),
+            &settings,
+        )
+        .unwrap();
+        assert_eq!(bound["taskBound"], false);
+        let fake = Fake::success();
+        assert!(
+            reachability::verify_in(&dir.0, "source-b", &args, &settings, &fake)
+                .await
+                .unwrap_err()
+                .contains("NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE")
+        );
+        let result = reachability::verify_in(&dir.0, "source-a", &args, &settings, &fake)
+            .await
+            .unwrap();
+        assert_eq!(result["verificationAttempts"], 1);
+        assert_eq!(result["deliveryStatus"], "delivered");
+        assert_ne!(result["reachability"], "verified");
+        let message = fake.calls.lock().unwrap()[0][1].clone();
+        let start = message.find('{').unwrap();
+        let end = message.rfind('}').unwrap();
+        let delivered: Value = serde_json::from_str(&message[start..=end]).unwrap();
+        assert!(!result
+            .to_string()
+            .contains(string(&delivered["args"], "code")));
+        assert!(reachability::acknowledge(&dir.0, "source-b", &delivered["args"]).is_err());
+        assert_eq!(
+            reachability::acknowledge(&dir.0, "source-a", &delivered["args"]).unwrap()
+                ["reachability"],
+            "verified"
+        );
+        let visible = governance::status_in(
+            &dir.0,
+            "source-a",
+            &args,
+            chrono::Utc::now().timestamp(),
+            &settings,
+        )
+        .unwrap();
+        assert_eq!(visible["targets"][0]["verificationAttempts"], 1);
+        let failed = reachability::verify_in(
+            &dir.0,
+            "source-a",
+            &args,
+            &settings,
+            &Fake::new(Err("offline".into())),
+        )
+        .await
+        .unwrap();
+        assert_eq!(failed["ok"], false);
+        assert_eq!(failed["verificationAttempts"], 2);
+        assert_eq!(failed["deliveryStatus"], "failed");
+        assert_eq!(failed["next"]["op"], "notify_control");
+        assert_eq!(failed["next"]["args"]["action"], "verify");
+        assert!(governance::status_in(
+            &dir.0,
+            "source-b",
+            &args,
+            chrono::Utc::now().timestamp(),
+            &settings
+        )
+        .unwrap()["targets"]
+            .as_array()
+            .unwrap()
+            .is_empty());
     }
     #[tokio::test]
     async fn missing_cloud_session_reports_safe_account_and_manual_recovery() {
         // Regression: Session not found became generic handshake-delivery-failed and hid a likely host-account mismatch.
-        let dir=Sandbox::new();let settings=json!({"notificationsEnabled":true});let args=json!({"target":"session_010000000000000000000001"});
-        governance::bind_target_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
-        for reply in [Err("CLAUDE_SEND_FAILED: exit 1; Session not found".into()),Ok(br#"{"ok":false,"error":"Session not found"}"#.to_vec()),Ok(br#"{"is_error":true,"errors":["Session not found"]}"#.to_vec()),Ok(b"Session not found".to_vec())] {
-            let result=reachability::verify_in(&dir.0,"source-a",&args,&settings,&Fake::new(reply)).await.unwrap();
-            assert_eq!(result["ok"],false);assert_eq!(result["reason"],"claude-session-not-found");assert_eq!(result["error"]["code"],"CLAUDE_SESSION_NOT_FOUND");
-            assert_eq!(result["error"]["localAccount"]["email"],"fixture@example.invalid");
-            assert_eq!(result["next"]["before"]["actor"],"user");
-            assert_eq!(result["next"]["before"]["localOperation"],"claude.accounts.routes");
-            assert_eq!(result["next"]["args"],json!({"action":"verify","target":"session_010000000000000000000001"}));
-            let status=governance::status_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
-            assert_eq!(status["targets"][0]["lastVerificationError"]["code"],"CLAUDE_SESSION_NOT_FOUND");
-            assert!(!result.to_string().contains("fixture-secret"));assert!(!status.to_string().contains("fixture-secret"));
+        let dir = Sandbox::new();
+        let settings = json!({"notificationsEnabled":true});
+        let args = json!({"target":"session_010000000000000000000001"});
+        governance::bind_target_in(
+            &dir.0,
+            "source-a",
+            &args,
+            chrono::Utc::now().timestamp(),
+            &settings,
+        )
+        .unwrap();
+        for reply in [
+            Err("CLAUDE_SEND_FAILED: exit 1; Session not found".into()),
+            Ok(br#"{"ok":false,"error":"Session not found"}"#.to_vec()),
+            Ok(br#"{"is_error":true,"errors":["Session not found"]}"#.to_vec()),
+            Ok(b"Session not found".to_vec()),
+        ] {
+            let result =
+                reachability::verify_in(&dir.0, "source-a", &args, &settings, &Fake::new(reply))
+                    .await
+                    .unwrap();
+            assert_eq!(result["ok"], false);
+            assert_eq!(result["reason"], "claude-session-not-found");
+            assert_eq!(result["error"]["code"], "CLAUDE_SESSION_NOT_FOUND");
+            assert_eq!(
+                result["error"]["localAccount"]["email"],
+                "fixture@example.invalid"
+            );
+            assert_eq!(result["next"]["before"]["actor"], "user");
+            assert_eq!(
+                result["next"]["before"]["localOperation"],
+                "claude.accounts.routes"
+            );
+            assert_eq!(
+                result["next"]["args"],
+                json!({"action":"verify","target":"session_010000000000000000000001"})
+            );
+            let status = governance::status_in(
+                &dir.0,
+                "source-a",
+                &args,
+                chrono::Utc::now().timestamp(),
+                &settings,
+            )
+            .unwrap();
+            assert_eq!(
+                status["targets"][0]["lastVerificationError"]["code"],
+                "CLAUDE_SESSION_NOT_FOUND"
+            );
+            assert!(!result.to_string().contains("fixture-secret"));
+            assert!(!status.to_string().contains("fixture-secret"));
         }
         assert!(!session_not_found("Connection timed out"));
-        assert_eq!(safe_account(&json!({"accessToken":"fixture-secret"})),json!({"available":false}));
+        assert_eq!(
+            safe_account(&json!({"accessToken":"fixture-secret"})),
+            json!({"available":false})
+        );
     }
     struct Fake {
         result: Result<Vec<u8>>,
@@ -2172,11 +2324,17 @@ mod tests {
             }
         }
         fn success() -> Self {
-            Self::new(Ok(br#"{"ok":true,"session_id":"session_010000000000000000000001"}"#.to_vec()))
+            Self::new(Ok(
+                br#"{"ok":true,"session_id":"session_010000000000000000000001"}"#.to_vec(),
+            ))
         }
     }
     impl Executor for Fake {
-        async fn local_account(&self, _target: &str) -> Value {safe_account(&json!({"loggedIn":true,"authMethod":"claude.ai","email":"fixture@example.invalid","accessToken":"fixture-secret","credentials":{"refreshToken":"fixture-secret"}}))}
+        async fn local_account(&self, _target: &str) -> Value {
+            safe_account(
+                &json!({"loggedIn":true,"authMethod":"claude.ai","email":"fixture@example.invalid","accessToken":"fixture-secret","credentials":{"refreshToken":"fixture-secret"}}),
+            )
+        }
         async fn send(&self, args: Vec<String>) -> Result<Vec<u8>> {
             self.calls.lock().unwrap().push(args);
             self.result.clone()
@@ -2513,8 +2671,14 @@ mod tests {
             1
         );
         assert_eq!(
-            inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000001")).unwrap()["events"][0]
-                ["target"],
+            inbox_in(
+                &dir.0,
+                "claude",
+                &[],
+                true,
+                Some("session_010000000000000000000001")
+            )
+            .unwrap()["events"][0]["target"],
             "session_010000000000000000000001"
         );
         acknowledge_in(&dir.0, "claude", &json!({"all":true})).unwrap();
@@ -2815,9 +2979,15 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000001"))
-            .unwrap()
-            .is_null());
+        assert!(inbox_in(
+            &dir.0,
+            "claude",
+            &[],
+            true,
+            Some("session_010000000000000000000001")
+        )
+        .unwrap()
+        .is_null());
         assert_eq!(
             inbox_in(&dir.0, "claude", &[], false, None).unwrap()["events"]
                 .as_array()
@@ -2830,13 +3000,25 @@ mod tests {
         persist(&dir.0, &b).unwrap();
         inbox_append(&dir.0, "claude", event(&b, &b.deliveries[0])).unwrap();
         assert_eq!(
-            inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000001")).unwrap()["events"][0]
-                ["eventId"],
+            inbox_in(
+                &dir.0,
+                "claude",
+                &[],
+                true,
+                Some("session_010000000000000000000001")
+            )
+            .unwrap()["events"][0]["eventId"],
             "fresh"
         );
-        assert!(inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000001"))
-            .unwrap()
-            .is_null());
+        assert!(inbox_in(
+            &dir.0,
+            "claude",
+            &[],
+            true,
+            Some("session_010000000000000000000001")
+        )
+        .unwrap()
+        .is_null());
         inbox_append(&dir.0, "chatgpt", event(&b, &b.deliveries[0])).unwrap();
         assert_eq!(
             acknowledge_in(&dir.0, "claude", &json!({"all":true})).unwrap()["markedRead"],
@@ -2881,10 +3063,24 @@ mod tests {
         assert!(inbox_in(&dir.0, "claude", &[], true, None)
             .unwrap()
             .is_null());
-        let inbox = inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000001")).unwrap();
+        let inbox = inbox_in(
+            &dir.0,
+            "claude",
+            &[],
+            true,
+            Some("session_010000000000000000000001"),
+        )
+        .unwrap();
         assert_eq!(inbox["unread"], 1);
         assert_eq!(inbox["events"][0]["threadId"], "first");
-        let other = inbox_in(&dir.0, "claude", &[], true, Some("session_010000000000000000000002")).unwrap();
+        let other = inbox_in(
+            &dir.0,
+            "claude",
+            &[],
+            true,
+            Some("session_010000000000000000000002"),
+        )
+        .unwrap();
         assert_eq!(other["events"][0]["threadId"], "second");
         inbox_append(&dir.0, "chatgpt", event(&first, &first.deliveries[0])).unwrap();
         assert_eq!(
@@ -3080,9 +3276,15 @@ mod tests {
             "claude.ai/code/session_010000000000000000000001",
             "http://claude.ai/code/session_010000000000000000000001#fragment",
         ] {
-            assert_eq!(session_id(input).unwrap(), "session_010000000000000000000001");
+            assert_eq!(
+                session_id(input).unwrap(),
+                "session_010000000000000000000001"
+            );
         }
-        assert_eq!(session_id("cse_010000000000000000000005").unwrap(), "cse_010000000000000000000005");
+        assert_eq!(
+            session_id("cse_010000000000000000000005").unwrap(),
+            "cse_010000000000000000000005"
+        );
         for bad in [
             "",
             "session_",
@@ -3140,13 +3342,19 @@ mod tests {
         bind_in(&dir.0, None, "thread-1", "turn-1", "").unwrap();
         bind_in(&dir.0, None, "thread-1", "turn-2", "").unwrap();
         let mut b = binding(&dir.0, "thread-1", "turn-1").unwrap().unwrap();
-        assert_eq!(b.target.as_deref(), Some("session_010000000000000000000001"));
+        assert_eq!(
+            b.target.as_deref(),
+            Some("session_010000000000000000000001")
+        );
         assert!(binding(&dir.0, "thread-1", "turn-2").unwrap().is_none());
         let fake = Fake::success();
         process(&fake, &dir.0, &mut b, &json!({"state":"completed"}))
             .await
             .unwrap();
-        assert_eq!(fake.calls.lock().unwrap()[0][3], "session_010000000000000000000001");
+        assert_eq!(
+            fake.calls.lock().unwrap()[0][3],
+            "session_010000000000000000000001"
+        );
     }
     #[test]
     fn binding_failure_marks_receipt_without_changing_dispatch_result() {
@@ -3155,7 +3363,13 @@ mod tests {
         std::fs::create_dir_all(&dir.0).unwrap();
         let blocked = dir.0.join("not-a-directory");
         std::fs::write(&blocked, "fixture").unwrap();
-        let result = bind_in(&blocked, Some("session_010000000000000000000001"), "thread-1", "turn-1", "");
+        let result = bind_in(
+            &blocked,
+            Some("session_010000000000000000000001"),
+            "thread-1",
+            "turn-1",
+            "",
+        );
         assert!(result.is_err());
         let mut receipt =
             json!({"state":"completed","result":{"submitted":true,"turnId":"turn-1"}});
@@ -3177,7 +3391,14 @@ mod tests {
             b.created_at = 100;
             persist(&dir.0, &b).unwrap();
             // Rebinding preserves the original creation time.
-            bind_in(&dir.0, Some("cse_010000000000000000000006"), "thread-1", "turn-1", "").unwrap();
+            bind_in(
+                &dir.0,
+                Some("cse_010000000000000000000006"),
+                "thread-1",
+                "turn-1",
+                "",
+            )
+            .unwrap();
             let b = binding(&dir.0, "thread-1", "turn-1").unwrap().unwrap();
             assert_eq!(b.created_at, 100);
             assert!(!remove_expired(&dir.0, &b, 100 + RETENTION_SECONDS).unwrap());
@@ -3207,7 +3428,13 @@ mod tests {
                     .expect("CLI must not hold binding lock");
                 let b = binding(self.dir, "thread-1", "turn-1")?.unwrap();
                 assert_eq!(b.deliveries[0].status, "sending");
-                bind_in(self.dir, Some("cse_010000000000000000000006"), "thread-1", "turn-1", "")?;
+                bind_in(
+                    self.dir,
+                    Some("cse_010000000000000000000006"),
+                    "thread-1",
+                    "turn-1",
+                    "",
+                )?;
                 if self.fail {
                     Err("simulated failure".into())
                 } else {
@@ -3295,7 +3522,12 @@ mod tests {
         assert_eq!(calls[0][0], "-p");
         assert_eq!(
             &calls[0][2..],
-            ["--cloud", "session_010000000000000000000001", "--output-format", "json"]
+            [
+                "--cloud",
+                "session_010000000000000000000001",
+                "--output-format",
+                "json"
+            ]
         );
         assert!(!serde_json::to_string(&*calls)
             .unwrap()
@@ -3312,7 +3544,14 @@ mod tests {
         process(&fake, &dir.0, &mut b, &interaction(json!(17)))
             .await
             .unwrap();
-        bind_in(&dir.0, Some("cse_010000000000000000000006"), "thread-1", "turn-1", "").unwrap();
+        bind_in(
+            &dir.0,
+            Some("cse_010000000000000000000006"),
+            "thread-1",
+            "turn-1",
+            "",
+        )
+        .unwrap();
         let mut b = binding(&dir.0, "thread-1", "turn-1").unwrap().unwrap();
         let report = notification(Some(b.clone()));
         assert_eq!(report["target"], "cse_010000000000000000000006");
@@ -3321,11 +3560,16 @@ mod tests {
             .await
             .unwrap();
 
-        let other = Fake::new(Ok(br#"{"ok":true,"session_id":"cse_010000000000000000000006"}"#.to_vec()));
+        let other = Fake::new(Ok(
+            br#"{"ok":true,"session_id":"cse_010000000000000000000006"}"#.to_vec(),
+        ));
         process(&other, &dir.0, &mut b, &json!({"state":"completed"}))
             .await
             .unwrap();
-        assert_eq!(other.calls.lock().unwrap()[0][3], "cse_010000000000000000000006");
+        assert_eq!(
+            other.calls.lock().unwrap()[0][3],
+            "cse_010000000000000000000006"
+        );
         assert_eq!(
             notification(Some(b.clone()))["deliveries"],
             json!([{"eventId":b.deliveries[1].event_id,"kind":"completed","level":"L1","state":"delivered","error":null,"timing":b.deliveries[1].timing}])

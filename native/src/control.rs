@@ -344,33 +344,81 @@ impl Control {
     pub(crate) async fn writer_ownership(&self, thread: &str) -> Value {
         let mut result = crate::writer::probe(thread);
         result["threadId"] = json!(thread);
-        if result["state"] != "held" { return result; }
+        if result["state"] != "held" {
+            return result;
+        }
         if self.background(thread).unwrap_or(false) {
-            let read = tokio::time::timeout(Duration::from_millis(1500), async { self.utility().await?.call("thread/read",json!({"threadId":thread,"includeTurns":false}),1000).await }).await;
+            let read = tokio::time::timeout(Duration::from_millis(1500), async {
+                self.utility()
+                    .await?
+                    .call(
+                        "thread/read",
+                        json!({"threadId":thread,"includeTurns":false}),
+                        1000,
+                    )
+                    .await
+            })
+            .await;
             if let Ok(Ok(metadata)) = read {
-                if matches!(metadata["thread"]["status"]["type"].as_str(),Some("active"|"idle")) { result["owner"] = json!("connector"); return result; }
+                if matches!(
+                    metadata["thread"]["status"]["type"].as_str(),
+                    Some("active" | "idle")
+                ) {
+                    result["owner"] = json!("connector");
+                    return result;
+                }
             }
         }
-        let owner = tokio::time::timeout(Duration::from_millis(1800), async { self.ipc().await?.owner(thread).await }).await;
+        let owner = tokio::time::timeout(Duration::from_millis(1800), async {
+            self.ipc().await?.owner(thread).await
+        })
+        .await;
         match owner {
-            Ok(Ok(client)) => {result["owner"] = json!("desktop");result["clientId"] = json!(client);}
-            _ => {result["owner"] = json!("external"); result["reason"] = json!("native-writer-held-without-desktop-follower-owner");}
+            Ok(Ok(client)) => {
+                result["owner"] = json!("desktop");
+                result["clientId"] = json!(client);
+            }
+            _ => {
+                result["owner"] = json!("external");
+                result["reason"] = json!("native-writer-held-without-desktop-follower-owner");
+            }
         }
         result
     }
     async fn release_writer(&self, thread: &str) -> Result<Value> {
         let mut ownership = self.writer_ownership(thread).await;
-        if ownership["state"] == "unheld" {return Ok(json!({"threadId":thread,"released":true,"alreadyUnheld":true,"ownership":ownership,"state":"completed"}));}
-        if ownership["state"] == "held" { ownership["processes"] = crate::writer::processes(thread).await; }
-        if !self.background(thread)? || (ownership["state"] == "held" && ownership["owner"] != "connector") {
+        if ownership["state"] == "unheld" {
+            return Ok(
+                json!({"threadId":thread,"released":true,"alreadyUnheld":true,"ownership":ownership,"state":"completed"}),
+            );
+        }
+        if ownership["state"] == "held" {
+            ownership["processes"] = crate::writer::processes(thread).await;
+        }
+        if !self.background(thread)?
+            || (ownership["state"] == "held" && ownership["owner"] != "connector")
+        {
             return Err(json!({"code":"WRITER_RELEASE_REQUIRES_OWNER","message":"This writer is not owned by ARC's connector. The Desktop follower protocol exposes no safe per-thread release request. Use the exact owner step; ARC will not close another session.","ownership":ownership,"next":crate::writer::release_step(thread,&ownership)}).to_string());
         }
-        let rpc=self.utility().await?;
-        let metadata=rpc.call("thread/read",json!({"threadId":thread,"includeTurns":false}),3000).await?;
-        if metadata["thread"]["status"]["type"] == "active" { return Err("WRITER_ACTIVE: finish or explicitly interrupt this turn before release".into()); }
-        rpc.call("thread/unsubscribe",json!({"threadId":thread}),3000).await?;
-        let observed=crate::writer::probe(thread);
-        Ok(json!({"threadId":thread,"released":observed["state"] == "unheld","ownership":observed,"state":if observed["state"] == "unheld" {"completed"} else {"unconfirmed"}}))
+        let rpc = self.utility().await?;
+        let metadata = rpc
+            .call(
+                "thread/read",
+                json!({"threadId":thread,"includeTurns":false}),
+                3000,
+            )
+            .await?;
+        if metadata["thread"]["status"]["type"] == "active" {
+            return Err(
+                "WRITER_ACTIVE: finish or explicitly interrupt this turn before release".into(),
+            );
+        }
+        rpc.call("thread/unsubscribe", json!({"threadId":thread}), 3000)
+            .await?;
+        let observed = crate::writer::probe(thread);
+        Ok(
+            json!({"threadId":thread,"released":observed["state"] == "unheld","ownership":observed,"state":if observed["state"] == "unheld" {"completed"} else {"unconfirmed"}}),
+        )
     }
     // Only an explicit write may load a persisted thread. Never retry a turn
     // submission on another owner: its acceptance may already be unknown.
@@ -388,7 +436,13 @@ impl Control {
         let ipc = self.ipc().await?;
         match ipc.owner(thread).await {
             Ok(_) => return Ok(()),
-            Err(e) if desktop::owner_missing(&e) || (desktop::owner_discovery_pending(&e) && crate::writer::probe(thread)["state"] == "unheld") => (),
+            Err(e)
+                if desktop::owner_missing(&e)
+                    || (desktop::owner_discovery_pending(&e)
+                        && crate::writer::probe(thread)["state"] == "unheld") =>
+            {
+                ()
+            }
             Err(e) => return Err(e),
         }
         // Validate existence before navigation; metadata needs no history API.
@@ -601,31 +655,50 @@ impl Control {
         self.request_native(method, args, timeout).await
     }
     async fn writer_conflict(&self, thread: &str, error: Option<&str>) -> Value {
-        let mut ownership=self.writer_ownership(thread).await;
-        if ownership["state"] == "held" {ownership["processes"]=crate::writer::processes(thread).await;}
-        if let Some(error)=error {
-            let rpc=error.strip_prefix("RPC_REJECTED:").and_then(|s|serde_json::from_str::<Value>(s).ok());
-            ownership["lockObservation"]=ownership["state"].clone();
-            ownership["state"]=json!("held");
-            ownership["evidence"]=json!("native-writer-rejection");
-            if ownership["owner"].is_null() {ownership["owner"]=json!("external");}
-            if rpc.as_ref().is_some_and(|r|r["data"]["injected"]==true) {ownership["injected"]=json!(true);ownership["evidence"]=json!("isolated-native-writer-rejection");}
+        let mut ownership = self.writer_ownership(thread).await;
+        if ownership["state"] == "held" {
+            ownership["processes"] = crate::writer::processes(thread).await;
         }
-        crate::writer::busy(thread,ownership)
+        if let Some(error) = error {
+            let rpc = error
+                .strip_prefix("RPC_REJECTED:")
+                .and_then(|s| serde_json::from_str::<Value>(s).ok());
+            ownership["lockObservation"] = ownership["state"].clone();
+            ownership["state"] = json!("held");
+            ownership["evidence"] = json!("native-writer-rejection");
+            if ownership["owner"].is_null() {
+                ownership["owner"] = json!("external");
+            }
+            if rpc.as_ref().is_some_and(|r| r["data"]["injected"] == true) {
+                ownership["injected"] = json!(true);
+                ownership["evidence"] = json!("isolated-native-writer-rejection");
+            }
+        }
+        crate::writer::busy(thread, ownership)
     }
     async fn request_native(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
-        let thread=string(&args,"threadId");
-        if matches!(method,"thread/read"|"thread/turns/list"|"thread/items/list") && crate::writer::probe(thread)["state"] == "held" {
-            let mut ownership=self.writer_ownership(thread).await;
-            if ownership["owner"] == "external" {ownership["processes"]=crate::writer::processes(thread).await;return Err(crate::writer::busy(thread,ownership).to_string());}
-        }
-        let result=self.request_native_raw(method,args.clone(),timeout).await;
-        if let Err(error)=&result {
-            if !thread.is_empty() && error.contains("already has an active writer") {
-                return Err(self.writer_conflict(thread,Some(error)).await.to_string());
+        let thread = string(&args, "threadId");
+        if matches!(
+            method,
+            "thread/read" | "thread/turns/list" | "thread/items/list"
+        ) && crate::writer::probe(thread)["state"] == "held"
+        {
+            let mut ownership = self.writer_ownership(thread).await;
+            if ownership["owner"] == "external" {
+                ownership["processes"] = crate::writer::processes(thread).await;
+                return Err(crate::writer::busy(thread, ownership).to_string());
             }
-            if !thread.is_empty() && desktop::owner_discovery_pending(error) && crate::writer::probe(thread)["state"] == "held" {
-                return Err(self.writer_conflict(thread,None).await.to_string());
+        }
+        let result = self.request_native_raw(method, args.clone(), timeout).await;
+        if let Err(error) = &result {
+            if !thread.is_empty() && error.contains("already has an active writer") {
+                return Err(self.writer_conflict(thread, Some(error)).await.to_string());
+            }
+            if !thread.is_empty()
+                && desktop::owner_discovery_pending(error)
+                && crate::writer::probe(thread)["state"] == "held"
+            {
+                return Err(self.writer_conflict(thread, None).await.to_string());
             }
         }
         result
@@ -887,7 +960,9 @@ impl Control {
                     receipt["state"] = json!(crate::kernel::receipts::failure_state(&err));
                     let mut error = crate::egress::failure(&err);
                     if error["code"] == "THREAD_WRITER_BUSY" && receipt["threadId"].is_string() {
-                        error["next"] = crate::writer::busy(string(&receipt,"threadId"),Value::Null)["next"].clone();
+                        error["next"] =
+                            crate::writer::busy(string(&receipt, "threadId"), Value::Null)["next"]
+                                .clone();
                     }
                     receipt["result"] = json!({"error":error});
                 }
@@ -1134,38 +1209,73 @@ impl Control {
             .or_else(|| args["params"]["threadId"].as_str())
             .unwrap_or("");
         let _thread_guard = if !thread_key.is_empty()
-            && (matches!(operation, "send" | "interrupt" | "review" | "archive" | "release")
-                || (operation == "native"
-                    && matches!(
-                        string(args, "method"),
-                        "turn/start" | "turn/steer" | "turn/interrupt" | "thread/resume"
-                    ))) {
+            && (matches!(
+                operation,
+                "send" | "interrupt" | "review" | "archive" | "release"
+            ) || (operation == "native"
+                && matches!(
+                    string(args, "method"),
+                    "turn/start" | "turn/steer" | "turn/interrupt" | "thread/resume"
+                ))) {
             Some(self.thread_lock(thread_key).await)
         } else {
             None
         };
 
-        if operation == "send" || (operation == "native" && matches!(string(args,"method"),"thread/resume"|"turn/start"|"turn/steer")) {
+        if operation == "send"
+            || (operation == "native"
+                && matches!(
+                    string(args, "method"),
+                    "thread/resume" | "turn/start" | "turn/steer"
+                ))
+        {
             let ownership = self.writer_ownership(thread_key).await;
             if ownership["state"] == "held" && ownership["owner"] == "external" {
                 r["threadId"] = json!(thread_key);
                 return Err(crate::writer::busy(thread_key, ownership).to_string());
             }
         }
-        if operation == "release" { r["threadId"] = args["threadId"].clone(); return self.release_writer(string(args,"threadId")).await; }
+        if operation == "release" {
+            r["threadId"] = args["threadId"].clone();
+            return self.release_writer(string(args, "threadId")).await;
+        }
         if operation == "archive" {
-            let thread = string(args,"threadId");
+            let thread = string(args, "threadId");
             r["threadId"] = json!(thread);
-            if args["release"] == true { let released=self.release_writer(thread).await?; if released["released"] != true { return Err("RELEASE_UNCONFIRMED: read codex_owner before archive".into()); } }
+            if args["release"] == true {
+                let released = self.release_writer(thread).await?;
+                if released["released"] != true {
+                    return Err("RELEASE_UNCONFIRMED: read codex_owner before archive".into());
+                }
+            }
             let rpc = self.utility().await?;
-            let native = rpc.call("thread/read", json!({"threadId":thread,"includeTurns":false}), 10000).await?;
-            if native["thread"]["status"]["type"] == "active" || self.events.lock().await.pending.values().any(|v| v["params"]["threadId"] == thread) {
+            let native = rpc
+                .call(
+                    "thread/read",
+                    json!({"threadId":thread,"includeTurns":false}),
+                    10000,
+                )
+                .await?;
+            if native["thread"]["status"]["type"] == "active"
+                || self
+                    .events
+                    .lock()
+                    .await
+                    .pending
+                    .values()
+                    .any(|v| v["params"]["threadId"] == thread)
+            {
                 return Err(json!({"code":"ARCHIVE_ACTIVE_TURN","message":"The thread is active or has a pending interaction. Finish it, or explicitly interrupt it, before archiving.","next":{"via":"query","op":"codex_read","args":{"threadId":thread,"statusOnly":true}}}).to_string());
             }
-            r["state"] = json!("submitting"); self.checkpoint(r)?;
-            if let Err(error) = rpc.call("thread/archive", json!({"threadId":thread}), 10000).await {
+            r["state"] = json!("submitting");
+            self.checkpoint(r)?;
+            if let Err(error) = rpc
+                .call("thread/archive", json!({"threadId":thread}), 10000)
+                .await
+            {
                 if error.contains("active writer") {
-                    let mut ownership=self.writer_ownership(thread).await;ownership["processes"]=crate::writer::processes(thread).await;
+                    let mut ownership = self.writer_ownership(thread).await;
+                    ownership["processes"] = crate::writer::processes(thread).await;
                     return Err(json!({"code":"ARCHIVE_WRITER_BUSY","message":"Native archival requires the owning session to release or archive this exact thread.","nativeCode":error.strip_prefix("RPC_REJECTED:").and_then(|s|serde_json::from_str::<Value>(s).ok()).map(|v|v["code"].clone()),"ownership":ownership,"retryable":false,"next":crate::writer::release_step(thread,&ownership)}).to_string());
                 }
                 return Err(error);
@@ -1528,7 +1638,13 @@ impl Control {
             let turn = if let Some(turn) = args["turnId"].as_str() {
                 turn.to_owned()
             } else {
-                let thread = self.request("thread/read", json!({"threadId":args["threadId"],"includeTurns":false}), 10000).await?;
+                let thread = self
+                    .request(
+                        "thread/read",
+                        json!({"threadId":args["threadId"],"includeTurns":false}),
+                        10000,
+                    )
+                    .await?;
                 if thread["thread"]["status"]["type"] != "active" {
                     return Err("NO_ACTIVE_TURN: no active turn is confirmed; read codex_read(statusOnly:true). Supply an explicit turnId only when the owning session confirms it.".into());
                 }
@@ -1537,7 +1653,10 @@ impl Control {
                 if active["status"] != "inProgress" {
                     return Err("NO_ACTIVE_TURN: latest native turn is not active; read codex_read(statusOnly:true) before interrupting.".into());
                 }
-                active["id"].as_str().ok_or("NO_ACTIVE_TURN: native owner returned no turn ID")?.to_owned()
+                active["id"]
+                    .as_str()
+                    .ok_or("NO_ACTIVE_TURN: native owner returned no turn ID")?
+                    .to_owned()
             };
             r["turnId"] = json!(turn);
             params = json!({"threadId":args["threadId"],"turnId":turn});
@@ -1687,7 +1806,14 @@ impl Control {
             "codex_queue_control" => crate::dispatch_queue::control(self, &args).await,
             "acceptance_fault" => crate::acceptance_fault::control(&args),
             "codex_release" => self.mutate("release", args).await,
-            "codex_owner" => { let mut owner=self.writer_ownership(string(&args,"threadId")).await; if owner["state"] == "held" {owner["processes"]=crate::writer::processes(string(&args,"threadId")).await;owner["next"]=crate::writer::release_step(string(&args,"threadId"),&owner);} Ok(owner) },
+            "codex_owner" => {
+                let mut owner = self.writer_ownership(string(&args, "threadId")).await;
+                if owner["state"] == "held" {
+                    owner["processes"] = crate::writer::processes(string(&args, "threadId")).await;
+                    owner["next"] = crate::writer::release_step(string(&args, "threadId"), &owner);
+                }
+                Ok(owner)
+            }
             "codex_archive" => self.mutate("archive", args).await,
             "codex_interrupt" => self.mutate("interrupt", args).await,
             "codex_call" => self.mutate("native", args).await,
@@ -1833,9 +1959,21 @@ impl Control {
                     turns.reverse();
                     let mut native = t.clone();
                     native["turns"] = json!(turns);
-                    let pending = self.events.lock().await.pending.values().cloned().collect::<Vec<_>>();
-                    let status = crate::waiter::classify(&json!({"thread":native,"pending":pending}), &mut None);
-                    for key in ["state", "reason", "turnId", "recordedStatus"] { result[key] = status[key].clone(); }
+                    let pending = self
+                        .events
+                        .lock()
+                        .await
+                        .pending
+                        .values()
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    let status = crate::waiter::classify(
+                        &json!({"thread":native,"pending":pending}),
+                        &mut None,
+                    );
+                    for key in ["state", "reason", "turnId", "recordedStatus"] {
+                        result[key] = status[key].clone();
+                    }
                     result["stateScope"] = json!("turn");
                     crate::external_inputs::observe(id, &turns, None)?;
                     let external = crate::external_inputs::inputs(id, None)?;

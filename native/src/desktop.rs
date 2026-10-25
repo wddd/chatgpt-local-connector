@@ -333,7 +333,15 @@ impl Ipc {
             self.alive.store(false, std::sync::atomic::Ordering::SeqCst);
             return Err(submitted_error(e));
         }
-        let out = tokio::time::timeout(Duration::from_secs(if method == "thread-owner-discovery" { 1 } else { 30 }), rx).await;
+        let out = tokio::time::timeout(
+            Duration::from_secs(if method == "thread-owner-discovery" {
+                1
+            } else {
+                30
+            }),
+            rx,
+        )
+        .await;
         self.pending.lock().await.remove(&request_id);
         out.map_err(|_| format!("DESKTOP_REQUEST_TIMEOUT: {method}"))
             .and_then(|v| v.map_err(|_| "DESKTOP_DISCONNECTED".to_string()))
@@ -447,9 +455,9 @@ impl Ipc {
         {
             snapshots.remove(thread);
         }
-        snapshots
-            .get(thread)
-            .map(|s| crate::acceptance_fault::snapshot(thread, s.value["conversationState"].clone()))
+        snapshots.get(thread).map(|s| {
+            crate::acceptance_fault::snapshot(thread, s.value["conversationState"].clone())
+        })
     }
     pub async fn mutate(&self, method: &str, args: &Value) -> Result<Value> {
         let thread = string(args, "threadId");
@@ -664,9 +672,9 @@ pub async fn open_app() -> Result<()> {
     open_url(None).await
 }
 pub(crate) async fn open_url(url: Option<&str>) -> Result<()> {
-    #[cfg(feature="test-fixture")]
+    #[cfg(feature = "test-fixture")]
     if let Some(path) = std::env::var_os("ARC_FIXTURE_OPEN_FILE") {
-        std::fs::write(path, url.unwrap_or("codex://")).map_err(|e|e.to_string())?;
+        std::fs::write(path, url.unwrap_or("codex://")).map_err(|e| e.to_string())?;
         return Ok(());
     }
     if cfg!(target_os = "linux") {

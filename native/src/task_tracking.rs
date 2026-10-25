@@ -1424,11 +1424,23 @@ mod tests {
     #[test]
     fn silent_command_output_is_empty_without_hiding_literal_null() {
         // Regression: silent native commands rendered a JSON null as the literal text null in task panels.
-        for (output, expected) in [(None, ""), (Some(Value::Null), ""), (Some(json!("")), ""), (Some(json!("null")), "null")] {
+        for (output, expected) in [
+            (None, ""),
+            (Some(Value::Null), ""),
+            (Some(json!("")), ""),
+            (Some(json!("null")), "null"),
+        ] {
             let mut timeline = Timeline::default();
-            let mut item = json!({"id":"silent","type":"commandExecution","command":"sleep 1","exitCode":0});
-            if let Some(output) = output { item["aggregatedOutput"] = output; }
-            timeline.codex("item/completed", &json!({"item":item}), "2026-01-01T00:00:00Z");
+            let mut item =
+                json!({"id":"silent","type":"commandExecution","command":"sleep 1","exitCode":0});
+            if let Some(output) = output {
+                item["aggregatedOutput"] = output;
+            }
+            timeline.codex(
+                "item/completed",
+                &json!({"item":item}),
+                "2026-01-01T00:00:00Z",
+            );
             let response = timeline.response("example", 0);
             assert_eq!(response["entries"][0]["output"]["text"], expected);
             assert_eq!(response["entries"][0]["exitCode"], 0);

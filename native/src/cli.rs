@@ -485,7 +485,9 @@ fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
         ));
         error["example"] = json!({"enabled":false});
     }
-    print_output(json!({"schemaVersion":1,"ok":false,"error":error,"next":{"via":"query","op":"guide","args":{},"hint":format!("Correct the command using {usage}, then retry.")}}));
+    print_output(
+        json!({"schemaVersion":1,"ok":false,"error":error,"next":{"via":"query","op":"guide","args":{},"hint":format!("Correct the command using {usage}, then retry.")}}),
+    );
     1
 }
 
@@ -797,14 +799,31 @@ pub async fn run(args: Vec<String>) -> i32 {
     }
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     if words.last() == Some(&"--help") && words.len() > 1 {
-        let prefix = &words[..words.len()-1];
-        let extras = ["wait --op <operation> [--control] [--stdin] --until <condition> [--timeout <seconds>]", "app snapshot [--out <directory>] [--stdin]", "control guide [op] [--stdin]"];
-        let commands: Vec<_> = COMMANDS.iter().chain(extras.iter()).filter(|command| {
-            let slots: Vec<_> = command.split_whitespace().collect();
-            prefix.iter().enumerate().all(|(index, arg)| slots.get(index).is_some_and(|slot| *slot == *arg || slot.starts_with(['<', '['])))
-        }).map(|command| format!("cli {command}")).collect();
-        if commands.is_empty() { return print_error("Unknown command", "cli help", &words); }
-        return print_output(json!({"schemaVersion":1,"ok":true,"result":{"commands":commands,"schema":"Use cli control guide <op> for control op arguments, or cli schema <operation> for management arguments. JSON arguments are read with --stdin."}}));
+        let prefix = &words[..words.len() - 1];
+        let extras = [
+            "wait --op <operation> [--control] [--stdin] --until <condition> [--timeout <seconds>]",
+            "app snapshot [--out <directory>] [--stdin]",
+            "control guide [op] [--stdin]",
+        ];
+        let commands: Vec<_> = COMMANDS
+            .iter()
+            .chain(extras.iter())
+            .filter(|command| {
+                let slots: Vec<_> = command.split_whitespace().collect();
+                prefix.iter().enumerate().all(|(index, arg)| {
+                    slots
+                        .get(index)
+                        .is_some_and(|slot| *slot == *arg || slot.starts_with(['<', '[']))
+                })
+            })
+            .map(|command| format!("cli {command}"))
+            .collect();
+        if commands.is_empty() {
+            return print_error("Unknown command", "cli help", &words);
+        }
+        return print_output(
+            json!({"schemaVersion":1,"ok":true,"result":{"commands":commands,"schema":"Use cli control guide <op> for control op arguments, or cli schema <operation> for management arguments. JSON arguments are read with --stdin."}}),
+        );
     }
     let usage = match command_usage(&words) {
         Ok(usage) => usage,
@@ -865,11 +884,20 @@ pub async fn run(args: Vec<String>) -> i32 {
         Ok(mut result) => {
             if crate::egress::outcome_error(&result).is_some() {
                 crate::egress::compact_failure(&mut result);
-                if result["next"].is_null() && result["lastResult"]["next"].is_object() { result["next"] = result["lastResult"]["next"].clone(); }
-                crate::egress::next(&mut result, words.get(1).copied().unwrap_or(""), &json!({}), false);
+                if result["next"].is_null() && result["lastResult"]["next"].is_object() {
+                    result["next"] = result["lastResult"]["next"].clone();
+                }
+                crate::egress::next(
+                    &mut result,
+                    words.get(1).copied().unwrap_or(""),
+                    &json!({}),
+                    false,
+                );
                 let error = result.as_object_mut().unwrap().remove("error").unwrap();
                 let next = result.as_object_mut().unwrap().remove("next");
-                print_output(json!({"schemaVersion":1,"ok":false,"error":error,"next":next,"result":result}));
+                print_output(
+                    json!({"schemaVersion":1,"ok":false,"error":error,"next":next,"result":result}),
+                );
                 return 1;
             }
             let replacing = matches!(words.as_slice(), ["app", "replace", path, ..] if *path != "--status")
@@ -894,9 +922,16 @@ pub async fn run(args: Vec<String>) -> i32 {
             if matches!(words.first(), Some(&"control" | &"wait")) {
                 if let Ok(error) = serde_json::from_str::<Value>(&message) {
                     let mut failure = json!({"error":error});
-                    crate::egress::next(&mut failure, words.get(1).copied().unwrap_or(""), &json!({}), false);
+                    crate::egress::next(
+                        &mut failure,
+                        words.get(1).copied().unwrap_or(""),
+                        &json!({}),
+                        false,
+                    );
                     crate::egress::compact_failure(&mut failure);
-                    print_output(json!({"schemaVersion":1,"ok":false,"error":failure["error"],"next":failure["next"]}));
+                    print_output(
+                        json!({"schemaVersion":1,"ok":false,"error":failure["error"],"next":failure["next"]}),
+                    );
                     return 1;
                 }
             }

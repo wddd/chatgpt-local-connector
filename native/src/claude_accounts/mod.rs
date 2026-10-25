@@ -304,7 +304,9 @@ impl Manager {
         let mut current = self.login.lock().await;
         if route == "claude-accounts/import-system" && method == "POST" {
             if current.as_ref().is_some_and(|l| !l.job.is_finished()) {
-                return Err("CLAUDE_LOGIN_IN_PROGRESS: Complete or cancel the current login first".into());
+                return Err(
+                    "CLAUDE_LOGIN_IN_PROGRESS: Complete or cancel the current login first".into(),
+                );
             }
             return system::import().await;
         }
@@ -485,7 +487,9 @@ impl Manager {
                     .map_err(|_| "CLAUDE_LOGOUT_TIMEOUT: Retry removing this account")?
                     .map_err(|_| "CLAUDE_LOGOUT_FAILED: Could not run Claude Code logout")?;
                     if !result.status.success() {
-                        return Err("CLAUDE_LOGOUT_FAILED: Account retained; retry removing it".into());
+                        return Err(
+                            "CLAUDE_LOGOUT_FAILED: Account retained; retry removing it".into()
+                        );
                     }
                 }
                 std::fs::remove_dir_all(account_dir(id)?).map_err(|e| e.to_string())?;

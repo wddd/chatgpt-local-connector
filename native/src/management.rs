@@ -191,7 +191,10 @@ async fn respond(request: Value, output: Arc<tokio::sync::Mutex<tokio::io::Stdou
             Ok(match value {
                 Ok(mut value) => {
                     let error = crate::egress::outcome_error(&value);
-                    if let Some(reason) = &error { value["error"] = reason.clone(); crate::egress::compact_failure(&mut value); }
+                    if let Some(reason) = &error {
+                        value["error"] = reason.clone();
+                        crate::egress::compact_failure(&mut value);
+                    }
                     json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":{"result":value},"isError":error.is_some()})
                 }
                 Err(error) => {

@@ -103,9 +103,15 @@ impl Execution {
             crate::egress::validate_op(spec, &args)?;
             return match name {
                 "task_timeline" => {
-                    let mut result = self.agents.conversation_timeline(&self.control, &args).await?;
-                    if args["expectedHash"].is_string() && args["expectedHash"] == result["snapshotHash"] {
-                        result["entries"] = json!([]); result["unchanged"] = json!(true);
+                    let mut result = self
+                        .agents
+                        .conversation_timeline(&self.control, &args)
+                        .await?;
+                    if args["expectedHash"].is_string()
+                        && args["expectedHash"] == result["snapshotHash"]
+                    {
+                        result["entries"] = json!([]);
+                        result["unchanged"] = json!(true);
                     }
                     Ok(result)
                 }
@@ -118,15 +124,20 @@ impl Execution {
                     string(&args, "reviewRequestId"),
                 ),
                 "task_panel" | "task_panel_control" => {
-                    let full=args["view"]=="full";
-                    let mut panel_args=args.clone();panel_args.as_object_mut().unwrap().remove("view");
+                    let full = args["view"] == "full";
+                    let mut panel_args = args.clone();
+                    panel_args.as_object_mut().unwrap().remove("view");
                     let result = crate::transport::forward_request(
                         "app/snapshot",
                         "POST",
                         json!({"modelOnly":true,"taskPanel":panel_args}),
                     )
                     .await?;
-                    Ok(if full {result["model"]["taskDetail"].clone()} else {crate::egress::panel_state(&result["model"]["taskDetail"])})
+                    Ok(if full {
+                        result["model"]["taskDetail"].clone()
+                    } else {
+                        crate::egress::panel_state(&result["model"]["taskDetail"])
+                    })
                 }
                 "task_open" => {
                     crate::transport::forward_request(

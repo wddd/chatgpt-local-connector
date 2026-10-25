@@ -5,23 +5,42 @@ pub fn outcome_error(value: &Value) -> Option<Value> {
     let mut current = value;
     for _ in 0..8 {
         let state = string(current, "state");
-        let failed = matches!(state, "failed" | "rejected" | "not-executed" | "cancelled" | "unconfirmed" | "rolled-back");
+        let failed = matches!(
+            state,
+            "failed" | "rejected" | "not-executed" | "cancelled" | "unconfirmed" | "rolled-back"
+        );
         let exit = current["exitCode"].as_i64().filter(|code| *code != 0);
         if failed || exit.is_some() || current["ok"] == false {
-            let reason = current.get("error").filter(|v| !v.is_null())
+            let reason = current
+                .get("error")
+                .filter(|v| !v.is_null())
                 .or_else(|| current["result"].get("error").filter(|v| !v.is_null()));
             let mut error = match reason {
                 Some(value) if value.is_object() => value.clone(),
                 Some(value) if value.is_string() => json!({"message":value}),
                 Some(value) => json!({"message":value.to_string()}),
-                None => json!({"message":current["reason"].as_str().map(str::to_owned).unwrap_or_else(|| if let Some(code) = exit { format!("Command exited with code {code}") } else {format!("Operation outcome: {state}")})}),
+                None => {
+                    json!({"message":current["reason"].as_str().map(str::to_owned).unwrap_or_else(|| if let Some(code) = exit { format!("Command exited with code {code}") } else {format!("Operation outcome: {state}")})})
+                }
             };
-            if !error["code"].is_string() { error["code"] = json!(if state == "unconfirmed" { "OPERATION_UNCONFIRMED" } else { "OPERATION_FAILED" }); }
-            if !state.is_empty() {error["outcome"] = json!(state);}
-            if let Some(code) = exit { error["exitCode"] = json!(code); }
+            if !error["code"].is_string() {
+                error["code"] = json!(if state == "unconfirmed" {
+                    "OPERATION_UNCONFIRMED"
+                } else {
+                    "OPERATION_FAILED"
+                });
+            }
+            if !state.is_empty() {
+                error["outcome"] = json!(state);
+            }
+            if let Some(code) = exit {
+                error["exitCode"] = json!(code);
+            }
             return Some(error);
         }
-        let Some(next) = current.get("result").or_else(|| current.get("lastResult")) else { break; };
+        let Some(next) = current.get("result").or_else(|| current.get("lastResult")) else {
+            break;
+        };
         current = next;
     }
     None
@@ -29,28 +48,53 @@ pub fn outcome_error(value: &Value) -> Option<Value> {
 
 /// One public failure per operation; arrays remain historical data.
 pub fn compact_failure(value: &mut Value) {
-    let Some(mut error) = outcome_error(value).or_else(||value.get("error").filter(|v|v.is_object()).cloned()) else { return; };
-    if value["next"].is_null() && error["next"].is_object() { value["next"] = error["next"].clone(); }
-    error.as_object_mut().map(|e|e.remove("next"));
+    let Some(mut error) =
+        outcome_error(value).or_else(|| value.get("error").filter(|v| v.is_object()).cloned())
+    else {
+        return;
+    };
+    if value["next"].is_null() && error["next"].is_object() {
+        value["next"] = error["next"].clone();
+    }
+    error.as_object_mut().map(|e| e.remove("next"));
     if error["rpcError"]["message"].is_string() {
         error["message"] = error["rpcError"]["message"].clone();
-        error["rpcError"].as_object_mut().map(|e|e.remove("message"));
+        error["rpcError"]
+            .as_object_mut()
+            .map(|e| e.remove("message"));
     }
     fn strip(value: &mut Value, code: &Value, depth: usize) {
-        if depth == 0 { return; }
-        if value["error"]["code"] == *code { value.as_object_mut().map(|v|v.remove("error")); }
-        for key in ["result", "lastResult"] { if let Some(v) = value.get_mut(key) { strip(v, code, depth-1); } }
+        if depth == 0 {
+            return;
+        }
+        if value["error"]["code"] == *code {
+            value.as_object_mut().map(|v| v.remove("error"));
+        }
+        for key in ["result", "lastResult"] {
+            if let Some(v) = value.get_mut(key) {
+                strip(v, code, depth - 1);
+            }
+        }
     }
-    for key in ["result", "lastResult"] { if let Some(v) = value.get_mut(key) { strip(v, &error["code"], 8); } }
+    for key in ["result", "lastResult"] {
+        if let Some(v) = value.get_mut(key) {
+            strip(v, &error["code"], 8);
+        }
+    }
     value["error"] = error;
 }
 
 pub fn tool(mut value: Value, mut error: bool) -> Value {
-    if let Some(reason) = outcome_error(&value) { value["error"] = reason; error = true; }
+    if let Some(reason) = outcome_error(&value) {
+        value["error"] = reason;
+        error = true;
+    }
     if !value.is_object() {
         value = json!({"value":value});
     }
-    if error { compact_failure(&mut value); }
+    if error {
+        compact_failure(&mut value);
+    }
     value["arcVersion"] = json!(arc_version());
     let text = value.to_string();
     json!({"content":[{"type":"text","text":text}],"structuredContent":{"result":value},"isError":error})
@@ -154,10 +198,21 @@ pub fn receipt(value: Value) -> Value {
         out["origin"] = origin;
     }
     out["stateScope"] = json!("operation");
-    if let Some(updated) = value["updatedAt"].as_str().and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()) {
-        let age = chrono::Utc::now().signed_duration_since(updated).num_milliseconds().max(0);
+    if let Some(updated) = value["updatedAt"]
+        .as_str()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+    {
+        let age = chrono::Utc::now()
+            .signed_duration_since(updated)
+            .num_milliseconds()
+            .max(0);
         out["phaseAgeMs"] = json!(age);
-        if !matches!(string(&value, "state"), "completed" | "failed" | "cancelled" | "rejected" | "not-executed") { out["progressStalled"] = json!(age >= 30000); }
+        if !matches!(
+            string(&value, "state"),
+            "completed" | "failed" | "cancelled" | "rejected" | "not-executed"
+        ) {
+            out["progressStalled"] = json!(age >= 30000);
+        }
     }
     let result = &value["result"];
     if value["task"]["dispatch"].is_object() {
@@ -817,11 +872,18 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
     } else {
         json!({"threadId":thread,"turnId":turn})
     };
-    wait_args.as_object_mut().unwrap().retain(|_,value|!value.is_null());
+    wait_args
+        .as_object_mut()
+        .unwrap()
+        .retain(|_, value| !value.is_null());
     wait_args["until"] = json!("terminal");
     wait_args["timeoutMs"] = json!(30000);
     let wait_tool = if agent { "agent_wait" } else { "codex_wait" };
-    let mut next = if value["next"]["op"].is_string() || (value["next"].get("op") == Some(&Value::Null) && value["next"]["hint"].is_string()) {value["next"].clone()} else if value["state"] == "awaiting-approval" {
+    let mut next = if value["next"]["op"].is_string()
+        || (value["next"].get("op") == Some(&Value::Null) && value["next"]["hint"].is_string())
+    {
+        value["next"].clone()
+    } else if value["state"] == "awaiting-approval" {
         json!({"hint":"Inspect the original request, then decide according to user intent.","via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"}})
     } else if value["state"] == "interaction-required" {
         if agent {
@@ -841,8 +903,18 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
             arguments["timeoutMs"] = timeout.clone();
         }
         json!({"hint":"Continue waiting with the same task and turn.","via":"query","op":wait_tool,"args":arguments})
-    } else if matches!(value["state"].as_str(), Some("pending" | "reserved" | "thread-submitting" | "thread-created" | "turn-submitting" | "submitting" | "queued"))
-        && value["requestId"].is_string()
+    } else if matches!(
+        value["state"].as_str(),
+        Some(
+            "pending"
+                | "reserved"
+                | "thread-submitting"
+                | "thread-created"
+                | "turn-submitting"
+                | "submitting"
+                | "queued"
+        )
+    ) && value["requestId"].is_string()
     {
         json!({"hint":"Read this original receipt until submission resolves. A threadId alone does not mean a turn was submitted. If progressStalled is true, inspect CLI logs/doctor and the owning app; do not redispatch or generate a new requestId.","via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"},"retryAfterMs":1000})
     } else if (matches!(
@@ -875,17 +947,29 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
         json!({"via":"query","op":wait_tool,"args":wait_args,"hint":"Wait on the same turn; do not submit another task."})
     } else if value["state"] == "unconfirmed" && (thread.is_some() || task.is_some()) {
         json!({"via":"query","op":if agent {"agent_read"} else {"codex_read"},"args":if agent {json!({"agent":wait_args["agent"],"taskId":task})} else {json!({"threadId":thread,"statusOnly":true})},"hint":"Runtime ownership or progress is unknown. Inspect the owning session and this original task. Do not redispatch; notLoaded does not prove no native writer exists."})
-    } else if value["requestId"].is_string() && matches!(string(value,"state"),"failed"|"rejected"|"cancelled"|"not-executed"|"unconfirmed") {
+    } else if value["requestId"].is_string()
+        && matches!(
+            string(value, "state"),
+            "failed" | "rejected" | "cancelled" | "not-executed" | "unconfirmed"
+        )
+    {
         json!({"via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"},"hint":"Inspect the surfaced failure and original receipt. Resolve its cause before a new authorized attempt; an unconfirmed effect must be reconciled without replay."})
     } else if value["error"].is_object() || value["ok"] == false {
-        let known=catalog()["ops"].as_array().unwrap().iter().any(|op|op["name"]==name);
+        let known = catalog()["ops"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|op| op["name"] == name);
         json!({"via":"query","op":"guide","args":if known {json!({"op":name})} else {json!({})},"hint":"Read the current operation contract, correct the reported cause, then retry only when its outcome is known."})
     } else {
         return;
     };
     if value["requestId"].is_string() {
         let digest = hash(next.to_string());
-        if args["knownNextHash"] == digest && outcome_error(value).is_none() && !value["error"].is_object() {
+        if args["knownNextHash"] == digest
+            && outcome_error(value).is_none()
+            && !value["error"].is_object()
+        {
             next = json!({"hash":digest,"unchanged":true});
         } else {
             next["hash"] = json!(digest);
@@ -901,17 +985,54 @@ mod tests {
     #[test]
     fn generated_continuations_validate_against_operation_schemas() {
         // Regression: writer recovery next had an illegal statusOnly argument and waits emitted null optional IDs.
-        let catalog=catalog();
-        for name in ["codex_read","codex_wait","codex_send","agent_read","agent_wait","agent_send","receipt"] {
-            for state in ["running","timeout","unconfirmed","failed","rejected","cancelled","not-executed","awaiting-approval","interaction-required","completed"] {
-                for turn in [Value::Null,json!("turn")] {
-                    let args=json!({"agent":"pi","threadId":"00000000-0000-4000-8000-000000000001","taskId":"00000000-0000-4000-8000-000000000003","turnId":turn});
-                    let mut value=args.clone();value["state"]=json!(state);value["requestId"]=json!("00000000-0000-4000-8000-000000000002");
-                    next(&mut value,name,&args,false);
-                    if outcome_error(&value).is_some() { assert!(value["next"].is_object(), "Missing failure continuation: {name}/{state}"); }
-                    if let Some(op)=value["next"]["op"].as_str() {
-                        let spec=catalog["ops"].as_array().unwrap().iter().find(|o|o["name"]==op).unwrap();
-                        assert!(crate::validator("next-regression",op,&spec["inputSchema"]).unwrap().is_valid(&value["next"]["args"]),"{name}/{state}: {}",value["next"]);
+        let catalog = catalog();
+        for name in [
+            "codex_read",
+            "codex_wait",
+            "codex_send",
+            "agent_read",
+            "agent_wait",
+            "agent_send",
+            "receipt",
+        ] {
+            for state in [
+                "running",
+                "timeout",
+                "unconfirmed",
+                "failed",
+                "rejected",
+                "cancelled",
+                "not-executed",
+                "awaiting-approval",
+                "interaction-required",
+                "completed",
+            ] {
+                for turn in [Value::Null, json!("turn")] {
+                    let args = json!({"agent":"pi","threadId":"00000000-0000-4000-8000-000000000001","taskId":"00000000-0000-4000-8000-000000000003","turnId":turn});
+                    let mut value = args.clone();
+                    value["state"] = json!(state);
+                    value["requestId"] = json!("00000000-0000-4000-8000-000000000002");
+                    next(&mut value, name, &args, false);
+                    if outcome_error(&value).is_some() {
+                        assert!(
+                            value["next"].is_object(),
+                            "Missing failure continuation: {name}/{state}"
+                        );
+                    }
+                    if let Some(op) = value["next"]["op"].as_str() {
+                        let spec = catalog["ops"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .find(|o| o["name"] == op)
+                            .unwrap();
+                        assert!(
+                            crate::validator("next-regression", op, &spec["inputSchema"])
+                                .unwrap()
+                                .is_valid(&value["next"]["args"]),
+                            "{name}/{state}: {}",
+                            value["next"]
+                        );
                     }
                 }
             }
@@ -995,8 +1116,12 @@ pub fn interaction_preview(request: &Value) -> Value {
             }).collect::<Vec<_>>()})
     }).collect();
     if rows.is_empty() {
-        let prompt = ["question", "prompt", "message", "summary"].iter().find_map(|key| params[*key].as_str().filter(|v| !v.is_empty()));
-        if let Some(prompt) = prompt { rows.push(json!({"question":prompt.chars().take(480).collect::<String>(),"options":params["options"].as_array().into_iter().flatten().take(8).cloned().collect::<Vec<_>>()})); }
+        let prompt = ["question", "prompt", "message", "summary"]
+            .iter()
+            .find_map(|key| params[*key].as_str().filter(|v| !v.is_empty()));
+        if let Some(prompt) = prompt {
+            rows.push(json!({"question":prompt.chars().take(480).collect::<String>(),"options":params["options"].as_array().into_iter().flatten().take(8).cloned().collect::<Vec<_>>()}));
+        }
     }
     json!({"questions":rows,"summary":rows.iter().filter_map(|q|q["question"].as_str()).collect::<Vec<_>>().join("; "),"questionCount":questions.map(Vec::len).unwrap_or(rows.len()),"responseId":request.get("responseId").unwrap_or(&request["id"]),"turnId":params["turnId"],"backendSession":request["backendSession"]})
 }
@@ -1006,28 +1131,60 @@ pub fn interaction_history(args: &Value) -> Result<Value> {
     let mut timeline = crate::task_tracking::Timeline::default();
     crate::interaction_responses::project(&mut timeline, thread)?;
     let snapshot = timeline.response(thread, 0);
-    let mut rows: Vec<_> = snapshot["entries"].as_array().into_iter().flatten().filter(|e| e["type"] == "interaction" && e["response"].is_object()).map(|e| {
-        let mut row = interaction_preview(&e["interaction"]);
-        row["id"] = e["id"].clone(); row["turnId"] = e["turnId"].clone();
-        row["response"] = e["response"].clone(); row["status"] = json!("answered"); row
-    }).collect();
+    let mut rows: Vec<_> = snapshot["entries"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|e| e["type"] == "interaction" && e["response"].is_object())
+        .map(|e| {
+            let mut row = interaction_preview(&e["interaction"]);
+            row["id"] = e["id"].clone();
+            row["turnId"] = e["turnId"].clone();
+            row["response"] = e["response"].clone();
+            row["status"] = json!("answered");
+            row
+        })
+        .collect();
     rows.reverse();
-    let total = rows.len(); let offset = num(args,"offset",0); let end = offset.saturating_add(num(args,"limit",20).min(100)).min(total);
-    Ok(json!({"threadId":thread,"interactions":rows.into_iter().skip(offset).take(end.saturating_sub(offset)).collect::<Vec<_>>(),"total":total,"nextOffset":if end < total {Some(end)} else {None}}))
+    let total = rows.len();
+    let offset = num(args, "offset", 0);
+    let end = offset
+        .saturating_add(num(args, "limit", 20).min(100))
+        .min(total);
+    Ok(
+        json!({"threadId":thread,"interactions":rows.into_iter().skip(offset).take(end.saturating_sub(offset)).collect::<Vec<_>>(),"total":total,"nextOffset":if end < total {Some(end)} else {None}}),
+    )
 }
 
 /// Navigation state stays inline regardless of transcript or queue size.
 pub fn panel_state(panel: &Value) -> Value {
-    if !panel.is_object() {return panel.clone();}
-    let mut result=json!({});
-    for key in ["agent","id","following","atLatest","expanded","state","turnId"] {
-        if let Some(value)=panel.get(key) {result[key]=value.clone();}
+    if !panel.is_object() {
+        return panel.clone();
     }
-    result["queueCount"]=json!(panel["queue"].as_array().map_or(0,Vec::len));
-    result["disclosureCount"]=json!(panel["disclosures"].as_array().map_or(0,Vec::len));
+    let mut result = json!({});
+    for key in [
+        "agent",
+        "id",
+        "following",
+        "atLatest",
+        "expanded",
+        "state",
+        "turnId",
+    ] {
+        if let Some(value) = panel.get(key) {
+            result[key] = value.clone();
+        }
+    }
+    result["queueCount"] = json!(panel["queue"].as_array().map_or(0, Vec::len));
+    result["disclosureCount"] = json!(panel["disclosures"].as_array().map_or(0, Vec::len));
     if panel["timeline"].is_object() {
-        result["timeline"]=json!({"entryCount":panel["timeline"]["entries"].as_array().map_or(0,Vec::len)});
-        for key in ["status","cursor","snapshotHash","coverage"] {if let Some(value)=panel["timeline"].get(key) {result["timeline"][key]=value.clone();}}
+        result["timeline"] =
+            json!({"entryCount":panel["timeline"]["entries"].as_array().map_or(0,Vec::len)});
+        for key in ["status", "cursor", "snapshotHash", "coverage"] {
+            if let Some(value) = panel["timeline"].get(key) {
+                result["timeline"][key] = value.clone();
+            }
+        }
     }
     result
 }

@@ -600,11 +600,26 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
                 crate::egress::control_source(name, &mut value);
             }
             let outcome = crate::egress::outcome_error(&value);
-            if let Some(reason) = &outcome { value["error"] = reason.clone(); }
-            let mut paged = if matches!(name, "guide" | "control_output") { value.clone() } else { crate::kernel::results::page_output(value.clone(), if args["view"] == "full" { 64 * 1024 } else { 12 * 1024 })? };
+            if let Some(reason) = &outcome {
+                value["error"] = reason.clone();
+            }
+            let mut paged = if matches!(name, "guide" | "control_output") {
+                value.clone()
+            } else {
+                crate::kernel::results::page_output(
+                    value.clone(),
+                    if args["view"] == "full" {
+                        64 * 1024
+                    } else {
+                        12 * 1024
+                    },
+                )?
+            };
             if outcome.is_some() && paged["outputId"].is_string() {
                 for key in ["requestId", "state", "error", "threadId", "turnId"] {
-                    if let Some(field) = value.get(key) { paged[key] = field.clone(); }
+                    if let Some(field) = value.get(key) {
+                        paged[key] = field.clone();
+                    }
                 }
             }
             (paged, outcome.is_some())

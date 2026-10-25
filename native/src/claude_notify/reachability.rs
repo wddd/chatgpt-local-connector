@@ -42,24 +42,51 @@ impl Reachability {
 }
 
 pub(super) async fn verify(source_id: &str, args: &Value) -> Result<Value> {
-    verify_in(&directory(), source_id, args, &settings()?, &Cli {service:std::sync::Weak::new(), account_id:None}).await
+    verify_in(
+        &directory(),
+        source_id,
+        args,
+        &settings()?,
+        &Cli {
+            service: std::sync::Weak::new(),
+            account_id: None,
+        },
+    )
+    .await
 }
-pub(super) async fn verify_in(dir: &Path, source_id: &str, args: &Value, settings: &Value, executor: &impl Executor) -> Result<Value> {
+pub(super) async fn verify_in(
+    dir: &Path,
+    source_id: &str,
+    args: &Value,
+    settings: &Value,
+    executor: &impl Executor,
+) -> Result<Value> {
     let target = session_id(string(args, "target"))?;
     let code = id();
     let digest = hash(&code);
     let now = chrono::Utc::now().timestamp();
     {
         let _guard = LOCK.lock().await;
-        let bound = records(&dir)?.iter().any(|b| b.source_id == source_id && b.channel == Channel::ClaudeSession && b.target.as_deref() == Some(&target));
-        let registered=State::load(&dir)?.targets.iter().any(|t|t.registered && t.source_id==source_id && t.channel==Channel::ClaudeSession && t.target==target);
-        if !bound && !registered { return Err(json!({
+        let bound = records(&dir)?.iter().any(|b| {
+            b.source_id == source_id
+                && b.channel == Channel::ClaudeSession
+                && b.target.as_deref() == Some(&target)
+        });
+        let registered = State::load(&dir)?.targets.iter().any(|t| {
+            t.registered
+                && t.source_id == source_id
+                && t.channel == Channel::ClaudeSession
+                && t.target == target
+        });
+        if !bound && !registered {
+            return Err(json!({
             "code":"NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE",
             "message":"Call notify_control action:bind with this cloud-session target to register and verify it in one step. Optionally include an existing source-owned threadId to bind its wakeups without resending work. Future dispatches need the returned notify object.",
             "target":target,
             "next":{"via":"act","op":"notify_control","args":{"action":"bind","target":target}},
             "guide":{"tool":"guide","arguments":{"topic":"notify"}}
-        }).to_string()); }
+        }).to_string());
+        }
         if settings["notificationsEnabled"] == false {
             return Err("NOTIFICATIONS_DISABLED".into());
         }
@@ -89,15 +116,21 @@ pub(super) async fn verify_in(dir: &Path, source_id: &str, args: &Value, setting
     }
     // The code exists only in the delivered message; receipts and status cannot confirm it.
     let body = format!("[ARC] Notification reachability check. Only after receiving this message in this conversation, call act with {}. This confirms delivery, not task acceptance.", json!({"op":"notification_ack","args":{"target":target,"code":code}}));
-    let delivery = deliver_target(
-        executor,
-        &target,
-        &body,
-    )
-    .await;
-    let missing=delivery.as_ref().err().is_some_and(|error|session_not_found(error));
-    let account=if missing {executor.local_account(&target).await} else {Value::Null};
-    let sent=if delivery.is_ok() {"delivered"} else {"failed"};
+    let delivery = deliver_target(executor, &target, &body).await;
+    let missing = delivery
+        .as_ref()
+        .err()
+        .is_some_and(|error| session_not_found(error));
+    let account = if missing {
+        executor.local_account(&target).await
+    } else {
+        Value::Null
+    };
+    let sent = if delivery.is_ok() {
+        "delivered"
+    } else {
+        "failed"
+    };
     let _guard = LOCK.lock().await;
     let mut state = State::load(&dir)?;
     let t = state.target(
@@ -108,19 +141,27 @@ pub(super) async fn verify_in(dir: &Path, source_id: &str, args: &Value, setting
         settings,
     );
     if t.reachability.challenge_hash == digest || t.reachability.state == "verified" {
-        t.reachability.delivery_status=sent.into();
-        if sent == "failed" {t.reachability.fail(if missing {"claude-session-not-found"} else {"handshake-delivery-failed"});}
+        t.reachability.delivery_status = sent.into();
+        if sent == "failed" {
+            t.reachability.fail(if missing {
+                "claude-session-not-found"
+            } else {
+                "handshake-delivery-failed"
+            });
+        }
     }
     let mut result = json!({"target":target,"reachability":t.reachability.state,"reason":t.reachability.reason,"expiresAt":t.reachability.expires_at,"verificationAttempts":t.reachability.attempts,"deliveryStatus":sent,"next":{"via":"query","op":"notify_status","args":{"target":target}},"hint":"Confirm only with the code received in the target conversation via notification_ack. A successful send alone does not verify reachability."});
     if sent == "failed" {
-        result["next"]=json!({"via":"act","op":"notify_control","args":{"action":"verify","target":target},"hint":"Correct the reported delivery failure before retrying verification. Binding is retained."});
-        result["ok"]=json!(false);
-        result["error"]=if missing {
-            result["next"]["before"]=json!({"actor":"user","accountId":account["accountId"],"localOperation":"claude.accounts.routes","instruction":"In ARC Settings, check the selected Claude account and its target route. Use claude.accounts.routes locally to inspect assignments and claude.accounts.route to select the intended profile. Re-login only that profile if necessary, confirm the cloud-session ID, then retry verify. ARC never falls back to another account."});
+        result["next"] = json!({"via":"act","op":"notify_control","args":{"action":"verify","target":target},"hint":"Correct the reported delivery failure before retrying verification. Binding is retained."});
+        result["ok"] = json!(false);
+        result["error"] = if missing {
+            result["next"]["before"] = json!({"actor":"user","accountId":account["accountId"],"localOperation":"claude.accounts.routes","instruction":"In ARC Settings, check the selected Claude account and its target route. Use claude.accounts.routes locally to inspect assignments and claude.accounts.route to select the intended profile. Re-login only that profile if necessary, confirm the cloud-session ID, then retry verify. ARC never falls back to another account."});
             result["next"]["hint"]=json!("Have the user select the session owner's profile in the local target route, or correct the session ID, before retrying verify.");
             json!({"code":"CLAUDE_SESSION_NOT_FOUND","message":"Claude CLI reported Session not found. Likely causes are a different local Claude account or an incorrect cloud-session ID; account mismatch is not confirmed.","localAccount":account})
-        } else {json!({"code":"NOTIFICATION_DELIVERY_FAILED","message":"The verification message could not be delivered. Inspect notification logs, correct the destination or transport, and retry notify_control action:verify. Binding remains registered."})};
-        t.reachability.last_error=result["error"].clone();
+        } else {
+            json!({"code":"NOTIFICATION_DELIVERY_FAILED","message":"The verification message could not be delivered. Inspect notification logs, correct the destination or transport, and retry notify_control action:verify. Binding remains registered."})
+        };
+        t.reachability.last_error = result["error"].clone();
     }
 
     state.save(&dir)?;
