@@ -1,6 +1,17 @@
 #!/bin/sh
 # Install a published macOS App or headless Linux Core.
 set -eu
+for start in "$PWD" "$(dirname "$0")"; do
+  directory=$(cd "$start" && pwd -P)
+  while :; do
+    if [ -f "$directory/.arc-coding-lane" ]; then
+      cat "$directory/.arc-coding-lane" >&2
+      exit 1
+    fi
+    [ "$directory" != / ] || break
+    directory=$(dirname "$directory")
+  done
+done
 platform=$(uname -s)
 case "$platform" in Darwin|Linux) ;; *) echo 'Supported platforms: macOS, Linux' >&2; exit 1 ;; esac
 case "$(uname -m)" in

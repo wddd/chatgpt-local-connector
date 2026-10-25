@@ -1,3 +1,4 @@
+import './main-checkout-only.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';

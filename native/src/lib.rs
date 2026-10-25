@@ -5,6 +5,7 @@ mod changes;
 pub mod claude_accounts;
 mod claude_notify;
 mod cloudflare;
+pub mod coding_lane;
 #[cfg(target_os = "macos")]
 pub mod package;
 pub mod screen;

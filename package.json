@@ -8,6 +8,7 @@
     "node": ">=24.12.0"
   },
   "scripts": {
+    "wt": "node tooling/worktree.mjs",
     "brand": "node tooling/brand.mjs",
     "check": "tsc --noEmit -p ui/tsconfig.json",
     "build": "vite build --config vite.config.ts && node tooling/build-native.mjs",
@@ -20,11 +21,11 @@
     "desktop:prepare": "node tooling/prepare-desktop.mjs",
     "desktop:build": "node tooling/desktop-build.mjs",
     "predesktop:check": "node tooling/build-native.mjs && node tooling/prune-build-cache.mjs",
-    "desktop:check": "cargo check --manifest-path desktop/Cargo.toml",
+    "desktop:check": "node tooling/build-native.mjs --check",
     "postdesktop:check": "node tooling/prune-build-cache.mjs --keep=target/debug",
     "check:format": "cargo fmt --all -- --check",
     "precheck:native": "node tooling/build-native.mjs && node tooling/prune-build-cache.mjs",
-    "check:native": "cargo check --manifest-path desktop/Cargo.toml",
+    "check:native": "node tooling/build-native.mjs --check",
     "postcheck:native": "node tooling/prune-build-cache.mjs --keep=target/debug",
     "release:stage": "node tooling/release.mjs stage",
     "release:finalize": "node tooling/release.mjs finalize",

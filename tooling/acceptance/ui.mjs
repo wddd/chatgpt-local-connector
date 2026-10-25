@@ -1,3 +1,4 @@
+import '../main-checkout-only.mjs';
 import { chromium, webkit } from 'playwright';
 import { createServer } from 'vite';
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';

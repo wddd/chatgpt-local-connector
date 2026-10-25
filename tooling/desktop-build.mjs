@@ -1,3 +1,4 @@
+import './main-checkout-only.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildEnv } from './build-env.mjs';

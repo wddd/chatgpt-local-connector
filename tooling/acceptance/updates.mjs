@@ -1,3 +1,4 @@
+import '../main-checkout-only.mjs';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {execFile, spawn} from 'node:child_process';

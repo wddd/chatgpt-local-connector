@@ -118,6 +118,10 @@ fn main() {
         }
         return;
     }
+    if let Err(error) = arc_core::coding_lane::require_main_checkout(None) {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
     tauri::Builder::default()
         .manage(updates::UpdateState::default())
         .manage(windows::MainState::default())

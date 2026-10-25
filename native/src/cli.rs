@@ -738,10 +738,14 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
             crate::management::call("logs.query", json!({"body":stdin_json()?})).await
         }
         ["app", action @ ("start" | "quit" | "restart" | "status")] => {
+            if matches!(*action, "start" | "restart") {
+                crate::coding_lane::require_main_checkout(None)?;
+            }
             crate::management::call(&format!("app.{action}"), json!({})).await
         }
         ["app", "replace", "--status"] => crate::management::call("app.replace.status", json!({})).await,
         ["app", "replace", path, flags @ ..] => {
+            crate::coding_lane::require_main_checkout(Some(std::path::Path::new(path)))?;
             let body = if flags.contains(&"--stdin") { stdin_json()? } else { json!({}) };
             let body = crate::app_replace::replacement_arguments(path, flags, body)?;
             crate::management::call("app.replace", json!({"body":body})).await

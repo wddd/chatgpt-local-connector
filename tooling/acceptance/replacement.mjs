@@ -1,3 +1,4 @@
+import '../main-checkout-only.mjs';
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';

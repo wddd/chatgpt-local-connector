@@ -46,6 +46,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const targetArg = args.find(a => a === '--target' || a.startsWith('--target='));
   const target = targetArg === '--target' ? args[args.indexOf(targetArg) + 1] : targetArg?.slice('--target='.length);
   if (targetArg && !target) throw new Error('--target requires a target triple');
-  try { await buildNative({ release: args.includes('--release'), target, developmentDesktop: args.includes('--dev-desktop') }); }
+  try {
+    if (args.includes('--check')) execFileSync('cargo', ['check', '--manifest-path', 'desktop/Cargo.toml'], {
+      cwd: fileURLToPath(new URL('../', import.meta.url)), env: buildEnv(), stdio: 'inherit',
+    });
+    else await buildNative({ release: args.includes('--release'), target, developmentDesktop: args.includes('--dev-desktop') });
+  }
   catch (error) { console.error(`Native build failed: ${error.status ? `exit ${error.status}` : error.message}`); process.exitCode = 1; }
 }

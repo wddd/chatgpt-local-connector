@@ -10,6 +10,12 @@ async fn main() {
 
 async fn run() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args
+        .first()
+        .is_some_and(|arg| matches!(arg.as_str(), "serve" | "daemon" | "start" | "systemd"))
+    {
+        arc_core::coding_lane::require_main_checkout(None)?;
+    }
     if let Some(result) = arc_core::claude_accounts::capture_browser_url(&args) {
         return result;
     }

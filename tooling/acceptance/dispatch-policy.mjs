@@ -1,4 +1,5 @@
 // Isolated public-contract acceptance. No real dispatch, account or notification target.
+import '../main-checkout-only.mjs';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';

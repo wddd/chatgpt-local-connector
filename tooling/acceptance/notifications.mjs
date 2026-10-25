@@ -1,4 +1,5 @@
 // Isolated MCP acceptance: no real Agent, account, notification target or unit-test hooks.
+import '../main-checkout-only.mjs';
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, writeFile, readFile, chmod, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';

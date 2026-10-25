@@ -1,3 +1,4 @@
+import './main-checkout-only.mjs';
 import { readFile, writeFile, readdir, mkdir, copyFile, mkdtemp, stat, rename, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';

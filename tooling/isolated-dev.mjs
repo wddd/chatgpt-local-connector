@@ -1,3 +1,4 @@
+import './main-checkout-only.mjs';
 import { randomBytes } from 'node:crypto';
 import { developmentConfig, isolatedStatus } from './dev-identity.mjs';
 import { spawn } from 'node:child_process';
