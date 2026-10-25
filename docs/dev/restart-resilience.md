@@ -94,7 +94,7 @@ Run this procedure only after runtime acceptance is authorized and main is avail
      arc_test wait --control --op receipt --stdin --until '/turnId exists' --timeout 60
    jq -n --arg threadId "$ARC_TEST_THREAD_ID" --arg turnId "$ARC_TEST_NEW_TURN_ID" '{threadId:$threadId,turnId:$turnId,until:"terminal"}' |
      arc_test wait --control --op codex_wait --stdin --until '/conditionMet==true' --timeout 180
-   jq -n --arg threadId "$ARC_TEST_THREAD_ID" --arg turnId "$ARC_TEST_NEW_TURN_ID" '{threadId:$threadId,turnId:$turnId}' |
+   jq -n --arg threadId "$ARC_TEST_THREAD_ID" '{threadId:$threadId,view:"full",limit:10}' |
      arc_test control codex_read --stdin
    ```
 
