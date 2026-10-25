@@ -1,5 +1,14 @@
 //! Install only an owned symlink; never replace a user's launcher.
 use crate::*;
+
+/// Discover a directly executable CLI without relying on a shell PATH or shim.
+pub(crate) fn executable() -> Result<PathBuf> {
+    crate::runtime::binary()
+        .or_else(|_| std::env::current_exe().map_err(|e| e.to_string()))?
+        .canonicalize()
+        .map_err(|e| e.to_string())
+}
+
 pub(crate) async fn install() -> Result<Value> {
     #[cfg(not(target_os = "macos"))]
     {

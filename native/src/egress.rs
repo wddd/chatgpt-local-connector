@@ -671,9 +671,10 @@ pub(crate) fn unknown_op(name: &str, ops: &[Value]) -> String {
 
 pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -> Value {
     let mut result = guide_content(origin, args, locale, ops);
+    result["cliPath"] = json!(crate::cli_shim::executable().ok());
     let digest = hash(result.to_string());
     if args["knownGuideHash"] == digest {
-        return json!({"guideHash":digest,"unchanged":true});
+        return json!({"guideHash":digest,"unchanged":true,"cliPath":result["cliPath"]});
     }
     result["guideHash"] = json!(digest);
     result

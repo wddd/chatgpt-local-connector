@@ -17,3 +17,23 @@ for(const surface of ['native','scenario']) test(`The documented ${surface} read
     await assert.rejects(fixture.shell(command.replace('"modelOnly":true','"modelOnly":true,"width":600')), (error:any)=>JSON.parse(error.stdout).error.message.includes("read-only op"));
   } finally {await fixture.close();}
 });
+
+
+test('Agents can invoke the absolute CLI path returned by guide and status without an arc shim', {skip:process.platform==='win32'},async()=>{
+  // Regression: agents had to guess the application bundle executable because arc was absent from PATH.
+  const {isAbsolute}=await import('node:path');
+  const {execFileSync}=await import('node:child_process');
+  const fixture=await nativeControl('');
+  try {
+    const guide=await fixture.call('guide',{topic:'notify'});
+    const status=JSON.parse((await fixture.shell('arc cli status')).stdout);
+    assert.equal(status.ok,true);
+    assert.equal(isAbsolute(guide.cliPath),true);
+    assert.equal(status.result.cliPath,guide.cliPath);
+    const help=JSON.parse(execFileSync(guide.cliPath,['cli','--help'],{env:{...process.env,PATH:'/usr/bin:/bin'},encoding:'utf8'}));
+    assert.equal(help.ok,true);
+    const cached=await fixture.call('guide',{topic:'notify',knownGuideHash:guide.guideHash});
+    assert.equal(cached.unchanged,true);
+    assert.equal(cached.cliPath,guide.cliPath);
+  }finally{await fixture.close();}
+});

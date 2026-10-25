@@ -2,6 +2,8 @@
 
 [Home](../../README.md) · [Automatic setup](../auto-setup.md)
 
+`cli status` reports `cliPath`, the absolute executable path of the target Core. Every control-source guide response also reports `cliPath`. Invoke that path with `cli <command>` when `arc` is absent from PATH; quote it when it contains spaces. Guide hash caching includes the path. The optional macOS `cli install-shim` command remains available for an owned `~/.local/bin/arc` symlink.
+
 ## Executables
 
 On macOS, use the bundled Core executable for local administration:
