@@ -146,14 +146,14 @@ export interface AgentTimelineEntry {
   command?: string;
   cwd?: string;
   path?: string | null;
-  operation?: "read" | "write" | "edit" | "create";
+  operation?: "read" | "write" | "edit" | "create" | "delete";
   commandActions?: { type: string; path?: string }[];
   exitCode?: number;
   exitCodeSource?: "rawOutput" | "output";
   input?: AgentTrackingExcerpt;
   output?: AgentTrackingExcerpt;
   plan?: { content: AgentTrackingExcerpt; status: string; priority?: string | null }[];
-  changes?: { path: string; operation?: "create" | "edit" | null; added?: number; removed?: number; diff?: AgentTrackingExcerpt }[];
+  changes?: { path: string; operation?: "create" | "edit" | "delete" | null; added?: number; removed?: number; diff?: AgentTrackingExcerpt }[];
   interaction?: AgentInteraction;
   truncated?: boolean;
 }

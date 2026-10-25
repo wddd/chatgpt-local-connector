@@ -10,7 +10,7 @@ const SUMMARY: usize = 1024;
 
 pub(crate) fn file_change(change: &Value) -> Value {
     let mut row = json!({"path":cut(&redact(string(change,"path")),SUMMARY).0,
-        "operation":match string(&change["kind"],"type") {"add"=>Some("create"),"update"=>Some("edit"),_=>None}});
+        "operation":match string(&change["kind"],"type") {"add"=>Some("create"),"update"=>Some("edit"),"delete"=>Some("delete"),_=>None}});
     if let Some(diff) = change["diff"].as_str().filter(|diff| !diff.is_empty()) {
         row["diff"] = summary(&json!(diff));
         let (mut hunk, mut known, mut added, mut removed) = (false, false, 0u64, 0u64);
@@ -1459,6 +1459,16 @@ mod tests {
         assert_eq!(row["added"], 2);
         assert_eq!(row["removed"], 1);
         assert!(file_change(&json!({"path":"example.txt"}))["added"].is_null());
+    }
+
+    #[test]
+    fn file_changes_preserve_native_operations() {
+        // Property: native file-change operations remain explicit without guessing from diff counts.
+        for (kind, operation) in [("add", "create"), ("update", "edit"), ("delete", "delete")] {
+            let row = file_change(&json!({"path":"example.txt","kind":{"type":kind}}));
+            assert_eq!(row["operation"], operation);
+        }
+        assert!(file_change(&json!({"path":"example.txt"}))["operation"].is_null());
     }
 
     #[test]

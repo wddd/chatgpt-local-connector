@@ -56,13 +56,14 @@ export function toolCounts(entries: readonly AgentTimelineEntry[], live = true) 
     edit: counts.write, file: counts.file, command: commands.length - running, running, tool: counts.tool };
 }
 export function changedFiles(entries: readonly AgentTimelineEntry[]) {
-  const files = new Map<string, { path: string; added?: number; removed?: number }>();
+  const files = new Map<string, { path: string; operation?: "create" | "edit" | "delete"; added?: number; removed?: number }>();
   for (const entry of entries) {
     if (entry.status !== "completed" || entry.operation === "read") continue;
-    const changes: NonNullable<AgentTimelineEntry["changes"]> = entry.changes ?? (entry.type === "file" && entry.path && entry.operation ? [{ path: entry.path }] : []);
+    const changes: NonNullable<AgentTimelineEntry["changes"]> = entry.changes ?? (entry.type === "file" && entry.path && entry.operation ? [{ path: entry.path, operation: entry.operation === "create" || entry.operation === "delete" ? entry.operation : undefined }] : []);
     for (const change of changes) {
       const previous = files.get(change.path);
-      files.set(change.path, { path: change.path,
+      const operation = change.operation === "edit" && previous?.operation === "create" ? "create" : change.operation ?? previous?.operation;
+      files.set(change.path, { path: change.path, ...(operation ? { operation } : {}),
         added: change.added === undefined || previous && previous.added === undefined ? undefined : (previous?.added ?? 0) + change.added,
         removed: change.removed === undefined || previous && previous.removed === undefined ? undefined : (previous?.removed ?? 0) + change.removed });
     }

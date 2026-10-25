@@ -43,6 +43,15 @@ test("changed files omit failed writes and never invent missing counts", () => {
   assert.deepEqual(changedFiles([entry("read", "file", { path: "a", operation: "read" }), entry("fail", "file", { path: "b", operation: "edit", status: "failed" })]), []);
   const files = changedFiles([entry("edit", "file", { changes: [{ path: "a", added: 2, removed: 1 }] }), entry("edit2", "file", { changes: [{ path: "a", added: 3, removed: 0 }, { path: "b" }] })]);
   assert.deepEqual(files, [{ path: "a", added: 5, removed: 1 }, { path: "b", added: undefined, removed: undefined }]);
+  const operations = changedFiles([
+    entry("new", "file", { path: "new", operation: "create" }),
+    entry("edit-new", "file", { changes: [{ path: "new", operation: "edit" }] }),
+    entry("removed", "file", { changes: [{ path: "old", operation: "delete" }] }),
+    entry("empty-edit", "file", { changes: [{ path: "emptied", added: 0, removed: 10 }] }),
+  ]);
+  assert.equal(operations.find(file => file.path === "new")?.operation, "create");
+  assert.equal(operations.find(file => file.path === "old")?.operation, "delete");
+  assert.equal(operations.find(file => file.path === "emptied")?.operation, undefined);
 });
 
 test("questions preserve all IDs and explicit multi choice answers through the native respond path", async () => {

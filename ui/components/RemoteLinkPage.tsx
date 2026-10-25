@@ -28,7 +28,7 @@ export default function RemoteLinkPage() {
   const [claim, setClaim] = useState<string>();
   const previous = useRef<string | undefined>(undefined);
   const entries = status?.ingresses ?? [];
-  const visible = sources.filter(s => !isPendingSource(s, entries));
+  const visible = sources.filter(s => s.state !== "revoked" && !isPendingSource(s, entries));
   const selected = sources.find(s => s.id === nav.remoteSourceId);
   const connection = entries.find(i => i.id === nav.remoteConnectionId);
   const selectedRelay = relays.relays.find(r => r.ingressId === connection?.id);
@@ -94,7 +94,7 @@ export default function RemoteLinkPage() {
       {!visible.length && <Empty>{t("source.empty")}</Empty>}
       <section className="connection-list"><div className="source-section-heading"><h3>{t("source.connections")}</h3><Button data-new-connection onClick={() => add(true)}>{t("source.newConnection")}</Button></div>
         <HoverScope>{entries.map(ingress => {
-          const count = visible.filter(s => s.ingressId === ingress.id && s.state !== "revoked").length;
+          const count = visible.filter(s => s.ingressId === ingress.id).length;
           return <Button key={ingress.id} variant="ghost" className="source-list-row connection-list-row" data-hover-target={ingress.id} data-remote-row={ingress.id} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: ingress.id }))}>
             <Icon icon={connectionIcon(ingress)} size={20} /><span className="connection-list-copy"><strong>{ingress.name}</strong><span>{ingress.url || connectionProvider(ingress)}</span></span>
             <span className="muted">{t(count ? "source.count" : "source.unused", { count })}</span><Status tone={ingress.state === "ready" ? "success" : "neutral"}>{t(ingress.state === "ready" ? "connect.online" : "connect.offline")}</Status><Icon icon={ChevronRight} />

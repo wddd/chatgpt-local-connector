@@ -50,7 +50,12 @@
 .task-final > header { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 11px; color: var(--success); }
 .task-final > header > .icon-button { margin-left: auto; }
 .task-changes { display: grid; gap: 6px; border-top: 1px solid var(--border); padding-top: 10px; margin-top: 12px; font-size: 12px; }
-.task-changes > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.task-change-row { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.task-changes-more { display: grid; gap: 6px; }
+.task-changes-summary.button { justify-content: space-between; min-height: 28px; padding: 0; font: inherit; }
+.task-changes-summary[aria-expanded=true] > .timeline-chevron { transform: rotate(90deg); }
+.task-file-operation { flex: none; padding: 1px 5px; border-radius: 4px; font-size: 11px; color: var(--success); background: var(--success-soft); }
+.task-file-operation[data-operation=delete] { color: var(--danger); background: var(--danger-soft); }
 .task-changes .file-path { flex: 1; }
 .task-added { color: var(--success); }
 .task-removed { color: var(--danger); }

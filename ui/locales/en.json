@@ -1062,6 +1062,8 @@
   "replacementBackupPreserved": "Automatic recovery did not finish. Preserve this backup and do not overwrite the installation.",
   "replacementValidating": "Verifying the replacement package",
   "detail.filesChanged": "{count} files changed",
+  "detail.fileCreated": "Added",
+  "detail.fileDeleted": "Deleted",
   "detail.copyReply": "Copy reply",
   "detail.evidence": "Details",
   "detail.finalReply": "Final reply",

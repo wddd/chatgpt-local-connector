@@ -1062,6 +1062,8 @@
   "replacementBackupPreserved": "自动恢复未完成，请保留以下备份，勿再次覆盖安装。",
   "replacementValidating": "正在校验替换包",
   "detail.filesChanged": "{count} 个文件有改动",
+  "detail.fileCreated": "新增",
+  "detail.fileDeleted": "删除",
   "detail.copyReply": "复制回复",
   "detail.evidence": "详情",
   "detail.finalReply": "最终回复",
