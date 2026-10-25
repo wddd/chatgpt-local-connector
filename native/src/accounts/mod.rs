@@ -2,7 +2,9 @@
 use crate::*;
 #[path = "../claude_accounts/mod.rs"]
 pub mod claude;
+mod identity;
 mod login;
+pub use identity::link_source_identity;
 static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn path() -> PathBuf {
@@ -74,6 +76,11 @@ fn observe(
     profile: Option<Value>,
     source: Option<&str>,
 ) -> String {
+    let first_profile = profile.as_ref().is_some_and(|p| {
+        !rows
+            .iter()
+            .any(|a| profiles(a).any(|old| old["agent"] == p["agent"]))
+    });
     let owns = |a: &Value| {
         source.is_some_and(|s| {
             a["sources"]
@@ -148,6 +155,14 @@ fn observe(
             .unwrap()
             .retain(|p| !moving_profiles.contains(p));
         for source in moving_sources {
+            if let Some(source_id) = source.as_str() {
+                if let Some(evidence) = previous["sourceIdentities"].get(source_id) {
+                    rows[index]["sourceIdentities"][source_id] = evidence.clone();
+                    if let Some(map) = rows[old]["sourceIdentities"].as_object_mut() {
+                        map.remove(source_id);
+                    }
+                }
+            }
             if !rows[index]["sources"].as_array().unwrap().contains(&source) {
                 rows[index]["sources"].as_array_mut().unwrap().push(source);
             }
@@ -209,6 +224,7 @@ fn observe(
             profile["default"] = old["default"].clone();
             *old = profile;
         } else {
+            profile["default"] = json!(first_profile);
             list.push(profile);
         }
     }
@@ -223,13 +239,6 @@ fn defaults(rows: &mut [Value]) {
         for p in a["agentProfiles"].as_array_mut().unwrap() {
             if p["default"] == true && !seen.insert(string(p, "agent").to_owned()) {
                 p["default"] = json!(false);
-            }
-        }
-    }
-    for a in rows.iter_mut().filter(|a| live(a)) {
-        for p in a["agentProfiles"].as_array_mut().unwrap() {
-            if seen.insert(string(p, "agent").to_owned()) {
-                p["default"] = json!(true);
             }
         }
     }
@@ -262,31 +271,33 @@ pub(crate) fn migrate() -> Result<()> {
         }
         for source in sources {
             // Client metadata, labels and platform guesses are deliberately excluded from facts.
-            observe(
-                rows,
-                provider(string(&source, "platform")),
-                &source["authorizationFacts"],
-                string(&source, "id"),
-                None,
-                Some(string(&source, "id")),
-            );
+            identity::observe_source(rows, &source);
         }
         defaults(rows);
         Ok(())
     })
 }
 pub(crate) fn source_account(source: &Value) -> Result<String> {
-    change(|rows| {
-        Ok(observe(
-            rows,
-            provider(string(source, "platform")),
-            &source["authorizationFacts"],
-            string(source, "id"),
-            None,
-            Some(string(source, "id")),
-        ))
-    })
+    change(|rows| Ok(identity::observe_source(rows, source)))
 }
+pub(crate) fn source_resolution(source: &str) -> Result<Value> {
+    let rows = read()?;
+    let account = rows.iter().find(|a| {
+        a["sources"]
+            .as_array()
+            .is_some_and(|ss| ss.iter().any(|s| s == source))
+            && live(a)
+    });
+    Ok(account
+        .and_then(|a| a["sourceIdentities"].get(source))
+        .cloned()
+        .unwrap_or(json!({"state":"unresolved"})))
+}
+pub(crate) fn confirm_source(source: &str, evidence: Value) -> Result<Value> {
+    crate::sources::get(source)?; // Resolve any authorization facts before checking handshake evidence.
+    change(|rows| link_source_identity(rows, source, evidence))
+}
+
 pub(crate) fn resolve(reference: &str) -> Result<Value> {
     let rows = read()?;
     if let Some(row) = rows.iter().find(|a| a["id"] == reference) {
@@ -324,7 +335,7 @@ pub(crate) fn select(agent: &str, reference: Option<&str>) -> Result<Value> {
     let row = if let Some(reference) = reference {
         resolve(reference)?
     } else {
-        read()?.into_iter().find(|a| live(a) && profiles(a).any(|p| p["agent"] == agent && p["default"] == true)).ok_or("ACCOUNT_DEFAULT_MISSING: Use account_add or account_update defaultFor before dispatch".to_owned())?
+        read()?.into_iter().find(|a| live(a) && profiles(a).any(|p| p["agent"] == agent && p["default"] == true)).ok_or_else(|| json!({"code":"ACCOUNT_DEFAULT_MISSING","message":"Select an account explicitly or set its defaultFor before dispatch.","next":{"via":"query","op":"accounts","args":{"agent":agent}}}).to_string())?
     };
     if !live(&row) {
         return Err("ACCOUNT_REMOVED: Select an active account".into());
@@ -352,6 +363,9 @@ fn update(args: &Value) -> Result<Value> {
             return Err("INVALID_ACCOUNT_ALIAS: Use 1 to 120 characters".into());
         }
     }
+    if args.get("default").is_some() && !args["defaultFor"].is_string() {
+        return Err(json!({"code":"ACCOUNT_DEFAULT_AGENT_REQUIRED","message":"Supply defaultFor with default.","next":{"via":"query","op":"guide","args":{"op":"account_update"}}}).to_string());
+    }
     change(|rows| {
         if let Some(agent) = args["defaultFor"].as_str() {
             let selected = profiles(&account)
@@ -361,8 +375,12 @@ fn update(args: &Value) -> Result<Value> {
             for row in rows.iter_mut().filter(|a| live(a)) {
                 let selected_account = row["id"] == account["id"];
                 for p in row["agentProfiles"].as_array_mut().unwrap() {
-                    if p["agent"] == agent {
-                        p["default"] = json!(selected_account && p["profileId"] == selected);
+                    if p["agent"] == agent && (args["default"] != false || selected_account) {
+                        p["default"] = json!(
+                            args["default"] != false
+                                && selected_account
+                                && p["profileId"] == selected
+                        );
                     }
                 }
             }
@@ -506,7 +524,7 @@ impl Manager {
                 "n/a"
             };
             row["notifications"] = json!({"state":state,"reachable":sessions.iter().any(|s| s["verified"]==true || s["reachable"]==true),"sessions":sessions});
-            row["health"] = json!({"state":if !live(row) {"removed"} else if profiles(row).any(|p| p["state"] != "signed-in") {"attention"} else {"ready"}});
+            row["health"] = json!({"state":if !live(row) {"removed"} else if identity::has_conflict(row) || profiles(row).any(|p| p["state"] != "signed-in") {"attention"} else {"ready"}});
             if !live(row) {
                 row["displayName"] = json!(format!("Removed account · {}", string(row, "alias")));
             }
@@ -601,7 +619,7 @@ impl Manager {
                 let origin = crate::kernel::origin::current_origin();
                 let source = crate::sources::get(string(&origin, "sourceId"))?;
                 let account = self.query(&json!({"id":source_account(&source)?})).await?;
-                let mut result = json!({"sourceId":source["id"],"platform":source["platform"]});
+                let mut result = json!({"sourceId":source["id"],"platform":source["platform"],"identityResolution":source_resolution(string(&source,"id"))?});
                 for key in [
                     "id",
                     "alias",
@@ -778,7 +796,7 @@ mod tests {
 pub(crate) fn dispatch_accounts(agent: &str) -> Result<Value> {
     Ok(json!(read()?.into_iter().filter(|a| live(a) && profiles(a).any(|p| p["agent"] == agent)).map(|a| {
         let profiles: Vec<_> = profiles(&a).filter(|p| p["agent"] == agent).cloned().collect();
-        json!({"id":a["id"],"alias":a["alias"],"default":profiles.iter().any(|p| p["default"] == true),"health":{"state":if profiles.iter().any(|p| p["state"] == "signed-in") {"ready"} else {"attention"}},"agentProfiles":profiles,"quota":a["quota"]})
+        json!({"id":a["id"],"alias":a["alias"],"default":profiles.iter().any(|p| p["default"] == true),"health":{"state":if !identity::has_conflict(&a) && profiles.iter().any(|p| p["state"] == "signed-in") {"ready"} else {"attention"}},"agentProfiles":profiles,"quota":a["quota"]})
     }).collect::<Vec<_>>()))
 }
 

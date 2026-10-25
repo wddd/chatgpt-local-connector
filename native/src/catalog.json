@@ -4565,7 +4565,7 @@
     },
     {
       "name": "notification_ack",
-      "description": "Confirm receipt of a one-time code in the target conversation with target + code. Only success marks reachability verified. Expired or replayed codes are rejected. Other arguments retain event-read semantics. Mark current-source events read. Returns markedRead (new), alreadyRead (read/delivered), notFound, and notFoundEventIds. Does not respond to or cancel tasks. Claude arcInbox attaches only events matching the current notify.target. No target means no attachment. Each matching event is attached once. Successfully pushed/resolved events are not attached again. Attachment does not mean read. MCP subscriptions use callbacks. Other sources retain unread reminders. Reading the corresponding turn also marks existing events read. delivered/digested/resolved count as alreadyRead. Duplicate IDs count once. Always available within the current source only.",
+      "description": "Confirm receipt of a one-time code in the target conversation with target + code. Only success marks reachability verified. Expired or replayed codes are rejected. Other arguments retain event-read semantics. Mark current-source events read. Returns markedRead (new), alreadyRead (read/delivered), notFound, and notFoundEventIds. Does not respond to or cancel tasks. Claude arcInbox attaches only events matching the current notify.target. No target means no attachment. Each matching event is attached once. Successfully pushed/resolved events are not attached again. Attachment does not mean read. MCP subscriptions use callbacks. Other sources retain unread reminders. Reading the corresponding turn also marks existing events read. delivered/digested/resolved count as alreadyRead. Duplicate IDs count once. Always available within the current source only. A confirmed cloud-session code also resolves this source to the sending Claude profile identity when known. Returns identityResolution with evidence and confirmedAt; conflicts retain the existing account and report ACCOUNT_IDENTITY_CONFLICT. Query whoami for the persisted resolution.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4738,7 +4738,7 @@
     },
     {
       "name": "notify_control",
-      "description": "action:bind registers this source’s Claude cloud-session target and verifies it by default, without dispatching work. Optional threadId binds an existing source-owned task and its pending wakeups. Future dispatches MUST include the returned notify object; registration is not a global default. verify:false only registers. action:verify retries the challenge. Only notification_ack with the code received in that conversation proves reachability. Verification sends are counted separately from task delivery attempts. Control both channels with threadId mute/digest/unmute, subscriptionId mute/unmute, and target breaker. rebind changes only Claude targets. Webhooks require a new verified subscription. Controls only affect notifications, never task cancellation or responses. Controls persist across restarts and turns. mute retains inbox events. Claude digest sends compact event blocks in an hourly batch. MCP sends individual events within the hourly window. rebind moves only pending Claude events. target:null unbinds. breaker stops target wakeups. Started sends cannot be recalled. Enable this op in the ingress policy if unavailable. action:route lists the selected accountId and safe available profiles for a target already owned by this source. Supply accountId with bind, verify or route to select a profile for this source and target only. A changed route requires a fresh handshake. CLAUDE_SESSION_NOT_FOUND returns a next call to action:route. ARC never logs in or changes the system Claude account automatically. Unrouted bind/verify performs read-only session visibility probes and records exactly one confirmed visible profile. Zero, multiple or inconclusive matches return ACCOUNT_SELECTION_REQUIRED with safe candidates and a route next call; no challenge is sent. Existing routes are never automatically replaced.",
+      "description": "action:bind registers this source’s Claude cloud-session target and verifies it by default, without dispatching work. Optional threadId binds an existing source-owned task and its pending wakeups. Future dispatches MUST include the returned notify object; registration is not a global default. verify:false only registers. action:verify retries the challenge. Only notification_ack with the code received in that conversation proves reachability. Verification sends are counted separately from task delivery attempts. Control both channels with threadId mute/digest/unmute, subscriptionId mute/unmute, and target breaker. rebind changes only Claude targets. Webhooks require a new verified subscription. Controls only affect notifications, never task cancellation or responses. Controls persist across restarts and turns. mute retains inbox events. Claude digest sends compact event blocks in an hourly batch. MCP sends individual events within the hourly window. rebind moves only pending Claude events. target:null unbinds. breaker stops target wakeups. Started sends cannot be recalled. Enable this op in the ingress policy if unavailable. action:route lists the selected accountId and safe available profiles for a target already owned by this source. Supply accountId with bind, verify or route to select a profile for this source and target only. A changed route requires a fresh handshake. CLAUDE_SESSION_NOT_FOUND returns a next call to action:route. ARC never logs in or changes the system Claude account automatically. Unrouted bind/verify performs read-only session visibility probes and records exactly one confirmed visible profile. Zero, multiple or inconclusive matches return ACCOUNT_SELECTION_REQUIRED with safe candidates and a route next call; no challenge is sent. Existing routes are never automatically replaced. Verification pins the sending profile and snapshots its CLI identity. Only the source-bound notification_ack links that identity to the source; binding and successful sends alone do not. Query whoami for identityResolution and conflicts.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -6258,7 +6258,7 @@
     },
     {
       "name": "whoami",
-      "description": "Read the calling source account from its authorization. Unresolved identities remain Unidentified; client names never establish identity.",
+      "description": "Read the calling source account, linked profiles, notification reachability and identityResolution evidence or conflicts. Confirmed Claude session handshakes can resolve unidentified sources.",
       "inputSchema": {
         "type": "object",
         "properties": {},
@@ -6327,7 +6327,7 @@
     },
     {
       "name": "account_update",
-      "description": "Rename an account or make its profile the default for one Agent.",
+      "description": "Rename an account or set/clear its default profile for one Agent. default requires defaultFor.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -6343,6 +6343,10 @@
           "defaultFor": {
             "type": "string",
             "minLength": 1
+          },
+          "default": {
+            "type": "boolean",
+            "description": "With defaultFor, true (omitted) selects this account; false clears only this account for that Agent without choosing a replacement."
           }
         },
         "required": [

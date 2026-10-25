@@ -807,6 +807,9 @@ trait Executor: Sync {
     fn local_account(&self, _source_id: &str, _target: &str) -> impl Future<Output = Value> + Send {
         async { json!({"available":false,"reason":"auth-status-unavailable"}) }
     }
+    fn verification_identity(&self) -> impl Future<Output = Result<Value>> + Send {
+        async { Ok(Value::Null) }
+    }
     fn escalate(&self, body: String) -> impl Future<Output = Result<()>> + Send;
 }
 struct Cli {
@@ -831,6 +834,24 @@ impl Executor for Cli {
         identity["accountId"] = json!(account_id);
         identity["observedAt"] = json!(now());
         identity
+    }
+
+    async fn verification_identity(&self) -> Result<Value> {
+        let Some(profile) = &self.account_id else {
+            return Ok(Value::Null);
+        };
+        let Ok(facts) = crate::accounts::claude::refresh_profile(profile).await else {
+            return Ok(Value::Null);
+        };
+        crate::accounts::migrate()?;
+        if facts["loggedIn"] != true || crate::accounts::identity_key("anthropic", &facts).is_none()
+        {
+            return Ok(Value::Null);
+        }
+        let account = crate::accounts::profile_account(profile)?;
+        Ok(
+            json!({"kind":"claude-session-handshake","profileId":profile,"accountId":account["id"],"identityKey":account["identityKey"]}),
+        )
     }
 
     async fn webhook(

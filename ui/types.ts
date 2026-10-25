@@ -216,6 +216,15 @@ export interface AccountNotifications {
     lastVerificationDelivery?: string;
   }>;
 }
+export interface SourceIdentityResolution {
+  state: "unresolved" | "resolved" | "conflict";
+  accountId?: string;
+  code?: "ACCOUNT_IDENTITY_CONFLICT";
+  reason?: string;
+  authorization?: { kind: "authorization"; identityKey: string; observedAt: string };
+  evidence?: { kind: "claude-session-handshake"; sourceId: string; target: string; profileId: string; accountId: string; identityKey: string; confirmedAt: string };
+  previousEvidence?: SourceIdentityResolution["evidence"];
+}
 export interface ProviderAccount {
   id: string;
   provider: "anthropic" | "openai" | "deepseek" | "other";
@@ -227,6 +236,7 @@ export interface ProviderAccount {
   createdAt: string;
   observedAt: string;
   sources: string[];
+  sourceIdentities?: Record<string, SourceIdentityResolution>;
   agentProfiles: AccountAgentProfile[];
   notifications: AccountNotifications;
   quota: {
@@ -256,6 +266,7 @@ export interface AccountLogin {
 }
 export interface AccountsResult { accounts: ProviderAccount[]; login: AccountLogin | null }
 export interface AccountIdentity extends Pick<ProviderAccount, "id" | "alias" | "provider" | "email" | "orgName" | "plan" | "agentProfiles" | "notifications"> {
+  identityResolution: SourceIdentityResolution;
   sourceId: string;
   platform: string;
 }

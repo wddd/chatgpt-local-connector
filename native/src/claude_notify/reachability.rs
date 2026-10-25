@@ -12,6 +12,7 @@ pub(super) struct Reachability {
     challenge_hash: String,
     source_id: String,
     expires_at: i64,
+    identity_evidence: Value,
 }
 impl Default for Reachability {
     fn default() -> Self {
@@ -24,6 +25,7 @@ impl Default for Reachability {
             challenge_hash: String::new(),
             source_id: String::new(),
             expires_at: 0,
+            identity_evidence: Value::Null,
         }
     }
 }
@@ -42,6 +44,8 @@ impl Reachability {
 }
 
 pub(super) async fn verify(source_id: &str, args: &Value) -> Result<Value> {
+    let target = session_id(string(args, "target"))?;
+    let profile = source_account(source_id, &target)?;
     verify_in(
         &directory(),
         source_id,
@@ -49,7 +53,7 @@ pub(super) async fn verify(source_id: &str, args: &Value) -> Result<Value> {
         &settings()?,
         &Cli {
             service: std::sync::Weak::new(),
-            account_id: None,
+            account_id: Some(profile),
         },
     )
     .await
@@ -62,6 +66,7 @@ pub(super) async fn verify_in(
     executor: &impl Executor,
 ) -> Result<Value> {
     let target = session_id(string(args, "target"))?;
+    let evidence = executor.verification_identity().await?;
     let code = id();
     let digest = hash(&code);
     let now = chrono::Utc::now().timestamp();
@@ -92,6 +97,11 @@ pub(super) async fn verify_in(
         }
         let mut state = State::load(&dir)?;
         let t = state.target(source_id, Channel::ClaudeSession, &target, now, &settings);
+        if evidence["profileId"].is_string()
+            && t.account_id.as_deref() != evidence["profileId"].as_str()
+        {
+            return Err(json!({"code":"ACCOUNT_ROUTE_CHANGED","message":"The route changed before verification. Retry for the current route.","next":{"via":"act","op":"notify_control","args":{"action":"verify","target":target}}}).to_string());
+        }
         if t.breaker {
             return Err("NOTIFICATION_BREAKER_ACTIVE".into());
         }
@@ -110,6 +120,7 @@ pub(super) async fn verify_in(
             challenge_hash: digest.clone(),
             source_id: source_id.into(),
             expires_at: now + 300,
+            identity_evidence: evidence,
             ..Default::default()
         };
         state.save(&dir)?;
@@ -184,14 +195,23 @@ pub(super) fn acknowledge(dir: &Path, source_id: &str, args: &Value) -> Result<V
         || r.challenge_hash != hash(string(args, "code"))
     {
         state.save(dir)?;
-        return Err(
-            "HANDSHAKE_INVALID_OR_EXPIRED: use notify_control action=verify for this target".into(),
-        );
+        return Err(json!({"code":"HANDSHAKE_INVALID_OR_EXPIRED","message":"The code is invalid, expired or already consumed. Verify this target again.","next":{"via":"act","op":"notify_control","args":{"action":"verify","target":target}}}).to_string());
     }
+    let resolution = if r.identity_evidence.is_object() {
+        let mut evidence = r.identity_evidence.clone();
+        evidence["sourceId"] = json!(source_id);
+        evidence["target"] = json!(target);
+        evidence["confirmedAt"] = json!(now());
+        crate::accounts::confirm_source(source_id, evidence)?
+    } else {
+        json!({"state":"unresolved","reason":"No provider identity was available for the sending profile. Verify again after signing in."})
+    };
     r.state = "verified".into();
     r.reason = "handshake-confirmed".into();
     r.challenge_hash.clear();
     r.expires_at = 0;
     state.save(dir)?;
-    Ok(json!({"target":target,"reachability":"verified","reason":"handshake-confirmed"}))
+    Ok(
+        json!({"target":target,"reachability":"verified","reason":"handshake-confirmed","identityResolution":resolution}),
+    )
 }

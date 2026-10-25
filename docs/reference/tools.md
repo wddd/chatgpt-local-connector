@@ -4,18 +4,26 @@
 
 ## Provider accounts
 
-`query({op:"whoami",args:{}})` returns `{id,alias,provider,email,orgName,plan,sourceId,platform,agentProfiles,notifications}` for the authenticated calling source. ARC uses authorization facts, never client names. Current MCP OAuth grants establish a source but do not supply provider identity claims; those sources receive separate `Unidentified` accounts. Their IDs and historical origins remain stable.
+`query({op:"whoami",args:{}})` returns `{id,alias,provider,email,orgName,plan,sourceId,platform,agentProfiles,notifications,identityResolution}` for the authenticated calling source. ARC uses provider authorization facts and confirmed Claude cloud-session handshakes, never client names. Sources without either receive separate `Unidentified` accounts. Source IDs and historical origins remain stable; successful resolution can merge the provisional account into the provider account.
+
+`identityResolution.state` is `unresolved`, `resolved` or `conflict`. Provider facts have `authorization:{kind:"authorization",identityKey,observedAt}`. A confirmed Claude handshake has `evidence:{kind:"claude-session-handshake",sourceId,target,profileId,accountId,identityKey,confirmedAt}`. Account detail/list expose the same records in `sourceIdentities` keyed by source ID; source reads expose `identityResolution`.
+
+Use `notify_control({action:"bind",target,accountId?})` (or `route` followed by `verify`) and acknowledge the code actually received with `notification_ack({target,code})`. ARC pins the sending profile and records its CLI identity before sending. Only the valid source-bound acknowledgement links the source to that account. Binding, session visibility and send success alone do not resolve identity. Missing CLI identity leaves it unresolved; repeat verification after sign-in. Changing the route invalidates the pending challenge. Old verified routes without identity evidence require a fresh handshake.
+
+`notification_ack` returns `identityResolution` alongside `reachability:"verified"`. A conflict has `state:"conflict"`, `code:"ACCOUNT_IDENTITY_CONFLICT"`, `reason`, the retained `accountId` and proposed `evidence`; an earlier handshake may appear as `previousEvidence`. It does not overwrite an existing confirmed identity. Later provider authorization facts take precedence and retain a conflicting handshake as evidence. Conflicts remain visible through `whoami`, sources and accounts (`health.state:"attention"`), including dispatch policy. Inspect the accounts and verify the intended target again to reconcile; successful delivery can coexist with an identity conflict.
 
 `query({op:"accounts",args:{agent?}})` returns `{accounts,login}`. Each account has `id`, `provider`, `identityKey`, `alias`, `plan`, timestamps, `sources` (source ID strings), `agentProfiles`, `notifications`, `quota` and `health`. List entries omit `email` and `orgName`. `accounts({id})` returns one full account object, including those fields. Privacy preferences never redact AX. Profiles are `{agent,profileId,kind,state,default}`. At most one profile per Agent is default. Equal provider identity keys merge sources and profiles, retaining a tombstone for an already issued account ID.
 
 | Action | Arguments | Result |
 | --- | --- | --- |
-| `account_update` | `{id,alias?,defaultFor?}` | Full updated account |
+| `account_update` | `{id,alias?,defaultFor?,default?}` | Full updated account |
 | `account_add` | `{kind:"claude"|"codex"|"api-key"|"detect",browserId?}` | `{loginId,kind,state,loginUrl?,accountId?,error?,browserError?}` |
 | `account_login` | `{loginId,action:"code"|"cancel",code?}` | Login progress or `{submitted:true}` |
 | `account_reauth` | `{id,agent}` | New login progress |
 | `account_remove` | `{id,running:"finish"|"cancel"}` | Retained account with `removedAt`, `health.state:"removed"`, and `displayName` |
 | `account_notify` | `{id,action:"send"|"test"|"bind",target,message?}` | Binding or delivery result |
+
+`account_update({id,defaultFor:"claude"})` selects the account for that Agent (`default:true` is equivalent). `{id,defaultFor:"claude",default:false}` clears only that account's default; it leaves another account's default unchanged. `default` requires `defaultFor`. Clearing persists across refresh and restart without an automatic replacement. Dispatch without `account` then reports `ACCOUNT_DEFAULT_MISSING` until a default is selected. The first profile of a previously unconfigured Agent is initially default.
 
 Poll `accounts` for login progress. `account_browsers` returns `{browsers:[{id,name}]}`; omit `browserId` for the system browser. Claude code submission uses the official CLI's stdin. Codex completes its browser callback; a pasted code returns `ACCOUNT_LOGIN_CODE_UNSUPPORTED`. `detect` reads native authentication and imports the system Claude profile. Key-based Agents expose one native `api-key` profile each. Their generic login protocol and provider identity are not standardized: `account_add({kind:"api-key"})` returns `unfinished` with a native-authentication instruction, and unknown profile auth remains `unfinished`. It does not claim a successful sign-in or accept/store an inference key. Native-specific login remains required for those Agents.
 

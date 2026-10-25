@@ -159,6 +159,7 @@ pub fn list() -> Result<Vec<Value>> {
         .clone();
     for source in &mut rows {
         source["accountId"] = json!(crate::accounts::source_account(source)?);
+        source["identityResolution"] = crate::accounts::source_resolution(string(source, "id"))?;
         if !switch_live(source) {
             clear_switch(source);
         }

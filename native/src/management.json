@@ -3138,6 +3138,10 @@
               "defaultFor": {
                 "type": "string",
                 "minLength": 1
+              },
+              "default": {
+                "type": "boolean",
+                "description": "With defaultFor, true (omitted) selects this account; false clears only this account for that Agent without choosing a replacement."
               }
             },
             "required": [
@@ -3151,7 +3155,7 @@
         ],
         "additionalProperties": false
       },
-      "description": "Rename an account or make its profile the default for one Agent.",
+      "description": "Rename an account or set/clear its default profile for one Agent. default requires defaultFor.",
       "localOnly": true
     },
     {

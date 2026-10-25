@@ -32,6 +32,17 @@ test('Account operations retain identity, defaults and removal tombstones', asyn
     assert.equal(renamed.alias, 'Example account');
     assert.equal(renamed.agentProfiles.filter((p: any) => p.default).length, 1);
     assert.equal((await fixture.api(`accounts/${account.id}`)).alias, 'Example account');
+    const cleared = await fixture.call('account_update', { id: account.id, defaultFor: 'codex', default: false });
+    assert.ok(cleared.agentProfiles.every((p: any) => !p.default));
+    await fixture.restart();
+    const refreshed = await fixture.call('accounts', { id: account.id });
+    assert.ok(refreshed.agentProfiles.every((p: any) => !p.default));
+    const noDefault = await fixture.call('codex_create', { prompt: 'Example task', notify: null });
+    assert.equal(noDefault.error.code, 'ACCOUNT_DEFAULT_MISSING');
+    const missingAgent = await fixture.call('account_update', { id: account.id, default: false });
+    assert.equal(missingAgent.error.code, 'ACCOUNT_DEFAULT_AGENT_REQUIRED');
+    await fixture.api('accounts/update', { id: account.id, defaultFor: 'codex', default: true });
+    assert.ok((await fixture.call('accounts', { id: account.id })).agentProfiles.some((p: any) => p.default));
     const self = await fixture.call('whoami');
     assert.ok(self.id);
     assert.ok(self.sourceId);

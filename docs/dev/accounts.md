@@ -18,7 +18,17 @@ ARC manages control sources and Agents by Platform → Account → Task.
 - Same identity: an account with both `sources` and `agentProfiles`. This includes a ChatGPT account and the Codex login of the same ChatGPT identity.
 - Default account: at most one default profile per Agent; dispatch without an explicit account uses it.
 
-Identity resolution: ARC derives a source's account from facts captured at authorization (OAuth grant, email, organization, provider IDs). A source without resolvable facts gets its own `Unidentified` account until reauthorization; never infer identity from client self-reported names. Agent profiles resolve from the CLI's own auth status.
+## Identity resolution
+
+ARC derives a source's account from provider authorization facts when available (`accountId`, email, organization). Client names, labels, platform guesses and caller-supplied metadata are not provider facts. Agent profiles resolve from the CLI's own auth status.
+
+Current inbound MCP OAuth is ARC's authorization server, with locally generated opaque access/refresh tokens and grant/client/resource identifiers. Its registration and consent flow does not obtain provider email or organization claims, and it has no provider userinfo/introspection exchange. The official OpenAI Tunnel path supplies a configured tunnel ID/control-plane API key to Tunnel Client and forwards MCP over stdio with a local ARC ingress principal; ARC does not receive a per-caller provider identity from that bridge. Bearer/unauthenticated HTTPS similarly anchors one ingress source. MCP initialize reads protocolVersion but does not consume clientInfo identity. Connector observations retain operational metadata, not provider identity. Relay membership authenticates ARC instances by public key, not the ChatGPT/Claude user. Native Claude `auth status --json` provides email, accountId, orgId, orgName and subscriptionType when supplied by the CLI; Codex `account/read` provides the native account facts. Neither proves an inbound source owns that identity on its own.
+
+A second resolution path is the confirmed Claude cloud-session handshake. `notify_control` binds a source-owned target and selects a specific ARC Claude profile through `route` or unique session visibility. Verification pins that profile and snapshots its CLI identity before sending a source-bound challenge. Only `notification_ack` with the code received in that conversation links the source to the profile's account. Bind, visibility and send success alone are insufficient. A route change invalidates the pending challenge; missing profile identity keeps the source unresolved. Previously verified routes require a fresh handshake to supply identity evidence.
+
+`whoami.identityResolution` and source reads report `state:unresolved|resolved|conflict`. Accounts expose `sourceIdentities` keyed by source ID. Authorization evidence records `kind:authorization`, `identityKey` and `observedAt`. Handshake evidence records `kind:claude-session-handshake`, `sourceId`, `target`, `profileId`, `accountId`, `identityKey` and `confirmedAt`. A conflicting handshake never replaces a confirmed account silently: keep the existing account and return `ACCOUNT_IDENTITY_CONFLICT` in the resolution with its reason and proposed evidence. Later provider facts take precedence while retaining the disagreement. Conflicts set account health to attention and remain visible until a new matching handshake reconciles them. Notification delivery may still be verified. Source IDs and historical origins are never rewritten.
+
+A source without either resolution path has its own `Unidentified` account. A later confirmed identity merges its membership into the provider account and retains the provisional account tombstone.
 
 Migration: existing Claude accounts become accounts with `claude` profiles and their routes. Sources and profiles with the same `identityKey` merge into one account. Records keep their source IDs; history is never rewritten.
 
@@ -30,13 +40,13 @@ Every UI action has an op; no account operation is UX-only. Ops join the frozen 
 
 Queries:
 
-- `whoami`: the calling control source's account (`id`, `alias`, `provider`, `email`, `orgName`, `plan`), its `sourceId` and platform, linked agent profiles and notification reachability. ARC resolves it from the connection's authorization; the source's platform, device or environment is not ARC's concern.
+- `whoami`: the calling control source's account (`id`, `alias`, `provider`, `email`, `orgName`, `plan`), its `sourceId` and platform, linked agent profiles and notification reachability. ARC resolves it from the connection's authorization facts or confirmed Claude session handshake; the source's platform, device or environment is not ARC's concern.
 - `accounts({ id?, agent? })`: accounts with sources, agent profiles, health, default flags and quota summaries. The list omits `email` and `orgName`; `id` returns full detail. Privacy mode never changes AX results.
 - `dispatch_policy` reports per-account quota and health for each Agent.
 
 Actions:
 
-- `account_update({ id, alias?, defaultFor? })`: rename; `defaultFor` names an Agent whose default becomes this account's profile.
+- `account_update({ id, alias?, defaultFor?, default? })`: rename; `defaultFor` names an Agent whose default becomes this account's profile. `default:false` with `defaultFor` clears only this account's default without selecting a replacement. `default` requires `defaultFor`; omission means true. Clearing survives refresh/restart. The first profile of a previously unconfigured Agent is initially default.
 - `account_add({ kind, browserId? })` with kind `claude`, `codex`, `api-key` or `detect`: starts a login and returns `{ loginId, state, loginUrl? }`. Agents run the whole flow; only the sign-in itself needs the user.
 - `account_login({ loginId, action, code? })` with action `code` or `cancel`.
 - `account_reauth({ id, agent })` restarts login for one profile.

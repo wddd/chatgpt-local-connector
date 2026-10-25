@@ -119,6 +119,9 @@ for await(const line of createInterface({input:process.stdin})) {const {id}=JSON
       }
       assert.equal(status.login.state,'completed',JSON.stringify(status.login));profiles.push(login.accountId);
     }
+    await fixture.call('account_update',{id:profiles[0],defaultFor:'claude'});
+    await fixture.call('account_update',{id:profiles[1],defaultFor:'claude',default:false});
+    assert.ok((await fixture.call('accounts',{id:profiles[0]})).agentProfiles.some((p:any)=>p.default));
     for(const [index,codes] of [[404,404],[200,200],[200,503]].entries()) {
       visibility=new Map(profiles.map((id,i)=>[id,codes[i]]));
       const target=`session_01000000000000000000001${index}`;
@@ -134,13 +137,31 @@ for await(const line of createInterface({input:process.stdin})) {const {id}=JSON
     }
     visibility=new Map([[profiles[0],404],[profiles[1],200]]);
     const target='session_010000000000000000000019';
+    const unidentified=await fixture.call('whoami');
     const result=await fixture.call('notify_control',{action:'bind',target});
     assert.equal(result.accountRoute.accountId,profiles[1],JSON.stringify(result));
+    assert.equal((await fixture.call('whoami')).id,unidentified.id);
     assert.equal(result.verification.deliveryStatus,'delivered');
-    const delivered=JSON.parse((await readFile(deliveries,'utf8')).trim());
+    const delivered=(await readFile(deliveries,'utf8')).trim().split('\n').map(row=>JSON.parse(row)).find(row=>row.target===target && row.message.includes('notification_ack'));
+    assert.ok(delivered);
     const challenge=JSON.parse(delivered.message.slice(delivered.message.indexOf('{'),delivered.message.lastIndexOf('}')+1));
     const acknowledged=await fixture.call('notification_ack',challenge.args);
     assert.equal(acknowledged.reachability,'verified');
+    assert.equal(acknowledged.identityResolution.state,'resolved');
+    assert.equal(acknowledged.identityResolution.accountId,profiles[1]);
+    assert.equal(acknowledged.identityResolution.evidence.kind,'claude-session-handshake');
+    assert.equal(acknowledged.identityResolution.evidence.target,target);
+    assert.ok(acknowledged.identityResolution.evidence.confirmedAt);
+    const linked=await fixture.call('whoami');
+    assert.equal(linked.id,profiles[1]);
+    assert.equal(linked.sourceId,unidentified.sourceId);
+    assert.equal(linked.orgName,'Fixture');
+    assert.deepEqual(linked.identityResolution,acknowledged.identityResolution);
+    const replay=await fixture.call('notification_ack',challenge.args);
+    assert.equal(replay.error.code,'HANDSHAKE_INVALID_OR_EXPIRED');
+    await fixture.restart();
+    assert.equal((await fixture.call('whoami')).id,profiles[1]);
+    assert.deepEqual((await fixture.call('whoami')).identityResolution,linked.identityResolution);
     await fixture.call('notify_control',{action:'bind',target,accountId:profiles[1],verify:false});
     assert.equal((await fixture.call('notify_status',{target})).targets[0].reachability,'verified');
     const saved=await fixture.call('notify_control',{action:'route',target});
@@ -161,8 +182,31 @@ for await(const line of createInterface({input:process.stdin})) {const {id}=JSON
     const changed=await fixture.call('notify_status',{target});
     assert.equal(changed.targets[0].reachability,'unverified');
     assert.equal(changed.targets[0].reason,'handshake-required');
-    const sends=(await readFile(deliveries,'utf8')).trim().split('\n').map(row=>JSON.parse(row));
-    assert.deepEqual(sends.map(({accountId,target})=>({accountId,target})),[{accountId:profiles[1],target}]);
+    await fixture.call('notify_control',{action:'verify',target});
+    const last=JSON.parse((await readFile(deliveries,'utf8')).trim().split('\n').at(-1)!);
+    const conflictingChallenge=JSON.parse(last.message.slice(last.message.indexOf('{'),last.message.lastIndexOf('}')+1));
+    const conflict=await fixture.call('notification_ack',conflictingChallenge.args);
+    assert.equal(conflict.reachability,'verified');
+    assert.equal(conflict.identityResolution.state,'conflict');
+    assert.equal(conflict.identityResolution.code,'ACCOUNT_IDENTITY_CONFLICT');
+    assert.equal(conflict.identityResolution.accountId,profiles[1]);
+    assert.equal(conflict.identityResolution.evidence.accountId,profiles[0]);
+    assert.equal((await fixture.call('whoami')).id,profiles[1]);
+    assert.equal((await fixture.call('accounts',{id:profiles[1]})).health.state,'attention');
+    await fixture.restart();
+    assert.equal((await fixture.call('whoami')).identityResolution.state,'conflict');
+    await fixture.call('notify_control',{action:'route',target,accountId:profiles[1]});
+    await fixture.call('notify_control',{action:'verify',target});
+    const retry=JSON.parse((await readFile(deliveries,'utf8')).trim().split('\n').at(-1)!);
+    const retryChallenge=JSON.parse(retry.message.slice(retry.message.indexOf('{'),retry.message.lastIndexOf('}')+1));
+    await fixture.call('notify_control',{action:'route',target,accountId:profiles[0]});
+    assert.equal((await fixture.call('notification_ack',retryChallenge.args)).error.code,'HANDSHAKE_INVALID_OR_EXPIRED');
+    assert.equal((await fixture.call('whoami')).identityResolution.state,'conflict');
+    await fixture.call('notify_control',{action:'verify',target,accountId:profiles[1]});
+    const corrected=JSON.parse((await readFile(deliveries,'utf8')).trim().split('\n').at(-1)!);
+    const correctedChallenge=JSON.parse(corrected.message.slice(corrected.message.indexOf('{'),corrected.message.lastIndexOf('}')+1));
+    assert.equal((await fixture.call('notification_ack',correctedChallenge.args)).identityResolution.state,'resolved');
+    assert.equal((await fixture.call('whoami')).identityResolution.state,'resolved');
   } finally {
     await fixture?.close();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));
     await rm(directory,{recursive:true,force:true});
