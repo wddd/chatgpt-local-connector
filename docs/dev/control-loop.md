@@ -185,6 +185,8 @@ Connector execution metadata records ARC's writer preference, not a lease that s
 
 After an ARC turn fails/is interrupted, reuse owner snapshots, event wakeups, and the two-second fallback to observe the immediately following turn. Do not add a poller. Read persisted history only after a snapshot shows a candidate. Confirmed new user content stops inheritance observation.
 
+Startup reconciles persisted source bindings before releasing queued delivery, then retries unavailable observations in the same observer loop. Native terminal turn records remain authoritative when the new app-server reports `notLoaded`; ARC does not require or acquire a live writer to publish those records. Each bound turn has one deterministic terminal event ID and a persisted terminal marker. Repeated observations and restarts cannot enqueue a second terminal event. Unknown or still-running history remains pending rather than inventing an interruption. Delivery uses the existing persisted bucket, breaker, and transport retry rules; a remote send accepted immediately before a crash can still have an uncertain acknowledgement.
+
 All conditions are required:
 
 - The predecessor has an ARC dispatch record. Snapshot and persisted history agree on adjacency.

@@ -3505,6 +3505,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn downtime_terminal_reconciliation_is_idempotent_without_a_loaded_writer() {
+        // Regression: connector restart left interrupted/completed bound turns with zero deliveries forever.
+        for (native, expected) in [
+            ("interrupted", "interrupted"),
+            ("completed", "completed"),
+            ("failed", "failed"),
+        ] {
+            let dir = Sandbox::new();
+            let mut b = fixture(&dir.0);
+            let fake = Fake::success();
+            let observed = crate::waiter::classify(
+                &json!({"thread":{"id":b.thread_id,
+                "status":{"type":"notLoaded"},"turns":[{"id":b.turn_id,"status":native,"items":[]}]}}),
+                &mut Some(b.turn_id.clone()),
+            );
+            process(&fake, &dir.0, &mut b, &observed).await.unwrap();
+            let delivered =
+                governance::status_in(&dir.0, "claude", &json!({"all":true}), i64::MAX, &json!({}))
+                    .unwrap();
+            for _ in 0..3 {
+                let mut restored = binding(&dir.0, &b.thread_id, &b.turn_id).unwrap().unwrap();
+                super::recover(&dir.0, &mut restored).unwrap();
+                process(&fake, &dir.0, &mut restored, &observed)
+                    .await
+                    .unwrap();
+            }
+            let replayed =
+                governance::status_in(&dir.0, "claude", &json!({"all":true}), i64::MAX, &json!({}))
+                    .unwrap();
+            assert_eq!(replayed["deliveries"].as_array().unwrap().len(), 1);
+            assert_eq!(replayed["deliveries"][0]["kind"], expected);
+            assert_eq!(replayed["deliveries"][0]["state"], "delivered");
+            assert_eq!(
+                replayed["targets"][0]["tokens"],
+                delivered["targets"][0]["tokens"]
+            );
+            assert_eq!(
+                replayed["targets"][0]["breaker"],
+                delivered["targets"][0]["breaker"]
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn request_dedup_survives_restart_and_terminal_follows_interaction() {
         // Regression: replayed interaction after reload must not duplicate the pending event.
         let dir = Sandbox::new();

@@ -245,18 +245,18 @@ pub(crate) fn classify(observation: &Value, selected: &mut Option<String>) -> Va
             .any(|f| matches!(f.as_str(), Some("waitingOnApproval" | "waitingOnUserInput")))
     });
     let recorded = string(&turn, "status");
-    let (state, reason) = if matches!(runtime, "unknown" | "notLoaded" | "") {
-        ("unconfirmed", "runtime-ownership-unknown")
-    } else if turn.is_null() {
+    let (state, reason) = if turn.is_null() {
         ("unconfirmed", "turn-not-found")
-    } else if !interactions.is_empty() || blocked {
-        ("interaction-required", "native-interaction")
     } else if recorded == "completed" {
         ("completed", "native-turn-terminal")
     } else if recorded == "failed" {
         ("failed", "native-turn-terminal")
     } else if matches!(recorded, "interrupted" | "cancelled") {
         ("cancelled", "native-turn-terminal")
+    } else if matches!(runtime, "unknown" | "notLoaded" | "") {
+        ("unconfirmed", "runtime-ownership-unknown")
+    } else if !interactions.is_empty() || blocked {
+        ("interaction-required", "native-interaction")
     } else if recorded == "inProgress" && runtime == "active" {
         ("running", "native-turn-active")
     } else {
