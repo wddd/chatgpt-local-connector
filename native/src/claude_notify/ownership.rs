@@ -7,13 +7,18 @@ fn path(thread: &str) -> Result<PathBuf> {
         .join("execution/handoffs")
         .join(format!("{thread}.json")))
 }
-pub(crate) fn read(thread: &str) -> Result<Value> {
+fn stored(thread: &str) -> Result<Value> {
     let path = path(thread)?;
     if path.exists() {
         load(&path)
     } else {
         Ok(json!({"currentOwner":"unknown","history":[]}))
     }
+}
+pub(crate) fn read(thread: &str) -> Result<Value> {
+    let mut state = stored(thread)?;
+    state.as_object_mut().map(|state| state.remove("enqueued"));
+    Ok(state)
 }
 pub(crate) async fn observe(thread: &str, ownership: &Value) -> Result<Value> {
     let owner = ownership["owner"]
@@ -25,7 +30,7 @@ pub(crate) async fn observe(thread: &str, ownership: &Value) -> Result<Value> {
         });
     let (mut state, bindings) = {
         let _guard = LOCK.lock().await;
-        let mut state = read(thread)?;
+        let mut state = stored(thread)?;
         let all = records(&directory())?;
         let bindings = all
             .iter()
@@ -73,14 +78,32 @@ pub(crate) async fn observe(thread: &str, ownership: &Value) -> Result<Value> {
     // History is durable before events. Re-observation repairs an interrupted
     // enqueue using stable, source-scoped IDs across successor bindings.
     for mut b in bindings {
+        let cursor = state["enqueued"][&b.source_id].as_u64().unwrap_or(0) as usize;
+        let history = state["history"]
+            .as_array()
+            .ok_or("INVALID_HANDOFF_HISTORY")?;
+        if cursor >= history.len() {
+            continue;
+        }
         process(
             &directory(),
             &LOCK,
             &mut b,
-            &json!({"state":"unconfirmed","handoffs":state["history"]}),
+            &json!({"state":"unconfirmed","handoffs":history.iter().skip(cursor).collect::<Vec<_>>()}),
         )
         .await?;
+        // This cursor outlives per-turn retention. Merge after enqueue so a
+        // crash can repair the queue without ever replaying retired deliveries.
+        let _guard = LOCK.lock().await;
+        let mut current = stored(thread)?;
+        if !current["enqueued"].is_object() {
+            current["enqueued"] = json!({});
+        }
+        let enqueued = current["enqueued"][&b.source_id].as_u64().unwrap_or(0);
+        current["enqueued"][&b.source_id] = json!(enqueued.max(history.len() as u64));
+        save(&path(thread)?, &current)?;
     }
+    state.as_object_mut().map(|state| state.remove("enqueued"));
     state["ownership"] = ownership.clone();
     Ok(state)
 }

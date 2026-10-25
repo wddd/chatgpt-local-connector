@@ -538,9 +538,8 @@ fn notification_since(mut b: Option<Binding>, since: Option<&str>) -> Value {
     notification(b)
 }
 pub(crate) fn retry_pending(thread: &str, turn: &str) -> Result<bool> {
-    Ok(binding(&directory(), thread, turn)?.is_some_and(|b| {
-        !b.terminal && matches!(string(&b.retry, "status"), "scheduled" | "submitting")
-    }))
+    Ok(binding(&directory(), thread, turn)?
+        .is_some_and(|b| matches!(string(&b.retry, "status"), "scheduled" | "submitting")))
 }
 pub(crate) fn retry_status(thread: &str, turn: &str) -> Result<Value> {
     let Some(b) = binding(&directory(), thread, turn)? else {
@@ -2406,6 +2405,16 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                     let mut observed = observed;
                     for request in observed["interaction"].as_array_mut().into_iter().flatten() {
                         crate::respond_tokens::issue(&b.source_id, request)?;
+                    }
+                    // Downtime terminal reconciliation precedes capacity recovery.
+                    // A scheduled retry must not erase the predecessor's one event.
+                    if b.observation["reconciliation"] == "pending-after-restart"
+                        && matches!(
+                            string(&observed, "state"),
+                            "completed" | "failed" | "cancelled"
+                        )
+                    {
+                        process(&directory(), &LOCK, &mut b, &observed).await?;
                     }
                     match retry::handle(&control, &mut b, &observed).await {
                         Ok(true) => continue,

@@ -222,6 +222,13 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       assert.equal(continuedOrigin.executionOwner,'desktop');
       const originStatus=await status();
       assert.ok(originStatus.threads[0].turns.some((turn:any)=>turn.turnId===continuedOrigin.turnId && turn.target===target));
+      const archivedPath=path.join(directory,'archived_sessions','resume.jsonl');
+      await mkdir(path.dirname(archivedPath)); await writeFile(archivedPath,history.map(row=>JSON.stringify(row)).join('\n')+'\n');
+      const archived=read(); archived[interrupted.threadId].path=await realpath(archivedPath); archived[interrupted.threadId].turns.at(-1).status='completed';save(archived);
+      for(const socket of sockets)snapshot(socket,interrupted.threadId);
+      const archiveDeadline=Date.now()+10000; let archiveStatus:any;
+      do {archiveStatus=await status(); if(archiveStatus.threads[0].turns.every((turn:any)=>turn.diagnosis.scope.endedBy==='thread-archived'))break; await new Promise(resolve=>setTimeout(resolve,100));}while(Date.now()<archiveDeadline);
+      assert.ok(archiveStatus.threads[0].turns.every((turn:any)=>turn.diagnosis.scope.endedBy==='thread-archived'),JSON.stringify(archiveStatus));
     } finally {desktopWriter.stdin.end(); await new Promise(resolve=>desktopWriter.once('exit',resolve));}
     const action = await fixture.completed('codex_create',{prompt:'ARC resume fixture',thread:{cwd:directory},notify:{channel:'claude-session',target}});
     const actionData=read(); actionData[action.threadId].turns.at(-1).status='interrupted'; save(actionData);
@@ -249,5 +256,22 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       const unbound=await fixture.completed('codex_resume',{threadId:action.threadId,turnId:fromPanel.turnId});
       assert.equal(unbound.error.code,'RESUME_SOURCE_MISMATCH',JSON.stringify(unbound));
     } finally {actionWriter.stdin.end(); await new Promise(resolve=>actionWriter.once('exit',resolve));}
+    await fixture.api('task-settings',{codexRetryInitialSeconds:3600},'PUT');
+    const failedDuringDowntime=await fixture.completed('codex_create',{prompt:'Capacity failure during downtime',thread:{cwd:directory},model:'fixture-model',notify:{channel:'claude-session',target}});
+    const capacity=read(); capacity[failedDuringDowntime.threadId].turns.at(-1).status='failed';
+    capacity[failedDuringDowntime.threadId].turns.at(-1).error={codexErrorInfo:'serverOverloaded'};save(capacity);
+    await fixture.restart();
+    const capacityDeadline=Date.now()+15000;
+    let capacityStatus:any;
+    do { capacityStatus=await fixture.call('notify_status',{threadId:failedDuringDowntime.threadId,all:true});
+      if(capacityStatus.deliveries.some((d:any)=>d.kind==='failed') && capacityStatus.threads[0].diagnosis.retry.status==='scheduled')break;
+      await new Promise(resolve=>setTimeout(resolve,100));
+    } while(Date.now()<capacityDeadline);
+    assert.equal(capacityStatus.deliveries.filter((d:any)=>d.kind==='failed').length,1,JSON.stringify(capacityStatus));
+    assert.equal(capacityStatus.threads[0].diagnosis.retry.status,'scheduled',JSON.stringify(capacityStatus));
+    await fixture.restart();
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    const capacityReplay=await fixture.call('notify_status',{threadId:failedDuringDowntime.threadId,all:true});
+    assert.equal(capacityReplay.deliveries.filter((d:any)=>d.kind==='failed').length,1);
   } finally { await fixture.close(); for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); await rm(directory, {recursive:true,force:true}); }
 });

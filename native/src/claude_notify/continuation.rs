@@ -135,10 +135,29 @@ pub(crate) fn evidence_from_history(
 }
 
 // Called under the notification lock; record-first writes are restart-idempotent.
+fn close_scope(dir: &Path, b: &mut Binding, reason: &str) -> Result<()> {
+    let start = |b: &Binding| {
+        if b.scope_started_at == 0 {
+            b.created_at.saturating_mul(1000)
+        } else {
+            b.scope_started_at
+        }
+    };
+    for mut member in records(dir)?.into_iter().filter(|member| {
+        member.thread_id == b.thread_id
+            && member.source_id == b.source_id
+            && start(member) == start(b)
+    }) {
+        member.scope_end = Some(reason.into());
+        persist(dir, &member)?;
+    }
+    b.scope_end = Some(reason.into());
+    Ok(())
+}
+
 pub(super) fn adopt(dir: &Path, b: &mut Binding, observation: &Value) -> Result<()> {
     if observation["archived"] == true {
-        b.scope_end = Some("thread-archived".into());
-        persist(dir, b)?;
+        close_scope(dir, b, "thread-archived")?;
     }
     if b.scope_end.is_some() || (!b.agent.is_empty() && b.agent != "codex") {
         return Ok(());
@@ -155,7 +174,7 @@ pub(super) fn adopt(dir: &Path, b: &mut Binding, observation: &Value) -> Result<
         }
         if observation["state"] == "completed" && !b.continuation_bound {
             b.successor = json!({"turnId":next,"inherited":false,"reason":"predecessor-completed"});
-            b.scope_end = Some("unrelated-native-turn".into());
+            close_scope(dir, b, "unrelated-native-turn")?;
             persist(dir, b)?;
             return Ok(());
         }
@@ -171,7 +190,7 @@ pub(super) fn adopt(dir: &Path, b: &mut Binding, observation: &Value) -> Result<
         }
         if observation["nativeContinuation"]["excluded"] == true {
             b.successor = json!({"turnId":observation["nextTurnId"],"inherited":false,"reason":observation["nativeContinuation"]["reason"]});
-            b.scope_end = Some("unrelated-native-content".into());
+            close_scope(dir, b, "unrelated-native-content")?;
             b.continuation_bound = true;
             persist(dir, b)?;
             return Ok(());

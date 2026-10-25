@@ -57,5 +57,6 @@ pub(super) fn turn(b: &Binding) -> Value {
         json!({"via":"query","op":"codex_read","args":{"threadId":b.thread_id,"statusOnly":true},"hint":"Read the current native turn. Unknown history remains pending; a new unrelated turn does not inherit this binding."})
     };
     json!({"reasons":reasons,"terminal":b.terminal,"scope":{"threadId":b.thread_id,"sourceId":b.source_id,"active":b.scope_end.is_none(),"endedBy":b.scope_end},
-        "successor":b.successor,"observation":b.observation,"next":next})
+        "successor":b.successor,"observation":b.observation,
+        "retry":{"status":b.retry["status"],"reason":b.retry["reason"],"notBefore":b.retry["notBefore"],"successorTurnId":b.retry["successorTurnId"]},"next":next})
 }
