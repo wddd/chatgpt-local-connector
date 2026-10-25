@@ -1287,6 +1287,45 @@ test('stdio bridge forwards negotiated progress, preserves final replies and can
   } finally {child.kill();}
 });
 
+test('non-object MCP args report their JSON type without exposing submitted content', async () => {
+  // Regression: act rejected non-object args with no received type in the validation error.
+  const secret = 'private-argument-content';
+  for (const [name,op] of [['query','read'],['act','write']] as const) {
+    for (const [args,type] of [
+      [JSON.stringify({path:secret,content:'`{ "quoted": "value" }`\n'}),'string'],
+      [secret,'string'],['{broken','string'],[null,'null'],[false,'boolean'],[42,'number'],[[],'array'],
+    ] as const) {
+      const response=await client.callTool({name,arguments:{op,args}});
+      const error=(response.structuredContent as any).result.error;
+      assert.equal(response.isError,true);
+      assert.equal(error.code,'INVALID_ARGUMENTS');
+      assert.equal(error.field,'/args');
+      assert.match(error.message,new RegExp(`received JSON type ${type}\\b`));
+      assert.doesNotMatch(JSON.stringify(response),new RegExp(secret));
+    }
+  }
+});
+
+test('object MCP args preserve nested values, quotes and large multiline strings', async () => {
+  // Regression: cloud act calls with nested notify or long quoted content failed outer args validation.
+  const content='`code` {"quoted":"value"} | <tag> \'single\' (parentheses)\n'.repeat(1500);
+  const file=path.join(directory,'large-args.md');
+  const written=await completed('write',{path:file,content,requestId:randomUUID()});
+  assert.equal(written.state,'completed');
+  assert.equal(await readFile(file,'utf8'),content);
+  const created=await completed('codex_create',{
+    project:directory,prompt:content,thread:{model:'fixture-dispatch-completed'},
+    purpose:'self-test',notify:null,requestId:randomUUID(),waitMs:1000,
+  });
+  assert.equal(created.state,'completed');
+  assert.equal(typeof created.threadId,'string');
+  const invalid=await call('codex_create',{prompt:content,notify:{channel:'claude-session',target:false}});
+  assert.equal(invalid.response.isError,true);
+  assert.equal(invalid.result.error.code,'INVALID_ARGUMENTS');
+  assert.equal(invalid.result.error.field,'/notify/target');
+  assert.match(invalid.result.error.message,/received JSON type boolean\b/);
+});
+
 test('argument errors are short, field-specific and leave unread inbox untouched', async () => {
   // Contract: argument errors are short, field-specific and leave unread inbox untouched.
   const created = await dispatchFixture('fixture-dispatch-completed');

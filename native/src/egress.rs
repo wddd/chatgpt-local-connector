@@ -506,7 +506,17 @@ pub(crate) fn validation_error(
                 .map(|key| format!("Unknown field; did you mean {key}?"))
                 .unwrap_or_else(|| "Unknown field; see guide for supported parameters.".into())
         }
-        Kind::Type { .. } => error.masked().to_string(),
+        Kind::Type { .. } => {
+            let received = match error.instance.as_ref() {
+                Value::Null => "null",
+                Value::Bool(_) => "boolean",
+                Value::Number(_) => "number",
+                Value::String(_) => "string",
+                Value::Array(_) => "array",
+                Value::Object(_) => "object",
+            };
+            format!("{}; received JSON type {received}.", error.masked())
+        }
         Kind::Enum { options } => format!("Expected one of {options}."),
         Kind::Constant { expected_value } => format!("Expected {expected_value}."),
         Kind::Maximum { limit } => format!("Must be at most {limit}."),
