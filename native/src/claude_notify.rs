@@ -265,7 +265,7 @@ pub(crate) async fn bind(
     let dir = directory();
     let created = binding(&dir, thread, turn)?.is_none();
     let origin = crate::kernel::origin::current_origin();
-    let mut continued = if created && args.get("notify").is_none() && cause["op"] == "codex_send" {
+    let continued = if created && args.get("notify").is_none() && cause["op"] == "codex_send" {
         records(&dir)?
             .into_iter()
             .filter(|b| {
@@ -278,16 +278,6 @@ pub(crate) async fn bind(
     } else {
         None
     };
-    if created && continued.is_none() {
-        if let Some(entry) =
-            crate::app_replace::continuation_entry(thread, string(&cause, "requestId"))?
-        {
-            if entry["binding"]["origin"] == origin && entry["binding"]["notify"] == args["notify"]
-            {
-                continued = binding(&dir, thread, string(&entry, "turnId"))?;
-            }
-        }
-    }
     if created
         && continued.is_none()
         && matches!(string(&cause, "op"), "codex_send" | "codex_create")

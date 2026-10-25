@@ -628,6 +628,11 @@ pub async fn run_worker(id: &str) -> Result<()> {
                 entry["state"] = json!("needs-attention");
                 entry["reason"] = json!("shutdown-snapshot-unconfirmed");
             }
+            if receipt["interruptedTurns"].as_array().into_iter().flatten().any(|entry|
+                entry["threadId"] == receipt["continuation"]["threadId"]) {
+                receipt["continuationState"] = json!("needs-attention");
+                receipt["continuationError"] = json!("shutdown-snapshot-unconfirmed");
+            }
         }
         phase(&path, &mut receipt, "installing", None).await?;
         // Journal before touching the original: even a partial removal must restore the verified backup.

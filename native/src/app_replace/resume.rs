@@ -1,7 +1,10 @@
-//! Replacement continuations reuse existing dispatch, queue and notification contracts.
+//! Replacement journals and triggers the existing interrupted-turn resume contract.
 use super::*;
 
-const PROMPT: &str = "The previous turn was interrupted by an ARC update. Check the current state of your work, then continue the original task.";
+/// Native interrupted-turn recovery carries identity only, never new user input.
+pub fn resume_request(thread: &str, turn: &str, request: &str) -> Value {
+    json!({"threadId":thread,"turnId":turn,"requestId":request,"waitMs":0})
+}
 
 pub(crate) async fn snapshot(control: &crate::control::Control) -> Result<Value> {
     let health = control.health().await;
@@ -46,7 +49,7 @@ pub(crate) async fn snapshot(control: &crate::control::Control) -> Result<Value>
         let binding = crate::claude_notify::replacement_turn_binding(&thread, Some(&turn))?;
         let mut entry = json!({"threadId":thread,"turnId":turn,"executionOwner":"connector",
             "binding":binding,"dispatch":binding["dispatch"],"configuration":{"model":binding["model"],"turn":binding["turn"]},"pendingInteractions":interactions,
-            "state":"recorded","dispatchRequestId":id(),"observedAt":now()});
+            "state":"recorded","operation":"codex_resume","observedAt":now()});
         let reason = if !interactions.is_empty() {
             Some("pending-interaction-cannot-reconnect")
         } else if health["activeWrites"] != 0 {
@@ -67,31 +70,7 @@ pub(crate) async fn snapshot(control: &crate::control::Control) -> Result<Value>
             entry["state"] = json!("needs-attention");
             entry["reason"] = json!(reason);
         } else {
-            let mut args = json!({"threadId":thread,"prompt":PROMPT,"requestId":id(),"sendMode":"queue","waitMs":0});
-            if binding["model"].is_string() {
-                args["model"] = binding["model"].clone();
-            }
-            if binding["turn"].is_object() {
-                args["turn"] = binding["turn"].clone();
-            }
-            // Preserve the effective dispatch selection even when an older binding lacks retry settings.
-            for field in ["model", "effort", "serviceTier"] {
-                let value = binding["dispatch"]["effectiveConfiguration"]
-                    .get(field)
-                    .or_else(|| binding["dispatch"].get(field));
-                if let Some(value) = value.filter(|v| v.is_string() && *v != "unknown") {
-                    if field == "model" {
-                        args["model"] = value.clone();
-                    } else {
-                        if !args["turn"].is_object() {
-                            args["turn"] = json!({});
-                        }
-                        args["turn"][field] = value.clone();
-                    }
-                }
-            }
-            entry["configuration"] = json!({"model":args["model"],"turn":args["turn"]});
-            entry["continuation"] = args;
+            entry["continuation"] = resume_request(&thread, &turn, &id());
         }
         turns.push(entry);
     }
@@ -132,19 +111,18 @@ pub fn apply_snapshot(receipt: &mut Value, snapshot: Value) {
             if entry["state"] == "recorded" && old["continuation"].is_object() {
                 entry["continuation"] = old["continuation"].clone();
             }
-            entry["dispatchRequestId"] = old["dispatchRequestId"].clone();
         }
         if entry["threadId"] == receipt["continuation"]["threadId"] {
+            // Explicit new instructions retain the existing codex_send contract.
+            // They replace automatic resume, rather than adding a second turn.
             if entry["state"] == "recorded" {
-                for (key, value) in receipt["continuation"]
-                    .as_object()
-                    .cloned()
-                    .unwrap_or_default()
-                {
-                    entry["continuation"][key] = value;
-                }
+                entry["state"] = json!("explicit-continuation");
+                entry["operation"] = json!("codex_send");
+                entry["continuation"] = receipt["continuation"].clone();
+            } else {
+                receipt["continuationState"] = json!("needs-attention");
+                receipt["continuationError"] = entry["reason"].clone();
             }
-            receipt["continuationState"] = json!("covered-by-interrupted-turn");
         }
     }
     for mut old in previous {
@@ -166,14 +144,20 @@ pub(super) fn status_details(receipt: &mut Value) -> Result<()> {
         .into_iter()
         .flatten()
     {
+        if entry["operation"] != "codex_resume" {
+            continue;
+        }
         let request = string(&entry["continuation"], "requestId");
         if uuid::Uuid::parse_str(request).is_err() {
             continue;
         }
-        let path = root().join("send-queue").join(format!("{request}.json"));
-        if path.exists() {
-            let row = load(&path)?;
-            entry["queue"] = json!({"state":row["state"],"turnId":row["turnId"],"reason":row["reason"],"error":row["error"],"dispatchRequestId":row["dispatchRequestId"]});
+        let store = crate::kernel::receipts::ReceiptStore::new("");
+        if store.path(request)?.exists() {
+            // The ordinary receipt reader marks reservations from a lost Core
+            // unconfirmed. Offline status is read-only and never resubmits them.
+            let session = load(&root().join("app/native.json")).unwrap_or(Value::Null);
+            entry["resumeReceipt"] =
+                crate::egress::receipt(store.read(request, string(&session, "instance"))?);
         }
     }
     Ok(())
@@ -222,8 +206,8 @@ pub(crate) fn continuation_entry(thread: &str, request: &str) -> Result<Option<V
         for entry in receipt["interruptedTurns"].as_array().into_iter().flatten() {
             if entry["threadId"] == thread
                 && entry["binding"].is_object()
-                && (entry["continuation"]["requestId"] == request
-                    || entry["dispatchRequestId"] == request)
+                && entry["operation"] == "codex_resume"
+                && entry["continuation"]["requestId"] == request
                 && matches!(
                     string(entry, "state"),
                     "submitting" | "receipt-returned" | "unconfirmed"
@@ -236,17 +220,6 @@ pub(crate) fn continuation_entry(thread: &str, request: &str) -> Result<Option<V
     Ok(None)
 }
 
-/// A restart continuation cannot attach itself to newer work or repeat completed work.
-pub fn continuation_outcome(original: &Value, current: &Value) -> Option<&'static str> {
-    if original != &current["id"] {
-        Some("thread-advanced")
-    } else if current["status"] == "completed" {
-        Some("turn-completed-before-shutdown")
-    } else {
-        None
-    }
-}
-
 #[cfg(target_os = "macos")]
 pub(super) async fn deliver(path: &Path, receipt: &mut Value) -> Result<()> {
     let count = receipt["interruptedTurns"].as_array().map_or(0, Vec::len);
@@ -257,7 +230,7 @@ pub(super) async fn deliver(path: &Path, receipt: &mut Value) -> Result<()> {
         let args = receipt["interruptedTurns"][index]["continuation"].clone();
         receipt["interruptedTurns"][index]["state"] = json!("submitting");
         save(&path.join("status.json"), receipt)?;
-        let result = crate::cli_acceptance::control("codex_send", args).await;
+        let result = crate::cli_acceptance::control("codex_resume", args).await;
         let entry = &mut receipt["interruptedTurns"][index];
         match result {
             Ok(result) => {

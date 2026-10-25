@@ -534,16 +534,19 @@ async fn local_control(s: &Arc<Service>, body: Value) -> Result<Value> {
             .unwrap_or("query")
     };
     let mut args = body.get("args").cloned().unwrap_or(json!({}));
-    let replacement = if name == "codex_send" {
-        crate::app_replace::continuation_context(&args)?
+    let replacement = if matches!(name, "codex_send" | "codex_resume") {
+        crate::app_replace::continuation_context(name, &args)?
     } else {
         None
     };
     let origin = if let Some(context) = &replacement {
-        if args.get("notify").is_none() {
-            args["notify"] = context["notify"].clone();
+        if name == "codex_send" {
+            if args.get("notify").is_none() {
+                args["notify"] = context["notify"].clone();
+            }
+            args["purpose"] = context["purpose"].clone();
         }
-        args["purpose"] = context["purpose"].clone();
+        // codex_resume owns notification inheritance and accepts no new input/settings.
         context["origin"].clone()
     } else {
         crate::sources::local_origin().await?

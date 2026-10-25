@@ -575,14 +575,6 @@ pub(crate) fn record(receipt: &Value) -> Result<()> {
     }
     row["title"] = json!(crate::control::dispatch_title(&receipt["task"]));
     row["origin"] = receipt["origin"].clone();
-    if let Some(entry) = crate::app_replace::continuation_entry(
-        string(receipt, "threadId"),
-        string(receipt, "requestId"),
-    )? {
-        row["continuationOf"] = entry["turnId"].clone();
-        row["dispatchSource"] = json!("app-replacement");
-        row["originalRequestId"] = entry["dispatch"]["requestId"].clone();
-    }
     row["agentAccountId"] = receipt["agentAccountId"].clone();
     row["agent"] = receipt["agent"]
         .as_str()

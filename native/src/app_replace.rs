@@ -3,7 +3,7 @@ use crate::*;
 mod backups;
 mod resume;
 pub use backups::{cleanup_candidate, legacy_backup_name};
-pub use resume::{apply_snapshot, continuation_outcome, resumable_waiting};
+pub use resume::{apply_snapshot, resumable_waiting, resume_request};
 pub(crate) use resume::{capture_shutdown, continuation_entry, snapshot};
 
 #[cfg(target_os = "macos")]
@@ -107,7 +107,7 @@ fn directory() -> PathBuf {
 
 // Only the exact local receipt's durable continuation can reuse dispatch origin.
 // Remote control-source arguments cannot opt into this path.
-pub(crate) fn continuation_context(args: &Value) -> Result<Option<Value>> {
+pub(crate) fn continuation_context(operation: &str, args: &Value) -> Result<Option<Value>> {
     let Ok(entries) = std::fs::read_dir(directory()) else {
         return Ok(None);
     };
@@ -118,7 +118,9 @@ pub(crate) fn continuation_context(args: &Value) -> Result<Option<Value>> {
         }
         let receipt = load(&path)?;
         for entry in receipt["interruptedTurns"].as_array().into_iter().flatten() {
-            if entry["continuation"] == *args
+            if operation == "codex_resume"
+                && entry["operation"] == operation
+                && entry["continuation"] == *args
                 && entry["binding"].is_object()
                 && matches!(
                     string(entry, "state"),
@@ -128,7 +130,8 @@ pub(crate) fn continuation_context(args: &Value) -> Result<Option<Value>> {
                 return Ok(Some(entry["binding"].clone()));
             }
         }
-        if receipt["continuation"] == *args
+        if operation == "codex_send"
+            && receipt["continuation"] == *args
             && receipt["continuationBinding"].is_object()
             && matches!(
                 string(&receipt, "continuationState"),
@@ -142,9 +145,6 @@ pub(crate) fn continuation_context(args: &Value) -> Result<Option<Value>> {
 }
 
 pub(crate) fn continuation_request_matches(thread: &str, request: &str) -> Result<bool> {
-    if continuation_entry(thread, request)?.is_some() {
-        return Ok(true);
-    }
     let Ok(entries) = std::fs::read_dir(directory()) else {
         return Ok(false);
     };
@@ -184,7 +184,7 @@ pub fn status() -> Result<Value> {
 }
 pub fn terminal_next(state: &str) -> Option<&'static str> {
     match state {
-        "succeeded" => Some("Replacement succeeded. Read interruptedTurns and continuation receipts for task recovery; queue acceptance is not task completion. Read cli app status to confirm the running build."),
+        "succeeded" => Some("Replacement succeeded. Read interruptedTurns and continuation receipts for task recovery; resume acceptance is not task completion. Read cli app status to confirm the running build."),
         "cancelled" => Some("Replacement cancelled before installation. The previous app is unchanged. Read error and waiting, resolve the blocker, then retry cli app replace with the original candidate."),
         "rolled-back" => Some("Installation failed and the previous app was restored. Read error and logPath before retrying cli app replace."),
         "failed" => Some("Replacement failed. Read error, backupMoved and logPath. Preserve the recorded backup; do not start another replacement while recovery is required."),
@@ -363,35 +363,43 @@ mod tests {
     }
 
     #[test]
-    fn replacement_continuation_does_not_repeat_completed_or_newer_work() {
-        // Regression: a turn could finish between the replacement snapshot and Core shutdown.
-        let previous = json!("original");
+    fn automatic_replacement_resume_uses_native_identity_without_new_content() {
+        // Regression: generated codex_send input created a separate notification scope instead of native interrupted continuation.
+        let args = resume_request(
+            "thread",
+            "interrupted-turn",
+            "11111111-1111-4111-8111-111111111111",
+        );
+        let spec = catalog()["ops"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|op| op["name"] == "codex_resume")
+            .unwrap();
+        crate::egress::validate_op(spec, &args).unwrap();
+        assert_eq!(args["threadId"], "thread");
+        assert_eq!(args["turnId"], "interrupted-turn");
+        for field in ["prompt", "input", "notify", "model", "turn", "sendMode"] {
+            assert!(args.get(field).is_none());
+        }
         assert_eq!(
-            continuation_outcome(&previous, &json!({"id":"original","status":"interrupted"})),
-            None
-        );
-        assert!(
-            continuation_outcome(&previous, &json!({"id":"original","status":"completed"}))
-                .is_some()
-        );
-        assert!(
-            continuation_outcome(&previous, &json!({"id":"newer","status":"interrupted"}))
-                .is_some()
+            args,
+            resume_request(
+                "thread",
+                "interrupted-turn",
+                "11111111-1111-4111-8111-111111111111"
+            )
         );
     }
 
     #[test]
-    fn final_snapshot_preserves_dispatch_ids_and_reports_new_interactions() {
+    fn final_snapshot_preserves_resume_id_and_reports_new_interactions() {
         // Regression: countdown changes could duplicate a continuation or resend a newly blocked interaction.
-        let old = json!({"threadId":"task","turnId":"turn","state":"recorded","dispatchRequestId":"dispatch","continuation":{"threadId":"task","requestId":"queue","prompt":"continue"}});
+        let old = json!({"threadId":"task","turnId":"turn","state":"recorded","continuation":{"threadId":"task","requestId":"resume","turnId":"turn"}});
         let mut receipt = json!({"interruptedTurns":[old.clone()]});
         apply_snapshot(
             &mut receipt,
-            json!({"turns":[{"threadId":"task","turnId":"turn","state":"recorded","dispatchRequestId":"discard","continuation":{"requestId":"discard"}}]}),
-        );
-        assert_eq!(
-            receipt["interruptedTurns"][0]["dispatchRequestId"],
-            "dispatch"
+            json!({"turns":[{"threadId":"task","turnId":"turn","state":"recorded","continuation":{"requestId":"discard"}}]}),
         );
         assert_eq!(
             receipt["interruptedTurns"][0]["continuation"],
@@ -411,13 +419,13 @@ mod tests {
     }
 
     #[test]
-    fn explicit_continuation_merges_once_and_finished_turns_are_not_submitted() {
+    fn explicit_continuation_replaces_native_resume_and_finished_turns_are_not_submitted() {
         // Regression: a replacing-thread continuation could compete with the automatic batch continuation.
         let explicit = json!({"threadId":"one","requestId":"explicit","prompt":"user instruction"});
         let mut receipt =
             json!({"continuation":explicit,"continuationState":"waiting-for-recovery"});
         let snapshot = json!({"turns":[
-            {"threadId":"one","turnId":"first","state":"recorded","continuation":{"requestId":"generated","model":"model"}},
+            {"threadId":"one","turnId":"first","state":"recorded","continuation":{"requestId":"generated","turnId":"first"}},
             {"threadId":"two","turnId":"second","state":"recorded","continuation":{"requestId":"other"}}
         ]});
         apply_snapshot(&mut receipt, snapshot);
@@ -427,10 +435,11 @@ mod tests {
             "explicit"
         );
         assert_eq!(
-            receipt["interruptedTurns"][0]["continuation"]["model"],
-            "model"
+            receipt["interruptedTurns"][0]["state"],
+            "explicit-continuation"
         );
-        assert_eq!(receipt["continuationState"], "covered-by-interrupted-turn");
+        assert_eq!(receipt["interruptedTurns"][0]["operation"], "codex_send");
+        assert_eq!(receipt["continuationState"], "waiting-for-recovery");
         apply_snapshot(&mut receipt, json!({"turns":[]}));
         assert!(receipt["interruptedTurns"]
             .as_array()
@@ -440,11 +449,27 @@ mod tests {
     }
 
     #[test]
+    fn explicit_continuation_does_not_override_a_pending_interaction() {
+        // Regression: an explicit replacing-thread message could bypass a final pending-interaction snapshot.
+        let mut receipt = json!({"continuation":{"threadId":"thread","requestId":"explicit","prompt":"continue"},"continuationState":"waiting-for-recovery"});
+        apply_snapshot(
+            &mut receipt,
+            json!({"turns":[{"threadId":"thread","turnId":"turn","state":"needs-attention","reason":"pending-interaction-cannot-reconnect"}]}),
+        );
+        assert_eq!(receipt["continuationState"], "needs-attention");
+        assert_eq!(
+            receipt["continuationError"],
+            "pending-interaction-cannot-reconnect"
+        );
+        assert!(receipt["interruptedTurns"][0]["continuation"].is_null());
+    }
+
+    #[test]
     fn replacement_attribution_survives_public_receipt_projection() {
         // Contract: CLI/control-source receipts expose replacement lineage without internal arguments or bindings.
-        let lineage = json!({"threadId":"thread","interruptedTurnId":"old","originalRequestId":"original","requestId":"queue","dispatchRequestId":"send"});
+        let lineage = json!({"threadId":"thread","interruptedTurnId":"old","originalRequestId":"original","requestId":"resume"});
         let receipt = crate::egress::receipt(
-            json!({"requestId":"send","state":"completed","operation":"send","replacementContinuation":lineage,"arguments":{"prompt":"private"},"binding":{"origin":"private"}}),
+            json!({"requestId":"resume","state":"completed","operation":"resume","replacementContinuation":lineage,"arguments":{"prompt":"private"},"binding":{"origin":"private"}}),
         );
         assert_eq!(receipt["replacementContinuation"], lineage);
         assert!(receipt.get("arguments").is_none());

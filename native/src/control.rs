@@ -983,12 +983,12 @@ impl Control {
             Value::Null
         };
         let mut receipt = json!({"agentAccountId":args["agentAccountId"],"agentProfileId":args["agentProfileId"],"origin":crate::kernel::origin::current_origin(),"requestId":request,"backendSession":self.session,"digest":digest,"operation":operation,"arguments":args,"state":"reserved","createdAt":now(),"updatedAt":now()});
-        if operation == "send" {
+        if operation == "resume" {
             if let Some(entry) =
                 crate::app_replace::continuation_entry(string(&args, "threadId"), &request)?
             {
                 receipt["replacementContinuation"] = json!({"threadId":entry["threadId"],"interruptedTurnId":entry["turnId"],
-                    "originalRequestId":entry["dispatch"]["requestId"],"requestId":entry["continuation"]["requestId"],"dispatchRequestId":entry["dispatchRequestId"]});
+                    "originalRequestId":entry["dispatch"]["requestId"],"requestId":entry["continuation"]["requestId"]});
             }
         }
         if operation == "create" || (operation == "native" && args["method"] == "thread/start") {
