@@ -1,4 +1,5 @@
-import './main-checkout-only.mjs';
+import { requireMainCheckout } from './coding-lane.mjs';
+requireMainCheckout();
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';

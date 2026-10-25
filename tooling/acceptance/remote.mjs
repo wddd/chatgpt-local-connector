@@ -1,4 +1,5 @@
-import '../main-checkout-only.mjs';
+import { requireMainCheckout } from '../coding-lane.mjs';
+requireMainCheckout();
 import { execFile } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';

@@ -1,4 +1,3 @@
-import './main-checkout-only.mjs';
 import { developmentConfig } from './dev-identity.mjs';
 import { buildVersion } from './version.mjs';
 import { execFileSync, spawn } from 'node:child_process';

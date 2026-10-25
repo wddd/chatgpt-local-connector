@@ -1,4 +1,5 @@
-import './main-checkout-only.mjs';
+import { requireMainCheckout } from './coding-lane.mjs';
+requireMainCheckout();
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildEnv } from './build-env.mjs';

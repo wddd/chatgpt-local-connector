@@ -33,10 +33,10 @@ resolve the listed files in the lane and run `git rebase --continue`, or abort w
 `git rebase --abort`. Retry landing after resolving. Land one lane at a time.
 
 Run the app, `dev`, `dev:isolated`, installs, desktop packaging, releases and all
-acceptance serially in main after landing. Shared lane markers make these entry
-points refuse in a lane and name main. Markers also protect the private target's
-binaries and local replacement candidates. This is a development workflow guard;
-keep it in place until the lane is removed.
+acceptance serially in main after landing. The shared tooling guard makes npm dev,
+packaging, release, acceptance and Vite dev entry points refuse in a lane and name
+main. Installed products and the published installer contain no lane guard.
+The marker belongs only to the lane checkout; keep it until the lane is removed.
 
 After acceptance, run `npm run wt -- remove <name>` from main to delete the worktree,
 its private target and branch. Unmerged branches and dirty worktrees are retained

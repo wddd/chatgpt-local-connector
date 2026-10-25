@@ -74,7 +74,6 @@ function create(name) {
       mkdirSync(target, { recursive: true });
       console.log('Rust target starts cold (no copy-on-write clone available).');
     }
-    writeFileSync(path.join(target, laneMarker), message);
     if (external) symlinkSync(target, path.join(directory, 'target'), process.platform === 'win32' ? 'junction' : 'dir');
     dependencies(directory);
     dependencies(directory, 'relay-worker');

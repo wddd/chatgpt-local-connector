@@ -1,4 +1,5 @@
-import '../main-checkout-only.mjs';
+import { requireMainCheckout } from '../coding-lane.mjs';
+requireMainCheckout();
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
