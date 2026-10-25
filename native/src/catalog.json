@@ -525,7 +525,7 @@
               "always"
             ],
             "default": "auto",
-            "description": "auto temporarily raises and restores the window after at least 60 seconds of user inactivity. never leaves the foreground unchanged. always raises and keeps the window in front."
+            "description": "auto temporarily raises and restores the window after at least 60 seconds of user inactivity. never leaves the foreground unchanged. always temporarily raises and restores the window regardless of user activity."
           },
           "maxEdge": {
             "type": "integer",
@@ -597,7 +597,7 @@
                           "always"
                         ],
                         "default": "auto",
-                        "description": "auto temporarily raises and restores the window after at least 60 seconds of user inactivity. never leaves the foreground unchanged. always raises and keeps the window in front."
+                        "description": "auto temporarily raises and restores the window after at least 60 seconds of user inactivity. never leaves the foreground unchanged. always temporarily raises and restores the window regardless of user activity."
                       },
                       "maxEdge": {
                         "type": "integer",

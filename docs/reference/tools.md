@@ -345,7 +345,7 @@ Core invokes the bundled arc-screen Swift helper directly. Grant ARC Screen Reco
 | raise | Explicitly activate the app and raise its window |
 | key | Escape/Return/Tab/arrows, letters/digits, or combinations such as cmd+k |
 
-Read a fresh tree after structural changes; refs are window-scoped structural paths. front=auto temporarily activates/restores an inactive target only after 60 seconds without user input. Otherwise capture may report possiblyStale and foreground-dependent input returns FOREGROUND_REQUIRED. never avoids activation; always activates and leaves the target in front. raise is an explicit foreground action.
+Read a fresh tree after structural changes; refs are window-scoped structural paths. front=auto temporarily activates/restores an inactive target only after 60 seconds without user input. Otherwise capture may report possiblyStale and foreground-dependent input returns FOREGROUND_REQUIRED. never avoids activation; always temporarily activates and restores the previous app regardless of user activity. raise is an explicit foreground action.
 
 press/show/raise/key can add `after: {"waitMs":200,"capture":true}` or a capture options object. Maximum wait is 10000 ms. Operation, wait, and capture share one Core lock even if the caller disconnects. If the action succeeds but capture fails, performed=true and captureError preserve the outcome; inspect before repeating the action. performed confirms input submission, so verify the visible result.
 

@@ -150,7 +150,7 @@ final class Focus {
             if required { try fail("FOREGROUND_REQUIRED: The target window is not in the foreground. front=never or user activity within the last 60 seconds prevented foreground activation.") }
             return false
         }
-        if mode == "auto" && restoreApp == nil {
+        if restoreApp == nil {
             restoreApp = NSWorkspace.shared.frontmostApplication
             if let app = restoreApp, AXIsProcessTrusted(), let focused = attribute(root(app), kAXFocusedWindowAttribute) {
                 restoreWindow = (focused as! AXUIElement)

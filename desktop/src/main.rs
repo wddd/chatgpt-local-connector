@@ -118,7 +118,24 @@ fn main() {
         }
         return;
     }
-    tauri::Builder::default()
+    let mut context = tauri::generate_context!();
+    let identifier = &context.config().identifier;
+    let background = std::env::var_os("ARC_DEV_INSTANCE_ID").is_some()
+        || identifier == "com.whzxc.agent-remote-control.dev"
+        || identifier.starts_with("com.whzxc.agent-remote-control.dev.acceptance-");
+    if background {
+        for window in &mut context.config_mut().app.windows {
+            window.focus = false;
+        }
+    }
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = if background {
+        builder.activate_ignoring_other_apps(false)
+    } else {
+        builder
+    };
+    builder
         .manage(updates::UpdateState::default())
         .manage(windows::MainState::default())
         .manage(snapshot::State::default())
@@ -299,7 +316,7 @@ fn main() {
                 }
             }
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("Agent Remote Control failed to start")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested {

@@ -13,6 +13,8 @@ const source = path.resolve(process.argv[2] ?? '');
 const execute = promisify(execFile);
 const version = (await execute('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', path.join(source, 'Contents/Info.plist')])).stdout.trim();
 assert.equal(version, '0.0.0', 'Use the isolated semver fixture, never the installed app');
+const identifier = (await execute('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', path.join(source, 'Contents/Info.plist')])).stdout.trim();
+assert.equal(identifier, 'com.whzxc.agent-remote-control.dev', 'Build the disposable fixture with the development bundle identifier');
 const temporary = await realpath(await mkdtemp(path.join(tmpdir(), 'arc-replacement-acceptance-')));
 const target = path.join(temporary, 'Installed.app');
 const candidate = path.join(temporary, 'Candidate.app');

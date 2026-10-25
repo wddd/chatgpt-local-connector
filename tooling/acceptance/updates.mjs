@@ -48,7 +48,7 @@ const endpoint = `http://127.0.0.1:${server.address().port}`;
 manifest.platforms['darwin-aarch64'].url=endpoint+'/'+name;
 const config = path.join(out, 'updater-config.json');
 const mainWindow = JSON.parse(await readFile('desktop/tauri.conf.json','utf8')).app.windows[0];
-await writeFile(config, JSON.stringify({app:{windows:[{...mainWindow,incognito:true,visible:false,title:'ARC Update Acceptance'}]},plugins:{updater:{endpoints:[endpoint+'/latest.json'],dangerousInsecureTransportProtocol:true}}}));
+await writeFile(config, JSON.stringify({identifier:'com.whzxc.agent-remote-control.dev',app:{windows:[{...mainWindow,incognito:true,visible:false,title:'ARC Update Acceptance'}]},plugins:{updater:{endpoints:[endpoint+'/latest.json'],dangerousInsecureTransportProtocol:true}}}));
 async function command(args, options={}) {
   return execute(args[0], args.slice(1), {env:environment, timeout:180_000, maxBuffer:16*1024*1024,...options});
 }

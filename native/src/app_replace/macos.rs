@@ -368,18 +368,15 @@ fn pid(value: &Value, key: &str) -> Result<u32> {
         .ok_or_else(|| format!("REPLACE_INVALID_OWNER: {key}"))
 }
 async fn launch(target: &Path, expected: &Value) -> Result<()> {
-    output(
-        "/usr/bin/open",
-        &[
-            "-n",
-            "-a",
-            &target.to_string_lossy(),
-            "--args",
-            "--state-dir",
-            &root().to_string_lossy(),
-        ],
-    )
-    .await?;
+    let target_name = target.to_string_lossy();
+    let state_dir = root();
+    let state_name = state_dir.to_string_lossy();
+    let mut args = vec!["-n"];
+    if expected["identifier"] != "com.whzxc.agent-remote-control" {
+        args.push("-g");
+    }
+    args.extend(["-a", &target_name, "--args", "--state-dir", &state_name]);
+    output("/usr/bin/open", &args).await?;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     loop {
         if let (Ok(core), Ok(app)) = (request("health", "GET").await, request("app", "GET").await) {
