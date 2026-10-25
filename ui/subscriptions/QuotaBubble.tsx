@@ -251,7 +251,7 @@ export default function QuotaBubble({
               {(provider.creditBalance ?? 0) > 0 && (
                 <div className="history-period">
                   <span>{t("usageCreditBalance")}</span>
-                  <span>{new Intl.NumberFormat().format(Math.ceil(provider.creditBalance!))} credits</span>
+                  <span>{new Intl.NumberFormat(locale.get()).format(Math.ceil(provider.creditBalance!))} credits</span>
                 </div>
               )}
               {provider.availableResetCount != null && (
