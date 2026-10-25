@@ -1030,6 +1030,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn self_test_archival_remains_optional_in_default_and_full_guides() {
+        // Regression: 52f6618; the default guide must not require self-test archival to complete acceptance.
+        let optional = regex::Regex::new(r"(?i)archiv[^.\n]*optional").unwrap();
+        for source in ["claude", "chatgpt", "other"] {
+            for view in ["default", "full"] {
+                let response = guide(
+                    &json!({"controlSource":source}),
+                    &if view == "full" {
+                        json!({"view":"full"})
+                    } else {
+                        json!({})
+                    },
+                    "en",
+                    &[],
+                );
+                assert!(
+                    optional.is_match(string(&response, "content")),
+                    "{source}/{view}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn interrupted_turn_reads_succeed_while_cancelled_operations_fail() {
         // Contract: task interruption is a valid terminal read; cancelled operations retain OPERATION_FAILED and MCP isError.
         let turn = json!({"state":"cancelled","stateScope":"turn","recordedStatus":"interrupted","threadId":"thread","turnId":"turn"});

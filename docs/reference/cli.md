@@ -31,7 +31,7 @@ Read retained ingress events with `cli logs --stdin` and `{"grep":"Ingress","ing
 
 ## Local build replacement
 
-On macOS, use `cli app replace <absolute-path-to-.app>` for self-replacement, including from an ARC-owned task. `--check` validates without installing; `cli app replace --status` reads the durable outcome even while Core is offline. Use `--now` for an explicit user-directed local replacement; it skips idle checks and countdown and may interrupt ARC-owned work. Normal mode waits for idle work and shows a ten-second restart countdown. Backups live in private OS temporary directories; native notifications and `app replace --status` report phases and completion. The CLI returns a receipt before the detached launchd helper stops ARC. End the calling turn after that receipt. Query status from a new turn after reconnecting. Do not run `app quit` or background a replacement shell script from the task. For a first upgrade, invoke the candidate bundle's Core CLI. See [Local app replacement](app-replacement.md) for validation, acknowledgment, task draining, rollback, and limitations.
+On macOS, use `cli app replace <absolute-path-to-.app>` for self-replacement, including from an ARC-owned task. `--check` validates without installing; `cli app replace --status` reads the durable outcome even while Core is offline. Use `--now` for an explicit user-directed local replacement; it skips idle checks and countdown and may interrupt ARC-owned work. Normal mode waits for idle work and shows a ten-second restart countdown. Backups live under `<state>/app-replacements/backups/`; native notifications and `app replace --status` report phases and completion. The CLI returns a receipt before the detached launchd helper stops ARC. End the calling turn after that receipt. Query status from a new turn after reconnecting. Do not run `app quit` or background a replacement shell script from the task. For a first upgrade, invoke the candidate bundle's Core CLI. See [Local app replacement](app-replacement.md) for validation, acknowledgment, task draining, rollback, and limitations.
 
 ## Control-source management
 
@@ -74,7 +74,11 @@ printf '%s' '{"timeoutMs":1000}' | arc cli control inbox_wait --stdin
 ```
 
 Dispatch defaults to `purpose:"self-test"` and `notify:null`. Explicit stdin
-values override these defaults. Receipts, task records and live activity use
+values override these defaults. Archiving ended self-test threads is optional and
+is not an acceptance completion step. Keep traces for observation or archive them
+later.
+
+Receipts, task records and live activity use
 `origin.ingressId` / `origin.controlSource` = `local-cli`, plus a stable
 `origin.sourceId` and the current `origin.sourceLabel`. It has no ingress configuration or listener. This command uses
 the existing authenticated local Core channel; neither a network ingress nor

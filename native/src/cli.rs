@@ -939,3 +939,20 @@ pub async fn run(args: Vec<String>) -> i32 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn replacement_guide_and_schema_use_state_backups() {
+        // Regression: CLI overview and management schema still advertised OS-temporary replacement backups.
+        let guide = execute(&["guide".into()]).await.unwrap();
+        let schema = execute(&["schema".into(), "app.replace".into()])
+            .await
+            .unwrap();
+        let location = "<state>/app-replacements/backups/";
+        assert!(string(&guide, "markdown").contains(location));
+        assert!(string(&schema, "description").contains(location));
+    }
+}
