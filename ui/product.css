@@ -931,7 +931,7 @@
 .activity-bubble-shell > .activity-mark-read:hover:not(:disabled) { background: var(--success); filter: brightness(1.08); transform: scale(1.1); }
 .activity-bubble-shell > .activity-mark-read:active:not(:disabled) { transform: scale(.92); filter: brightness(.94); }
 @keyframes activity-read-ring { 0% { transform: scale(1); opacity: 0; } 25% { opacity: .8; } 100% { transform: scale(1.6); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .activity-mark-read::before { display: none; }
   .activity-mark-read::after { animation: none; inset: -3px; border-color: var(--success); border-radius: 12px; opacity: .55; }
   .activity-bubble-shell > .activity-mark-read { transition: none; }
