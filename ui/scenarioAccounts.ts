@@ -1,6 +1,6 @@
-import type { Account, AccountKind, AccountLogin } from './accounts';
+import type { ProviderAccount, AccountLogin, AccountsResult } from './types';
 import type { Status, ControlSource } from './state/types';
-// Stateful management fixture. Unknown operations must never reach Core.
+// In-memory implementation of the native management routes in docs/reference/tools.md.
 export function accountScenario(status: Status, sources: ControlSource[]) {
   const now = new Date().toISOString();
   const primary = status.ingresses[0];
@@ -9,53 +9,87 @@ export function accountScenario(status: Status, sources: ControlSource[]) {
   sources.push(chatgpt);
   status.ingresses.push({ ...primary, id: chatgpt.ingressId, name: 'ChatGPT connection', transport: 'openai-tunnel', auth: 'openai', controlSource: 'chatgpt', sources: [chatgpt], url: 'https://chatgpt.example.com/mcp', oauth: { pending: [], grants: [] } });
   status.ingresses.push({ ...primary, id: 'example-spare-connection', name: 'Spare connection', transport: 'https', auth: 'oauth', sources: [], url: 'https://spare.example.com/mcp', oauth: { pending: [], grants: [] } });
-  let accounts: Account[] = [
-    { id: 'account-claude', provider: 'anthropic', identityKey: 'example-claude-identity', alias: 'Studio', email: 'alex@example.com', orgName: 'Example Studio', plan: 'Max', createdAt: now, observedAt: now, sources: [sources[0].id], agentProfiles: [{ agent: 'claude', profileId: 'profile-claude', kind: 'cli-profile', state: 'signed-in', default: true }], notifications: { state: 'verified', sessions: [{ id: 'example-session-1', name: 'Release planning', lastDelivery: now }] }, quota: { windows: [{ id: 'five-hour', label: '5 h', usedPercent: 37, resetsAt: new Date(Date.now() + 7200000).toISOString() }, { id: 'weekly', label: '7 d', usedPercent: 68, resetsAt: new Date(Date.now() + 259200000).toISOString() }] } },
-    { id: 'account-openai', provider: 'openai', identityKey: 'example-openai-identity', alias: 'Personal', email: 'jordan@example.com', orgName: 'Example Lab', plan: 'Plus', createdAt: now, observedAt: now, sources: [chatgpt.id], agentProfiles: [{ agent: 'codex', profileId: 'profile-codex', kind: 'codex-home', state: 'signed-in', default: true }], notifications: { state: 'mcp-events', sessions: [] }, quota: { windows: [{ id: 'weekly', label: '7 d', usedPercent: 24, resetsAt: new Date(Date.now() + 86400000).toISOString() }] } },
-    { id: 'account-review', provider: 'anthropic', identityKey: 'example-review-identity', alias: 'Review', email: 'review@example.com', orgName: 'Example Review', createdAt: now, observedAt: now, sources: [], agentProfiles: [{ agent: 'claude', profileId: 'profile-review', kind: 'cli-profile', state: 'signed-out', default: false }], notifications: { state: 'not-bound', sessions: [] }, quota: { windows: [] } },
+  const accounts: ProviderAccount[] = [
+    { id: 'account-source', provider: 'anthropic', identityKey: `anthropic:unidentified:${sources[0].id}`, alias: 'Unidentified', createdAt: now, observedAt: now, sources: [sources[0].id], agentProfiles: [], health: { state: 'ready' }, notifications: { state: 'not-bound', reachable: false, sessions: [] }, quota: { state: 'unavailable', windows: [] } },
+    { id: 'account-claude', provider: 'anthropic', identityKey: 'anthropic:id:example-claude-identity', alias: 'Studio', email: 'alex@example.com', orgName: 'Example Studio', plan: 'Max', createdAt: now, observedAt: now, sources: [], health: { state: 'ready' }, agentProfiles: [{ agent: 'claude', profileId: 'profile-claude', kind: 'cli-profile', state: 'signed-in', default: true }], notifications: { state: 'verified', reachable: true, sessions: [{ target: 'session_010000000000000000000001', state: 'verified', verified: true, lastDelivery: { at: Math.floor(Date.now() / 1000), status: 'sent' } }] }, quota: { state: 'ready', windows: [{ id: 'five-hour', poolId: 'main', label: '5 h', usedPercent: 37, resetsAt: new Date(Date.now() + 7200000).toISOString() }, { id: 'weekly', poolId: 'main', label: '7 d', usedPercent: 68, resetsAt: new Date(Date.now() + 259200000).toISOString() }] } },
+    { id: 'account-openai', provider: 'openai', identityKey: 'openai:id:example-openai-identity', alias: 'Personal', email: 'jordan@example.com', orgName: 'Example Lab', plan: 'Plus', createdAt: now, observedAt: now, sources: [chatgpt.id], health: { state: 'ready' }, agentProfiles: [{ agent: 'codex', profileId: 'codex-home', kind: 'codex-home', state: 'signed-in', default: true }], notifications: { state: 'mcp-events', reachable: true, sessions: [] }, quota: { state: 'ready', windows: [{ id: 'weekly', poolId: 'main', label: '7 d', usedPercent: 24, resetsAt: new Date(Date.now() + 86400000).toISOString() }] } },
+    { id: 'account-review', provider: 'anthropic', identityKey: 'anthropic:id:example-review-identity', alias: 'Review', email: 'review@example.com', orgName: 'Example Review', createdAt: now, observedAt: now, sources: [], health: { state: 'attention' }, agentProfiles: [{ agent: 'claude', profileId: 'profile-review', kind: 'cli-profile', state: 'signed-out', default: false }], notifications: { state: 'n/a', sessions: [] }, quota: { state: 'unavailable', windows: [] } },
+    { id: 'account-key', provider: 'deepseek', identityKey: 'deepseek:unidentified:api-key:dsh', alias: 'Unidentified', createdAt: now, observedAt: now, sources: [], health: { state: 'attention' }, agentProfiles: [{ agent: 'dsh', profileId: 'api-key:dsh', kind: 'api-key', state: 'unfinished', default: true }], notifications: { state: 'n/a', sessions: [] }, quota: { state: 'unavailable', windows: [] } },
   ];
-  let polls = 0;
-  let login: AccountLogin | undefined, loginKind: AccountKind = 'claude', loginAccount: string | undefined;
+  let polls = 0, sequence = 0, login: AccountLogin | null = null;
+  let loginAccount: string | undefined;
   const requireAccount = (id: string) => { const account = accounts.find(a => a.id === id); if (!account) throw new Error('ACCOUNT_NOT_FOUND'); return account; };
-  return (path: string, method: string, raw?: unknown) => {
-    const url = new URL(path, 'https://example.com/'), route = url.pathname.slice(1);
-    const body = (raw ?? {}) as Record<string, string>;
-    if (route === 'accounts' && method === 'GET') {
-      const id = url.searchParams.get('id');
-      return id ? requireAccount(id) : { accounts: accounts.map(({ email, orgName, ...account }) => account) };
-    }
+  function completeLogin() {
+    if (!login || !['claude', 'codex'].includes(login.kind)) return;
+    const account = requireAccount(loginAccount ?? (login.kind === 'claude' ? 'account-claude' : 'account-openai'));
+    account.agentProfiles.forEach(profile => { if (profile.agent === login!.kind) profile.state = 'signed-in'; });
+    account.health.state = 'ready'; login = { ...login, state: 'completed', loginUrl: null, accountId: account.id };
+  }
+  function list(agent?: string): AccountsResult {
+    if (login?.state === 'waiting' && ++polls >= 4) completeLogin();
+    return { accounts: accounts.filter(a => !a.removedAt && (!agent || a.agentProfiles.some(p => p.agent === agent))).map(({ email, orgName, ...account }) => account), login };
+  }
+  return (path: string, method: string, raw?: unknown): unknown => {
+    const route = path.split('?')[0], body = (raw ?? {}) as Record<string, string>;
+    if (route === 'accounts' && method === 'GET') return list();
+    if (route === 'accounts/query' && method === 'POST') return body.id ? requireAccount(body.id) : list(body.agent);
     if (route === 'accounts/browsers' && method === 'GET') return { browsers: [{ id: 'safari', name: 'Safari' }, { id: 'chrome', name: 'Chrome' }, { id: 'firefox', name: 'Firefox' }] };
+    if (route === 'accounts/whoami' && ['POST', 'GET'].includes(method)) {
+      const account = requireAccount('account-source');
+      return { id: account.id, alias: account.alias, provider: account.provider, email: null, orgName: null, plan: null, sourceId: sources[0].id, platform: sources[0].platform, agentProfiles: account.agentProfiles, notifications: account.notifications };
+    }
     if (['accounts/add', 'accounts/reauth'].includes(route) && method === 'POST') {
-      polls = 0;
-      loginKind = (body.kind ?? body.agent) as AccountKind; loginAccount = body.id;
-      login = { loginId: 'example-login', state: 'waiting', loginUrl: 'https://login.example.com/authorize' };
+      const kind = (body.kind ?? body.agent) as AccountLogin['kind'];
+      if (!['claude', 'codex', 'detect', 'api-key'].includes(kind)) throw new Error('ACCOUNT_NATIVE_LOGIN_REQUIRED');
+      if (body.id) { const account = requireAccount(body.id); if (account.removedAt) throw new Error('ACCOUNT_REMOVED'); if (!account.agentProfiles.some(p => p.agent === body.agent)) throw new Error('ACCOUNT_AGENT_MISSING'); }
+      polls = 0; loginAccount = body.id;
+      login = { loginId: `example-login-${++sequence}`, kind, state: 'waiting', browserId: body.browserId, loginUrl: 'https://login.example.com/authorize' };
+      if (kind === 'api-key') login = { loginId: login.loginId, kind, state: 'unfinished', errors: [], next: { message: "Configure the key using the Agent's native authentication, then call account_add with kind detect. ARC never stores an inference key in an account record." } };
+      if (kind === 'detect') login = { loginId: login.loginId, kind, state: 'completed', errors: [] };
       return login;
     }
-    if (route === 'accounts/login') {
-      if (!login || (body.loginId ?? url.searchParams.get('loginId')) !== login.loginId) throw new Error('LOGIN_NOT_FOUND');
-      if (method === 'POST' && body.action === 'cancel') { login.state = 'cancelled'; return login; }
-      if (method === 'POST' && body.action === 'code' || method === 'GET' && login.state === 'waiting' && ++polls >= 4) {
-        if (method === 'POST' && !body.code?.trim()) throw new Error('LOGIN_CODE_REQUIRED');
-        const agent = loginKind === 'detect' ? 'codex' : loginKind === 'api-key' ? 'dsh' : loginKind;
-        let account = loginAccount ? requireAccount(loginAccount) : accounts.find(a => a.id === (agent === 'claude' ? 'account-claude' : agent === 'codex' ? 'account-openai' : 'account-key'));
-        const matchedExisting = !!account;
-        if (!account) { account = { id: 'account-key', provider: 'deepseek', identityKey: 'example-key-identity', alias: 'API', createdAt: now, observedAt: now, sources: [], agentProfiles: [{ agent, profileId: 'example-api-profile', kind: 'api-key', state: 'signed-in', default: false }], notifications: { state: 'n/a', sessions: [] }, quota: { windows: [] } }; accounts.push(account); }
-        account.agentProfiles.forEach(p => { if (p.agent === agent) p.state = 'signed-in'; });
-        login = { ...login, state: 'completed', accountId: account.id, matchedExisting };
-      }
-      return login;
+    if (route === 'accounts/login' && method === 'POST') {
+      if (!login || body.loginId !== login.loginId) throw new Error('LOGIN_NOT_FOUND');
+      if (body.action === 'cancel') { login = { ...login, state: 'cancelled', loginUrl: null }; return login; }
+      if (body.action !== 'code') throw new Error('INVALID_LOGIN_ACTION');
+      if (login.kind === 'codex') throw new Error('ACCOUNT_LOGIN_CODE_UNSUPPORTED');
+      if (login.kind !== 'claude') throw new Error('ACCOUNT_NATIVE_LOGIN_REQUIRED');
+      if (!body.code?.trim()) throw new Error('LOGIN_CODE_REQUIRED');
+      polls = 3; return { submitted: true };
     }
-    if (route.startsWith('accounts/')) {
-      if (method !== 'POST') throw new Error(`SCENARIO_ACTION_UNAVAILABLE: ${path}`);
+    if (['accounts/update', 'accounts/remove'].includes(route) && method === 'POST') {
       const account = requireAccount(body.id);
       if (route === 'accounts/update') {
-        if (body.alias !== undefined) { if (!body.alias.trim()) throw new Error('ACCOUNT_ALIAS_REQUIRED'); account.alias = body.alias; }
-        if (body.defaultFor) accounts.forEach(a => a.agentProfiles.forEach(p => { if (p.agent === body.defaultFor) p.default = a.id === account.id; }));
-      } else if (route === 'accounts/remove') accounts = accounts.filter(a => a.id !== account.id);
-      else if (route === 'accounts/bind') { account.notifications = { state: 'not-bound', sessions: [{ id: body.target, name: body.target }] }; }
-      else if (route === 'accounts/test') { account.notifications.state = account.provider === 'openai' ? 'mcp-events' : 'verified'; account.notifications.sessions.forEach(s => s.lastDelivery = new Date().toISOString()); }
-      else throw new Error(`SCENARIO_ACTION_UNAVAILABLE: ${path}`);
-      return { ok: true };
+        if (account.removedAt) throw new Error('ACCOUNT_REMOVED');
+        if (body.alias !== undefined) { if (!body.alias.trim()) throw new Error('ACCOUNT_ALIAS_REQUIRED'); account.alias = body.alias.trim(); }
+        if (body.defaultFor) {
+          if (!account.agentProfiles.some(p => p.agent === body.defaultFor)) throw new Error('ACCOUNT_AGENT_MISSING');
+          accounts.forEach(a => a.agentProfiles.forEach(p => { if (p.agent === body.defaultFor) p.default = !a.removedAt && a.id === account.id; }));
+        }
+      } else {
+        if (!['finish', 'cancel'].includes(body.running)) throw new Error('INVALID_RUNNING_POLICY');
+        account.removedAt = now; account.health.state = 'removed'; account.displayName = `Removed account · ${account.alias}`; account.notifications.state = 'removed';
+        account.agentProfiles.forEach(p => { p.default = false; });
+      }
+      return account;
+    }
+    const notification = route.match(/^accounts\/([^/]+)\/(send|test)$/);
+    if (route === 'accounts/routes' && method === 'PUT' || notification && method === 'POST') {
+      const account = requireAccount(notification ? decodeURIComponent(notification[1]) : body.accountId);
+      if (account.removedAt) throw new Error('ACCOUNT_REMOVED');
+      if (!account.agentProfiles.some(p => p.agent === 'claude')) throw new Error('ACCOUNT_AGENT_MISSING');
+      if (!body.target?.trim()) throw new Error('INVALID_CLAUDE_SESSION');
+      let session = account.notifications.sessions.find(s => s.target === body.target);
+      if (!session) { session = { target: body.target, state: 'not-bound' }; account.notifications.sessions.push(session); }
+      if (notification) session.lastDelivery = { at: Math.floor(Date.now() / 1000), status: 'sent' };
+      // Sending or assigning a route does not synthesize a receiver acknowledgement.
+      if (!account.notifications.sessions.some(s => s.verified)) { account.notifications.state = 'not-bound'; account.notifications.reachable = false; }
+      return { accountId: account.id, target: body.target, ...(notification ? { status: 'sent' } : { assigned: true }) };
+    }
+    if (route.startsWith('accounts/')) {
+      const id = route.slice('accounts/'.length);
+      if (method === 'GET' && !id.includes('/') && accounts.some(a => a.id === decodeURIComponent(id))) return requireAccount(decodeURIComponent(id));
+      throw new Error(`SCENARIO_ACTION_UNAVAILABLE: ${path}`);
     }
     const switchMatch = route.match(/^source\/([^/]+)\/switch$/);
     if (switchMatch && ['POST', 'DELETE'].includes(method)) {

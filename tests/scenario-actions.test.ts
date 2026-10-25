@@ -21,6 +21,8 @@ test('task scenarios execute panel actions with mock receipts and readable state
   try {
     const {installScenario,scenarioResponse} = await server.ssrLoadModule('/ui/scenarios.ts');
     await installScenario('task-actions');
+    const { setPrivacy } = await server.ssrLoadModule('/ui/state/privacy.ts');
+    setPrivacy(false);
     const call = (op:string,args:Record<string,unknown>) => scenarioResponse('tasks/control','POST',{op,args});
     const timeline = (id:string) => scenarioResponse('agents/conversations/timeline','POST',{agent:'codex',id});
     const id='fixture-task-0';

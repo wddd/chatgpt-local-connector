@@ -38,20 +38,3 @@ export const accountsApi = {
   notify: (id: string, action: 'send' | 'test', args: { target: string; message?: string }) => api(`accounts/${encodeURIComponent(id)}/${action}`, 'POST', args),
   route: (args: { accountId: string; target: string }) => api('accounts/routes', 'PUT', args),
 };
-
-// Only this adapter knows the management route/envelope choices. AX parameters
-// remain those in accounts.md; UI privacy never transforms native responses.
-import type { Account, AccountBrowser, AccountKind, AccountLogin } from './accounts';
-export const accountApi = {
-  list: () => api<{ accounts: Account[] }>('accounts'),
-  get: (id: string) => api<Account>(`accounts?id=${encodeURIComponent(id)}`),
-  update: (body: { id: string; alias?: string; defaultFor?: string }) => api('accounts/update', 'POST', body),
-  add: (body: { kind: AccountKind; browserId?: string }) => api<AccountLogin>('accounts/add', 'POST', body),
-  login: (loginId: string) => api<AccountLogin>(`accounts/login?loginId=${encodeURIComponent(loginId)}`),
-  loginAction: (body: { loginId: string; action: 'code' | 'cancel'; code?: string }) => api<AccountLogin>('accounts/login', 'POST', body),
-  reauth: (id: string, agent: string) => api<AccountLogin>('accounts/reauth', 'POST', { id, agent }),
-  remove: (id: string) => api('accounts/remove', 'POST', { id, running: 'finish' }),
-  browsers: () => api<{ browsers: AccountBrowser[] }>('accounts/browsers'),
-  bind: (id: string, target: string) => api('accounts/bind', 'POST', { id, target }),
-  test: (id: string) => api('accounts/test', 'POST', { id }),
-};

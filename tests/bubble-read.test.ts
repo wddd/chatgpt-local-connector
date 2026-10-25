@@ -10,6 +10,7 @@ import { within, fireEvent } from "@testing-library/dom";
 test("completed bubble read control isolates jitter, drag, cancellation and keyboard activation from topology", async () => {
   // Regression: the completed bubble check shared topology drag handling and had no movement or cancellation guard.
   const window = new Window({ url: "http://localhost" });
+  window.localStorage.setItem("arc.privacy", "false");
   const frames = new Map<number, FrameRequestCallback>(); let frame = 0;
   const media = { matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} };
   window.matchMedia = () => media as unknown as MediaQueryList;
@@ -85,6 +86,7 @@ test("completed bubble read control isolates jitter, drag, cancellation and keyb
 test("agents and UI share completion read state without opening details or mutating pending tasks", async () => {
   // Regression: completion reads lived inside a component and were unavailable to agents or snapshots.
   const window = new Window({ url: "http://localhost" });
+  window.localStorage.setItem("arc.privacy", "false");
   const media = { matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} };
   window.matchMedia = () => media as unknown as MediaQueryList;
   Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
