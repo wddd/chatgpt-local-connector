@@ -2348,8 +2348,43 @@ test('AX foreground command receipts expose execution and process spawn supports
 test('common guide discovers shared coordination in normal mode',async()=>{
   // Contract: the default normal-mode guide retains board, notices and messages through the frozen query/act envelopes.
   const guide=(await call('guide')).result;
-  for(const [op,via] of [['board','query'],['notice_post','act'],['messages','query'],['message_send','act']]) {
+  for(const [op,via] of [['board','query'],['notice_post','act'],['coordination_session','act'],['message_route','act'],['messages','query'],['message_send','act']]) {
     assert.equal(guide.ops.find((entry:any)=>entry.op===op)?.via,via,op);
+  }
+});
+
+test('coordination registration exposes route repairs and current delivery consistently',async()=>{
+  // Regression: ax-ce733eee registration hid message_route and board sessions disagreed with current delivery capabilities.
+  const sessions:string[]=[];
+  try {
+    const plain=(await call('coordination_session',{action:'register',requestId:randomUUID()})).result;
+    assert.ok(plain.session?.id,JSON.stringify(plain));
+    sessions.push(plain.session.id);
+    assert.equal(plain.next.op,'message_route');
+    assert.equal(plain.next.args.sessionId,plain.session.id);
+    const invalid=(await call('coordination_session',{action:'register',target:'invalid',requestId:randomUUID()})).result;
+    assert.ok(invalid.session?.id,JSON.stringify(invalid));
+    sessions.push(invalid.session.id);
+    assert.equal(invalid.deliveryCapability,'pull-only');
+    assert.equal(invalid.routing.reason,'invalid-claude-session');
+    assert.equal(invalid.next.op,'notify_control');
+    assert.deepEqual(invalid.next.args,{action:'bind',target:'invalid'});
+    const board=(await call('board',{includeSessions:true})).result;
+    const messages=(await call('messages')).result;
+    const identity=(await call('whoami')).result;
+    for(const id of sessions) {
+      const row=board.sessions.find((session:any)=>session.id===id);
+      const mail=messages.coordinationDelivery.sessions.find((session:any)=>session.sessionId===id);
+      const who=identity.coordinationDelivery.sessions.find((session:any)=>session.sessionId===id);
+      assert.equal(row.deliveryCapability,mail.deliveryMode);
+      assert.equal(row.deliveryCapability,who.deliveryMode);
+      assert.equal(row.routing.reason,mail.reason);
+      assert.equal(row.routing.reason,who.reason);
+    }
+    const removed=(await call('message_route',{sessionId:invalid.session.id,target:null})).result;
+    assert.equal(removed.routing.reason,plain.routing.reason);
+  } finally {
+    for(const sessionId of sessions) await call('coordination_session',{action:'close',sessionId,requestId:randomUUID()});
   }
 });
 

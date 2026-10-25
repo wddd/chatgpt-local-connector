@@ -34,6 +34,10 @@ struct Session {
     created_at: i64,
     last_active_at: i64,
     state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    route: Option<crate::claude_notify::coordination_delivery::Route>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    route_failure: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -159,6 +163,77 @@ pub(super) struct Store {
     saved_at: i64,
 }
 impl Store {
+    pub fn session_routes(
+        &self,
+        source: &str,
+    ) -> Vec<(
+        String,
+        Option<crate::claude_notify::coordination_delivery::Route>,
+        Option<String>,
+    )> {
+        self.state
+            .sessions
+            .iter()
+            .filter(|s| {
+                s.state == "active"
+                    && matches!(&s.owner, Principal::Source {source_id,..} if source_id == source)
+            })
+            .map(|s| (s.id.clone(), s.route.clone(), s.route_failure.clone()))
+            .collect()
+    }
+    pub fn route(
+        &self,
+        source: &str,
+        session: &str,
+    ) -> Option<crate::claude_notify::coordination_delivery::Route> {
+        self.session_routes(source)
+            .into_iter()
+            .find(|(id, _, _)| id == session)
+            .and_then(|(_, route, _)| route)
+    }
+    pub fn bind(
+        &mut self,
+        source: &str,
+        session: &str,
+        route: Option<crate::claude_notify::coordination_delivery::Route>,
+        clock: Clock,
+    ) -> Result<()> {
+        self.transaction(clock, |s| {
+            let row = s.state.sessions.iter_mut().find(|s| s.id == session && s.state == "active" && matches!(&s.owner, Principal::Source {source_id,..} if source_id == source))
+                .ok_or("SESSION_NOT_FOUND: select an active logical session owned by this source")?;
+            let mut route = route;
+            if let Some(route) = &mut route {
+                route.binding_id = row.route.as_ref().filter(|r| r.same_destination(route)).and_then(|r|r.binding_id.clone()).or_else(||Some(id()));
+            }
+            row.route = route;
+            row.route_failure = None;
+            s.state.revision += 1;
+            Ok(())
+        })
+    }
+    /// One-time transfer from the old messages snapshot. Preserve binding IDs and
+    /// never overwrite a route already edited in the session owner snapshot.
+    pub fn import_routes(
+        &mut self,
+        routes: &BTreeMap<String, crate::claude_notify::coordination_delivery::Route>,
+        clock: Clock,
+    ) -> Result<()> {
+        self.transaction(clock, |s| {
+            for session in &mut s.state.sessions {
+                if session.state != "active"
+                    || session.route.is_some()
+                    || session.route_failure.is_some()
+                {
+                    continue;
+                }
+                if let Principal::Source { source_id, .. } = &session.owner {
+                    session.route = routes.get(&format!("{source_id}:{}", session.id)).cloned();
+                }
+            }
+            s.state.revision += 1;
+            Ok(())
+        })
+    }
     pub fn session_active(&self, source: &str, id: &str) -> bool {
         self.state.sessions.iter().any(|s| {
             s.id == id
@@ -575,6 +650,17 @@ impl Store {
         links: Vec<Link>,
         clock: Clock,
     ) -> Result<Value> {
+        self.mutate_routed(op, args, actor, links, clock, None)
+    }
+    pub fn mutate_routed(
+        &mut self,
+        op: &str,
+        args: &Value,
+        actor: &Principal,
+        links: Vec<Link>,
+        clock: Clock,
+        route: Option<crate::claude_notify::coordination_delivery::Outcome>,
+    ) -> Result<Value> {
         let request = string(args, "requestId");
         let digest = digest(op, args, actor);
         if let Some(result) = self.replay(request, &digest)? {
@@ -587,7 +673,7 @@ impl Store {
             if clock.elapsed.saturating_sub(bucket.0) >= 60_000 { *bucket = (clock.elapsed, 0); }
             if bucket.1 >= 30 { return Err("COORDINATION_RATE_LIMIT: retry the same requestId after one minute".into()); }
             bucket.1 += 1;
-            let result = s.apply(op, args, actor, links, clock)?;
+            let result = s.apply(op, args, actor, links, clock, route)?;
             s.state.applied.insert(request.into(), Applied { digest, result: result.clone(), at: clock.utc });
             Ok(result)
         })
@@ -634,6 +720,7 @@ impl Store {
         actor: &Principal,
         links: Vec<Link>,
         clock: Clock,
+        routing: Option<crate::claude_notify::coordination_delivery::Outcome>,
     ) -> Result<Value> {
         if op == "coordination_session" {
             self.state.revision += 1;
@@ -654,12 +741,21 @@ impl Store {
                 {
                     return Err("COORDINATION_CAPACITY: close unused sessions; at most four registrations per hour and eight active sessions per source".into());
                 }
+                let (mut route, route_failure) = routing.map_or((None, None), |r| {
+                    let reason = r.route.is_none().then_some(r.state);
+                    (r.route, reason)
+                });
+                if let Some(route) = &mut route {
+                    route.binding_id = Some(id());
+                }
                 self.state.sessions.push(Session {
                     id: id(),
                     owner: actor.clone(),
                     created_at: clock.utc,
                     last_active_at: clock.elapsed,
                     state: "active".into(),
+                    route,
+                    route_failure,
                 });
                 return Ok(
                     json!({"session":self.session_projection(self.state.sessions.last().unwrap())}),
@@ -675,6 +771,8 @@ impl Store {
                 return Err("COORDINATION_OWNER_REQUIRED: only the session owner or local authority may close it".into());
             }
             row.state = "closed".into();
+            row.route = None;
+            row.route_failure = None;
             let row = row.clone();
             return Ok(json!({"session":self.session_projection(&row)}));
         }
@@ -823,7 +921,7 @@ impl Store {
         })
     }
     fn session_projection(&self, s: &Session) -> Value {
-        json!({"id":s.id,"owner":s.owner,"state":s.state,"createdAt":timestamp(s.created_at),"lastActiveAt":timestamp(s.last_active_at),"deliveryCapability":"pull-only"})
+        json!({"id":s.id,"owner":s.owner,"state":s.state,"createdAt":timestamp(s.created_at),"lastActiveAt":timestamp(s.last_active_at)})
     }
     pub fn board(&self, args: &Value, actor_revision: &str, clock: Clock) -> Result<Value> {
         let resource = args["resource"]

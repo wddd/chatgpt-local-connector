@@ -257,7 +257,11 @@ pub(crate) async fn call(
         maintain()?;
         let projection = reconcile().err();
         if op == "board" {
+            super::messages::migrate_routes()?;
             let mut value = with_store(|s| s.board(&args,&reader.revision,clock()))?;
+            if let Some(sessions) = value["sessions"].as_array_mut() {
+                for session in sessions { super::routing::session_projection(session)?; }
+            }
             value["projectionPending"] = json!(projection.is_some() || with_store(|s| Ok(!s.state.pending.is_empty()))?);
             if reader.principal == Principal::LocalAuthority && args["id"].is_string() {
                 if let Some(blocker) = recovery_blocker(string(&args,"id"))? { value["localRecoverySelection"] = blocker["recoverySelection"].clone(); }
@@ -270,7 +274,7 @@ pub(crate) async fn call(
         let _guard = locks.lock(&request).await;
         let digest = digest(op,&args,&reader.principal);
         let mut receipt = match RECEIPTS.replay(&request,&digest,session)? {
-            Some(r) if matches!(string(&r,"state"),"completed"|"failed") => { let mut result = r["result"].clone(); result["receipt"] = r; return Ok(result); }
+            Some(mut r) if matches!(string(&r,"state"),"completed"|"failed") => { let mut result = r["result"].clone(); session_result(op,&args,&mut result)?; r["result"]=result.clone(); result["receipt"] = r; return Ok(result); }
             Some(r) => r,
             None => { let r = json!({"requestId":request,"digest":digest,"operation":op,"origin":crate::kernel::origin::current_origin(),"backendSession":session,"state":"reserved","createdAt":now()}); RECEIPTS.reserve(&r)?; r }
         };
@@ -298,13 +302,21 @@ pub(crate) async fn call(
             }
             apply_link_observations(&mut links, &observed, clock());
             if op == "blocker_clear" { verify_fix(&args).await?; }
-            with_store(|s| s.mutate(op,&args,&reader.principal,links,clock()))
+            let route = if op == "coordination_session" && args["action"] == "register" {
+                if let Some(target) = args["target"].as_str() {
+                    let source = match &reader.principal { Principal::Source {source_id,..} => source_id, _ => return Err("SOURCE_REQUIRED: a notification target requires a control source".into()) };
+                    Some(crate::claude_notify::coordination_delivery::verified_target(source,target)?)
+                } else { None }
+            } else { None };
+            super::messages::migrate_routes()?;
+            with_store(|s| if route.is_some() {s.mutate_routed(op,&args,&reader.principal,links,clock(),route)} else {s.mutate(op,&args,&reader.principal,links,clock())})
         };
         let mut value = match outcome {
             Ok(value) => { receipt["state"] = json!("completed"); value }
             Err(e) if e.starts_with("COORDINATION_STORAGE") || e.starts_with("COORDINATION_CAPACITY") || e.starts_with("COORDINATION_RATE_LIMIT") => return Err(e),
             Err(e) => { receipt["state"] = json!("failed"); failure(e,op) }
         };
+        session_result(op,&args,&mut value)?;
         value["projectionPending"] = json!(reconcile().is_err() || with_store(|s| Ok(!s.state.pending.is_empty()))?);
         if op == "blocker_clear" {
             if let Some(blocker) = recovery_blocker(string(&args,"id"))? {
@@ -317,6 +329,32 @@ pub(crate) async fn call(
         Ok(value)
     }.await;
     Ok(result.unwrap_or_else(|e| failure(e, op)))
+}
+fn session_result(op: &str, args: &Value, value: &mut Value) -> Result<()> {
+    if op != "coordination_session" || !value["session"].is_object() {
+        return Ok(());
+    }
+    super::routing::session_projection(&mut value["session"])?;
+    value["deliveryCapability"] = value["session"]["deliveryCapability"].clone();
+    value["routing"] = value["session"]["routing"].clone();
+    if args["action"] == "register" {
+        value["next"] = registration_next(args, &value["session"]);
+        value["hint"] = json!(if args["target"].is_null() {
+            "Attach your verified target with message_route and keep this session open while you want push."
+        } else {
+            "Keep this session open while you want push."
+        });
+    }
+    Ok(())
+}
+fn registration_next(args: &Value, session: &Value) -> Value {
+    if args["target"].is_null() {
+        json!({"via":"act","op":"message_route","args":{"sessionId":session["id"],"target":"<your verified Claude session ID or URL>"},"hint":"Replace target with your verified source-owned conversation target to enable push for this session."})
+    } else if session["deliveryCapability"] == "pull-only" {
+        json!({"via":"act","op":"notify_control","args":{"action":"bind","target":args["target"]},"sessionId":session["id"],"hint":"Bind and verify this source-owned conversation target, acknowledge the received code with notification_ack, then use message_route with this sessionId and target."})
+    } else {
+        json!({"via":"query","op":"messages","args":{}})
+    }
 }
 /// Advisory only: callers append this object to successful operation receipts.
 /// Failure is explicit unknown coverage, never an empty board claiming exclusivity.
@@ -505,6 +543,37 @@ pub(crate) fn command_warnings(op: &str, args: &Value) -> Option<Value> {
 /// Message routing consumes session ownership without reading the bulletin snapshot.
 pub(crate) fn session_active(source: &str, id: &str) -> Result<bool> {
     with_store(|s| Ok(s.session_active(source, id)))
+}
+pub(crate) fn session_routes(
+    source: &str,
+) -> Result<
+    Vec<(
+        String,
+        Option<crate::claude_notify::coordination_delivery::Route>,
+        Option<String>,
+    )>,
+> {
+    with_store(|s| Ok(s.session_routes(source)))
+}
+pub(crate) fn route(
+    source: &str,
+    session: &str,
+) -> Result<Option<crate::claude_notify::coordination_delivery::Route>> {
+    super::messages::migrate_routes()?;
+    with_store(|s| Ok(s.route(source, session)))
+}
+pub(crate) fn bind_route(
+    source: &str,
+    session: &str,
+    route: Option<crate::claude_notify::coordination_delivery::Route>,
+) -> Result<()> {
+    super::messages::migrate_routes()?;
+    with_store(|s| s.bind(source, session, route, clock()))
+}
+pub(crate) fn import_routes(
+    routes: &std::collections::BTreeMap<String, crate::claude_notify::coordination_delivery::Route>,
+) -> Result<()> {
+    with_store(|s| s.import_routes(routes, clock()))
 }
 
 pub(super) fn recovery_blocker(id: &str) -> Result<Option<Value>> {

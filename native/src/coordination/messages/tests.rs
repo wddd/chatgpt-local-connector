@@ -242,25 +242,6 @@ fn message_uncertain_and_expired() {
     assert!(f.store.batches(f.time + 120).unwrap().is_empty());
 }
 #[test]
-// Contract: explicit route unbinding persists across restart without transferring another source's route.
-fn message_session_route_unbind() {
-    let mut f = Fixture::new();
-    assert_eq!(
-        f.store.bind("two", "session", Some(route())).unwrap()["deliveryMode"],
-        "proactive"
-    );
-    f.restart();
-    assert!(f.store.route("one", "session").is_none());
-    assert!(f.store.route("two", "session").is_some());
-    assert_eq!(
-        f.store.bind("two", "session", None).unwrap()["deliveryMode"],
-        "pull-only"
-    );
-    f.restart();
-    assert!(f.store.route("two", "session").is_none());
-}
-
-#[test]
 // Contract: the same request ID cannot change metadata or sender, and unrelated replies cannot spend another negotiation's budget.
 fn message_replay_conflict_and_reply_authority() {
     let mut f = Fixture::new();
@@ -305,19 +286,6 @@ fn message_empty_and_expired_cursor() {
         .starts_with("MESSAGES_CURSOR_EXPIRED"));
 }
 #[test]
-// Regression: a closed and rebound session could revive pending mail captured before explicit unbind.
-fn message_rebind_invalidates_old_route() {
-    let mut f = Fixture::new();
-    f.store.bind("two", "session", Some(route())).unwrap();
-    let old = f.store.route("two", "session").unwrap();
-    f.store.bind("two", "session", Some(route())).unwrap();
-    assert!(f.store.route("two", "session").as_ref() == Some(&old));
-    f.store.bind("two", "session", None).unwrap();
-    f.store.bind("two", "session", Some(route())).unwrap();
-    f.restart();
-    assert!(f.store.route("two", "session").as_ref() != Some(&old));
-}
-#[test]
 // Contract: corrupt snapshots fail closed without overwriting the last stored evidence.
 fn message_corruption_is_preserved() {
     let f = Fixture::new();
@@ -340,12 +308,12 @@ fn recovery_mail_dedupes_and_stays_advisory() {
     let (blocker, recipient, plan) = recovery_fixture();
     let first = f
         .store
-        .recovery(&blocker, &recipient, &plan, f.time)
+        .recovery(&blocker, &recipient, &plan, None, f.time)
         .unwrap();
     f.restart();
     let replay = f
         .store
-        .recovery(&blocker, &recipient, &plan, f.time + 1)
+        .recovery(&blocker, &recipient, &plan, None, f.time + 1)
         .unwrap();
     assert_eq!(
         first["message"]["messageId"],
@@ -371,9 +339,9 @@ fn recovery_mail_original_route_and_replacement_dedupe() {
     for summary_first in [false, true] {
         let mut f = Fixture::new();
         let (blocker, mut recipient, plan) = recovery_fixture();
-        f.store.bind("two", "session-two", Some(route())).unwrap();
-        recipient["threadRefs"][0]["sessionBindingId"] =
-            json!(f.store.route("two", "session-two").unwrap().binding_id);
+        let mut bound = route();
+        bound.binding_id = Some(id());
+        recipient["threadRefs"][0]["sessionBindingId"] = json!(bound.binding_id);
         if summary_first {
             assert!(f
                 .store
@@ -382,7 +350,7 @@ fn recovery_mail_original_route_and_replacement_dedupe() {
         }
         let result = f
             .store
-            .recovery(&blocker, &recipient, &plan, f.time)
+            .recovery(&blocker, &recipient, &plan, Some(bound), f.time)
             .unwrap();
         assert_eq!(
             result["deliveryMode"],
@@ -405,10 +373,9 @@ fn recovery_mail_original_route_and_replacement_dedupe() {
     }
     let mut f = Fixture::new();
     let (blocker, recipient, plan) = recovery_fixture();
-    f.store.bind("two", "session-two", Some(route())).unwrap();
     assert_eq!(
         f.store
-            .recovery(&blocker, &recipient, &plan, f.time)
+            .recovery(&blocker, &recipient, &plan, Some(route()), f.time)
             .unwrap()["deliveryMode"],
         "pull-only"
     );
@@ -418,12 +385,13 @@ fn recovery_mail_original_route_and_replacement_dedupe() {
 fn recovery_mail_rechecks_completion_and_pages() {
     let mut f = Fixture::new();
     let (blocker, mut recipient, plan) = recovery_fixture();
-    f.store.bind("two", "session-two", Some(route())).unwrap();
-    let binding = f.store.route("two", "session-two").unwrap().binding_id;
+    let mut bound = route();
+    bound.binding_id = Some(id());
+    let binding = bound.binding_id.clone();
     recipient["threadRefs"]=json!((0..25).map(|i|json!({"threadId":format!("thread-{i}"),"turnId":"old","interruptedAt":1000,"sessionBindingId":binding})).collect::<Vec<_>>());
     let sent = f
         .store
-        .recovery(&blocker, &recipient, &plan, f.time)
+        .recovery(&blocker, &recipient, &plan, Some(bound), f.time)
         .unwrap();
     let args = sent["message"]["next"]["args"].clone();
     let page = f.list("two", args.clone());
@@ -464,6 +432,11 @@ fn fallback_mail_coalesces_and_pull_only_reason_survives_replay() {
         .unwrap();
     assert_eq!(first["deliveryMode"], "pull-only");
     assert_eq!(first["routing"]["reason"], "ambiguous-verified-targets");
+    assert_eq!(first["stored"], true);
+    assert_eq!(first["pullable"], true);
+    assert_eq!(first["routing"]["next"]["op"], "coordination_session");
+    assert_eq!(first["routing"]["next"]["actor"], "recipient");
+    assert_eq!(first["routing"]["next"]["sourceId"], "two");
     f.restart();
     let replay = f
         .store
@@ -493,4 +466,115 @@ fn fallback_mail_coalesces_and_pull_only_reason_survives_replay() {
         3
     );
     assert!(f.store.batches(f.time + 90).unwrap().is_empty());
+}
+
+#[test]
+// Regression: ax-ce733eee missing recipient targets sent the sender to generic guide instead of a recipient-side route fix.
+fn missing_recipient_route_receipt_preserves_pullable_mail() {
+    let mut f = Fixture::new();
+    let mut args = request();
+    args["toSessionId"] = json!("recipient-session");
+    let sent = f.send("one", args);
+    assert_eq!(sent["deliveryMode"], "pull-only");
+    assert_eq!(sent["routing"]["reason"], "no-verified-target");
+    assert_eq!(sent["routing"]["next"]["via"], "act");
+    assert_eq!(sent["routing"]["next"]["op"], "message_route");
+    assert_eq!(
+        sent["routing"]["next"]["args"]["sessionId"],
+        "recipient-session"
+    );
+    assert_eq!(sent["routing"]["next"]["actor"], "recipient");
+    assert_eq!(sent["stored"], true);
+    assert_eq!(sent["pullable"], true);
+    f.restart();
+    let inbox = f.list("two", json!({}));
+    assert_eq!(
+        inbox["messages"][0]["messageId"],
+        sent["message"]["messageId"]
+    );
+    assert_eq!(inbox["messages"][0]["deliveryState"], "pull-only");
+}
+
+#[test]
+// Regression: notice inReplyTo incorrectly required a negotiation and returned NEGOTIATION_NOT_FOUND.
+fn notice_replies_link_received_messages_without_negotiations() {
+    let mut f = Fixture::new();
+    let mut args = request();
+    args["type"] = json!("notice");
+    let mut previous = f.send("one", args);
+    for index in 0..6 {
+        let (actor, target) = if index % 2 == 0 {
+            ("two", "one")
+        } else {
+            ("one", "two")
+        };
+        let args = json!({"toSourceId":target,"type":"notice","resources":["app:installed"],"summary":"Acknowledge peer metadata","inReplyTo":previous["message"]["messageId"]});
+        let next = f.send(actor, args.clone());
+        assert!(next["message"].is_object());
+        assert_eq!(next["message"]["inReplyTo"], args["inReplyTo"]);
+        assert!(next["message"]["negotiationId"].is_null());
+        assert!(next["negotiation"].is_null());
+        assert_eq!(next["message"]["escalated"], false);
+        previous = next;
+        f.restart();
+    }
+    assert!(f.list("one", json!({}))["negotiations"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let forged = json!({"toSourceId":"two","type":"notice","resources":["app:installed"],"summary":"Invalid reply","inReplyTo":previous["message"]["messageId"]});
+    assert_eq!(
+        f.send("unrelated", forged)["error"]["code"],
+        "INVALID_ARGUMENT"
+    );
+}
+
+#[test]
+// Regression: notice references must neither spend negotiation replies nor bypass an escalated resource hold.
+fn notice_replies_do_not_advance_existing_negotiations_or_reset_holds() {
+    let mut f = Fixture::new();
+    let first = f.send("one", request());
+    let mut notice = reply(&first, "one");
+    notice["type"] = json!("notice");
+    assert_eq!(
+        f.send("two", notice.clone())["error"]["code"],
+        "INVALID_ARGUMENT"
+    );
+    notice.as_object_mut().unwrap().remove("negotiationId");
+    let sent = f.send("two", notice.clone());
+    assert!(sent["message"].is_object());
+    assert!(sent["negotiation"].is_null());
+    assert_eq!(
+        f.list("two", json!({}))["negotiations"][0]["automaticReplyCount"],
+        0
+    );
+    let second = f.send("two", reply(&first, "one"));
+    assert_eq!(second["negotiation"]["automaticReplyCount"], 1);
+    let third = f.send("one", reply(&second, "two"));
+    let fourth = f.send("two", reply(&third, "one"));
+    assert_eq!(fourth["negotiation"]["state"], "escalated");
+    assert_eq!(f.send("two", notice)["error"]["code"], "NEGOTIATION_LIMIT");
+}
+
+#[test]
+// Regression: message schemas and push truncation advertised different summary limits.
+fn coordination_summary_limit_counts_unicode_characters_consistently() {
+    let c = catalog();
+    let spec = c["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == "message_send")
+        .unwrap();
+    assert_eq!(
+        spec["inputSchema"]["properties"]["summary"]["maxLength"],
+        SUMMARY_LIMIT
+    );
+    for character in ["x", "🛰"] {
+        let mut args = request();
+        args["summary"] = json!(character.repeat(SUMMARY_LIMIT));
+        assert!(validate("message_send", &args).is_ok());
+        args["summary"] = json!(character.repeat(SUMMARY_LIMIT + 1));
+        assert!(validate("message_send", &args).is_err());
+    }
 }

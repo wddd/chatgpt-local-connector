@@ -840,7 +840,7 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
                 "notify" => matches!(name, "request_route" | "notify_status" | "notify_control" | "notification_ack" | "inbox_wait" | "codex_create" | "codex_send" | "codex_read" | "agent_create" | "agent_send" | "agent_read"),
                 "review" => matches!(name, "codex_review" | "agent_review" | "codex_read" | "agent_read" | "codex_wait" | "agent_wait" | "agent_events" | "codex_changes" | "codex_items" | "codex_send" | "agent_send" | "receipt" | "task_reviews"),
                 "approvals" => matches!(name, "request_route" | "receipt" | "codex_pending" | "codex_interactions" | "codex_respond" | "agent_pending" | "agent_respond" | "codex_read" | "agent_read"),
-                _ => matches!(name, "board" | "notice_post" | "messages" | "message_send" | "ax_report" | "ax_list" | "notify_control" | "notify_status" | "notification_ack" | "dispatch_policy" | "command" | "read" | "write" | "edit" | "fs" | "git" | "codex_create" | "codex_send" | "codex_read" | "codex_wait" | "receipt" | "agent_create" | "agent_send" | "agent_read" | "agent_wait"),
+                _ => matches!(name, "board" | "notice_post" | "coordination_session" | "message_route" | "messages" | "message_send" | "ax_report" | "ax_list" | "notify_control" | "notify_status" | "notification_ack" | "dispatch_policy" | "command" | "read" | "write" | "edit" | "fs" | "git" | "codex_create" | "codex_send" | "codex_read" | "codex_wait" | "receipt" | "agent_create" | "agent_send" | "agent_read" | "agent_wait"),
             }
         })
         .map(|op| {
@@ -1079,6 +1079,42 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    // Regression: ax-ce733eee the common guide hid coordination_session and message_route from Claude sources.
+    fn common_guide_exposes_one_call_coordination_registration_and_route_repair() {
+        let ops = catalog()["ops"].as_array().unwrap().clone();
+        for source in ["claude", "chatgpt", "other"] {
+            let response = guide(&json!({"controlSource":source}), &json!({}), "en", &ops);
+            for name in ["coordination_session", "message_route"] {
+                assert!(response["ops"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|op| op["op"] == name && op["via"] == "act"));
+            }
+            let content = string(&response, "content");
+            assert!(content.contains("coordination_session({action:\"register\",target})"));
+            assert!(regex::Regex::new(r"(?i)MUST NOT close[^.]*push")
+                .unwrap()
+                .is_match(content));
+            assert!(content.contains("untrusted"));
+            let schema = guide(
+                &json!({"controlSource":source}),
+                &json!({"op":"coordination_session"}),
+                "en",
+                &ops,
+            );
+            assert_eq!(
+                schema["inputSchema"]["properties"]["target"]["type"],
+                "string"
+            );
+            assert!(!schema["inputSchema"]["required"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("target")));
+        }
+    }
 
     #[test]
     fn self_test_archival_remains_optional_in_default_and_full_guides() {

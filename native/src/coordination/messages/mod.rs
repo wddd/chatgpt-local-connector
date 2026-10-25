@@ -7,12 +7,16 @@ use super::*;
 use crate::claude_notify::coordination_delivery::{deliver, Request, Route};
 use std::sync::{LazyLock, Mutex};
 use store::Store;
+pub(crate) const SUMMARY_LIMIT: usize = 240;
 static MESSAGES: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static REQUESTS: crate::kernel::receipts::RequestLocks = crate::kernel::receipts::RequestLocks;
 const RECEIPTS: crate::kernel::receipts::ReceiptStore =
     crate::kernel::receipts::ReceiptStore::new("");
 fn with_store<T>(f: impl FnOnce(&mut Store) -> Result<T>) -> Result<T> {
-    with_store_at(root().join("coordination/messages/state.json"), f)
+    with_store_at(root().join("coordination/messages/state.json"), |s| {
+        s.migrate_routes()?;
+        f(s)
+    })
 }
 fn with_store_at<T>(path: PathBuf, f: impl FnOnce(&mut Store) -> Result<T>) -> Result<T> {
     let _guard = MESSAGES
@@ -66,7 +70,7 @@ fn validate(op: &str, args: &Value) -> Result<()> {
         types::identifier(v.as_str().unwrap_or(""))?;
     }
     if args["summary"].as_str().is_some_and(|s| {
-        s.trim().is_empty() || s.chars().count() > 240 || s.chars().any(char::is_control)
+        s.trim().is_empty() || s.chars().count() > SUMMARY_LIMIT || s.chars().any(char::is_control)
     }) {
         return Err("INVALID_ARGUMENT: summary must be single-line metadata of 1 to 240 characters, never prompt content".into());
     }
@@ -136,27 +140,21 @@ pub(crate) async fn call(op: &str, mut args: Value, backend: &str) -> Result<Val
         let reader=super::reader(&origin,&source)?;
         let actor=match &reader.principal {Principal::Source{source_id,..}=>source_id.as_str(),Principal::LocalAuthority=>"local-authority",_=>return Err("SOURCE_REQUIRED: control source required".into())};
         let projection=reconcile().err();
-        if op=="messages" {refresh_recovery()?;let mut result=with_store(|s|s.list(&args,actor,&reader.revision,chrono::Utc::now().timestamp()))?; result["projectionPending"]=json!(projection.is_some() || result["projectionPending"]==true); return Ok(result);}
+        if op=="messages" {refresh_recovery()?;let mut result=with_store(|s|s.list(&args,actor,&reader.revision,chrono::Utc::now().timestamp()))?; if actor!="local-authority" {result["coordinationDelivery"]=super::routing::status(actor)?;} result["projectionPending"]=json!(projection.is_some() || result["projectionPending"]==true); return Ok(result);}
         if actor=="local-authority" {return Err("SOURCE_REQUIRED: local authority mediates through messages management".into());}
         if op!="message_route" || !args["target"].is_null() {session(actor,args["sessionId"].as_str())?;}
         if op=="message_route" {
-            let route=if args["target"].is_null(){None}else{Some(deliver(Request::Resolve{source_id:actor.into(),target:Some(crate::claude_notify::session_id(string(&args,"target"))?)}).await?.route.ok_or("MESSAGE_ROUTE_UNVERIFIED: bind and verify this source-owned target through notify_control first")?)};
-            let explicit=route.is_some();
-            let mut result=with_store(|s|s.bind(actor,string(&args,"sessionId"),route))?;
-            let routing=if explicit {crate::claude_notify::coordination_delivery::routing_description(true,"explicit-route")}else{
-                let fallback=deliver(Request::Resolve{source_id:actor.into(),target:None}).await?;
-                crate::claude_notify::coordination_delivery::routing_description(fallback.route.is_some(),&fallback.state)
-            };
-            result["deliveryMode"]=routing["deliveryMode"].clone();result["routing"]=routing;
-            return Ok(result);
+            let route=if args["target"].is_null(){None}else{Some(crate::claude_notify::coordination_delivery::verified_target(actor,string(&args,"target"))?.route.ok_or("MESSAGE_ROUTE_UNVERIFIED: bind and verify this source-owned target through notify_control first")?)};
+            super::bulletin::bind_route(actor,string(&args,"sessionId"),route)?;
+            let outcome=super::routing::resolve(actor,Some(string(&args,"sessionId")))?;
+            let routing=super::routing::description(&outcome,actor,Some(string(&args,"sessionId")));
+            return Ok(json!({"sessionId":args["sessionId"],"deliveryMode":routing["deliveryMode"],"deliveryCapability":routing["deliveryMode"],"routing":routing}));
         }
         let target=string(&args,"toSourceId"); authorized(target)?;
         session(target,args["toSessionId"].as_str())?;
-        let explicit=with_store(|s|Ok(s.route(target,string(&args,"toSessionId"))))?;
-        let (route,reason)=if let Some(route)=explicit {(Some(route),"explicit-route".to_owned())}else{
-            let resolved=deliver(Request::Resolve{source_id:target.into(),target:None}).await?;
-            (resolved.route,resolved.state)
-        };
+        let outcome=super::routing::resolve(target,args["toSessionId"].as_str())?;
+        let route=outcome.route;
+        let reason=outcome.state;
         if args["requestId"].is_null(){args["requestId"]=json!(id());}
         let request=string(&args,"requestId").to_owned();
         let _request=REQUESTS.lock(&request).await;
@@ -170,7 +168,7 @@ pub(crate) async fn call(op: &str, mut args: Value, backend: &str) -> Result<Val
         value["projectionPending"]=json!(reconcile().is_err());
         // Receipts are discoverable independently; private bodies stay in messages.
         receipt["state"]=json!("completed");
-        receipt["result"]=json!({"messageId":value["message"]["messageId"],"negotiationId":value["message"]["negotiationId"],"deliveryMode":value["deliveryMode"],"routing":value["routing"],"next":{"via":"query","op":"messages","args":{"direction":"outbox"}}});
+        receipt["result"]=json!({"stored":true,"pullable":true,"hint":value["hint"],"messageId":value["message"]["messageId"],"negotiationId":value["message"]["negotiationId"],"deliveryMode":value["deliveryMode"],"routing":value["routing"],"next":{"via":"query","op":"messages","args":{"direction":"outbox"}}});
         RECEIPTS.checkpoint(&mut receipt)?;value["receipt"]=receipt;Ok(value)
     }.await;
     Ok(result.unwrap_or_else(|e| failure(e, op)))
@@ -203,11 +201,6 @@ pub(crate) fn local(method: &str, args: &Value) -> Result<Value> {
 async fn flush() -> Result<()> {
     reconcile()?;
     refresh_recovery()?;
-    for (source, session) in with_store(|s| Ok(s.route_sessions()))? {
-        if !super::bulletin::session_active(&source, &session)? {
-            with_store(|s| s.bind(&source, &session, None))?;
-        }
-    }
     let time = chrono::Utc::now().timestamp();
     for rows in with_store(|s| s.batches(time))? {
         let route = rows[0].route.clone().unwrap();
@@ -218,16 +211,19 @@ async fn flush() -> Result<()> {
             && rows
                 .iter()
                 .all(|r| session(&route.source_id, r.envelope["toSessionId"].as_str()).is_ok());
-        let current_bindings = with_store(|s| {
-            Ok(rows.iter().all(|r| {
-                r.envelope["toSessionId"].as_str().is_none_or(|id| {
-                    match s.route(&route.source_id, id) {
-                        Some(current) => Some(&current) == r.route.as_ref(),
-                        None => r.route.as_ref().is_some_and(|r| r.binding_id.is_none()),
-                    }
-                })
-            }))
-        })?;
+        let mut current_bindings = true;
+        for row in &rows {
+            if let Some(id) = row.envelope["toSessionId"].as_str() {
+                let current = super::bulletin::route(&route.source_id, id)?;
+                current_bindings &= match current {
+                    Some(current) => Some(&current) == row.route.as_ref(),
+                    None => row.route.as_ref().is_some_and(|r| r.binding_id.is_none()),
+                };
+            } else if row.envelope["deliveryReason"] == "explicit-route" {
+                let current = super::routing::resolve(&route.source_id, None)?;
+                current_bindings &= current.route == row.route;
+            }
+        }
         if !valid
             || !current_bindings
             || rows
@@ -244,7 +240,7 @@ async fn flush() -> Result<()> {
         if rows.is_empty() {
             continue;
         }
-        let result = deliver(Request::Push {
+        let result = deliver(Request {
             route,
             messages: rows.iter().map(|r| r.envelope.clone()).collect(),
             escalated: rows.iter().any(|r| r.envelope["escalated"] == true),
@@ -270,13 +266,14 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
 }
 
 pub(super) fn binding_id(source: &Value, session: &Value) -> Result<Option<String>> {
-    with_store(|s| {
-        Ok(s.route(
-            source.as_str().unwrap_or(""),
-            session.as_str().unwrap_or(""),
-        )
-        .and_then(|r| r.binding_id))
-    })
+    Ok(super::bulletin::route(
+        source.as_str().unwrap_or(""),
+        session.as_str().unwrap_or(""),
+    )?
+    .and_then(|r| r.binding_id))
+}
+pub(crate) fn migrate_routes() -> Result<()> {
+    with_store(|_| Ok(()))
 }
 pub(super) fn recovery(blocker: &Value, recipient: &Value, plan: &Value) -> Result<()> {
     let source = string(recipient, "sourceId");
@@ -290,7 +287,16 @@ pub(super) fn recovery(blocker: &Value, recipient: &Value, plan: &Value) -> Resu
     if !super::bulletin::session_active(source, string(recipient, "sessionId"))? {
         return Ok(());
     }
-    with_store(|s| s.recovery(blocker, recipient, plan, chrono::Utc::now().timestamp()))?;
+    let route = super::bulletin::route(source, string(recipient, "sessionId"))?;
+    with_store(|s| {
+        s.recovery(
+            blocker,
+            recipient,
+            plan,
+            route,
+            chrono::Utc::now().timestamp(),
+        )
+    })?;
     Ok(())
 }
 fn refresh_recovery() -> Result<()> {

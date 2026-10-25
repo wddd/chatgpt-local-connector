@@ -79,6 +79,182 @@ impl Drop for Fixture {
         let _ = std::fs::remove_dir_all(&self.path);
     }
 }
+fn route_fixture() -> crate::claude_notify::coordination_delivery::Route {
+    serde_json::from_value(
+        json!({"sourceId":"source-a","routeId":"opaque-target","generation":"verified"}),
+    )
+    .unwrap()
+}
+#[test]
+// Regression: ax-ce733eee session registration and routing must commit and survive restart together.
+fn coordination_registration_route_is_atomic_and_durable() {
+    use crate::claude_notify::coordination_delivery::Outcome;
+    let mut f = Fixture::new();
+    let args =
+        json!({"action":"register","target":"session_123456789012345678901234","requestId":id()});
+    assert!(validate("coordination_session", &args).is_ok());
+    let first = f
+        .store
+        .mutate_routed(
+            "coordination_session",
+            &args,
+            &f.actor,
+            vec![],
+            f.clock,
+            Some(Outcome {
+                route: Some(route_fixture()),
+                state: "resolved".into(),
+            }),
+        )
+        .unwrap();
+    let session = string(&first["session"], "id");
+    let route = f.store.route("source-a", session).unwrap();
+    assert!(route.binding_id.is_some());
+    f.store = Store::open(f.path.join("state.json")).unwrap();
+    assert_eq!(f.store.route("source-a", session), Some(route.clone()));
+    assert!(f.store.route("source-b", session).is_none());
+    let replay = f
+        .store
+        .mutate("coordination_session", &args, &f.actor, vec![], f.clock)
+        .unwrap();
+    assert_eq!(replay["session"]["id"], first["session"]["id"]);
+    assert_eq!(f.store.route("source-a", session), Some(route));
+    for _ in 0..3 {
+        f.call("coordination_session", json!({"action":"register"}));
+    }
+    assert!(f
+        .store
+        .mutate_routed(
+            "coordination_session",
+            &json!({"action":"register","requestId":id()}),
+            &f.actor,
+            vec![],
+            f.clock,
+            Some(Outcome {
+                route: Some(route_fixture()),
+                state: "resolved".into()
+            })
+        )
+        .unwrap_err()
+        .starts_with("COORDINATION_CAPACITY:"));
+    assert_eq!(f.store.session_routes("source-a").len(), 4);
+}
+#[test]
+// Regression: ax-ce733eee invalid targets must register pull-only with the target-specific bind/verify next step.
+fn coordination_registration_repair_and_discovery_next() {
+    use crate::claude_notify::coordination_delivery::Outcome;
+    let mut f = Fixture::new();
+    for (target, reason) in [
+        ("invalid", "invalid-claude-session"),
+        ("session_123456789012345678901234", "no-verified-target"),
+    ] {
+        let args = json!({"action":"register","target":target,"requestId":id()});
+        assert!(validate("coordination_session", &args).is_ok());
+        let mut result = f
+            .store
+            .mutate_routed(
+                "coordination_session",
+                &args,
+                &f.actor,
+                vec![],
+                f.clock,
+                Some(Outcome {
+                    route: None,
+                    state: reason.into(),
+                }),
+            )
+            .unwrap();
+        let selected = super::super::routing::select(
+            &f.store.session_routes("source-a"),
+            result["session"]["id"].as_str(),
+        );
+        super::super::routing::project_session(&mut result["session"], &selected);
+        assert_eq!(result["session"]["deliveryCapability"], "pull-only");
+        assert_eq!(result["session"]["routing"]["reason"], reason);
+        let next = registration_next(&args, &result["session"]);
+        assert_eq!(next["op"], "notify_control");
+        assert_eq!(next["args"], json!({"action":"bind","target":target}));
+        assert_eq!(next["sessionId"], result["session"]["id"]);
+    }
+    f.store = Store::open(f.path.join("state.json")).unwrap();
+    assert!(f
+        .store
+        .session_routes("source-a")
+        .iter()
+        .all(|(_, route, reason)| route.is_none() && reason.is_some()));
+    let mut result = f.call("coordination_session", json!({"action":"register"}));
+    super::super::routing::project_session(
+        &mut result["session"],
+        &Outcome {
+            route: None,
+            state: "no-verified-target".into(),
+        },
+    );
+    let next = registration_next(&json!({"action":"register"}), &result["session"]);
+    assert_eq!(next["op"], "message_route");
+    assert_eq!(next["args"]["sessionId"], result["session"]["id"]);
+}
+#[test]
+// Regression: a closed and rebound session could revive pending mail captured before explicit unbind.
+fn coordination_route_unbind_and_rebind_preserve_generation_boundaries() {
+    let mut f = Fixture::new();
+    let result = f.call("coordination_session", json!({"action":"register"}));
+    let session = string(&result["session"], "id");
+    f.store
+        .bind("source-a", session, Some(route_fixture()), f.clock)
+        .unwrap();
+    let old = f.store.route("source-a", session).unwrap();
+    f.store
+        .bind("source-a", session, Some(route_fixture()), f.clock)
+        .unwrap();
+    assert_eq!(f.store.route("source-a", session), Some(old.clone()));
+    assert!(f.store.bind("source-b", session, None, f.clock).is_err());
+    f.store.bind("source-a", session, None, f.clock).unwrap();
+    f.store = Store::open(f.path.join("state.json")).unwrap();
+    assert!(f.store.route("source-a", session).is_none());
+    f.store
+        .bind("source-a", session, Some(route_fixture()), f.clock)
+        .unwrap();
+    assert_ne!(f.store.route("source-a", session), Some(old));
+    f.call(
+        "coordination_session",
+        json!({"action":"close","sessionId":session}),
+    );
+    assert!(f.store.route("source-a", session).is_none());
+}
+#[test]
+// Regression: moving route persistence to the session owner must preserve existing route and recovery binding identities.
+fn coordination_imports_existing_routes_once_without_overwriting_edits() {
+    let mut f = Fixture::new();
+    let result = f.call("coordination_session", json!({"action":"register"}));
+    let session = string(&result["session"], "id");
+    let mut route = route_fixture();
+    route.binding_id = Some("existing-binding".into());
+    let routes = std::collections::BTreeMap::from([
+        (format!("source-a:{session}"), route.clone()),
+        ("source-b:missing".into(), route.clone()),
+    ]);
+    f.store.import_routes(&routes, f.clock).unwrap();
+    f.store = Store::open(f.path.join("state.json")).unwrap();
+    assert_eq!(f.store.route("source-a", session), Some(route));
+    let mut replacement = route_fixture();
+    replacement.source_id = "source-a".into();
+    replacement.binding_id = Some("new-binding".into());
+    // A different verified generation represents a real route edit.
+    let mut replacement: Value = serde_json::to_value(replacement).unwrap();
+    replacement["generation"] = json!("reverified");
+    f.store
+        .bind(
+            "source-a",
+            session,
+            Some(serde_json::from_value(replacement).unwrap()),
+            f.clock,
+        )
+        .unwrap();
+    let edited = f.store.route("source-a", session);
+    f.store.import_routes(&routes, f.clock).unwrap();
+    assert_eq!(f.store.route("source-a", session), edited);
+}
 #[test]
 // Contract: bulletin catalog operations retain frozen query/act shapes and reject caller-selected authority and prompt fields.
 fn schemas_and_metadata_boundary() {

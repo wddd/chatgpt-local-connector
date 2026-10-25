@@ -16,8 +16,8 @@ struct Data {
     negotiations: Vec<Negotiation>,
     pending: Vec<EventInput>,
     last_push: BTreeMap<String, i64>,
-    #[serde(default)]
-    routes: BTreeMap<String, Route>,
+    #[serde(default, rename = "routes", skip_serializing_if = "BTreeMap::is_empty")]
+    pub legacy_routes: BTreeMap<String, Route>,
     #[serde(default)]
     recovery_windows: BTreeMap<String, (String, i64)>,
 }
@@ -91,7 +91,7 @@ impl Store {
             || self.data.negotiations.len() > 128
             || self.data.pending.len() > MAX_ROWS
             || self.data.last_push.len() > 128
-            || self.data.routes.len() > 128
+            || self.data.legacy_routes.len() > 128
             || self.data.recovery_windows.len() > 2000
         {
             return Err("COORDINATION_CAPACITY: use local messages management to resolve escalations; wait for closed history retention".into());
@@ -122,30 +122,14 @@ impl Store {
             ));
         }
     }
-    pub fn route_sessions(&self) -> Vec<(String, String)> {
-        self.data
-            .routes
-            .keys()
-            .filter_map(|key| {
-                key.split_once(':')
-                    .map(|(source, session)| (source.to_owned(), session.to_owned()))
-            })
-            .collect()
-    }
-    pub fn route(&self, source: &str, session: &str) -> Option<Route> {
-        self.data
-            .routes
-            .get(&format!("{source}:{session}"))
-            .cloned()
-    }
-    pub fn bind(&mut self, source: &str, session: &str, route: Option<Route>) -> Result<Value> {
+    pub fn migrate_routes(&mut self) -> Result<()> {
+        if self.data.legacy_routes.is_empty() {
+            return Ok(());
+        }
+        super::super::bulletin::import_routes(&self.data.legacy_routes)?;
         self.transaction(|s| {
-            let key=format!("{source}:{session}");
-            if let Some(mut route)=route {
-                route.binding_id=s.data.routes.get(&key).and_then(|r|r.binding_id.clone());
-                if s.data.routes.get(&key)!=Some(&route) {route.binding_id=Some(id());s.data.routes.insert(key,route);}
-            } else {s.data.routes.remove(&key);}
-            Ok(json!({"sessionId":session,"deliveryMode":if s.route(source,session).is_some(){"proactive"}else{"pull-only"}}))
+            s.data.legacy_routes.clear();
+            Ok(())
         })
     }
     pub fn pending(&self) -> Vec<EventInput> {
@@ -200,7 +184,7 @@ impl Store {
             .negotiations
             .iter()
             .find(|n| row.envelope["negotiationId"] == n.id);
-        json!({"message":row.envelope,"negotiation":n,"deliveryMode":if row.route.is_some(){"proactive"}else{"pull-only"},"routing":crate::claude_notify::coordination_delivery::routing_description(row.route.is_some(), row.envelope["deliveryReason"].as_str().unwrap_or("no-verified-target"))})
+        json!({"stored":true,"pullable":true,"hint":"The message is stored and pullable through messages.","message":row.envelope,"negotiation":n,"deliveryMode":if row.route.is_some(){"proactive"}else{"pull-only"},"routing":super::super::routing::description(&crate::claude_notify::coordination_delivery::Outcome {route:row.route.clone(),state:row.envelope["deliveryReason"].as_str().unwrap_or("no-verified-target").into()}, string(&row.envelope,"toSourceId"), row.envelope["toSessionId"].as_str())})
     }
     pub fn send(
         &mut self,
@@ -253,46 +237,48 @@ impl Store {
         let reply = args["inReplyTo"].as_str();
         let mut ni = None;
         if let Some(reference) = reply {
-            let n = self
-                .data
-                .negotiations
-                .iter()
-                .position(|n| Some(n.id.as_str()) == negotiation)
-                .ok_or("NEGOTIATION_NOT_FOUND: read messages before replying")?;
-            let old = self
-                .data
-                .messages
-                .iter()
-                .find(|r| r.envelope["messageId"] == reference)
-                .ok_or("NEGOTIATION_NOT_FOUND: referenced message expired or unavailable")?;
-            if old.envelope["fromSourceId"] != target
-                || old.envelope["toSourceId"] != actor
-                || old.envelope["negotiationId"] != self.data.negotiations[n].id
-                || self.data.negotiations[n].participants != participants
-                || self.data.negotiations[n].resources != resources
-            {
-                return Err("INVALID_ARGUMENT: reply must reference this peer's message in the same negotiation and resource set".into());
+            let old = self.data.messages.iter().find(|r| r.envelope["messageId"] == reference)
+                .ok_or("INVALID_ARGUMENT: inReplyTo must reference a retained message addressed to you; use relatedIds for other metadata links")?;
+            if old.envelope["fromSourceId"] != target || old.envelope["toSourceId"] != actor {
+                return Err("INVALID_ARGUMENT: inReplyTo must reference a message addressed to you by toSourceId; use relatedIds for other metadata links".into());
             }
-            if matches!(string(args, "type"), "grant" | "deny")
-                && !matches!(string(&old.envelope, "type"), "request" | "conditional")
-            {
-                return Err(
-                    "INVALID_ARGUMENT: grant or deny must answer a request or conditional".into(),
-                );
+            if args["type"] == "notice" {
+                if negotiation.is_some() {
+                    return Err("INVALID_ARGUMENT: notice replies must omit negotiationId; inReplyTo links the message without opening or advancing a negotiation".into());
+                }
+            } else {
+                let n = self.data.negotiations.iter().position(|n| Some(n.id.as_str()) == negotiation)
+                .ok_or("NEGOTIATION_NOT_FOUND: negotiation replies require negotiationId; use type:notice with inReplyTo for a notice reply, or relatedIds to link metadata")?;
+                if old.envelope["negotiationId"] != self.data.negotiations[n].id
+                    || self.data.negotiations[n].participants != participants
+                    || self.data.negotiations[n].resources != resources
+                {
+                    return Err("INVALID_ARGUMENT: reply must reference this peer's message in the same negotiation and resource set".into());
+                }
+                if matches!(string(args, "type"), "grant" | "deny")
+                    && !matches!(string(&old.envelope, "type"), "request" | "conditional")
+                {
+                    return Err(
+                        "INVALID_ARGUMENT: grant or deny must answer a request or conditional"
+                            .into(),
+                    );
+                }
+                if self.data.negotiations[n].expires_at <= time {
+                    return Err(
+                        "NEGOTIATION_EXPIRED: inspect messages and start a new request".into(),
+                    );
+                }
+                if self.data.negotiations[n].state == "resolved"
+                    && self.data.negotiations[n]
+                        .decisions
+                        .last()
+                        .is_some_and(|d| d["action"] == "resolve")
+                {
+                    return Err("NEGOTIATION_RESOLVED: the user resolved this exchange; inspect messages before starting a new request".into());
+                }
+                self.data.negotiations[n].automatic_reply_count += 1;
+                ni = Some(n);
             }
-            if self.data.negotiations[n].expires_at <= time {
-                return Err("NEGOTIATION_EXPIRED: inspect messages and start a new request".into());
-            }
-            if self.data.negotiations[n].state == "resolved"
-                && self.data.negotiations[n]
-                    .decisions
-                    .last()
-                    .is_some_and(|d| d["action"] == "resolve")
-            {
-                return Err("NEGOTIATION_RESOLVED: the user resolved this exchange; inspect messages before starting a new request".into());
-            }
-            self.data.negotiations[n].automatic_reply_count += 1;
-            ni = Some(n);
         } else if args["type"] == "request" {
             if self
                 .data
@@ -622,6 +608,7 @@ impl Store {
         blocker: &Value,
         recipient: &Value,
         plan: &Value,
+        route: Option<Route>,
         time: i64,
     ) -> Result<Value> {
         let mid = hash(
@@ -646,7 +633,7 @@ impl Store {
             let source = string(recipient,"sourceId");
             let session = string(recipient,"sessionId");
             let threads = recipient["threadRefs"].as_array().cloned().unwrap_or_default();
-            let mut route = s.route(source,session).filter(|route| route.binding_id.is_some() && threads.iter().all(|r| r["sessionBindingId"].as_str() == route.binding_id.as_deref()));
+            let mut route = route.filter(|route| route.binding_id.is_some() && threads.iter().all(|r| r["sessionBindingId"].as_str() == route.binding_id.as_deref()));
             if let Some(destination) = route.clone() {
                 let keys: Vec<_> = plan["replacementIds"].as_array().into_iter().flatten().filter_map(Value::as_str).map(|replacement|hash(json!([replacement,source,destination.key()]).to_string())).collect();
                 if keys.iter().any(|key|s.data.recovery_windows.get(key).is_some_and(|(owner,_)|owner == "summary")) { route = None; }

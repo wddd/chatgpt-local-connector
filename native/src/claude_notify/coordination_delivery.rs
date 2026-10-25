@@ -20,18 +20,13 @@ impl Route {
         self.route_id.clone()
     }
 }
-pub(crate) enum Request {
-    Resolve {
-        source_id: String,
-        target: Option<String>,
-    },
-    Push {
-        route: Route,
-        messages: Vec<Value>,
-        escalated: bool,
-        batch_id: String,
-    },
+pub(crate) struct Request {
+    pub route: Route,
+    pub messages: Vec<Value>,
+    pub escalated: bool,
+    pub batch_id: String,
 }
+#[derive(Clone)]
 pub(crate) struct Outcome {
     pub route: Option<Route>,
     pub state: String,
@@ -145,14 +140,57 @@ fn resolve(state: &State, source: &str, authority: &Value, target: Option<&str>)
         state: reason.into(),
     }
 }
-pub(crate) fn routing_status(source: &str) -> Result<Value> {
-    let result = resolve(&State::load(&directory())?, source, &active(source)?, None);
-    Ok(routing_description(result.route.is_some(), &result.state))
+/// Revalidate captured destinations as well as fallback choices. A lost explicit
+/// route never silently redirects mail to another conversation.
+fn effective(state: &State, source: &str, authority: &Value, explicit: Option<Route>) -> Outcome {
+    if let Some(route) = explicit {
+        let valid = routes(state, source, authority)
+            .iter()
+            .any(|r| r.same_destination(&route));
+        return Outcome {
+            route: valid.then_some(route),
+            state: if valid {
+                "explicit-route"
+            } else {
+                "route-target-unverified"
+            }
+            .into(),
+        };
+    }
+    resolve(state, source, authority, None)
+}
+pub(crate) fn effective_route(source: &str, explicit: Option<Route>) -> Result<Outcome> {
+    Ok(effective(
+        &State::load(&directory())?,
+        source,
+        &active(source)?,
+        explicit,
+    ))
+}
+pub(crate) fn verified_target(source: &str, target: &str) -> Result<Outcome> {
+    Ok(target_route(
+        &State::load(&directory())?,
+        source,
+        &active(source)?,
+        target,
+    ))
+}
+fn target_route(state: &State, source: &str, authority: &Value, target: &str) -> Outcome {
+    let target = match super::session_id(target) {
+        Ok(target) => target,
+        Err(_) => {
+            return Outcome {
+                route: None,
+                state: "invalid-claude-session".into(),
+            }
+        }
+    };
+    resolve(state, source, authority, Some(&target))
 }
 pub(crate) fn routing_description(proactive: bool, reason: &str) -> Value {
     json!({"deliveryMode":if proactive {"proactive"} else {"pull-only"},"reason":reason,
-        "next":{"via":"query","op":"guide","args":{"op":"message_route"},
-        "hint":"Register an active coordination_session, bind and verify a source-owned Claude target with notify_control and notification_ack, then associate that session and target with message_route. Read messages while pull-only."}})
+        "next":{"via":"act","op":"coordination_session","args":{"action":"register","target":"<your verified Claude session ID or URL>"},"actor":"recipient",
+        "hint":"The recipient must bind and verify its own conversation target with notify_control and notification_ack, then register coordination_session with action:register and target, or use message_route with its existing sessionId and target. Keep the session open for push."}})
 }
 fn body(messages: &[Value], escalated: bool) -> String {
     let previews: Vec<_> = messages
@@ -167,7 +205,7 @@ fn body(messages: &[Value], escalated: bool) -> String {
             }
             json!({"messageId":m["messageId"],"type":m["type"],"fromSourceId":m["fromSourceId"],
             "resources":m["resources"],"negotiationId":m["negotiationId"],
-            "summary":receipt_line(string(m,"summary"),280)})
+            "summary":receipt_line(string(m,"summary"),crate::coordination::messages::SUMMARY_LIMIT)})
         })
         .collect();
     format!(
@@ -175,32 +213,15 @@ fn body(messages: &[Value], escalated: bool) -> String {
         json!({"type":"notice","count":messages.len(),"messages":previews,"escalated":escalated,"next":{"via":"query","op":"messages","args":{}}})
     )
 }
-/// The sole delivery entry point: resolve a source's unique verified route or send
-/// one bounded peer-metadata envelope through its captured generation.
+/// Send one bounded peer-metadata envelope through its captured generation.
 pub(crate) async fn deliver(request: Request) -> Result<Outcome> {
-    let (route, messages, escalated, batch) = match request {
-        Request::Resolve { source_id, target } => {
-            let authority = active(&source_id)?;
-            let _guard = LOCK.lock().await;
-            return Ok(resolve(
-                &State::load(&directory())?,
-                &source_id,
-                &authority,
-                target.as_deref(),
-            ));
-        }
-        Request::Push {
-            route,
-            messages,
-            escalated,
-            batch_id,
-        } => (
-            route,
-            messages,
-            escalated,
-            format!("coordination-{batch_id}"),
-        ),
-    };
+    let Request {
+        route,
+        messages,
+        escalated,
+        batch_id,
+    } = request;
+    let batch = format!("coordination-{batch_id}");
     let authority = match active(&route.source_id) {
         Ok(v) => v,
         Err(_) => {
@@ -484,11 +505,73 @@ mod tests {
         let status = routing_description(false, &missing.state);
         assert_eq!(status["deliveryMode"], "pull-only");
         assert_eq!(status["reason"], "no-verified-target");
-        assert_eq!(status["next"]["args"]["op"], "message_route");
+        assert_eq!(status["next"]["op"], "coordination_session");
+        assert_eq!(status["next"]["args"]["action"], "register");
         for t in &mut state.targets {
             t.reachability.verified_at = 0;
         }
         assert!(resolve(&state, "peer", &authority, None).route.is_none());
+    }
+    #[test]
+    // Regression: ax-ce733eee registration could not select its verified conversation among several targets.
+    fn registration_target_requires_source_ownership_and_current_verification() {
+        let (mut state, first, authority) = fixture();
+        let mut second = state.targets[0].clone();
+        second.target = "session_223456789012345678901234".into();
+        state.targets.push(second);
+        let target = format!("https://claude.ai/code/{}", state.targets[0].target);
+        assert_eq!(
+            target_route(&state, "peer", &authority, &target).route,
+            Some(first)
+        );
+        assert!(target_route(&state, "other", &authority, &target)
+            .route
+            .is_none());
+        assert_eq!(
+            target_route(&state, "peer", &authority, "invalid").state,
+            "invalid-claude-session"
+        );
+        state.targets[0].reachability.state = "unverified".into();
+        assert_eq!(
+            target_route(&state, "peer", &authority, &target).state,
+            "no-verified-target"
+        );
+        assert!(target_route(&state, "peer", &authority, &target)
+            .route
+            .is_none());
+    }
+    #[test]
+    // Regression: ax-ce733eee effective capability stayed proactive after its route lost verification.
+    fn effective_route_revalidates_and_unbinding_restores_only_unique_fallback() {
+        let (mut state, first, authority) = fixture();
+        assert_eq!(
+            effective(&state, "peer", &authority, Some(first.clone())).state,
+            "explicit-route"
+        );
+        state.targets[0].reachability.state = "failed".into();
+        let lost = effective(&state, "peer", &authority, Some(first.clone()));
+        assert!(lost.route.is_none());
+        assert_eq!(lost.state, "route-target-unverified");
+        assert_eq!(
+            effective(&state, "peer", &authority, None).state,
+            "no-verified-target"
+        );
+        state.targets[0].reachability.state = "verified".into();
+        assert_eq!(
+            effective(&state, "peer", &authority, None).route,
+            Some(first.clone())
+        );
+        let mut second = state.targets[0].clone();
+        second.target = "session_223456789012345678901234".into();
+        state.targets.push(second);
+        assert_eq!(
+            effective(&state, "peer", &authority, Some(first)).state,
+            "explicit-route"
+        );
+        assert_eq!(
+            effective(&state, "peer", &authority, None).state,
+            "ambiguous-verified-targets"
+        );
     }
     #[test]
     fn coordination_push_has_bounded_untrusted_peer_metadata() {
@@ -512,7 +595,10 @@ mod tests {
             for field in ["type", "fromSourceId", "resources", "negotiationId"] {
                 assert_eq!(preview[field], original[field]);
             }
-            assert_eq!(string(preview, "summary").chars().count(), 280);
+            assert_eq!(
+                string(preview, "summary").chars().count(),
+                crate::coordination::messages::SUMMARY_LIMIT
+            );
             assert!(preview.get("body").is_none());
         }
         let recovery = body(
@@ -520,5 +606,19 @@ mod tests {
             false,
         );
         assert!(!recovery.contains("PRIVATE_AGENT_SUMMARY"));
+    }
+}
+#[test]
+// Regression: coordination summaries accepted 240 characters but the push contract used a separate 280-character cap.
+fn coordination_push_uses_the_mail_summary_limit() {
+    let limit = crate::coordination::messages::SUMMARY_LIMIT;
+    for summary in ["🛰".repeat(limit), "x".repeat(limit + 1)] {
+        let text = body(&[json!({"type":"notice","summary":summary})], false);
+        let payload: Value = serde_json::from_str(text.lines().last().unwrap()).unwrap();
+        let pushed = string(&payload["messages"][0], "summary");
+        assert_eq!(pushed.chars().count(), limit);
+        if summary.chars().count() == limit {
+            assert_eq!(pushed, summary);
+        }
     }
 }
