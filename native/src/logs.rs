@@ -198,11 +198,7 @@ pub fn query(options: &Value) -> Result<Value> {
     }
     let since = options["since"]
         .as_str()
-        .map(|v| {
-            chrono::DateTime::parse_from_rfc3339(v)
-                .map(|t| t.with_timezone(&chrono::Utc))
-                .map_err(|e| e.to_string())
-        })
+        .map(|v| parse_since(v, chrono::Utc::now()))
         .transpose()?;
     let cursor = string(options, "cursor");
     let position = rows.iter().position(|r| hash(r.to_string()) == cursor);
@@ -259,4 +255,71 @@ pub fn query(options: &Value) -> Result<Value> {
     Ok(
         json!({"rows":selected,"cursor":next,"hasMore":has_more,"gap":gap,"retention":{"days":7,"maxBytes":16777216},"oldestAt":if descending{rows.last()}else{rows.first()}.map(|v|&v["time"]),"newestAt":if descending{rows.first()}else{rows.last()}.map(|v|&v["time"])}),
     )
+}
+
+/// Resolve a diagnostic time boundary without exposing chrono parser internals.
+pub fn parse_since(
+    value: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<chrono::DateTime<chrono::Utc>> {
+    if let Ok(time) = chrono::DateTime::parse_from_rfc3339(value) {
+        return Ok(time.with_timezone(&chrono::Utc));
+    }
+    let invalid = || {
+        "INVALID_ARGUMENT: since requires RFC3339 or an integer duration with ms, s, m, h, or d (for example 2m)".to_owned()
+    };
+    for (suffix, multiplier) in [
+        ("ms", 1i64),
+        ("s", 1000),
+        ("m", 60_000),
+        ("h", 3_600_000),
+        ("d", 86_400_000),
+    ] {
+        if let Some(number) = value.strip_suffix(suffix) {
+            if number.is_empty() || !number.bytes().all(|c| c.is_ascii_digit()) {
+                return Err(invalid());
+            }
+            let millis = number
+                .parse::<i64>()
+                .ok()
+                .and_then(|n| n.checked_mul(multiplier))
+                .ok_or_else(invalid)?;
+            return now
+                .checked_sub_signed(chrono::Duration::milliseconds(millis))
+                .ok_or_else(invalid);
+        }
+    }
+    Err(invalid())
+}
+
+#[cfg(test)]
+mod since_tests {
+    use super::*;
+    #[test]
+    fn duration_and_absolute_boundaries() {
+        // Regression: AX-12 logs since:2m exposed a premature-end parser error.
+        let now = chrono::DateTime::parse_from_rfc3339("2026-01-02T00:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        for (value, millis) in [
+            ("2m", 120000),
+            ("1ms", 1),
+            ("3s", 3000),
+            ("1h", 3600000),
+            ("1d", 86400000),
+            ("0s", 0),
+        ] {
+            assert_eq!(
+                now.signed_duration_since(parse_since(value, now).unwrap())
+                    .num_milliseconds(),
+                millis
+            );
+        }
+        assert_eq!(parse_since("2026-01-02T01:00:00+01:00", now).unwrap(), now);
+        for value in ["2", "-2m", "1.5h", "m", "99999999999999999999d"] {
+            assert!(parse_since(value, now)
+                .unwrap_err()
+                .starts_with("INVALID_ARGUMENT:"));
+        }
+    }
 }

@@ -509,17 +509,17 @@ impl Control {
             return Ok(());
         }
         let ipc = self.ipc().await?;
-        match ipc.owner(thread).await {
+        let discovery_unanswered = match ipc.owner(thread).await {
             Ok(_) => return Ok(()),
             Err(e)
                 if desktop::owner_missing(&e)
                     || (desktop::owner_discovery_pending(&e)
                         && crate::writer::probe(thread)["state"] == "unheld") =>
             {
-                ()
+                e == "DESKTOP_REQUEST_TIMEOUT: thread-owner-discovery"
             }
             Err(e) => return Err(e),
-        }
+        };
         if self.handed_to_desktop(thread) {
             return desktop::reveal(&ipc,thread).await.map(|_|()).map_err(|error|
                 json!({"code":"DESKTOP_HANDOFF_UNAVAILABLE","message":error,
@@ -534,9 +534,17 @@ impl Control {
             60000,
         )
         .await?;
-        match desktop::reveal(&ipc, thread).await {
+        let loaded = if discovery_unanswered {
+            Err("DESKTOP_REQUEST_TIMEOUT: thread-owner-discovery".into())
+        } else {
+            desktop::reveal(&ipc, thread).await
+        };
+        match loaded {
             Ok(_) => Ok(()),
-            Err(e) if desktop::owner_missing(&e) => {
+            Err(e)
+                if desktop::owner_discovery_pending(&e)
+                    && crate::writer::probe(thread)["state"] == "unheld" =>
+            {
                 // The bounded Desktop load still has no owner, and no turn has
                 // been submitted. Resume this same thread, never create another.
                 rpc.call(
@@ -926,7 +934,9 @@ impl Control {
                     return page(method, &args, data);
                 }
                 Err(e)
-                    if e.contains("no-client-found")
+                    if desktop::owner_missing(&e)
+                        || (desktop::owner_discovery_pending(&e)
+                            && crate::writer::probe(id)["state"] == "unheld")
                         || e.contains("No such file")
                         || e.contains("Connection refused") =>
                 {
@@ -1026,6 +1036,20 @@ impl Control {
                 // Validate now, but choose omitted values when the queue actually dispatches.
                 crate::dispatch_policy::resolve(&mut args.clone())?;
                 Value::Null
+            } else if operation == "send" {
+                let thread = string(&args, "threadId");
+                let state = self.dispatch_state(thread).await?;
+                let records = crate::dispatch_policy::records(thread)?;
+                let inherited = crate::dispatch_policy::inherited_configuration(&state, &records);
+                if args["sendMode"] == "next" && state["turns"][0]["status"] == "inProgress" {
+                    crate::dispatch_policy::resolve_with_inheritance(
+                        &mut args.clone(),
+                        &inherited,
+                    )?;
+                    Value::Null
+                } else {
+                    crate::dispatch_policy::resolve_with_inheritance(&mut args, &inherited)?
+                }
             } else {
                 crate::dispatch_policy::resolve(&mut args)?
             }
@@ -1146,6 +1170,12 @@ impl Control {
                         error["next"] =
                             crate::writer::busy(string(&receipt, "threadId"), Value::Null)["next"]
                                 .clone();
+                    }
+                    if op == "command" || args["method"] == "command/exec" {
+                        let mut recovery = json!({"error":error});
+                        crate::egress::next(&mut recovery, "command", &args, false);
+                        receipt["next"] = recovery["next"].clone();
+                        error = recovery["error"].clone();
                     }
                     receipt["result"] = json!({"error":error});
                 }
@@ -1511,7 +1541,16 @@ impl Control {
             }
             r["state"] = json!("submitting");
             self.checkpoint(r)?;
-            let params = json!({"threadId":thread,"input":[],"turnTrigger":"resume_interrupted_task","parentTurnId":previous,"rootTurnId":previous});
+            let mut params = json!({"threadId":thread,"input":[],"turnTrigger":"resume_interrupted_task","parentTurnId":previous,"rootTurnId":previous});
+            let inherited = crate::dispatch_policy::inherited_configuration(
+                &state,
+                &crate::dispatch_policy::records(thread)?,
+            );
+            for field in ["model", "effort"] {
+                if let Some(value) = inherited.get(field) {
+                    params[field] = value.clone();
+                }
+            }
             let result = if desktop {
                 self.ipc().await?.mutate("turn/start", &params).await?
             } else {
@@ -1592,7 +1631,7 @@ impl Control {
             return crate::text_files::write(self, operation, args).await;
         }
         if operation == "command" {
-            return crate::shell_command::run(self, args).await;
+            return crate::shell_command::run(self, args, r).await;
         }
         if operation == "git_write" {
             r["state"] = json!("submitting");
@@ -1991,7 +2030,11 @@ impl Control {
             params["cwd"] = crate::projects::working_directory(self, &directory_args).await?;
         }
         r["threadId"] = params["threadId"].clone();
-        r["state"] = json!("submitting");
+        r["state"] = json!(if method == "command/exec" {
+            "executing"
+        } else {
+            "submitting"
+        });
         if operation == "send" {
             r["task"]["dispatch"]["submittedAt"] = json!(now());
         }
@@ -2116,9 +2159,7 @@ impl Control {
             | "notice_close"
             | "blocker_open"
             | "blocker_clear"
-            | "coordination_session" => {
-                crate::coordination::bulletin::call(name, args, &self.session).await
-            }
+            | "coordination_session" => crate::coordination::bulletin::call(name, args, self).await,
             "message_send" | "message_route" | "messages" => {
                 crate::coordination::messages::call(name, args, &self.session).await
             }

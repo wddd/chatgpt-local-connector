@@ -275,3 +275,43 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
     assert.equal(capacityReplay.deliveries.filter((d:any)=>d.kind==='failed').length,1);
   } finally { await fixture.close(); for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); await rm(directory, {recursive:true,force:true}); }
 });
+
+test('AX unheld thread reads recover from silent Desktop discovery', {skip:process.platform!=='darwin'}, async()=>{
+  // Regression: AX-05 an unheld persisted thread could not be read when Desktop never answered owner discovery.
+  const directory=await mkdtemp(path.join(tmpdir(),'arc-unheld-'));
+  await mkdir(path.join(directory,'ipc'));
+  const sockets=new Set<Socket>();
+  const server=createServer(socket=>{
+    sockets.add(socket);socket.on('close',()=>sockets.delete(socket));let buffer=Buffer.alloc(0);
+    socket.on('data',bytes=>{
+      buffer=Buffer.concat([buffer,bytes]);
+      while(buffer.length>=4 && buffer.length>=buffer.readUInt32LE()+4){
+        const size=buffer.readUInt32LE(),request=JSON.parse(buffer.subarray(4,size+4).toString());buffer=buffer.subarray(size+4);
+        if(request.method!=='initialize')continue;
+        const payload=Buffer.from(JSON.stringify({type:'response',requestId:request.requestId,handledByClientId:'silent-owner',resultType:'success',result:{clientId:'fixture-follower'}}));
+        const header=Buffer.alloc(4);header.writeUInt32LE(payload.length);socket.write(Buffer.concat([header,payload]));
+      }
+    });
+  });
+  await new Promise<void>(resolve=>server.listen(path.join(directory,'ipc/ipc.sock'),resolve));
+  const threadId=randomUUID();
+  const fixture=await nativeControl(`
+    import {createInterface} from 'node:readline';
+    for await(const line of createInterface({input:process.stdin})){
+      const {id,method,params}=JSON.parse(line);if(id===undefined)continue;
+      let result={};
+      if(method==='thread/read')result={thread:{id:params.threadId,cwd:process.env.CODEX_HOME,status:{type:'idle'},model:'persisted-model'}};
+      if(method==='thread/turns/list')result={data:[],nextCursor:null};
+      process.stdout.write(JSON.stringify({id,result})+'\\n');
+    }
+  `,{CODEX_HOME:directory,ARC_FIXTURE_DESKTOP:'1'});
+  try {
+    const result=await fixture.call('codex_query',{method:'thread/read',params:{threadId,includeTurns:false}});
+    assert.equal(result.thread.id,threadId,JSON.stringify(result));
+    assert.equal(result.thread.model,'persisted-model');
+    assert.equal((await fixture.call('codex_owner',{threadId})).state,'unheld');
+  } finally {
+    await fixture.close();for(const socket of sockets)socket.destroy();
+    await new Promise<void>(resolve=>server.close(()=>resolve()));await rm(directory,{recursive:true,force:true});
+  }
+});

@@ -241,7 +241,7 @@ pub fn receipt(value: Value) -> Value {
             string(&value, "state"),
             "completed" | "failed" | "cancelled" | "rejected" | "not-executed"
         ) {
-            out["progressStalled"] = json!(age >= 30000);
+            out["progressStalled"] = json!(age >= 30000 && value["state"] != "executing");
         }
     }
     let result = &value["result"];
@@ -836,7 +836,7 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
                 "notify" => matches!(name, "request_route" | "notify_status" | "notify_control" | "notification_ack" | "inbox_wait" | "codex_create" | "codex_send" | "codex_read" | "agent_create" | "agent_send" | "agent_read"),
                 "review" => matches!(name, "codex_review" | "agent_review" | "codex_read" | "agent_read" | "codex_wait" | "agent_wait" | "agent_events" | "codex_changes" | "codex_items" | "codex_send" | "agent_send" | "receipt" | "task_reviews"),
                 "approvals" => matches!(name, "request_route" | "receipt" | "codex_pending" | "codex_interactions" | "codex_respond" | "agent_pending" | "agent_respond" | "codex_read" | "agent_read"),
-                _ => matches!(name, "notify_control" | "notify_status" | "notification_ack" | "dispatch_policy" | "command" | "read" | "write" | "edit" | "fs" | "git" | "codex_create" | "codex_send" | "codex_read" | "codex_wait" | "receipt" | "agent_create" | "agent_send" | "agent_read" | "agent_wait"),
+                _ => matches!(name, "board" | "notice_post" | "messages" | "message_send" | "ax_report" | "ax_list" | "notify_control" | "notify_status" | "notification_ack" | "dispatch_policy" | "command" | "read" | "write" | "edit" | "fs" | "git" | "codex_create" | "codex_send" | "codex_read" | "codex_wait" | "receipt" | "agent_create" | "agent_send" | "agent_read" | "agent_wait"),
             }
         })
         .map(|op| {
@@ -954,6 +954,15 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
         value["next"].clone()
     } else if value["error"]["code"] == "REPLACE_PENDING" {
         json!({"via":"cli","op":"app.replace.status","args":{},"command":"arc cli app replace --status","hint":"Read the durable replacement status after reconnecting. Finish the current turn and resume dispatch only after replacement is terminal."})
+    } else if (value["error"]["code"] == "DESKTOP_REQUEST_TIMEOUT"
+        || value["error"]["message"] == "DESKTOP_REQUEST_TIMEOUT: thread-owner-discovery")
+        && thread.is_some()
+    {
+        json!({"via":"query","op":"codex_owner","args":{"threadId":thread},"hint":"Inspect this exact thread owner before retrying. Unheld threads can be read from persisted native state; do not reclaim a held writer."})
+    } else if value["state"] == "executing" && value["requestId"].is_string() {
+        json!({"via":"act","op":"receipt","args":{"action":"read","requestId":value["requestId"]},"retryAfterMs":1000,"hint":"The foreground command is executing. Read the original receipt for its exit; elapsed execution time is not stalled submission."})
+    } else if name == "command" && value["error"].is_object() {
+        json!({"via":"query","op":"guide","args":{"op":"process"},"hint":"command owns its child process tree until exit or timeout. For work that must outlive this call, use act process action:spawn with params:{command:[...],cwd:<absolute directory>,processHandle:<unique handle>,timeoutMs:null}. It lasts only for the native backend session; inspect codex_events and stop it with process action:kill."})
     } else if value["state"] == "awaiting-approval" {
         json!({"hint":"Inspect the original request, then decide according to user intent.","via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"}})
     } else if value["state"] == "interaction-required" {
@@ -1153,6 +1162,39 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn interface_recovery_names_exact_operations() {
+        // Regression: AX-05 and AX-06 errors only suggested the generic guide.
+        let mut timeout =
+            json!({"error":failure("DESKTOP_REQUEST_TIMEOUT: thread-owner-discovery")});
+        next(
+            &mut timeout,
+            "codex_read",
+            &json!({"threadId":"thread-fixture"}),
+            false,
+        );
+        assert_eq!(timeout["next"]["op"], "codex_owner");
+        assert_eq!(
+            timeout["next"]["args"],
+            json!({"threadId":"thread-fixture"})
+        );
+        let mut reread = json!({"threadId":"thread-fixture","error":failure("DESKTOP_REQUEST_TIMEOUT: thread-owner-discovery")});
+        next(
+            &mut reread,
+            "receipt",
+            &json!({"requestId":"00000000-0000-0000-0000-000000000001"}),
+            false,
+        );
+        assert_eq!(reread["next"]["args"], json!({"threadId":"thread-fixture"}));
+        let mut command = json!({"error":failure("RPC_REJECTED: command failed")});
+        next(&mut command, "command", &json!({}), false);
+        assert_eq!(command["next"]["args"], json!({"op":"process"}));
+        let mut running = json!({"state":"executing","requestId":"original-request"});
+        next(&mut running, "command", &json!({}), false);
+        assert_eq!(running["next"]["op"], "receipt");
+        assert_eq!(running["next"]["args"]["requestId"], "original-request");
     }
 
     #[test]

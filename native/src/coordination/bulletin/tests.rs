@@ -515,3 +515,45 @@ fn persistence_failure_and_event_size_bounds() {
         );
     }
 }
+
+#[test]
+fn lane_errors_offer_registered_qualified_examples() {
+    // Regression: ax-327e2d84 lane shorthand errors omitted the registered project spelling.
+    let error = lane_resource_error("worker", &json!({"projects":[{"id":"fixture-project"}]}));
+    assert!(error.contains("lane:fixture-project/worker"));
+    let result = failure(error, "notice_post");
+    assert_eq!(result["next"]["op"], "projects");
+    assert_eq!(result["next"]["args"], json!({}));
+}
+#[test]
+fn linked_running_thread_is_observed_at_post() {
+    // Regression: ax-48eb2fbb a just-posted running-thread notice showed unknown liveness until the next tick.
+    let mut f = Fixture::new();
+    let mut links = vec![Link {
+        session_binding_id: None,
+        thread_id: "thread-a".into(),
+        observed_turn_id: Some("turn-a".into()),
+        scope_state: "unknown".into(),
+        observed_at: None,
+        terminals: Default::default(),
+    }];
+    apply_link_observations(
+        &mut links,
+        &[("thread-a".into(), "turn-a".into(), "inProgress".into())],
+        f.clock,
+    );
+    let args = json!({"requestId":id(),"intent":"Work","resources":["app:installed"],"expectedDurationSeconds":60});
+    let result = f
+        .store
+        .mutate("notice_post", &args, &f.actor, links, f.clock)
+        .unwrap();
+    let board = f.board(&result["notice"]["id"]);
+    assert_eq!(
+        board["notices"][0]["threadLinks"][0]["scopeState"],
+        "running"
+    );
+    assert_ne!(
+        board["notices"][0]["activityCoverage"],
+        "thread-observation-gap"
+    );
+}

@@ -586,6 +586,7 @@ impl Manager {
                     sessions.push(json!({"target":target,"state":"not-bound"}));
                 }
             }
+            let (sessions, historical_sessions) = partition_notification_sessions(sessions);
             let has_claude = row["provider"] == "anthropic"
                 && (!row["sources"].as_array().unwrap().is_empty() || !sessions.is_empty());
             let state = if !live(row) {
@@ -602,7 +603,7 @@ impl Manager {
             } else {
                 "n/a"
             };
-            row["notifications"] = json!({"state":state,"reachable":sessions.iter().any(|s| s["verified"]==true || s["reachable"]==true),"sessions":sessions});
+            row["notifications"] = json!({"state":state,"reachable":sessions.iter().any(|s| s["verified"]==true || s["reachable"]==true),"sessions":sessions,"historicalSessions":historical_sessions});
             row["health"] = json!({"state":if !live(row) {"removed"} else if identity::has_conflict(row) || profiles(row).any(|p| p["state"] != "signed-in") {"attention"} else {"ready"}});
             if !live(row) {
                 row["displayName"] = json!(format!("Removed account · {}", string(row, "alias")));
@@ -1003,4 +1004,42 @@ pub fn decorate_labels(value: &mut Value, rows: &[Value]) {
         }
     }
     visit(value, &labels);
+}
+
+/// Presentation only: retain diagnostic rows without advertising them as active routes.
+pub fn partition_notification_sessions(sessions: Vec<Value>) -> (Vec<Value>, Vec<Value>) {
+    sessions.into_iter().partition(|s| {
+        s["target"].as_str().is_some_and(|v| !v.trim().is_empty())
+            && s["registered"] != false
+            && !matches!(
+                string(s, "state"),
+                "failed" | "expired" | "unavailable" | "revoked" | "removed"
+            )
+    })
+}
+
+#[cfg(test)]
+mod notification_projection_tests {
+    use super::*;
+    #[test]
+    fn inactive_routes_remain_diagnostics() {
+        // Regression: AX-13 whoami advertised empty routes and stale failed sessions as destinations.
+        let rows = vec![
+            json!({"target":"", "verified":true}),
+            json!({"target":"old", "state":"failed"}),
+            json!({"target":"revoked","registered":false}),
+            json!({"target":"live","state":"verified","verified":true}),
+            json!({"target":"new","state":"not-bound"}),
+        ];
+        let (active, historical) = partition_notification_sessions(rows);
+        assert_eq!(
+            active
+                .iter()
+                .map(|s| string(s, "target"))
+                .collect::<Vec<_>>(),
+            vec!["live", "new"]
+        );
+        assert_eq!(historical.len(), 3);
+        assert_eq!(historical[1]["state"], "failed");
+    }
 }

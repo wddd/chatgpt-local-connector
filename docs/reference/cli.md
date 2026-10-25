@@ -600,3 +600,54 @@ does not register it. Core verifies ref/worktree or process evidence before repo
 `state:observed`. Reuse the exact ID and payload after an uncertain response. These
 operations record metadata only and cannot execute Git, start a process or resume a
 thread. They are not exposed through control-source MCP ops.
+
+## Execution lifetime and recovery
+
+`command` runs a foreground execution. Its child process tree is cleaned up when
+execution exits or times out, including children started with shell `&` or `nohup`.
+`waitMs` only controls how long the caller waits for the receipt. It does not detach
+children or change the execution deadline. An `executing` receipt means the command
+is running; its phase age does not indicate stalled submission. Read the original
+receipt until terminal. A backend restart makes an incomplete receipt `unconfirmed`.
+
+Use `process` with `action:"spawn"` for a managed process that must outlive the call.
+Supply `params:{command:[...],cwd:"/absolute/directory",processHandle:"unique-handle",timeoutMs:null}`.
+Observe output and exit through `codex_events`; stop it with `process` and
+`action:"kill",params:{processHandle:"unique-handle"}`. The process belongs to the
+native backend session and does not survive its termination or Core restart.
+This is not a persistent operating-system service.
+
+`codex_send` inherits omitted model and effort independently from the thread's
+latest explicit settings. Explicit request fields override inheritance; policy
+defaults apply only when the thread has no value for that field. Policy restrictions
+still apply. Queued sends resolve omitted settings when dispatched. Replacement
+prompt continuations use this same send contract; `codex_resume` keeps the thread's
+model and effort for the interrupted continuation. Steering cannot change an active
+turn's configuration.
+
+Desktop owner discovery is bounded. An unanswered discovery for an unheld thread
+allows reads through native persisted state. A held writer is never reclaimed.
+Follow `codex_owner` recovery for the exact thread when discovery fails. During
+replacement, `REPLACE_PENDING` directs the local CLI to `arc cli app replace --status`;
+remote control clients can query `update_status` after reconnecting.
+
+`logs` accepts `since` as RFC3339 or a nonnegative integer duration ending in `ms`,
+`s`, `m`, `h`, or `d`, such as `2m`. Invalid input returns the accepted formats.
+
+Account and `whoami` notification projections expose active destinations in
+`notifications.sessions`. Empty, unregistered, failed, expired, revoked and
+unavailable routes remain in `notifications.historicalSessions` for diagnosis.
+This projection does not change delivery or erase history.
+
+Coordination notices require qualified `lane:<project>/<name>` resources. Errors
+include examples using registered project IDs and direct callers to `projects`.
+Posting a notice observes its linked Codex threads before returning; unavailable
+observations remain unknown rather than implying completion.
+
+AX candidates with the same signature share occurrences across sources and builds.
+An existing matching confirmed entry receives new occurrences without creating
+another candidate. Candidate counts remain separate from confirmed defects.
+Seed/imported entries can only be triaged by local authority. Read the current
+revision with `arc cli control ax_list --stdin`, then run
+`arc cli control ax_triage --stdin` with `id`, `expectedRevision`, `action`, and
+`reason`. Source callers receive `AX_FORBIDDEN` with this local recovery command.

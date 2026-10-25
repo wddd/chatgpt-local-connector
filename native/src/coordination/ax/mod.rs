@@ -79,6 +79,13 @@ fn failure(message: String, op: &str, args: &Value) -> Value {
         "AX_REVISION_CONFLICT" | "AX_NOT_FOUND" | "AX_MERGED" | "AX_STATE_CONFLICT" => {
             json!({"via":"query","op":"ax_list","args":{"id":args["id"]},"hint":"Read the entry and use its current revision"})
         }
+        "AX_FORBIDDEN" => {
+            let mut local = args.clone();
+            if let Some(fields) = local.as_object_mut() {
+                fields.remove("requestId");
+            }
+            json!({"via":"cli","op":null,"command":format!("arc cli control {op} --stdin"),"stdin":local,"hint":format!("Seed/imported entries require local authority. Read the current revision with arc cli control ax_list --stdin locally, then run arc cli control {op} --stdin with id, expectedRevision, action and reason. Omit the source requestId; local authority must reserve its own request.")})
+        }
         "AX_CURSOR_EXPIRED" => {
             let mut reset = args.clone();
             reset.as_object_mut().map(|a| a.remove("cursor"));

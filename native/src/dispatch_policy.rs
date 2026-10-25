@@ -114,7 +114,48 @@ fn check(value: &str, allow: &[String], deny: &[String], field: &str) -> Result<
     }
     Ok(())
 }
+/// Omitted fields keep the latest explicit choice independently, never a later policy default.
+pub fn inherited_configuration(state: &Value, records: &[Value]) -> Value {
+    let mut result = json!({});
+    for (field, latest) in [
+        ("model", "latestModel"),
+        ("effort", "latestReasoningEffort"),
+    ] {
+        let recorded = records.iter().rev().find_map(|row| {
+            (row["dispatchMode"] != "steered"
+                && matches!(
+                    row["source"][field].as_str(),
+                    Some("explicit" | "thread-inherited")
+                ))
+            .then(|| row[field].as_str())
+            .flatten()
+        });
+        let native_field = if field == "effort" {
+            "reasoningEffort"
+        } else {
+            field
+        };
+        let value = state["latestThreadSettings"][field]
+            .as_str()
+            .or_else(|| state[latest].as_str())
+            .or_else(|| {
+                (state["runtimeSource"] == "codex-desktop-owner")
+                    .then(|| state[native_field].as_str())
+                    .flatten()
+            })
+            .or(recorded)
+            .or_else(|| state[native_field].as_str());
+        if let Some(value) = value {
+            result[field] = json!(value);
+        }
+    }
+    result
+}
+
 pub(crate) fn resolve(args: &mut Value) -> Result<Value> {
+    resolve_with_inheritance(args, &Value::Null)
+}
+pub(crate) fn resolve_with_inheritance(args: &mut Value, inherited: &Value) -> Result<Value> {
     let policy = read()?.codex;
     let mut selection = json!({"reason":args["reason"],"source":{}});
     for (field, mode_field, default, allow, deny) in [
@@ -145,7 +186,8 @@ pub(crate) fn resolve(args: &mut Value) -> Result<Value> {
                     None
                 }
             });
-        let value = explicit.or(default.as_deref());
+        let inherited = inherited[field].as_str();
+        let value = explicit.or(inherited).or(default.as_deref());
         check_known(value, allow, deny, field)?;
         selection["source"][field] = json!("native-default");
         let Some(value) = value.map(str::to_owned) else {
@@ -153,6 +195,8 @@ pub(crate) fn resolve(args: &mut Value) -> Result<Value> {
         };
         selection["source"][field] = json!(if explicit.is_some() {
             "explicit"
+        } else if inherited.is_some() {
+            "thread-inherited"
         } else {
             "policy-default"
         });
@@ -1309,5 +1353,31 @@ mod tests {
             .as_array()
             .unwrap()
             .is_empty());
+    }
+}
+
+#[cfg(test)]
+mod inheritance_tests {
+    use super::*;
+    #[test]
+    fn latest_explicit_fields_survive_omission_independently() {
+        // Regression: AX-09 omitted model and effort used policy defaults after an explicit thread dispatch.
+        let records = vec![
+            json!({"model":"chosen-model","effort":"high","source":{"model":"explicit","effort":"explicit"}}),
+            json!({"model":"policy-model","effort":"low","source":{"model":"policy-default","effort":"policy-default"}}),
+            json!({"effort":"medium","source":{"effort":"explicit"}}),
+        ];
+        assert_eq!(
+            inherited_configuration(&Value::Null, &records),
+            json!({"model":"chosen-model","effort":"medium"})
+        );
+        assert_eq!(
+            inherited_configuration(
+                &json!({"latestThreadSettings":{"model":"desktop-model","effort":"low"}}),
+                &records
+            ),
+            json!({"model":"desktop-model","effort":"low"})
+        );
+        assert_eq!(inherited_configuration(&Value::Null, &[]), json!({}));
     }
 }

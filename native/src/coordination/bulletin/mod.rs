@@ -53,13 +53,25 @@ fn resources(args: &Value) -> Result<Vec<ResourceKey>> {
         .map(|r| {
             let key = ResourceKey::parse(r)?;
             if key.shorthand().is_some() {
-                return Err(
-                    "INVALID_ARGUMENT: use a qualified lane:<project>/<name> resource".into(),
-                );
+                let registry =
+                    crate::kernel::file_cache::load(&root().join("coordination/projects.json"))
+                        .unwrap_or(Value::Null);
+                return Err(lane_resource_error(key.shorthand().unwrap(), &registry));
             }
             Ok(key)
         })
         .collect()
+}
+pub fn lane_resource_error(name: &str, registry: &Value) -> String {
+    let examples: Vec<_> = registry["projects"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|p| ResourceKey::lane(string(p, "id"), name).ok())
+        .take(8)
+        .map(|key| key.as_str().to_owned())
+        .collect();
+    format!("INVALID_ARGUMENT: use lane:<project>/<name>; query projects for the registered project ID. Qualified examples: {}", if examples.is_empty() { format!("lane:<project>/{name}") } else { examples.join(", ") })
 }
 fn digest(op: &str, args: &Value, actor: &Principal) -> String {
     let owner = match actor {
@@ -103,7 +115,9 @@ fn actor() -> Result<journal::Reader> {
 }
 fn failure(message: String, op: &str) -> Value {
     let code = message.split(':').next().unwrap_or("COORDINATION_STORAGE");
-    let next = if matches!(
+    let next = if message.contains("lane:<project>/<name>") {
+        json!({"via":"query","op":"projects","args":{},"hint":message})
+    } else if matches!(
         code,
         "COORDINATION_NOT_FOUND"
             | "COORDINATION_REVISION_CONFLICT"
@@ -174,6 +188,30 @@ fn linked(args: &Value, actor: &Principal) -> Result<Vec<Link>> {
         Ok(Link { session_binding_id: super::messages::binding_id(&row["origin"]["sourceId"], &args["sessionId"] )?, thread_id: thread, observed_turn_id: row["turnId"].as_str().map(str::to_owned), scope_state: match terminal {"completed"|"failed" => "completed", "interrupted"|"cancelled" => "interrupted", _ => "unknown"}.into(), observed_at: None, terminals: Default::default() })
     }).collect()
 }
+fn apply_link_observations(
+    links: &mut [Link],
+    observed: &[(String, String, String)],
+    clock: Clock,
+) {
+    for link in links {
+        if let Some((_, turn, status)) = observed.iter().find(|(thread, turn, _)| {
+            thread == &link.thread_id && link.observed_turn_id.as_deref() == Some(turn.as_str())
+        }) {
+            link.scope_state = match status.as_str() {
+                "running" | "inProgress" | "pending" => "running",
+                "completed" | "failed" => "completed",
+                "interrupted" | "cancelled" => "interrupted",
+                _ => "unknown",
+            }
+            .into();
+            link.observed_turn_id = Some(turn.clone());
+            if link.scope_state != "unknown" {
+                link.observed_at = Some(clock.elapsed);
+            }
+        }
+    }
+}
+
 async fn verify_fix(args: &Value) -> Result<()> {
     let Some(fix) = args.get("fixingCommit") else {
         return Ok(());
@@ -207,7 +245,12 @@ async fn verify_fix_in(fix: &Value, projects: &Value) -> Result<()> {
     }
     Err("COORDINATION_FIX_UNVERIFIED: fixingCommit must exist as a commit in the registered local project; omit it only for an explicitly explained non-code recovery".into())
 }
-pub(crate) async fn call(op: &str, mut args: Value, session: &str) -> Result<Value> {
+pub(crate) async fn call(
+    op: &str,
+    mut args: Value,
+    control: &crate::control::Control,
+) -> Result<Value> {
+    let session = control.session.as_str();
     let result = async {
         validate(op,&args)?;
         let reader = actor()?;
@@ -239,7 +282,21 @@ pub(crate) async fn call(op: &str, mut args: Value, session: &str) -> Result<Val
                     .and_then(|at|clock().age(at.timestamp_millis())).is_some_and(|age|age < 7 * 86400);
                 if !retained { return Err("COORDINATION_REPLAY_EXPIRED: the original incomplete receipt exceeds bulletin retention; inspect board and the original receipt before explicitly starting a new work scope".into()); }
             }
-            let links = linked(&args,&reader.principal)?;
+            let mut links = linked(&args,&reader.principal)?;
+            let threads = links.iter().map(|l| l.thread_id.clone()).collect::<Vec<_>>();
+            let mut observed = control.coordination_observations(&threads).await;
+            for thread in &threads {
+                if observed.iter().any(|(id, _, state)| id == thread && state != "unknown") { continue; }
+                let rows = crate::dispatch_policy::records(thread)?;
+                if rows.last().is_none_or(|r| r["agent"] != "codex") { continue; }
+                if let Ok(Ok(state)) = tokio::time::timeout(std::time::Duration::from_secs(2), control.dispatch_state(thread)).await {
+                    if let Some(turn) = state["turns"].as_array().and_then(|v| v.first()) {
+                        observed.retain(|(id, _, _)| id != thread);
+                        observed.push((thread.clone(), string(turn,"id").into(), string(turn,"status").into()));
+                    }
+                }
+            }
+            apply_link_observations(&mut links, &observed, clock());
             if op == "blocker_clear" { verify_fix(&args).await?; }
             with_store(|s| s.mutate(op,&args,&reader.principal,links,clock()))
         };

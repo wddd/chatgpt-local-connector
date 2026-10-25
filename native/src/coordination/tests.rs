@@ -1105,3 +1105,25 @@ fn replacement_events_use_recorded_command_submitter_through_recovery() {
     }
     assert!(!page.to_string().contains("private-target"));
 }
+
+#[test]
+fn executing_command_is_not_a_stalled_submission() {
+    // Regression: AX-07 healthy foreground commands emitted receipt-stalled candidates after 30 seconds.
+    let mut f = Fixture::new();
+    let row = json!({"requestId":"foreground","operation":"command","state":"executing","updatedAt":types::timestamp(f.time)});
+    let event = observers::stalled_input(
+        &row,
+        f.time + 120_000,
+        ResourceKey::parse("host:fixture").unwrap(),
+    )
+    .unwrap();
+    if let Some(event) = event {
+        emit_observation(&mut f, event);
+    }
+    assert!(f.query(json!({"kinds":["receipt.stalled"]}))["events"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let result = crate::egress::receipt(row);
+    assert_eq!(result["progressStalled"], false);
+}

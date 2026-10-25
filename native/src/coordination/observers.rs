@@ -885,7 +885,7 @@ pub(super) fn stalled_input(
 ) -> Result<Option<EventInput>> {
     if matches!(
         string(row, "state"),
-        "completed" | "failed" | "cancelled" | "rejected" | "not-executed"
+        "completed" | "failed" | "cancelled" | "rejected" | "not-executed" | "executing"
     ) {
         return Ok(None);
     }

@@ -111,7 +111,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       if (method === 'turn/start') {
         if (row.model === 'fixture-dispatch-reject' || row.model === 'fixture-dispatch-unmaterialized-reject') return emit({id,error:{code:-32602,message:'invalid turn configuration'}});
         const overload=row.model.includes('overload') && (row.model.includes('exhausted') || row.model.includes('side-effect') || row.turns.length<2);
-        row.turns.push({id:randomUUID(),status:overload?'failed':(row.model.includes('queue')||(row.model.includes('question')&&row.turns.length===0))?'inProgress':'completed',error:overload?{codexErrorInfo:'serverOverloaded',message:'Selected model is at capacity'}:null,items:overload?(row.model.includes('side-effect')?[{type:'commandExecution',status:'completed'}]:[]):[{id:randomUUID(),type:'agentMessage',status:'completed',text:'pong'}],input:params.input,model:params.model||row.model});
+        row.turns.push({id:randomUUID(),status:overload?'failed':(row.model.includes('queue')||(row.model.includes('question')&&row.turns.length===0))?'inProgress':'completed',error:overload?{codexErrorInfo:'serverOverloaded',message:'Selected model is at capacity'}:null,items:overload?(row.model.includes('side-effect')?[{type:'commandExecution',status:'completed'}]:[]):[{id:randomUUID(),type:'agentMessage',status:'completed',text:'pong'}],input:params.input,model:params.model||row.model,effort:params.effort});
         saveFixture(saved);
         if(row.model==='fixture-dispatch-question-terminal')emit({method:'turn/started',params:{threadId:params.threadId,turn:row.turns.at(-1)}});
         if(row.model.includes('queue'))emit({method:'item/completed',params:{threadId:params.threadId,turnId:row.turns.at(-1).id,item:row.turns.at(-1).items[0]}});
@@ -279,7 +279,7 @@ async function call(name: string, args: Record<string, unknown> = {}) {
 async function completed(name: string, args: Record<string, unknown>) {
   let { result } = await call(name, args);
   const deadline = Date.now() + 15000;
-  while (['pending', 'reserved', 'submitting', 'thread-submitting', 'thread-created', 'turn-submitting'].includes(result.state)) {
+  while (['pending', 'reserved', 'executing', 'submitting', 'thread-submitting', 'thread-created', 'turn-submitting'].includes(result.state)) {
     assert.ok(Date.now() < deadline, 'receipt completed before deadline');
     await new Promise(resolve => setTimeout(resolve, 20));
     result = (await call('receipt', { requestId: args.requestId })).result;
@@ -2297,4 +2297,64 @@ test('app_env persists per instance, reads back and clears without exporting pre
   assert.equal(cleared.result.active, false);
   assert.equal(cleared.result.clock.source, 'system');
   assert.equal((await call('app_env', { action: 'read' })).result.overrides.windowWidth, null);
+});
+
+
+test('AX interface sends inherit explicit thread choices and notices observe linked running turns', async () => {
+  // Regression: AX-09 lost model/effort on omitted sends and ax-48eb2fbb posted running-thread notices with unknown coverage.
+  const created = await completed('codex_create', {model:'fixture-dispatch',effort:'high',prompt:'First',thread:{cwd:directory},notify:null,requestId:randomUUID()});
+  assert.equal(created.state,'completed');
+  const sent = await completed('codex_send', {threadId:created.threadId,prompt:'Continue',notify:null,requestId:randomUUID()});
+  assert.equal(sent.state,'completed',JSON.stringify(sent));
+  assert.equal(sent.dispatch.model,'fixture-dispatch');
+  assert.equal(sent.dispatch.effort,'high');
+  assert.equal(sent.dispatch.source.model,'thread-inherited');
+  const overridden = await completed('codex_send', {threadId:created.threadId,prompt:'Override',model:'fixture-dispatch-other',effort:'low',notify:null,requestId:randomUUID()});
+  assert.equal(overridden.dispatch.model,'fixture-dispatch-other');
+  const inherited = await completed('codex_send', {threadId:created.threadId,prompt:'Continue again',notify:null,requestId:randomUUID()});
+  assert.equal(inherited.dispatch.model,'fixture-dispatch-other');
+  assert.equal(inherited.dispatch.effort,'low');
+  const rows=await fixtureRows();
+  assert.equal(rows[created.threadId].turns.at(-1).model,'fixture-dispatch-other');
+  assert.equal(rows[created.threadId].turns.at(-1).effort,'low');
+  const running = await completed('codex_create', {model:'fixture-dispatch-queue',prompt:'Running',thread:{cwd:directory},notify:null,requestId:randomUUID()});
+  const notice=(await call('notice_post',{intent:'Fixture work',resources:['app:installed'],threadIds:[running.threadId],expectedDurationSeconds:60,requestId:randomUUID()})).result;
+  const board=(await call('board',{id:notice.notice.id,view:'full'})).result;
+  assert.equal(board.notices[0].threadLinks[0].scopeState,'running',JSON.stringify(board));
+  assert.notEqual(board.notices[0].activityCoverage,'thread-observation-gap');
+});
+
+test('AX foreground command receipts expose execution and process spawn supports session lifetime',async()=>{
+  // Regression: AX-07 foreground executions remained reserved; AX-06 did not name the supported managed-process path.
+  const pending=(await call('command',{cmd:'fixture-delayed',cwd:directory,timeoutMs:2000,waitMs:0,requestId:randomUUID()})).result;
+  let receipt=pending;
+  for(let i=0;i<20 && ['reserved','pending'].includes(receipt.state);i++) {
+    await new Promise(resolve=>setTimeout(resolve,5));
+    receipt=(await call('receipt',{requestId:pending.requestId})).result;
+  }
+  assert.equal(receipt.state,'executing',JSON.stringify(receipt));
+  assert.equal(receipt.progressStalled,false);
+  assert.equal(receipt.next.op,'receipt');
+  const spawned=await completed('process',{action:'spawn',params:{command:['fixture'],cwd:directory,processHandle:'ax-managed',timeoutMs:null},requestId:randomUUID()});
+  assert.equal(spawned.state,'completed');
+  assert.equal(spawned.result.echoedParams.processHandle,'ax-managed');
+  assert.equal(spawned.result.echoedParams.timeoutMs,null);
+  const failed=await completed('command',{action:'exec',params:{command:['fixture'],fail:'reject'},requestId:randomUUID()});
+  assert.equal(failed.next.op,'guide');
+  assert.equal(failed.next.args.op,'process');
+});
+
+
+test('common guide discovers shared coordination and AX operations',async()=>{
+  // Contract: default loop guide exposes board, notices, messages and AX through the frozen query/act envelopes.
+  const guide=(await call('guide')).result;
+  for(const [op,via] of [['board','query'],['notice_post','act'],['messages','query'],['message_send','act'],['ax_report','act'],['ax_list','query']]) {
+    assert.equal(guide.ops.find((entry:any)=>entry.op===op)?.via,via,op);
+  }
+});
+
+test('logs accepts relative durations through the public schema',async()=>{
+  // Regression: AX-12 since:2m reached an RFC3339-only parser and failed.
+  const result=await call('logs',{since:'2m'});
+  assert.notEqual(result.response.isError,true,JSON.stringify(result.result));
 });

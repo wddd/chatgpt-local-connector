@@ -791,26 +791,30 @@ impl Store {
             .filter(|p| matches!(p, Principal::Source { .. } | Principal::LocalAuthority))
             .map(|p| json!(p))
             .unwrap_or(json!({"type":"arc"}));
-        let signature = hash(json!([kind.signature(), source]).to_string());
+        let signature = hash(kind.signature());
         self.transaction(|s| {
             s.prune(time);
             if let Some(e)=s.data.entries.values().find(|e|e.candidate_signature.as_deref()==Some(&signature) && e.candidate_build.as_deref()==Some(build) && e.candidate_state.as_deref()==Some("rejected") && time.saturating_sub(e.updated_ms)<86_400_000) {
                 return Ok(json!({"suppressed":true,"reason":"recent-rejection","id":e.id}));
             }
-            let existing=s.data.entries.values().find(|e|e.candidate_signature.as_deref()==Some(&signature) && e.candidate_build.as_deref()==Some(build) && e.candidate_state.as_deref()!=Some("rejected") && e.status!="merged").map(|e|e.id.clone());
+            let existing=s.data.entries.values().filter(|e| e.candidate_state.as_deref()!=Some("rejected") && e.status!="merged")
+                .filter(|e| e.candidate_signature.as_deref()==Some(&signature)
+                    || e.evidence.iter().any(|v| v["friction"] == kind.signature())
+                    || matches!((kind, e.id.as_str()), (Friction::StalledReceipt, "AX-07") | (Friction::OwnerDiscoveryTimeout, "AX-05")))
+                .min_by_key(|e| (e.status == "candidate", e.id.clone())).map(|e|e.id.clone());
             let observation=hash(observation);
             if let Some(key)=&existing {
                 let e=&s.data.entries[key];
-                if e.occurrences.contains(&observation) || time.saturating_sub(e.updated_ms)<600_000 {
+                if e.occurrences.contains(&observation) {
                     return Ok(json!({"coalesced":true,"id":key,"candidate":e.status=="candidate"}));
                 }
             }
             if time.saturating_sub(s.data.candidate_bucket.0)>=3_600_000 { s.data.candidate_bucket=(time,0); }
-            if s.data.candidate_bucket.1>=20 {
+            if existing.is_none() && s.data.candidate_bucket.1>=20 {
                 s.data.candidate_overflow=s.data.candidate_overflow.saturating_add(1);
                 return Ok(json!({"suppressed":true,"reason":"candidate-rate-limit","overflow":s.data.candidate_overflow}));
             }
-            s.data.candidate_bucket.1+=1;
+            if existing.is_none() { s.data.candidate_bucket.1+=1; }
             let key=existing.unwrap_or_else(||format!("ax-{}",id()));
             let fresh=!s.data.entries.contains_key(&key);
             if fresh {
@@ -820,9 +824,10 @@ impl Store {
             }
             let e=s.data.entries.get_mut(&key).unwrap();
             e.occurrences.insert(observation);
-            if e.candidate_state.as_deref()==Some("confirmed") { e.occurrence_count=e.occurrences.len() as u64; if e.status=="closed" {e.status="open".into();e.resolution=None;e.record("reopen",&json!({"type":"arc"}),json!({}),time);} }
+            e.occurrence_count=e.occurrences.len() as u64;
+            if e.status != "candidate" { if e.status=="closed" {e.status="open".into();e.resolution=None;e.record("reopen",&json!({"type":"arc"}),json!({}),time);} }
             if e.evidence.len()>=16 {e.evidence.remove(1);}
-            e.evidence.push(json!({"kind":"candidate-observation","friction":kind.signature(),"references":refs,"coreBuild":build,"observedAt":timestamp(time)}));
+            e.evidence.push(json!({"kind":"candidate-observation","friction":kind.signature(),"references":refs,"coreBuild":build,"observedAt":timestamp(time),"source":source}));
             e.last_seen_at=Some(timestamp(time));
             if fresh {e.record("candidate-created",&json!({"type":"arc"}),json!({}),time);} else {e.revision+=1;e.updated_ms=time;}
             e.event(if fresh {EventKind::AxCreated}else{EventKind::AxChanged});

@@ -132,38 +132,67 @@ fn ax_retry_dedupe_and_similarity() {
     assert_eq!(f.call("ax_list", json!({}))["counts"]["open"], 2);
 }
 #[test]
-// Contract: candidates require their associated source confirmation, never count as open, and remember rejections per build.
-fn ax_candidate_decisions_cooldown_and_rejection() {
+fn ax_candidate_occurrences_reuse_signature_across_builds_and_sources() {
+    // Regression: ax-23f33aae repeated receipt stalls created separate candidates and lost cooldown occurrences.
     let mut f = Fixture::new();
-    let candidate = f.candidate("observation-one", "build-a")["entry"].clone();
-    assert_eq!(candidate["occurrenceCount"], 0);
-    let list = f.call("ax_list", json!({}));
-    assert_eq!(list["counts"]["open"], 0);
-    assert_eq!(list["counts"]["candidates"], 1);
-    assert_eq!(f.candidate("observation-two", "build-a")["coalesced"], true);
+    let first = f.candidate("observation-one", "build-a")["entry"].clone();
+    assert_eq!(first["occurrenceCount"], 1);
     f.actor["sourceId"] = json!("two");
-    let denied=f.call("ax_candidate",json!({"id":candidate["id"],"expectedRevision":candidate["revision"],"action":"confirm","reason":"Checked"}));
+    let second = f.candidate("observation-two", "build-b")["entry"].clone();
+    assert_eq!(second["id"], first["id"]);
+    assert_eq!(second["occurrenceCount"], 2);
+    let denied=f.call("ax_candidate",json!({"id":second["id"],"expectedRevision":second["revision"],"action":"confirm","reason":"Checked"}));
     assert_eq!(denied["error"]["code"], "AX_FORBIDDEN");
     f.actor["sourceId"] = json!("one");
-    let confirmed = f.decide(&candidate, "confirm");
+    let confirmed = f.decide(&second, "confirm");
     assert_eq!(confirmed["status"], "open");
-    assert_eq!(confirmed["occurrenceCount"], 1);
-    let other = f.candidate("observation-three", "build-b")["entry"].clone();
-    assert_eq!(f.decide(&other, "reject")["candidateState"], "rejected");
+    assert_eq!(confirmed["occurrenceCount"], 2);
+    let next = f.candidate("observation-three", "build-c")["entry"].clone();
+    assert_eq!(next["id"], first["id"]);
+    assert_eq!(next["occurrenceCount"], 3);
     f.restart();
     assert_eq!(
-        f.candidate("observation-four", "build-b")["suppressed"],
+        f.candidate("observation-three", "build-d")["coalesced"],
         true
     );
+    assert_eq!(f.call("ax_list", json!({}))["counts"]["candidates"], 0);
+    assert_eq!(f.call("ax_list", json!({}))["counts"]["open"], 1);
+}
+#[test]
+fn ax_candidate_rejection_is_build_scoped() {
+    // Contract: rejection suppresses one signature for the rejected build without suppressing changed builds.
+    let mut f = Fixture::new();
+    let first = f.candidate("one", "build-a")["entry"].clone();
+    assert_eq!(f.decide(&first, "reject")["candidateState"], "rejected");
+    assert_eq!(f.candidate("two", "build-a")["suppressed"], true);
     assert_eq!(
-        f.candidate("observation-five", "build-c")["entry"]["status"],
+        f.candidate("three", "build-b")["entry"]["status"],
         "candidate"
     );
-    f.time += 86_400_001;
+}
+#[test]
+fn imported_ax_authority_and_candidate_occurrences() {
+    // Regression: imported AX entries need local triage recovery and matching candidates must enrich their open entry.
+    let mut f = Fixture::new();
+    f.store
+        .import_queue(include_str!("queue-fixture.md"), f.time)
+        .unwrap();
+    let current = f.call("ax_list", json!({"id":"AX-07"}))["entries"][0].clone();
+    let denied = f.call("ax_triage",json!({"id":"AX-07","expectedRevision":current["revision"],"action":"wontfix","reason":"Fixture"}));
+    assert_eq!(denied["error"]["code"], "AX_FORBIDDEN");
     assert_eq!(
-        f.candidate("observation-six", "build-b")["entry"]["status"],
-        "candidate"
+        denied["next"]["command"],
+        "arc cli control ax_triage --stdin"
     );
+    let found = f.candidate("fresh-stall", "new-build")["entry"].clone();
+    assert_eq!(found["id"], "AX-07");
+    assert_eq!(
+        found["occurrenceCount"],
+        current["occurrenceCount"].as_u64().unwrap() + 1
+    );
+    assert_eq!(found["status"], "open");
+    f.actor = json!({"type":"local-authority"});
+    assert_eq!(f.decide(&found, "wontfix")["status"], "closed");
 }
 #[test]
 // Contract: triage preserves revisions/history, requires verification beyond a commit, and merges unique occurrences without cycles.
@@ -370,7 +399,9 @@ fn ax_entry_bound_and_candidate_overflow() {
     assert_eq!(f.call("ax_list", json!({}))["counts"]["open"], 1000);
     let mut c = Fixture::new();
     for n in 0..20 {
-        c.candidate(&format!("observation-{n}"), &format!("build-{n}"));
+        let entry =
+            c.candidate(&format!("observation-{n}"), &format!("build-{n}"))["entry"].clone();
+        c.decide(&entry, "reject");
     }
     assert_eq!(
         c.candidate("excess", "build-excess")["reason"],
@@ -380,7 +411,7 @@ fn ax_entry_bound_and_candidate_overflow() {
     let list = c.call("ax_list", json!({}));
     assert_eq!(list["counts"]["candidateOverflow"], 1);
     assert_eq!(list["counts"]["open"], 0);
-    assert_eq!(list["counts"]["candidates"], 20);
+    assert_eq!(list["counts"]["candidates"], 0);
 }
 
 #[test]
