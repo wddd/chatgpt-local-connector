@@ -42,5 +42,3 @@ After acceptance, run `npm run wt -- remove <name>` from main to delete the work
 its private target and branch. Unmerged branches and dirty worktrees are retained
 unless `--force` is supplied. A failed create leaves its lane registered for repair
 or removal with the same command. Do not manually delete the worktree or its target.
-
-<!-- Review lane changes before serial acceptance in main. -->
