@@ -1,4 +1,9 @@
 {
+  "topology.layout": "Layout",
+  "topology.layout.auto": "Auto",
+  "topology.layout.landscape": "Landscape",
+  "topology.layout.portrait": "Portrait",
+
   "localCli": "Local CLI",
   "trayConnectionStatus": "Connection status",
   "trayOptions": "Options",

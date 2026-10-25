@@ -2,7 +2,7 @@ import { useState } from "react";
 import { t } from "../i18n";
 import { subscriptions, saveSubscriptions } from "../state/subscriptions";
 import {
-  quotaDisplay,
+  quotaDisplay, topologyLayout, type LayoutPreference,
   resetDisplay,
   maxVisibleAgents,
   bubbleDensity, bubbleWidth, bubbleAutoCompact,
@@ -24,7 +24,7 @@ export default function AgentDisplaySettings({
   onClose: () => void;
 }) {
   const { snapshot } = subscriptions.use(),
-    quota = quotaDisplay.use(),
+    layout = topologyLayout.use(), quota = quotaDisplay.use(),
     reset = resetDisplay.use(),
     max = maxVisibleAgents.use(), density = bubbleDensity.use(), width = bubbleWidth.use(), autoCompact = bubbleAutoCompact.use();
   const [saving, setSaving] = useState(false),
@@ -59,6 +59,9 @@ export default function AgentDisplaySettings({
         <Row title={t("activity.autoCompact")} description={t("activity.autoCompactHint")}><Switch label={t("activity.autoCompact")} checked={autoCompact} onChange={bubbleAutoCompact.set} /></Row>
       </Group>
       <Group title={t("usageAppearance")}>
+        <Row title={t("topology.layout")}><SingleChoice label={t("topology.layout")} value={layout}
+          onChange={value => topologyLayout.set(value as LayoutPreference)}
+          options={['auto', 'landscape', 'portrait'].map(value => ({ value, label: t(`topology.layout.${value}`) }))} /></Row>
         <Row title={t("agentsMaxVisible")}>
           <SingleChoice
             value={String(max)}

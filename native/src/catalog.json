@@ -6985,6 +6985,11 @@
             "minimum": 320,
             "maximum": 3840
           },
+          "windowHeight": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 3840
+          },
           "taskPanelWidth": {
             "type": "integer",
             "minimum": 320,
@@ -7055,6 +7060,7 @@
         "colorScheme",
         "locale",
         "windowWidth",
+        "windowHeight",
         "taskPanelWidth",
         "presence",
         "clock"

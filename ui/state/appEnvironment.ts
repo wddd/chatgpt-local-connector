@@ -46,7 +46,7 @@ export function useAppNow(interval: number | null = 1000) {
   return now;
 }
 let pending: Promise<void> | undefined;
-let appliedWidth: number | null | undefined;
+let appliedSize: string | undefined;
 export function refreshAppEnvironment() {
   return pending ??= (async () => {
     const { api } = await import("../api");
@@ -56,11 +56,13 @@ export function refreshAppEnvironment() {
     const changed = !previous || JSON.stringify(previous.overrides) !== JSON.stringify(sample.overrides) || previous.expiresAt !== sample.expiresAt;
     // Keep the real/virtual anchor until an input changes; polling must not rerender every consumer.
     if (changed) appEnvironment.set(sample);
-    const width = activeOverrides(sample, Date.now()).windowWidth ?? null;
-    if (isDesktop && (width !== appliedWidth || width !== null && Math.abs(innerWidth - width) > 1)) {
+    const overrides = activeOverrides(sample, Date.now());
+    const width = overrides.windowWidth ?? null, height = overrides.windowHeight ?? null;
+    const size = JSON.stringify([width, height]);
+    if (isDesktop && (size !== appliedSize || width !== null && Math.abs(innerWidth - width) > 1 || height !== null && Math.abs(innerHeight - height) > 1)) {
       const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("apply_env_window", { width });
-      appliedWidth = width;
+      await invoke("apply_env_window", { width, height });
+      appliedSize = size;
     }
   })().finally(() => { pending = undefined; });
 }

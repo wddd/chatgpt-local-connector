@@ -1,6 +1,6 @@
 export interface EnvOverrides {
   reducedMotion?: boolean | null; colorScheme?: "light" | "dark" | null;
-  locale?: "en" | "zh-CN" | null; windowWidth?: number | null; taskPanelWidth?: number | null;
+  locale?: "en" | "zh-CN" | null; windowWidth?: number | null; windowHeight?: number | null; taskPanelWidth?: number | null;
   presence?: "present" | "absent" | null;
 }
 export interface EnvSample {
@@ -16,7 +16,7 @@ export function clockNow(sample: EnvSample | undefined, real: number): number {
     ? sample.clock.value.nowMs + Math.max(0, real - sample.realNowMs) * sample.clock.value.speed : real;
 }
 export function environmentModel(sample: EnvSample | undefined, real: number, system: {
-  reducedMotion: boolean; colorScheme: string; locale: string; windowWidth: number;
+  reducedMotion: boolean; colorScheme: string; locale: string; windowWidth: number; windowHeight: number;
   taskPanelWidth: number | null; presence: boolean;
 }) {
   const overrides = activeOverrides(sample, real);
@@ -28,6 +28,7 @@ export function environmentModel(sample: EnvSample | undefined, real: number, sy
     colorScheme: field(overrides.colorScheme, system.colorScheme),
     locale: field(overrides.locale, system.locale),
     windowWidth: { ...field(overrides.windowWidth, system.windowWidth), value: system.windowWidth, requested: overrides.windowWidth ?? null },
+    windowHeight: { ...field(overrides.windowHeight, system.windowHeight), value: system.windowHeight, requested: overrides.windowHeight ?? null },
     taskPanelWidth: { ...field(overrides.taskPanelWidth, system.taskPanelWidth), value: system.taskPanelWidth, requested: overrides.taskPanelWidth ?? null },
     presence: field(overrides.presence === null || overrides.presence === undefined ? null : overrides.presence === "present", system.presence),
     clock: { value: { nowMs: clockNow(sample, real), speed: active && sample?.clock.source === "override" ? sample.clock.value.speed : 1 }, source: active ? sample!.clock.source : "system" as const },

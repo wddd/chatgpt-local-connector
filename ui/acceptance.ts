@@ -28,7 +28,7 @@ export function viewModel(layoutSettled = false) {
     env: environmentModel(appEnvironment.get(), Date.now(), {
       reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
       colorScheme: document.documentElement.dataset.theme ?? "light", locale: locale.get(),
-      windowWidth: innerWidth, taskPanelWidth: (detail?.width as number | undefined) ?? null,
+      windowWidth: innerWidth, windowHeight: innerHeight, taskPanelWidth: (detail?.width as number | undefined) ?? null,
       presence: !!detail && document.visibilityState === "visible" && document.hasFocus(),
     }),
     scenario: scenarioReadiness(detail),
@@ -68,7 +68,7 @@ export async function settledViewModel() {
   while (performance.now() < deadline) {
     await new Promise(requestAnimationFrame);
     const current = JSON.stringify(topology?.());
-    if (current && current === previous) stable++; else stable = 0;
+    if (current && current === previous && !(topology?.() as { orientationPending?: boolean } | undefined)?.orientationPending) stable++; else stable = 0;
     if (stable >= 3) return viewModel(true);
     previous = current ?? '';
   }

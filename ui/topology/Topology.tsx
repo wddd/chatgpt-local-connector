@@ -1,4 +1,6 @@
 import { appEnvironment, envOverrides } from "../state/appEnvironment";
+import { topologyLayout } from "../subscriptions/displayPreferences";
+import { resolveOrientation, type Orientation } from "./orientation";
 import CollapseSymbol from './CollapseSymbol';
 import { t } from '../i18n';
 import { topologyCollapsed } from './accountState';
@@ -43,6 +45,11 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   const reduced = useMedia("(prefers-reduced-motion: reduce)"), prefix = useId();
   const params = topologyValues.use(), { guides, slow } = topologyDebug.use();
   const layout = useRef<Layout | null>(null);
+  const layoutPreference = topologyLayout.use();
+  const orientation = useRef<Orientation>('landscape');
+  const orientationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const orientationPending = useRef(false);
+  const evaluateOrientation = useRef(() => {});
   const collapsed = topologyCollapsed.use();
   const [hover, setHover] = useState<{ side: Side; id: string; task?: boolean } | null>(null);
   const [focus, setFocus] = useState<typeof hover>(null);
@@ -89,6 +96,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   const latest = useRef({ nodes, allNodes, tasks, allTasks, left, right, lit, hover, focus, revealed, panelKey, panelExpanded, onPanelLayout, reduced, params, guides, slow, onReorderNodes, onReorderTasks });
   latest.current = { nodes, allNodes, tasks, allTasks, left, right, lit, hover, focus, revealed, panelKey, panelExpanded, onPanelLayout, reduced, params, guides, slow, onReorderNodes, onReorderTasks };
   useEffect(() => observeTopology(() => ({
+    orientation: orientation.current, source: topologyLayout.get() === 'auto' ? 'auto' : 'manual', orientationPending: orientationPending.current,
     origin: origin.current, size: size.current, panel: panel.current,
     interaction: { hover: latest.current.hover, focus: latest.current.focus, revealed: latest.current.revealed },
     nodes: latest.current.nodes.map(({ content: _content, icon: _icon, children: _children, tasks: _tasks, ...node }) => ({ ...node, position: animator.current.values(nodeKey(node.side, node.id)) })),
@@ -216,7 +224,20 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     animator.current.step(0, !!latest.current.reduced);
     paint(); wake();
   }, [paint, wake, scene]);
-  useEffect(() => appEnvironment.subscribe(() => target()), [target]);
+  evaluateOrientation.current = () => {
+    orientationTimer.current = null;
+    if (drag.current) return;
+    const env = envOverrides();
+    orientation.current = resolveOrientation(orientation.current, topologyLayout.get(), env.windowWidth ?? innerWidth, env.windowHeight ?? innerHeight);
+    orientationPending.current = false;
+    target();
+  };
+  const scheduleOrientation = useCallback(() => {
+    if (orientationTimer.current !== null) clearTimeout(orientationTimer.current);
+    orientationPending.current = true;
+    orientationTimer.current = setTimeout(() => evaluateOrientation.current(), 150);
+  }, []);
+  useEffect(() => { scheduleOrientation(); }, [layoutPreference, scheduleOrientation]);
   const startDrag = (event: PointerEvent<HTMLDivElement>, kind: Drag["kind"], side: Side, id: string, parent?: string, control = false) => {
     if (!control && (event.target as Element).closest("[data-topology-control]")) return;
     if (event.button !== 0 || !event.isPrimary || latest.current.nodes.some(n => n.selected)) return;
@@ -259,6 +280,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       if (d.kind === "node") latest.current.onReorderNodes(d.side, d.order);
       else latest.current.onReorderTasks(d.side, d.parent!, d.order);
     }
+    if (orientationPending.current && orientationTimer.current === null) evaluateOrientation.current();
     target();
   };
   const suppressClick = (event: MouseEvent, key: string) => {
@@ -296,11 +318,13 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     painter.current = new TopologyPainter(svg.current, prefix, changeHover);
     const container = boundary.current;
     const measure = () => {
-      const vw = container.clientWidth, vh = container.clientHeight;
+      const env = envOverrides();
+      const vw = env.windowWidth == null ? container.clientWidth : env.windowWidth - (innerWidth - container.clientWidth);
+      const vh = env.windowHeight == null ? container.clientHeight : env.windowHeight - (innerHeight - container.clientHeight);
       if (vw <= 0 || vh <= 0) return;
       size.current = { vw, vh };
       const rect = graph.current!.getBoundingClientRect();
-      origin.current = { x: rect.x, y: rect.y }; target();
+      origin.current = { x: rect.x, y: rect.y }; target(); scheduleOrientation();
     };
     const scroll = () => {
       const rect = graph.current!.getBoundingClientRect();
@@ -310,14 +334,17 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     };
     const observer = new ResizeObserver(measure); observer.observe(container);
     container.addEventListener("scroll", scroll, { passive: true }); window.addEventListener("resize", measure);
+    const unsubscribe = appEnvironment.subscribe(measure);
     measure();
     return () => {
+      unsubscribe();
+      if (orientationTimer.current !== null) clearTimeout(orientationTimer.current);
       drag.current = null; size.current = null;
       cancelAnimationFrame(frame.current); frame.current = 0; lastTime.current = 0;
       observer.disconnect(); container.removeEventListener("scroll", scroll); window.removeEventListener("resize", measure);
       painter.current?.dispose(); painter.current = null;
     };
-  }, [boundary, paint, prefix, target, changeHover]);
+  }, [boundary, paint, prefix, target, changeHover, scheduleOrientation]);
   // A new pointer sequence clears the previous drag's click guard, including
   // controls that stop pointerdown before the draggable slot can receive it.
   return <div ref={graph} className="connection-graph topology-scene"
@@ -333,6 +360,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     onKeyDownCapture={event => { if (event.key === "Escape" && drag.current) {
       const d = drag.current; drag.current = null; delete d.slot.dataset.dragging;
       if (d.target.hasPointerCapture(d.pointer)) d.target.releasePointerCapture(d.pointer);
+      if (orientationPending.current && orientationTimer.current === null) evaluateOrientation.current();
       target(); event.preventDefault(); event.stopPropagation();
     } }}>
     <svg ref={svg} className="topology-wires" aria-hidden="true" />

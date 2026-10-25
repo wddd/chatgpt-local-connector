@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import { activeOverrides, clockNow, environmentModel, type EnvSample } from "../ui/state/appEnvModel.ts";
 
 const sample: EnvSample = { active: true, expiresAt: 100_000, realNowMs: 1000,
-  overrides: { reducedMotion: true, colorScheme: "dark", locale: "zh-CN", windowWidth: 320, taskPanelWidth: 320, presence: "present" },
+  overrides: { reducedMotion: true, colorScheme: "dark", locale: "zh-CN", windowWidth: 320, windowHeight: 900, taskPanelWidth: 320, presence: "present" },
   clock: { value: { nowMs: 5000, speed: 0 }, source: "override" } };
-const system = { reducedMotion: false, colorScheme: "light", locale: "en", windowWidth: 320, taskPanelWidth: 300, presence: false };
+const system = { reducedMotion: false, colorScheme: "light", locale: "en", windowWidth: 320, windowHeight: 900, taskPanelWidth: 300, presence: false };
 
 test("snapshot reports every effective environment value and its provenance", () => {
   // Contract: model.env exposes every override with source and reports observed widths, including clamping.
   const env = environmentModel(sample, 2000, system);
-  for (const key of ["reducedMotion", "colorScheme", "locale", "presence", "windowWidth", "taskPanelWidth", "clock"] as const) assert.equal(env[key].source, "override");
+  for (const key of ["reducedMotion", "colorScheme", "locale", "presence", "windowWidth", "windowHeight", "taskPanelWidth", "clock"] as const) assert.equal(env[key].source, "override");
   assert.equal(env.reducedMotion.value, true);
   assert.equal(env.colorScheme.value, sample.overrides.colorScheme);
   assert.equal(env.locale.value, sample.overrides.locale);
@@ -27,7 +27,7 @@ test("expiry and clear restore system values even with a frozen clock", () => {
   for (const [state, now] of [[sample, 100_000], [undefined, 2000]] as const) {
     const env = environmentModel(state, now, system);
     assert.equal(env.active, false);
-    for (const key of ["reducedMotion", "colorScheme", "locale", "presence", "windowWidth", "taskPanelWidth"] as const) {
+    for (const key of ["reducedMotion", "colorScheme", "locale", "presence", "windowWidth", "windowHeight", "taskPanelWidth"] as const) {
       assert.equal(env[key].source, "system"); assert.equal(env[key].value, system[key]);
     }
     assert.deepEqual(env.clock, { value: { nowMs: now, speed: 1 }, source: "system" });

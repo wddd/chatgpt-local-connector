@@ -1,4 +1,9 @@
 {
+  "topology.layout": "布局",
+  "topology.layout.auto": "自动",
+  "topology.layout.landscape": "横屏",
+  "topology.layout.portrait": "竖屏",
+
   "localCli": "本机 CLI",
   "trayConnectionStatus": "连接状态",
   "trayOptions": "选项",

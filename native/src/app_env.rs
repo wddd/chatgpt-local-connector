@@ -11,6 +11,7 @@ pub struct Overrides {
     pub color_scheme: Option<String>,
     pub locale: Option<String>,
     pub window_width: Option<u32>,
+    pub window_height: Option<u32>,
     pub task_panel_width: Option<u32>,
     pub presence: Option<String>,
     pub clock: Option<Clock>,
@@ -62,6 +63,7 @@ pub fn transition(current: &Overrides, args: &Value, real: i64) -> Result<Overri
             "colorScheme",
             "locale",
             "windowWidth",
+            "windowHeight",
             "taskPanelWidth",
             "presence",
             "clock",
@@ -121,6 +123,7 @@ pub fn transition(current: &Overrides, args: &Value, real: i64) -> Result<Overri
     }
     for (key, dest) in [
         ("windowWidth", &mut next.window_width),
+        ("windowHeight", &mut next.window_height),
         ("taskPanelWidth", &mut next.task_panel_width),
     ] {
         if let Some(v) = args.get(key) {
@@ -219,7 +222,7 @@ mod tests {
     #[test]
     fn app_env_each_override_and_readback() {
         // Contract: app_env preserves each explicit override and marks clock provenance.
-        let args = json!({"action":"set","reducedMotion":true,"colorScheme":"dark","locale":"zh-CN","windowWidth":320,"taskPanelWidth":320,"presence":"absent","clock":{"freeze":true}});
+        let args = json!({"action":"set","reducedMotion":true,"colorScheme":"dark","locale":"zh-CN","windowWidth":320,"windowHeight":900,"taskPanelWidth":320,"presence":"absent","clock":{"freeze":true}});
         let state = transition(&Overrides::default(), &args, 1000).unwrap();
         let read = state.snapshot(9000);
         for key in [
@@ -227,6 +230,7 @@ mod tests {
             "colorScheme",
             "locale",
             "windowWidth",
+            "windowHeight",
             "taskPanelWidth",
             "presence",
         ] {
@@ -282,6 +286,7 @@ mod tests {
         // Contract: invalid overrides never partially modify the prior environment.
         for bad in [
             json!({"windowWidth":319}),
+            json!({"windowHeight":3841}),
             json!({"taskPanelWidth":0}),
             json!({"locale":"xx"}),
             json!({"colorScheme":"auto"}),
