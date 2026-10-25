@@ -1,5 +1,7 @@
 //! Local replacement receipts. No remote MCP surface or shell executor owns the worker.
 use crate::*;
+mod backups;
+pub use backups::{cleanup_candidate, legacy_backup_name};
 
 #[cfg(target_os = "macos")]
 mod macos;

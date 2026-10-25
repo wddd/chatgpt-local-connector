@@ -166,14 +166,14 @@ pub async fn prepare(body: Value) -> Result<Value> {
     private_dir(&path)?;
     let label = format!("com.whzxc.arc.replace.{id}");
     let service = format!("gui/{}/{label}", unsafe { libc::geteuid() });
-    let temporary = std::env::temp_dir().join(format!("arc-replacement-{id}"));
-    private_dir(&temporary)?;
-    let backup = temporary.join("Agent Remote Control.app");
+    let backup_directory = directory().join("backups").join(&id);
+    private_dir(&backup_directory)?;
+    let backup = backup_directory.join("Agent Remote Control.app");
     let staged = target.with_file_name(format!(
         "{}.replacement-{id}.app",
         target.file_name().unwrap().to_string_lossy()
     ));
-    let mut receipt = json!({"replacementReceipt":true,"id":id,"state":"preparing","immediate":body["immediate"]==true,"temporaryDirectory":temporary,"source":source,"target":target,"backup":backup,"staged":staged,"backupMoved":false,"package":expected,"oldPackage":{"coreBuild":old_core,"desktopBuild":old_desktop,"identifier":identifier},"desktopPid":app["pid"],"corePid":core["pid"],"coreInstance":core["instance"],"service":service,"createdAt":now(),"statusPath":path.join("status.json"),"logPath":path.join("worker.log"),"next":"End this turn after the receipt. Do not continue work depending on ARC. Query app replace --status after reconnecting."});
+    let mut receipt = json!({"replacementReceipt":true,"id":id,"state":"preparing","immediate":body["immediate"]==true,"backupDirectory":backup_directory,"source":source,"target":target,"backup":backup,"staged":staged,"backupMoved":false,"package":expected,"oldPackage":{"coreBuild":old_core,"desktopBuild":old_desktop,"identifier":identifier},"desktopPid":app["pid"],"corePid":core["pid"],"coreInstance":core["instance"],"service":service,"createdAt":now(),"statusPath":path.join("status.json"),"logPath":path.join("worker.log"),"next":"End this turn after the receipt. Do not continue work depending on ARC. Query app replace --status after reconnecting."});
     if let Some(args) = continuation {
         receipt["continuation"] = args;
         receipt["continuationState"] = json!("waiting-for-recovery");
@@ -206,7 +206,7 @@ pub async fn prepare(body: Value) -> Result<Value> {
     if let Err(error) = prepared {
         phase(&path, &mut receipt, "failed", Some(&error)).await?;
         let _ = fs::remove_dir_all(&staged);
-        let _ = fs::remove_dir_all(&temporary);
+        let _ = fs::remove_dir_all(&backup_directory);
         return Err(error);
     }
     // Confirm the launchd-owned worker started before returning an acceptance receipt.
@@ -222,7 +222,7 @@ pub async fn prepare(body: Value) -> Result<Value> {
             )
             .await?;
             let _ = fs::remove_dir_all(&staged);
-            let _ = fs::remove_dir_all(&temporary);
+            let _ = fs::remove_dir_all(&backup_directory);
             return Err("REPLACE_HELPER_TIMEOUT: installation was not started".into());
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -625,6 +625,12 @@ pub async fn run_worker(id: &str) -> Result<()> {
             phase(&path, &mut receipt, "cancelled", Some(&error)).await?;
         }
     }
+    // Cleanup never rolls back a healthy app or removes a backup still needed for recovery.
+    receipt["backupCleanup"] = match super::backups::cleanup(&receipt).await {
+        Ok(result) => result,
+        Err(error) => json!({"errors":[{"error":error}]}),
+    };
+    save(&path.join("status.json"), &receipt)?;
     if receipt["state"] == "succeeded" {
         // Continuation failures do not roll back a healthy replacement.
         if let Err(error) = deliver_continuation(&path, &mut receipt).await {
@@ -635,7 +641,7 @@ pub async fn run_worker(id: &str) -> Result<()> {
             );
         }
     }
-    // Backups are deliberately retained; no user state or previous backup is pruned.
+    // Terminal recovery keeps no duplicate app copies; success keeps only its latest backup.
     let _ = fs::remove_dir_all(&staged);
     let _ = fs::remove_file(path.join("arc-replace"));
     // bootout may terminate us. The durable terminal result is written first.
