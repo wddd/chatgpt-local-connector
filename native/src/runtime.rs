@@ -503,6 +503,7 @@ pub async fn serve_mode(daemon: bool) -> Result<()> {
     crate::sources::complete_migration().await?;
     let listener = crate::transport::listen(service.clone(), None).await?;
     crate::claude_notify::start(&service);
+    crate::coordination::messages::start(&service);
     crate::dispatch_queue::start(&service.control);
     crate::update_queue::start(&service.execution);
     let coordination = crate::coordination::observers::start(&service);

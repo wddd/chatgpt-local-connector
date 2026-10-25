@@ -1032,6 +1032,9 @@ impl Service {
             }
             return Err("UNKNOWN_ROUTE".into());
         }
+        if route == "coordination/messages" && matches!(method, "GET" | "POST") {
+            return crate::coordination::messages::local(method, &body);
+        }
         if matches!(route, "ax/import" | "ax/export") && method == "POST" {
             return crate::coordination::ax::local(route.strip_prefix("ax/").unwrap(), &body);
         }

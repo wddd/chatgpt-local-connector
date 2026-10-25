@@ -5,6 +5,7 @@ pub(crate) mod bulletin;
 pub(crate) mod git_watch;
 mod journal;
 pub(crate) mod lifecycle;
+pub(crate) mod messages;
 pub(crate) mod observers;
 mod types;
 use crate::*;

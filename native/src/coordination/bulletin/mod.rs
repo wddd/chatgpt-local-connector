@@ -427,3 +427,8 @@ pub(crate) fn command_warnings(op: &str, args: &Value) -> Option<Value> {
             .unwrap_or_else(|_| json!({"conflicts":[],"conflictCoverage":"unknown"})),
     )
 }
+
+/// Message routing consumes session ownership without reading the bulletin snapshot.
+pub(crate) fn session_active(source: &str, id: &str) -> Result<bool> {
+    with_store(|s| Ok(s.session_active(source, id)))
+}

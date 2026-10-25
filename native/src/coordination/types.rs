@@ -170,6 +170,12 @@ pub(crate) fn resolve_resource<'a>(
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum EventKind {
+    #[serde(rename = "message.created")]
+    MessageCreated,
+    #[serde(rename = "message.delivery")]
+    MessageDelivery,
+    #[serde(rename = "negotiation.changed")]
+    NegotiationChanged,
     #[serde(rename = "dispatch.accepted")]
     DispatchAccepted,
     #[serde(rename = "receipt.unconfirmed")]
@@ -224,6 +230,9 @@ impl EventKind {
             Self::GitRefMoved => "Registered Git ref changed",
             Self::NotificationDeliveryFailed => "Notification delivery attempt failed",
             Self::ReceiptStalled => "Receipt progress stalled",
+            Self::MessageCreated => "Coordination message created",
+            Self::MessageDelivery => "Coordination message delivery changed",
+            Self::NegotiationChanged => "Coordination negotiation state changed",
             Self::AxCreated => "AX entry created",
             Self::AxChanged => "AX entry changed",
             Self::NoticeChanged => "Notice state changed",

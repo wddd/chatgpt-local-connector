@@ -2119,6 +2119,9 @@ impl Control {
             | "coordination_session" => {
                 crate::coordination::bulletin::call(name, args, &self.session).await
             }
+            "message_send" | "message_route" | "messages" => {
+                crate::coordination::messages::call(name, args, &self.session).await
+            }
             "ax_report" | "ax_list" | "ax_candidate" | "ax_triage" => {
                 crate::coordination::ax::call(name, args, &self.session).await
             }

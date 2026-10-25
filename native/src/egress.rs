@@ -757,6 +757,7 @@ pub fn retry_contract(op: &Value) -> Value {
             | "blocker_open"
             | "blocker_clear"
             | "coordination_session"
+            | "message_send"
             | "ax_report"
             | "ax_candidate"
             | "ax_triage"

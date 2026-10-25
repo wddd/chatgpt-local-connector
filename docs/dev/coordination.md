@@ -321,3 +321,83 @@ submissions through `command`, including its native argv form and `git -C`, retu
 warnings when their directory maps to one registered project. Shell scripts,
 aliases, arbitrary external pushes and unregistered directories are not inferred;
 ref movement alone never proves a push. Pull `board` before those actions.
+observed. Observers add no resource subscription, source claim, lease or message.
+
+## Addressed messages
+
+`message_send` accepts `request|grant|deny|conditional|notice`, a `toSourceId`,
+optional logical `sessionId`/`toSessionId`, 1–16 canonical resources and a single-line
+summary of at most 240 characters. `relatedIds` holds at most 16 opaque references.
+Conditions allow only `notice-closed`, `blocker-cleared` and `ref-equals`; conditions
+are data and never execute policy. Envelopes are capped at 4 KiB. Never include
+prompts, transcripts, credentials, paths or private routing data.
+
+`messages` reads the authenticated source's inbox or outbox (`direction`), with
+optional session/negotiation filters, a cursor and a limit of 1–100. Cursors are
+bound to the source authorization, epoch and filters, survive restart, and report
+`MESSAGES_CURSOR_EXPIRED` after retention or authority changes. Read messages at
+turn start and reply only when necessary. Source-only messages appear in the
+unfiltered inbox. A session filter selects only messages addressed to that session.
+The sender can inspect its own sent mail; unrelated sources see no private bodies.
+The shared journal emits only fixed lifecycle facts, without message summaries.
+
+Replies require both `negotiationId` and `inReplyTo`. A request starts a negotiation;
+a grant/deny answers a request or conditional. All source replies, including notices,
+consume one combined budget. The initial request consumes no reply slot. The owner
+snapshot atomically reserves each slot with the message. Retrying the same
+`requestId` and arguments cannot consume another slot. Receipts retain only IDs and
+a query pointer; private mail remains in its owner store.
+
+Reply three marks the exchange escalated, adds a notice to both participant inboxes
+and retains one local attention item in the negotiation. Further replies fail with
+`NEGOTIATION_LIMIT` and a human-mediation `next`. This also blocks new negotiation IDs
+for the same source pair and any overlapping resources. Session/account changes
+cannot reset the counter. Escalation holds outlive mail retention until a local user
+decision. At most four negotiations per source may be open and ten may be initiated
+per hour; the source bound also covers all its sessions. Exchanges expire after
+24 hours, except unresolved escalation holds.
+
+Local management `GET coordination/messages` exposes messages and attention items.
+`POST coordination/messages` accepts `negotiationId`, `expectedLastMessageId`,
+`action:resolve|reopen` and a reason of 1–240 characters. It records the local actor
+and decision; reopen supplies a fresh three-reply budget. Control-source catalog ops
+cannot perform this mediation. Grants and user mediation never execute a task or
+change host permissions.
+
+### Delivery boundaries
+
+A source-only send may capture exactly one registered, verified Claude destination.
+Multiple destinations remain pull-only. Logical sessions use `message_route` to
+associate their own active session ID with an already verified source-owned Claude
+target; `target:null` removes that association. Session registration alone never
+selects a private conversation. `message_route` does not register or verify targets.
+Use `notify_control` and `notification_ack` for the existing handshake first.
+
+The private outbox captures an opaque route reference and generation. Raw cloud
+addresses and profile routing remain exclusively in notification storage. Explicit session
+closure/unbinding, source revocation, credential changes and notification route
+changes cancel pending sends. A route is checked again before transport. A send
+already handed to the upstream CLI cannot be recalled. Unsupported sources,
+including ordinary Chat and Work private conversations without direct addressing,
+remain pull-only. Work resource callbacks are not a private conversation API.
+
+The first message waits 30 seconds. All pending mail for that target coalesces into
+one count and `messages` pointer, with at most one attempt per target per 60 seconds.
+Push starts with `⟢ ARC receipt — automated` and labels the envelope automated data,
+not user instructions. Peer summaries and conditions are excluded from push bodies.
+The same target bucket, breakers, master switch and mute controls govern admission.
+Coordination reserves two remaining bucket tokens for task notifications and observes
+a lower-priority three-per-minute ceiling. No network call runs under the message
+store lock. An uncertain transport outcome or restart after send reservation becomes
+`unconfirmed`, with no automatic resend; clients recover by pulling mail. Transport
+acceptance is `delivered`, never proof of model processing or task execution.
+
+`coordination/messages/state.json` owns bounded messages, negotiation counters,
+private route references, coalescing timestamps and pending event descriptors. Its
+4 MiB snapshot plus atomic temporary fits the 8 MiB budget. Mail retains at most
+2,000 rows for seven days; pending delivery expires within 24 hours. Negotiations,
+route associations and target cooldowns are each bounded at 128. Local mediation
+history retains at most 64 decisions per exchange. Capacity failures preserve the
+previous snapshot and return an actionable error. Source/notification snapshots are
+read before acquiring the message lock; journal projection and network delivery
+follow release. Recovery broadcasts and message acknowledgements are separate work.

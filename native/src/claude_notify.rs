@@ -2,6 +2,7 @@
 use crate::kernel::file_cache::{self, load};
 use crate::*;
 pub(crate) mod continuation;
+pub(crate) mod coordination_delivery;
 mod diagnostics;
 mod governance;
 pub(crate) mod mcp_events;

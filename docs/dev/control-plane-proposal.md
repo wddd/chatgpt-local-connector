@@ -184,7 +184,7 @@ Phase 3 adds event op `resource_events` under `notification`, with `args:{resour
 
 ### Messages and negotiation model
 
-`Message = {messageId, negotiationId?, inReplyTo?, fromSourceId|localOrigin, fromSessionId?, toSourceId, toSessionId, type, resources, summary, conditions?, relatedIds, createdAt, expiresAt, automatic, deliveryState, acknowledgedAt?}`. Types are exactly `request|grant|deny|conditional|notice|recovery`. Structured conditions are data such as `{resource, predicate:notice-closed|blocker-cleared|ref-equals, value?}`; they are never shell commands or executable policy. Unknown predicates fail validation. Summaries cap at 500 characters; an envelope caps at 4 KiB.
+`Message = {messageId, negotiationId?, inReplyTo?, fromSourceId|localOrigin, fromSessionId?, toSourceId, toSessionId, type, resources, summary, conditions?, relatedIds, createdAt, expiresAt, automatic, deliveryState, acknowledgedAt?}`. Types are exactly `request|grant|deny|conditional|notice|recovery`. Structured conditions are data such as `{resource, predicate:notice-closed|blocker-cleared|ref-equals, value?}`; they are never shell commands or executable policy. Unknown predicates fail validation. Summaries cap at 240 characters; an envelope caps at 4 KiB.
 
 `Negotiation = {id, participants:[sessionId,sessionId], resources, state, automaticReplyCount, replyLimit:3, createdAt, expiresAt, lastMessageId, escalationId?}`. State is `open|resolved|expired|escalated`. Grants/denials must reference the request or condition being answered; they do not mutate notices, blockers, tasks or source permissions.
 

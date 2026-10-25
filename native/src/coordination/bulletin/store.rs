@@ -150,6 +150,14 @@ pub(super) struct Store {
     saved_at: i64,
 }
 impl Store {
+    pub fn session_active(&self, source: &str, id: &str) -> bool {
+        self.state.sessions.iter().any(|s| {
+            s.id == id
+                && s.state == "active"
+                && matches!(&s.owner, Principal::Source {source_id,..} if source_id == source)
+        })
+    }
+
     pub fn open(path: PathBuf) -> Result<Self> {
         let exists = path.exists();
         let state: State = if exists {
