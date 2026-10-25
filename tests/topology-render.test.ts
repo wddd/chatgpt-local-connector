@@ -9,6 +9,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
   // Regression: task/back navigation must not remount the nonmodal shell or lose return focus.
   const beforeFetch = globalThis.fetch;
   const window = new Window({ url: "http://localhost" });
+  window.localStorage.setItem("arc.privacy", "false");
   const frames = new Map<number, FrameRequestCallback>();
   let sequence = 0;
   const media = { matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} };
@@ -122,6 +123,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
 test("control source dock preserves editing, field navigation and cross-side dispatch paths", async () => {
   // Regression: editing or switching sources must preserve the panel and return focus.
   const window = new Window({ url: "http://localhost" });
+  window.localStorage.setItem("arc.privacy", "false");
   const frames = new Map<number, FrameRequestCallback>(); let sequence = 0;
   const media = { matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} };
   class Observer { observe() {} unobserve() {} disconnect() {} }
@@ -172,6 +174,7 @@ test("control source dock preserves editing, field navigation and cross-side dis
       let value: unknown = {};
       if (path === "tasks/control" && body.op === "codex_queue") value = { items: [] };
       else if (path === "status") value = status;
+      else if (path === "accounts") value = { accounts: [], login: null };
       else if (path === "setup/next") value = { hasState: false, complete: false, goal: null, steps: [], step: null, progress: { done: 0, total: 0 }, cliPath: "arc", stateDir: "fixture" };
       else if (path === "relay/list") value = { relays: [], version: "test" };
       else if (path === "relay/progress") value = { phase: "idle" };
