@@ -86,35 +86,19 @@ try {
           await dialog.getByRole('status').waitFor({state:'visible'});
           if (fixture.replacement.immediate) await dialog.getByText(messages.replacementImmediate, {exact:true}).waitFor({state:'visible'});
         }
-        if (fixture.claudeAccounts) {
+        if (name === 'accounts') {
+          // Regression: account management was only reachable through Settings and hid source identities.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          await page.getByRole('button', { name: messages[fixture.claudeLogin ? 'claudeAccounts.continue' : 'claudeAccounts.login'], exact: true }).waitFor({ state: 'visible' });
-          await page.getByRole('combobox', { name: messages['claudeAccounts.browser'], exact: true }).waitFor({ state: 'visible' });
-          await page.getByText('work@example.invalid', { exact: true }).waitFor({ state: 'visible' });
-          // Regression: The system CLI account was a separate live reference instead of a tagged isolated profile.
-          await page.getByText(messages['claudeAccounts.systemDefault'], { exact: true }).waitFor({ state: 'visible' });
-          await page.getByRole('button', { name: messages['claudeAccounts.checkAccount'].replace('{account}', 'host@example.invalid'), exact: true }).waitFor({ state: 'visible' });
-          // Regression: Reopening Settings lost the browser selected for a pending login.
-          if (fixture.claudeLogin) {
-            const browserChoice = page.getByRole('combobox', { name: messages['claudeAccounts.browser'], exact: true });
-            if (await browserChoice.isEnabled() || (await browserChoice.innerText()) !== 'Safari') throw new Error('Pending login lost its selected browser after opening Settings');
-          }
-          row.layout = await page.evaluate(() => {
-            const login = document.getElementById('claude-account-login');
-            const area = login.closest('.claude-account-actions');
-            return { viewport: innerWidth, width: document.documentElement.scrollWidth, controls: [...area.children].map(element => { const r = element.getBoundingClientRect(); return { left: r.left, right: r.right }; }) };
-          });
-          if (row.layout.width > width || row.layout.controls.some(r => r.left < 0 || r.right > width)) throw new Error('Claude account controls overflow the viewport');
-        }
-        if (fixture.claudeNotify) {
-          // Regression: A notification account must remain explicit while selecting the destination and editing its message.
-          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          await page.getByRole('button', { name: messages['claudeAccounts.notify'], exact: true }).first().click();
-          const dialog = page.getByRole('dialog', { name: `${messages['claudeAccounts.notify']} · host@example.invalid`, exact: true });
+          await page.getByRole('heading', { name: messages['accounts.title'], exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('textbox', { name: messages['accounts.alias'], exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: messages['accounts.add'], exact: true }).click();
+          const dialog = page.getByRole('dialog', { name: messages['accounts.add'], exact: true });
           await dialog.waitFor({ state: 'visible' });
-          await dialog.getByRole('textbox', { name: messages['claudeAccounts.target'], exact: true }).fill('session_010000000000000000000001');
-          await dialog.getByRole('textbox', { name: messages['claudeAccounts.message'], exact: true }).fill('ARC notification fixture');
-          await dialog.getByRole('button', { name: messages['claudeAccounts.send'], exact: true }).waitFor({ state: 'visible' });
+          await dialog.getByRole('button', { name: messages['accounts.next'], exact: true }).click();
+          await dialog.getByRole('button', { name: messages['accounts.signin'], exact: true }).click();
+          await dialog.getByRole('textbox', { name: messages['accounts.alias'], exact: true }).waitFor({ state: 'visible' });
+          await dialog.getByRole('button', { name: messages['accounts.confirm'], exact: true }).click();
+          await dialog.waitFor({ state: 'hidden' });
         }
 
         await writeFile(path.join(out, `${key}.json`), JSON.stringify(model, null, 2));
@@ -140,7 +124,7 @@ try {
           // Regression: dragging a completed card left a click guard that swallowed its mark-read action.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           for (const task of fixture.tasks.filter(task => task.completed)) {
-            const bubble = page.getByRole('button', { name: task.title });
+            const bubble = page.getByRole('button').filter({ has: page.getByText(task.title, { exact: true }) });
             const bounds = await bubble.boundingBox();
             if (!bounds) throw new Error('Completed task is unavailable for mark-read acceptance');
             await bubble.dragTo(bubble, {

@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   RefreshCw,
   Network,
+  Users,
 } from "lucide-react";
 import { animate } from "motion";
 import { reducedMotion } from "./motion/surface";
@@ -50,6 +51,8 @@ import TasksPage from "./components/TasksPage";
 import RecordsPage from "./components/RecordsPage";
 import SettingsPage from "./components/SettingsPage";
 import RemoteLinkPage from "./components/RemoteLinkPage";
+import AccountsPage, { AccountsActions } from "./components/AccountsPage";
+import { usePrivacy } from "./state/privacy";
 import { AppUpdateDialogs } from "./components/AppUpdate";
 import { replacementActive } from "./state/updateModel";
 import { Button, Icon, IconButton, Notice, HoverScope } from "./components/ui";
@@ -58,6 +61,8 @@ import PermissionsPage from "./components/PermissionsPage";
 import { permissions, permissionsReady, refreshPermissions, startPermissions } from "./state/permissions";
 export default function App() {
   locale.use();
+  const privateMode = usePrivacy();
+  useLayoutEffect(() => { document.documentElement.dataset.privacy = String(privateMode); }, [privateMode]);
   const nav = navigation.use();
   const [oauthRequest, setOauthRequest] = useState<{ id: string }>();
   const { feedback, status } = connector.use(),
@@ -71,7 +76,7 @@ export default function App() {
 
   const [page, setPage] = useState<Page>(() => {
     const saved = localStorage.getItem("arc-page");
-    return ["overview", "settings", "logs", "tasks", "remote", "permissions"].includes(saved ?? "") ? saved as Page : "overview";
+    return ["overview", "settings", "logs", "tasks", "remote", "accounts", "permissions"].includes(saved ?? "") ? saved as Page : "overview";
   });
   const [sheetWide, setSheetWide] = useState(false);
   const sheet = useRef<HTMLElement>(null),
@@ -163,7 +168,7 @@ export default function App() {
           void checkUpdate();
         }),
         listen<string>("navigate", (e) => {
-          if (["overview", "settings", "logs", "tasks", "remote", "permissions"].includes(e.payload))
+          if (["overview", "settings", "logs", "tasks", "remote", "accounts", "permissions"].includes(e.payload))
             navigate(e.payload as Page);
         }),
         listen<string>("subscriptions:open", (e) => {
@@ -193,6 +198,7 @@ export default function App() {
       } else if (url.hostname === "oauth") setOauthRequest({ id: url.searchParams.get("request") ?? "" });
       else if (url.hostname === "permissions") navigate("permissions");
       else if (url.hostname === "remote") navigate("remote");
+      else if (url.hostname === "accounts") navigate("accounts");
       else if (url.hostname === "settings") navigate("settings");
       else if (url.hostname === "setup" && ["claude-login", "cloudflare-login"].includes(url.searchParams.get("target") ?? "")) {
         void api("setup/apply", "POST", {stepId: url.searchParams.get("target") === "claude-login" ? "claude-code-ready" : "cloudflare-login", input:{}}).catch((e: Error) => notify(e.message, true));
@@ -211,6 +217,7 @@ export default function App() {
     { id: "tasks" as const, label: t("tasks"), icon: LayoutDashboard },
     { id: "logs" as const, label: t("records"), icon: Logs },
     { id: "remote" as const, label: t("connect.remoteLink"), icon: Network },
+    { id: "accounts" as const, label: t("accounts.title"), icon: Users },
     { id: "permissions" as const, label: t("permissionsTitle"), icon: ready ? ShieldCheck : ShieldAlert },
     { id: "settings" as const, label: t("settings"), icon: Settings },
   ];
@@ -226,8 +233,8 @@ export default function App() {
           !layers.length
         ) {
           e.preventDefault();
-          if (page === "remote" && (nav.remoteConnectionId || nav.remoteSourceId)) {
-            navigation.set(old => old.remoteConnectionId ? { ...old, remoteConnectionId: undefined } : { ...old, remoteSourceId: undefined });
+          if (page === "remote" && nav.remoteConnectionId) {
+            navigation.set(old => ({ ...old, remoteConnectionId: undefined }));
           } else if (page === "settings" && nav.settingsExtras) {
             navigation.set(old => ({ ...old, settingsExtras: undefined }));
           } else void closeSheet();
@@ -287,16 +294,16 @@ export default function App() {
           ref={sheet}
           className="page-sheet"
           data-panel-depth="1"
-          data-recessed={layers.length > 0 || undefined}
-          inert={layers.length > 0}
+          data-recessed={modalOpen || undefined}
+          inert={modalOpen}
           aria-label={pages.find((item) => item.id === page)?.label}
         >
           <div className="page-sheet-content">
             <header className="sheet-header">
               {page === "settings" && nav.settingsExtras && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsExtras: undefined }))} />}
-              {page === "remote" && (nav.remoteSourceId || nav.remoteConnectionId) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => old.remoteConnectionId ? { ...old, remoteConnectionId: undefined } : { ...old, remoteSourceId: undefined })} />}
+              {page === "remote" && nav.remoteConnectionId && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: undefined }))} />}
               <h1 className="capsule-title" tabIndex={-1}>
-                {page === "remote" ? status?.ingresses.find(i => i.id === nav.remoteConnectionId)?.name ?? connector.get().sources.find(s => s.id === nav.remoteSourceId)?.label ?? t("source.title") : pages.find((item) => item.id === page)?.label}
+                {page === "remote" ? status?.ingresses.find(i => i.id === nav.remoteConnectionId)?.name ?? t("source.title") : pages.find((item) => item.id === page)?.label}
                 {page === "settings" && nav.settingsExtras && <><span className="settings-breadcrumb-divider" aria-hidden="true"> / </span><span>{t("extras.title")}</span></>}
                 {page === "logs" && (
                   <span className="muted small records-count">
@@ -304,6 +311,7 @@ export default function App() {
                   </span>
                 )}
               </h1>
+              {page === "accounts" && <AccountsActions />}
               {page === "permissions" && <IconButton
                 icon={RefreshCw}
                 label={t("permissionsRefresh")}
@@ -333,6 +341,8 @@ export default function App() {
                 <RecordsPage />
               ) : page === "permissions" ? (
                 <PermissionsPage />
+              ) : page === "accounts" ? (
+                <AccountsPage />
               ) : page === "remote" ? (
                 <RemoteLinkPage />
               ) : (

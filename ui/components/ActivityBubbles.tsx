@@ -1,3 +1,5 @@
+import { Private } from "./Privacy";
+import { usePrivacy } from "../state/privacy";
 import { useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -25,7 +27,7 @@ function Headline({ session }: { session: TrackedActivity }) {
     <AnimatePresence initial={false}>
       <motion.span key={`${display.phase}:${headline.text}`} initial={{ opacity: reduced ? 1 : 0, y: reduced ? 0 : 5 }} animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: reduced ? 0 : -5 }} transition={{ duration: reduced ? 0 : 0.16 }}>
-        {headline.path ? <FilePath path={headline.path} project={display.project} /> : headline.text}
+        {headline.path ? <FilePath path={headline.path} project={display.project} /> : headline.text === display.title ? <Private>{headline.text}</Private> : headline.text}
       </motion.span>
     </AnimatePresence>
   </span>;
@@ -53,7 +55,7 @@ export function ActivityBubbleContent({ session, now, density = "standard", hist
     <PhaseTile phase={phase} running={running} completed={completed} paused={paused} animated={!external} source={source} />
     {historical && <span className="sr-only">{t(paused ? "timeline.status.cancelled" : "activity.completed")}</span>}
     <span className="activity-copy">
-      <span className="activity-title-row"><strong title={session.title}>{session.title || t("timeline.title")}</strong>
+      <span className="activity-title-row"><Private><strong>{session.title || t("timeline.title")}</strong></Private>
         {unread && <span className="activity-unread" role="img" aria-label={t("activity.unread")} />}
         {session.interaction ? <span className="activity-pending">{t("activity.pending")}</span> : !historical && <time>{elapsed(session.turnStartedAt, session.endedAt ?? now)}</time>}
       </span>
@@ -83,6 +85,7 @@ export function ActivityBubble({ agent, session, now, onMove, onRead, density = 
     const start = press.current;
     if (start?.id === event.pointerId && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) start.moved = true;
   };
+  const privateMode = usePrivacy();
   const hint = t("timeline.open");
   return <div className="activity-bubble-shell"><button type="button" className={`activity-bubble ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
       data-density={density} data-external={session.source === "transcript" || undefined}
@@ -93,7 +96,7 @@ export function ActivityBubble({ agent, session, now, onMove, onRead, density = 
         event.preventDefault(); onMove(event.key === "ArrowUp" ? -1 : 1);
       } }}
       data-activity-session={JSON.stringify([agent, session.id])}
-      aria-label={`${session.title || t("timeline.title")}${unread ? ` · ${t("activity.unread")}` : ""} · ${hint}`} onClick={() => {
+      aria-label={`${privateMode ? t("accounts.hidden") : session.title || t("timeline.title")}${unread ? ` · ${t("activity.unread")}` : ""} · ${hint}`} onClick={() => {
         selectAgentPanel({ type: "task", agent, session });
       }}>
       <ActivityBubbleContent session={session} now={now} density={density} />

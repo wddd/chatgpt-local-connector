@@ -13,7 +13,8 @@ import IngressDialog from "./IngressDialog";
 import ChangeConnection from "./ChangeConnection";
 import AddConnection from "./AddConnection";
 import Onboarding from "./Onboarding";
-import SourceDetail from "./SourceDetail";
+import SourcePanel from "./SourcePanel";
+import { Private } from "./Privacy";
 import SourceIcon from "./SourceIcon";
 import { ApprovalCard } from "./OAuthApproval";
 import { RelaySettings } from "./RelaySettings";
@@ -42,7 +43,7 @@ export default function RemoteLinkPage() {
     const frame = requestAnimationFrame(() => {
       const target = !current && prior ? document.querySelector<HTMLElement>(`[data-remote-row="${CSS.escape(prior)}"]`)
         : prior && nav.remoteSourceId && !nav.remoteConnectionId ? document.querySelector<HTMLElement>("[data-source-connection]")
-        : current ? document.querySelector<HTMLElement>(".sheet-header h1") : null;
+        : current && !nav.remoteSourceId ? document.querySelector<HTMLElement>(".sheet-header h1") : null;
       target?.focus({ preventScroll: true });
     });
     previous.current = current;
@@ -78,7 +79,7 @@ export default function RemoteLinkPage() {
       {!["local", "relay"].includes(connection.transport) && <Button onClick={() => setEditing(connection)}>{t("edit")}</Button>}
       {selectedRelay?.owner && <Button className="connection-hosting-link" variant="ghost" onClick={() => navigation.set(old => ({ ...old, page: "settings", settingsExtras: true }))}>{t("setup.hostingLink")}<Icon icon={ChevronRight} /></Button>}
       <div className="connection-remove"><div><strong>{t(joined ? "connect.leave" : "setup.removeConnection")}</strong><p>{t("setup.removeAffected", { names: affected.map(s => s.label).join(", ") || t("source.unused") })}</p></div><Button variant="danger-outline" onClick={() => { setError(""); setRemoving(true); }}>{t(joined ? "connect.leave" : "remove")}</Button></div>
-    </div> : selected ? <SourceDetail key={selected.id} source={selected} onConnection={id => navigation.set(old => ({ ...old, remoteConnectionId: id }))} /> : <>
+    </div> : <>
       <div className="source-section-heading"><SingleChoice compact label={t("source.grouping")} value={group} onChange={value => grouping.set(value as "all" | "platform")} options={[{ value: "all", label: t("all") }, { value: "platform", label: t("source.byPlatform") }]} /><Button data-add-source variant="primary" onClick={() => add()}>{t("addControlSource")}</Button></div>
       {requests.filter(({ ingress, request }) => request.switchSourceId || sourceCandidates(sources, entries, ingress.id, request.product ?? "custom", request.sourceId).length > 0).map(({ ingress, request }) => <Notice key={request.id} tone="warning" action={<Button onClick={() => setClaim(request.id)}>{t("source.review")}</Button>}>{t("source.pendingReauthorization", { name: request.clientName, connection: ingress.name })}</Notice>)}
       <HoverScope>{groups.map(platform => <section key={platform} className="source-list">
@@ -96,12 +97,13 @@ export default function RemoteLinkPage() {
         <HoverScope>{entries.map(ingress => {
           const count = visible.filter(s => s.ingressId === ingress.id).length;
           return <Button key={ingress.id} variant="ghost" className="source-list-row connection-list-row" data-hover-target={ingress.id} data-remote-row={ingress.id} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: ingress.id }))}>
-            <Icon icon={connectionIcon(ingress)} size={20} /><span className="connection-list-copy"><strong>{ingress.name}</strong><span>{ingress.url || connectionProvider(ingress)}</span></span>
+            <Icon icon={connectionIcon(ingress)} size={20} /><span className="connection-list-copy"><strong>{ingress.name}</strong><Private>{ingress.url || connectionProvider(ingress)}</Private></span>
             <span className="muted">{t(count ? "source.count" : "source.unused", { count })}</span><Status tone={ingress.state === "ready" ? "success" : "neutral"}>{t(ingress.state === "ready" ? "connect.online" : "connect.offline")}</Status><Icon icon={ChevronRight} />
           </Button>;
         })}</HoverScope>
       </section>
     </>}
+    {selected && <Dialog dock="left" width={520} headerless title={selected.label} returnFocus={`[data-remote-row="${CSS.escape(selected.id)}"]`} onClose={() => navigation.set(old => old.remoteSourceId === selected.id ? { ...old, remoteSourceId: undefined } : old)}><div className="side-panel-layer"><SourcePanel key={selected.id} source={selected} /></div></Dialog>}
     {(error || relays.error) && <Notice>{error || t("connect.readFailed")}</Notice>}
     {removing && connection && <Dialog centered title={t(joined ? "connect.confirm.leave" : "setup.removeConnection")} width={440} busy={removeBusy} onClose={() => setRemoving(false)} footer={<><Button disabled={removeBusy} onClick={() => setRemoving(false)}>{t("cancel")}</Button><Button variant="danger" busy={removeBusy} onClick={() => void removeConnection()}>{t(joined ? "connect.leave" : "remove")}</Button></>}>
       <p>{t("setup.removeConfirm", { name: connection.name, names: affected.map(s => s.label).join(", ") || t("source.unused") })}</p>{error && <Notice>{error}</Notice>}

@@ -43,7 +43,7 @@ import type { SurfaceRect } from "../motion/surface";
 import type { WireState } from "../topology/render";
 import Onboarding from "./Onboarding";
 import AddConnection from "./AddConnection";
-import { onboarding, openOnboarding, connectionSetup, addedSource } from "../state/onboarding";
+import { onboarding, openOnboarding, connectionSetup, connectionSwitch, addedSource } from "../state/onboarding";
 import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
 import AgentDisplaySettings from "./AgentDisplaySettings";
@@ -337,6 +337,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       {visible && tuning && <TuningPanel />}
       {flow && visible && <Onboarding />}
       {newConnection && visible && <AddConnection options={newConnection} onClose={() => connectionSetup.set(undefined)} onAdded={id => {
+        if (newConnection.forSwitch) connectionSwitch.set(old => old && { ...old, ingressId: id });
         if (newConnection.forSource) onboarding.set(old => old?.step === "connection" ? { ...old, step: "address", ingressId: id, baseline: (connector.get().status?.ingresses.find(i => i.id === id)?.oauth?.pending ?? []).map(p => p.id) } : old);
         connectionSetup.set(undefined);
       }} />}

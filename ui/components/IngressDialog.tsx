@@ -288,6 +288,7 @@ export default function IngressDialog({
         onChange={(e) => change(key, e.target.value as never)}
         placeholder={placeholder}
         disabled={working}
+        data-sensitive={key === "domain" || key === "tunnelId" || undefined}
         required={key === "domain" || key === "tunnelId"}
       />
     </Field>

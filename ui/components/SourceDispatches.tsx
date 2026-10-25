@@ -1,3 +1,4 @@
+import { Private } from "./Privacy";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { api } from "../api";
@@ -8,14 +9,20 @@ import { selectAgentPanel } from "../state/overviewPanels";
 import { navigation } from "../state/navigation";
 import { sourceDispatches, dispatchState, isLatestDispatch } from "../state/sourceDispatch";
 import { PhaseTile } from "./activity";
-import { Icon, Notice } from "./ui";
+import { Icon, Notice, Tag } from "./ui";
 
-export default function SourceDispatches({ sourceId }: { sourceId: string }) {
+export default function SourceDispatches({ sourceId, summary = false }: { sourceId: string; summary?: boolean }) {
   const { records, error } = tasks.use(), { snapshot } = agentActivity.use();
   const [runtimes, setRuntimes] = useState<Record<string, TaskRuntime>>({});
   const [visible, setVisible] = useState(8);
   const more = useRef<HTMLDivElement>(null);
-  const dispatches = sourceDispatches(records, sourceId), rows = dispatches.slice(0, visible);
+  const stateOf = (record: typeof records[number]) => {
+    const id = record.threadId || record.task.threadId;
+    const latest = isLatestDispatch(record, records);
+    return dispatchState(record, latest && id ? runtimes[id] ?? record.runtime : undefined, latest ? snapshot?.agents.codex?.sessions.find(s => s.id === id) : undefined);
+  };
+  const dispatches = sourceDispatches(records, sourceId).sort((a, b) => Number(stateOf(b) === 'pending') - Number(stateOf(a) === 'pending'));
+  const rows = dispatches.slice(0, visible);
   useEffect(() => {
     const marker = more.current;
     if (!marker || visible >= dispatches.length) return;
@@ -44,8 +51,9 @@ export default function SourceDispatches({ sourceId }: { sourceId: string }) {
     };
     void read(); const timer = setInterval(() => void read(), 10000);
     return () => { stopped = true; clearInterval(timer); };
-  }, [sourceId, ids.join(",")]);
+  }, [sourceId, ids.slice().sort().join(",")]);
   return <div className="source-dispatch-list">
+    {summary && <div className="account-chips">{['pending', 'running', 'today'].map(state => <Tag key={state}>{t(`accounts.count.${state}`, { count: dispatches.filter(record => state === 'today' ? new Date(record.createdAt).toDateString() === new Date().toDateString() : stateOf(record) === state).length })}</Tag>)}</div>}
     {error && <Notice>{error}</Notice>}
     {rows.map(record => {
       const id = record.threadId || record.task.threadId;
@@ -65,7 +73,7 @@ export default function SourceDispatches({ sourceId }: { sourceId: string }) {
         navigation.set(old => ({ ...old, page: "overview" }));
       }}>
         <PhaseTile phase={phase} completed={state === "completed"} animated={false} />
-        <span><strong>{title}</strong><span className="source-dispatch-meta">{record.agent ?? "Codex"} · <span>{t(`sourcePanel.${state}`)}</span></span></span>
+        <span><Private><strong>{title}</strong></Private><span className="source-dispatch-meta">{record.agent ?? "Codex"} · <span>{t(`sourcePanel.${state}`)}</span></span></span>
         {canOpen && <Icon icon={ChevronRight} />}
       </button>;
     })}

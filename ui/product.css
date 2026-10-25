@@ -289,7 +289,7 @@
   bottom: var(--dock-bottom);
   z-index: 50;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 4px;
   padding: 6px;
   border: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
@@ -426,8 +426,9 @@
   pointer-events: none;
   left: var(--dock-left);
   bottom: var(--dock-bottom);
-  width: 50px;
-  height: 210px;
+  width: 250px;
+  height: 50px;
+  max-width: calc(100vw - 32px);
   border: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
   border-radius: 26px;
   background: var(--surface);
@@ -440,8 +441,9 @@
 }
 
 .navigation-capsule {
-  width: 50px;
-  height: 210px;
+  width: 250px;
+  height: 50px;
+  max-width: calc(100vw - 32px);
   display: block;
 }
 .capsule-icons {
@@ -449,26 +451,16 @@
   inset: 0;
   overflow: hidden;
   border-radius: inherit;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
 }
 .capsule-icons button {
-  position: absolute;
-  left: 6px;
+  position: relative;
+  inset: auto;
+  flex: 0 0 36px;
   transition: opacity 160ms ease;
-}
-.capsule-icons [data-page="tasks"] {
-  bottom: 166px;
-}
-.capsule-icons [data-page="logs"] {
-  bottom: 126px;
-}
-.capsule-icons [data-page="remote"] {
-  bottom: 86px;
-}
-.capsule-icons [data-page="permissions"] {
-  bottom: 46px;
-}
-.capsule-icons [data-page="settings"] {
-  bottom: 6px;
 }
 @media (prefers-reduced-motion: reduce) {
   .navigation-capsule,
@@ -487,10 +479,10 @@
 
 .navigation-surface.has-update,
 .navigation-capsule.has-update {
-  height: 250px;
+  width: 290px;
+  height: 50px;
 }
 .capsule-icons .update-shortcut {
-  bottom: 206px;
   width: 36px;
   height: 36px;
 }
@@ -1454,13 +1446,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .connection-remove p { margin: 4px 0 0; color: var(--text-secondary); font-size: var(--text-xs); }
 .relay-settings:empty { display: none; }
 @keyframes source-grow-in { 0% { scale: .85; opacity: .3; } 15%, 80% { scale: 1; opacity: 1; filter: drop-shadow(0 0 8px var(--topology-source)); } 100% { scale: 1; opacity: 1; filter: none; } }
-.claude-account-actions, .claude-account-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.claude-account-actions { padding: 12px 0; }
-.claude-browser-choice { flex: 1; min-width: 180px; max-width: 360px; }
-.claude-account-row > span { color: var(--text-secondary); font-size: var(--text-sm); }
-.claude-login-content, .claude-login-content form { display: grid; gap: 16px; }
-.claude-login-content p { margin: 0; }
-.claude-login-content details > summary { cursor: pointer; margin-bottom: 12px; }
+
 .graph-node[data-new-source] { animation: source-grow-in 2s var(--ease); }
 @media (max-width: 520px) {
   .choice-tiles .choice-radio { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1490,3 +1476,56 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .topology-collapse:focus-visible { outline: 2px solid var(--account-color); outline-offset: 3px; }
 .topology-node[data-path-lit="true"] .graph-node { box-shadow: 0 0 0 4px color-mix(in srgb, var(--account-color) 14%, transparent); }
 .activity-slot[data-path-lit="true"] .activity-bubble { box-shadow: inset 0 0 0 1px var(--border-strong), 0 6px 18px color-mix(in srgb, var(--text) 18%, transparent); }
+/* Accounts share the workspace shell and source side panel. */
+.private-value[data-private] > span, .private-input { filter: blur(5px); user-select: none; }
+.accounts-workspace { container-type: inline-size; }
+.accounts-columns { display: grid; grid-template-columns: minmax(220px, 330px) minmax(0, 1fr); gap: 24px; }
+.account-list { min-width: 0; }
+.account-list h3 { margin: 18px 10px 8px; color: var(--text-secondary); font-size: 12px; }
+.account-list-row { width: 100%; display: flex; gap: 12px; text-align: left; padding: 12px; }
+.account-list-row[aria-current="true"] { background: var(--hover); }
+.account-avatar { width: 36px; height: 36px; display: grid; place-items: center; flex-shrink: 0; border-radius: 50%; background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: var(--accent); font-weight: 650; }
+.account-avatar[data-provider="anthropic"] { color: var(--brand-orange); background: color-mix(in srgb, var(--brand-orange) 12%, var(--surface)); }
+.account-row-copy { display: grid; gap: 5px; min-width: 0; flex: 1; }
+.account-row-copy > strong, .account-row-copy > .private-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-roles, .account-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.account-warning { width: 7px; height: 7px; border-radius: 50%; background: var(--warning); }
+.account-detail { min-width: 0; display: grid; align-content: start; gap: 16px; }
+.account-detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.account-detail-header > .private-value { width: 100%; color: var(--text-secondary); }
+.account-role-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.account-card { min-width: 0; border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: grid; align-content: start; gap: 12px; background: var(--surface); }
+.account-card h3, .account-detail h3 { margin: 0; font-size: 14px; }
+.account-connection, .account-profile, .account-session, .account-window { display: grid; gap: 8px; min-width: 0; }
+.account-connection + .account-connection, .account-profile + .account-profile { padding-top: 12px; border-top: 1px solid var(--border); }
+.account-window progress { width: 100%; height: 6px; accent-color: var(--accent); }
+.account-window progress::-webkit-progress-bar { background: var(--border); border-radius: 8px; }
+.account-window progress::-webkit-progress-value { background: var(--accent); border-radius: 8px; }
+.account-actions { flex-wrap: wrap; }
+.account-remove { display: flex; gap: 16px; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 16px; }
+.account-form { display: grid; gap: 16px; }
+.account-form fieldset { border: 0; padding: 0; display: grid; gap: 8px; }
+.account-steps { display: flex; list-style: none; gap: 12px; padding: 0; margin: 0; flex-wrap: wrap; color: var(--text-secondary); }
+.account-steps [aria-current="step"] { color: var(--accent); font-weight: 650; }
+.source-account-header { flex-wrap: wrap; gap: 12px; }
+.source-account-brand { position: relative; flex-shrink: 0; }
+.source-account-badge { position: absolute; bottom: -4px; right: -6px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); font-size: 10px; }
+.source-account-heading { min-width: 0; flex: 1; }
+.source-account-heading h2 { margin: 0 0 4px; font-size: 16px; overflow: hidden; text-overflow: ellipsis; }
+.source-account-heading > .private-value { color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.source-account-header > .actions { margin-left: auto; }
+.source-panel-content { display: flex; flex-direction: column; gap: 16px; }
+.account-advanced > summary { cursor: pointer; margin-bottom: 12px; }
+@container (max-width: 760px) {
+  .accounts-columns { grid-template-columns: 1fr; }
+  .account-list { max-height: 240px; overflow-y: auto; }
+  .account-role-cards { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .sheet-header:has(+ .workspace .accounts-workspace) { flex-wrap: wrap; }
+  .sheet-header:has(+ .workspace .accounts-workspace) .capsule-title { flex: 1 1 100%; }
+}
+
+:root[data-privacy="true"] [data-sensitive] { filter: blur(5px); }
+.account-shared-notice { margin: 0; color: var(--text-secondary); }
+.activity-title-row > .private-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

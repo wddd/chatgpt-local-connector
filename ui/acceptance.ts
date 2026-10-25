@@ -1,4 +1,5 @@
 import { activityBubbleSnapshot, controlActivityBubble, type ActivityBubbleRequest } from "./state/activityBubbles";
+import { protectSnapshot } from "./state/privacy";
 import { scenarioReadiness } from "./state/scenarioReadiness";
 // On-demand observation of the real renderer. No alternate layout or state model.
 import { taskPanelSnapshot, controlTaskPanel, type TaskPanelRequest } from "./state/taskPanel";
@@ -64,6 +65,7 @@ export async function settledViewModel() {
   return { ...viewModel(), layoutSettled: false };
 }
 export async function captureRequest(request: { id: string; panel?: PanelRequest; taskPanel?: TaskPanelRequest; taskBubble?: ActivityBubbleRequest }, navigate: () => void) {
+  protectSnapshot();
   const { invoke } = await import('@tauri-apps/api/core');
   try {
     await Promise.all([refreshConnector(), refreshAgents(), refreshTasks(), api<AgentActivitySnapshot>('agents/activity').then(acceptActivity)]);

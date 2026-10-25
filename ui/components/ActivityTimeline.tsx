@@ -1,5 +1,6 @@
 import { pendingSessions } from "../state/taskInteractions";
 import { useTaskPresence } from "../state/requestRouting";
+import { Private } from "./Privacy";
 import { observeTaskPanel } from "../state/taskPanel";
 import { useTaskQueue } from "../state/taskQueue";
 import TaskQueuedMessages from "./TaskQueuedMessages";
@@ -200,7 +201,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           { label: t(expanded ? "restorePanelWidth" : "expandPanelWidth"), action: onToggleWidth },
         ]} /></div>}
       </div>
-      <h2 className="activity-panel-title" title={title}>{title}</h2>
+      <h2 className="activity-panel-title"><Private>{title}</Private></h2>
       <div className="task-detail-chips"><span className="task-state" data-state={state}>{t(`detail.state.${state}`)}</span>
         {latestSummary?.model?.trim() && <span className="task-spec-chip" title={latestSummary.model}>{shortModelLabel(latestSummary.model)}</span>}
         {latestSummary?.effort?.trim() && <span className="task-spec-chip">{latestSummary.effort}</span>}

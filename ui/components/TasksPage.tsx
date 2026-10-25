@@ -1,3 +1,5 @@
+import { Private } from "./Privacy";
+import { usePrivacy } from "../state/privacy";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Copy } from "lucide-react";
 import { t } from "../i18n";
@@ -18,6 +20,7 @@ import TaskOwnership from "./TaskOwnership";
 import { Markdown, plainMarkdown } from "./ui/Markdown";
 const idOf = (r: TaskRecord) => r.taskId || r.threadId || r.task.threadId;
 export default function TasksPage() {
+  const privateMode = usePrivacy();
   const { records, error, loading } = tasks.use(),
     { busy } = connector.use();
   const [runtimes, setRuntimes] = useState<Record<string, TaskRuntime>>({}),
@@ -127,7 +130,7 @@ export default function TasksPage() {
   };
   const detail = selected && (
     <Dialog
-      title={titleOf(selected.first)}
+      title={<Private>{titleOf(selected.first)}</Private>}
       width={720}
       busy={!!busy || opening}
       onClose={closeDetail}
@@ -264,7 +267,7 @@ export default function TasksPage() {
                 type="button"
                 className="task-document"
                 data-task-id={g.id}
-                aria-label={titleOf(g.first)}
+                aria-label={privateMode ? t("accounts.hidden") : titleOf(g.first)}
                 aria-haspopup="dialog"
                 onClick={() => {
                   setSelectedId(g.id);
@@ -273,7 +276,7 @@ export default function TasksPage() {
               >
                 <span className="task-document-heading">
                   <strong className="task-document-title">
-                    {titleOf(g.first)}
+                    <Private>{titleOf(g.first)}</Private>
                   </strong>
                 </span>
                 <span className="task-document-meta">

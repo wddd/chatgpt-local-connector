@@ -6,10 +6,9 @@ import { connectionSwitch } from "../state/onboarding";
 import type { ControlSource } from "../state/types";
 import { connectionKind, isPendingSource } from "../sourcePresentation";
 import SourceProductChoice from "./SourceProductChoice";
-import SourceDispatches from "./SourceDispatches";
 import { Button, CopyField, Dialog, Field, Input, Notice, Status } from "./ui";
 
-export default function SourceDetail({ source, onConnection }: { source: ControlSource; onConnection: (id: string) => void }) {
+export default function SourceConnection({ source, onConnection }: { source: ControlSource; onConnection: (id: string) => void }) {
   const { status, sources } = connector.use();
   const ingress = status?.ingresses.find(i => i.id === source.ingressId);
   const [label, setLabel] = useState(source.label), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -39,17 +38,6 @@ export default function SourceDetail({ source, onConnection }: { source: Control
   const client = ingress?.oauth?.grants.find(g => g.id === source.credential.grantId)?.clientName;
   const date = (value: number | null) => value === null ? "—" : new Date(value * 1000).toLocaleString(locale.get(), { hour12: false });
   return <div className="source-detail">
-    <form onSubmit={e => { e.preventDefault(); void update({ label: label.trim() }); }}>
-      <Field id="source-label" label={t("source.label")} error={labelError}>
-        <Input id="source-label" value={label} disabled={busy} aria-invalid={!!labelError} aria-describedby={labelError ? "source-label-error" : undefined}
-          onChange={e => { setLabel(e.target.value); setLabelError(""); }} onBlur={() => void update({ label: label.trim() })} />
-      </Field>
-    </form>
-    <Field label={t("source.product")}><SourceProductChoice value={source.product} disabled={busy} onChange={product => void update({ product })} /></Field>
-    <div className="source-section-heading">
-      <Status tone={source.state === "connected" ? "success" : "neutral"}>{t(`source.state.${source.state}`)}</Status>
-      <Button variant="danger" disabled={busy || source.state === "revoked"} onClick={() => setConfirm(true)}>{t("source.disconnect")}</Button>
-    </div>
     {error && !confirm && <Notice>{error}</Notice>}
     <section className="source-connection-card">
       <div className="source-section-heading"><span className="muted">{t("source.connections")}</span><Button data-change-connection disabled={source.state === "revoked" || busy} onClick={() => connectionSwitch.set({ sourceId: source.id, step: source.pendingSwitch ? source.pendingSwitch.requestId ? "approval" : "address" : "connection", ingressId: source.pendingSwitch?.ingressId, requestId: source.pendingSwitch?.requestId })}>{t("switch.title")}</Button></div>
@@ -64,8 +52,18 @@ export default function SourceDetail({ source, onConnection }: { source: Control
       <div><dt>{t("source.authorizedAt")}</dt><dd>{date(source.connectedAt)}</dd></div>
       <div><dt>{t("source.lastSeen")}</dt><dd>{date(source.lastSeenAt)}</dd></div>
       <div><dt>{t("source.clientName")}</dt><dd>{client || "—"}</dd></div>
+      <div><dt>{t("accounts.tools")}</dt><dd>guide · query · act</dd></div>
     </dl>
-    <section><h3>{t("sourcePanel.dispatches")}</h3><SourceDispatches key={source.id} sourceId={source.id} /></section>
+    <details className="account-advanced"><summary>{t("accounts.advanced")}</summary>
+      <form onSubmit={e => { e.preventDefault(); void update({ label: label.trim() }); }}>
+      <Field id="source-label" label={t("source.label")} error={labelError}>
+        <Input id="source-label" value={label} disabled={busy} aria-invalid={!!labelError} aria-describedby={labelError ? "source-label-error" : undefined}
+          onChange={e => { setLabel(e.target.value); setLabelError(""); }} onBlur={() => void update({ label: label.trim() })} />
+      </Field>
+    </form>
+    <Field label={t("source.product")}><SourceProductChoice value={source.product} disabled={busy} onChange={product => void update({ product })} /></Field>
+    </details>
+    <div className="account-remove"><Button variant="danger-outline" disabled={busy || source.state === "revoked"} onClick={() => setConfirm(true)}>{t("source.disconnect")}</Button></div>
     {confirm && <Dialog title={t("source.disconnectTitle", { name: source.label })} onClose={() => setConfirm(false)} busy={busy}
       footer={<><Button disabled={busy} onClick={() => setConfirm(false)}>{t("cancel")}</Button><Button variant="danger" busy={busy} onClick={() => void disconnect()}>{t("disconnect")}</Button></>}>
       <p>{t("source.disconnectHint")}</p>{error && <Notice>{error}</Notice>}

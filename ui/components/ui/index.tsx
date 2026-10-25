@@ -1,3 +1,4 @@
+import { usePrivacy } from "../../state/privacy";
 import {
   useEffect,
   useId,
@@ -609,6 +610,7 @@ export function CopyField({
   loading?: boolean;
   placeholder?: string;
 }) {
+  const privateMode = usePrivacy();
   const [visible, setVisible] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
@@ -621,6 +623,7 @@ export function CopyField({
     <div>
       <div className="copy-field">
         <Input
+          className={privateMode ? "private-input" : undefined}
           aria-label={label}
           value={value}
           readOnly

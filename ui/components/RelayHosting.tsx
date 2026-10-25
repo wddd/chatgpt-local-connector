@@ -1,3 +1,4 @@
+import { Private } from "./Privacy";
 import { useCallback, useEffect, useState } from "react";
 import { Cloud, RefreshCw } from "lucide-react";
 import { api } from "../api";
@@ -60,12 +61,12 @@ function HostedRelay({ relay, version, startJob, disabled }: {
   const blocked = disabled || !!busy;
   const name = (member: Member) => member.isSelf ? status?.deviceName || t("connect.thisComputer") : member.name;
   const outdated = !!version && relay.workerVersion !== version;
-  return <article className="hosted-relay" aria-label={hostname(relay)}>
+  return <article className="hosted-relay" aria-label={t("hosting.title")}>
     <div className="hosted-relay-card">
       <div className="hosted-relay-summary">
         <div className="hosted-relay-icon"><Icon icon={Cloud} /></div>
         <div className="hosted-relay-identity">
-          <h3 title={hostname(relay)}>{hostname(relay)}</h3>
+          <h3><Private>{hostname(relay)}</Private></h3>
           <div className="hosted-relay-provider"><span>Cloudflare Workers</span><span aria-hidden="true"> · </span>
             {outdated || !relay.url ? <Button variant="ghost" disabled={blocked} onClick={() => void startJob({ action: "redeploy", id: relay.id })}>{t(outdated && relay.url ? "hosting.update" : "retry")}</Button> : <span>{t("hosting.upToDate")}</span>}
           </div>

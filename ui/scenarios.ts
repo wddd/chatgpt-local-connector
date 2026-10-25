@@ -1,4 +1,5 @@
 import { installTopologyAccounts } from './topology/scenarioAccounts';
+import { accountScenario } from "./scenarioAccounts";
 import { beginScenario, finishScenario } from "./state/scenarioReadiness";
 import { updates, acceptUpdateSnapshot } from './state/updates';
 import type { UpdateSnapshot, Replacement } from './state/updateModel';
@@ -20,12 +21,15 @@ import type { Status } from './state/types';
 import config from '../native/src/ingress/config.json';
 import { taskScenario } from './scenarioTasks';
 
-type Fixture = { claudeAccounts?: boolean; claudeLogin?: boolean; update?: UpdateSnapshot; replacement?: Replacement; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; question?: boolean; completed?: boolean; elapsedSeconds?: number }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
+type Fixture = { update?: UpdateSnapshot; replacement?: Replacement; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; question?: boolean; completed?: boolean; elapsedSeconds?: number }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 let conversations: Record<string, AgentConversation[]> = {};
+let accountResponse: ReturnType<typeof accountScenario> | undefined;
 let taskResponse: ReturnType<typeof taskScenario> | undefined;
 export function scenarioResponse(path: string, method: string, body?: unknown): unknown {
+  const accountResult = accountResponse?.(path, method, body);
+  if (accountResult !== undefined) return structuredClone(accountResult);
   if (path === 'preferences' || path === 'preferences/import') return responses.preferences;
   if (path === 'agents/conversations/timeline' && method === 'POST') {
     const timeline = responses[`agents/timeline/${(body as { id: string }).id}`];
@@ -59,7 +63,7 @@ export async function installScenario(name: string) {
   if (!load) throw new Error(`Unknown acceptance scenario: ${name}`);
   const fixture = await load() as Fixture;
   localStorage.setItem('arc-page', 'overview');
-  const preferences = { theme: fixture.theme, language: fixture.language, 'arc.agent-order': JSON.stringify(fixture.agents), 'quota-display': fixture.quotaDisplay ?? 'remaining', 'quota-reset-display': fixture.resetDisplay ?? 'countdown', 'task-bubble-density': fixture.bubbles?.density ?? 'standard', 'task-bubble-width': fixture.bubbles?.width ?? 'medium', 'task-bubble-auto-compact': fixture.bubbles?.autoCompact === false ? 'off' : 'on' };
+  const preferences = { 'arc.privacy': 'true', theme: fixture.theme, language: fixture.language, 'arc.agent-order': JSON.stringify(fixture.agents), 'quota-display': fixture.quotaDisplay ?? 'remaining', 'quota-reset-display': fixture.resetDisplay ?? 'countdown', 'task-bubble-density': fixture.bubbles?.density ?? 'standard', 'task-bubble-width': fixture.bubbles?.width ?? 'medium', 'task-bubble-auto-compact': fixture.bubbles?.autoCompact === false ? 'off' : 'on' };
   acceptPreferences(preferences);
   const now = new Date().toISOString();
   const defaults = Object.fromEntries(Object.entries(config.fields).map(([key, field]) => [key, field.default]));
@@ -201,15 +205,8 @@ export async function installScenario(name: string) {
   }] : [] };
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
   responses['accounts'] = { accounts: topologyAccounts, login: null } satisfies AccountsResult;
+  accountResponse = ['accounts', 'source-panel'].includes(name) ? accountScenario(status, sources) : undefined;
   responses['service'] = { supported: true, enabled: false };
-  responses['claude-accounts/system'] = { initialized: true, accountId: '00000000-0000-4000-8000-000000000001', identity: { loggedIn: true, email: 'host@example.invalid', authMethod: 'claude.ai' }, observedAt: now };
-  responses['claude-accounts/routes'] = { routes: {} };
-  responses['claude-accounts'] = { cliAvailable: true, login: fixture.claudeLogin ? { id: 'fixture-login', accountId: '11111111-1111-4111-8111-111111111111', browserId: 'Safari', browserName: 'Safari', state: 'waiting' } : null, accounts: fixture.claudeAccounts ? [
-    { id: '00000000-0000-4000-8000-000000000001', identity: { loggedIn: true, email: 'host@example.invalid', authMethod: 'claude.ai' }, observedAt: now },
-    { id: '11111111-1111-4111-8111-111111111111', identity: { loggedIn: true, email: 'personal@example.invalid', authMethod: 'claude.ai' }, observedAt: now },
-    { id: '22222222-2222-4222-8222-222222222222', identity: { loggedIn: true, email: 'work@example.invalid', orgName: 'Example engineering organization', authMethod: 'claude.ai' }, observedAt: now },
-  ] : [] };
-  responses['claude-accounts/browsers'] = { browsers: ['Safari', 'Google Chrome', 'Firefox', 'Microsoft Edge', 'Brave', 'Opera'].map(name => ({ id: name, name })) };
   connector.set({ status, sources, sourcesLoaded: true, busy: '', loading: false, error: '', feedback: { text: '', error: false } });
   agents.set({ items: inventory, loaded: true, loading: false, saving: '', error: '' });
   if (status.core.backendSession) resetActivityCore(status.core.backendSession);
