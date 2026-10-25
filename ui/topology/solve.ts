@@ -63,10 +63,12 @@ export const deg = (d: number) => d * Math.PI / 180;
 export const NODE_R = 22, LABEL_W = 110;
 export const PANEL_MIN_WIDTH = 400, PANEL_MARGIN = 16, PANEL_ARC_GAP = 40;
 
-// Keep the 20px toggle and its 2px canvas ring clear of the animated arc stroke.
-// With a tight arc gap the toggle straddles the node edge instead of the arc.
-export function collapseOffset(nodeRadius: number, arcRadius: number, arcStrokeHalf: number) {
-  return Math.max(0, Math.min(nodeRadius + (arcRadius - nodeRadius) * 0.2, arcRadius - arcStrokeHalf - 10 - 2 - 4));
+export const COLLAPSE_HIT_SIZE = 32, COLLAPSE_SYMBOL_SIZE = 20;
+
+// Toggle coordinates follow the animated arc, including asymmetric fan-outs.
+export function collapseTarget(radius: number, lo: number, hi: number, side: Side) {
+  const angle = deg((lo + hi) / 2);
+  return { x: side * radius * Math.cos(angle), y: radius * Math.sin(angle), hitSize: COLLAPSE_HIT_SIZE, symbolSize: COLLAPSE_SYMBOL_SIZE };
 }
 
 // The selected node's animated outer arc defines the dock's inner edge.

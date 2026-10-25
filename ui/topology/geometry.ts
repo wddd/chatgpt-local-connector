@@ -42,3 +42,12 @@ export function arcPath(cx: number, cy: number, R: number, lo: number, hi: numbe
   if (!finitePoints(s, e)) return "";
   return `M ${s.x.toFixed(1)} ${s.y.toFixed(1)} A ${R} ${R} 0 0 ${side > 0 ? 1 : 0} ${e.x.toFixed(1)} ${e.y.toFixed(1)}`;
 }
+
+// Account and task branches share endpoint tangents, taper and root flare.
+export function tentacle(end: Point, port: Point, radial: Point, side: Side, scale: number,
+  shape: { t2End: number; t2Root: number; flare: number }, connecting = false) {
+  const distance = Math.hypot(end.x - port.x, end.y - port.y);
+  const c1 = { x: end.x - side * distance * shape.t2End, y: end.y };
+  const c2 = { x: port.x + radial.x * distance * shape.t2Root, y: port.y + radial.y * distance * shape.t2Root };
+  return { ...grownWire(end, c1, c2, port, scale, shape.flare, true, connecting), c1, c2 };
+}

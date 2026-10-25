@@ -91,7 +91,12 @@ test('topology account labels survive reordering and animation frames settle aft
     const actions = { open: (_side: number, _platform: string, _source?: string, account?: string) => { opened = account; } };
     const render = async (mode: string, order: string[]) => {
       const right = accountViews([platform], 1, accounts, mode, { '1:codex': order }, actions);
+      const before = viewModel().topology;
       await act(() => root.render(h(Topology, { boundary, left: [], right, accountsEnabled: true, onReorderNodes() {}, onReorderTasks() {} })));
+      if (before) for (const node of viewModel().topology.nodes) {
+        const previous = before.nodes.find((old: any) => old.id === node.id);
+        if (previous) assert.deepEqual([node.position.x, node.position.y], [previous.position.x, previous.position.y], 'Mode changes preserve in-flight positions');
+      }
       await settle();
     };
     const snapshot = () => viewModel().topology;
@@ -109,22 +114,57 @@ test('topology account labels survive reordering and animation frames settle aft
       assert.equal(new Set(names.values()).size, accounts.length);
     }
     const target = page.getByRole('button', { name: names.get('a')!, exact: true });
-    await act(() => fireEvent.pointerOver(target));
-    await advance();
-    const fading = snapshot().nodes.find((node: any) => node.accountId === 'b').position;
-    const bubble = snapshot().tasks.find((task: any) => task.id === 'task-b').position;
-    assert.ok(fading.wireLight < 1 && fading.wireLight > 0.18);
-    assert.ok(fading.light < 1 && fading.light > 0.32);
-    assert.ok(bubble.light < 1 && bubble.light > 0.35);
-    assert.ok(Math.abs((1 - fading.wireLight) / (1 - 0.18) - (1 - fading.light) / (1 - 0.32)) < 1e-8);
-    assert.ok(Math.abs((1 - bubble.light) / (1 - 0.35) - (1 - fading.light) / (1 - 0.32)) < 1e-8);
-    await settle();
-    await act(() => fireEvent.pointerOut(target)); await settle();
+    const baseline = snapshot();
+    const peer = baseline.nodes.find((node: any) => node.accountId === 'b');
+    const bubble = baseline.tasks.find((task: any) => task.id === 'task-b');
+    const unchangedPeer = () => {
+      assert.deepEqual(snapshot().nodes.find((node: any) => node.id === peer.id).position, peer.position);
+      assert.deepEqual(snapshot().tasks.find((task: any) => task.id === bubble.id).position, bubble.position);
+    };
+    const clear = () => {
+      assert.equal(snapshot().interaction.hover, null);
+      assert.equal(snapshot().interaction.focus, null);
+      assert.ok(snapshot().nodes.every((node: any) => node.position.emphasis === 0));
+      assert.ok(snapshot().tasks.every((task: any) => task.position.emphasis === 0));
+    };
+    for (const finish of ['leave', 'cancel', 'blur']) {
+      await act(() => fireEvent.pointerOver(target));
+      await advance();
+      assert.ok(snapshot().nodes.find((node: any) => node.accountId === 'a').position.emphasis > 0);
+      unchangedPeer();
+      await act(() => {
+        if (finish === 'leave') fireEvent.pointerOut(target);
+        if (finish === 'cancel') fireEvent.pointerCancel(target);
+        if (finish === 'blur') window.dispatchEvent(new Event('blur'));
+      });
+      await settle(); clear(); unchangedPeer();
+    }
+    await act(() => fireEvent.pointerOver(target)); await settle(); unchangedPeer();
+    await act(() => fireEvent.pointerOut(target)); await settle(); clear();
+    // Exercise both the SVG fan-out arc and its incoming connection mid-animation.
+    for (const suffix of ['arc', 'connection']) {
+      const path = page.getByLabelText(`${names.get('a')} ${suffix}`);
+      for (const finish of ['pointerLeave', 'pointerCancel'] as const) {
+        await act(() => fireEvent.pointerEnter(path)); await advance();
+        assert.ok(snapshot().nodes.find((node: any) => node.accountId === 'a').position.emphasis > 0);
+        await act(() => fireEvent[finish](path)); await settle(); clear();
+      }
+    }
+    const taskButton = page.getByRole('button', { name: 'Task a', exact: true });
+    for (const finish of ['pointerOut', 'pointerCancel'] as const) {
+      await act(() => fireEvent.pointerOver(taskButton)); await advance();
+      await act(() => fireEvent[finish](taskButton)); await settle(); clear();
+    }
+    const taskPath = page.getByLabelText('task-a connection');
+    await act(() => fireEvent.pointerEnter(taskPath)); await advance();
+    await act(() => fireEvent.pointerLeave(taskPath)); await settle(); clear();
     for (let cycle = 0; cycle < 3; cycle++) {
+      await act(() => fireEvent.pointerOver(page.getByRole('button', { name: 'Task a', exact: true }))); await advance();
       await act(() => fireEvent.click(page.getByRole('button', { name: `${t('topology.collapse')} ${platform.label}`, exact: true })));
       await settle();
       assert.equal(page.queryByRole('button', { name: 'Task a', exact: true }), null);
       assert.equal(snapshot().tasks.length, 0);
+      clear();
       await act(() => fireEvent.click(page.getByRole('button', { name: `${t('topology.expand')} ${platform.label}`, exact: true })));
       await settle();
       assert.ok(page.getByRole('button', { name: 'Task a', exact: true }));
@@ -132,5 +172,96 @@ test('topology account labels survive reordering and animation frames settle aft
     }
     await act(() => root.render(null));
     assert.equal(frames.size, 0, 'Unmount cancels scheduled animation');
+  } finally { await fixture.close(); }
+});
+
+
+test('collapse controls remain reachable between node, arc and toggle and reveal for keyboard focus', async () => {
+  // Regression: the collapse control vanished when the pointer crossed the gap from the node to its outer arc.
+  const fixture = await harness();
+  try {
+    const { server, root, mount, page, settle } = fixture;
+    const { default: Topology } = await server.ssrLoadModule('/ui/topology/Topology.tsx');
+    const { viewModel } = await server.ssrLoadModule('/ui/acceptance.ts');
+    const { t } = await server.ssrLoadModule('/ui/i18n.ts');
+    const { nodeKey } = await server.ssrLoadModule('/ui/topology/animate.ts');
+    const node = { id: 'platform', label: 'Platform', state: 'normal', attention: false, selected: false,
+      content: h('button', null, 'Platform'), tasks: [{ id: 'bubble', width: 200, height: 60, state: 'running', content: h('button', null, 'Bubble') }] };
+    await act(() => root.render(h(Topology, { boundary: { current: mount }, left: [], right: [node], accountsEnabled: true, onReorderNodes() {}, onReorderTasks() {} })));
+    await settle();
+    const state = () => viewModel().topology.interaction;
+    const button = page.getByRole('button', { name: node.label, exact: true });
+    const toggle = page.getByRole('button', { name: `${t('topology.collapse')} ${node.label}`, exact: true });
+    const arc = page.getByLabelText(`${node.label} arc`);
+    const wait = async (ms: number) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); });
+    await act(() => fireEvent.pointerOver(button));
+    assert.equal(state().revealed, nodeKey(1, node.id));
+    await act(() => fireEvent.pointerOut(button, { relatedTarget: arc }));
+    await wait(100);
+    assert.equal(state().revealed, nodeKey(1, node.id));
+    await act(() => fireEvent.pointerEnter(arc));
+    await wait(150);
+    assert.equal(state().revealed, nodeKey(1, node.id));
+    await act(() => fireEvent.pointerLeave(arc));
+    await act(() => fireEvent.pointerOver(toggle));
+    await wait(220);
+    assert.equal(state().revealed, nodeKey(1, node.id));
+    await act(() => fireEvent.pointerOut(toggle, { relatedTarget: button }));
+    await wait(220);
+    assert.equal(state().revealed, nodeKey(1, node.id));
+    await act(() => fireEvent.pointerOut(button, { relatedTarget: arc }));
+    await wait(250);
+    assert.equal(state().revealed, null);
+    await act(() => toggle.focus());
+    assert.equal(state().focus.id, node.id);
+    await act(() => fireEvent.keyDown(toggle, { key: 'Enter' }));
+    await act(() => fireEvent.click(toggle));
+    assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+    await act(() => toggle.blur()); await settle();
+    assert.equal(state().focus, null);
+    assert.equal(state().hover, null);
+  } finally { await fixture.close(); }
+});
+
+test('collapse hit target surrounds its symbol at the mirrored arc midpoint', async () => {
+  // Property: the toggle center bisects the outer arc and its hit target extends beyond the visible symbol in every direction.
+  const { collapseTarget, deg } = await import('../ui/topology/solve.ts');
+  for (const side of [-1, 1] as const) for (const radius of [22, 35, 48]) for (const [lo, hi] of [[-14, 14], [-58, 27], [-21, 58]]) {
+    const target = collapseTarget(radius, lo, hi, side);
+    assert.ok(Math.abs(Math.hypot(target.x, target.y) - radius) < 1e-8);
+    assert.ok(Math.abs(Math.atan2(target.y, side * target.x) - deg((lo + hi) / 2)) < 1e-8);
+    assert.ok(target.hitSize > target.symbolSize * 1.5);
+  }
+});
+
+test('account tentacles use the task bubble taper and tangents', async () => {
+  // Regression: account fan-outs used the wider primary root and different curvature from task bubbles.
+  const fixture = await harness();
+  try {
+    const { server, root, mount, settle } = fixture;
+    const { default: Topology } = await server.ssrLoadModule('/ui/topology/Topology.tsx');
+    const { viewModel } = await server.ssrLoadModule('/ui/acceptance.ts');
+    const { grownWire } = await import('../ui/topology/geometry.ts');
+    const { DEFAULTS, deg } = await import('../ui/topology/solve.ts');
+    const node = (id: string) => ({ id, label: id, state: 'normal', attention: false, selected: false, content: h('button', null, id), tasks: [] });
+    for (const side of [-1, 1] as const) {
+      const parent = { ...node('platform'), children: [node('account-a'), node('account-b')],
+        tasks: [{ id: 'bubble', width: 200, height: 60, state: 'running', content: h('button', null, 'Bubble') }] };
+      await act(() => root.render(h(Topology, { boundary: { current: mount }, left: side === -1 ? [parent] : [], right: side === 1 ? [parent] : [], accountsEnabled: true, onReorderNodes() {}, onReorderTasks() {} })));
+      await settle();
+      const snapshot = viewModel().topology;
+      const hub = snapshot.primitives.hub, source = snapshot.nodes.find((n: any) => n.id === parent.id).position;
+      for (const item of [...snapshot.nodes.filter((n: any) => n.parent), ...snapshot.tasks]) {
+        const v = item.position, account = 'size' in v;
+        const end = { x: account ? v.x - side * (v.size / 2 * v.scale + 6) : v.x, y: v.y };
+        const radial = { x: side * Math.cos(deg(v.port)), y: Math.sin(deg(v.port)) };
+        const port = { x: source.x + source.radius * radial.x, y: source.y + source.radius * radial.y };
+        const distance = Math.hypot(end.x - port.x, end.y - port.y);
+        const c1 = { x: end.x - side * distance * DEFAULTS.t2End, y: end.y };
+        const c2 = { x: port.x + radial.x * distance * DEFAULTS.t2Root, y: port.y + radial.y * distance * DEFAULTS.t2Root };
+        const expected = grownWire(end, c1, c2, port, hub.Re / 130, DEFAULTS.flare, true);
+        assert.ok(snapshot.paths.some((path: any) => path.d === expected.outline), `Shared task geometry for ${item.id}`);
+      }
+    }
   } finally { await fixture.close(); }
 });

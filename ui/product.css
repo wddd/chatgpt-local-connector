@@ -1466,22 +1466,23 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .pairing-card .pairing-summary { font-size: var(--text-sm); }
 
 .topology-mode { position: absolute; top: 16px; right: 20px; width: 154px; z-index: 8; }
-.topology-node.sources { --account-color: var(--topology-source); --collapse-side: -1; }
-.topology-node.agents { --account-color: var(--topology-agent); --collapse-side: 1; }
+.topology-node.sources { --account-color: var(--topology-source); }
+.topology-node.agents { --account-color: var(--topology-agent); }
 .topology-account .graph-node { background: var(--topology-account-fill); border: 2px solid var(--account-color); border-radius: 50%; }
 .topology-account-initial { color: var(--account-color); font-weight: 600; font-size: 18px; }
 .topology-node .graph-node-name .icon { display: inline-flex; vertical-align: middle; margin-left: 3px; }
 .topology-unidentified-label { display: flex; width: max-content; }
 .topology-unidentified-label > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .topology-unidentified-label > span:last-child { flex: none; }
-.connection-core .topology-collapse { position: absolute; top: 50%; left: calc(50% + var(--collapse-side) * var(--collapse-offset, 18px)); transform: translate(-50%, -50%) scale(var(--node-inverse, 1)); width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; pointer-events: none; cursor: pointer; }
-.topology-collapse-symbol { display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--canvas); box-shadow: 0 0 0 2px var(--canvas); opacity: 0; transform: scale(.65); transition: transform 180ms var(--task-spring), opacity 140ms ease; }
+.topology-scene .topology-collapse { position: absolute; top: calc(50% + var(--collapse-y, 0px)); left: calc(50% + var(--collapse-x, 0px)); transform: translate(-50%, -50%) scale(var(--node-inverse, 1)); min-height: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; pointer-events: auto; cursor: pointer; }
+.topology-collapse-symbol { display: block; border-radius: 50%; background: var(--canvas); box-shadow: 0 0 0 2px var(--canvas); opacity: 0; transform: scale(.65); transition: transform 180ms var(--task-spring), opacity 140ms ease; }
 .topology-collapse-symbol > svg { display: block; width: 100%; height: 100%; }
-.topology-node:hover .topology-collapse, .topology-node:focus-within .topology-collapse { pointer-events: auto; }
-.topology-node:hover .topology-collapse-symbol, .topology-node:focus-within .topology-collapse-symbol { opacity: 1; transform: scale(1); }
+.topology-node[data-collapse-visible] .topology-collapse-symbol, .topology-node:focus-within .topology-collapse-symbol { opacity: 1; transform: scale(1); }
 .topology-collapse:focus-visible .topology-collapse-symbol { box-shadow: 0 0 0 2px var(--canvas), 0 0 0 3px var(--account-color); }
 @media (prefers-reduced-motion: reduce) { .topology-collapse-symbol { transition: none; } }
-.activity-slot[data-path-lit="true"] .activity-bubble { box-shadow: inset 0 0 0 1px var(--border-strong), 0 6px 18px color-mix(in srgb, var(--text) 18%, transparent); }
+.topology-path-hit { fill: none; stroke: transparent; stroke-width: 16px; pointer-events: stroke; }
+.topology-node .graph-node:not(:focus-visible), .activity-slot .activity-bubble:not(:focus-visible) { outline: 1px solid color-mix(in srgb, var(--text) calc(var(--path-emphasis, 0) * 18%), transparent); outline-offset: 1px; }
+
 /* Accounts share the workspace shell and source side panel. */
 /* Only inline stand-ins blur. Their raw values never enter hidden DOM. */
 .sensitive-value { display: inline-block; min-inline-size: 0; max-inline-size: 100%; box-sizing: content-box; padding-inline: 3px; margin-inline: -3px; vertical-align: bottom; white-space: nowrap; overflow: hidden; }

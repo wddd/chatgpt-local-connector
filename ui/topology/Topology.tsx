@@ -5,7 +5,7 @@ import { highlightedPaths, type PathTask } from './accounts';
 import { observeTopology } from "../acceptance";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject, type PointerEvent, type MouseEvent } from "react";
 import { useMedia } from "../state/hooks";
-import { solve, collapseOffset, NODE_R, PANEL_MIN_WIDTH, PANEL_MARGIN, panelWidth, type Side, type Scene, type Drag, type Layout, type Task } from "./solve";
+import { solve, collapseTarget, COLLAPSE_HIT_SIZE, NODE_R, PANEL_MIN_WIDTH, PANEL_MARGIN, panelWidth, type Side, type Scene, type Drag, type Layout, type Task } from "./solve";
 import { TopologyAnimator, nodeKey, taskKey } from "./animate";
 import { TopologyPainter, type PaintNode, type PaintTask } from "./render";
 import { orderedSubset, moveToY } from "./order";
@@ -45,6 +45,29 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   const collapsed = topologyCollapsed.use();
   const [hover, setHover] = useState<{ side: Side; id: string; task?: boolean } | null>(null);
   const [focus, setFocus] = useState<typeof hover>(null);
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const hideToggle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const changeHover = useCallback((next: typeof hover) => {
+    setHover(next);
+    // Pointer departure must also clear focus left behind by a pointer click.
+    setFocus(null);
+    if (hideToggle.current !== null) clearTimeout(hideToggle.current);
+    hideToggle.current = null;
+    if (next && !next.task) setRevealed(nodeKey(next.side, next.id));
+    else hideToggle.current = setTimeout(() => { hideToggle.current = null; setRevealed(null); }, 200);
+  }, []);
+  const clearInteraction = useCallback(() => {
+    setHover(null); setFocus(null); setRevealed(null);
+    if (hideToggle.current !== null) clearTimeout(hideToggle.current);
+    hideToggle.current = null;
+  }, []);
+  useEffect(() => {
+    window.addEventListener('blur', clearInteraction);
+    return () => {
+      window.removeEventListener('blur', clearInteraction);
+      if (hideToggle.current !== null) clearTimeout(hideToggle.current);
+    };
+  }, [clearInteraction]);
   const flatten = (list: NodeView[], side: Side, parent?: string): (NodeView & { side: Side })[] => list.flatMap(n => [{ ...n, parent, side }, ...flatten(n.children ?? [], side, n.id)]);
   const fullNodes = [...flatten(inputLeft, -1), ...flatten(inputRight, 1)];
   const prune = (list: NodeView[], side: Side): NodeView[] => list.map(n => {
@@ -62,10 +85,11 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   // Retain departing HTML until its primitive has collapsed into the port.
   const [retained, setRetained] = useState<PositionedTask[]>([]);
   const allTasks = [...new Map([...retained, ...tasks].map(t => [taskKey(t.side, t.id), t])).values()];
-  const latest = useRef({ nodes, allNodes, tasks, allTasks, left, right, lit, panelKey, panelExpanded, onPanelLayout, reduced, params, guides, slow, onReorderNodes, onReorderTasks });
-  latest.current = { nodes, allNodes, tasks, allTasks, left, right, lit, panelKey, panelExpanded, onPanelLayout, reduced, params, guides, slow, onReorderNodes, onReorderTasks };
+  const latest = useRef({ nodes, allNodes, tasks, allTasks, left, right, lit, hover, focus, revealed, panelKey, panelExpanded, onPanelLayout, reduced, params, guides, slow, onReorderNodes, onReorderTasks });
+  latest.current = { nodes, allNodes, tasks, allTasks, left, right, lit, hover, focus, revealed, panelKey, panelExpanded, onPanelLayout, reduced, params, guides, slow, onReorderNodes, onReorderTasks };
   useEffect(() => observeTopology(() => ({
     origin: origin.current, size: size.current, panel: panel.current,
+    interaction: { hover: latest.current.hover, focus: latest.current.focus, revealed: latest.current.revealed },
     nodes: latest.current.nodes.map(({ content: _content, icon: _icon, children: _children, tasks: _tasks, ...node }) => ({ ...node, position: animator.current.values(nodeKey(node.side, node.id)) })),
     tasks: latest.current.allTasks.map(({ content: _content, ...task }) => ({ ...task, position: animator.current.values(taskKey(task.side, task.id)), text: elements.current.get(taskKey(task.side, task.id))?.textContent })),
     primitives: Object.fromEntries([...animator.current.live.keys()].map(key => [key, animator.current.values(key)])),
@@ -86,11 +110,14 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       const key = nodeKey(n.side, n.id), v = a.values(key), el = elements.current.get(key);
       if (v && el) {
         el.style.transform = `translate(${v.x - NODE_R}px, ${v.y - NODE_R}px) scale(${v.scale * v.size / (NODE_R * 2)})`;
-        el.style.opacity = String(v.op * v.light);
+        el.style.opacity = String(v.op);
+        el.style.setProperty('--path-emphasis', String(Math.max(0, Math.min(1, v.emphasis))));
         el.inert = !a.live.get(key)?.alive || v.op < 0.02;
         const scale = v.scale * v.size / (NODE_R * 2);
         el.style.setProperty('--node-inverse', String(1 / scale));
-        el.style.setProperty('--collapse-offset', `${collapseOffset(v.size / 2 * v.scale, v.radius, 2 * Math.max(0.8, h.Re / 130)) / scale}px`);
+        const toggle = collapseTarget(v.radius, v.alo, v.ahi, n.side);
+        el.style.setProperty('--collapse-x', `${toggle.x / scale}px`);
+        el.style.setProperty('--collapse-y', `${toggle.y / scale}px`);
       } else if (el) {
         el.style.opacity = '0'; el.inert = true;
       }
@@ -98,15 +125,15 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     for (const t of latest.current.allTasks) {
       const key = taskKey(t.side, t.id), v = a.values(key), el = elements.current.get(key);
       if (!el) continue;
-      el.style.opacity = String(v ? v.op * v.light : 0);
+      el.style.opacity = String(v ? v.op : 0);
       const hidden = latest.current.nodes.some(n => n.side === t.side && n.selected);
       el.style.pointerEvents = a.live.get(key)?.alive && !hidden ? "" : "none";
       el.inert = !a.live.get(key)?.alive || hidden;
       if (v) {
-        el.dataset.pathLit = String(!!latest.current.lit && v.light > 0.99);
+        el.style.setProperty('--path-emphasis', String(Math.max(0, Math.min(1, v.emphasis))));
         el.style.width = `${v.width}px`;
         el.style.height = `${v.height}px`;
-        el.style.transform = `translate(${v.x + v.offset - (t.side === -1 ? v.width : 0)}px, ${v.y - v.height / 2}px)`;
+        el.style.transform = `translate(${v.x - (t.side === -1 ? v.width : 0)}px, ${v.y - v.height / 2}px)`;
       }
     }
     const rect = panel.current ? { ...panel.current, x: panel.current.x - origin.current.x, y: panel.current.y - origin.current.y } : null;
@@ -242,6 +269,15 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   } }), [paint]);
   useLayoutEffect(() => { setRetained(latest.current.allTasks); setRetainedNodes(latest.current.allNodes); }, [inputLeft, inputRight, collapsed]);
   useLayoutEffect(() => { target(); });
+  useLayoutEffect(() => {
+    const present = (item: typeof hover) => {
+      if (!item) return true;
+      const primitive = animator.current.live.get(item.task ? taskKey(item.side, item.id) : nodeKey(item.side, item.id));
+      return (item.task ? tasks : nodes).some(n => n.side === item.side && n.id === item.id)
+        && (!primitive || primitive.alive && primitive.fields.op.t > 0);
+    };
+    if (!present(hover) || !present(focus)) clearInteraction();
+  });
   const selectedKey = nodes.find(n => n.selected)?.id;
   useLayoutEffect(() => {
     const container = boundary.current, selected = layout.current?.wings.flatMap(w => w.nodes).find(n => n.id === selectedKey);
@@ -255,7 +291,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   // whole commit so the painter and viewport observer always mount together.
   useEffect(() => {
     if (!svg.current || !boundary.current || !graph.current) return;
-    painter.current = new TopologyPainter(svg.current, prefix);
+    painter.current = new TopologyPainter(svg.current, prefix, changeHover);
     const container = boundary.current;
     const measure = () => {
       const vw = container.clientWidth, vh = container.clientHeight;
@@ -279,16 +315,18 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       observer.disconnect(); container.removeEventListener("scroll", scroll); window.removeEventListener("resize", measure);
       painter.current?.dispose(); painter.current = null;
     };
-  }, [boundary, paint, prefix, target]);
+  }, [boundary, paint, prefix, target, changeHover]);
   // A new pointer sequence clears the previous drag's click guard, including
   // controls that stop pointerdown before the draggable slot can receive it.
   return <div ref={graph} className="connection-graph topology-scene"
+    onPointerLeave={clearInteraction}
+    onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) clearInteraction(); }}
     onPointerDownCapture={() => { suppressedClick.current = null; }}
     onPointerMoveCapture={event => { if (drag.current?.control) moveDrag(event); }}
     onPointerUpCapture={event => { if (drag.current?.control) finishDrag(event); }}
     onPointerCancelCapture={event => { if (drag.current?.control) finishDrag(event, true); }}
     onLostPointerCaptureCapture={event => { if (drag.current?.control) finishDrag(event, true); }}
-    onPointerMove={moveDrag} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)}
+    onPointerMove={moveDrag} onPointerUp={event => finishDrag(event)} onPointerCancel={event => { finishDrag(event, true); clearInteraction(); }}
     onLostPointerCapture={event => finishDrag(event, true)}
     onKeyDownCapture={event => { if (event.key === "Escape" && drag.current) {
       const d = drag.current; drag.current = null; delete d.slot.dataset.dragging;
@@ -300,8 +338,9 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     {allNodes.map(n => <div key={nodeKey(n.side, n.id)} ref={el => { const key = nodeKey(n.side, n.id); if (el) elements.current.set(key, el); else elements.current.delete(key); }}
       data-agent-node={n.side === 1 ? n.platform ?? n.id : undefined} data-source-node={n.side === -1 ? n.sourceIds?.[0] ?? n.id : undefined}
       className={`topology-node ${n.account && n.parent ? "topology-account" : ""} ${n.side === 1 ? "agents" : "sources"}`} data-highlighted={n.selected || undefined} data-reorderable={n.reorderable || undefined}
-      onPointerEnter={() => setHover({ side: n.side, id: n.id })} onPointerLeave={() => setHover(null)}
-      onFocusCapture={() => setFocus({ side: n.side, id: n.id })} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocus(null); }}
+      data-collapse-visible={revealed === nodeKey(n.side, n.id) || focus?.side === n.side && focus.id === n.id || undefined}
+      onPointerEnter={() => changeHover({ side: n.side, id: n.id })} onPointerLeave={() => changeHover(null)} onPointerCancel={() => changeHover(null)}
+      onFocusCapture={() => setFocus({ side: n.side, id: n.id })} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) changeHover(null); }}
       onKeyDownCapture={event => {
         if (!accountsEnabled || !n.reorderable || !['ArrowUp', 'ArrowDown'].includes(event.key) || (event.target as HTMLElement).closest('.topology-collapse')) return;
         const peers = nodes.filter(p => p.side === n.side && p.parent === n.parent && p.reorderable && !!p.account === !!n.account && (!n.account || p.account && p.platform === n.platform));
@@ -321,7 +360,11 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
         const count = hiddenTasks.reduce((sum, task) => sum + (task.count ?? 1), 0);
         return <>
           <button type="button" className="topology-collapse" aria-label={`${t(closed ? 'topology.expand' : 'topology.collapse')} ${n.label ?? n.id}`} aria-expanded={!closed}
-            onPointerDown={event => event.stopPropagation()} onClick={() => { setHover({ side: n.side, id: n.id }); topologyCollapsed.set(old => ({ ...old, [nodeKey(n.side, n.id)]: !closed })); }}>
+            style={{ width: COLLAPSE_HIT_SIZE, height: COLLAPSE_HIT_SIZE }}
+            onPointerEnter={() => changeHover({ side: n.side, id: n.id })}
+            onPointerLeave={event => changeHover(event.relatedTarget instanceof Node && event.currentTarget.parentElement?.contains(event.relatedTarget) ? { side: n.side, id: n.id } : null)}
+            onPointerCancel={() => changeHover(null)}
+            onPointerDown={event => event.stopPropagation()} onClick={() => { topologyCollapsed.set(old => ({ ...old, [nodeKey(n.side, n.id)]: !closed })); }}>
             <CollapseSymbol collapsed={closed} />
           </button>
           {(closed || panelKey?.startsWith('agent:') && n.side === 1 && !n.selected && !n.children?.length) && count > 0 && <span className="agent-task-count" data-attention={hiddenTasks.some(t => t.state === 'attention' || t.pending) || undefined} aria-label={t('topology.hiddenTasks', { count })}>{count}</span>}
@@ -329,8 +372,8 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       })()}</div>)}
     {allTasks.map(t => <div key={taskKey(t.side, t.id)} ref={el => { const key = taskKey(t.side, t.id); if (el) elements.current.set(key, el); else elements.current.delete(key); }}
       className="activity-slot" data-highlighted={t.selected || undefined} data-reorderable={t.reorderable || undefined}
-      onPointerEnter={() => setHover({ side: t.side, id: t.id, task: true })} onPointerLeave={() => setHover(null)}
-      onFocusCapture={() => setFocus({ side: t.side, id: t.id, task: true })} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocus(null); }}
+      onPointerEnter={() => changeHover({ side: t.side, id: t.id, task: true })} onPointerLeave={() => changeHover(null)} onPointerCancel={() => changeHover(null)}
+      onFocusCapture={() => setFocus({ side: t.side, id: t.id, task: true })} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) changeHover(null); }}
       onPointerDownCapture={t.reorderable ? event => {
         if ((event.target as Element).closest("[data-topology-control]")) startDrag(event, "task", t.side, t.id, t.parent, true);
       } : undefined}
