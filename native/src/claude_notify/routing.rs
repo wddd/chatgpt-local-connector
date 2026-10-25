@@ -23,6 +23,8 @@ pub(crate) struct Entry {
     routing: Routing,
     remaining_ms: i64,
     resolved: bool,
+    #[serde(default)]
+    clock_id: String,
 }
 fn immediate(state: &str, reason: &str) -> Routing {
     Routing {
@@ -114,7 +116,8 @@ pub(crate) fn change(entry: &mut Entry, action: &str, actor: &str, now: i64) -> 
     }
     Ok(())
 }
-fn present(agent: &str, task: &str, now: i64) -> bool {
+fn present(agent: &str, task: &str) -> bool {
+    let now = chrono::Utc::now().timestamp_millis();
     PRESENCE
         .lock()
         .unwrap()
@@ -207,8 +210,10 @@ pub(super) fn observe_in(dir: &Path, agent: &str, task: &str, request: &mut Valu
         request["routing"] = json!(immediate("not-routable", "no-source-binding"));
         return Ok(());
     };
-    let now = chrono::Utc::now().timestamp_millis();
-    let available = routable(dir, &b, now)?;
+    let real = chrono::Utc::now().timestamp_millis();
+    let env = crate::app_env::read()?;
+    let now = env.clock_now(real);
+    let available = routable(dir, &b, real)?;
     let p = path(dir, agent, task, &request_id(request));
     let mut entry = if p.exists() {
         Some(load_entry(&p)?)
@@ -221,7 +226,7 @@ pub(super) fn observe_in(dir: &Path, agent: &str, task: &str, request: &mut Valu
             source_id: b.source_id.clone(),
             turn: json!(b.turn_id),
             routing: initial(
-                present(agent, task, now),
+                env.presence(present(agent, task)),
                 available,
                 now,
                 settings()?["requestRoutingDelaySeconds"]
@@ -230,14 +235,20 @@ pub(super) fn observe_in(dir: &Path, agent: &str, task: &str, request: &mut Valu
             ),
             remaining_ms: 0,
             resolved: false,
+            clock_id: env.clock_id().into(),
         });
     }
     let mut entry = entry.unwrap();
     entry.source_id = b.source_id;
+    if !entry.clock_id.is_empty() && entry.clock_id != "system" && entry.clock_id != env.clock_id()
+    {
+        entry.session.clear();
+    }
+    entry.clock_id = env.clock_id().into();
     advance(
         &mut entry,
         &SESSION,
-        present(agent, task, now),
+        env.presence(present(agent, task)),
         available,
         now,
     );
@@ -267,12 +278,19 @@ pub(super) fn control_in(dir: &Path, args: &Value, local: bool) -> Result<Value>
     if b.source_id != entry.source_id {
         return Err("REQUEST_SOURCE_MISMATCH: task binding changed".into());
     }
-    let now = chrono::Utc::now().timestamp_millis();
+    let real = chrono::Utc::now().timestamp_millis();
+    let env = crate::app_env::read()?;
+    let now = env.clock_now(real);
+    if !entry.clock_id.is_empty() && entry.clock_id != "system" && entry.clock_id != env.clock_id()
+    {
+        entry.session.clear();
+    }
+    entry.clock_id = env.clock_id().into();
     advance(
         &mut entry,
         &SESSION,
-        present(agent, task, now),
-        routable(&dir, &b, now)?,
+        env.presence(present(agent, task)),
+        routable(&dir, &b, real)?,
         now,
     );
     change(
@@ -328,6 +346,7 @@ mod tests {
             routing: initial(present, routable, 1000, 15),
             remaining_ms: 0,
             resolved: false,
+            clock_id: "system".into(),
         }
     }
     #[test]

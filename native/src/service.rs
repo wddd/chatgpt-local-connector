@@ -751,6 +751,9 @@ impl Service {
         if route.starts_with("runtime/") && method == "POST" {
             return self.runtime.request(route, body);
         }
+        if route == "app/env" && method == "GET" {
+            return crate::app_env::control(&json!({"action":"read"}));
+        }
         if route == "tasks/presence" && method == "POST" {
             crate::management::resolve("tasks.presence", &json!({"body":body}))?;
             return crate::claude_notify::routing::presence(&body);

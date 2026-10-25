@@ -1,5 +1,6 @@
 mod acceptance_fault;
 pub mod accounts;
+pub mod app_env;
 pub mod app_replace;
 pub mod archive_index;
 mod changes;

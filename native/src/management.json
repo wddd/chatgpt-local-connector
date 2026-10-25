@@ -542,7 +542,11 @@
               "autoOpenCodex": {
                 "type": "boolean"
               },
-              "requestRoutingDelaySeconds": { "type": "integer", "minimum": 0, "maximum": 300 },
+              "requestRoutingDelaySeconds": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 300
+              },
               "codexRetryMaxAttempts": {
                 "type": "integer",
                 "minimum": 0,
@@ -3518,6 +3522,17 @@
         "required": [
           "body"
         ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "app.env",
+      "method": "GET",
+      "route": "app/env",
+      "description": "Read expiring instance acceptance overrides. Set or clear through control app_env. Renderer-effective values are in app.snapshot model.env.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
         "additionalProperties": false
       }
     }

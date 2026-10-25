@@ -2048,6 +2048,7 @@ impl Control {
             "codex_resume" => self.mutate("resume", args).await,
             "codex_queue" => crate::dispatch_queue::query(&args).await,
             "codex_queue_control" => crate::dispatch_queue::control(self, &args).await,
+            "app_env" => crate::app_env::control(&args),
             "acceptance_fault" => crate::acceptance_fault::control(&args),
             "codex_release" => self.mutate("release", args).await,
             "codex_owner" => {
