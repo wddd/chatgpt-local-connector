@@ -18,6 +18,8 @@ struct Data {
     last_push: BTreeMap<String, i64>,
     #[serde(default)]
     routes: BTreeMap<String, Route>,
+    #[serde(default)]
+    recovery_windows: BTreeMap<String, (String, i64)>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -28,6 +30,8 @@ pub(super) struct Row {
     pub route: Option<Route>,
     pub due: i64,
     pub attempts: u32,
+    #[serde(default)]
+    recovery_refs: Vec<Value>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -88,6 +92,7 @@ impl Store {
             || self.data.pending.len() > MAX_ROWS
             || self.data.last_push.len() > 128
             || self.data.routes.len() > 128
+            || self.data.recovery_windows.len() > 2000
         {
             return Err("COORDINATION_CAPACITY: use local messages management to resolve escalations; wait for closed history retention".into());
         }
@@ -109,9 +114,13 @@ impl Store {
         result
     }
     fn event(&mut self, transition: String, kind: EventKind, resources: Vec<ResourceKey>) {
-        self.data
-            .pending
-            .push(EventInput::new(transition, kind, resources));
+        for (index, resources) in resources.chunks(4).enumerate() {
+            self.data.pending.push(EventInput::new(
+                format!("{transition}-{index}"),
+                kind.clone(),
+                resources.to_vec(),
+            ));
+        }
     }
     pub fn route_sessions(&self) -> Vec<(String, String)> {
         self.data
@@ -181,6 +190,9 @@ impl Store {
             .negotiations
             .retain(|n| n.state == "escalated" || n.expires_at > time - 7 * DAY);
         self.data.last_push.retain(|_, at| *at > time - DAY);
+        self.data
+            .recovery_windows
+            .retain(|_, (_, at)| *at > time - 7 * DAY);
     }
     fn result(&self, row: &Row) -> Value {
         let n = self
@@ -356,6 +368,7 @@ impl Store {
             route,
             due: time + 30,
             attempts: 0,
+            recovery_refs: vec![],
         });
         self.data.next += 1;
         let result = self.result(self.data.messages.last().unwrap());
@@ -396,6 +409,7 @@ impl Store {
                     route,
                     due: time + 30,
                     attempts: 0,
+                    recovery_refs: vec![],
                 });
                 self.data.next += 1;
             }
@@ -407,6 +421,29 @@ impl Store {
             s.maintain(time);
             Ok(())
         })?;
+        if let Some(mid) = args["recoveryMessageId"].as_str() {
+            let row = self
+                .data
+                .messages
+                .iter()
+                .find(|r| {
+                    r.envelope["messageId"] == mid
+                        && (actor == "local-authority" || r.envelope["toSourceId"] == actor)
+                })
+                .ok_or("MESSAGE_NOT_FOUND: read your addressed recovery messages")?;
+            let offset = args["recoveryCursor"]
+                .as_str()
+                .unwrap_or("0")
+                .parse::<usize>()
+                .map_err(|_| "INVALID_ARGUMENT: use the recovery cursor returned by messages")?;
+            if offset > row.recovery_refs.len() {
+                return Err("MESSAGES_CURSOR_EXPIRED: reread the recovery message after successor suppression".into());
+            }
+            let end = (offset + 20).min(row.recovery_refs.len());
+            return Ok(
+                json!({"messageId":mid,"threadRefs":row.recovery_refs[offset..end],"nextRecoveryCursor":(end < row.recovery_refs.len()).then(||end.to_string()),"automaticResume":false}),
+            );
+        }
         let direction = args["direction"].as_str().unwrap_or("inbox");
         let scope = hash(
             json!([
@@ -574,4 +611,143 @@ impl Store {
 }
 fn limit() -> String {
     "NEGOTIATION_LIMIT: three combined automatic replies exhausted; both participants must stop and ask the user to mediate in local ARC management".into()
+}
+
+impl Store {
+    pub fn recovery(
+        &mut self,
+        blocker: &Value,
+        recipient: &Value,
+        plan: &Value,
+        time: i64,
+    ) -> Result<Value> {
+        let mid = hash(
+            json!([
+                "recovery",
+                blocker["id"],
+                blocker["revision"],
+                recipient["sessionId"]
+            ])
+            .to_string(),
+        );
+        if let Some(row) = self
+            .data
+            .messages
+            .iter()
+            .find(|r| r.envelope["messageId"] == mid)
+        {
+            return Ok(self.result(row));
+        }
+        self.transaction(|s| {
+            s.maintain(time);
+            let source = string(recipient,"sourceId");
+            let session = string(recipient,"sessionId");
+            let threads = recipient["threadRefs"].as_array().cloned().unwrap_or_default();
+            let mut route = s.route(source,session).filter(|route| route.binding_id.is_some() && threads.iter().all(|r| r["sessionBindingId"].as_str() == route.binding_id.as_deref()));
+            if let Some(destination) = route.clone() {
+                let keys: Vec<_> = plan["replacementIds"].as_array().into_iter().flatten().filter_map(Value::as_str).map(|replacement|hash(json!([replacement,source,destination.key()]).to_string())).collect();
+                if keys.iter().any(|key|s.data.recovery_windows.get(key).is_some_and(|(owner,_)|owner == "summary")) { route = None; }
+                else { for key in keys { s.data.recovery_windows.insert(key,(mid.clone(),time)); } }
+            }
+            let envelope = json!({"messageId":mid,"localOrigin":"arc","fromSourceId":null,"toSourceId":source,"toSessionId":session,"type":"recovery","resources":blocker["resources"],"blockerId":blocker["id"],"clearRevision":blocker["revision"],"causeCode":blocker["causeCode"],"summary":blocker["summary"],"provenance":"source-reported","clearance":"claim","clearedBy":blocker["clearedBy"],"fixingCommit":blocker["fixingCommit"],"reason":blocker["reason"],"evidenceIds":blocker["evidenceIds"],"suggestedNextStep":"inspect","reportedNextStep":blocker["suggestedNextStep"],"impact":"candidate-co-occurrence","openedAt":blocker["openedAt"],"clearedAt":blocker["clearedAt"],"automatic":true,"dataOnly":true,"automaticResume":false,"createdAt":time,"expiresAt":time+DAY,"deliveryState":if route.is_some(){"pending"}else{"pull-only"}});
+            let mut row = Row { envelope, sequence:s.data.next,digest:mid.clone(),route,due:time+30,attempts:0,recovery_refs:threads };
+            recovery_page(&mut row)?;
+            s.data.messages.push(row);
+            s.data.next += 1;
+            s.event(format!("{mid}-created"),EventKind::MessageCreated,resources(blocker)?);
+            Ok(s.result(s.data.messages.last().unwrap()))
+        })
+    }
+    pub fn refresh_recovery(&mut self, events: &[Value]) -> Result<()> {
+        self.transaction(|s| {
+            let mut changed = vec![];
+            for row in &mut s.data.messages {
+                if row.envelope["type"] != "recovery"
+                    || !matches!(
+                        string(&row.envelope, "deliveryState"),
+                        "pending" | "pull-only"
+                    )
+                {
+                    continue;
+                }
+                let before = row.recovery_refs.len();
+                row.recovery_refs
+                    .retain(|r| !super::super::recovery::obsolete(r, events));
+                if row.recovery_refs.len() != before {
+                    recovery_page(row)?;
+                    if row.recovery_refs.is_empty() {
+                        row.envelope["deliveryState"] = json!("suppressed");
+                        changed.push((
+                            string(&row.envelope, "messageId").to_owned(),
+                            resources(&row.envelope)?,
+                        ));
+                    }
+                }
+            }
+            for (id, resources) in changed {
+                s.event(
+                    format!("{id}-suppressed"),
+                    EventKind::MessageDelivery,
+                    resources,
+                );
+            }
+            Ok(())
+        })
+    }
+    pub fn replacement_summary(
+        &mut self,
+        source: &str,
+        route: &str,
+        replacement: &str,
+        time: i64,
+    ) -> Result<bool> {
+        self.transaction(|s| {
+            s.maintain(time);
+            let key = hash(json!([replacement, source, route]).to_string());
+            if let Some((owner, _)) = s.data.recovery_windows.get(&key) {
+                return Ok(owner == "summary");
+            }
+            s.data
+                .recovery_windows
+                .insert(key, ("summary".into(), time));
+            Ok(true)
+        })
+    }
+}
+fn recovery_page(row: &mut Row) -> Result<()> {
+    let mut count = row.recovery_refs.len().min(20);
+    loop {
+        row.envelope["threadRefs"] = json!(&row.recovery_refs[..count]);
+        row.envelope["next"] = if row.recovery_refs.len() > count {
+            json!({"via":"query","op":"messages","args":{"recoveryMessageId":row.envelope["messageId"],"recoveryCursor":count.to_string()}})
+        } else {
+            Value::Null
+        };
+        if row.envelope.to_string().len() <= 4096 {
+            return Ok(());
+        }
+        if count <= 1 {
+            return Err(
+                "COORDINATION_CAPACITY: recovery metadata exceeds the 4 KiB message bound".into(),
+            );
+        }
+        count -= 1;
+    }
+}
+impl Store {
+    pub fn reserve(&mut self, rows: &[Row], events: &[Value], time: i64) -> Result<Vec<Row>> {
+        self.refresh_recovery(events)?;
+        let selected: Vec<_> = self
+            .data
+            .messages
+            .iter()
+            .filter(|r| {
+                r.envelope["deliveryState"] == "pending"
+                    && rows.iter().any(|old| old.sequence == r.sequence)
+            })
+            .cloned()
+            .collect();
+        self.mark(&selected, "sending", time)?;
+        Ok(selected)
+    }
 }

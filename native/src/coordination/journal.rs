@@ -667,3 +667,19 @@ fn reset_args(query: &Query, cursor: &str, limit: usize) -> Value {
     }
     args
 }
+
+impl Journal {
+    /// Internal metadata snapshot, bounded by the journal's 20,000 retained events.
+    pub(super) fn recovery_events(&self) -> Result<(Vec<Value>, bool)> {
+        let events = self
+            .records
+            .values()
+            .map(|r| {
+                r.record
+                    .input
+                    .project(&self.manifest.epoch, r.record.sequence, r.record.time)
+            })
+            .collect::<Result<_>>()?;
+        Ok((events, self.manifest.floor > 0 || self.manifest.gaps > 0))
+    }
+}

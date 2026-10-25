@@ -2072,6 +2072,28 @@ async fn flush(
                 {
                     continue;
                 }
+                // Coordination and replacement share one wake reservation for this
+                // exact replacement and verified destination; inbox history remains.
+                if channel == Channel::ClaudeSession && d.task_state == "recovered" {
+                    if let Some(replacement) = d
+                        .key
+                        .strip_prefix("update:")
+                        .and_then(|key| key.strip_suffix(":outcome"))
+                    {
+                        if !crate::coordination::messages::replacement_summary(
+                            dir.parent().ok_or(
+                                "COORDINATION_STORAGE: notification state root unavailable",
+                            )?,
+                            &source_id,
+                            &target,
+                            replacement,
+                            now,
+                        )? {
+                            d.status = "inbox-only".into();
+                            continue;
+                        }
+                    }
+                }
                 let reason = if settings["notificationsEnabled"] == false {
                     Some("disabled")
                 } else if target.is_empty() {
@@ -2893,12 +2915,16 @@ mod tests {
     struct Sandbox(PathBuf);
     impl Sandbox {
         fn new() -> Self {
-            Self(std::env::temp_dir().join(format!("arc-notify-test-{}", id())))
+            Self(
+                std::env::temp_dir()
+                    .join(format!("arc-notify-test-{}", id()))
+                    .join("notifications"),
+            )
         }
     }
     impl Drop for Sandbox {
         fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
+            let _ = std::fs::remove_dir_all(self.0.parent().unwrap());
         }
     }
     #[tokio::test]

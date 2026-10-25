@@ -222,8 +222,8 @@ observed. Observers add no resource subscription or message. Bulletin claims are
 `board`, `coordination_session`, `notice_post`, `notice_update`, `notice_close`,
 `blocker_open` and `blocker_clear`. These are catalog operations behind the existing
 frozen tools, not new MCP tools or guide topics. Existing explicit op allowlists
-still require local adoption. There is no notification subscription or recovery
-broadcast in this phase.
+still require local adoption. Recovery broadcast uses the private messaging outbox
+and its existing delivery adapter.
 
 All authorized sources share the metadata board. Source/account labels, task
 prompts, transcript excerpts, private routes and arbitrary owner records are never
@@ -231,8 +231,8 @@ projected. Intent and blocker summary are single-line, source-reported metadata,
 limited to 240 characters. Source authority comes from authenticated origin;
 account membership does not grant mutation authority. A source can mutate its own
 records; built-in local authority can administer them. Optional logical sessions
-are ARC-issued, source-owned, pull-only handles. They provide no stronger isolation
-than the source credential and contain no delivery binding.
+are ARC-issued, source-owned handles, pull-only until an explicitly verified
+`message_route` is bound. They provide no stronger isolation than the source credential.
 
 Read `board` at turn start and before shared-resource work. Its default summary
 contains one line per active notice or uncleared blocker, plus compact IDs,
@@ -400,4 +400,60 @@ route associations and target cooldowns are each bounded at 128. Local mediation
 history retains at most 64 decisions per exchange. Capacity failures preserve the
 previous snapshot and return an actionable error. Source/notification snapshots are
 read before acquiring the message lock; journal projection and network delivery
-follow release. Recovery broadcasts and message acknowledgements are separate work.
+follow release. Recovery broadcasts use this outbox; message acknowledgements remain
+a separate capability.
+
+### Recovery broadcast
+
+Clearing an owned blocker creates a durable advisory selection and one `recovery`
+message per affected logical session. Rely on this broadcast instead of messaging
+sessions manually. Repeating the clear or replaying after restart retains the same
+logical message. A blocker that became stale can be explicitly cleared, but its
+clearance never broadcasts. No recovery message, acknowledgement or delivery
+resumes a task or changes its continuation configuration.
+
+Selection uses retained journal events only. An interrupted, cancelled or failed
+turn must occur in the recorded blocker window and overlap its resource keys.
+Its original dispatch source must differ from the clearing source. Local authority
+may select any evidenced source-owned turn. An earlier notice event must link the
+exact turn to one unambiguous logical session of that same source. Register the
+session, bind its verified route with `message_route`, then post a notice linking
+the dispatched turn before interruption. A current account, title or recently used
+conversation cannot supply historical ownership. Older events without this binding
+remain unresolved; the implementation does not reconstruct historical sessions.
+
+The selector scans retained candidates in pages of 100, caps at 1,000 turns, and
+reports truncation and retention gaps. It excludes completed successor chains,
+unrelated later dispatches and recorded replacement continuations. Current source
+revocation and session closure prevent mail creation or push. Unknown task state
+produces `inspect` advice: recipients inspect current state and decide whether to
+resume or ask the user. Native occurrence time is preserved when available;
+otherwise the reference explicitly reports observation-time evidence. Co-occurrence
+is candidate impact, never proof that the blocker caused a failure. Archival or
+upstream state absent from events remains unknown; selection does not probe an
+Agent or infer that a task may safely resume.
+
+Messages include cause, bounded summary, clearance attribution, evidence IDs,
+verified fixing commit or its explicit absence/reason, reported next step, and
+recipient-owned thread references. Source clearances are labeled `claim` and
+`source-reported`; a valid Git commit proves neither deployment nor recovery.
+The private message exposes up to 20 references with a `messages` continuation
+cursor for the remainder. Other sources cannot retrieve those pages. The shared
+board reports selection counts and coverage only. Local-authority `board({id})`
+also returns `localRecoverySelection`, including unresolved evidence for mediation.
+
+The outbox uses the coordination delivery adapter exclusively. Proactive delivery
+requires the original verified session binding generation; otherwise the message
+stays pull-only. The adapter pushes an automated count/query pointer, never peer
+text as an instruction. Successor completion is checked again before delivery and
+on message reads; obsolete advice is suppressed. Message creation, suppression and
+delivery emit existing coordination message events. Pending owner projections keep
+clearance selection retryable after a crash. Projection delayed beyond the 24-hour
+mail lifetime does not recreate an old wake.
+
+Replacement outcome summaries and recovery mail share a durable wake reservation
+for the exact replacement ID and destination. If recovery mail reserves it first,
+the replacement summary remains inbox-only; if the summary reserves it first,
+recovery mail remains pull-only. Existing replacement continuation requests remain
+the sole replacement-specific actions. This does not introduce another resume or
+change the model, prompt or request ID.

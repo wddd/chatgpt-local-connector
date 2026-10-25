@@ -39,6 +39,8 @@ struct Session {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Link {
     pub thread_id: String,
+    #[serde(default)]
+    pub session_binding_id: Option<String>,
     pub observed_turn_id: Option<String>,
     pub scope_state: String,
     pub observed_at: Option<i64>,
@@ -69,6 +71,10 @@ pub(super) struct Record {
     pub state: String,
     closed_reason: Option<String>,
     ended_at: Option<i64>,
+    #[serde(default)]
+    recovery_selection: Option<Value>,
+    #[serde(default)]
+    cleared_by: Option<Principal>,
 }
 fn same_owner(a: &Principal, b: &Principal) -> bool {
     match (a, b) {
@@ -124,6 +130,9 @@ impl Record {
             result["reason"] = json!(self.reason);
             result["evidenceIds"] = json!(self.evidence_ids);
             result["suggestedNextStep"] = json!(self.suggested_next_step);
+            result["clearedBy"] = json!(self.cleared_by);
+            result["recoverySelection"] =
+                super::super::recovery::public_selection(&json!(self.recovery_selection));
         }
         result
     }
@@ -253,7 +262,14 @@ impl Store {
         Ok(())
     }
     fn event(&mut self, record: &Record, blocker: bool) -> Result<()> {
-        if self.state.pending.len() + record.resources.len().div_ceil(4) > 512 {
+        if self.state.pending.len()
+            + record
+                .resources
+                .len()
+                .div_ceil(if record.thread_links.is_empty() { 4 } else { 2 })
+                * record.thread_links.len().max(1)
+            > 512
+        {
             return Err("COORDINATION_CAPACITY: pull board to reconcile pending events".into());
         }
         let mut event = EventInput::new(
@@ -266,6 +282,25 @@ impl Store {
             record.resources.clone(),
         );
         event.origin = Some(record.owner.clone());
+        // Journal observation time prevents late links from broadening a past window.
+        if !blocker {
+            event.observation = Some(Observation {
+                session_id: record.owner_session_id.clone(),
+                session_binding_id: record
+                    .thread_links
+                    .first()
+                    .and_then(|l| l.session_binding_id.clone()),
+                ..Default::default()
+            });
+            event.thread_refs = record
+                .thread_links
+                .iter()
+                .map(|link| ThreadRef {
+                    thread_id: link.thread_id.clone(),
+                    turn_id: link.observed_turn_id.clone(),
+                })
+                .collect();
+        }
         event.status = Some(match record.state.as_str() {
             "active" => EventStatus::Active,
             "uncertain" => EventStatus::Uncertain,
@@ -283,11 +318,24 @@ impl Store {
             id: record.id.clone(),
         });
         // Four longest canonical keys plus typed identity fit the 2 KiB journal row.
-        for (index, resources) in event.resources.chunks(4).enumerate() {
+        for (index, resources) in event
+            .resources
+            .chunks(if event.thread_refs.is_empty() { 4 } else { 2 })
+            .enumerate()
+        {
             let mut part = event.clone();
             part.resources = resources.to_vec();
             part.transition_id = format!("{}-{index}", event.transition_id);
-            self.state.pending.push(part);
+            if part.thread_refs.is_empty() {
+                self.state.pending.push(part);
+            } else {
+                for (batch, refs) in part.thread_refs.chunks(1).enumerate() {
+                    let mut linked = part.clone();
+                    linked.thread_refs = refs.to_vec();
+                    linked.transition_id = format!("{}-{batch}", part.transition_id);
+                    self.state.pending.push(linked);
+                }
+            }
         }
 
         self.state.revision += 1;
@@ -482,6 +530,9 @@ impl Store {
                     &mut s.state.notices[index]
                 };
                 row.state = state.into();
+                if blocker && state == "stale" {
+                    row.recovery_selection = Some(json!({"state":"suppressed","reason":"stale-blocker","recipients":[],"unresolved":[],"automaticResume":false}));
+                }
                 row.closed_reason = Some(reason.into());
                 row.revision += 1;
                 if !blocker {
@@ -676,6 +727,8 @@ impl Store {
                 state: "active".into(),
                 closed_reason: None,
                 ended_at: None,
+                recovery_selection: None,
+                cleared_by: None,
             };
             self.event(&row, blocker)?;
             let conflicts = self.conflicts(&row.resources, Some(&row.id), clock);
@@ -744,6 +797,12 @@ impl Store {
                 row.ended_at = Some(clock.utc);
             }
             "blocker_clear" => {
+                row.cleared_by = Some(actor.clone());
+                if row.state == "stale" {
+                    row.recovery_selection = Some(
+                        json!({"state":"suppressed","reason":"stale-blocker","recipients":[],"unresolved":[],"automaticResume":false}),
+                    );
+                }
                 row.state = "cleared".into();
                 row.ended_at = Some(clock.utc);
                 row.fixing_commit = args.get("fixingCommit").cloned();
@@ -758,7 +817,7 @@ impl Store {
         self.event(&row, blocker)?;
         let conflicts = self.conflicts(&row.resources, Some(&row.id), clock);
         Ok(if blocker {
-            json!({"blocker":row.project(clock,self.restarted),"recovery":"not-broadcast"})
+            json!({"blocker":row.project(clock,self.restarted),"recoverySelection":super::super::recovery::public_selection(&json!(row.recovery_selection))})
         } else {
             json!({"notice":row.project(clock,self.restarted),"conflictCoverage":if conflicts.len()==100 {"partial"}else{"observed"},"conflicts":conflicts})
         })
@@ -902,5 +961,29 @@ impl Store {
             result["sessions"] = sessions;
         }
         Ok(result)
+    }
+}
+
+impl Store {
+    pub fn recovery_blocker(&self, id: &str, clock: Clock) -> Option<Value> {
+        self.state.blockers.iter().find(|r| r.id == id).map(|r| {
+            let mut value = r.project(clock, self.restarted);
+            value["recoverySelection"] = json!(r.recovery_selection);
+            value
+        })
+    }
+    pub fn recovery_plan(&mut self, id: &str, plan: Value, clock: Clock) -> Result<Value> {
+        self.transaction(clock, |s| {
+            let row = s
+                .state
+                .blockers
+                .iter_mut()
+                .find(|r| r.id == id)
+                .ok_or("COORDINATION_NOT_FOUND: blocker unavailable")?;
+            if row.recovery_selection.is_none() {
+                row.recovery_selection = Some(plan);
+            }
+            Ok(row.recovery_selection.clone().unwrap())
+        })
     }
 }

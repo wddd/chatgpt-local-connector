@@ -1,4 +1,4 @@
-//! Pull-first shared notices and blockers. No notification or delivery dependencies.
+//! Shared notices and blockers. Recovery uses the coordination message outbox.
 mod store;
 use super::*;
 use std::sync::{LazyLock, Mutex};
@@ -125,7 +125,16 @@ fn reconcile() -> Result<()> {
     let pending = with_store(|s| Ok(s.state.pending.iter().take(64).cloned().collect::<Vec<_>>()))?;
     for input in pending {
         let transition = input.transition_id.clone();
-        super::emit(input)?;
+        super::emit(input.clone())?;
+        if input.kind == EventKind::BlockerChanged
+            && matches!(input.status, Some(EventStatus::Cleared))
+        {
+            for evidence in &input.evidence_refs {
+                if matches!(evidence.kind, EvidenceKind::Blocker) {
+                    super::recovery::broadcast(&evidence.id)?;
+                }
+            }
+        }
         with_store(|s| s.projected(&transition, clock()))?;
     }
     Ok(())
@@ -162,7 +171,7 @@ fn linked(args: &Value, actor: &Principal) -> Result<Vec<Link>> {
         };
         if !owns { return Err("COORDINATION_OWNER_REQUIRED: thread links require your own dispatch origin".into()); }
         let terminal = string(&row["terminal"],"state");
-        Ok(Link { thread_id: thread, observed_turn_id: row["turnId"].as_str().map(str::to_owned), scope_state: match terminal {"completed"|"failed" => "completed", "interrupted"|"cancelled" => "interrupted", _ => "unknown"}.into(), observed_at: None, terminals: Default::default() })
+        Ok(Link { session_binding_id: super::messages::binding_id(&row["origin"]["sourceId"], &args["sessionId"] )?, thread_id: thread, observed_turn_id: row["turnId"].as_str().map(str::to_owned), scope_state: match terminal {"completed"|"failed" => "completed", "interrupted"|"cancelled" => "interrupted", _ => "unknown"}.into(), observed_at: None, terminals: Default::default() })
     }).collect()
 }
 async fn verify_fix(args: &Value) -> Result<()> {
@@ -207,6 +216,9 @@ pub(crate) async fn call(op: &str, mut args: Value, session: &str) -> Result<Val
         if op == "board" {
             let mut value = with_store(|s| s.board(&args,&reader.revision,clock()))?;
             value["projectionPending"] = json!(projection.is_some() || with_store(|s| Ok(!s.state.pending.is_empty()))?);
+            if reader.principal == Principal::LocalAuthority && args["id"].is_string() {
+                if let Some(blocker) = recovery_blocker(string(&args,"id"))? { value["localRecoverySelection"] = blocker["recoverySelection"].clone(); }
+            }
             return Ok(value);
         }
         if args["requestId"].is_null() { args["requestId"] = json!(id()); }
@@ -237,6 +249,11 @@ pub(crate) async fn call(op: &str, mut args: Value, session: &str) -> Result<Val
             Err(e) => { receipt["state"] = json!("failed"); failure(e,op) }
         };
         value["projectionPending"] = json!(reconcile().is_err() || with_store(|s| Ok(!s.state.pending.is_empty()))?);
+        if op == "blocker_clear" {
+            if let Some(blocker) = recovery_blocker(string(&args,"id"))? {
+                value["recoverySelection"] = super::recovery::public_selection(&blocker["recoverySelection"]);
+            }
+        }
         receipt["result"] = value.clone();
         RECEIPTS.checkpoint(&mut receipt)?;
         value["receipt"] = receipt;
@@ -431,4 +448,11 @@ pub(crate) fn command_warnings(op: &str, args: &Value) -> Option<Value> {
 /// Message routing consumes session ownership without reading the bulletin snapshot.
 pub(crate) fn session_active(source: &str, id: &str) -> Result<bool> {
     with_store(|s| Ok(s.session_active(source, id)))
+}
+
+pub(super) fn recovery_blocker(id: &str) -> Result<Option<Value>> {
+    with_store(|s| Ok(s.recovery_blocker(id, clock())))
+}
+pub(super) fn recovery_plan(id: &str, plan: Value) -> Result<Value> {
+    with_store(|s| s.recovery_plan(id, plan, clock()))
 }

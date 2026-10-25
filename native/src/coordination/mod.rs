@@ -7,6 +7,7 @@ mod journal;
 pub(crate) mod lifecycle;
 pub(crate) mod messages;
 pub(crate) mod observers;
+pub(crate) mod recovery;
 mod types;
 use crate::*;
 use journal::{Journal, Query, Reader};

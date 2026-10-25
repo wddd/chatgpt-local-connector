@@ -323,6 +323,10 @@ pub struct Observation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_binding_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interrupted_turns: Option<u64>,
@@ -431,6 +435,12 @@ impl EventInput {
                 .map_err(|_| "INVALID_ARGUMENT: occurredAt must be RFC3339")?;
         }
         if let Some(detail) = &self.observation {
+            for session in [&detail.session_id, &detail.session_binding_id]
+                .into_iter()
+                .flatten()
+            {
+                identifier(session)?;
+            }
             for value in [&detail.model, &detail.effort].into_iter().flatten() {
                 if value.len() > 128
                     || !value

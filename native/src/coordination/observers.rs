@@ -180,7 +180,7 @@ fn base(row: &Value, key: &str, kind: EventKind) -> Result<EventInput> {
     let resources = if kind == EventKind::AppReplace {
         vec![ResourceKey::parse("app:installed")?]
     } else {
-        vec![host()?]
+        vec![host()?, ResourceKey::parse("app:installed")?]
     };
     base_on(row, key, kind, resources)
 }
@@ -240,7 +240,19 @@ pub(super) fn inputs(owner: Owner, row: &Value) -> Result<Vec<EventInput>> {
     } else {
         host()?
     };
-    inputs_on(owner, row, resource)
+    let mut events = inputs_on(owner, row, resource)?;
+    if !matches!(owner, Owner::Replacement) {
+        for event in &mut events {
+            event.resources.push(ResourceKey::parse("app:installed")?);
+            if let Some(project) = row["projectId"]
+                .as_str()
+                .filter(|s| types::identifier(s).is_ok())
+            {
+                event.resources.push(ResourceKey::project(project)?);
+            }
+        }
+    }
+    Ok(events)
 }
 pub(super) fn inputs_on(
     owner: Owner,
@@ -397,6 +409,45 @@ pub(super) fn inputs_on(
             });
             evidence(&mut input, EvidenceKind::Replacement, string(row, "id"));
             events.push(input.clone());
+            // Journal existing continuation intent as evidence. Recovery selection
+            // must not suggest another resume while this request is pending/accepted.
+            for entry in &turns {
+                if row["shutdownRequested"] == true
+                    && entry["continuation"]["requestId"].is_string()
+                    && entry["state"] != "needs-attention"
+                {
+                    let mut continuation = EventInput::new(
+                        hash(
+                            json!([
+                                "replacement-continuation",
+                                row["id"],
+                                entry["threadId"],
+                                entry["turnId"]
+                            ])
+                            .to_string(),
+                        ),
+                        EventKind::AppReplace,
+                        input.resources.clone(),
+                    );
+                    continuation.origin = Some(Principal::Arc);
+                    continuation.status = Some(EventStatus::Running);
+                    continuation.thread_refs.push(ThreadRef {
+                        thread_id: string(entry, "threadId").into(),
+                        turn_id: Some(string(entry, "turnId").into()),
+                    });
+                    evidence(
+                        &mut continuation,
+                        EvidenceKind::Replacement,
+                        string(row, "id"),
+                    );
+                    evidence(
+                        &mut continuation,
+                        EvidenceKind::Request,
+                        string(&entry["continuation"], "requestId"),
+                    );
+                    events.push(continuation);
+                }
+            }
             if row["resumedCount"].is_number()
                 && matches!(phase, "succeeded" | "failed" | "rolled-back" | "cancelled")
             {

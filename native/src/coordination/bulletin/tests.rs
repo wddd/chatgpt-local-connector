@@ -55,6 +55,7 @@ impl Fixture {
                 &args,
                 &self.actor,
                 vec![Link {
+                    session_binding_id: None,
                     thread_id: "thread-a".into(),
                     observed_turn_id: Some("turn-a".into()),
                     scope_state: "running".into(),
@@ -334,7 +335,7 @@ fn blocker_states_and_evidence() {
     let args = json!({"id":blocker["id"],"expectedRevision":stale["revision"],"reason":"Non-code recovery observed","evidenceIds":["receipt-fixture"],"suggestedNextStep":"inspect"});
     let cleared = f.call("blocker_clear", args);
     assert_eq!(cleared["blocker"]["state"], "cleared");
-    assert_eq!(cleared["recovery"], "not-broadcast");
+    assert_eq!(cleared["recoverySelection"]["reason"], "stale-blocker");
     assert!(cleared["blocker"]["fixingCommit"].is_null());
     assert!(validate(
         "blocker_clear",

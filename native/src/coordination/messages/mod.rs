@@ -12,12 +12,13 @@ static REQUESTS: crate::kernel::receipts::RequestLocks = crate::kernel::receipts
 const RECEIPTS: crate::kernel::receipts::ReceiptStore =
     crate::kernel::receipts::ReceiptStore::new("");
 fn with_store<T>(f: impl FnOnce(&mut Store) -> Result<T>) -> Result<T> {
+    with_store_at(root().join("coordination/messages/state.json"), f)
+}
+fn with_store_at<T>(path: PathBuf, f: impl FnOnce(&mut Store) -> Result<T>) -> Result<T> {
     let _guard = MESSAGES
         .lock()
         .map_err(|_| "COORDINATION_STORAGE: messages lock unavailable")?;
-    f(&mut Store::open(
-        root().join("coordination/messages/state.json"),
-    )?)
+    f(&mut Store::open(path)?)
 }
 fn resources(args: &Value) -> Result<Vec<ResourceKey>> {
     let mut rows: Vec<_> = args["resources"]
@@ -135,7 +136,7 @@ pub(crate) async fn call(op: &str, mut args: Value, backend: &str) -> Result<Val
         let reader=super::reader(&origin,&source)?;
         let actor=match &reader.principal {Principal::Source{source_id,..}=>source_id.as_str(),Principal::LocalAuthority=>"local-authority",_=>return Err("SOURCE_REQUIRED: control source required".into())};
         let projection=reconcile().err();
-        if op=="messages" {let mut result=with_store(|s|s.list(&args,actor,&reader.revision,chrono::Utc::now().timestamp()))?; result["projectionPending"]=json!(projection.is_some() || result["projectionPending"]==true); return Ok(result);}
+        if op=="messages" {refresh_recovery()?;let mut result=with_store(|s|s.list(&args,actor,&reader.revision,chrono::Utc::now().timestamp()))?; result["projectionPending"]=json!(projection.is_some() || result["projectionPending"]==true); return Ok(result);}
         if actor=="local-authority" {return Err("SOURCE_REQUIRED: local authority mediates through messages management".into());}
         if op!="message_route" || !args["target"].is_null() {session(actor,args["sessionId"].as_str())?;}
         if op=="message_route" {
@@ -190,6 +191,7 @@ pub(crate) fn local(method: &str, args: &Value) -> Result<Value> {
 }
 async fn flush() -> Result<()> {
     reconcile()?;
+    refresh_recovery()?;
     for (source, session) in with_store(|s| Ok(s.route_sessions()))? {
         if !super::bulletin::session_active(&source, &session)? {
             with_store(|s| s.bind(&source, &session, None))?;
@@ -221,7 +223,13 @@ async fn flush() -> Result<()> {
             with_store(|s| s.mark(&rows, "cancelled", time))?;
             continue;
         }
-        with_store(|s| s.mark(&rows, "sending", time))?;
+        // Refresh after authority/binding checks and atomically reserve only rows
+        // whose recovery advice is still relevant. Partial batches keep other mail.
+        let (events, _) = super::recovery::events()?;
+        let rows = with_store(|s| s.reserve(&rows, &events, time))?;
+        if rows.is_empty() {
+            continue;
+        }
         let result = deliver(Request::Push {
             route,
             count: rows.len(),
@@ -245,4 +253,46 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
             tokio::select! {_=shutdown.changed()=>break,result=flush()=>{if result.is_err(){observers::gap("messages","projection-or-delivery-unavailable");}}}
         }
     });
+}
+
+pub(super) fn binding_id(source: &Value, session: &Value) -> Result<Option<String>> {
+    with_store(|s| {
+        Ok(s.route(
+            source.as_str().unwrap_or(""),
+            session.as_str().unwrap_or(""),
+        )
+        .and_then(|r| r.binding_id))
+    })
+}
+pub(super) fn recovery(blocker: &Value, recipient: &Value, plan: &Value) -> Result<()> {
+    let source = string(recipient, "sourceId");
+    match authorized(source) {
+        Ok(_) => {}
+        Err(error) if error.starts_with("SOURCE_REVOKED") || error == "SOURCE_NOT_FOUND" => {
+            return Ok(())
+        }
+        Err(error) => return Err(error),
+    }
+    if !super::bulletin::session_active(source, string(recipient, "sessionId"))? {
+        return Ok(());
+    }
+    with_store(|s| s.recovery(blocker, recipient, plan, chrono::Utc::now().timestamp()))?;
+    Ok(())
+}
+fn refresh_recovery() -> Result<()> {
+    let (events, _) = super::recovery::events()?;
+    with_store(|s| s.refresh_recovery(&events))
+}
+/// Shared wake reservation; callers retain their own inbox summary. No transport here.
+pub(crate) fn replacement_summary(
+    state_root: &Path,
+    source: &str,
+    target: &str,
+    replacement: &str,
+    time: i64,
+) -> Result<bool> {
+    let route = hash(json!(["claude-session", source, target]).to_string());
+    with_store_at(state_root.join("coordination/messages/state.json"), |s| {
+        s.replacement_summary(source, &route, replacement, time)
+    })
 }
