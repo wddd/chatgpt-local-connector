@@ -925,6 +925,7 @@
 .activity-bubble-shell { position: relative; width: 100%; height: 100%; pointer-events: auto; }
 .activity-bubble-shell > .activity-bubble { width: 100%; height: 100%; }
 .activity-bubble-shell > .activity-mark-read { background: var(--success); color: var(--on-success); position: absolute; left: 12px; top: calc(50% - 15px); width: 30px; height: 30px; min-height: 0; padding: 0; border: 0; border-radius: 9px; cursor: pointer; touch-action: none; transition: transform 180ms var(--task-spring), filter 160ms; }
+.activity-mark-read > .activity-source-badge { z-index: 1; pointer-events: none; }
 .activity-mark-read::before, .activity-mark-read::after { content: ""; position: absolute; inset: 0; border: 1.5px solid color-mix(in srgb, var(--success) 30%, transparent); border-radius: inherit; pointer-events: none; opacity: 0; animation: activity-read-ring 2.4s ease-out infinite; }
 .activity-mark-read::before { animation-delay: -1.2s; }
 .activity-bubble-shell > .activity-mark-read:hover:not(:disabled) { background: var(--success); filter: brightness(1.08); transform: scale(1.1); }

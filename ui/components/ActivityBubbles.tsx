@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { locale, t } from "../i18n";
-import { PhaseTile, PhaseLabel, StepTrail, SpecPill, dispatchSourceLabel } from "./activity";
+import { PhaseTile, PhaseLabel, StepTrail, SpecPill, SourceBadge, dispatchSourceLabel } from "./activity";
 import { selectAgentPanel } from "../state/overviewPanels";
 import { activityHeadline, type TrackedActivity, type BubbleDensity } from "../state/activityModel";
 import { useInterval } from "../state/hooks";
@@ -30,7 +30,7 @@ function Headline({ session }: { session: TrackedActivity }) {
     </AnimatePresence>
   </span>;
 }
-export function ActivityBubbleContent({ session, now, density = "standard", historical = false, conversationRow = false }: { session: TrackedActivity; now: number; density?: BubbleDensity; historical?: boolean; conversationRow?: boolean }) {
+export function ActivityBubbleContent({ session, now, density = "standard", historical = false, conversationRow = false, showSourceBadge = true }: { session: TrackedActivity; now: number; density?: BubbleDensity; historical?: boolean; conversationRow?: boolean; showSourceBadge?: boolean }) {
   const language = locale.use();
   const paused = ["cancelled", "interrupted", "aborted"].includes(session.status ?? "");
   const completed = !paused && (session.endedAt !== undefined || historical), external = session.source === "transcript";
@@ -50,7 +50,7 @@ export function ActivityBubbleContent({ session, now, density = "standard", hist
     {new Date(created).toLocaleDateString(language, { ...(new Date(created).getFullYear() !== new Date(now).getFullYear() ? { year: "numeric" } as const : {}), month: "short", day: "numeric" })}
   </time>;
   return <>
-    <PhaseTile phase={phase} running={running} completed={completed} paused={paused} animated={!external} source={source} />
+    <PhaseTile phase={phase} running={running} completed={completed} paused={paused} animated={!external} source={showSourceBadge ? source : undefined} />
     {historical && <span className="sr-only">{t(paused ? "timeline.status.cancelled" : "activity.completed")}</span>}
     <span className="activity-copy">
       <span className="activity-title-row"><strong>{session.title || t("timeline.title")}</strong>
@@ -96,7 +96,7 @@ export function ActivityBubble({ agent, session, now, onMove, onRead, density = 
       aria-label={`${session.title || t("timeline.title")}${unread ? ` · ${t("activity.unread")}` : ""} · ${hint}`} onClick={() => {
         selectAgentPanel({ type: "task", agent, session });
       }}>
-      <ActivityBubbleContent session={session} now={now} density={density} />
+      <ActivityBubbleContent session={session} now={now} density={density} showSourceBadge={!unread} />
     </button>
     {unread && <Button variant="ghost" className="activity-mark-read" data-topology-control aria-label={t("activity.markRead")} title={t("activity.markRead")}
       onPointerDown={event => {
@@ -121,6 +121,6 @@ export function ActivityBubble({ agent, session, now, onMove, onRead, density = 
         event.stopPropagation();
         if (event.detail !== 0 && cancelled.current) { event.preventDefault(); return; }
         onRead();
-      }}><Icon icon={Check} /></Button>}
+      }}><Icon icon={Check} />{session.dispatchSummary?.controlSource && <SourceBadge source={session.dispatchSummary.controlSource} />}</Button>}
   </div>;
 }

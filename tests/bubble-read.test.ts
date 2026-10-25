@@ -7,7 +7,7 @@ import { createServer } from "vite";
 import { act, createElement as h } from "react";
 import { within, fireEvent } from "@testing-library/dom";
 
-for (const mode of ["default", "tree", "flat"] as const) test(`completed bubble check hands drags to topology in ${mode} layout while preserving jitter clicks, cancellation and keyboard activation`, async () => {
+for (const width of [232, 264, 304]) for (const mode of ["default", "tree", "flat"] as const) test(`completed bubble check hands drags to topology in ${mode} layout at width ${width} while preserving origin clicks, jitter, cancellation and keyboard activation`, async () => {
   // Regression: check-button drag hand-off must coexist with account tree/flat task parents and default topology navigation.
   const window = new Window({ url: "http://localhost" });
   window.localStorage.setItem("arc.privacy", "false");
@@ -37,7 +37,8 @@ for (const mode of ["default", "tree", "flat"] as const) test(`completed bubble 
     const { t } = await server.ssrLoadModule("/ui/i18n.ts");
     const { viewModel } = await server.ssrLoadModule("/ui/acceptance.ts");
     const position = () => { const { x, y } = viewModel().topology.tasks.find((task: any) => task.id === "finished").position; return { x, y }; };
-    const session = { id: "finished", title: "Finished task", source: "arc-task", phase: "idle", phaseSince: null, headline: "", orderAt: 1, endedAt: 1 };
+    const origin = { kind: "claude", label: "Fixture origin" };
+    const session = { id: "finished", title: "Finished task", source: "arc-task", phase: "idle", phaseSince: null, headline: "", orderAt: 1, endedAt: 1, dispatchSummary: { controlSource: origin } };
     const { accountViews } = await server.ssrLoadModule("/ui/topology/accountViews.tsx");
     const { accountNodeId } = await server.ssrLoadModule("/ui/topology/accounts.ts");
     const accounts = mode === "default" ? [] : ["first", "second"].map(id => ({ id, alias: `${id} account`, provider: "openai", identityKey: id,
@@ -46,7 +47,7 @@ for (const mode of ["default", "tree", "flat"] as const) test(`completed bubble 
     let navigation: { side: number; platform: string; accountId?: string } | undefined;
     const actions = { open: (side: number, platform: string, _sourceId?: string, accountId?: string) => { navigation = { side, platform, accountId }; } };
     const right = accountViews([{ id: "codex", platform: "codex", platformLabel: "Codex", state: "normal", attention: false, selected: false, reorderable: true,
-      content: h("button", null, "Codex"), tasks: [{ id: session.id, agentAccountId: accounts[0]?.id, width: 264, height: 76, state: "completed", selected: false, reorderable: true,
+      content: h("button", null, "Codex"), tasks: [{ id: session.id, agentAccountId: accounts[0]?.id, width, height: 76, state: "completed", selected: false, reorderable: true,
         content: h(ActivityBubble, { agent: "codex", session, now: 1, onRead: () => { read = true; } }) }] }], 1, accounts, mode === "flat" ? "flat" : "tree", {}, actions);
     const expectedParent = mode === "default" ? "codex" : accountNodeId("codex", accounts[0].id);
     await act(() => root.render(h(Topology, { boundary: { current: mount }, left: [], right, accountsEnabled: accounts.length > 0,
@@ -59,6 +60,8 @@ for (const mode of ["default", "tree", "flat"] as const) test(`completed bubble 
       target.dispatchEvent(new window.PointerEvent(type, { bubbles: true, pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y, pointerType }));
     });
     const click = async (target: Element, detail = 1) => act(() => { fireEvent.click(target, { detail }); });
+    await click(page.getByTitle(origin.label));
+    assert.equal(read, true); assert.equal(agentPanel.get(), undefined); assert.deepEqual(order, []);
     for (const kind of ["mouse", "touch", "pen"]) {
       read = false;
       await pointer(button, "pointerdown", 20, 20, kind);
