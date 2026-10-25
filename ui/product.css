@@ -1486,7 +1486,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 /* Only inline stand-ins blur. Their raw values never enter hidden DOM. */
 .sensitive-value { display: inline-block; min-inline-size: 0; max-inline-size: 100%; box-sizing: content-box; padding-inline: 3px; margin-inline: -3px; vertical-align: bottom; white-space: nowrap; overflow: hidden; }
 .sensitive-value > span { display: inline-block; transform-origin: left center; }
-.pii { filter: blur(2.2px); opacity: .5; user-select: none; animation: privacy-in 160ms ease-out; }
+.pii { filter: blur(2.2px); opacity: .5; user-select: text; animation: privacy-in 160ms ease-out; }
 @keyframes privacy-in { from { filter: blur(0); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .pii { animation: none; } }
 .sensitive-identity { min-width: 0; }

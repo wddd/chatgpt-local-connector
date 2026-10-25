@@ -5,7 +5,7 @@ import { accountsApi } from '../api';
 import { t, locale } from '../i18n';
 import { copyText } from '../platform';
 import { sourceDate } from '../sourcePresentation';
-import { refreshAccounts } from '../state/accounts';
+import { boundNotificationSessions, refreshAccounts } from '../state/accounts';
 import { Button, Dialog, Field, Icon, Notice, Status } from './ui';
 import { Sensitive, SensitiveInput, useSensitiveText } from './Sensitive';
 export const accountDate = (value?: string) => value ? new Date(value).toLocaleString(locale.get()) : '—';
@@ -22,7 +22,8 @@ export function AccountQuota({ account }: { account: Account }) {
 export function AccountNotifications({ account }: { account: Account }) {
   const [manual, setManual] = useState(false), [target, setTarget] = useState(''), [error, setError] = useState(''), [fieldError, setFieldError] = useState('');
   const [busy, setBusy] = useState(false), [sent, setSent] = useState('');
-  const protect = useSensitiveText([target, ...account.notifications.sessions.map(session => session.target)]);
+  const sessions = boundNotificationSessions(account);
+  const protect = useSensitiveText([target, ...sessions.map(session => session.target)]);
   async function action(work: () => Promise<unknown>) {
     setBusy(true); setError(''); try { await work(); await refreshAccounts(); } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
@@ -30,7 +31,7 @@ export function AccountNotifications({ account }: { account: Account }) {
   return <section className="account-card">
     <div className="source-section-heading"><h3>{t('accounts.notifications')}</h3><Status tone={account.notifications.state === 'verified' ? 'success' : account.notifications.state === 'not-bound' ? 'warning' : 'neutral'}>{t(`accounts.notifications.${account.notifications.state}`)}</Status></div>
     {account.notifications.state === 'mcp-events' && <p role="status">{t(account.notifications.reachable ? 'accounts.reachable' : 'accounts.unreachable')}</p>}
-    {account.notifications.sessions.length > 0 && <ul className="account-sessions" aria-label={t('accounts.sessions')}>{account.notifications.sessions.map((session, index) => {
+    {sessions.length > 0 && <ul className="account-sessions" aria-label={t('accounts.sessions')}>{sessions.map((session, index) => {
       const state = session.verified ? 'verified' : session.state;
       const reachable = state === 'verified' || state === 'reachable';
       const known = ['verified', 'reachable', 'unavailable', 'failed', 'not-bound'].includes(state);

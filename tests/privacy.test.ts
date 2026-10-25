@@ -66,7 +66,7 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
     const { default: RemoteLinkPage } = await server.ssrLoadModule('/ui/components/RemoteLinkPage.tsx');
     const { ActivityBubble } = await server.ssrLoadModule('/ui/components/ActivityBubbles.tsx');
     const { CopyField, Dialog, TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
-    const { SensitiveInput } = await server.ssrLoadModule('/ui/components/Sensitive.tsx');
+    const { Sensitive, SensitiveInput } = await server.ssrLoadModule('/ui/components/Sensitive.tsx');
     const { default: QuotaBubble } = await server.ssrLoadModule('/ui/subscriptions/QuotaBubble.tsx');
     const page = within(document.body), account = accounts.get().items.find((item: any) => item.id === 'account-claude');
     const sourceAccount = accounts.get().items.find((item: any) => item.id === 'account-openai');
@@ -77,6 +77,23 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
     // Inspect content and attributes together: a hidden raw mirror is still a leak.
     const assertPrivate = () => { for (const value of raw) assert.ok(!document.documentElement.outerHTML.includes(value), `DOM leaked ${value}`); };
     const render = async (child: any) => { await act(async () => root.render(h(TooltipProvider, null, child))); };
+    // Release acceptance could not select inline stand-ins; selected stand-ins must copy only the real identity.
+    await act(async () => setPrivacy(true));
+    await render(h(Sensitive, null, account.email));
+    const masked = page.getByLabelText(t('accounts.hidden'), { exact: true });
+    const selection = window.getSelection()!;
+    selection.selectAllChildren(masked);
+    assert.equal(selection.toString(), maskSensitive(account.email));
+    assertPrivate();
+    const clipboard = new window.DataTransfer();
+    clipboard.setData('text/plain', selection.toString());
+    assert.equal(fireEvent.copy(masked, { clipboardData: clipboard }), false);
+    assert.equal(clipboard.getData('text/plain'), account.email);
+    assert.notEqual(clipboard.getData('text/plain'), selection.toString());
+    selection.removeAllRanges();
+    await act(async () => setPrivacy(false));
+    assert.ok(page.getByText(account.email, { exact: true }));
+    assert.equal(fireEvent.copy(page.getByText(account.email, { exact: true }), { clipboardData: clipboard }), true);
     for (const theme of ['light', 'dark']) {
       document.documentElement.dataset.theme = theme;
       await act(async () => setPrivacy(true));
@@ -112,6 +129,10 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
     await render(h(SensitiveInput, { value: account.notifications.sessions[0].target, 'aria-label': 'Session', onChange() {} }));
     const input = page.getByRole('textbox', { name: 'Session', exact: true }) as HTMLInputElement;
     assert.notEqual(input.value, account.notifications.sessions[0].target); assert.equal(input.readOnly, true);
+    clipboard.setData('text/plain', input.value);
+    assert.equal(fireEvent.copy(input, { clipboardData: clipboard }), false);
+    assert.equal(clipboard.getData('text/plain'), account.notifications.sessions[0].target);
+    assertPrivate();
     await act(async () => setPrivacy(false));
     assert.equal(input.value, account.notifications.sessions[0].target); assert.equal(input.readOnly, false);
     await act(async () => setPrivacy(true));

@@ -189,6 +189,50 @@ test('notification sessions retain individual reachability and send tests to the
   });
 });
 
+test('notification sessions omit empty targets from account state and bound session actions', async () => {
+  // Regression: Local CLI Unidentified accounts rendered an unregistered empty target as a bound notification session.
+  await withAccountUI(async ({ server, root }) => {
+    const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
+    const { accounts, refreshAccounts } = await server.ssrLoadModule('/ui/state/accounts.ts');
+    const { AccountNotifications } = await server.ssrLoadModule('/ui/components/AccountCards.tsx');
+    const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
+    const { setPrivacy } = await server.ssrLoadModule('/ui/state/privacy.ts');
+    const { t } = await server.ssrLoadModule('/ui/i18n.ts');
+    const get = accountsApi.get;
+    const source = await get('account-source'), agent = await get('account-claude');
+    const empty = { sourceId: source.sources[0], channel: 'claude-session', registered: false, verified: false, state: 'unverified', target: '' };
+    let sessions = [empty, { ...empty, target: ' \t ' }];
+    const notificationAccount = (account: any) => ({ ...account, notifications: { ...account.notifications, sessions } });
+    accountsApi.get = async (id: string) => notificationAccount(await get(id));
+    try {
+      await refreshAccounts();
+      assert.ok(accounts.get().items.every((account: any) => account.notifications.sessions.length === 0));
+      await act(async () => setPrivacy(false));
+      const page = within(document.body);
+      const render = async (account: any) => { await act(async () => root.render(h(TooltipProvider, null, h(AccountNotifications, { account })))); };
+      for (const account of [source, agent]) {
+        await render(notificationAccount(account));
+        assert.ok(page.getByRole('heading', { name: t('accounts.notifications'), exact: true }));
+        assert.ok(page.getByText(t(`accounts.notifications.${account.notifications.state}`), { exact: true }));
+        assert.equal(page.queryByRole('list', { name: t('accounts.sessions'), exact: true }), null);
+        assert.equal(page.queryByRole('button', { name: t('accounts.sendTest'), exact: true }), null);
+      }
+      const target = 'session_010000000000000000000004';
+      sessions = [...sessions, { ...empty, target }];
+      await act(async () => refreshAccounts());
+      const mapped = accounts.get().items.find((account: any) => account.id === agent.id);
+      assert.deepEqual(mapped.notifications.sessions.map((session: any) => session.target), [target]);
+      assert.equal(mapped.notifications.sessions[0].registered, false);
+      await render(notificationAccount(agent));
+      const rows = within(page.getByRole('list', { name: t('accounts.sessions'), exact: true })).getAllByRole('listitem');
+      assert.equal(rows.length, 1);
+      assert.ok(within(rows[0]).getByText(target, { exact: true }));
+      await act(async () => { fireEvent.click(within(rows[0]).getByRole('button', { name: t('accounts.sendTest'), exact: true })); });
+      assert.equal((await get(agent.id)).notifications.sessions.find((session: any) => session.target === target).lastDelivery.status, 'sent');
+    } finally { accountsApi.get = get; }
+  });
+});
+
 test('source dates treat zero and absent timestamps as never in every locale', async () => {
   // Regression: Last seen displayed a date in 1970 when the native timestamp was zero.
   await withAccountUI(async ({ server }) => {

@@ -4,12 +4,15 @@ import type { ProviderAccount as Account, AccountLogin } from '../types';
 import { createStore } from './store';
 export const accounts = createStore<{ items: Account[]; login: AccountLogin | null; loading: boolean; error: string }>({ items: [], login: null, loading: true, error: '' });
 let pending: Promise<void> | undefined;
+export function boundNotificationSessions(account: Account) {
+  return account.notifications.sessions.filter(session => session.target.trim().length > 0);
+}
 export function refreshAccounts() {
   return pending ??= (async () => {
     try {
       const { accounts: rows, login } = await accountsApi.list();
       const items = await Promise.all(rows.map(row => accountsApi.get(row.id)));
-      accounts.set({ items, login, loading: false, error: '' });
+      accounts.set({ items: items.map(account => ({ ...account, notifications: { ...account.notifications, sessions: boundNotificationSessions(account) } })), login, loading: false, error: '' });
     } catch (error) { accounts.set(old => ({ ...old, loading: false, error: String(error) })); }
     finally { pending = undefined; }
   })();
