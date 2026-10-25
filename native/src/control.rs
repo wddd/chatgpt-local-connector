@@ -1438,12 +1438,6 @@ impl Control {
         if operation == "archive" {
             let thread = string(args, "threadId");
             r["threadId"] = json!(thread);
-            if args["release"] == true {
-                let released = self.release_writer(thread).await?;
-                if released["released"] != true {
-                    return Err("RELEASE_UNCONFIRMED: read codex_owner before archive".into());
-                }
-            }
             let rpc = self.utility().await?;
             let native = rpc
                 .call(
@@ -1462,6 +1456,17 @@ impl Control {
                     .any(|v| v["params"]["threadId"] == thread)
             {
                 return Err(json!({"code":"ARCHIVE_ACTIVE_TURN","message":"The thread is active or has a pending interaction. Finish it, or explicitly interrupt it, before archiving.","next":{"via":"query","op":"codex_read","args":{"threadId":thread,"statusOnly":true}}}).to_string());
+            }
+            if args["release"] == true {
+                let owner = self.writer_ownership(thread).await;
+                // Native archive already handles its own idle writer atomically.
+                // Unsubscribe acknowledgement need not mean the session unloaded.
+                let unnecessary = owner["state"] == "unheld"
+                    || (owner["owner"] == "connector"
+                        && native["thread"]["status"]["type"] == "idle");
+                if !unnecessary && self.release_writer(thread).await?["released"] != true {
+                    return Err("RELEASE_UNCONFIRMED: read codex_owner before archive".into());
+                }
             }
             r["state"] = json!("submitting");
             self.checkpoint(r)?;

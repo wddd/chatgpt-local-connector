@@ -66,3 +66,37 @@ test('Releasing an already unheld writer is a no-op before archive',async()=>{
     const archive=await fixture.completed('codex_archive',{threadId,release:true});assert.equal(archive.state,'completed',JSON.stringify(archive));assert.equal(archive.result.archived,true);
   }finally{await fixture.close();}
 });
+
+
+test('Archive release is a no-op for an idle connector retaining its native writer',{skip:process.platform==='win32'},async()=>{
+  // Regression: release:true returned RELEASE_UNCONFIRMED after unsubscribe while plain native archive could finish on the same idle connector.
+  const directory=await mkdtemp(path.join(tmpdir(),'arc-idle-archive-'));
+  const threadId='00000000-0000-4000-8000-000000000007';
+  const turnId='00000000-0000-4000-8000-000000000008';
+  const fixture=await nativeControl(`import{createInterface}from'node:readline';
+for await(const line of createInterface({input:process.stdin})){
+ const{id,method,params}=JSON.parse(line);if(id===undefined)continue;
+ const turn={id:'${turnId}',status:'completed',items:[]};let result={};
+ if(method==='thread/start'||method==='thread/read')result={thread:{id:'${threadId}',cwd:params.cwd||'/tmp',status:{type:'idle'}}};
+ if(method==='turn/start')result={turn};
+ if(method==='thread/turns/list')result={data:[turn],nextCursor:null};
+ process.stdout.write(JSON.stringify({id,result})+'\\n');
+}`,{CODEX_HOME:directory});
+  let writer:ReturnType<typeof spawn>|undefined;
+  try {
+    await fixture.api('task-settings',{autoOpenCodex:false},'PUT');
+    assert.equal((await fixture.completed('codex_create',{prompt:'Idle archive fixture',thread:{cwd:'/tmp'}})).state,'completed');
+    await mkdir(path.join(directory,'thread-writer-locks'));
+    writer=spawn('python3',['-c','import fcntl,sys; f=open(sys.argv[1],"w"); fcntl.flock(f,fcntl.LOCK_EX); print("ready",flush=True); sys.stdin.read()',path.join(directory,'thread-writer-locks',threadId+'.lock')]);
+    await new Promise<void>(resolve=>writer!.stdout!.once('data',()=>resolve()));
+    assert.equal((await fixture.call('codex_owner',{threadId})).owner,'connector');
+    const archived=await fixture.completed('codex_archive',{threadId,release:true});
+    assert.equal(archived.state,'completed',JSON.stringify(archived));assert.equal(archived.result.archived,true);
+    assert.equal(writer.exitCode,null);
+    assert.equal((await fixture.call('guide',{op:'codex_archive'})).retry.mode,'receipt');
+  }finally{
+    await fixture.close();
+    if(writer){writer.stdin!.end();await new Promise(resolve=>writer!.once('exit',resolve));}
+    await rm(directory,{recursive:true,force:true});
+  }
+});

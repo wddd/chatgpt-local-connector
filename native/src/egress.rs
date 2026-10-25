@@ -709,6 +709,8 @@ pub fn retry_contract(op: &Value) -> Value {
         "codex_create"
             | "codex_send"
             | "codex_resume"
+            | "codex_archive"
+            | "codex_release"
             | "codex_review"
             | "codex_interrupt"
             | "codex_respond"

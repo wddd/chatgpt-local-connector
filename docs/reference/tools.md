@@ -537,6 +537,10 @@ Writer/archive errors expose one public reason and numeric `nativeCode` where av
 
 `task_panel` and `task_panel_control` default to `view:"compact"`: purpose, following, atLatest, expanded width mode, state, current turn, timeline metadata and counts remain inline. Use `query({op:"task_panel",args:{agent:"codex",id,view:"full"}})` when you need disclosure IDs, queued message bodies, responses or full timeline content. Large full views retain normal output continuation.
 
+### Archiving an idle task
+
+`codex_archive({threadId,release:true})` skips redundant release when the writer is unheld or the connector owns an idle native session. Native archive handles that session atomically. Active turns and pending interactions are rejected first. Desktop and external writers still require their owner handoff; ARC never deletes a lock or ends another session.
+
 ### Interrupted task reads
 
 Task reads and waits expose `stateScope:"turn"`. A normally interrupted task returns `state:"cancelled"` and its native recorded status as a successful read (MCP isError:false and CLI ok:true). A cancelled dispatch operation remains an operation failure.
