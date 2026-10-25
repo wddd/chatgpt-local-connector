@@ -6,6 +6,7 @@ mod governance;
 pub(crate) mod mcp_events;
 pub(crate) mod ownership;
 mod reachability;
+mod recovery;
 mod retry;
 pub(crate) mod routing;
 pub(crate) mod subscriptions;
@@ -57,7 +58,7 @@ struct DeliveryTiming {
     queue_reason: Option<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Delivery {
     #[serde(default)]
@@ -98,6 +99,8 @@ struct Delivery {
     reconciliation: Value,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     continuation: Value,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    recovery: Value,
     #[serde(default)]
     timing: DeliveryTiming,
     #[serde(default)]
@@ -563,13 +566,16 @@ pub(crate) fn retry_status(thread: &str, turn: &str) -> Result<Value> {
 fn event(b: &Binding, d: &Delivery) -> Value {
     let kind = match d.task_state.as_str() {
         "handoff" => "handoff",
+        "recovered" => "recovered",
         "completed" => "completed",
         "failed" => "failed",
         "cancelled" => "interrupted",
         _ => "needs-input",
     };
     let agent = !b.agent.is_empty() && b.agent != "codex";
-    let next = if kind == "handoff" {
+    let next = if kind == "recovered" {
+        json!({"via":"query","op":"notify_status","args":{"target":d.target},"hint":"Inspect affected bindings and reconnect the control-source client if needed."})
+    } else if kind == "handoff" {
         json!({"via":"query","op":"codex_owner","args":{"threadId":b.thread_id},"hint":"Inspect the current writer and observed handoff history before continuing."})
     } else if kind == "needs-input" {
         if agent {
@@ -582,7 +588,7 @@ fn event(b: &Binding, d: &Delivery) -> Value {
     } else {
         json!({"hint":"Read the result and review its changes.","via":"query","op":"codex_read","args":{"threadId":b.thread_id}})
     };
-    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":task_title(b),"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"routing":d.interaction["routing"],"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":if kind=="handoff" {Value::Null}else{d.task_error.clone()},"reconciliation":d.reconciliation,"continuation":d.continuation,"ownership":if kind=="handoff" {d.task_error.clone()}else{Value::Null},"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
+    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":task_title(b),"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"routing":d.interaction["routing"],"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":if kind=="handoff" {Value::Null}else{d.task_error.clone()},"reconciliation":d.reconciliation,"continuation":d.continuation,"recovery":d.recovery,"ownership":if kind=="handoff" {d.task_error.clone()}else{Value::Null},"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
 }
 fn empty_answered_completion(b: &Binding, observed: &Value) -> bool {
     observed["state"] == "completed"
@@ -613,6 +619,10 @@ fn task_title(b: &Binding) -> &str {
         .unwrap_or("")
 }
 fn receipt(b: &Binding, d: &Delivery) -> String {
+    if d.task_state == "recovered" {
+        return format!("⟢ ARC receipt — automated, not a user message\nARC recovered at {}; {} tasks affected.",
+            string(&d.recovery, "recoveredAt"), d.recovery["affectedTasks"]);
+    }
     if d.task_state == "handoff" {
         return format!(
             "⟢ ARC receipt — automated, not a user message\n↔ handoff · {} → {}\n{} · ref {}",
@@ -1238,6 +1248,7 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
             },
             reconciliation: reconciliation.clone(),
             continuation: continuation.clone(),
+            recovery: Value::Null,
             task_error: if handoff {
                 observation["handoffs"]
                     .as_array()
@@ -1779,7 +1790,16 @@ async fn flush(
     }
     let continuations = all
         .iter()
-        .map(|b| continuation::notice(b, &Value::Null, &all))
+        .map(|b| {
+            if b.deliveries
+                .iter()
+                .any(|d| d.key == "terminal" && d.status == "pending")
+            {
+                continuation::notice(b, &Value::Null, &all)
+            } else {
+                Value::Null
+            }
+        })
         .collect::<Vec<_>>();
     for (b, continuation) in all.iter_mut().zip(continuations) {
         let mut changed = false;
@@ -2431,6 +2451,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
     tokio::spawn(async move {
         crate::logs::record("INFO", "Control-source notification observer started", None);
         let mut recovering = true;
+        let restart = id();
         loop {
             let Some(control) = weak.upgrade() else {
                 break;
@@ -2569,17 +2590,28 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                 for thread in owner_threads {
                     let _ = control.observe_ownership(&thread).await;
                 }
+                if recovering {
+                    recovery::enqueue(
+                        &directory(),
+                        &LOCK,
+                        &restart,
+                        chrono::Utc::now().timestamp(),
+                    )
+                    .await?;
+                }
                 Ok::<_, String>(())
             };
             tokio::select! {
                 biased;
                 _ = shutdown.changed() => break,
-                result = cycle => if let Err(error) = result { crate::logs::record("WARN", &format!("Control-source notification persistence/observation failed: {error}"), None); },
+                result = cycle => match result {
+                    Ok(()) => {
+                        if recovering { let _ = ready.send(true); }
+                        recovering = false;
+                    }
+                    Err(error) => crate::logs::record("WARN", &format!("Control-source notification persistence/observation failed: {error}"), None),
+                },
             }
-            if recovering {
-                let _ = ready.send(true);
-            }
-            recovering = false;
             let wake = control.events.lock().await.wake.clone();
             drop(control);
             tokio::select! {
@@ -2764,6 +2796,14 @@ mod tests {
             safe_account(
                 &json!({"loggedIn":true,"authMethod":"claude.ai","email":"fixture@example.invalid","accessToken":"fixture-secret","credentials":{"refreshToken":"fixture-secret"}}),
             )
+        }
+        async fn webhook(
+            &self,
+            _sub: &subscriptions::Subscription,
+            _b: &Binding,
+            _d: &Delivery,
+        ) -> SendOutcome {
+            SendOutcome::success("callback-accepted")
         }
         async fn send(&self, _source_id: &str, args: Vec<String>) -> Result<Vec<u8>> {
             self.calls.lock().unwrap().push(args);
@@ -3469,6 +3509,27 @@ mod tests {
         validator.validate(&data).unwrap();
         assert_eq!(data["kind"], "handoff");
         assert!(data["ownership"].is_object());
+        recovery::enqueue(
+            &dir.0,
+            &Mutex::new(()),
+            "schema-restart",
+            chrono::Utc::now().timestamp(),
+        )
+        .await
+        .unwrap();
+        let recovered = records(&dir.0).unwrap();
+        let delivery = recovered
+            .iter()
+            .flat_map(|b| b.deliveries.iter().map(move |d| (b, d)))
+            .find(|(_, d)| d.task_state == "recovered")
+            .unwrap();
+        let recovered = mcp_events::payload("task_status", &event(delivery.0, delivery.1));
+        validator.validate(&recovered).unwrap();
+        assert_eq!(recovered["kind"], "recovered");
+        assert_eq!(recovered["query"]["op"], "notify_status");
+        let mut invalid = recovered;
+        invalid["recovery"]["undeclared"] = json!(true);
+        assert!(validator.validate(&invalid).is_err());
         let mut continued = data.clone();
         continued["kind"] = json!("interrupted");
         for state in [
@@ -4159,6 +4220,210 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn recovery_aggregates_open_tasks_per_verified_target_and_restart() {
+        // Regression: disconnected conversations received no recovery wakeup and per-thread restart notices flooded targets.
+        let dir = Sandbox::new();
+        let b = fixture(&dir.0);
+        for (thread, turn, source, target, closed) in [
+            ("thread-1", "turn-2", "claude", b.target.clone(), false),
+            ("thread-2", "turn-1", "claude", b.target.clone(), false),
+            ("closed", "turn-1", "claude", b.target.clone(), true),
+            (
+                "unverified",
+                "turn-1",
+                "claude",
+                Some("session_010000000000000000000002".into()),
+                false,
+            ),
+            (
+                "foreign",
+                "turn-1",
+                "foreign-source",
+                b.target.clone(),
+                false,
+            ),
+        ] {
+            let mut next = b.clone();
+            next.thread_id = thread.into();
+            next.turn_id = turn.into();
+            next.source_id = source.into();
+            next.target = target;
+            next.scope_end = closed.then(|| "thread-archived".into());
+            persist(&dir.0, &next).unwrap();
+        }
+        let at = chrono::Utc::now().timestamp();
+        for _ in 0..3 {
+            recovery::enqueue(&dir.0, &Mutex::new(()), "restart-1", at)
+                .await
+                .unwrap();
+        }
+        let fake = Fake::success();
+        flush(&fake, &dir.0, &Mutex::new(()), at + 31, 0, &json!({}))
+            .await
+            .unwrap();
+        // The same recovery cannot replay after delivery. A later restart gets
+        // one new wakeup, and another rapid restart shares that pending event.
+        for restart in ["restart-1", "restart-2", "restart-2", "restart-3"] {
+            recovery::enqueue(&dir.0, &Mutex::new(()), restart, at + 32)
+                .await
+                .unwrap();
+        }
+        let status =
+            governance::status_in(&dir.0, "claude", &json!({"all":true}), at + 32, &json!({}))
+                .unwrap();
+        let deliveries = status["deliveries"].as_array().unwrap();
+        assert_eq!(
+            deliveries
+                .iter()
+                .filter(|d| d["kind"] == "recovered")
+                .count(),
+            2
+        );
+        assert_eq!(
+            deliveries
+                .iter()
+                .filter(|d| d["state"] == "delivered")
+                .count(),
+            1
+        );
+        let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
+        for event in inbox["events"].as_array().unwrap() {
+            assert_eq!(event["recovery"]["affectedTasks"], 2);
+            assert_eq!(event["target"], b.target.clone().unwrap());
+        }
+        assert!(
+            inbox_in(&dir.0, "foreign-source", &[], false, None).unwrap()["events"]
+                .as_array()
+                .is_none_or(|e| e.is_empty())
+        );
+    }
+
+    #[tokio::test]
+    async fn recovery_waits_for_bucket_refill_and_keeps_its_event_id() {
+        // Regression: a recovery wakeup must not bypass a depleted bucket or duplicate across repeated restarts.
+        let dir = Sandbox::new();
+        let b = fixture(&dir.0);
+        let at = chrono::Utc::now().timestamp();
+        let settings = json!({"notificationBucketCapacity":1,"notificationRefillSeconds":600});
+        let mut state = State::load(&dir.0).unwrap();
+        let target = state.target(
+            &b.source_id,
+            b.channel,
+            b.target.as_deref().unwrap(),
+            at,
+            &settings,
+        );
+        target.tokens = 0;
+        target.refilled_at = at;
+        state.save(&dir.0).unwrap();
+        recovery::enqueue(&dir.0, &Mutex::new(()), "restart-1", at)
+            .await
+            .unwrap();
+        let fake = Fake::success();
+        flush(&fake, &dir.0, &Mutex::new(()), at + 31, 0, &settings)
+            .await
+            .unwrap();
+        let waiting =
+            governance::status_in(&dir.0, "claude", &json!({"all":true}), at + 31, &settings)
+                .unwrap();
+        assert_eq!(waiting["deliveries"][0]["state"], "pending");
+        assert_eq!(
+            waiting["deliveries"][0]["timing"]["queueReason"],
+            "token-wait"
+        );
+        for restart in ["restart-1", "restart-2", "restart-3"] {
+            recovery::enqueue(&dir.0, &Mutex::new(()), restart, at + 32)
+                .await
+                .unwrap();
+        }
+        flush(&fake, &dir.0, &Mutex::new(()), at + 601, 0, &settings)
+            .await
+            .unwrap();
+        let delivered =
+            governance::status_in(&dir.0, "claude", &json!({"all":true}), at + 601, &settings)
+                .unwrap();
+        assert_eq!(delivered["deliveries"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            delivered["deliveries"][0]["eventId"],
+            waiting["deliveries"][0]["eventId"]
+        );
+        assert_eq!(delivered["deliveries"][0]["state"], "delivered");
+        assert_eq!(delivered["targets"][0]["tokens"], 0);
+    }
+
+    #[tokio::test]
+    async fn recovery_callbacks_require_verification_and_preserve_subscription_filters() {
+        // Regression: recovery must wake only verified matching destinations without task-subscription fanout.
+        let dir = Sandbox::new();
+        let mut b = fixture(&dir.0);
+        b.target = None;
+        persist(&dir.0, &b).unwrap();
+        let mut other = b.clone();
+        other.thread_id = "thread-2".into();
+        persist(&dir.0, &other).unwrap();
+        let at = chrono::Utc::now().timestamp();
+        let mut state = State::load(&dir.0).unwrap();
+        for (id, source, verified, args) in [
+            (
+                "verified-callback",
+                "claude",
+                at + 3600,
+                json!({"threadId":"thread-1"}),
+            ),
+            ("expired-callback", "claude", at, json!({})),
+            ("foreign-callback", "foreign", at + 3600, json!({})),
+            (
+                "no-binding",
+                "claude",
+                at + 3600,
+                json!({"threadId":"absent"}),
+            ),
+        ] {
+            state.subscriptions.push(subscriptions::Subscription {
+                id: id.into(),
+                source_id: source.into(),
+                channel: Channel::McpEvents,
+                target: id.into(),
+                op: "task_status".into(),
+                args,
+                turn: None,
+                created_at: at * 1000,
+                expires_at: None,
+                muted: false,
+                until: None,
+                webhook: Some(subscriptions::Webhook {
+                    verified_until: verified,
+                    ..Default::default()
+                }),
+            });
+        }
+        state.save(&dir.0).unwrap();
+        for _ in 0..3 {
+            recovery::enqueue(&dir.0, &Mutex::new(()), "restart-callback", at)
+                .await
+                .unwrap();
+        }
+        flush(
+            &Fake::success(),
+            &dir.0,
+            &Mutex::new(()),
+            at + 31,
+            0,
+            &json!({}),
+        )
+        .await
+        .unwrap();
+        let status =
+            governance::status_in(&dir.0, "claude", &json!({"all":true}), at + 31, &json!({}))
+                .unwrap();
+        assert_eq!(status["deliveries"].as_array().unwrap().len(), 1);
+        assert_eq!(status["deliveries"][0]["target"], "verified-callback");
+        assert_eq!(status["deliveries"][0]["state"], "callback-accepted");
+        let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
+        assert_eq!(inbox["events"][0]["recovery"]["affectedTasks"], 1);
+    }
+
+    #[tokio::test]
     async fn queued_handoff_is_resolved_if_task_ends_before_delivery() {
         // Regression: persisted handoff queues replayed idle-thread wakeups after restart.
         let dir = Sandbox::new();
@@ -4597,6 +4862,7 @@ mod tests {
             task_error: Value::Null,
             reconciliation: Value::Null,
             continuation: Value::Null,
+            recovery: Value::Null,
         });
         persist(&dir.0, &b).unwrap();
         let mut b = binding(&dir.0, "thread-1", "turn-1").unwrap().unwrap();

@@ -72,7 +72,7 @@ pub(super) fn claude_id(b: &Binding) -> String {
 }
 
 pub(crate) fn guide() -> Value {
-    json!({"event":"notification","inputSchema":{"type":"object","properties":{"op":{"type":"string"},"args":{"type":"object"}},"required":["op","args"],"additionalProperties":false},"ops":[{"op":"task_status","description":"Task completed, failed, interrupted, needs input or changed writer owner; only tasks dispatched through this source. Empty args watches all such tasks; both filters must match when supplied.","inputSchema":task_schema(),"example":{"name":"notification","arguments":{"op":"task_status","args":{}}}}]})
+    json!({"event":"notification","inputSchema":{"type":"object","properties":{"op":{"type":"string"},"args":{"type":"object"}},"required":["op","args"],"additionalProperties":false},"ops":[{"op":"task_status","description":"Task completed, failed, interrupted, needs input, changed writer owner or ARC recovered; only tasks dispatched through this source. Empty args watches all such tasks; both filters must match when supplied.","inputSchema":task_schema(),"example":{"name":"notification","arguments":{"op":"task_status","args":{}}}}]})
 }
 fn task_schema() -> Value {
     json!({"type":"object","properties":{"threadId":{"type":"string","minLength":1},"taskId":{"type":"string","minLength":1}},"additionalProperties":false})
@@ -147,7 +147,10 @@ pub(super) fn route(state: &State, bindings: &mut [Binding], now: i64) {
                 continue;
             }
             for source in &sources {
-                if !sub.matches(b)
+                // Recovery is already aggregated and assigned to one verified
+                // destination. Never fan it out through task subscriptions.
+                if source.task_state == "recovered"
+                    || !sub.matches(b)
                     || source.status == "resolved"
                     || source.interaction["resolved"] == true
                 {
