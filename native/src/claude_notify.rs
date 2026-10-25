@@ -156,6 +156,8 @@ struct Binding {
     observation: Value,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     caused_by: Value,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    replacement_resume: Value,
     #[serde(default)]
     retry: Value,
 }
@@ -241,6 +243,7 @@ fn bind_in(dir: &Path, session: Option<&str>, thread: &str, turn: &str, cwd: &st
         successor: Value::Null,
         observation: Value::Null,
         caused_by: Value::Null,
+        replacement_resume: Value::Null,
         retry: Value::Null,
     });
     b.target = (!session.is_empty()).then(|| session.to_owned());
@@ -526,6 +529,39 @@ pub(crate) fn resume_context(thread: &str, turn: &str) -> Result<Value> {
     Ok(
         json!({"model":parent["model"],"effort":parent["effort"],"serviceTier":parent["serviceTier"],"source":"inherited-dispatch-not-confirmed"}),
     )
+}
+
+pub(crate) async fn prepare_replacement_resume(
+    thread: &str,
+    turn: &str,
+    lineage: &Value,
+) -> Result<()> {
+    prepare_replacement_resume_in(&directory(), &LOCK, thread, turn, lineage).await
+}
+
+async fn prepare_replacement_resume_in(
+    dir: &Path,
+    lock: &Mutex<()>,
+    thread: &str,
+    turn: &str,
+    lineage: &Value,
+) -> Result<()> {
+    let _guard = lock.lock().await;
+    let mut b = binding(dir, thread, turn)?.ok_or("RESUME_BINDING_MISSING")?;
+    // Clear stale attribution on ordinary resumes. Successor bindings inherit
+    // this marker, including a handoff already observed before adoption.
+    if lineage["requestId"].is_string() && b.replacement_resume["requestId"] == lineage["requestId"]
+    {
+        return Ok(());
+    }
+    if b.replacement_resume != *lineage {
+        b.replacement_resume = lineage.clone();
+        if b.replacement_resume.is_object() {
+            b.replacement_resume["startedAt"] = json!(now());
+        }
+        persist(dir, &b)?;
+    }
+    Ok(())
 }
 
 pub(crate) async fn resumed(
@@ -1269,9 +1305,30 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
         events.clear();
     }
     for handoff in observation["handoffs"].as_array().into_iter().flatten() {
+        if handoff["from"] == "unheld"
+            && handoff["to"] == "connector"
+            && handoff["eventId"].is_string()
+            && b.replacement_resume["requestId"].is_string()
+            && b.replacement_resume["handoffEventId"].is_null()
+            && chrono::DateTime::parse_from_rfc3339(string(handoff, "observedAt"))
+                .ok()
+                .zip(
+                    chrono::DateTime::parse_from_rfc3339(string(
+                        &b.replacement_resume,
+                        "startedAt",
+                    ))
+                    .ok(),
+                )
+                .is_some_and(|(observed, started)| observed >= started)
+        {
+            // Consume exactly the acquisition caused by this replacement resume.
+            // Keep its event and history; the merged update outcome owns the wake.
+            b.replacement_resume["handoffEventId"] = handoff["eventId"].clone();
+            resolved = true;
+        }
         // Ownership observation already persisted history. Its enqueue cursor
         // advances even when an ended task needs no individual wakeup.
-        if quiet_terminal(b) {
+        if quiet_terminal(b) && b.replacement_resume["handoffEventId"] != handoff["eventId"] {
             continue;
         }
 
@@ -1306,6 +1363,10 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     let first = b.deliveries.len();
     for (key, state) in events {
         let handoff = key.starts_with("handoff:");
+        let inbox_only = handoff
+            && b.replacement_resume["handoffEventId"]
+                .as_str()
+                .is_some_and(|id| key == format!("handoff:{id}"));
         b.deliveries.push(Delivery {
             subscription: String::new(),
             channel: b.channel,
@@ -1373,7 +1434,7 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
                 string(observation, "state")
             }
             .into(),
-            status: "pending".into(),
+            status: if inbox_only { "inbox-only" } else { "pending" }.into(),
         });
     }
     routing::refresh(dir, b)?;
@@ -4600,6 +4661,139 @@ mod tests {
             .unwrap()
             .validate(&mcp_events::payload("task_status", outcome))
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn replacement_resume_handoff_stays_inbox_only_while_other_handoffs_wake() {
+        // Regression: replacement resume woke the conversation twice, first with the merged resume notice and then unheld-to-connector handoff.
+        for (handoff_before_outcome, handoff_before_adoption) in
+            [(false, false), (true, false), (true, true)]
+        {
+            let dir = Sandbox::new();
+            let mut original = fixture(&dir.0);
+            original.terminal = true;
+            original.continuation_bound = true;
+            persist(&dir.0, &original).unwrap();
+            prepare_replacement_resume_in(
+                &dir.0, &Mutex::new(()), &original.thread_id, &original.turn_id,
+                &json!({"threadId":original.thread_id,"interruptedTurnId":original.turn_id,"requestId":"replacement-resume"}),
+            ).await.unwrap();
+            let handoff = json!({"eventId":"resume-handoff","from":"unheld","to":"connector","observedAt":now(),"evidence":"native-writer-file-lock","timeBasis":"observed-not-transition-time"});
+            if handoff_before_adoption {
+                super::process(
+                    &dir.0,
+                    &Mutex::new(()),
+                    &mut original,
+                    &json!({"state":"unconfirmed","handoffs":[handoff]}),
+                )
+                .await
+                .unwrap();
+            }
+            let mut successor = binding(&dir.0, &original.thread_id, &original.turn_id)
+                .unwrap()
+                .unwrap();
+            successor.turn_id = "resumed-turn".into();
+            successor.terminal = false;
+            successor.continuation_bound = false;
+            successor.deliveries.clear();
+            persist(&dir.0, &successor).unwrap();
+            let at = chrono::Utc::now().timestamp();
+            let receipt = json!({"id":"resumed-update","state":"succeeded","shutdownRequested":true,
+                "interruptedTurns":[{"threadId":original.thread_id,"turnId":original.turn_id,"state":"receipt-returned",
+                    "resumeReceipt":{"state":"completed","turnId":successor.turn_id}}]});
+            if !handoff_before_outcome {
+                update_phases(&dir.0, &receipt, at).await;
+            }
+            super::process(
+                &dir.0,
+                &Mutex::new(()),
+                &mut successor,
+                &json!({"state":"unconfirmed","handoffs":[handoff]}),
+            )
+            .await
+            .unwrap();
+            if handoff_before_outcome {
+                update_phases(&dir.0, &receipt, at).await;
+            }
+            flush(
+                &Fake::success(),
+                &dir.0,
+                &Mutex::new(()),
+                at + 31,
+                0,
+                &json!({}),
+            )
+            .await
+            .unwrap();
+            let status = lifecycle_status(&dir.0, &original.source_id, at);
+            let deliveries = status["deliveries"].as_array().unwrap();
+            assert_eq!(
+                deliveries
+                    .iter()
+                    .filter(|d| d["state"] == "delivered")
+                    .count(),
+                1
+            );
+            let inbox = inbox_in(&dir.0, &original.source_id, &[], false, None).unwrap();
+            let retained = inbox["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["kind"] == "handoff")
+                .unwrap();
+            assert_eq!(retained["ownership"], handoff);
+            assert!(deliveries
+                .iter()
+                .any(|d| d["eventId"] == retained["eventId"] && d["state"] == "inbox-only"));
+            // Re-observation and later ownership changes must not consume a second wake.
+            let others = [
+                json!({"eventId":"to-desktop","from":"connector","to":"desktop","observedAt":now()}),
+                json!({"eventId":"to-unheld","from":"desktop","to":"unheld","observedAt":now()}),
+                json!({"eventId":"later-connector","from":"unheld","to":"connector","observedAt":now()}),
+            ];
+            super::process(
+                &dir.0,
+                &Mutex::new(()),
+                &mut successor,
+                &json!({"state":"unconfirmed","handoffs":[handoff,others[0],others[1],others[2]]}),
+            )
+            .await
+            .unwrap();
+            flush(
+                &Fake::success(),
+                &dir.0,
+                &Mutex::new(()),
+                at + 62,
+                0,
+                &json!({}),
+            )
+            .await
+            .unwrap();
+            let status = lifecycle_status(&dir.0, &original.source_id, at + 62);
+            assert_eq!(
+                status["deliveries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|d| d["state"] == "delivered")
+                    .count(),
+                4
+            );
+            let inbox = inbox_select(
+                &dir.0,
+                &original.source_id,
+                &[],
+                false,
+                None,
+                Some(&json!({})),
+            )
+            .unwrap();
+            assert!(inbox["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["eventId"] == retained["eventId"]));
+        }
     }
 
     #[tokio::test]

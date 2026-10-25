@@ -1455,6 +1455,16 @@ impl Control {
                 return Err(json!({"code":"RESUME_TURN_ADVANCED","message":"Only the latest interrupted turn can resume. No input was submitted.","next":{"via":"query","op":"codex_read","args":{"threadId":thread,"statusOnly":true}}}).to_string());
             }
             if !desktop {
+                crate::claude_notify::prepare_replacement_resume(
+                    thread,
+                    previous,
+                    if ownership["state"] == "unheld" {
+                        &r["replacementContinuation"]
+                    } else {
+                        &Value::Null
+                    },
+                )
+                .await?;
                 if state["status"]["type"] == "notLoaded" {
                     self.utility()
                         .await?
