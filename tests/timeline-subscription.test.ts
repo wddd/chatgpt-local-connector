@@ -40,7 +40,7 @@ test('unsubscribed timelines refresh newer turns and disclose incomplete observa
       assert.equal(timeline.turnStatuses[sent.turnId], 'completed');
       assert.ok(timeline.entries.some((entry:any)=>entry.turnId===sent.turnId));
       const activity = await fixture.api('agents/activity');
-      assert.ok(!activity.agents.codex.sessions.some((session:any)=>session.id===threadId));
+      assert.ok(!Object.values(activity.agents).some((agent:any)=>agent.sessions.some((session:any)=>session.id===threadId)));
     }
     const first=await fixture.call('task_timeline',{agent:'codex',id:threadId});
     const same=await fixture.call('task_timeline',{agent:'codex',id:threadId});
