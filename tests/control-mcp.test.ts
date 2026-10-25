@@ -1174,24 +1174,35 @@ test('wait omits repeated nonterminal text and retains complete terminal replies
 });
 
 test('inbox_wait filters unread events before limiting, isolates ingress and cooperates with ack', async () => {
-  // Contract: inbox wait filters unread events before limiting, isolates ingress and cooperates with ack.
+  // Contract: inbox wait filters unread events before limiting, isolates ingress and cooperates with ack, including paged output.
+  const inbox = async (filters: Record<string, unknown>) => {
+    const {result} = await call('inbox_wait', filters);
+    if (!result.outputId) return result;
+    let text = '', offset: number | null = 0;
+    while (offset !== null) {
+      const {result: page} = await call('control_output', {outputId:result.outputId, offset, length:8192});
+      text += page.text;
+      offset = page.nextOffset;
+    }
+    return JSON.parse(text);
+  };
   await completed('notification_ack', {all:true});
   const unrelated: string[] = [];
   for (let i = 0; i < 6; i++) {
     const task = await dispatchFixture('fixture-dispatch-completed');
-    await eventually(async () => (await call('inbox_wait',{timeoutMs:100,threadIds:[task.threadId]})).result, r => r.state === 'events');
+    await eventually(() => inbox({timeoutMs:100,threadIds:[task.threadId]}), r => r.state === 'events');
     unrelated.push(task.threadId);
   }
-  const backlog = (await call('inbox_wait',{timeoutMs:100,threadIds:unrelated})).result;
+  const backlog = await inbox({timeoutMs:100,threadIds:unrelated});
   assert.equal(backlog.unread, unrelated.length);
   assert.ok(backlog.events.length < backlog.unread, 'unrelated unread events exceed the response limit');
   const wanted = await dispatchFixture('fixture-dispatch-completed');
   const args = {timeoutMs:100,threadIds:[wanted.threadId],eventTypes:['completed']};
-  const first = await eventually(async () => (await call('inbox_wait',args)).result, r => r.state === 'events');
+  const first = await eventually(() => inbox(args), r => r.state === 'events');
   assert.equal(first.events.length, 1);
   assert.equal(first.unread, 1);
   assert.ok(first.events.every((e:any) => e.threadId === wanted.threadId && e.kind === 'completed'));
-  assert.deepEqual((await call('inbox_wait',args)).result.events,first.events);
+  assert.deepEqual((await inbox(args)).events,first.events);
   const eventIds = first.events.map((e:any) => e.eventId);
   const other=await management('ingress','POST',{id:'inbox-isolation',name:'Inbox isolation',toolPolicy:'all',controlSource:'custom',transport:'https',auth:'bearer',bearerToken:'test-inbox-isolation'.padEnd(40,'x'),config:{httpsProvider:'custom',httpsUrl:'https://inbox-isolation.example/mcp'}});
   try {
@@ -1199,13 +1210,13 @@ test('inbox_wait filters unread events before limiting, isolates ingress and coo
     const isolated=await ingressRpc(other,'tools/call',{name:'inbox_wait',arguments:args});
     assert.deepEqual(isolated.result.structuredContent.result.events,[]);
     await ingressRpc(other,'tools/call',{name:'notification_ack',arguments:{eventIds}});
-    assert.deepEqual((await call('inbox_wait',args)).result.events,first.events);
+    assert.deepEqual((await inbox(args)).events,first.events);
   } finally { await management(`ingress/${other.id}`,'DELETE'); }
   assert.equal((await completed('notification_ack',{eventIds})).markedRead,eventIds.length);
-  const timeout=(await call('inbox_wait',args)).result;
+  const timeout=await inbox(args);
   assert.equal(timeout.state,'timeout');assert.deepEqual(timeout.events,[]);assert.deepEqual(timeout.next.args,args);
-  assert.equal((await call('inbox_wait',{timeoutMs:100,threadIds:unrelated})).result.unread, unrelated.length);
-  assert.equal((await call('inbox_wait',{timeoutMs:1,threadIds:unrelated,eventTypes:['interrupted']})).result.state, 'timeout');
+  assert.equal((await inbox({timeoutMs:100,threadIds:unrelated})).unread, unrelated.length);
+  assert.equal((await inbox({timeoutMs:1,threadIds:unrelated,eventTypes:['interrupted']})).state, 'timeout');
   const late = await dispatchFixture('fixture-dispatch-queue');
   const waiting = fetch(`http://127.0.0.1:${endpoint.port}/mcp/default`, {method:'POST', headers:{Authorization:`Bearer ${endpoint.token}`,'Content-Type':'application/json'}, body:JSON.stringify({jsonrpc:'2.0',id:'late-inbox',method:'tools/call',params:{name:'query',arguments:{op:'inbox_wait',args:{timeoutMs:15000,threadIds:[late.threadId],eventTypes:['completed']}}}})}).then(r => r.json());
   await completed('codex_call',{method:'fixture/finish-turn',params:{threadId:late.threadId},requestId:randomUUID()});
