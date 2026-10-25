@@ -87,7 +87,7 @@ impl Call {
                 "requestId":identifier(envelope.get("requestId").unwrap_or(&args["requestId"])),
                 "threadId":identifier(&args["threadId"]),"taskId":identifier(&args["taskId"]),"agent":identifier(&args["agent"]),
                 "cacheScope":if cache_scope.is_null(){Value::Null}else{json!(hash(cache_scope.to_string()))},
-                "cacheRequested":args["knownGuideHash"].is_string() || args["knownCriteriaHash"].is_object(),
+                "cacheRequested":args["knownGuideHash"].is_string() || (args["knownCriteriaHash"].is_object() || args["knownCriteriaHash"].is_string()),
                 "arcVersion":crate::egress::arc_version()
             })),
         }

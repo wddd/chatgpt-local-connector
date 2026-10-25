@@ -8,7 +8,9 @@ fn criteria(row: &mut Value, text: &str, key: &str, args: &Value) {
     }
     let digest = hash(text);
     row["criteriaHash"] = json!(digest);
-    if args["knownCriteriaHash"][key] == digest {
+    if args["knownCriteriaHash"].as_str() == Some(digest.as_str())
+        || args["knownCriteriaHash"][key] == digest
+    {
         row.as_object_mut().unwrap().remove("criteria");
         row["criteriaUnchanged"] = json!(true);
     } else {
