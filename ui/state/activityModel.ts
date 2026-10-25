@@ -68,12 +68,15 @@ export function orderActivity(sessions: readonly TrackedActivity[], ids: readonl
     || (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity)
     || a.orderAt - b.orderAt || a.id.localeCompare(b.id));
 }
-export function visibleActivity(sessions: readonly TrackedActivity[], pinnedId?: string) {
-  const visible = sessions.slice(0, sessions.length > 5 ? 4 : 5);
+export function visibleActivity(sessions: readonly TrackedActivity[], pinnedId?: string, expanded = false) {
+  // Overflow hides finished work first, preserving order within each group.
+  const ordered = sessions.length > 5
+    ? [...sessions.filter(s => s.endedAt === undefined), ...sessions.filter(s => s.endedAt !== undefined)] : sessions;
+  const visible = ordered.slice(0, expanded ? ordered.length : ordered.length > 5 ? 4 : 5);
   const pinned = sessions.find(s => s.id === pinnedId);
   if (pinned && !visible.includes(pinned)) visible[visible.length - 1] = pinned;
-  return { sessions: visible, hidden: sessions.length > 5 ? sessions.length - 4 : 0,
-    count: Math.min(5, sessions.length) };
+  const hidden = sessions.length - visible.length;
+  return { sessions: visible, hidden, count: visible.length + Number(hidden > 0) };
 }
 export function interactionKey(agent: string, session: AgentActivitySession) {
   return JSON.stringify([agent, session.id, session.phaseSince, session.interaction?.respond]);

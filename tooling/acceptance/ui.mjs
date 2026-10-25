@@ -50,9 +50,34 @@ try {
         if (!fixture.page && !model.topology) throw new Error('No rendered topology exported');
         const actualAgents = (model.topology?.nodes ?? []).filter(n => n.side === 1).map(n => n.id);
         if (!fixture.page && fixture.agents.some(a => !actualAgents.includes(a))) throw new Error('Fixture agents were not rendered');
-        if (!fixture.page && !fixture.panel && model.topology.tasks.length !== fixture.tasks.length) throw new Error(`Task count mismatch: ${model.topology.tasks.length}/${fixture.tasks.length}`);
+        const representedTasks = model.topology?.tasks.reduce((sum, task) => sum + (task.count ?? 1), 0);
+        if (!fixture.page && !fixture.panel && representedTasks !== fixture.tasks.length) throw new Error(`Task count mismatch: ${representedTasks}/${fixture.tasks.length}`);
         if (fixture.panel?.kind === 'agent' && model.panels.agent?.agent !== fixture.panel.id) throw new Error('Agent panel not opened');
         if (fixture.panel?.kind === 'source' && model.panels.source !== fixture.panel.id) throw new Error('Source panel not opened');
+        if (name === 'task-queue-overflow') {
+          // Regression: overflow hid running tasks, and View all opened the Agent panel instead of temporarily revealing the queue.
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          const summary = page.getByRole('button', { name: new RegExp(`${messages['activity.viewAll']}$`) });
+          const taskButton = task => page.getByRole('button', { name: new RegExp(`^${task.title} ·`) });
+          for (const task of fixture.tasks.filter(task => !task.completed)) {
+            if (!await taskButton(task).isVisible()) throw new Error('Overflow hid unfinished work behind completed tasks');
+          }
+          await summary.click();
+          for (const task of fixture.tasks) await taskButton(task).waitFor({ state: 'visible' });
+          const expanded = await page.evaluate(() => window.__ARC_VIEW_MODEL__());
+          if (expanded.panels.agent || expanded.panels.source || await page.getByRole('dialog').count()) throw new Error('View all opened a detail panel');
+          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-expanded.png`), animations: 'disabled' });
+          await page.keyboard.press('Escape');
+          await summary.waitFor({ state: 'visible' });
+          await taskButton(fixture.tasks[1]).waitFor({ state: 'hidden' });
+          if (!await summary.evaluate(element => element === document.activeElement)) throw new Error('Escape did not restore overflow trigger focus');
+          await summary.press('Enter');
+          for (const task of fixture.tasks) await taskButton(task).waitFor({ state: 'visible' });
+          if (!await taskButton(fixture.tasks[1]).evaluate(element => element === document.activeElement)) throw new Error('Keyboard expansion did not focus a revealed task');
+          await page.getByRole('main').click({ position: { x: 1, y: 1 } });
+          await summary.waitFor({ state: 'visible' });
+          await taskButton(fixture.tasks[1]).waitFor({ state: 'hidden' });
+        }
         if (setup) {
           // Regression: standard setup steps scrolled inside a fixed 496px shell on large windows.
           const layout = await page.evaluate(() => {
@@ -124,7 +149,7 @@ try {
         if (width >= 1280 && !fixture.panel && fixture.tasks.some(task => task.completed)) {
           // Regression: dragging a completed card left a click guard that swallowed its mark-read action.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          for (const task of fixture.tasks.filter(task => task.completed)) {
+          for (const task of fixture.tasks.filter((task, index) => task.completed && model.topology.tasks.some(row => row.taskId === `fixture-task-${index}`))) {
             const bubble = page.getByRole('button').filter({ has: page.getByText(task.title, { exact: true }) });
             const bounds = await bubble.boundingBox();
             if (!bounds) throw new Error('Completed task is unavailable for mark-read acceptance');
@@ -134,7 +159,6 @@ try {
             });
             const markRead = page.getByRole('button', { name: messages['activity.markRead'], exact: true });
             await markRead.click();
-            await markRead.waitFor({ state: 'hidden' });
             await bubble.getByRole('img', { name: messages['activity.unread'], exact: true }).waitFor({ state: 'hidden' });
             if (await page.getByRole('dialog').count()) throw new Error('Mark-read opened a task detail panel');
           }

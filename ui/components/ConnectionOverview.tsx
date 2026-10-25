@@ -89,6 +89,27 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   useEffect(() => { if (selection?.session) setAccountSelection(selection.session.agentAccountId ?? undefined); }, [selection?.session?.id, selection?.session?.agentAccountId]);
   const max = maxVisibleAgents.use();
   const density = bubbleDensity.use(), width = bubbleWidths[bubbleWidth.use()], autoCompact = bubbleAutoCompact.use();
+  const [expandedQueue, setExpandedQueue] = useState<string>();
+  useEffect(() => { if (!visible || panelOpen) setExpandedQueue(undefined); }, [visible, panelOpen]);
+  useEffect(() => {
+    if (!expandedQueue) return;
+    const outside = (event: PointerEvent) => {
+      if (!(event.target instanceof Element) || event.target.closest<HTMLElement>("[data-activity-queue]")?.dataset.activityQueue !== expandedQueue) setExpandedQueue(undefined);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      setExpandedQueue(undefined);
+      requestAnimationFrame(() => {
+        const trigger = [...(core.current?.querySelectorAll<HTMLButtonElement>(".activity-summary") ?? [])]
+          .find(button => button.closest<HTMLElement>("[data-activity-queue]")?.dataset.activityQueue === expandedQueue);
+        trigger?.focus();
+      });
+    };
+    window.addEventListener("pointerdown", outside, true);
+    window.addEventListener("keydown", escape);
+    return () => { window.removeEventListener("pointerdown", outside, true); window.removeEventListener("keydown", escape); };
+  }, [expandedQueue]);
   const { snapshot } = subscriptions.use(), nav = navigation.use();
   const [agentsOpen, setAgentsOpen] = useState(false), [displaySettingsOpen, setDisplaySettingsOpen] = useState(false);
   const initialSetupShown = useRef(false);
@@ -231,7 +252,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     const accountIds = accounts.filter(a => a.agentProfiles.some(p => p.agent === agent.agent)).map(a => a.id);
     const accountGroup = (id: string | null | undefined) => id && accountIds.includes(id) ? id : undefined;
     const groups = accountIds.length > 1 ? [...new Set(sessions.map(s => accountGroup(s.agentAccountId)))].map(id => sessions.filter(s => accountGroup(s.agentAccountId) === id)) : [sessions];
-    const shownGroups = groups.map(group => ({ ...visibleActivity(group, selected ? selection.session?.id : undefined), group }));
+    const queueKey = (group: typeof sessions) => JSON.stringify([agent.agent, accountIds.length > 1 ? accountGroup(group[0]?.agentAccountId) : null]);
+    const shownGroups = groups.map(group => ({ ...visibleActivity(group, selected ? selection.session?.id : undefined, expandedQueue === queueKey(group)), group }));
     const shown = { sessions: shownGroups.flatMap(group => group.sessions) };
     const effectiveDensity = effectiveBubbleDensity(density, autoCompact, sessions.length);
     return {
@@ -246,7 +268,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         {effectiveDensity !== density && <span className="agent-auto-compact">{t("activity.autoCompacted")}</span>}
       </GraphNode>,
       tasks: [
-        ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]), width, height: bubbleHeights[effectiveDensity], taskId: session.id, threadId: session.nativeSessionId, agentAccountId: session.agentAccountId, origin: session.origin,
+        ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]), activityQueue: queueKey([session]), width, height: bubbleHeights[effectiveDensity], taskId: session.id, threadId: session.nativeSessionId, agentAccountId: session.agentAccountId, origin: session.origin,
           state: (session.endedAt !== undefined ? "completed" : session.interaction ? "attention" : session.source === "transcript" ? "external" : "running") as import("../topology/render").TaskState,
           selected: selected && selection.session?.id === session.id, reorderable: !panelOpen,
           content: <ActivityBubble agent={agent.agent} session={session} now={now} density={effectiveDensity} onRead={() => markRead(agent.agent, session.id)} onMove={panelOpen ? undefined : by => {
@@ -257,10 +279,17 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             reorderTasks(agent.agent, ids, sessions);
           }} />,
         })),
-        ...shownGroups.flatMap(group => group.hidden ? [{ id: JSON.stringify(accountIds.length > 1 ? [agent.agent, null, accountGroup(group.group[0]?.agentAccountId)] : [agent.agent, null]),
+        ...shownGroups.flatMap(group => group.hidden ? [{ id: JSON.stringify(accountIds.length > 1 ? [agent.agent, null, accountGroup(group.group[0]?.agentAccountId)] : [agent.agent, null]), activityQueue: queueKey(group.group),
           members: group.group.filter(s => !group.sessions.includes(s)).map(s => ({ origin: s.origin, agentAccountId: s.agentAccountId, pending: !!s.interaction })),
           agentAccountId: accountIds.length > 1 ? accountGroup(group.group[0]?.agentAccountId) : undefined, count: group.hidden, pending: group.group.some(s => !!s.interaction && !group.sessions.includes(s)), width, height: bubbleHeights.compact, state: "summary" as const, selected: false,
-          content: <button type="button" className="activity-bubble activity-summary" onClick={() => selectAgentPanel({ type: "agent", agent: agent.agent })}>
+          content: <button type="button" className="activity-bubble activity-summary" aria-expanded={false} onClick={event => {
+            setExpandedQueue(queueKey(group.group));
+            if (event.detail === 0) {
+              const next = group.group.find(session => !group.sessions.includes(session));
+              requestAnimationFrame(() => [...(core.current?.querySelectorAll<HTMLButtonElement>("[data-activity-session]") ?? [])]
+                .find(button => button.dataset.activitySession === JSON.stringify([agent.agent, next?.id]))?.focus());
+            }
+          }}>
             <PhaseTile phase="tool" animated={false} /><span className="activity-copy"><span className="activity-phase"><PhaseLabel phase="tool">{t("activity.more", { count: group.hidden })}</PhaseLabel></span><span className="activity-headline">{t("activity.viewAll")}</span></span>
           </button>,
         }] : []),

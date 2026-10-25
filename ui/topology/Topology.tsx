@@ -13,7 +13,7 @@ import { orderedSubset, moveToY } from "./order";
 import { topologyValues, topologyDebug } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
 
-export interface TaskView extends Task, Pick<PathTask, 'members' | 'agentAccountId' | 'origin'>, Omit<PaintTask, "parent" | "side"> { content: ReactNode; reorderable?: boolean; taskId?: string; threadId?: string; count?: number; pending?: boolean }
+export interface TaskView extends Task, Pick<PathTask, 'members' | 'agentAccountId' | 'origin'>, Omit<PaintTask, "parent" | "side"> { content: ReactNode; reorderable?: boolean; taskId?: string; threadId?: string; count?: number; pending?: boolean; activityQueue?: string }
 export interface NodeView extends Omit<PaintNode, "side"> { content: ReactNode; tasks: TaskView[]; reorderable?: boolean; children?: NodeView[]; collapsed?: boolean;
   account?: boolean; accountId?: string; sameIdentity?: boolean; platform?: string; platformLabel?: string; label?: string;
   sourceIds?: string[]; icon?: ReactNode; selectedAccountId?: PathTask['agentAccountId'];
@@ -373,7 +373,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
         </>;
       })()}</div>)}
     {allTasks.map(t => <div key={taskKey(t.side, t.id)} ref={el => { const key = taskKey(t.side, t.id); if (el) elements.current.set(key, el); else elements.current.delete(key); }}
-      className="activity-slot" data-highlighted={t.selected || undefined} data-reorderable={t.reorderable || undefined}
+      className="activity-slot" data-highlighted={t.selected || undefined} data-reorderable={t.reorderable || undefined} data-activity-queue={t.activityQueue}
       onPointerEnter={() => changeHover({ side: t.side, id: t.id, task: true })} onPointerLeave={() => changeHover(null)} onPointerCancel={() => changeHover(null)}
       onFocusCapture={() => setFocus({ side: t.side, id: t.id, task: true })} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) changeHover(null); }}
       onPointerDownCapture={t.reorderable ? event => {

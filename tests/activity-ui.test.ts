@@ -29,6 +29,22 @@ test("five tasks stay individual; overflow replaces slot five and counts every h
     assert.equal(shown.sessions.length + shown.hidden, n);
   }
 });
+test("overflow keeps unfinished work ahead of completions and can reveal every task", () => {
+  // Regression: completed bubbles occupied the visible slots while running tasks were hidden in overflow.
+  const tracked = trackActivity([], Array.from({ length: 9 }, (_, i) => session(String(i), i === 8 ? permission : undefined)), 100);
+  const sessions = tracked.map(s => Number(s.id) < 5 ? { ...s, endedAt: 200 } : s);
+  const shown = visibleActivity(sessions);
+  assert.deepEqual(shown.sessions.map(s => s.id), ["8", "5", "6", "7"]);
+  assert.equal(shown.hidden, 5);
+  const expanded = visibleActivity(sessions, undefined, true);
+  assert.deepEqual(expanded.sessions.slice(0, shown.sessions.length), shown.sessions);
+  assert.equal(expanded.hidden, 0);
+  assert.equal(expanded.count, sessions.length);
+  assert.equal(new Set(expanded.sessions.map(s => s.id)).size, sessions.length);
+  assert.deepEqual(visibleActivity(sessions), shown);
+  const fewerRunning = sessions.map(s => s.id === "7" ? { ...s, endedAt: 200 } : s);
+  assert.deepEqual(visibleActivity(fewerRunning).sessions.map(s => s.id), ["8", "5", "6", "0"]);
+});
 test("start order is stable across phases, payload order and corrected timestamps; only attention reorders", () => {
   // Property: start order is stable across phases, payload order and corrected timestamps; only attention reorders.
   const first = { ...session("first"), startedAt: "2026-01-01T00:00:01Z" };
