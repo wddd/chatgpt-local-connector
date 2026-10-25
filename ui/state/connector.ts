@@ -1,5 +1,6 @@
 import { createStore, acceptPreferences, preparePreferences, preference } from "./store";
 import { api } from "../api";
+import { isLocalSource } from "../sourcePresentation";
 import { t } from "../i18n";
 import { isDesktop, notifyNative } from "../platform";
 import type { ControlSource, Ingress, Status } from "./types";
@@ -25,7 +26,7 @@ const sourceOrder = preference<string[]>("arc.source-order", []);
 sourceOrder.subscribe(() => patch({}));
 export function orderedSources() {
   const order = sourceOrder.get();
-  return [...(connector.get().sources)].sort((a, b) => {
+  return connector.get().sources.filter(source => !isLocalSource(source)).sort((a, b) => {
     const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
     if (ai >= 0 || bi >= 0) return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi);
     return Number(b.product === "chatgpt") - Number(a.product === "chatgpt") || a.label.localeCompare(b.label);

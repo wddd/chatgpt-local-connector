@@ -11,6 +11,6 @@ export default function SourceProductChoice({ value, onChange, disabled }: { val
       setMore(next === "more"); if (next !== "more") onChange(next);
     }} options={[...common.map(id => ({ value: id, label: controlSource(id)!.shortName })), { value: "more", label: t("source.moreProducts") }]} />
     {overflow && <SingleChoice label={t("source.moreProducts")} value={value} disabled={disabled} onChange={onChange}
-      options={[...controlSources, ...(!controlSource(value) ? [{ id: value, shortName: value }] : [])].map(s => ({ value: s.id, label: s.id === "custom" ? t("connect.other") : s.shortName }))} />}
+      options={[...controlSources.filter(source => source.id !== "local-cli"), ...(!controlSource(value) ? [{ id: value, shortName: value }] : [])].map(s => ({ value: s.id, label: s.id === "custom" ? t("connect.other") : s.shortName }))} />}
   </div>;
 }

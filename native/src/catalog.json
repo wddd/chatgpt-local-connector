@@ -6259,7 +6259,7 @@
     },
     {
       "name": "whoami",
-      "description": "Read the calling source account, linked profiles, notification reachability and identityResolution evidence or conflicts. Confirmed Claude session handshakes can resolve unidentified sources.",
+      "description": "Read the calling source account, linked profiles, notification reachability and identityResolution evidence or conflicts. Confirmed Claude session handshakes can resolve unidentified sources. Built-in Local CLI/panel returns authority:local, id:null and identityResolution.state:not-applicable without a provider account.",
       "inputSchema": {
         "type": "object",
         "properties": {},

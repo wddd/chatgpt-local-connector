@@ -35,3 +35,7 @@ export function connectionDisabledReason(ingress: Ingress, product: string, sour
   if (ingress.auth !== "oauth" && sources.some(s => s.ingressId === ingress.id && (s.state === "revoked" || s.connectedAt !== null || s.lastSeenAt !== null))) return t("setup.connectionOccupied");
   return "";
 }
+
+export function isLocalSource(source: ControlSource) {
+  return source.ingressId === "local-cli" && source.credential.type === "local";
+}

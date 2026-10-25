@@ -16,7 +16,7 @@ ARC_APP="/Applications/Agent Remote Control.app/Contents/Resources/bin/arc"
 
 ARC_APP is a shell convenience variable, not a runtime configuration field. Windows packages include `arc.exe` beside the desktop resources; use the installed executable path. Linux installs `arc` on PATH. The Desktop executable also accepts `cli <command>`.
 
-Commands return a JSON envelope: `schemaVersion: 1`, `ok: true`, and `result`; errors use `ok: false` with code/message/usage. Read `result.markdown` for the guide. Stdin accepts a JSON object up to 16 KiB. `cli guide` embeds this reference. `cli help` is a compact command-group index with one-line descriptions. Full operation schemas and configuration fields are in `capabilities` / `schema`; command syntax and operational notes are in `guide`. Discover operation contracts before invoking them:
+Commands return a JSON envelope: `schemaVersion: 1`, `ok: true`, and `result`; errors use `ok: false` with code/message and an actionable `next`. Syntax errors also include usage. Authorization failures such as `SOURCE_REVOKED` identify the source and recovery steps instead of suggesting corrected syntax. Read `result.markdown` for the guide. Stdin accepts a JSON object up to 16 KiB. `cli guide` embeds this reference. `cli help` is a compact command-group index with one-line descriptions. Full operation schemas and configuration fields are in `capabilities` / `schema`; command syntax and operational notes are in `guide`. Discover operation contracts before invoking them:
 
 ```sh
 "$ARC_APP" cli capabilities
@@ -39,9 +39,9 @@ These commands use authenticated local management only. They do not change the r
 
 | Command | Local API | Input / result |
 | --- | --- | --- |
-| `cli source list` | `GET source` | `{sources:[...]}`, including disconnected and revoked records |
+| `cli source list` | `GET source` | `{sources:[...]}`, including disconnected and revoked external sources; excludes built-in local authority |
 | `cli source update <id> --stdin` | `PUT source/{id}` | `{"label":"Work account","product":"claude"}`; either field may be omitted |
-| `cli source disconnect <id>` | `POST source/{id}/disconnect` | Revoke source access and keep the record; also stop a non-OAuth connection |
+| `cli source disconnect <id>` | `POST source/{id}/disconnect` | Revoke external source access and keep the record; also stop a non-OAuth connection. Built-in local authority returns `LOCAL_SOURCE_PROTECTED` |
 | `cli source claim <pending-source-id> --stdin` | `POST source/{id}/claim` | `{"sourceId":"new"}` or `{"sourceId":"<existing-source-id>"}`; switch requests require their fixed `switchSourceId` |
 | `cli source switch <sourceId> <ingressId>` | `POST source/{id}/switch` | `{"ingressId":"<target-id>"}`; expect the next authorization on that connection |
 | `cli source switch <sourceId> --cancel` | `DELETE source/{id}/switch` | Cancel the expectation and its bound request; keep the old connection |

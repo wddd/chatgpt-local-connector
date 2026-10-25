@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { api } from '../api';
 import { t } from '../i18n';
 import { controlSource } from '../controlSources';
+import { isLocalSource } from '../sourcePresentation';
 import { name as agentName } from '../state/agents';
 import { connector, refreshConnector } from '../state/connector';
 import { useAccounts, isUnidentified } from '../state/accounts';
@@ -25,6 +26,7 @@ export default function SourcePanel({ source, widthControl }: { source: ControlS
   const account = state.items.find(a => a.sources.includes(source.id));
   const ingress = status?.ingresses.find(i => i.id === source.ingressId);
   const [tab, setTab] = useState('activity'), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  if (isLocalSource(source)) return null;
   const shared = sources.filter(s => s.ingressId === source.ingressId && s.state !== 'revoked').length > 1;
   const platform = controlSource(source.product)?.displayName ?? agentName({ agent: source.product });
   return <>

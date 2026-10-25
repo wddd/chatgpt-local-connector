@@ -4,7 +4,7 @@
 
 ## Provider accounts
 
-`query({op:"whoami",args:{}})` returns `{id,alias,provider,email,orgName,plan,sourceId,platform,agentProfiles,notifications,identityResolution}` for the authenticated calling source. ARC uses provider authorization facts and confirmed Claude cloud-session handshakes, never client names. Sources without either receive separate `Unidentified` accounts. Source IDs and historical origins remain stable; successful resolution can merge the provisional account into the provider account.
+`query({op:"whoami",args:{}})` returns `{id,alias,provider,email,orgName,plan,sourceId,platform,agentProfiles,notifications,identityResolution}` for the authenticated calling source. ARC uses provider authorization facts and confirmed Claude cloud-session handshakes, never client names. External control sources without either receive separate `Unidentified` accounts. Built-in Local CLI and panel authority has no provider account: local `whoami` returns `authority:local`, `id:null` and `identityResolution.state:not-applicable`. Source IDs and historical origins remain stable; successful resolution can merge the provisional account into the provider account.
 
 `identityResolution.state` is `unresolved`, `resolved` or `conflict`. Provider facts have `authorization:{kind:"authorization",identityKey,observedAt}`. A confirmed Claude handshake has `evidence:{kind:"claude-session-handshake",sourceId,target,profileId,accountId,identityKey,confirmedAt}`. Account detail/list expose the same records in `sourceIdentities` keyed by source ID; source reads expose `identityResolution`.
 

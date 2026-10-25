@@ -2881,7 +2881,7 @@
         "properties": {},
         "additionalProperties": false
       },
-      "description": "List persistent sources, including disconnected, revoked and pending sources. pendingSwitch contains ingressId, expiresAt (Unix seconds), and requestId once bound; expired expectations are omitted.",
+      "description": "List external control sources, including disconnected, revoked and pending sources. Built-in Local CLI/panel authority is excluded. pendingSwitch contains ingressId, expiresAt (Unix seconds), and requestId once bound; expired expectations are omitted.",
       "localOnly": true
     },
     {
@@ -2940,7 +2940,7 @@
           "id"
         ]
       },
-      "description": "Revoke source access and retain history.",
+      "description": "Revoke external source access and retain history. Built-in Local CLI/panel authority returns LOCAL_SOURCE_PROTECTED.",
       "localOnly": true
     },
     {

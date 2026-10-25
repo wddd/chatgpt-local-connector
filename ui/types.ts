@@ -265,8 +265,7 @@ export interface AccountLogin {
   next?: { message: string };
 }
 export interface AccountsResult { accounts: ProviderAccount[]; login: AccountLogin | null }
-export interface AccountIdentity extends Pick<ProviderAccount, "id" | "alias" | "provider" | "email" | "orgName" | "plan" | "agentProfiles" | "notifications"> {
-  identityResolution: SourceIdentityResolution;
-  sourceId: string;
-  platform: string;
-}
+export type AccountIdentity = { sourceId: string; platform: string } & (
+  (Pick<ProviderAccount, "id" | "alias" | "provider" | "email" | "orgName" | "plan" | "agentProfiles" | "notifications"> & { identityResolution: SourceIdentityResolution })
+  | { id: null; authority: "local"; identityResolution: { state: "not-applicable" }; agentProfiles: []; notifications: { state: "n/a"; sessions: [] } }
+);

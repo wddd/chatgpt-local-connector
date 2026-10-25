@@ -42,10 +42,10 @@ export async function nativeControl(script: string, extraEnv: Record<string, str
     assertNextCalls(value.structuredContent);
     return value.structuredContent?.result ?? value;
   };
-  const sourceCall = async (ingressId: string, op: string, args: Record<string,unknown> = {}) => {
+  const sourceCall = async (ingressId: string, op: string, args: Record<string,unknown> = {}, tool: 'act' | 'query' = 'act') => {
     const response=await fetch(`http://127.0.0.1:${runtime.endpoint.port}/mcp/${ingressId}`, {
       method:'POST',headers:{authorization:`Bearer ${runtime.endpoint.token}`,'content-type':'application/json'},
-      body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'act',arguments:{op,args}}}),
+      body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:tool,arguments:{op,args}}}),
     });
     const value=await response.json() as any;
     assertNextCalls(value.result?.structuredContent);

@@ -269,7 +269,11 @@ pub(crate) fn migrate() -> Result<()> {
                 None,
             );
         }
-        for source in sources {
+        retire_local_accounts(rows, &sources, &now());
+        for source in sources
+            .into_iter()
+            .filter(|source| !crate::sources::is_local(source))
+        {
             // Client metadata, labels and platform guesses are deliberately excluded from facts.
             identity::observe_source(rows, &source);
         }
@@ -277,8 +281,41 @@ pub(crate) fn migrate() -> Result<()> {
         Ok(())
     })
 }
-pub(crate) fn source_account(source: &Value) -> Result<String> {
-    change(|rows| Ok(identity::observe_source(rows, source)))
+pub(crate) fn source_account(source: &Value) -> Result<Option<String>> {
+    if crate::sources::is_local(source) {
+        return Ok(None);
+    }
+    change(|rows| Ok(Some(identity::observe_source(rows, source))))
+}
+/// Detach legacy local memberships; retain empty account tombstones for history.
+pub fn retire_local_accounts(rows: &mut [Value], sources: &[Value], at: &str) {
+    let local: Vec<_> = sources
+        .iter()
+        .filter(|s| crate::sources::is_local(s))
+        .map(|s| &s["id"])
+        .collect();
+    for row in rows {
+        let Some(members) = row["sources"].as_array_mut() else {
+            continue;
+        };
+        let before = members.len();
+        members.retain(|id| !local.contains(&id));
+        let changed = members.len() != before;
+        let empty = members.is_empty();
+        if !changed {
+            continue;
+        }
+        if let Some(identities) = row["sourceIdentities"].as_object_mut() {
+            for id in &local {
+                if let Some(id) = id.as_str() {
+                    identities.remove(id);
+                }
+            }
+        }
+        if empty && profiles(row).next().is_none() && live(row) {
+            row["removedAt"] = json!(at);
+        }
+    }
 }
 pub(crate) fn source_resolution(source: &str) -> Result<Value> {
     let rows = read()?;
@@ -294,7 +331,10 @@ pub(crate) fn source_resolution(source: &str) -> Result<Value> {
         .unwrap_or(json!({"state":"unresolved"})))
 }
 pub(crate) fn confirm_source(source: &str, evidence: Value) -> Result<Value> {
-    crate::sources::get(source)?; // Resolve any authorization facts before checking handshake evidence.
+    // Resolve authorization facts first; a delivery handshake cannot turn local authority into an account.
+    if crate::sources::is_local(&crate::sources::get(source)?) {
+        return Ok(json!({"state":"not-applicable"}));
+    }
     change(|rows| link_source_identity(rows, source, evidence))
 }
 
@@ -618,7 +658,12 @@ impl Manager {
             "whoami" => {
                 let origin = crate::kernel::origin::current_origin();
                 let source = crate::sources::get(string(&origin, "sourceId"))?;
-                let account = self.query(&json!({"id":source_account(&source)?})).await?;
+                let Some(account_id) = source_account(&source)? else {
+                    return Ok(
+                        json!({"id":null,"sourceId":source["id"],"platform":"local","authority":"local","identityResolution":{"state":"not-applicable"},"agentProfiles":[],"notifications":{"state":"n/a","sessions":[]}}),
+                    );
+                };
+                let account = self.query(&json!({"id":account_id})).await?;
                 let mut result = json!({"sourceId":source["id"],"platform":source["platform"],"identityResolution":source_resolution(string(&source,"id"))?});
                 for key in [
                     "id",
@@ -732,6 +777,30 @@ impl Manager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_local_accounts_retire_without_losing_agent_membership() {
+        // Regression: Local CLI created a removable Unidentified provider account.
+        let sources = vec![
+            json!({"id":"example-local","ingressId":"local-cli","credential":{"type":"local"}}),
+        ];
+        let mut rows = vec![
+            json!({"id":"local-only","sources":["example-local"],"agentProfiles":[],"sourceIdentities":{"example-local":{"state":"unresolved"}}}),
+            json!({"id":"shared","sources":["example-local","example-external"],"agentProfiles":[{"agent":"codex"}]}),
+            json!({"id":"agent-only","sources":["example-local"],"agentProfiles":[{"agent":"claude"}]}),
+        ];
+        retire_local_accounts(&mut rows, &sources, "2026-01-01T00:00:00Z");
+        assert!(rows[0]["removedAt"].is_string());
+        assert_eq!(rows[0]["sources"], json!([]));
+        assert_eq!(rows[0]["sourceIdentities"], json!({}));
+        assert_eq!(rows[1]["sources"], json!(["example-external"]));
+        assert!(rows[1]["removedAt"].is_null());
+        assert!(rows[2]["removedAt"].is_null());
+        assert_eq!(rows[2]["agentProfiles"], json!([{"agent":"claude"}]));
+        let repaired = rows.clone();
+        retire_local_accounts(&mut rows, &sources, "2026-01-02T00:00:00Z");
+        assert_eq!(rows, repaired);
+        assert_eq!(source_account(&sources[0]).unwrap(), None);
+    }
     #[test]
     fn identity_uses_provider_facts_and_normalized_email() {
         // Property: unresolved identities never coalesce and normalized provider identities do.

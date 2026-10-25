@@ -444,8 +444,19 @@ pub(crate) fn validate_ingress_input(body: &Value, update: bool) -> crate::Resul
     Ok(())
 }
 
-fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
+pub fn error_response(message: &str, usage: &str, args: &[&str]) -> Value {
     let code = crate::management::error_code(message);
+    if matches!(
+        code,
+        "SOURCE_REVOKED" | "SOURCE_REMOVED" | "LOCAL_SOURCE_PROTECTED"
+    ) {
+        let recovery = if code == "LOCAL_SOURCE_PROTECTED" {
+            "Local CLI and panel share built-in authority and cannot be disconnected. Select an external control source in ARC Remote link."
+        } else {
+            "Open ARC Remote link and inspect the source and ingress named in the error. Add and authorize a new control source if revoked; use Change connection if its connection was removed. For built-in Local CLI/panel, restart the upgraded ARC app and retry to repair local authority."
+        };
+        return json!({"schemaVersion":1,"ok":false,"error":{"code":code,"message":if message == code { format!("{code}: Source authorization is unavailable. {recovery}") } else { message.to_owned() }},"next":{"op":null,"hint":recovery}});
+    }
     let mut message = message.to_owned();
     if message == "ingress not found" {
         let id = if args.first() != Some(&"ingress") {
@@ -485,9 +496,10 @@ fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
         ));
         error["example"] = json!({"enabled":false});
     }
-    print_output(
-        json!({"schemaVersion":1,"ok":false,"error":error,"next":{"via":"query","op":"guide","args":{},"hint":format!("Correct the command using {usage}, then retry.")}}),
-    );
+    json!({"schemaVersion":1,"ok":false,"error":error,"next":{"via":"query","op":"guide","args":{},"hint":format!("Correct the command using {usage}, then retry.")}})
+}
+fn print_error(message: &str, usage: &str, args: &[&str]) -> i32 {
+    print_output(error_response(message, usage, args));
     1
 }
 
@@ -954,5 +966,37 @@ mod tests {
         let location = "<state>/app-replacements/backups/";
         assert!(string(&guide, "markdown").contains(location));
         assert!(string(&schema, "description").contains(location));
+    }
+
+    #[test]
+    fn revoked_source_error_preserves_authorization_recovery() {
+        // Contract: CLI authorization failures retain their error code and human recovery without syntax guidance.
+        for removed in [false, true] {
+            let source = json!({"id":"example-source","ingressId":"example-ingress","credential":{"type":"ingress"},"state":"revoked","connectionRemoved":removed});
+            let message = crate::sources::authorization_error(&source);
+            let failure = error_response(
+                &message,
+                "cli app replace <path> --check --stdin",
+                &["app", "replace"],
+            );
+            assert_eq!(failure["schemaVersion"], 1);
+            assert_eq!(failure["ok"], false);
+            assert_eq!(failure["error"]["code"], "SOURCE_REVOKED");
+            assert!(failure["error"]["usage"].is_null());
+            assert!(failure["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("example-source"));
+            assert!(failure["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("example-ingress"));
+            assert!(!failure.to_string().contains("Correct usage"));
+            assert!(failure["next"]["op"].is_null());
+            assert!(!string(&failure["next"], "hint").is_empty());
+        }
+        let legacy = error_response("SOURCE_REVOKED", "cli app replace", &["app", "replace"]);
+        assert_eq!(legacy["error"]["code"], "SOURCE_REVOKED");
+        assert!(!string(&legacy["next"], "hint").is_empty());
     }
 }

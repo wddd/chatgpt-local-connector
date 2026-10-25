@@ -248,6 +248,9 @@ pub fn error_code(message: &str) -> &str {
         return "APP_UNAVAILABLE";
     }
     for code in [
+        "SOURCE_REVOKED",
+        "SOURCE_REMOVED",
+        "LOCAL_SOURCE_PROTECTED",
         "INVALID_ARGUMENT",
         "UNKNOWN_OPERATION",
         "UNKNOWN_TOOL",

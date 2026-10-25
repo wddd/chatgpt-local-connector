@@ -55,10 +55,11 @@ test('topology account source keeps its platform name in both modes', async () =
     const { controlSource } = await server.ssrLoadModule('/ui/controlSources.ts');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
     const source = { id: 'source-one', ingressId: 'ingress-one', credential: { type: 'oauth-grant', grantId: 'example-grant', clientId: 'example-client' }, product: 'chatgpt', platform: 'openai', label: 'Personal fixture', state: 'connected' };
+    const local = { ...source, id: 'example-local', ingressId: 'local-cli', credential: { type: 'local' }, product: 'local-cli', platform: 'local', label: 'Local fixture' };
     const ingress = { id: source.ingressId, sources: [source], name: 'Fixture ingress', controlSource: source.product,
       enabled: true, running: true, state: 'ready', auth: 'oauth', transport: 'https', error: '', config: { configured: true } };
     const status = { ingresses: [ingress], core: { backendSession: 'fixture', appServer: { state: 'ready' } }, platform: 'darwin', logs: [] };
-    connector.set({ status, sources: [source], sourcesLoaded: true, loading: false, busy: '', error: '', feedback: { text: '', error: false } });
+    connector.set({ status, sources: [source, local], sourcesLoaded: true, loading: false, busy: '', error: '', feedback: { text: '', error: false } });
     agents.set({ items: [], loading: false, error: '' });
     globalThis.fetch = async input => new Response(JSON.stringify(String(input).endsWith('/accounts')
       ? { accounts: [{ id: 'account-one', alias: 'Personal', sources: [source.id], agentProfiles: [] }] }
@@ -68,6 +69,7 @@ test('topology account source keeps its platform name in both modes', async () =
     for (const mode of ['tree', 'flat']) {
       await act(() => topologyMode.set(mode));
       assert.ok(page.getByRole('button', { name: label, exact: true }));
+      assert.equal(page.queryByRole('button', { name: name => name.includes(local.label) || name.includes(controlSource('local-cli').displayName) }), null);
       assert.equal(page.queryByRole('button', { name: name => name.startsWith(source.label) }), null);
     }
   } finally { await fixture.close(); }

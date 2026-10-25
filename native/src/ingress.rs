@@ -209,7 +209,7 @@ impl Ingress {
             crate::sources::ensure_ingress(&meta).await?;
         }
         crate::sources::connection_state(&self.id, result["running"] == true).await?;
-        result["sources"] = json!(crate::sources::list()?
+        result["sources"] = json!(crate::sources::control_sources()?
             .into_iter()
             .filter(|s| s["ingressId"] == self.id)
             .collect::<Vec<_>>());

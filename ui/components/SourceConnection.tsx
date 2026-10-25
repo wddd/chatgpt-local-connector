@@ -4,7 +4,7 @@ import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
 import { connectionSwitch } from "../state/onboarding";
 import type { ControlSource } from "../state/types";
-import { connectionKind, isPendingSource, sourceDate } from "../sourcePresentation";
+import { connectionKind, isLocalSource, isPendingSource, sourceDate } from "../sourcePresentation";
 import SourceProductChoice from "./SourceProductChoice";
 import { Button, CopyField, Dialog, Field, Input, Notice, Status } from "./ui";
 
@@ -34,6 +34,7 @@ export default function SourceConnection({ source, onConnection }: { source: Con
     catch (e) { setError(String(e)); }
     finally { setBusy(false); }
   }
+  if (isLocalSource(source)) return null;
   const others = sources.filter(s => s.id !== source.id && s.ingressId === source.ingressId && s.state !== "revoked" && !isPendingSource(s, status?.ingresses ?? []));
   const client = ingress?.oauth?.grants.find(g => g.id === source.credential.grantId)?.clientName;
   return <div className="source-detail">

@@ -553,7 +553,7 @@ impl Service {
             return Err("core shutting down".into());
         }
         if route == "source" && method == "GET" {
-            return Ok(json!({"sources":crate::sources::list()?}));
+            return Ok(json!({"sources":crate::sources::control_sources()?}));
         }
         if let Some(path) = route.strip_prefix("source/") {
             let (id, action) = path.split_once('/').unwrap_or((path, ""));
@@ -600,6 +600,7 @@ impl Service {
                 return crate::sources::cancel_switch(id).await;
             }
             if action == "disconnect" && method == "POST" {
+                crate::sources::require_control_source(&source)?;
                 if source["credential"]["type"] == "oauth-grant" {
                     if let Ok(i) = self.ingress(string(&source, "ingressId")).await {
                         let _runtime = i.operation.lock().await;

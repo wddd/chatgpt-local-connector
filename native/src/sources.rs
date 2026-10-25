@@ -151,6 +151,43 @@ async fn transaction<T: Send + 'static>(
     .await
     .map_err(|e| e.to_string())?
 }
+/// The reserved ingress and local credential identify shared CLI/panel authority.
+pub fn is_local(source: &Value) -> bool {
+    source["ingressId"] == "local-cli" && source["credential"]["type"] == "local"
+}
+pub fn require_control_source(source: &Value) -> Result<()> {
+    if is_local(source) {
+        return Err("LOCAL_SOURCE_PROTECTED: Built-in Local CLI and panel authority cannot be disconnected, revoked or moved.".into());
+    }
+    Ok(())
+}
+/// Repair legacy local lifecycle state without changing identity or history.
+pub fn repair_local(source: &mut Value, transport: &str) -> bool {
+    if transport != "local"
+        || !is_local(source)
+        || (source["state"] != "revoked" && source["connectionRemoved"] != true)
+    {
+        return false;
+    }
+    source["state"] = json!("connected");
+    for key in ["connectionRemoved", "connectionName", "pendingSwitch"] {
+        source.as_object_mut().unwrap().remove(key);
+    }
+    true
+}
+pub fn revoke(source: &mut Value) -> Result<()> {
+    require_control_source(source)?;
+    source["state"] = json!("revoked");
+    clear_switch(source);
+    Ok(())
+}
+/// Source identity remains available internally for historical attribution.
+pub fn control_sources() -> Result<Vec<Value>> {
+    Ok(list()?
+        .into_iter()
+        .filter(|source| !is_local(source))
+        .collect())
+}
 pub fn list() -> Result<Vec<Value>> {
     let cache = cache()?.read().map_err(|e| e.to_string())?;
     let mut rows = cache.current["sources"]
@@ -159,7 +196,11 @@ pub fn list() -> Result<Vec<Value>> {
         .clone();
     for source in &mut rows {
         source["accountId"] = json!(crate::accounts::source_account(source)?);
-        source["identityResolution"] = crate::accounts::source_resolution(string(source, "id"))?;
+        source["identityResolution"] = if is_local(source) {
+            json!({"state":"not-applicable"})
+        } else {
+            crate::accounts::source_resolution(string(source, "id"))?
+        };
         if !switch_live(source) {
             clear_switch(source);
         }
@@ -243,6 +284,7 @@ pub async fn begin_switch(source_id: &str, entry: &Value) -> Result<Value> {
     let entry = entry.clone();
     change(move |rows| {
         let source = rows.iter().find(|s| s["id"] == source_id).ok_or("SOURCE_NOT_FOUND")?;
+        require_control_source(source)?;
         if source["state"] == "revoked" || source["switchSourceId"].is_string() {
             return Err("SOURCE_NOT_SWITCHABLE: select a connected or disconnected source".into());
         }
@@ -281,9 +323,15 @@ pub async fn cancel_switch(source_id: &str) -> Result<Value> {
 }
 /// Removal preserves established identities, including those already disconnected.
 pub async fn remove_connection(entry: &Value, pending: Vec<String>) -> Result<()> {
+    if entry["id"] == "local-cli" && entry["transport"] == "local" {
+        return Err("LOCAL_SOURCE_PROTECTED: Built-in local authority cannot be removed.".into());
+    }
     let entry = entry.clone();
     change(move |rows| {
         for s in rows {
+            if s["ingressId"] == entry["id"] {
+                require_control_source(s)?;
+            }
             if s["pendingSwitch"]["ingressId"] == entry["id"] || s["ingressId"] == entry["id"] {
                 clear_switch(s);
             }
@@ -340,23 +388,24 @@ pub async fn connect_ingress(entry: &Value) -> Result<Value> {
 }
 async fn ensure_ingress_inner(entry: &Value, observed: bool) -> Result<Value> {
     let entry = entry.clone();
-    change(move |rows| {
+    let (source, repaired) = change(move |rows| {
         if let Some(s) = rows
-            .iter()
+            .iter_mut()
             .find(|s| s["ingressId"] == entry["id"] && s["credential"]["type"] != "oauth-grant")
         {
-            return Ok(s.clone());
+            let repaired = repair_local(s, string(&entry, "transport"));
+            return Ok((s.clone(), repaired));
         }
         if let Some(source) = rows.iter().find(|s| s["retiredIngressIds"].as_array().is_some_and(|ids| ids.contains(&entry["id"]))) {
-            if !observed { return Ok(source.clone()); }
+            if !observed { return Ok((source.clone(), false)); }
             return Err("CONNECTION_RETIRED: the source changed connection; remove this connection and create a new one".into());
         }
         let credential = json!({"type":if entry["transport"] == "local" { "local" } else { "ingress" }});
         if let Some(source) = rows.iter_mut().find(|s| switch_live(s) && s["pendingSwitch"]["ingressId"] == entry["id"]) {
-            if !observed { return Ok(source.clone()); }
+            if !observed { return Ok((source.clone(), false)); }
             move_connection(source, &entry["id"], credential);
             source["state"] = json!("connected");
-            return Ok(source.clone());
+            return Ok((source.clone(), false));
         }
         let source = make(
             rows,
@@ -366,9 +415,20 @@ async fn ensure_ingress_inner(entry: &Value, observed: bool) -> Result<Value> {
             Value::Null,
         );
         rows.push(source.clone());
-        Ok(source)
+        Ok((source, false))
     })
-    .await
+    .await?;
+    if repaired {
+        crate::logs::record(
+            "info",
+            &format!(
+                "Restored built-in local source {} to connected",
+                string(&source, "id")
+            ),
+            Some(string(&source, "ingressId")),
+        );
+    }
+    Ok(source)
 }
 pub async fn pending(entry: &Value, grant: &str, client: &str, name: &str) -> Result<Value> {
     let entry = entry.clone();
@@ -590,7 +650,7 @@ pub async fn revoke_grants(ingress: &str, grants: &[String]) -> Result<()> {
                 && s["connectionRemoved"] != true
                 && grants.iter().any(|g| s["credential"]["grantId"] == *g)
             {
-                s["state"] = json!("revoked");
+                revoke(s)?;
             }
         }
         Ok(())
@@ -604,8 +664,7 @@ pub async fn disconnect(id: &str) -> Result<Value> {
             .iter_mut()
             .find(|s| s["id"] == id)
             .ok_or("SOURCE_NOT_FOUND")?;
-        s["state"] = json!("revoked");
-        clear_switch(s);
+        revoke(s)?;
         Ok(s.clone())
     })
     .await
@@ -631,7 +690,26 @@ pub async fn connection_state(ingress: &str, connected: bool) -> Result<()> {
     .await
 }
 pub fn origin(source: &Value, auth: &str) -> Value {
-    json!({"ingressId":source["ingressId"],"sourceId":source["id"],"accountId":crate::accounts::source_account(source).ok(),"controlSource":source["product"],"authType":auth,"sourceLabel":source["label"]})
+    json!({"ingressId":source["ingressId"],"sourceId":source["id"],"accountId":crate::accounts::source_account(source).ok().flatten(),"controlSource":source["product"],"authType":auth,"sourceLabel":source["label"]})
+}
+/// Preserve the rejected source and recovery instructions across string transports.
+pub fn authorization_error(source: &Value) -> String {
+    let reason = if source["connectionRemoved"] == true {
+        "connection removed"
+    } else if source["state"] == "revoked" {
+        "authorization revoked"
+    } else {
+        "credentials or connection superseded"
+    };
+    let recovery = if is_local(source) {
+        "Restart the upgraded ARC app and retry the local command; built-in local authority repairs automatically."
+    } else {
+        "Open ARC Remote link. For a revoked source, add and authorize a new control source. For a removed connection, select the disconnected source and Change connection, then authorize it. Retry from the restored connection."
+    };
+    format!(
+        "SOURCE_REVOKED: Source {} on ingress {} is not authorized ({reason}). {recovery}",
+        source["id"], source["ingressId"]
+    )
 }
 pub async fn touch(source: &Value, auth: &str) -> Result<Value> {
     let source_id = string(source, "id");
@@ -652,7 +730,7 @@ pub async fn touch(source: &Value, auth: &str) -> Result<Value> {
             || s["ingressId"] != source["ingressId"]
             || s["credential"] != source["credential"]
         {
-            return Err("SOURCE_REVOKED".into());
+            return Err(authorization_error(s));
         }
         // Telemetry is immediately visible, even while a durable mutation is in flight.
         s["lastSeenAt"] = json!(chrono::Utc::now().timestamp());
@@ -676,7 +754,7 @@ pub async fn touch(source: &Value, auth: &str) -> Result<Value> {
             || s["ingressId"] != source["ingressId"]
             || s["credential"] != source["credential"]
         {
-            return Err("SOURCE_REVOKED".into());
+            return Err(authorization_error(s));
         }
         s["state"] = json!("connected");
         if s["connectedAt"].is_null() {
@@ -1378,4 +1456,69 @@ pub(crate) fn minimal_text(source: &str) -> bool {
         rows.iter()
             .any(|s| s["id"] == source && s["minimalText"] == true)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn local() -> Value {
+        json!({"id":"example-local","ingressId":"local-cli","credential":{"type":"local"},"product":"local-cli","state":"connected","connectedAt":123})
+    }
+
+    #[test]
+    fn local_authority_refuses_revocation() {
+        // Regression: disconnecting Local CLI revoked the shared CLI and panel authority.
+        let mut source = local();
+        let before = source.clone();
+        assert_eq!(
+            crate::management::error_code(&revoke(&mut source).unwrap_err()),
+            "LOCAL_SOURCE_PROTECTED"
+        );
+        assert_eq!(source, before);
+        source["product"] = json!("custom");
+        assert!(require_control_source(&source).is_err());
+    }
+
+    #[test]
+    fn local_authority_repairs_legacy_lifecycle_once() {
+        // Regression: ensure_ingress returned revoked or removed local rows forever after disconnect.
+        for (state, removed) in [
+            ("revoked", false),
+            ("connected", true),
+            ("disconnected", true),
+            ("revoked", true),
+        ] {
+            let mut source = local();
+            source["state"] = json!(state);
+            source["connectionRemoved"] = json!(removed);
+            source["connectionName"] = json!("Old local connection");
+            assert!(repair_local(&mut source, "local"));
+            assert_eq!(source["id"], local()["id"]);
+            assert_eq!(source["credential"], local()["credential"]);
+            assert_eq!(source["connectedAt"], local()["connectedAt"]);
+            assert_eq!(source["state"], "connected");
+            assert!(source["connectionRemoved"].is_null());
+            assert!(source["connectionName"].is_null());
+            assert!(!repair_local(&mut source, "local"));
+        }
+    }
+
+    #[test]
+    fn external_sources_still_revoke_and_never_self_heal() {
+        // Regression: local recovery must not resurrect external grants or configured local transports.
+        for credential in ["ingress", "oauth-grant", "local"] {
+            let mut source = local();
+            source["ingressId"] = json!("example-external");
+            source["credential"]["type"] = json!(credential);
+            revoke(&mut source).unwrap();
+            assert_eq!(source["state"], "revoked");
+            let revoked = source.clone();
+            assert!(!repair_local(&mut source, "local"));
+            assert_eq!(source, revoked);
+        }
+        let mut source = local();
+        source["state"] = json!("revoked");
+        assert!(!repair_local(&mut source, "https"));
+    }
 }

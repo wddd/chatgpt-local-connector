@@ -274,3 +274,57 @@ test('account source panels use product display names in every locale', async ()
     }
   });
 });
+
+test('built-in local authority is absent from control sources, accounts and disconnect actions', async () => {
+  // Regression: Local CLI appeared as an Unidentified account and its disconnect action revoked panel and CLI writes.
+  await withAccountUI(async ({ server, root }) => {
+    const { connector, orderedSources } = await server.ssrLoadModule('/ui/state/connector.ts');
+    const { accounts, refreshAccounts } = await server.ssrLoadModule('/ui/state/accounts.ts');
+    const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
+    const { navigation } = await server.ssrLoadModule('/ui/state/navigation.ts');
+    const { default: AccountsPage } = await server.ssrLoadModule('/ui/components/AccountsPage.tsx');
+    const { default: RemoteLinkPage } = await server.ssrLoadModule('/ui/components/RemoteLinkPage.tsx');
+    const { default: SourcePanel } = await server.ssrLoadModule('/ui/components/SourcePanel.tsx');
+    const { default: SourceConnection } = await server.ssrLoadModule('/ui/components/SourceConnection.tsx');
+    const { default: SourceProductChoice } = await server.ssrLoadModule('/ui/components/SourceProductChoice.tsx');
+    const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
+    const { t } = await server.ssrLoadModule('/ui/i18n.ts');
+    const local = { ...connector.get().sources[0], id: 'example-local', ingressId: 'local-cli', credential: { type: 'local' }, product: 'local-cli', platform: 'local', label: 'Local authority fixture', state: 'connected' };
+    connector.set((old: any) => ({ ...old, sources: [...old.sources, local] }));
+    assert.ok(!orderedSources().some((source: any) => source.id === local.id));
+    const external = connector.get().sources.find((source: any) => source.id !== local.id);
+    assert.ok(orderedSources().some((source: any) => source.id === external.id));
+    const list = accountsApi.list, get = accountsApi.get;
+    const legacy = { ...await get('account-source'), id: 'example-local-account', alias: 'Local account fixture', sources: [local.id], agentProfiles: [] };
+    accountsApi.list = async () => { const value = await list(); return { ...value, accounts: [...value.accounts, legacy] }; };
+    accountsApi.get = async (id: string) => id === legacy.id ? legacy : get(id);
+    const page = within(document.body);
+    const render = async (node: any) => { await act(async () => root.render(h(TooltipProvider, null, node))); };
+    try {
+      await refreshAccounts();
+      assert.ok(!accounts.get().items.some((account: any) => account.id === legacy.id));
+      assert.ok(accounts.get().items.some((account: any) => account.sources.includes(external.id)));
+      await render(h(AccountsPage));
+      assert.equal(page.queryByRole('button', { name: name => name.includes(legacy.alias) }), null);
+      await render(null);
+      navigation.set((old: any) => ({ ...old, remoteSourceId: local.id, remoteConnectionId: undefined }));
+      await render(h(RemoteLinkPage));
+      assert.equal(page.queryByRole('button', { name: name => name.includes(local.label) }), null);
+      assert.ok(page.getByRole('button', { name: name => name.startsWith(external.label) && name.endsWith(t('source.state.connected')) }));
+      assert.equal(page.queryByRole('button', { name: t('source.disconnect'), exact: true }), null);
+      for (const component of [SourcePanel, SourceConnection]) {
+        await render(h(component, { source: local, onConnection() {} }));
+        assert.equal(page.queryByRole('button', { name: t('source.disconnect'), exact: true }), null);
+        assert.equal(page.queryByRole('button', { name: t('switch.title'), exact: true }), null);
+      }
+      await render(h(SourceConnection, { source: external, onConnection() {} }));
+      assert.ok(page.getByRole('button', { name: t('source.disconnect'), exact: true }));
+      await render(h(SourceProductChoice, { value: 'custom', onChange() {} }));
+      const { controlSource } = await server.ssrLoadModule('/ui/controlSources.ts');
+      await act(async () => { fireEvent.click(page.getByRole('combobox', { name: t('source.moreProducts'), exact: true })); });
+      assert.ok(page.getByRole('option', { name: controlSource('chatgpt').shortName, exact: true }));
+      assert.equal(page.queryByRole('option', { name: controlSource('local-cli').shortName, exact: true }), null);
+      assert.equal(page.queryByRole('radio', { name: controlSource('local-cli').shortName, exact: true }), null);
+    } finally { accountsApi.list = list; accountsApi.get = get; }
+  });
+});
