@@ -151,6 +151,7 @@ export default function Topology({ left, right, brand, boundary, panelKey, panel
     paint(); wake();
   }, [paint, wake, scene]);
   const startDrag = (event: PointerEvent<HTMLDivElement>, kind: Drag["kind"], side: Side, id: string, parent?: string) => {
+    if ((event.target as Element).closest("[data-topology-control]")) return;
     if (event.button !== 0 || !event.isPrimary || latest.current.nodes.some(n => n.selected)) return;
     const key = kind === "node" ? nodeKey(side, id) : taskKey(side, id), v = animator.current.values(key);
     const button = (event.target as Element).closest("button");
