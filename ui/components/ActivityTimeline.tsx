@@ -1,3 +1,4 @@
+import { useTaskPresence } from "../state/requestRouting";
 import { observeTaskPanel } from "../state/taskPanel";
 import { useTaskQueue } from "../state/taskQueue";
 import TaskQueuedMessages from "./TaskQueuedMessages";
@@ -53,6 +54,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const manualDisclosure = useRef(false);
   const live = snapshot?.agents[agent]?.sessions.find(s => s.id === session.id);
   const external = session.source === "transcript";
+  useTaskPresence(agent, session.id, !external);
   // Completed history entries do not override a session in the live snapshot.
   const running = !!live || session.endedAt === undefined && !external && !timeline?.readOnly && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? "");
 

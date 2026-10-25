@@ -53,6 +53,7 @@ export interface Status {
   ingresses: Ingress[];
   ingressSummary: { running: number; ready: number; total: number };
   taskApprovalEnabled: boolean;
+  requestRoutingDelaySeconds?: number;
   autoOpenCodex: boolean;
   notificationsEnabled: boolean;
   core: CoreSnapshot;

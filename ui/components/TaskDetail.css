@@ -146,7 +146,7 @@
   .task-receipt-anchor { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .task-input-sheet *, .task-input-sheet *::before { animation: none !important; transition: none !important; }
+  .task-needs-you, .task-input-sheet *, .task-input-sheet *::before { animation: none !important; transition: none !important; }
 }
 .task-question-field .choice-cards .choice-option { min-height: 44px; padding: 8px 12px; }
 
@@ -164,3 +164,8 @@
 @media (prefers-reduced-motion: reduce) {
   .task-ownership-history { animation: none !important; transition: none !important; }
 }
+
+.request-routing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+.request-routing > span { overflow-wrap: anywhere; }
+.request-routing .actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.request-routing button { white-space: normal; overflow-wrap: anywhere; }

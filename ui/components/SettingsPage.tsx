@@ -93,6 +93,7 @@ export default function SettingsPage() {
     enabled?: boolean;
     autoOpenCodex?: boolean;
     notificationsEnabled?: boolean;
+    requestRoutingDelaySeconds?: number;
   }) {
     await run("task-settings", async () => {
       await api("task-settings", "PUT", patch);
@@ -103,6 +104,14 @@ export default function SettingsPage() {
   return (
     <div className="settings-page">
       <Group title={t("behavior")}>
+        <Row title={t("routing.delaySetting")}>
+          <Input key={status?.requestRoutingDelaySeconds ?? 15} type="number" min={0} max={300} step={1} aria-label={t("routing.delaySetting")} defaultValue={status?.requestRoutingDelaySeconds ?? 15} disabled={!!busy || !status}
+            onBlur={event => {
+              const seconds = event.currentTarget.valueAsNumber;
+              if (event.currentTarget.validity.valid && Number.isInteger(seconds) && seconds !== status?.requestRoutingDelaySeconds) void saveTask({ requestRoutingDelaySeconds: seconds });
+              else event.currentTarget.value = String(status?.requestRoutingDelaySeconds ?? 15);
+            }} />
+        </Row>
         <Row title={t("controlSourceNotifications")} description={t("controlSourceNotificationsDescription")}>
           <Switch label={t("controlSourceNotifications")} checked={status?.notificationsEnabled !== false}
             disabled={!!busy || !status} onChange={(value) => void saveTask({ notificationsEnabled: value })} />

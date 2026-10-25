@@ -1,3 +1,5 @@
+import RequestRouting from "./RequestRouting";
+import { useRequestRouting } from "../state/requestRouting";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { AgentActivitySession, AgentTimelineEntry } from "../types";
@@ -25,13 +27,19 @@ export default function TaskNeedsYou({ agent, session, entries, source, onPendin
   const index = Math.min(page, Math.max(0, count - 1));
   const pending = native[index];
   const identity = pending && interactionKey(agent, pending);
+  const routing = useRequestRouting(agent, session.id, pending?.interaction);
+  const pauseOnInteraction = (event: React.SyntheticEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    if (event.type === "focus" && !target.matches("input, textarea, [contenteditable=true]")) return;
+    if (target !== event.currentTarget && !target.closest("[data-routing-controls]")) void routing.change("pause");
+  };
   const focus = useRef<HTMLElement>(null);
   useEffect(() => { onPending(count > 0); return () => onPending(false); }, [count, onPending]);
   useEffect(() => { if (identity && (!narrow || sheetOpen)) focus.current?.focus({ preventScroll: true }); }, [identity, narrow, sheetOpen]);
   useEffect(() => { if (!count || !narrow) setSheetOpen(false); }, [count, narrow]);
   if (!count) return null;
   const interaction = pending?.interaction;
-  const dock = <section ref={focus} tabIndex={-1} className="task-needs-you" aria-label={t("detail.needsYou")}>
+  const dock = <section ref={focus} tabIndex={-1} className="task-needs-you" onFocusCapture={pauseOnInteraction} onPointerDownCapture={pauseOnInteraction} onClickCapture={pauseOnInteraction} onKeyDownCapture={pauseOnInteraction} onChangeCapture={pauseOnInteraction} aria-label={t("detail.needsYou")}>
     <header><strong>{t("detail.needsYou")}</strong><div className="actions"><IconButton icon={ChevronLeft} label={t("detail.previousRequest")} disabled={index === 0} onClick={() => setPage(index - 1)} /><span>{t("detail.pager", { current: index + 1, total: count })}</span><IconButton icon={ChevronRight} label={t("detail.nextRequest")} disabled={index === count - 1} onClick={() => setPage(index + 1)} /></div></header>
     {pending && interaction && <>
       {interaction.kind === "question" ? <TaskQuestion key={identity} agent={agent} session={pending} answers={drafts[identity!] ?? {}} onAnswersChange={answers => setDrafts(old => ({ ...old, [identity!]: answers }))} /> : <>
@@ -42,10 +50,11 @@ export default function TaskNeedsYou({ agent, session, entries, source, onPendin
         <ActivityInteraction key={identity} agent={agent} session={pending} />
       </>}
     </>}
-    <small>{source ? t("detail.routed", { source }) : t("detail.firstAnswer")}</small>
+    <RequestRouting routing={routing.routing} source={source || t("routing.source")} busy={routing.busy} change={routing.change} />
+    {routing.error && <p role="alert">{routing.error}</p>}
   </section>;
   if (!narrow) return <footer className="dialog-footer task-detail-footer">{dock}</footer>;
-  return <><footer className="dialog-footer task-detail-footer"><Button variant="secondary" className="task-needs-banner" onClick={() => setSheetOpen(true)} aria-haspopup="dialog"><span><strong>{t("detail.needsYou")} · {count}</strong><span>{interaction?.summary}</span></span><span>{t("detail.openRequest")}</span></Button></footer>
+  return <><footer className="dialog-footer task-detail-footer" onFocusCapture={pauseOnInteraction} onPointerDownCapture={pauseOnInteraction} onClickCapture={pauseOnInteraction} onKeyDownCapture={pauseOnInteraction}><Button variant="secondary" className="task-needs-banner" onClick={() => { void routing.change("pause"); setSheetOpen(true); }} aria-haspopup="dialog"><span><strong>{t("detail.needsYou")} · {count}</strong><span>{interaction?.summary}</span></span><span>{t("detail.openRequest")}</span></Button>{!sheetOpen && <><RequestRouting routing={routing.routing} source={source || t("routing.source")} busy={routing.busy} change={routing.change} />{routing.error && <p role="alert">{routing.error}</p>}</>}</footer>
     {sheetOpen && <Dialog sheet width={360} title={t("detail.needsYou")} onClose={() => setSheetOpen(false)} returnFocus=".task-needs-banner" footer={<Button variant="ghost" onClick={() => setSheetOpen(false)}>{t("detail.later")}</Button>}><div className="task-input-sheet">{dock}</div></Dialog>}
   </>;
 }

@@ -32,6 +32,18 @@ The program doing the work on your computer. Codex uses its native task interfac
 
 With **Automatically open Codex tasks** enabled, new Codex tasks execute in Codex Desktop. With it disabled, new tasks execute in ARC's background App Server. Existing tasks retain their owner. On Linux, Codex runs in the background. A task receipt confirms dispatch; read or wait for the task to see the outcome.
 
+## Pending requests
+
+The control source handles ARC-side decisions. If you are watching an open task
+in the focused ARC window, its request dock waits 15 seconds before handing a new
+request to the source. Change the delay in Settings (0–300 seconds). You can answer
+on the spot; focusing an input, choosing an option or typing pauses the countdown.
+Use Resume or Hand off now when ready. Leaving the task ends a running countdown.
+
+With no verified push path, the dock shows that the source will handle the request
+at its next check. The source can read and answer at any time, even during the
+countdown. The first answer wins. Restarting ARC cancels remaining routing delays.
+
 ## Operation levels
 
 Choose **Default**, **Read-only**, **All**, or **Custom** in the connection editor. Default covers project facts and everyday Codex work. All adds advanced operations. Custom selects individual ops. Read-only supports inspection, with connection verification as its maintenance exception. See [Operations](reference/tools.md).
