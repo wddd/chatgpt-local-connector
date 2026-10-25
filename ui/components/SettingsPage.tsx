@@ -12,6 +12,7 @@ import type { Service } from "../state/types";
 import { Button, Group, Row, Switch, SingleChoice, Input, Field } from "./ui";
 import SettingsExtras from "./SettingsExtras";
 import { AppUpdate } from "./AppUpdate";
+import ClaudeAccounts from "./ClaudeAccounts";
 export default function SettingsPage() {
   const { status, busy } = connector.use();
   const { settingsExtras } = navigation.use();
@@ -129,6 +130,7 @@ export default function SettingsPage() {
           />
         </Row>
       </Group>
+      <ClaudeAccounts />
       <Group title={t("general")}>
         <Row title={t("connectAtSystemSignIn")}>
           <Switch

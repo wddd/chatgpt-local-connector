@@ -25,6 +25,18 @@ Status requests read resources on demand without a monitoring task. Core limits 
 
 Service status, CLI status/doctor, and Settings share resource snapshots and diagnostics. doctor uses `permissions/passive`. Codex login and command permissions remain unknown in passive reads. The explicit permission page retains active probing. Resource diagnostics never start app-server. See [CLI resource diagnostics](../reference/cli.md#resource-diagnostics).
 
+## Claude login profiles
+
+Core owns Claude login profiles through the local-only `claude.accounts.*` management operations. Settings exposes a browser selector, official login, identity refresh, re-login, and removal. Browser discovery runs on the Core host. The default choice uses the system URL handler; explicit choices resolve installed applications without accepting arbitrary executable paths from the renderer.
+
+Each profile receives a UUID and a permanent `claude-accounts/<id>/config` directory before login. Login, status, and logout all use that directory as `CLAUDE_CONFIG_DIR` and their working directory. Child environments remove inherited provider, credential, browser, and configuration overrides and apply ARC's network settings. They do not modify the parent environment or the user's default Claude configuration. Claude Code owns credential storage and refresh; ARC neither reads tokens nor copies them between profiles. macOS Keychain entries are tied to the profile path, so directories must not be renamed after login.
+
+ARC runs `claude auth login --claudeai` with its Core executable as the browser handoff helper. The helper captures an official HTTPS authorization URL into a private transient file. The login worker opens it in the selected browser, accepts an optional authorization code through stdin, and confirms the resulting identity with `claude auth status --json`. Only public identity fields and their observation time are persisted. Browser cookies are separate from CLI profiles; the user chooses the intended account on Claude's authorization page and checks the identity returned to ARC. Login URLs are cleared when the flow ends. CLI output and submitted codes are not logged.
+
+One interactive login runs at a time, while any number of completed profiles remain stored independently. Cancel, a ten-minute timeout, and Core shutdown stop the login child. Incomplete profiles remain available for re-login or removal. Removal first runs official logout in that profile, then removes its local configuration; failed logout retains the profile. Stored identity is a last-observed CLI result, not a live authorization or cloud-delivery guarantee.
+
+Profile management does not change existing notification routing. The Claude notification transport still uses its existing host CLI environment until account-to-target routing is implemented and verified separately.
+
 ## Ingress and authentication
 
 Each ingress owns its lifecycle lock, listener, provider process, temporary directory, URL, verification challenge, logs, and errors. Stop/failure affects only that ingress. Core shuts down ingresses before its AgentHost/Control. All ingresses share project and task space. Ingress names are not authenticated users.

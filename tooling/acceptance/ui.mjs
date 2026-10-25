@@ -9,17 +9,20 @@ import pixelmatch from 'pixelmatch';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const base = path.join(root, 'output/acceptance/ui');
 const screenshots = !process.argv.includes('--no-screenshots');
+const scenarioFilter = process.argv.find(arg => arg.startsWith('--scenario='))?.slice('--scenario='.length);
+const port = Number(process.argv.find(arg => arg.startsWith('--port='))?.slice('--port='.length) ?? 5187);
 const setupOnly = process.argv.includes('--setup-only');
 const engine = process.argv.includes('--webkit') ? 'webkit' : 'chromium';
 await mkdir(base, { recursive: true });
 const previous = (await readdir(base)).filter(n => n.endsWith(`-${engine}`)).sort().at(-1);
 const out = path.join(base, `${new Date().toISOString().replaceAll(':', '-')}-${engine}${screenshots ? '' : '-layout'}`);
 await mkdir(out);
-const scenarios = (await readdir(path.join(root, 'tooling/acceptance/scenarios'))).filter(f => f.endsWith('.json')).sort();
+const scenarios = (await readdir(path.join(root, 'tooling/acceptance/scenarios'))).filter(f => f.endsWith('.json') && (!scenarioFilter || f === `${scenarioFilter}.json`)).sort();
+if (!scenarios.length) throw new Error('No matching acceptance scenario');
 const report = { engine, screenshots, previous: screenshots ? previous ?? null : null, viewports: [{ width: 640, height: 800 }, { width: 1280, height: 800 }, { width: 1920, height: 1080 }], scenarios: [], failures: [] };
 // This server has no production owner dependency: fixture API calls are intercepted
 // in the dev-only module, and the browser rejects every real management request.
-const server = await createServer({ configFile: path.join(root, 'vite.config.ts'), server: { port: 5187, strictPort: true } });
+const server = await createServer({ configFile: path.join(root, 'vite.config.ts'), server: { port, strictPort: true } });
 let browser;
 try {
   await server.listen();
@@ -38,13 +41,13 @@ try {
       await page.addInitScript(() => { const original = Date; const fixed = original.parse('2026-01-01T00:00:00Z'); Date = class extends original { constructor(...args) { super(...(args.length ? args : [fixed])); } static now() { return fixed; } }; });
       const row = { name, width, height, key, errors, baseline: screenshots ? 'missing' : 'disabled', changedPixels: null, changedRatio: null };
       try {
-        await page.goto(`http://127.0.0.1:5187/?scenario=${encodeURIComponent(name)}`);
+        await page.goto(`http://127.0.0.1:${port}/?scenario=${encodeURIComponent(name)}`);
         await page.waitForFunction(name => document.documentElement.dataset.scenarioReady === name, name, { timeout: 15000 });
         const model = await page.evaluate(() => window.__ARC_VIEW_MODEL__());
-        if (!model.topology) throw new Error('No rendered topology exported');
-        const actualAgents = model.topology.nodes.filter(n => n.side === 1).map(n => n.id);
-        if (fixture.agents.some(a => !actualAgents.includes(a))) throw new Error('Fixture agents were not rendered');
-        if (!fixture.panel && model.topology.tasks.length !== fixture.tasks.length) throw new Error(`Task count mismatch: ${model.topology.tasks.length}/${fixture.tasks.length}`);
+        if (!fixture.page && !model.topology) throw new Error('No rendered topology exported');
+        const actualAgents = (model.topology?.nodes ?? []).filter(n => n.side === 1).map(n => n.id);
+        if (!fixture.page && fixture.agents.some(a => !actualAgents.includes(a))) throw new Error('Fixture agents were not rendered');
+        if (!fixture.page && !fixture.panel && model.topology.tasks.length !== fixture.tasks.length) throw new Error(`Task count mismatch: ${model.topology.tasks.length}/${fixture.tasks.length}`);
         if (fixture.panel?.kind === 'agent' && model.panels.agent?.agent !== fixture.panel.id) throw new Error('Agent panel not opened');
         if (fixture.panel?.kind === 'source' && model.panels.source !== fixture.panel.id) throw new Error('Source panel not opened');
         if (setup) {
@@ -72,6 +75,18 @@ try {
             }
             if (dialog.stacked && !layout.some(parent => parent.recessed && parent.width > dialog.width)) throw new Error('Stacked dialog is not narrower than its parent');
           }
+        }
+        if (fixture.claudeAccounts) {
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          await page.getByRole('button', { name: messages['claudeAccounts.login'], exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('combobox', { name: messages['claudeAccounts.browser'], exact: true }).waitFor({ state: 'visible' });
+          await page.getByText('work@example.invalid', { exact: true }).waitFor({ state: 'visible' });
+          row.layout = await page.evaluate(() => {
+            const login = document.getElementById('claude-account-login');
+            const area = login.closest('.claude-account-actions');
+            return { viewport: innerWidth, width: document.documentElement.scrollWidth, controls: [...area.children].map(element => { const r = element.getBoundingClientRect(); return { left: r.left, right: r.right }; }) };
+          });
+          if (row.layout.width > width || row.layout.controls.some(r => r.left < 0 || r.right > width)) throw new Error('Claude account controls overflow the viewport');
         }
         await writeFile(path.join(out, `${key}.json`), JSON.stringify(model, null, 2));
         if (screenshots) {

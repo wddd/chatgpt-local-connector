@@ -10,6 +10,9 @@ async fn main() {
 
 async fn run() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if let Some(result) = arc_core::claude_accounts::capture_browser_url(&args) {
+        return result;
+    }
     match args
         .iter()
         .map(String::as_str)

@@ -35,6 +35,7 @@ pub struct Service {
     drafts: Mutex<BTreeMap<String, (Arc<Ingress>, std::time::Instant, tokio::task::AbortHandle)>>,
     configuration: Mutex<()>,
     pub(crate) relay: crate::relay::Manager,
+    claude_accounts: crate::claude_accounts::Manager,
     closing: std::sync::atomic::AtomicBool,
 }
 use crate::ingress::config::{defaults, secrets};
@@ -262,6 +263,7 @@ impl Service {
             drafts: Mutex::new(BTreeMap::new()),
             configuration: Mutex::new(()),
             relay: Default::default(),
+            claude_accounts: Default::default(),
             closing: std::sync::atomic::AtomicBool::new(false),
         }))
     }
@@ -399,6 +401,7 @@ impl Service {
         Ok(status)
     }
     pub async fn stop(&self) -> Result<()> {
+        self.claude_accounts.stop().await;
         self.relay.cancel().await;
         crate::cloudflare::stop_login().await;
         let _configuration = self.configuration.lock().await;
@@ -629,6 +632,9 @@ impl Service {
         }
         if route.starts_with("local-access/") {
             return crate::local_access::request(self, route, method, body).await;
+        }
+        if route == "claude-accounts" || route.starts_with("claude-accounts/") {
+            return self.claude_accounts.request(route, method, body).await;
         }
         if route.starts_with("relay/") {
             return crate::relay::request(self, route, method, body).await;

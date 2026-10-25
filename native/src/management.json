@@ -2943,6 +2943,160 @@
       },
       "description": "Cancel the pending switch and its bound authorization request. The original connection remains unchanged.",
       "localOnly": true
+    },
+    {
+      "name": "claude.accounts.list",
+      "method": "GET",
+      "route": "claude-accounts",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "List ARC-owned Claude profiles and the current login flow. Identity is the last CLI observation, not proof of cloud-session reachability. Credentials are never returned.",
+      "localOnly": true
+    },
+    {
+      "name": "claude.accounts.browsers",
+      "method": "GET",
+      "route": "claude-accounts/browsers",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "Discover installed browsers on the Core host. Use browserId default for the system default browser; other IDs come from this result.",
+      "localOnly": true
+    },
+    {
+      "name": "claude.accounts.login",
+      "method": "POST",
+      "route": "claude-accounts/login",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "browserId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Start official Claude Code login in a fixed independent profile. Omit accountId to add a profile. Each profile owns an independent login; no credentials are copied from the default CLI. Login URLs exist only while the flow is active.",
+      "localOnly": true
+    },
+    {
+      "name": "claude.accounts.login.code",
+      "method": "POST",
+      "route": "claude-accounts/login/code",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "loginId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "code": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "loginId",
+              "code"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Submit the authorization code shown by Claude to the active CLI login. Codes are not persisted or logged.",
+      "localOnly": true
+    },
+    {
+      "name": "claude.accounts.login.cancel",
+      "method": "POST",
+      "route": "claude-accounts/login/cancel",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "loginId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "loginId"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Cancel the matching login process and retain its profile for retry or removal.",
+      "localOnly": true
+    },
+    {
+      "name": "claude.accounts.refresh",
+      "method": "POST",
+      "route": "claude-accounts/{id}/refresh",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "Read claude auth status in this profile and persist only public identity fields.",
+      "localOnly": true
+    },
+    {
+      "name": "claude.accounts.remove",
+      "method": "DELETE",
+      "route": "claude-accounts/{id}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "description": "Run official logout in this profile and remove its local configuration after successful logout. Other profiles and the default CLI login are unchanged.",
+      "localOnly": true
     }
   ]
 }
