@@ -34,3 +34,17 @@ for await(const line of createInterface({input:process.stdin})) {
     await assert.rejects(fixture.shell('arc cli control --unknown'),(error:any)=>{assertNextCalls(JSON.parse(error.stdout));return true;});
   }finally{await fixture.close();}
 });
+
+
+test('Resume guide and validation retain the interrupted-turn guard and receipt contract',async()=>{
+  // Regression: codex_resume described an optional active turn despite requiring an interrupted ID and retaining durable receipts.
+  const fixture=await nativeControl('');
+  try {
+    const guide=await fixture.call('guide',{op:'codex_resume'});
+    assert.ok(guide.inputSchema.required.includes('turnId'));
+    assert.equal(guide.retry.mode,'receipt');
+    const missing=await fixture.call('codex_resume',{threadId:'00000000-0000-4000-8000-000000000004'});
+    assert.equal(missing.error.code,'INVALID_ARGUMENTS');
+    assert.equal(missing.next.op,'guide');
+  }finally{await fixture.close();}
+});

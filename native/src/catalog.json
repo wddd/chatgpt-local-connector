@@ -2327,7 +2327,7 @@
           "turnId": {
             "type": "string",
             "minLength": 1,
-            "description": "Optional. Omit to resolve the current active native turn under the thread lock. The receipt returns the selected turnId. An explicit ID retains native stale-turn protection; no active turn returns NO_ACTIVE_TURN."
+            "description": "Required ID of the latest interrupted turn. ARC checks it under the thread lock and rejects an advanced or active turn before submitting recovery."
           },
           "requestId": {
             "type": "string",
