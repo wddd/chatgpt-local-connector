@@ -97,7 +97,7 @@ if(args[0]==='auth' && args[1]==='login') {
 } else if(args[0]==='auth' && args[1]==='status') {
   console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',email:id+'@example.invalid',orgName:'Fixture',subscriptionType:'pro',accessToken:'fixture-secret'}));
 } else if(args[0]==='-p') {
-  appendFileSync(${JSON.stringify(deliveries)},JSON.stringify({accountId:id,target:args[3]})+'\\n');
+  appendFileSync(${JSON.stringify(deliveries)},JSON.stringify({accountId:id,target:args[3],message:args[1]})+'\\n');
   console.log(JSON.stringify({ok:true,session_id:args[3]}));
 } else {throw new Error('Unexpected fixture CLI operation');}
 `);
@@ -137,6 +137,12 @@ for await(const line of createInterface({input:process.stdin})) {const {id}=JSON
     const result=await fixture.call('notify_control',{action:'bind',target});
     assert.equal(result.accountRoute.accountId,profiles[1],JSON.stringify(result));
     assert.equal(result.verification.deliveryStatus,'delivered');
+    const delivered=JSON.parse((await readFile(deliveries,'utf8')).trim());
+    const challenge=JSON.parse(delivered.message.slice(delivered.message.indexOf('{'),delivered.message.lastIndexOf('}')+1));
+    const acknowledged=await fixture.call('notification_ack',challenge.args);
+    assert.equal(acknowledged.reachability,'verified');
+    await fixture.call('notify_control',{action:'bind',target,accountId:profiles[1],verify:false});
+    assert.equal((await fixture.call('notify_status',{target})).targets[0].reachability,'verified');
     const saved=await fixture.call('notify_control',{action:'route',target});
     assert.equal(saved.accountId,profiles[1]);
     const ingress=await fixture.api('ingress',{id:'route-peer',name:'Route peer',controlSource:'custom',transport:'https',auth:'bearer',bearerToken:'fixture-peer'.padEnd(40,'x'),toolPolicy:'all',config:{httpsProvider:'custom',httpsUrl:'https://fixture.example.invalid/mcp'}});
@@ -156,7 +162,7 @@ for await(const line of createInterface({input:process.stdin})) {const {id}=JSON
     assert.equal(changed.targets[0].reachability,'unverified');
     assert.equal(changed.targets[0].reason,'handshake-required');
     const sends=(await readFile(deliveries,'utf8')).trim().split('\n').map(row=>JSON.parse(row));
-    assert.deepEqual(sends,[{accountId:profiles[1],target}]);
+    assert.deepEqual(sends.map(({accountId,target})=>({accountId,target})),[{accountId:profiles[1],target}]);
   } finally {
     await fixture?.close();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));
     await rm(directory,{recursive:true,force:true});

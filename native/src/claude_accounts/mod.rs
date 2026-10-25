@@ -186,7 +186,7 @@ async fn command_for(config: Option<&Path>) -> Result<tokio::process::Command> {
 }
 
 fn config_dir(account_id: &str) -> Result<PathBuf> {
-    read_account(account_id).map_err(|_| "CLAUDE_ACCOUNT_NOT_FOUND: The assigned profile is missing or unreadable. Select an existing profile with claude.accounts.route; ARC will not use another account automatically".to_owned())?;
+    read_account(account_id).map_err(|_| "CLAUDE_ACCOUNT_NOT_FOUND: The assigned profile is missing or unreadable. Select an existing accountId with notify_control action:route for this source-owned target, or edit the host assignment in ARC Settings; ARC will not use another account automatically".to_owned())?;
     Ok(account_dir(account_id)?.join("config"))
 }
 

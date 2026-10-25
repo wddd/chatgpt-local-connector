@@ -1,4 +1,4 @@
-//! Host-owned target-to-profile routing shared by manual and scheduled notifications.
+//! Host assignments for manual sends and initial source routing. Source routes live on notification targets.
 use super::*;
 use std::collections::BTreeMap;
 
