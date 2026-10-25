@@ -33,3 +33,4 @@ output/acceptance/
 output/mutation/
 mutants.out*/
 .stryker-tmp/
+output/
