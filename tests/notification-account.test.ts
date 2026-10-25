@@ -51,15 +51,20 @@ else {throw new Error('Unexpected fixture CLI operation');}
       accounts=await fixture.api('claude-accounts');
     }
     assert.equal(accounts.login.state,'completed',JSON.stringify(accounts.login));
-    await fixture.api('claude-accounts/routes',{target,accountId:login.accountId},'PUT');
-    const result=await fixture.call('notify_control',{action:'bind',target});
+    const unowned=await fixture.call('notify_control',{action:'route',target,accountId:login.accountId});
+    assert.equal(unowned.error.code,'NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE');
+    assert.equal(unowned.profiles,undefined);
+    const result=await fixture.call('notify_control',{action:'bind',target,accountId:login.accountId});
     assert.equal(result.ok,false);assert.equal(result.bound,true);
     assert.equal(result.error.code,'CLAUDE_SESSION_NOT_FOUND',JSON.stringify(result));
     assert.equal(result.verification.reason,'claude-session-not-found');
     assert.equal(result.error.localAccount.email,'fixture@example.invalid');
-    assert.equal(result.next.before.localOperation,'claude.accounts.routes');
-    assert.equal(result.next.before.accountId,login.accountId);
-    assert.deepEqual(result.next.args,{action:'verify',target});
+    assert.deepEqual(result.next.args,{action:'route',target});
+    const route=await fixture.call('notify_control',result.next.args);
+    assert.equal(route.accountId,login.accountId);
+    assert.equal(route.profiles[0].identity.email,'fixture@example.invalid');
+    const set=await fixture.call('notify_control',{action:'route',target,accountId:login.accountId});
+    assert.equal(set.accountId,login.accountId);
     const status=await fixture.call('notify_status',{target});
     assert.equal(status.targets[0].lastVerificationError.code,'CLAUDE_SESSION_NOT_FOUND');
     assert.equal(status.targets[0].lastVerificationError.localAccount.loggedIn,true);

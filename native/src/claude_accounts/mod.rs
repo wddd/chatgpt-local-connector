@@ -89,6 +89,18 @@ fn list_accounts() -> Result<Vec<Account>> {
     Ok(accounts)
 }
 
+/// Only allowlisted non-secret identity is visible to control sources.
+pub(crate) fn profiles() -> Result<Vec<Value>> {
+    Ok(list_accounts()?
+        .into_iter()
+        .map(|a| json!({"accountId":a.id,"identity":safe_identity(&a.identity)}))
+        .collect())
+}
+pub(crate) fn account_profile(account_id: &str) -> Result<Value> {
+    let account = read_account(account_id)?;
+    Ok(json!({"accountId":account.id,"identity":safe_identity(&account.identity)}))
+}
+
 /// Remove inherited authentication and provider overrides only in ARC's CLI child.
 pub fn isolated_environment(
     env: Vec<(OsString, OsString)>,

@@ -29,6 +29,8 @@ pub(super) struct Target {
     pub reachability: super::reachability::Reachability,
     #[serde(default)]
     pub registered: bool,
+    #[serde(default)]
+    pub account_id: Option<String>,
 }
 impl Target {
     pub fn refill(&mut self, now: i64, settings: &Value) {
@@ -181,6 +183,7 @@ impl State {
                     batches: vec![],
                     reachability: Default::default(),
                     registered: false,
+                    account_id: None,
                 });
                 self.targets.len() - 1
             });
@@ -452,6 +455,9 @@ pub(super) fn status_in(
 }
 pub(crate) async fn notify_control(args: &Value) -> Result<Value> {
     let source_id = scope()?;
+    if args["action"] == "route" {
+        return account_route_control(&source_id, args).await;
+    }
     if args["action"] == "bind" {
         let mut result = {
             let _guard = LOCK.lock().await;
@@ -463,6 +469,8 @@ pub(crate) async fn notify_control(args: &Value) -> Result<Value> {
                 &settings()?,
             )?
         };
+        let route = account_route_control(&source_id, args).await?;
+        result["accountRoute"] = route;
         if args["verify"] != false {
             match super::reachability::verify(&source_id, args).await {
                 Ok(mut verification) => {
@@ -488,6 +496,7 @@ pub(crate) async fn notify_control(args: &Value) -> Result<Value> {
         return Ok(result);
     }
     if args["action"] == "verify" {
+        account_route_control(&source_id, args).await?;
         return super::reachability::verify(&source_id, args).await;
     }
     let _guard = LOCK.lock().await;
@@ -674,4 +683,47 @@ pub(super) fn bind_target_in(
     Ok(
         json!({"action":"bind","bound":true,"target":target,"threadId":args["threadId"],"taskBound":args["threadId"].is_string(),"notify":{"channel":"claude-session","target":target},"next":{"via":"act","op":"notify_control","args":{"action":"verify","target":target},"hint":"Binding persists if verification fails. Acknowledge only the code received in the target conversation. Pass the returned notify object on future dispatches; registration alone does not subscribe tasks."}}),
     )
+}
+
+pub(crate) fn source_account(source_id: &str, target: &str) -> Result<String> {
+    State::load(&directory())?
+        .targets
+        .into_iter()
+        .find(|t| {
+            t.source_id == source_id && t.channel == Channel::ClaudeSession && t.target == target
+        })
+        .and_then(|t| t.account_id)
+        .ok_or_else(|| {
+            "ACCOUNT_SELECTION_REQUIRED: Bind this target with notify_control and an accountId"
+                .into()
+        })
+}
+
+async fn account_route_control(source_id: &str, args: &Value) -> Result<Value> {
+    let target = session_id(string(args, "target"))?;
+    let _guard = LOCK.lock().await;
+    let mut state = State::load(&directory())?;
+    let owned = records(&directory())?.iter().any(|b| {
+        b.source_id == source_id
+            && b.channel == Channel::ClaudeSession
+            && b.target.as_deref() == Some(&target)
+    });
+    let t = state.targets.iter_mut().find(|t| t.source_id == source_id && t.channel == Channel::ClaudeSession && t.target == target && (t.registered || owned))
+        .ok_or_else(|| json!({"code":"NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE","message":"Bind this target before reading or changing its account route","next":{"via":"act","op":"notify_control","args":{"action":"bind","target":target}}}).to_string())?;
+    if let Some(account_id) = args["accountId"].as_str() {
+        crate::claude_accounts::account_profile(account_id)?;
+        if t.account_id.as_deref() != Some(account_id) {
+            t.account_id = Some(account_id.into());
+            // A code sent through the previous profile must not verify the new route.
+            t.reachability = Default::default();
+        }
+    } else if t.account_id.is_none() {
+        // Preserve explicit host assignments from the previous routing contract.
+        t.account_id = crate::claude_accounts::routing::list()?
+            .get(&target)
+            .cloned();
+    }
+    let result = json!({"target":target,"accountId":t.account_id,"profiles":crate::claude_accounts::profiles()?});
+    state.save(&directory())?;
+    Ok(result)
 }

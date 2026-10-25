@@ -7,7 +7,7 @@ mod reachability;
 mod retry;
 pub(crate) mod subscriptions;
 use governance::State;
-pub(crate) use governance::{notify_control, notify_status};
+pub(crate) use governance::{notify_control, notify_status, source_account};
 use serde::{Deserialize, Serialize};
 use std::{future::Future, time::Duration};
 
@@ -644,8 +644,12 @@ trait Executor: Sync {
     ) -> impl Future<Output = SendOutcome> + Send {
         async { SendOutcome::failed("webhook_unavailable", false) }
     }
-    fn send(&self, args: Vec<String>) -> impl Future<Output = Result<Vec<u8>>> + Send;
-    fn local_account(&self, _target: &str) -> impl Future<Output = Value> + Send {
+    fn send(
+        &self,
+        source_id: &str,
+        args: Vec<String>,
+    ) -> impl Future<Output = Result<Vec<u8>>> + Send;
+    fn local_account(&self, _source_id: &str, _target: &str) -> impl Future<Output = Value> + Send {
         async { json!({"available":false,"reason":"auth-status-unavailable"}) }
     }
     fn escalate(&self, body: String) -> impl Future<Output = Result<()>> + Send;
@@ -655,12 +659,12 @@ struct Cli {
     account_id: Option<String>,
 }
 impl Executor for Cli {
-    async fn local_account(&self, target: &str) -> Value {
+    async fn local_account(&self, source_id: &str, target: &str) -> Value {
         let account_id = match self
             .account_id
             .clone()
             .map(Ok)
-            .unwrap_or_else(|| crate::claude_accounts::routing::account(target))
+            .unwrap_or_else(|| source_account(source_id, target))
         {
             Ok(id) => id,
             Err(error) => return json!({"available":false,"reason":error}),
@@ -694,7 +698,7 @@ impl Executor for Cli {
         .await
         .map(|_| ())
     }
-    async fn send(&self, args: Vec<String>) -> Result<Vec<u8>> {
+    async fn send(&self, source_id: &str, args: Vec<String>) -> Result<Vec<u8>> {
         if settings()?["notificationsEnabled"] == false {
             return Err("NOTIFICATIONS_DISABLED".into());
         }
@@ -707,7 +711,7 @@ impl Executor for Cli {
             .account_id
             .clone()
             .map(Ok)
-            .unwrap_or_else(|| crate::claude_accounts::routing::account(target))?;
+            .unwrap_or_else(|| source_account(source_id, target))?;
         let mut cmd = crate::claude_accounts::account_command(&account_id).await?;
         let output = tokio::time::timeout(
             Duration::from_secs(30),
@@ -747,7 +751,7 @@ pub(crate) async fn send_account_notification(args: &Value) -> Result<Value> {
         service: std::sync::Weak::new(),
         account_id: Some(account_id.into()),
     };
-    deliver_target(&executor, &target, message).await?;
+    deliver_target(&executor, "", &target, message).await?;
     Ok(
         json!({"accountId":account_id,"target":target,"deliveryStatus":"delivered",
         "hint":"Claude CLI accepted the message for this exact session. This does not confirm receiver display or acknowledgement."}),
@@ -755,7 +759,7 @@ pub(crate) async fn send_account_notification(args: &Value) -> Result<Value> {
 }
 
 async fn deliver_message(executor: &impl Executor, b: &Binding, body: &str) -> &'static str {
-    if deliver_target(executor, b.target.as_deref().unwrap(), body)
+    if deliver_target(executor, &b.source_id, b.target.as_deref().unwrap(), body)
         .await
         .is_ok()
     {
@@ -782,9 +786,14 @@ fn safe_account(value: &Value) -> Value {
     }
     identity
 }
-async fn deliver_target(executor: &impl Executor, session: &str, body: &str) -> Result<()> {
+async fn deliver_target(
+    executor: &impl Executor,
+    source_id: &str,
+    session: &str,
+    body: &str,
+) -> Result<()> {
     let result = executor
-        .send(arguments(session, body))
+        .send(source_id, arguments(session, body))
         .await
         .and_then(|bytes| {
             serde_json::from_slice::<Value>(&bytes).map_err(|_| {
@@ -1987,6 +1996,16 @@ pub(crate) async fn migrate() -> Result<()> {
     subscriptions::sync(&mut state, &all);
     // Populate stable IDs without creating any subscription to the retired event name.
     subscriptions::route(&state, &mut all, chrono::Utc::now().timestamp());
+    let legacy_routes = crate::claude_accounts::routing::list()?;
+    for t in &mut state.targets {
+        if t.channel == Channel::ClaudeSession && t.account_id.is_none() {
+            t.account_id = legacy_routes.get(&t.target).cloned();
+            if t.account_id.is_none() && t.reachability.state == "verified" {
+                // Keep already verified pre-route destinations pinned to their original profile.
+                t.account_id = crate::claude_accounts::routing::account(&t.target).ok();
+            }
+        }
+    }
     state.save(&dir)?;
     for b in &all {
         persist(&dir, b)?;
@@ -2280,14 +2299,11 @@ mod tests {
                 result["error"]["localAccount"]["email"],
                 "fixture@example.invalid"
             );
-            assert_eq!(result["next"]["before"]["actor"], "user");
-            assert_eq!(
-                result["next"]["before"]["localOperation"],
-                "claude.accounts.routes"
-            );
+            assert_eq!(result["next"]["op"], "notify_control");
+            assert_eq!(result["next"]["args"]["action"], "route");
             assert_eq!(
                 result["next"]["args"],
-                json!({"action":"verify","target":"session_010000000000000000000001"})
+                json!({"action":"route","target":"session_010000000000000000000001"})
             );
             let status = governance::status_in(
                 &dir.0,
@@ -2330,12 +2346,12 @@ mod tests {
         }
     }
     impl Executor for Fake {
-        async fn local_account(&self, _target: &str) -> Value {
+        async fn local_account(&self, _source_id: &str, _target: &str) -> Value {
             safe_account(
                 &json!({"loggedIn":true,"authMethod":"claude.ai","email":"fixture@example.invalid","accessToken":"fixture-secret","credentials":{"refreshToken":"fixture-secret"}}),
             )
         }
-        async fn send(&self, args: Vec<String>) -> Result<Vec<u8>> {
+        async fn send(&self, _source_id: &str, args: Vec<String>) -> Result<Vec<u8>> {
             self.calls.lock().unwrap().push(args);
             self.result.clone()
         }
@@ -3421,7 +3437,7 @@ mod tests {
             fail: bool,
         }
         impl Executor for Probe<'_> {
-            async fn send(&self, _: Vec<String>) -> Result<Vec<u8>> {
+            async fn send(&self, _source_id: &str, _: Vec<String>) -> Result<Vec<u8>> {
                 let _guard = self
                     .lock
                     .try_lock()

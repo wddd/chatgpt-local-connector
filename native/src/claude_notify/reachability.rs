@@ -116,13 +116,13 @@ pub(super) async fn verify_in(
     }
     // The code exists only in the delivered message; receipts and status cannot confirm it.
     let body = format!("[ARC] Notification reachability check. Only after receiving this message in this conversation, call act with {}. This confirms delivery, not task acceptance.", json!({"op":"notification_ack","args":{"target":target,"code":code}}));
-    let delivery = deliver_target(executor, &target, &body).await;
+    let delivery = deliver_target(executor, source_id, &target, &body).await;
     let missing = delivery
         .as_ref()
         .err()
         .is_some_and(|error| session_not_found(error));
     let account = if missing {
-        executor.local_account(&target).await
+        executor.local_account(source_id, &target).await
     } else {
         Value::Null
     };
@@ -155,8 +155,7 @@ pub(super) async fn verify_in(
         result["next"] = json!({"via":"act","op":"notify_control","args":{"action":"verify","target":target},"hint":"Correct the reported delivery failure before retrying verification. Binding is retained."});
         result["ok"] = json!(false);
         result["error"] = if missing {
-            result["next"]["before"] = json!({"actor":"user","accountId":account["accountId"],"localOperation":"claude.accounts.routes","instruction":"In ARC Settings, check the selected Claude account and its target route. Use claude.accounts.routes locally to inspect assignments and claude.accounts.route to select the intended profile. Re-login only that profile if necessary, confirm the cloud-session ID, then retry verify. ARC never falls back to another account."});
-            result["next"]["hint"]=json!("Have the user select the session owner's profile in the local target route, or correct the session ID, before retrying verify.");
+            result["next"] = json!({"via":"act","op":"notify_control","args":{"action":"route","target":target},"hint":"Inspect this source-owned target's accountId and available profiles. Set its route with notify_control action:route and accountId, then retry action:verify. Correct the session ID if necessary. ARC never logs in or switches Claude accounts automatically."});
             json!({"code":"CLAUDE_SESSION_NOT_FOUND","message":"Claude CLI reported Session not found. Likely causes are a different local Claude account or an incorrect cloud-session ID; account mismatch is not confirmed.","localAccount":account})
         } else {
             json!({"code":"NOTIFICATION_DELIVERY_FAILED","message":"The verification message could not be delivered. Inspect notification logs, correct the destination or transport, and retry notify_control action:verify. Binding remains registered."})
