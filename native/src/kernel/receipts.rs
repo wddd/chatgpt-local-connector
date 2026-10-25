@@ -31,7 +31,8 @@ impl ReceiptStore {
             receipt["previousState"] = receipt["state"].clone();
             receipt["state"] = json!("unconfirmed");
         }
-        crate::sources::decorate(&mut receipt);
+        // Labels belong to the response boundary. A task/status poll reads many
+        // receipts; resolving accounts here repeats a store scan for every row.
         Ok(receipt)
     }
     // Callers serialize replay/reserve/launch per request ID. create_new also

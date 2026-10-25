@@ -809,12 +809,22 @@ pub(crate) fn decorate(value: &mut Value) {
     let Ok(rows) = read() else {
         return;
     };
-    fn visit(v: &mut Value, rows: &[Value]) {
+    decorate_labels(value, &rows);
+}
+
+/// Project a response from one account snapshot without changing recorded identities.
+pub fn decorate_labels(value: &mut Value, rows: &[Value]) {
+    let labels: std::collections::BTreeMap<_, _> = rows
+        .iter()
+        .filter_map(|account| Some((account["id"].as_str()?, account)))
+        .collect();
+    fn visit(v: &mut Value, labels: &std::collections::BTreeMap<&str, &Value>) {
         match v {
             Value::Object(map) => {
                 if let Some(account) = map
                     .get("agentAccountId")
-                    .and_then(|id| rows.iter().find(|a| a["id"] == *id))
+                    .and_then(Value::as_str)
+                    .and_then(|id| labels.get(id))
                 {
                     map.insert("agentAccountAlias".into(), account["alias"].clone());
                     map.insert("agentAccountRemoved".into(), json!(!live(account)));
@@ -839,17 +849,17 @@ pub(crate) fn decorate(value: &mut Value) {
                     ]
                     .contains(&key.as_str())
                     {
-                        visit(value, rows);
+                        visit(value, labels);
                     }
                 }
             }
             Value::Array(values) => {
                 for value in values {
-                    visit(value, rows);
+                    visit(value, labels);
                 }
             }
             _ => {}
         }
     }
-    visit(value, &rows);
+    visit(value, &labels);
 }

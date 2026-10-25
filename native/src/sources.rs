@@ -702,18 +702,34 @@ pub async fn panel_origin() -> Result<Value> {
 }
 /// Labels are read from the current store, including retained revoked sources.
 pub fn decorate(value: &mut Value) {
-    let Ok(rows) = list() else {
+    let Ok(cache) = cache().and_then(|cache| cache.read().map_err(|e| e.to_string())) else {
         return;
     };
-    fn visit(v: &mut Value, rows: &[Value]) {
+    let Some(rows) = cache.current["sources"].as_array().cloned() else {
+        return;
+    };
+    drop(cache);
+    decorate_labels(value, &rows);
+    crate::accounts::decorate(value);
+}
+
+/// Project current labels without reconciling identities or reading account stores.
+/// One response shares one source snapshot, even when it contains many receipts.
+pub fn decorate_labels(value: &mut Value, rows: &[Value]) {
+    let labels: BTreeMap<_, _> = rows
+        .iter()
+        .filter_map(|source| Some((source["id"].as_str()?, &source["label"])))
+        .collect();
+    fn visit(v: &mut Value, labels: &BTreeMap<&str, &Value>) {
         match v {
             Value::Object(o) => {
-                if let Some(s) = o
+                if let Some(label) = o
                     .get("sourceId")
                     .filter(|_| o.contains_key("authType"))
-                    .and_then(|id| rows.iter().find(|s| s["id"] == *id))
+                    .and_then(Value::as_str)
+                    .and_then(|id| labels.get(id))
                 {
-                    o.insert("sourceLabel".into(), s["label"].clone());
+                    o.insert("sourceLabel".into(), (*label).clone());
                 }
                 for (key, v) in o.iter_mut() {
                     if ![
@@ -728,20 +744,72 @@ pub fn decorate(value: &mut Value) {
                     ]
                     .contains(&key.as_str())
                     {
-                        visit(v, rows);
+                        visit(v, labels);
                     }
                 }
             }
             Value::Array(a) => {
                 for v in a {
-                    visit(v, rows);
+                    visit(v, labels);
                 }
             }
             _ => {}
         }
     }
-    visit(value, &rows);
-    crate::accounts::decorate(value);
+    visit(value, &labels);
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::*;
+
+    #[test]
+    fn receipt_batch_labels_fit_one_poll_budget_without_identity_reconciliation() {
+        // Regression: idle status polls resolved every source account for each of 3008 historical receipts.
+        let mut sources: Vec<_> = (0..7)
+            .map(|n| {
+                json!({"id":format!("source-{n}"),"label":format!("label-{n}"),
+                "authorizationFacts":{"email":"same@example.test"}})
+            })
+            .collect();
+        let mut accounts: Vec<_> = (0..15)
+            .map(|n| json!({"id":format!("account-{n}"),"alias":format!("alias-{n}")}))
+            .collect();
+        let opaque = json!({"origin":{"sourceId":"source-0","authType":"oauth","sourceLabel":"recorded"},
+            "agentAccountId":"account-0","agentAccountAlias":"recorded"});
+        let mut response = json!({"records":(0..3008).map(|n| json!({
+            "origin":{"sourceId":format!("source-{}",n%7),"authType":"oauth","accountId":"recorded-account"},
+            "agentAccountId":format!("account-{}",n%15),"arguments":opaque
+        })).collect::<Vec<_>>()});
+        let started = Instant::now();
+        decorate_labels(&mut response, &sources);
+        crate::accounts::decorate_labels(&mut response, &accounts);
+        // A complete batch must fit the existing two-second status polling period.
+        assert!(started.elapsed() < Duration::from_secs(2));
+        for (n, receipt) in response["records"].as_array().unwrap().iter().enumerate() {
+            assert_eq!(receipt["origin"]["sourceLabel"], sources[n % 7]["label"]);
+            assert_eq!(receipt["agentAccountAlias"], accounts[n % 15]["alias"]);
+            assert_eq!(receipt["origin"]["accountId"], "recorded-account");
+            assert_eq!(receipt["arguments"], opaque);
+        }
+        // The next poll uses fresh labels without changing historical identity or input.
+        sources[0]["label"] = json!("renamed-source");
+        accounts[0]["alias"] = json!("renamed-account");
+        accounts[0]["removedAt"] = json!("2026-01-01T00:00:00Z");
+        decorate_labels(&mut response, &sources);
+        crate::accounts::decorate_labels(&mut response, &accounts);
+        assert_eq!(
+            response["records"][0]["origin"]["sourceLabel"],
+            sources[0]["label"]
+        );
+        assert_eq!(
+            response["records"][0]["agentAccountAlias"],
+            accounts[0]["alias"]
+        );
+        assert_eq!(response["records"][0]["agentAccountRemoved"], true);
+        assert_eq!(response["records"][0]["agentAccountId"], accounts[0]["id"]);
+        assert_eq!(response["records"][0]["arguments"], opaque);
+    }
 }
 
 fn migration_label(source: &Value) -> String {
