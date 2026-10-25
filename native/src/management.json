@@ -3095,19 +3095,31 @@
           "id"
         ]
       },
-      "description": "Run official logout in this profile and remove its local configuration after successful logout. Other profiles and the default CLI login are unchanged.",
+      "description": "Remove an isolated profile. Browser-created logins use official logout; imported logins delete only the local credential to avoid revoking the system authorization. Assigned notification routes are retained and fail until explicitly reassigned.",
       "localOnly": true
     },
     {
-      "name": "claude.accounts.default",
+      "name": "claude.accounts.system",
       "method": "GET",
-      "route": "claude-accounts/default",
+      "route": "claude-accounts/system",
       "inputSchema": {
         "type": "object",
         "properties": {},
         "additionalProperties": false
       },
-      "description": "Read the host Claude CLI login identity in place without importing or copying credentials.",
+      "description": "Read the current system CLI identity and its matching ARC profile ID for the System default tag. No credentials are returned.",
+      "localOnly": true
+    },
+    {
+      "name": "claude.accounts.import-system",
+      "method": "POST",
+      "route": "claude-accounts/import-system",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "Retain the current system Claude account in an isolated ARC profile, reusing a matching signed-in profile. Copy only Claude OAuth credentials and account metadata; verify through the official CLI. The first import pins the fallback profile and migrates previous default routes. Later imports never replace existing routes. Secrets remain local and are never returned.",
       "localOnly": true
     },
     {
@@ -3119,7 +3131,7 @@
         "properties": {},
         "additionalProperties": false
       },
-      "description": "List host-owned cloud-session to Claude profile assignments. Unassigned sessions retain the default CLI route. Missing assigned profiles fail without falling back.",
+      "description": "List host-owned cloud-session to Claude profile assignments. Unassigned sessions use the first imported profile. Missing assigned profiles fail without falling back.",
       "localOnly": true
     },
     {
@@ -3135,7 +3147,7 @@
               "accountId": {
                 "type": "string",
                 "minLength": 1,
-                "description": "ARC profile ID or default for the host CLI login."
+                "description": "ARC profile ID from claude.accounts.list."
               },
               "target": {
                 "type": "string",
@@ -3171,7 +3183,7 @@
               "accountId": {
                 "type": "string",
                 "minLength": 1,
-                "description": "ARC profile ID or default for the host CLI login."
+                "description": "ARC profile ID from claude.accounts.list."
               },
               "target": {
                 "type": "string",

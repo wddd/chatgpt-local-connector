@@ -81,6 +81,9 @@ try {
           await page.getByRole('button', { name: messages[fixture.claudeLogin ? 'claudeAccounts.continue' : 'claudeAccounts.login'], exact: true }).waitFor({ state: 'visible' });
           await page.getByRole('combobox', { name: messages['claudeAccounts.browser'], exact: true }).waitFor({ state: 'visible' });
           await page.getByText('work@example.invalid', { exact: true }).waitFor({ state: 'visible' });
+          // Regression: The system CLI account was a separate live reference instead of a tagged isolated profile.
+          await page.getByText(messages['claudeAccounts.systemDefault'], { exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: messages['claudeAccounts.checkAccount'].replace('{account}', 'host@example.invalid'), exact: true }).waitFor({ state: 'visible' });
           // Regression: Reopening Settings lost the browser selected for a pending login.
           if (fixture.claudeLogin) {
             const browserChoice = page.getByRole('combobox', { name: messages['claudeAccounts.browser'], exact: true });

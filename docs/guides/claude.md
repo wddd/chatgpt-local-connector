@@ -19,7 +19,7 @@ Claude on the web, mobile, and desktop can use the remote connector. Start with 
 
 ## Use multiple Claude accounts
 
-Open **Settings → Claude accounts**. Choose a browser beside **Sign in to Claude** and authorize each additional account. ARC keeps each login in a separate directory. **Default CLI login** references your existing host login in place.
+Open **Settings → Claude accounts**. Choose a browser beside **Sign in to Claude** and authorize each additional account. ARC keeps each login in a separate directory. ARC also retains the existing system CLI login in an isolated profile. **System default** marks the profile matching the current system login. If you switch the system CLI to another account, use **Import system login** to retain that account too. Existing notification routes keep their selected profiles.
 
 Choose **Notifications** on the intended account. Enter the receiving conversation's `cse_…` or `session_…` ID and choose **Save account route**. Future ARC notifications to that target use this account. **Send notification** sends your message once and also saves an unassigned route; an existing different assignment must be changed explicitly. Check the receiving conversation before retrying an uncertain send.
 
@@ -68,5 +68,7 @@ Agree on scope, existing checks, and which actions need your decision. Let Claud
 The notification health line reports counts, without deciding whether a task is looping. Inspect `query notify_status` for buckets, backlog, recent batches and thread ownership. If needed, use `codex_send` to ask the Agent to combine questions or decide within its existing authority. `act notify_control` can mute a thread, enable hourly digests, rebind/unbind it, or trip a target breaker; each control is reversible. See the [tool reference](../reference/tools.md#control-source-notifications).
 
 ## Limits
+
+- Import copies the existing OAuth authorization; separate storage does not create a new authorization. If the provider revokes or rotates it, log in again for that profile.
 
 Automatic follow-ups require a cloud session or a Claude Chat with a workspace session, and the local CLI's cloud messaging support/login. An ordinary `claude.ai/chat/…` URL is not a target. ARC retains pending deliveries across restart and retries uncertain sends with the same eventId; ignore duplicate IDs. A needs-input event includes the question, options or approval details. Use the notification’s `respond` parameters directly with a result; refresh `codex_pending` only if the callback is missing or stale; asynchronous questions use `result: {answer: "your answer"}`. Follow `canRespond` and `next`; unsupported interactions require Desktop. A completion notification includes the last message verbatim and a full-text query when truncated. Read the diff when needed for review, and its cloud session must be able to continue. Keep ARC, its connection, and the computer running.

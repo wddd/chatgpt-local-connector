@@ -8,6 +8,8 @@ use tokio::{
 };
 mod browsers;
 pub(crate) mod routing;
+mod system;
+pub use system::same_identity;
 
 const OPENED_URL: &str = "ARC_CLAUDE_LOGIN_URL_FILE";
 
@@ -17,6 +19,8 @@ struct Account {
     id: String,
     identity: Value,
     observed_at: Option<String>,
+    #[serde(default)]
+    imported: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -167,23 +171,13 @@ async fn command_for(config: Option<&Path>) -> Result<tokio::process::Command> {
     Ok(cmd)
 }
 
-// The host login is referenced in place; credentials are never imported into ARC.
 fn config_dir(account_id: &str) -> Result<PathBuf> {
-    if account_id == "default" {
-        return Ok(std::env::var_os("CLAUDE_CONFIG_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| dirs::home_dir().expect("home directory").join(".claude")));
-    }
     read_account(account_id).map_err(|_| "CLAUDE_ACCOUNT_NOT_FOUND: The assigned profile is missing or unreadable. Select an existing profile with claude.accounts.route; ARC will not use another account automatically".to_owned())?;
     Ok(account_dir(account_id)?.join("config"))
 }
 
 pub(crate) async fn account_command(account_id: &str) -> Result<tokio::process::Command> {
-    if account_id == "default" {
-        command_for(None).await
-    } else {
-        cli(&config_dir(account_id)?).await
-    }
+    cli(&config_dir(account_id)?).await
 }
 
 pub(crate) async fn account_identity(account_id: &str) -> Result<Value> {
@@ -292,10 +286,8 @@ impl Manager {
     }
 
     pub async fn request(&self, route: &str, method: &str, body: Value) -> Result<Value> {
-        if route == "claude-accounts/default" && method == "GET" {
-            return Ok(
-                json!({"id":"default","identity":account_identity("default").await?,"observedAt":now()}),
-            );
+        if route == "claude-accounts/system" && method == "GET" {
+            return system::status().await;
         }
         if route == "claude-accounts/routes" && method == "GET" {
             return Ok(json!({"routes":routing::list()?}));
@@ -310,6 +302,12 @@ impl Manager {
             return crate::claude_notify::send_account_notification(&body).await;
         }
         let mut current = self.login.lock().await;
+        if route == "claude-accounts/import-system" && method == "POST" {
+            if current.as_ref().is_some_and(|l| !l.job.is_finished()) {
+                return Err("CLAUDE_LOGIN_IN_PROGRESS: Complete or cancel the current login first".into());
+            }
+            return system::import().await;
+        }
         if route == "claude-accounts" && method == "GET" {
             return Ok(
                 json!({"accounts":list_accounts()?,"cliAvailable":crate::agents::driver::discover("claude").is_some(),
@@ -328,17 +326,24 @@ impl Manager {
             } else {
                 Some(browsers::discover().await?.into_iter().find(|b|b.id==browser_id).ok_or("BROWSER_NOT_FOUND: Refresh the browser list and choose an installed browser")?)
             };
-            let account = if let Some(id) = body["accountId"].as_str() {
+            let mut account = if let Some(id) = body["accountId"].as_str() {
                 read_account(id)?
             } else {
                 Account {
                     id: id(),
                     identity: json!({}),
                     observed_at: None,
+                    imported: false,
                 }
             };
             let config = account_dir(&account.id)?.join("config");
             private_dir(&config)?;
+            if account.imported {
+                // Official login can revoke the previous grant. Detach the imported copy first.
+                system::remove_credentials(&config).await?;
+                account.identity = json!({"loggedIn":false});
+                account.observed_at = Some(now());
+            }
             save_account(&account)?;
             let mut cmd = cli(&config).await?;
             let opened = config.join(".arc-login-url");
@@ -387,6 +392,7 @@ impl Manager {
                         let account = Account {
                             identity,
                             observed_at: Some(now()),
+                            imported: false,
                             ..account
                         };
                         match save_account(&account) {
@@ -466,16 +472,21 @@ impl Manager {
                 return Ok(json!(account));
             }
             if action.is_empty() && method == "DELETE" {
-                let mut cmd = cli(&config).await?;
-                let result = tokio::time::timeout(
-                    Duration::from_secs(20),
-                    cmd.args(["auth", "logout"]).stdin(Stdio::null()).output(),
-                )
-                .await
-                .map_err(|_| "CLAUDE_LOGOUT_TIMEOUT: Retry removing this account")?
-                .map_err(|_| "CLAUDE_LOGOUT_FAILED: Could not run Claude Code logout")?;
-                if !result.status.success() {
-                    return Err("CLAUDE_LOGOUT_FAILED: Account retained; retry removing it".into());
+                if account.imported {
+                    // A copied refresh token belongs to the original system authorization too.
+                    system::remove_credentials(&config).await?;
+                } else {
+                    let mut cmd = cli(&config).await?;
+                    let result = tokio::time::timeout(
+                        Duration::from_secs(20),
+                        cmd.args(["auth", "logout"]).stdin(Stdio::null()).output(),
+                    )
+                    .await
+                    .map_err(|_| "CLAUDE_LOGOUT_TIMEOUT: Retry removing this account")?
+                    .map_err(|_| "CLAUDE_LOGOUT_FAILED: Could not run Claude Code logout")?;
+                    if !result.status.success() {
+                        return Err("CLAUDE_LOGOUT_FAILED: Account retained; retry removing it".into());
+                    }
                 }
                 std::fs::remove_dir_all(account_dir(id)?).map_err(|e| e.to_string())?;
                 if let Some(login) = current.as_ref() {

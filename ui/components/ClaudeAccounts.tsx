@@ -4,9 +4,10 @@ import { api } from "../api";
 import { t } from "../i18n";
 import { copyText } from "../platform";
 import { useInterval } from "../state/hooks";
-import { Button, Dialog, Field, Group, IconButton, Input, Notice, Row, SingleChoice, Textarea } from "./ui";
+import { Button, Dialog, Field, Group, IconButton, Input, Notice, Row, SingleChoice, Tag, Textarea } from "./ui";
 
 type Account = { id: string; identity: { loggedIn?: boolean; email?: string; orgName?: string; authMethod?: string }; observedAt: string | null };
+type SystemAccount = { identity: Account["identity"]; accountId: string | null; initialized: boolean };
 type Login = { id: string; accountId: string; browserId: string; browserName: string; state: string; loginUrl?: string; browserError?: string; error?: string };
 type Snapshot = { accounts: Account[]; cliAvailable: boolean; login: Login | null };
 type Browser = { id: string; name: string };
@@ -14,7 +15,8 @@ const pending = (login?: Login | null) => !!login && ["starting", "waiting"].inc
 
 export default function ClaudeAccounts() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
-  const [hostAccount, setHostAccount] = useState<Account>();
+  const [systemAccount, setSystemAccount] = useState<SystemAccount>();
+  const systemCheckedAt = useRef(0);
   const initialized = useRef(false), refreshing = useRef(false);
   const [notifyAccount, setNotifyAccount] = useState<Account>();
   const [target, setTarget] = useState(""), [message, setMessage] = useState("");
@@ -31,19 +33,29 @@ export default function ClaudeAccounts() {
   const label = (account: Account) => account.identity.email || t("claudeAccounts.profile", { id: account.id.slice(0, 8) });
 
   async function refresh() {
-    const next = await api<Snapshot>("claude-accounts"); setSnapshot(next);
-    if (!initialized.current) {
-      await Promise.all([refreshBrowsers(), ...(next.cliAvailable ? [refreshHost()] : [])]);
-      initialized.current = true;
+    let next = await api<Snapshot>("claude-accounts"); setSnapshot(next);
+    if (next.cliAvailable && Date.now() - systemCheckedAt.current > 30000) {
+      const host = await refreshSystem();
+      if (!pending(next.login) && !host.initialized && host.identity.loggedIn && host.identity.authMethod === "claude.ai") {
+        await importSystem();
+        next = await api<Snapshot>("claude-accounts"); setSnapshot(next);
+      }
     }
+    if (!initialized.current) { await refreshBrowsers(); initialized.current = true; }
     setLoadError("");
+  }
+  async function refreshSystem() {
+    const host = await api<SystemAccount>("claude-accounts/system");
+    setSystemAccount(host); systemCheckedAt.current = Date.now(); return host;
+  }
+  async function importSystem() {
+    await api("claude-accounts/import-system", "POST"); await refreshSystem();
   }
   async function refreshBrowsers() {
     const data = await api<{ browsers: Browser[] }>("claude-accounts/browsers");
     setBrowsers(data.browsers);
     setBrowser(current => current === "default" || data.browsers.some(b => b.id === current) ? current : "default");
   }
-  async function refreshHost() { setHostAccount(await api<Account>("claude-accounts/default")); }
   useInterval(() => {
     if (refreshing.current) return;
     refreshing.current = true;
@@ -103,16 +115,18 @@ export default function ClaudeAccounts() {
       <Button id="claude-account-login" variant="primary" busy={busy} disabled={!snapshot?.cliAvailable}
         onClick={() => active ? setShowLogin(true) : void start()}>{t(active ? "claudeAccounts.continue" : "claudeAccounts.login")}</Button>
     </div>
+    {systemAccount?.identity.loggedIn && !systemAccount.accountId && systemAccount.identity.authMethod === "claude.ai" && <Button disabled={busy || active} onClick={() => void action(importSystem)}>{t("claudeAccounts.importSystem")}</Button>}
     {snapshot && !snapshot.cliAvailable && <Notice tone="warning">{t("claudeAccounts.installCli")}</Notice>}
     {(error || loadError) && <Notice tone="danger">{error || loadError}</Notice>}
-    {[...(hostAccount ? [hostAccount] : []), ...(snapshot?.accounts || [])].map(account => <Row key={account.id} title={label(account)} description={account.id === "default" ? t("claudeAccounts.hostAccount") : account.identity.orgName}>
+    {(snapshot?.accounts || []).map(account => <Row key={account.id} title={label(account)} description={account.identity.orgName}>
       <div className="claude-account-row">
+        {systemAccount?.accountId === account.id && <Tag>{t("claudeAccounts.systemDefault")}</Tag>}
         <span title={account.observedAt ? new Date(account.observedAt).toLocaleString() : undefined}>{t(account.identity.loggedIn === true ? "claudeAccounts.signedIn" : account.identity.loggedIn === false ? "claudeAccounts.signedOut" : "claudeAccounts.unfinished")}</span>
         <IconButton icon={RefreshCw} label={t("claudeAccounts.checkAccount", { account: label(account) })} disabled={busy || active}
-          onClick={() => void action(async () => { if (account.id === "default") await refreshHost(); else await api(`claude-accounts/${account.id}/refresh`, "POST"); })} />
+          onClick={() => void action(async () => { await api(`claude-accounts/${account.id}/refresh`, "POST"); await refreshSystem(); })} />
         <Button id={`claude-notify-${account.id}`} disabled={busy || active} onClick={() => void openNotification(account)}>{t("claudeAccounts.notify")}</Button>
-        {account.id !== "default" && <><Button disabled={busy || active} onClick={() => void start(account.id)}>{t("claudeAccounts.relogin")}</Button>
-        <Button variant="ghost" disabled={busy || active} onClick={() => { setError(""); setRemove(account); }}>{t("claudeAccounts.removeAction")}</Button></>}
+        <Button disabled={busy || active} onClick={() => void start(account.id)}>{t("claudeAccounts.relogin")}</Button>
+        <Button variant="ghost" disabled={busy || active} onClick={() => { setError(""); setRemove(account); }}>{t("claudeAccounts.removeAction")}</Button>
       </div>
     </Row>)}
     {showLogin && login && <Dialog centered title={t("claudeAccounts.login")} onClose={() => setShowLogin(false)} returnFocus="#claude-account-login"

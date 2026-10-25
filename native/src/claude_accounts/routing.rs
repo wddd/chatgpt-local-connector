@@ -14,10 +14,10 @@ pub(crate) fn list() -> Result<BTreeMap<String, String>> {
 }
 
 pub(crate) fn account(target: &str) -> Result<String> {
-    Ok(list()?
-        .get(target)
-        .cloned()
-        .unwrap_or_else(|| "default".into()))
+    match list()?.get(target) {
+        Some(id) => Ok(id.clone()),
+        None => super::system::initial_account(),
+    }
 }
 
 pub(crate) async fn bind(target: &str, account_id: &str, replace: bool) -> Result<Value> {
@@ -31,4 +31,21 @@ pub(crate) async fn bind(target: &str, account_id: &str, replace: bool) -> Resul
     routes.insert(target.clone(), account_id.into());
     save(&directory().join("routes.json"), &json!(routes))?;
     Ok(json!({"target":target,"accountId":account_id}))
+}
+
+// One-time migration of the unreleased host-reference route to a retained profile.
+pub(super) async fn migrate_default(account_id: &str) -> Result<()> {
+    let _guard = ROUTES.lock().await;
+    let mut routes = list()?;
+    let mut changed = false;
+    for value in routes.values_mut() {
+        if value == "default" {
+            *value = account_id.into();
+            changed = true;
+        }
+    }
+    if changed {
+        save(&directory().join("routes.json"), &json!(routes))?;
+    }
+    Ok(())
 }

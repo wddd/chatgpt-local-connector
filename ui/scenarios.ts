@@ -190,9 +190,10 @@ export async function installScenario(name: string) {
   }] : [] };
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
   responses['service'] = { supported: true, enabled: false };
-  responses['claude-accounts/default'] = { id: 'default', identity: { loggedIn: true, email: 'host@example.invalid', authMethod: 'claude.ai' }, observedAt: now };
+  responses['claude-accounts/system'] = { initialized: true, accountId: '00000000-0000-4000-8000-000000000001', identity: { loggedIn: true, email: 'host@example.invalid', authMethod: 'claude.ai' }, observedAt: now };
   responses['claude-accounts/routes'] = { routes: {} };
   responses['claude-accounts'] = { cliAvailable: true, login: fixture.claudeLogin ? { id: 'fixture-login', accountId: '11111111-1111-4111-8111-111111111111', browserId: 'Safari', browserName: 'Safari', state: 'waiting' } : null, accounts: fixture.claudeAccounts ? [
+    { id: '00000000-0000-4000-8000-000000000001', identity: { loggedIn: true, email: 'host@example.invalid', authMethod: 'claude.ai' }, observedAt: now },
     { id: '11111111-1111-4111-8111-111111111111', identity: { loggedIn: true, email: 'personal@example.invalid', authMethod: 'claude.ai' }, observedAt: now },
     { id: '22222222-2222-4222-8222-222222222222', identity: { loggedIn: true, email: 'work@example.invalid', orgName: 'Example engineering organization', authMethod: 'claude.ai' }, observedAt: now },
   ] : [] };
