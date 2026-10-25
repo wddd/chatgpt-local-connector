@@ -234,6 +234,7 @@ pub async fn prepare(body: Value) -> Result<Value> {
         "production".into()
     });
     receipt["resumeInterrupted"] = json!(prefs["update-resume"] != "off");
+    receipt["submitter"] = crate::shell_command::originating_submitter();
     if let Some(args) = continuation {
         receipt["continuationBinding"] =
             crate::claude_notify::replacement_binding(string(&args, "threadId"))?;

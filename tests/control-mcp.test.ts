@@ -200,6 +200,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     if (method === 'command/exec' && params.command?.at(-1)==='fixture-failed-command') return emit({id,result:{stdout:'',stderr:'failed check',exitCode:7}});
     if (method === 'command/exec' && params.command?.at(-1)==='fixture-budget') return emit({id,result:{stdout:'é'.repeat(40),stderr:'err'.repeat(20),exitCode:0}});
     if (method === 'command/exec' && params.command?.at(-1)==='fixture-cwd') return emit({id,result:{stdout:params.cwd,stderr:'',exitCode:0}});
+    if (method === 'command/exec' && params.command?.at(-1)==='fixture-origin') return emit({id,result:{stdout:JSON.stringify(params.env),stderr:'',exitCode:0}});
     if (method === 'process/spawn') {
       emit({ method: 'process/outputDelta', params: { processHandle: params.processHandle, stream: 'stdout', deltaBase64: 'b2s=' } });
       emit({ method: 'process/exited', params: { processHandle: params.processHandle, exitCode: 0 } });
@@ -338,8 +339,16 @@ test('MCP lists frozen tools and guide exposes existing ops and native domains w
   assert.equal((await call('fs', { action: 'exec', params: {} })).response.isError, true);
 });
 
+function assertNativeInputPreserved(actual: any, expected: Record<string, unknown>) {
+  for (const [key, value] of Object.entries(expected)) {
+    if (key === 'env' && value && typeof value === 'object') {
+      for (const [variable, setting] of Object.entries(value)) assert.deepEqual(actual.env[variable], setting);
+    } else assert.deepEqual(actual[key], value);
+  }
+}
+
 test('native pass-through domain actions preserve RPC payloads', async () => {
-  // Contract: native pass-through actions preserve their observable RPC method and payload.
+  // Contract: native pass-through actions preserve their observable RPC method and caller-supplied fields.
   const expected: Record<string, Record<string, string>> = {
     fs: Object.fromEntries(['writeFile', 'createDirectory', 'remove', 'copy', 'watch', 'unwatch'].map(action => [action, `fs/${action}`])),
     command: { exec: 'command/exec', write: 'command/exec/write', terminate: 'command/exec/terminate', resize: 'command/exec/resize' },
@@ -354,7 +363,7 @@ test('native pass-through domain actions preserve RPC payloads', async () => {
       const value = await completed(domain, { action, params, requestId: randomUUID() });
       const result = value.state ? value.result : value;
       assert.equal(result.method, method);
-      assert.deepEqual(value.state ? result.echoedParams : result.params, params);
+      assertNativeInputPreserved(value.state ? result.echoedParams : result.params, params);
     }
   }
 });
@@ -368,7 +377,7 @@ test('typical fs, PTY, downstream MCP and file search calls preserve native fiel
     ['process', 'spawn', { command: ['cat'], cwd: '/tmp', processHandle: 'process-test', timeoutMs: null, outputBytesCap: null, tty: true }],
     ['mcp', 'tool/call', { server: 'local', threadId: 'existing-thread', tool: 'inspect', arguments: { input: [1, 2] }, _meta: { progressToken: 7 } }],
   ];
-  for (const [name, action, params] of cases) assert.deepEqual((await completed(name, { action, params, requestId: randomUUID() })).result.echoedParams, params);
+  for (const [name, action, params] of cases) assertNativeInputPreserved((await completed(name, { action, params, requestId: randomUUID() })).result.echoedParams, params);
   const params = { query: 'ctrlmcp', roots: ['/tmp'], cancellationToken: null };
   assert.deepEqual((await call('file_search', params)).result.params, params);
   assert.equal((await call('codex_account', { action: 'workspaceMessages/read' })).result.params, null);
@@ -1851,6 +1860,26 @@ test('command output budgets preserve complete stdout and stderr through control
   assert.equal(legacy.result.stdout,'é'.repeat(40));assert.equal(legacy.result.truncated,false);
   const zero=await completed('command',{cmd:'fixture-budget',cwd:directory,outputBudget:0,requestId:randomUUID()});
   assert.equal(zero.result.stdout,'');assert.equal(zero.result.stderr,'');assert.ok(zero.result.output.outputId);
+});
+
+test('command subprocesses retain source attribution and local commands clear inherited submitters',async()=>{
+  // Regression: CLI replacement launched through command lost the originating control source before creating its journal.
+  for(const args of [{cmd:'fixture-origin',cwd:directory},{action:'exec',params:{command:['fixture-origin'],cwd:directory,env:{CUSTOM_VARIABLE:'kept',ARC_COMMAND_SUBMITTER:'stale'}}}]) {
+    const receipt=await completed('command',{...args,requestId:randomUUID()});
+    assert.equal(receipt.state,'completed');
+    const env=JSON.parse(receipt.result.stdout);
+    const context=JSON.parse(env.ARC_COMMAND_SUBMITTER);
+    const original=(await call('receipt',{requestId:receipt.requestId,includeOrigin:true})).result;
+    assert.equal(context.origin.sourceId,original.origin.sourceId);
+    assert.equal(context.origin.controlSource,original.origin.controlSource);
+    if('params' in args)assert.equal(env.CUSTOM_VARIABLE,'kept');
+  }
+  const local=JSON.parse(execFileSync(fixtureCommand,['cli','control','command','--stdin'],{env:fixtureEnv,input:JSON.stringify({action:'exec',params:{command:['fixture-origin'],cwd:directory,env:{CUSTOM_VARIABLE:'kept',ARC_COMMAND_SUBMITTER:'stale'}}}),encoding:'utf8'}));
+  assert.equal(local.ok,true);
+  assert.equal(local.result.state,'completed');
+  const env=JSON.parse(local.result.result.stdout);
+  assert.equal(env.ARC_COMMAND_SUBMITTER,null);
+  assert.equal(env.CUSTOM_VARIABLE,'kept');
 });
 
 test('receipt next hashes omit repeated guidance only when explicitly supplied',async()=>{

@@ -422,6 +422,52 @@ pub(crate) async fn inherit(thread: &str, previous: &str, turn: &str) -> Result<
     Ok(())
 }
 
+pub(crate) fn command_submitter(origin: &Value) -> Result<Value> {
+    command_submitter_in(&directory(), origin)
+}
+
+fn command_submitter_in(dir: &Path, origin: &Value) -> Result<Value> {
+    let mut destinations = Vec::new();
+    if origin["authType"] != "local" {
+        let all = records(dir)?;
+        let mut state = State::load(dir)?;
+        subscriptions::sync(&mut state, &all);
+        for target in &state.targets {
+            if target.registered
+                && target.source_id == string(origin, "sourceId")
+                && target.channel == Channel::ClaudeSession
+            {
+                let notify = json!({"channel":target.channel,"target":target.target});
+                if !destinations.contains(&notify) {
+                    destinations.push(notify);
+                }
+            }
+        }
+        for sub in &state.subscriptions {
+            if sub.source_id != string(origin, "sourceId")
+                || !sub.active(chrono::Utc::now().timestamp_millis())
+                || (sub.channel == Channel::McpEvents
+                    && !sub
+                        .webhook
+                        .as_ref()
+                        .is_some_and(|w| origin["eventPrincipal"] == w.principal))
+                || (sub.channel == Channel::ClaudeSession
+                    && !all.iter().any(|b| b.scope_end.is_none() && sub.matches(b)))
+            {
+                continue;
+            }
+            let notify = json!({"channel":sub.channel,"target":sub.target});
+            if !destinations.contains(&notify) {
+                destinations.push(notify);
+            }
+        }
+    }
+    // A source can span conversations. Ambiguity must not select another chat.
+    Ok(
+        json!({"origin":origin,"notify":if destinations.len() == 1 {destinations.pop()} else {None}}),
+    )
+}
+
 // Local replacement captures the exact active dispatch before stopping Core.
 pub(crate) fn replacement_binding(thread: &str) -> Result<Value> {
     replacement_turn_binding(thread, None)
@@ -4666,6 +4712,91 @@ mod tests {
             .unwrap();
         assert_eq!(outcome["next"]["op"], "update_status");
         assert_eq!(outcome["recovery"]["affectedTasks"], 0);
+    }
+
+    #[tokio::test]
+    async fn command_submitter_receives_outcome_without_a_codex_continuation() {
+        // Regression: replacement launched by a control-source command lost its submitter and never notified that conversation.
+        let dir = Sandbox::new();
+        let b = fixture(&dir.0);
+        let mut other = b.clone();
+        other.source_id = "other-source".into();
+        other.thread_id = "other-thread".into();
+        other.turn_id = "other-turn".into();
+        other.target = Some("session_010000000000000000000002".into());
+        persist(&dir.0, &other).unwrap();
+        let origin = json!({"sourceId":b.source_id,"controlSource":"claude","authType":"oauth"});
+        governance::bind_target_in(
+            &dir.0,
+            &b.source_id,
+            &json!({"target":b.target}),
+            chrono::Utc::now().timestamp(),
+            &json!({}),
+        )
+        .unwrap();
+        let mut ended = b.clone();
+        ended.scope_end = Some("thread-archived".into());
+        persist(&dir.0, &ended).unwrap();
+        let submitter = command_submitter_in(&dir.0, &origin).unwrap();
+        let encoded = submitter.to_string();
+        let submitter = crate::shell_command::submitter_from_environment(Some(&encoded));
+        assert_eq!(submitter["origin"], origin);
+        assert_eq!(submitter["notify"]["target"], json!(b.target));
+        let at = chrono::Utc::now().timestamp();
+        let receipt = json!({"id":"command-update","state":"succeeded","submitter":submitter});
+        update_phases(&dir.0, &receipt, at).await;
+        let status = lifecycle_status(&dir.0, &b.source_id, at);
+        let sent = status["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["state"] == "delivered")
+            .collect::<Vec<_>>();
+        assert_eq!(sent.len(), 1);
+        let inbox = inbox_in(&dir.0, &b.source_id, &[], false, None).unwrap();
+        let outcome = inbox["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["eventId"] == sent[0]["eventId"])
+            .unwrap();
+        assert_eq!(outcome["next"]["op"], "update_status");
+        assert_eq!(outcome["recovery"]["affectedTasks"], 0);
+        assert!(lifecycle_status(&dir.0, &other.source_id, at)["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|d| d["state"] == "inbox-only"));
+    }
+
+    #[test]
+    fn command_submitter_does_not_guess_between_conversations_or_attribute_plain_terminals() {
+        // Regression: command-based replacement must not infer a submitter for an unattributed local terminal or an ambiguous source.
+        let dir = Sandbox::new();
+        let b = fixture(&dir.0);
+        let mut other = b.clone();
+        other.thread_id = "other-thread".into();
+        other.turn_id = "other-turn".into();
+        other.target = Some("session_010000000000000000000002".into());
+        persist(&dir.0, &other).unwrap();
+        let origin = json!({"sourceId":b.source_id,"authType":"oauth"});
+        let context = command_submitter_in(&dir.0, &origin).unwrap();
+        assert_eq!(context["origin"], origin);
+        assert!(context["notify"].is_null());
+        for raw in [
+            None,
+            Some(""),
+            Some("invalid"),
+            Some("{}"),
+            Some("{\"origin\":{\"sourceId\":\"\"}} "),
+        ] {
+            assert!(crate::shell_command::submitter_from_environment(raw).is_null());
+        }
+        assert!(
+            command_submitter_in(&dir.0, &json!({"sourceId":b.source_id,"authType":"local"}))
+                .unwrap()["notify"]
+                .is_null()
+        );
     }
 
     #[tokio::test]

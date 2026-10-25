@@ -822,6 +822,11 @@ impl Control {
         result
     }
     async fn request_native_raw(&self, method: &str, args: Value, timeout: u64) -> Result<Value> {
+        let args = if method == "command/exec" {
+            crate::shell_command::command_environment(args)
+        } else {
+            args
+        };
         crate::acceptance_fault::check_read(method, &args)?;
         #[cfg(feature = "test-fixture")]
         {

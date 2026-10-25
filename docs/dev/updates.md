@@ -83,15 +83,16 @@ All copy goes through i18n (en, zh-CN). Reference mockups live in the "ARC Unifi
 
 Add ops on the frozen tools. Add no new tools.
 
-- `query update_status`: the snapshot above, compact by default, with `next`.
+- `query update_status`: compact by default, with only the current or latest job (`id`, state, source build, `{count,titles}` for each work group, outcome, error and `next`) and at most three single-line summaries of earlier jobs. Full view retains the detailed snapshot above and last 20 outcomes.
 - `act update_request`: `action: submit | now | defer | cancel`. `submit` takes `source: {kind: local, path}`, an optional `when`, and an optional `continuation: {threadId, prompt}` with the same semantics as `app replace --stdin`. Release jobs start only from Desktop or a scheduled check, never from `submit`.
 - The `app replace` CLI and local management routes remain compatibility aliases that create a local `submit` job.
 - Update and restart lifecycle events MUST remain in the inbox even when they do not wake the conversation. `update_status` remains the progress and outcome query.
 - A lifecycle notice MUST wake only a conversation whose own task had an active turn affected by settling or shutdown. Retained bindings on finished tasks MUST NOT cause wakeups. Desktop-owned and external work MUST remain unaffected.
 - An interrupted and resumed task MUST produce one merged notice after recovery, naming the task and stating that it resumed. Pre-restart and separate recovery notices MUST NOT wake that conversation. The interruption record remains in the inbox.
 - A pending interaction that blocks settling MUST produce one settling notice to its owning conversation, asking for the answer. Other blockers MUST NOT cause settling wakeups.
-- The conversation identified by the submitted replacement's persisted continuation binding MUST receive only the outcome notice, even if it also owns a blocker or interrupted task. A local submission without conversation attribution MUST NOT infer a destination from other bindings.
+- The conversation identified by the submitted replacement's persisted command submitter or continuation binding MUST receive only the outcome notice, even if it also owns a blocker or interrupted task. A local submission without conversation attribution MUST NOT infer a destination from other bindings.
 - Notices MUST use short text scoped to the receiving conversation. Existing verification, subscription filters, buckets, breakers, mutes and transport retries MUST apply. Frozen tool and notification subscription envelopes MUST remain unchanged.
+- Control-source commands MUST carry source attribution and their uniquely bound notification destination in the spawned command environment (`ARC_COMMAND_SUBMITTER`). Local replacement MUST persist it as `submitter` without requiring a Codex continuation. When no open task binding exists, the update job MUST supply its own binding for the registered target through the existing notification router. This context MUST NOT grant authorization. Local terminal commands MAY omit it. Multiple possible destinations MUST NOT select an arbitrary conversation.
 - The guide documents these ops and states that dispatches during settling are held.
 
 The detached worker uses the internal `updates/task-notice` route with the job journal and phase. This replaces the broadcast-only `updates/notice` route without an alias. A newer worker MUST NOT fall back to the old broadcast route while the previous Core is still running. An older Core cannot send scoped settling notices; the job journal and `update_status` remain available until the new Core takes over. Frozen public tools and event subscription arguments are unchanged.

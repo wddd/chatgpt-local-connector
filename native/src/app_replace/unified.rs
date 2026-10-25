@@ -169,10 +169,64 @@ pub async fn update_status(full: bool) -> Result<Value> {
         });
     }
     value["recent"] = history()?;
-    if !full {
-        value.as_object_mut().unwrap().remove("interruptedTurns");
+    Ok(if full { value } else { compact(&value) })
+}
+
+/// Token-bounded job details; full status and the durable history stay unchanged.
+pub fn compact(value: &Value) -> Value {
+    let recent = value["recent"].as_array().cloned().unwrap_or_default();
+    let current = if value["id"].is_null() && value["state"] == "idle" {
+        recent.first().unwrap_or(value)
+    } else {
+        value
+    };
+    let mut result = json!({});
+    for key in ["id", "state", "source", "outcome", "error", "next"] {
+        result[key] = current[key].clone();
     }
-    Ok(value)
+    if result["outcome"].is_null()
+        && matches!(
+            string(current, "state"),
+            "succeeded" | "failed" | "cancelled" | "rolled-back"
+        )
+    {
+        result["outcome"] = current["state"].clone();
+    }
+    result["work"] = json!({});
+    for group in ["blocking", "willResume", "unaffected"] {
+        let rows = current["work"][group].as_array();
+        let count: u64 = rows
+            .into_iter()
+            .flatten()
+            .map(|row| row["count"].as_u64().unwrap_or(1))
+            .sum();
+        let titles: Vec<_> = rows
+            .into_iter()
+            .flatten()
+            .filter_map(|row| row["title"].as_str())
+            .collect();
+        result["work"][group] = json!({"count":count,"titles":titles});
+    }
+    result["recent"] = json!(recent
+        .iter()
+        .filter(|row| current["id"].is_null() || row["id"] != current["id"])
+        .take(3)
+        .map(|row| {
+            format!(
+                "{}: {}; {} {}; build {}; outcome {}",
+                string(row, "id"),
+                string(row, "state"),
+                string(&row["source"], "kind"),
+                string(&row["source"], "version"),
+                string(&row["source"], "build"),
+                string(row, "outcome")
+            )
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+        })
+        .collect::<Vec<_>>());
+    result
 }
 
 pub async fn update_request(mut args: Value) -> Result<Value> {
@@ -280,6 +334,57 @@ fn read_command(path: &Path, receipt: &mut Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn compact_status_keeps_one_job_and_three_single_line_history_summaries() {
+        // Regression: compact update_status duplicated full recent jobs and consumed control-source tokens.
+        let current = project(
+            &json!({"id":"current","state":"waiting-for-turns","updateSource":{"kind":"local","version":"1.2.3","build":"candidate"},"waiting":{"blockingTurns":[{"taskId":"question","title":"Answer question","question":{"large":"details"}}],"willResume":[{"taskId":"resume","title":"Resume work"}],"unaffected":[{"taskId":"external","title":"External work"}],"activeWrites":4,"pendingInteractions":1,"unknownActivity":false},"interruptedTurns":[{"private":"full details"}]}),
+        );
+        let mut value = current.clone();
+        value["recent"] = json!([current, {"id":"earlier-1","state":"failed","outcome":"failed","source":{"kind":"local","version":"1.2.2\nold","build":"previous"},"notes":"long notes","work":{"blocking":[{"title":"old task"}]}},{"id":"earlier-2"},{"id":"earlier-3"},{"id":"earlier-4"}]);
+        let before = value.clone();
+        let result = compact(&value);
+        assert_eq!(value, before);
+        assert_eq!(result["id"], "current");
+        assert_eq!(result["state"], "settling");
+        assert_eq!(result["source"]["build"], "candidate");
+        assert_eq!(
+            result["work"]["blocking"],
+            json!({"count":5,"titles":["Answer question"]})
+        );
+        assert_eq!(
+            result["work"]["willResume"],
+            json!({"count":1,"titles":["Resume work"]})
+        );
+        assert_eq!(
+            result["work"]["unaffected"],
+            json!({"count":1,"titles":["External work"]})
+        );
+        assert_eq!(result["next"], value["next"]);
+        assert!(result.get("notes").is_none());
+        assert!(result.get("interruptedTurns").is_none());
+        let recent = result["recent"].as_array().unwrap();
+        assert_eq!(recent.len(), 3);
+        assert!(recent
+            .iter()
+            .all(|row| row.as_str().is_some_and(|line| !line.contains('\n'))));
+        assert!(recent[0].as_str().unwrap().contains("previous"));
+        assert!(!result.to_string().contains("earlier-4"));
+    }
+
+    #[test]
+    fn compact_status_reports_latest_outcome_error_and_recovery_action() {
+        // Regression: compact status must preserve the latest job outcome and actionable failure instead of expanding history.
+        let latest = json!({"id":"latest","state":"failed","source":{"kind":"local","build":"candidate"},"error":"REPLACE_HEALTH_FAILED","next":{"op":"update_status","args":{"view":"full"}}});
+        let result = compact(&json!({"state":"idle","recent":[latest]}));
+        assert_eq!(result["id"], "latest");
+        assert_eq!(result["outcome"], "failed");
+        assert_eq!(result["error"], latest["error"]);
+        assert_eq!(result["next"], latest["next"]);
+        assert_eq!(result["recent"], json!([]));
+        assert_eq!(compact(&json!({"state":"idle"}))["state"], "idle");
+    }
+
     #[test]
     fn update_projection_preserves_work_and_recovery_boundaries() {
         // Property: projection never drops blockers, resumes, unaffected work, or recovery paths.

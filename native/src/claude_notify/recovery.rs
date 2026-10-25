@@ -20,6 +20,38 @@ async fn enqueue_notice(
 ) -> Result<()> {
     let _guard = lock.lock().await;
     let mut all = records(dir)?;
+    if let Some((receipt, _)) = update {
+        let submitter = &receipt["submitter"];
+        let source = string(&submitter["origin"], "sourceId");
+        let target = string(&submitter["notify"], "target");
+        if !source.is_empty() && !target.is_empty() {
+            if let Ok(channel) =
+                serde_json::from_value::<Channel>(submitter["notify"]["channel"].clone())
+            {
+                let task = format!("update:{}", string(receipt, "id"));
+                if !all.iter().any(|b| {
+                    b.source_id == source
+                        && b.scope_end.is_none()
+                        && (b.thread_id == task
+                            || (b.channel == channel && b.target.as_deref() == Some(target)))
+                }) {
+                    // A command submitter need not have dispatched an Agent task.
+                    // Bind the update job itself to reuse normal delivery controls.
+                    bind_in(dir, Some(""), &task, string(receipt, "id"), "")?;
+                    let mut b = binding(dir, &task, string(receipt, "id"))?
+                        .ok_or("UPDATE_BINDING_MISSING")?;
+                    b.source_id = source.into();
+                    b.channel = channel;
+                    b.target = (channel == Channel::ClaudeSession).then(|| target.into());
+                    b.agent = "arc".into();
+                    b.title = "ARC update".into();
+                    b.terminal = true;
+                    persist(dir, &b)?;
+                    all.push(b);
+                }
+            }
+        }
+    }
     let mut state = State::load(dir)?;
     for target in &mut state.targets {
         target.reachability.expire(at);
@@ -72,6 +104,12 @@ async fn enqueue_notice(
             .collect::<Vec<_>>();
         let initiator = update.and_then(|(receipt, _)| {
             members.iter().copied().find(|&i| {
+                let submitter = &receipt["submitter"];
+                if submitter["notify"].is_object() {
+                    return submitter["origin"]["sourceId"] == source
+                        && submitter["notify"]["channel"] == json!(channel)
+                        && submitter["notify"]["target"] == target;
+                }
                 let context = &receipt["continuationBinding"];
                 context["origin"]["sourceId"] == all[i].source_id
                     && context["threadId"] == all[i].thread_id
