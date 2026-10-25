@@ -192,7 +192,8 @@ pub(crate) fn list() -> Value {
     json!({"events":[{"name":NAME,"description":"ARC notifications. Read guide({topic:notify}) for supported op and args contracts. Currently task_status reports completed, failed, interrupted, needs-input or handoff for tasks from this source. Work wakeups may take minutes; read full results with query.","delivery":["webhook"],
         "inputSchema":subscriptions::guide()["inputSchema"],
         "payloadSchema":{"type":"object","properties":{"op":{"type":"string"},"kind":{"type":"string"},"summary":{"type":"string"},"threadId":{"type":["string","null"]},"taskId":{"type":["string","null"]},"turnId":{"type":"string"},"agent":{"type":"string"},"project":{"type":"string"},"title":{"type":"string"},"query":{"type":"object"},
-        "ownership":{"type":["object","null"],"properties":{"eventId":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"},"observedAt":{"type":"string","format":"date-time"},"evidence":{"type":["string","null"]},"timeBasis":{"type":"string"}},"required":["eventId","from","to","observedAt","evidence","timeBasis"],"additionalProperties":false}},"required":["op","kind","summary","threadId","taskId","turnId","agent","project","title","query","ownership"],"additionalProperties":false}}]})
+        "reconciliation":{"type":["object","null"],"properties":{"endedAt":{"type":["string","null"],"format":"date-time"},"durationMs":{"type":["integer","null"],"minimum":0},"timeBasis":{"type":"string","enum":["native-terminal","last-observed-activity","unknown","observed-terminal"]}},"required":["endedAt","durationMs","timeBasis"],"additionalProperties":false},
+        "ownership":{"type":["object","null"],"properties":{"eventId":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"},"observedAt":{"type":"string","format":"date-time"},"evidence":{"type":["string","null"]},"timeBasis":{"type":"string"}},"required":["eventId","from","to","observedAt","evidence","timeBasis"],"additionalProperties":false}},"required":["op","kind","summary","threadId","taskId","turnId","agent","project","title","query","ownership","reconciliation"],"additionalProperties":false}}]})
 }
 
 pub(crate) fn payload(op: &str, event: &Value) -> Value {
@@ -214,6 +215,7 @@ pub(crate) fn payload(op: &str, event: &Value) -> Value {
         "project",
         "title",
         "ownership",
+        "reconciliation",
     ] {
         data[key] = event[key].clone();
     }

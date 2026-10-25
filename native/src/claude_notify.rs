@@ -94,6 +94,8 @@ struct Delivery {
     dispatches: Value,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     task_error: Value,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    reconciliation: Value,
     #[serde(default)]
     timing: DeliveryTiming,
     #[serde(default)]
@@ -578,7 +580,7 @@ fn event(b: &Binding, d: &Delivery) -> Value {
     } else {
         json!({"hint":"Read the result and review its changes.","via":"query","op":"codex_read","args":{"threadId":b.thread_id}})
     };
-    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":task_title(b),"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"routing":d.interaction["routing"],"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":if kind=="handoff" {Value::Null}else{d.task_error.clone()},"ownership":if kind=="handoff" {d.task_error.clone()}else{Value::Null},"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
+    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":task_title(b),"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"routing":d.interaction["routing"],"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":if kind=="handoff" {Value::Null}else{d.task_error.clone()},"reconciliation":d.reconciliation,"ownership":if kind=="handoff" {d.task_error.clone()}else{Value::Null},"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
 }
 fn empty_answered_completion(b: &Binding, observed: &Value) -> bool {
     observed["state"] == "completed"
@@ -657,10 +659,13 @@ fn receipt(b: &Binding, d: &Delivery) -> String {
             }
         }
     }
-    let duration = dispatch
-        .and_then(|row| row["terminal"]["observedDurationMs"].as_u64())
-        .map(|ms| format!(" · {}m{}s", ms / 60000, ms / 1000 % 60))
-        .unwrap_or_default();
+    let duration = if d.reconciliation.is_object() {
+        d.reconciliation["durationMs"].as_u64()
+    } else {
+        dispatch.and_then(|row| row["terminal"]["observedDurationMs"].as_u64())
+    }
+    .map(|ms| format!(" · {}m{}s", ms / 60000, ms / 1000 % 60))
+    .unwrap_or_default();
     let project = b
         .project
         .trim_end_matches(['/', '\\'])
@@ -677,7 +682,12 @@ fn receipt(b: &Binding, d: &Delivery) -> String {
     } else {
         format!(" · {}", configuration.join(" "))
     };
-    format!("⟢ ARC receipt — automated, not a user message\n{icon} {state} · {}{duration}\n{}\n{}{config} · ref {}",
+    let reconciliation = if d.reconciliation.is_object() {
+        " · reconciled after restart"
+    } else {
+        ""
+    };
+    format!("⟢ ARC receipt — automated, not a user message\n{icon} {state}{reconciliation} · {}{duration}\n{}\n{}{config} · ref {}",
         receipt_line(project, 100), receipt_line(title, 100),
         receipt_line(agent, 100), b.thread_id)
 }
@@ -1038,11 +1048,28 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
         return Ok(());
     };
     *b = current;
+    let reconciliation = if b.observation["reconciliation"] == "pending-after-restart"
+        && matches!(
+            string(observation, "state"),
+            "completed" | "failed" | "cancelled"
+        ) {
+        let terminal = observation["dispatches"].as_array()
+            .and_then(|rows| rows.iter().find(|row| row["turnId"] == b.turn_id))
+            .map(|row| row["terminal"].clone())
+            .filter(|terminal| terminal["reconciledAfterRestart"] == true)
+            .unwrap_or_else(|| crate::dispatch_policy::terminal_snapshot(
+                &json!({"submittedAt":chrono::DateTime::from_timestamp(b.created_at,0).map(|t|t.to_rfc3339())}),
+                string(observation, "state"), &observation["turnTiming"],
+                b.observation["observedAt"].as_str(), true));
+        json!({"endedAt":terminal["endedAt"],"durationMs":terminal["observedDurationMs"],"timeBasis":terminal["timeBasis"]})
+    } else {
+        Value::Null
+    };
     continuation::adopt(dir, b, observation)?;
     let diagnostic_changed = if observation.get("handoffs").is_none() {
         let diagnostic = json!({"state":observation["state"],"reason":observation["reason"],
             "runtimeSource":observation["runtimeSource"],"runtimeStatus":observation["runtimeStatus"],
-            "recordedStatus":observation["recordedStatus"],"observedAt":observation["observedAt"],
+            "recordedStatus":observation["recordedStatus"],"observedAt":if observation["state"]=="unconfirmed" {b.observation["observedAt"].clone()}else{observation["observedAt"].clone()},
             "reconciliation":if observation["state"]=="unconfirmed" {"pending-after-restart"}else{"reconciled"}});
         let changed = b.observation != diagnostic;
         b.observation = diagnostic;
@@ -1173,6 +1200,7 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
             } else {
                 observation["dispatches"].clone()
             },
+            reconciliation: reconciliation.clone(),
             task_error: if handoff {
                 observation["handoffs"]
                     .as_array()
@@ -3371,6 +3399,27 @@ mod tests {
         validator.validate(&data).unwrap();
         assert_eq!(data["kind"], "handoff");
         assert!(data["ownership"].is_object());
+        let mut reconciled = data.clone();
+        reconciled["kind"] = json!("interrupted");
+        for (ended, duration, basis) in [
+            (
+                json!("2026-01-01T00:10:00Z"),
+                json!(600000),
+                "native-terminal",
+            ),
+            (
+                json!("2026-01-01T00:09:00Z"),
+                json!(540000),
+                "last-observed-activity",
+            ),
+            (Value::Null, Value::Null, "unknown"),
+        ] {
+            reconciled["reconciliation"] =
+                json!({"endedAt":ended,"durationMs":duration,"timeBasis":basis});
+            validator.validate(&reconciled).unwrap();
+        }
+        reconciled["reconciliation"]["undeclared"] = json!(true);
+        assert!(validator.validate(&reconciled).is_err());
         let mut extra = data.clone();
         extra["undeclared"] = json!(true);
         assert!(validator.validate(&extra).is_err());
@@ -4025,6 +4074,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn restart_duration_uses_native_end_or_last_activity_without_downtime() {
+        // Regression: a ten-minute interrupted turn was reported as 146 minutes after restart.
+        for (timing, last, expected, basis) in [
+            (
+                json!({"startedAt":"2026-01-01T00:00:00Z","endedAt":"2026-01-01T00:10:00Z"}),
+                Some("2026-01-01T00:09:00Z"),
+                json!(600000),
+                "native-terminal",
+            ),
+            (
+                Value::Null,
+                Some("2026-01-01T00:09:00Z"),
+                json!(540000),
+                "last-observed-activity",
+            ),
+            (Value::Null, None, Value::Null, "unknown"),
+        ] {
+            let dir = Sandbox::new();
+            let mut b = fixture(&dir.0);
+            b.created_at = 1767225600;
+            b.observation = json!({"reconciliation":"pending-after-restart","observedAt":last});
+            persist(&dir.0, &b).unwrap();
+            let observed = json!({"state":"cancelled","turnTiming":timing});
+            let fake = Fake::success();
+            process(&fake, &dir.0, &mut b, &observed).await.unwrap();
+            for _ in 0..3 {
+                b = binding(&dir.0, &b.thread_id, &b.turn_id).unwrap().unwrap();
+                super::recover(&dir.0, &mut b).unwrap();
+                process(&fake, &dir.0, &mut b, &observed).await.unwrap();
+            }
+            let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
+            let event = &inbox["events"][0];
+            assert_eq!(inbox["events"].as_array().unwrap().len(), 1);
+            assert_eq!(event["reconciliation"]["durationMs"], expected);
+            assert_eq!(event["reconciliation"]["timeBasis"], basis);
+        }
+    }
+
+    #[tokio::test]
     async fn downtime_terminal_reconciliation_is_idempotent_without_a_loaded_writer() {
         // Regression: connector restart left interrupted/completed bound turns with zero deliveries forever.
         for (native, expected) in [
@@ -4255,6 +4343,7 @@ mod tests {
             changes: Value::Null,
             dispatches: Value::Null,
             task_error: Value::Null,
+            reconciliation: Value::Null,
         });
         persist(&dir.0, &b).unwrap();
         let mut b = binding(&dir.0, "thread-1", "turn-1").unwrap().unwrap();
@@ -4312,6 +4401,10 @@ async fn enrich_completion(control: &Arc<control::Control>, b: &Binding, observe
             &b.thread_id,
             &b.turn_id,
             string(observed, "state"),
+            b.observation["observedAt"]
+                .as_str()
+                .filter(|_| b.observation["reconciliation"] == "pending-after-restart"),
+            b.observation["reconciliation"] == "pending-after-restart",
         )
         .await
         .unwrap_or_else(|error| json!({"unavailable":error}));

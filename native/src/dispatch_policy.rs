@@ -657,16 +657,44 @@ pub(crate) fn record_native_retry(thread: &str, previous: &str, retry: &Value) -
     save(&directory(thread)?.join(format!("{turn}.json")), &row)?;
     Ok(true)
 }
+// Reconciliation time is an observation, never evidence of continued execution.
+pub(crate) fn terminal_snapshot(
+    row: &Value,
+    state: &str,
+    timing: &Value,
+    last_activity: Option<&str>,
+    reconciled: bool,
+) -> Value {
+    let observed = now();
+    let native_end = timing["endedAt"].as_str();
+    let ended = native_end
+        .or(last_activity)
+        .or((!reconciled).then_some(observed.as_str()));
+    let start = timing["startedAt"]
+        .as_str()
+        .unwrap_or(string(row, "submittedAt"));
+    let elapsed = ended.and_then(|end| {
+        let start = chrono::DateTime::parse_from_rfc3339(start).ok()?;
+        let end = chrono::DateTime::parse_from_rfc3339(end).ok()?;
+        Some((end - start).num_milliseconds().max(0))
+    });
+    json!({"state":state,"observedAt":observed,"endedAt":ended,
+        "observedDurationMs":elapsed,"reconciledAfterRestart":reconciled,
+        "timeBasis":if native_end.is_some(){"native-terminal"}else if last_activity.is_some(){"last-observed-activity"}else if reconciled{"unknown"}else{"observed-terminal"}})
+}
+
 pub(crate) async fn complete(
     c: &control::Control,
     thread: &str,
     turn: &str,
     state: &str,
+    last_activity: Option<&str>,
+    reconciled: bool,
 ) -> Result<Value> {
     if !records(thread)?.iter().any(|r| r["turnId"] == turn) {
         return Ok(Value::Null);
     }
-    let configuration = match c
+    let persisted = match c
         .request(
             "thread/read",
             json!({"threadId":thread,"includeTurns":false}),
@@ -674,10 +702,8 @@ pub(crate) async fn complete(
         )
         .await
     {
-        Ok(t) => control::persisted_turns(&t["thread"])
-            .configurations
-            .remove(turn),
-        Err(_) => None,
+        Ok(t) => control::persisted_turns(&t["thread"]),
+        Err(_) => control::PersistedTurns::default(),
     };
     // Re-read under the same lock as reviews; observation must never erase a later verdict.
     let _guard = RECORDS_LOCK.lock().map_err(|e| e.to_string())?;
@@ -687,18 +713,15 @@ pub(crate) async fn complete(
         .collect::<Vec<_>>();
     for row in &mut rows {
         if row["terminal"].is_null() {
-            let end = chrono::Utc::now();
-            let elapsed = chrono::DateTime::parse_from_rfc3339(string(row, "submittedAt"))
-                .ok()
-                .map(|start| {
-                    (end - start.with_timezone(&chrono::Utc))
-                        .num_milliseconds()
-                        .max(0)
-                });
-            row["terminal"] =
-                json!({"state":state,"observedAt":end.to_rfc3339(),"observedDurationMs":elapsed});
+            row["terminal"] = terminal_snapshot(
+                row,
+                state,
+                persisted.timings.get(turn).unwrap_or(&Value::Null),
+                last_activity,
+                reconciled,
+            );
         }
-        if let Some(config) = &configuration {
+        if let Some(config) = persisted.configurations.get(turn) {
             row["effectiveConfiguration"] = json!({"model":config["model"],"effort":config["effort"],"serviceTier":config["serviceTier"],"threadServiceTier":config["threadServiceTier"],"source":config["source"]});
         }
         save(
@@ -730,7 +753,7 @@ pub(crate) async fn review(c: &control::Control, args: &Value) -> Result<Value> 
         "interrupted" => "cancelled",
         other => other,
     };
-    complete(c, thread, turn, state).await?;
+    complete(c, thread, turn, state, None, false).await?;
     if records(thread)?.iter().any(|row| row["turnId"] == turn) {
         return save_review(thread, turn, args, &Value::Null);
     }
@@ -1044,6 +1067,34 @@ pub(crate) fn select_agent_review(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reconciled_terminal_snapshot_uses_execution_evidence() {
+        // Regression: restart observation time inflated terminal dispatch duration by downtime.
+        let row = json!({"submittedAt":"2026-01-01T00:00:00Z"});
+        let timing = json!({"startedAt":"2026-01-01T00:00:00Z","endedAt":"2026-01-01T00:10:00Z"});
+        let native = terminal_snapshot(
+            &row,
+            "cancelled",
+            &timing,
+            Some("2026-01-01T00:09:00Z"),
+            true,
+        );
+        assert_eq!(native["observedDurationMs"], 600000);
+        assert_eq!(native["timeBasis"], "native-terminal");
+        let fallback = terminal_snapshot(
+            &row,
+            "cancelled",
+            &Value::Null,
+            Some("2026-01-01T00:09:00Z"),
+            true,
+        );
+        assert_eq!(fallback["observedDurationMs"], 540000);
+        assert_eq!(fallback["timeBasis"], "last-observed-activity");
+        let unknown = terminal_snapshot(&row, "cancelled", &Value::Null, None, true);
+        assert!(unknown["observedDurationMs"].is_null());
+        assert!(unknown["endedAt"].is_null());
+    }
 
     #[test]
     fn local_review_undo_rejects_changed_or_external_verdicts() {
