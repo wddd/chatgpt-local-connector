@@ -184,7 +184,9 @@ pub fn save(path: &Path, value: &Value) -> Result<()> {
     save_bytes(path, &serde_json::to_vec(value).map_err(|e| e.to_string())?)
 }
 pub fn save_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
-    private_dir(path.parent().ok_or("invalid path")?)?;
+    let parent = path.parent().ok_or("invalid path")?;
+    let before = kernel::file_cache::Stamp::read(parent).ok().flatten();
+    private_dir(parent)?;
     let temp = path.with_extension(format!("{}.tmp", id()));
     std::fs::write(&temp, bytes).map_err(|e| e.to_string())?;
     #[cfg(unix)]
@@ -193,7 +195,9 @@ pub fn save_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
         std::fs::set_permissions(&temp, std::fs::Permissions::from_mode(0o600))
             .map_err(|e| e.to_string())?;
     }
-    std::fs::rename(&temp, path).map_err(|e| e.to_string())
+    std::fs::rename(&temp, path).map_err(|e| e.to_string())?;
+    kernel::file_cache::changed(path, before);
+    Ok(())
 }
 pub fn load(path: &Path) -> Result<Value> {
     serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)

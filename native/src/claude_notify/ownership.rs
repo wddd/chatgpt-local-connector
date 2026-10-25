@@ -31,17 +31,6 @@ pub(crate) async fn observe(thread: &str, ownership: &Value) -> Result<Value> {
     let (mut state, bindings) = {
         let _guard = LOCK.lock().await;
         let mut state = stored(thread)?;
-        let all = records(&directory())?;
-        let bindings = all
-            .iter()
-            .filter(|b| {
-                b.thread_id == thread
-                    && b.scope_end.is_none()
-                    && !b.continuation_bound
-                    && (b.agent.is_empty() || b.agent == "codex")
-            })
-            .cloned()
-            .collect::<Vec<_>>();
         let previous = state["currentOwner"]
             .as_str()
             .filter(|o| *o != "unknown")
@@ -73,6 +62,19 @@ pub(crate) async fn observe(thread: &str, ownership: &Value) -> Result<Value> {
         state["state"] = ownership["state"].clone();
         state["observedAt"] = json!(now());
         save(&path(thread)?, &state)?;
+        let bindings = if state["history"]
+            .as_array()
+            .is_some_and(|rows| !rows.is_empty())
+        {
+            matching_records(&directory(), |b| {
+                b.thread_id == thread
+                    && b.scope_end.is_none()
+                    && !b.continuation_bound
+                    && (b.agent.is_empty() || b.agent == "codex")
+            })?
+        } else {
+            Vec::new()
+        };
         (state, bindings)
     };
     // History is durable before events. Re-observation repairs an interrupted

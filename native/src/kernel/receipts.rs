@@ -1,4 +1,5 @@
 //! Durable operation receipts. Owners retain execution and task lifecycle semantics.
+use super::file_cache::load;
 use crate::*;
 
 pub struct ReceiptStore {
@@ -61,7 +62,9 @@ impl ReceiptStore {
     pub fn reserve(&self, receipt: &Value) -> Result<()> {
         use std::io::Write;
         let path = self.path(string(receipt, "requestId"))?;
-        private_dir(path.parent().ok_or("INVALID_RECEIPT_PATH")?)?;
+        let parent = path.parent().ok_or("INVALID_RECEIPT_PATH")?;
+        let before = super::file_cache::Stamp::read(parent)?;
+        private_dir(parent)?;
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -74,7 +77,9 @@ impl ReceiptStore {
             .map_err(|e| format!("RECEIPT_RESERVATION_FAILED:{e}"))?;
         file.write_all(receipt.to_string().as_bytes())
             .map_err(|e| e.to_string())?;
-        file.sync_all().map_err(|e| e.to_string())
+        file.sync_all().map_err(|e| e.to_string())?;
+        super::file_cache::changed(&path, before);
+        Ok(())
     }
     pub fn checkpoint(&self, receipt: &mut Value) -> Result<()> {
         receipt["updatedAt"] = json!(now());

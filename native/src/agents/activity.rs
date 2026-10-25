@@ -1,3 +1,6 @@
+#[cfg(test)]
+use crate::kernel::file_cache::Io;
+use crate::kernel::file_cache::{Cache, Stamp};
 use crate::task_tracking::transcript_text;
 use crate::*;
 use std::{
@@ -13,7 +16,7 @@ pub(super) struct Monitor {
     selected: Vec<String>,
     active: Vec<(String, Value)>,
     known: Vec<External>,
-    turn_clocks: HashMap<PathBuf, TurnClock>,
+    scan: ScanCache,
 }
 #[derive(Default)]
 pub(super) struct TurnClock {
@@ -50,14 +53,14 @@ impl Monitor {
                 .is_none_or(|at| at.elapsed() >= Duration::from_secs(2))
         {
             self.selected = selected.clone();
-            let mut clocks = std::mem::take(&mut self.turn_clocks);
-            let (scanned, clocks) = tokio::task::spawn_blocking(move || {
-                let scanned = scan(&selected, &mut clocks);
-                (scanned, clocks)
+            let mut cache = std::mem::take(&mut self.scan);
+            let (scanned, cache) = tokio::task::spawn_blocking(move || {
+                let scanned = scan(&selected, &mut cache);
+                (scanned, cache)
             })
             .await
             .unwrap_or_default();
-            self.turn_clocks = clocks;
+            self.scan = cache;
             self.active = scanned
                 .iter()
                 .map(|s| (s.agent.clone(), s.session.clone()))
@@ -76,104 +79,217 @@ impl Monitor {
     }
 }
 
-fn scan(selected: &[String], clocks: &mut HashMap<PathBuf, TurnClock>) -> Vec<External> {
-    let mut active = Vec::new();
+#[derive(Default)]
+struct ScanCache {
+    directories: Cache<Value>,
+    tails: HashMap<PathBuf, Tail>,
+    titles: Option<(PathBuf, Stamp, HashMap<String, String>)>,
+    file_opens: u64,
+}
+struct Tail {
+    stamp: Stamp,
+    records: Vec<Value>,
+    clock: TurnClock,
+    clock_stamp: Option<Stamp>,
+}
+impl ScanCache {
+    #[cfg(test)]
+    fn io(&self) -> Io {
+        Io {
+            file_opens: self.file_opens,
+            directory_reads: self.directories.io().directory_reads,
+        }
+    }
+    fn tail(
+        &mut self,
+        path: &Path,
+        agent: &str,
+        stamp: Stamp,
+        modified: SystemTime,
+        now: SystemTime,
+    ) -> Result<(&Tail, Option<Value>)> {
+        if self.tails.get(path).is_none_or(|tail| tail.stamp != stamp) {
+            // At most 128 recent tails (128 KiB each) are retained. Older files are
+            // discovered through metadata without reading their contents.
+            if self.tails.len() >= 128 && !self.tails.contains_key(path) {
+                self.tails.clear();
+            }
+            let (clock, clock_stamp) = self
+                .tails
+                .remove(path)
+                .filter(|tail| stamp.appends_to(&tail.stamp))
+                .map(|tail| (tail.clock, tail.clock_stamp))
+                .unwrap_or_default();
+            self.file_opens += 1;
+            let (records, _) = read_tail(path, 128 * 1024)?;
+            if Stamp::read(path)?.as_ref() != Some(&stamp) {
+                return Err("Transcript changed during activity sampling".into());
+            }
+            self.tails.insert(
+                path.into(),
+                Tail {
+                    stamp,
+                    records,
+                    clock,
+                    clock_stamp,
+                },
+            );
+        }
+        let tail = self.tails.get_mut(path).unwrap();
+        let session = working_records(path, agent, modified, now, &tail.records);
+        // Completed or expired transcripts need only their tail, never a full
+        // metadata walk. Time-dependent activity is evaluated even on cache hits.
+        if session.is_some() && tail.clock_stamp.as_ref() != Some(&tail.stamp) {
+            self.file_opens += 1;
+            turn_started_at(path, agent, &mut tail.clock)?;
+            if Stamp::read(path)?.as_ref() != Some(&tail.stamp) {
+                return Err("Transcript changed during activity sampling".into());
+            }
+            tail.clock_stamp = Some(tail.stamp.clone());
+        }
+        Ok((tail, session))
+    }
+    fn titles(&mut self, path: &Path) -> Result<&HashMap<String, String>> {
+        let stamp = Stamp::read(path)?.ok_or("Session index not found")?;
+        if self
+            .titles
+            .as_ref()
+            .is_none_or(|(old_path, old_stamp, _)| old_path != path || old_stamp != &stamp)
+        {
+            self.file_opens += 1;
+            let file = File::open(path).map_err(|e| e.to_string())?;
+            let mut titles = HashMap::new();
+            for line in BufReader::new(file).lines() {
+                let line = line.map_err(|e| e.to_string())?;
+                let Ok(record) = serde_json::from_str::<Value>(&line) else {
+                    continue;
+                };
+                let title = string(&record, "thread_name").trim();
+                if !title.is_empty() {
+                    titles.insert(
+                        string(&record, "id").into(),
+                        title.chars().take(240).collect(),
+                    );
+                }
+            }
+            if Stamp::read(path)?.as_ref() != Some(&stamp) {
+                return Err("Session index changed during activity sampling".into());
+            }
+            self.titles = Some((path.into(), stamp, titles));
+        }
+        Ok(&self.titles.as_ref().unwrap().2)
+    }
+}
+fn scan(selected: &[String], cache: &mut ScanCache) -> Vec<External> {
     let Some(home) = dirs::home_dir() else {
-        return active;
+        return Vec::new();
     };
-    let now = SystemTime::now();
     let codex_home = std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".codex"));
-    for agent in selected {
-        let root = if agent == "codex" {
-            codex_home.join("sessions")
-        } else {
-            std::env::var_os("CLAUDE_CONFIG_DIR")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| home.join(".claude"))
-                .join("projects")
-        };
-        let mut directories = vec![root];
+    let roots: Vec<_> = selected
+        .iter()
+        .map(|agent| {
+            let root = if agent == "codex" {
+                codex_home.join("sessions")
+            } else {
+                std::env::var_os("CLAUDE_CONFIG_DIR")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| home.join(".claude"))
+                    .join("projects")
+            };
+            (agent.clone(), root)
+        })
+        .collect();
+    scan_roots(
+        &roots,
+        &codex_home.join("session_index.jsonl"),
+        SystemTime::now(),
+        cache,
+    )
+}
+fn scan_roots(
+    roots: &[(String, PathBuf)],
+    index: &Path,
+    now: SystemTime,
+    cache: &mut ScanCache,
+) -> Vec<External> {
+    let mut active = Vec::new();
+    let mut recent = HashSet::new();
+    for (agent, root) in roots {
+        let mut directories = vec![root.clone()];
         while let Some(dir) = directories.pop() {
-            let Ok(entries) = std::fs::read_dir(dir) else {
+            let Ok(entries) = cache.directories.entries(&dir) else {
                 continue;
             };
-            for entry in entries.flatten() {
-                if entry.file_name().to_string_lossy().starts_with('.') {
+            for entry in entries.iter() {
+                let path = &entry.path;
+                if path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with('.'))
+                    || entry.kind.is_symlink()
+                {
                     continue;
                 }
-                let Ok(kind) = entry.file_type() else {
+                if entry.kind.is_dir() {
+                    directories.push(path.clone());
+                    continue;
+                }
+                if !entry.kind.is_file() || path.extension().is_none_or(|ext| ext != "jsonl") {
+                    continue;
+                }
+                let Ok(metadata) = std::fs::metadata(path) else {
                     continue;
                 };
-                if kind.is_symlink() {
-                    continue;
-                }
-                if kind.is_dir() {
-                    directories.push(entry.path());
-                    continue;
-                }
-                if !kind.is_file() || entry.path().extension().is_none_or(|ext| ext != "jsonl") {
-                    continue;
-                }
-                let Ok(modified) = entry.metadata().and_then(|m| m.modified()) else {
+                let Ok(modified) = metadata.modified() else {
                     continue;
                 };
                 if now.duration_since(modified).unwrap_or_default() > Duration::from_secs(300) {
                     continue;
                 }
-                if let Some(mut session) = working(&entry.path(), agent, modified, now) {
-                    let clock = clocks.entry(entry.path()).or_default();
-                    session["turnStartedAt"] =
-                        turn_started_at(&entry.path(), agent, clock).unwrap_or(Value::Null);
+                recent.insert(path.clone());
+                let Ok((tail, session)) =
+                    cache.tail(path, agent, Stamp::from_metadata(&metadata), modified, now)
+                else {
+                    continue;
+                };
+                if let Some(mut session) = session {
+                    let clock = &tail.clock;
+                    session["turnStartedAt"] = clock.started_at.clone();
                     if !clock.title.is_empty() {
-                        session["title"] = json!(clock.title);
+                        session["title"] = json!(clock.title)
                     }
                     if session["project"].is_null() {
-                        session["project"] = json!(clock.project);
+                        session["project"] = json!(clock.project)
                     }
                     session["startedAt"] = clock.created_at.clone();
                     session["turnCount"] = json!(clock.turns.len());
                     if !clock.turn_id.is_empty() {
-                        session["turnId"] = json!(clock.turn_id);
+                        session["turnId"] = json!(clock.turn_id)
                     }
                     if let Some(summary) = &clock.dispatch_summary {
-                        session["dispatchSummary"] = summary.clone();
+                        session["dispatchSummary"] = summary.clone()
                     }
                     active.push(External {
                         agent: agent.clone(),
                         session,
-                        path: entry.path(),
+                        path: path.clone(),
                         turn_dispatch_summaries: clock.turn_dispatch_summaries.clone(),
                     });
                 }
             }
         }
     }
-    // Codex stores generated and renamed conversation titles separately from rollouts.
-    // Later index records replace earlier names for the same session.
     if active.iter().any(|session| session.agent == "codex") {
-        if let Ok(file) = File::open(codex_home.join("session_index.jsonl")) {
-            for line in BufReader::new(file)
-                .lines()
-                .map_while(std::result::Result::ok)
-            {
-                let Ok(record) = serde_json::from_str::<Value>(&line) else {
-                    continue;
-                };
-                let title = string(&record, "thread_name").trim();
-                if title.is_empty() {
-                    continue;
-                }
-                if let Some(session) = active.iter_mut().find(|session| {
-                    session.agent == "codex" && session.session["id"] == record["id"]
-                }) {
-                    session.session["title"] = json!(title.chars().take(240).collect::<String>());
+        if let Ok(titles) = cache.titles(index) {
+            for session in active.iter_mut().filter(|s| s.agent == "codex") {
+                if let Some(title) = titles.get(string(&session.session, "id")) {
+                    session.session["title"] = json!(title)
                 }
             }
         }
     }
-    clocks.retain(|path, _| active.iter().any(|session| &session.path == path));
+    cache.tails.retain(|path, _| recent.contains(path));
     active
 }
 
@@ -332,8 +448,13 @@ pub(super) fn claude_timeline(path: &Path, session: &str) -> Result<Value> {
     result["readOnly"] = json!(true);
     Ok(result)
 }
-fn working(path: &Path, agent: &str, modified: SystemTime, now: SystemTime) -> Option<Value> {
-    let (records, _) = read_tail(path, 128 * 1024).ok()?;
+fn working_records(
+    path: &Path,
+    agent: &str,
+    modified: SystemTime,
+    now: SystemTime,
+    records: &[Value],
+) -> Option<Value> {
     let metadata = records
         .iter()
         .find(|r| r["type"] == "session_meta")
@@ -521,6 +642,95 @@ fn phase_content(record: &Value, agent: &str, current: bool) -> Option<(String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn activity_polls_skip_unchanged_files_but_discover_changes_and_expire_work() {
+        // Regression: the two-second activity poll reopened every recent rollout and the entire title index.
+        struct Sandbox(PathBuf);
+        impl Drop for Sandbox {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let dir = Sandbox(std::env::temp_dir().join(format!("arc-activity-cache-{}", id())));
+        let sessions = dir.0.join("sessions");
+        std::fs::create_dir_all(sessions.join("day")).unwrap();
+        let index = dir.0.join("index.jsonl");
+        let path = sessions.join("day/rollout.jsonl");
+        let start = SystemTime::now();
+        let timestamp = chrono::DateTime::<chrono::Utc>::from(start).to_rfc3339();
+        let rollout = |session: &str, state: &str| {
+            format!(
+                "{}\n{}\n",
+                json!({"type":"session_meta","payload":{"id":session}}),
+                json!({"timestamp":timestamp,"type":"event_msg","payload":{"type":state,"turn_id":"turn"}})
+            )
+        };
+        std::fs::write(&path, rollout("first", "task_started")).unwrap();
+        std::fs::write(
+            &index,
+            format!("{}\n", json!({"id":"first","thread_name":"Initial"})),
+        )
+        .unwrap();
+        let roots = vec![("codex".into(), sessions.clone())];
+        let mut cache = ScanCache::default();
+        let rows = scan_roots(&roots, &index, start, &mut cache);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].session["title"], "Initial");
+        let warm = cache.io();
+        for second in [2, 4, 6, 8] {
+            let rows = scan_roots(
+                &roots,
+                &index,
+                start + Duration::from_secs(second),
+                &mut cache,
+            );
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].session["turnCount"], 1);
+        }
+        assert_eq!(cache.io(), warm);
+        // Time still advances even when the transcript bytes do not.
+        assert!(scan_roots(&roots, &index, start + Duration::from_secs(91), &mut cache).is_empty());
+        assert_eq!(cache.io(), warm);
+        std::fs::write(
+            &index,
+            format!("{}\n", json!({"id":"first","thread_name":"Renamed"})),
+        )
+        .unwrap();
+        let rows = scan_roots(&roots, &index, start, &mut cache);
+        assert_eq!(rows[0].session["title"], "Renamed");
+        assert_eq!(cache.io().file_opens - warm.file_opens, 1);
+        let changed = cache.io();
+        std::fs::write(
+            sessions.join("second.jsonl"),
+            rollout("second", "task_started"),
+        )
+        .unwrap();
+        assert_eq!(scan_roots(&roots, &index, start, &mut cache).len(), 2);
+        assert_eq!(cache.io().directory_reads - changed.directory_reads, 1);
+        assert_eq!(cache.io().file_opens - changed.file_opens, 2);
+        // Replacement resets the turn clock even when the new file is longer.
+        let replacement = sessions.join("replacement.tmp");
+        std::fs::write(
+            &replacement,
+            rollout("first", "task_started")
+                .replace("turn_id\":\"turn\"", "turn_id\":\"replacement-turn\""),
+        )
+        .unwrap();
+        std::fs::rename(replacement, &path).unwrap();
+        let rows = scan_roots(&roots, &index, start, &mut cache);
+        let replaced = rows
+            .iter()
+            .find(|row| row.session["id"] == "first")
+            .unwrap();
+        assert_eq!(replaced.session["turnId"], "replacement-turn");
+        assert_eq!(replaced.session["turnCount"], 1);
+        std::fs::write(&path, rollout("first", "task_complete")).unwrap();
+        let rows = scan_roots(&roots, &index, start, &mut cache);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].session["id"], "second");
+        std::fs::remove_file(sessions.join("second.jsonl")).unwrap();
+        assert!(scan_roots(&roots, &index, start, &mut cache).is_empty());
+    }
     #[test]
     fn external_summary_falls_back_without_changing_the_current_phase() {
         // Property: external summary falls back without changing the current phase.

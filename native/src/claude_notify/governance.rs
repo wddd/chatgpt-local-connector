@@ -152,10 +152,12 @@ impl State {
         })
     }
     pub fn save(&self, dir: &Path) -> Result<()> {
-        save(
-            &dir.join("subscriptions/state.json"),
-            &serde_json::to_value(self).map_err(|e| e.to_string())?,
-        )
+        let path = dir.join("subscriptions/state.json");
+        let value = serde_json::to_value(self).map_err(|e| e.to_string())?;
+        if load(&path).ok().as_ref() == Some(&value) {
+            return Ok(());
+        }
+        save(&path, &value)
     }
     pub fn target(
         &mut self,

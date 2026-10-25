@@ -1,4 +1,5 @@
 //! Local replacement receipts. No remote MCP surface or shell executor owns the worker.
+use crate::kernel::file_cache::{self, load};
 use crate::*;
 mod backups;
 mod resume;
@@ -110,11 +111,14 @@ fn directory() -> PathBuf {
 // Only the exact local receipt's durable continuation can reuse dispatch origin.
 // Remote control-source arguments cannot opt into this path.
 pub(crate) fn continuation_context(operation: &str, args: &Value) -> Result<Option<Value>> {
-    let Ok(entries) = std::fs::read_dir(directory()) else {
+    continuation_context_in(&directory(), operation, args)
+}
+fn continuation_context_in(dir: &Path, operation: &str, args: &Value) -> Result<Option<Value>> {
+    let Ok(entries) = file_cache::entries(dir) else {
         return Ok(None);
     };
-    for entry in entries.flatten() {
-        let path = entry.path().join("status.json");
+    for entry in entries.iter() {
+        let path = entry.path.join("status.json");
         if !path.is_file() {
             continue;
         }
@@ -147,11 +151,14 @@ pub(crate) fn continuation_context(operation: &str, args: &Value) -> Result<Opti
 }
 
 pub(crate) fn continuation_request_matches(thread: &str, request: &str) -> Result<bool> {
-    let Ok(entries) = std::fs::read_dir(directory()) else {
+    continuation_request_matches_in(&directory(), thread, request)
+}
+fn continuation_request_matches_in(dir: &Path, thread: &str, request: &str) -> Result<bool> {
+    let Ok(entries) = file_cache::entries(dir) else {
         return Ok(false);
     };
-    for entry in entries.flatten() {
-        let path = entry.path().join("status.json");
+    for entry in entries.iter() {
+        let path = entry.path.join("status.json");
         if !path.is_file() {
             continue;
         }
@@ -426,6 +433,49 @@ mod tests {
         assert!(receipt["interruptedTurns"][0]["continuation"].is_null());
     }
 
+    #[test]
+    fn continuation_lookups_read_only_changed_replacement_receipts() {
+        // Regression: continuation attribution reopened every historical replacement status on every lookup.
+        struct Sandbox(PathBuf);
+        impl Drop for Sandbox {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let dir = Sandbox(std::env::temp_dir().join(format!("arc-continuation-cache-{}", id())));
+        for n in 0..52 {
+            save(
+                &dir.0.join(n.to_string()).join("status.json"),
+                &json!({"state":"succeeded"}),
+            )
+            .unwrap();
+        }
+        let args = json!({"threadId":"thread","requestId":"request"});
+        assert!(continuation_context_in(&dir.0, "codex_send", &args)
+            .unwrap()
+            .is_none());
+        let warm = file_cache::thread_io();
+        for _ in 0..3 {
+            assert!(!continuation_request_matches_in(&dir.0, "thread", "request").unwrap());
+            assert!(continuation_context_in(&dir.0, "codex_send", &args)
+                .unwrap()
+                .is_none());
+        }
+        assert_eq!(file_cache::thread_io(), warm);
+        save(&dir.0.join("0/status.json"), &json!({"continuation":args,"continuationBinding":{"sourceId":"source"},"continuationState":"submitting"})).unwrap();
+        assert!(continuation_request_matches_in(&dir.0, "thread", "request").unwrap());
+        assert_eq!(
+            continuation_context_in(&dir.0, "codex_send", &args)
+                .unwrap()
+                .unwrap()["sourceId"],
+            "source"
+        );
+        assert_eq!(file_cache::thread_io().file_opens - warm.file_opens, 1);
+        assert_eq!(
+            file_cache::thread_io().directory_reads,
+            warm.directory_reads
+        );
+    }
     #[test]
     fn explicit_continuation_replaces_native_resume_and_finished_turns_are_not_submitted() {
         // Regression: a replacing-thread continuation could compete with the automatic batch continuation.

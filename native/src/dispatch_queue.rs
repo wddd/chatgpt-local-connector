@@ -1,4 +1,5 @@
 //! Durable FIFO messages. A reservation is never replayed after uncertain submission.
+use crate::kernel::file_cache::{self, load};
 use crate::*;
 static LOCK: Mutex<()> = Mutex::const_new(());
 fn directory() -> PathBuf {
@@ -9,15 +10,17 @@ fn path(id: &str) -> Result<PathBuf> {
     Ok(directory().join(format!("{id}.json")))
 }
 fn records() -> Result<Vec<Value>> {
-    if !directory().exists() {
+    records_in(&directory())
+}
+fn records_in(dir: &Path) -> Result<Vec<Value>> {
+    if !dir.exists() {
         return Ok(vec![]);
     }
-    let mut rows = std::fs::read_dir(directory())
-        .map_err(|e| e.to_string())?
-        .flatten()
-        .filter(|e| e.path().extension().is_some_and(|v| v == "json"))
+    let mut rows = file_cache::entries(dir)?
+        .iter()
+        .filter(|e| e.path.extension().is_some_and(|v| v == "json"))
         .filter_map(|e| {
-            let row = load(&e.path()).ok()?;
+            let row = load(&e.path).ok()?;
             if !row.is_object()
                 || uuid::Uuid::parse_str(string(&row, "queueId")).is_err()
                 || string(&row, "threadId").is_empty()
@@ -347,6 +350,39 @@ pub(crate) fn start(control: &Arc<control::Control>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn queue_poll_reuses_history_and_reads_only_the_changed_message() {
+        // Regression: the one-second send queue poll reread completed messages indefinitely.
+        struct Sandbox(PathBuf);
+        impl Drop for Sandbox {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let dir = Sandbox(std::env::temp_dir().join(format!("arc-queue-cache-{}", id())));
+        for n in 0..24 {
+            save(&dir.0.join(format!("{n}.json")), &json!({"queueId":id(),"threadId":"thread","args":{},"state":"completed","sequence":n})).unwrap();
+        }
+        assert_eq!(records_in(&dir.0).unwrap().len(), 24);
+        let warm = file_cache::thread_io();
+        for _ in 0..3 {
+            assert_eq!(records_in(&dir.0).unwrap().len(), 24);
+        }
+        assert_eq!(file_cache::thread_io(), warm);
+        save(
+            &dir.0.join("0.json"),
+            &json!({"queueId":id(),"threadId":"thread","args":{},"state":"queued","sequence":0}),
+        )
+        .unwrap();
+        let records = records_in(&dir.0).unwrap();
+        assert_eq!(records[0]["state"], "queued");
+        assert_eq!(file_cache::thread_io().file_opens - warm.file_opens, 1);
+        assert_eq!(
+            file_cache::thread_io().directory_reads,
+            warm.directory_reads
+        );
+    }
+
     #[test]
     fn orphaned_panel_records_remain_cancellable_only_locally() {
         // Regression: missing sourceId filtered a queued panel record out of every cancel path.

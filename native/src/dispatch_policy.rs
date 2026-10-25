@@ -1,4 +1,5 @@
 //! User-owned dispatch choices; native capability and quota facts stay upstream.
+use crate::kernel::file_cache::{self, load};
 use crate::*;
 use serde::{Deserialize, Serialize};
 mod decision;
@@ -333,9 +334,8 @@ fn history_view(agent: &str, compact: bool) -> Result<Value> {
     for kind in ["dispatches", "reviews"] {
         let dir = root().join(kind);
         if dir.exists() {
-            for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-                let entry = entry.map_err(|e| e.to_string())?;
-                rows.extend(read_rows(&entry.path())?);
+            for entry in file_cache::entries(&dir)?.iter() {
+                rows.extend(read_rows(&entry.path)?);
             }
         }
     }
@@ -556,13 +556,10 @@ fn read_rows(dir: &Path) -> Result<Vec<Value>> {
     if !dir.exists() {
         return Ok(vec![]);
     }
-    let mut rows = std::fs::read_dir(dir)
-        .map_err(|e| e.to_string())?
-        .filter(|e| {
-            e.as_ref()
-                .map_or(true, |e| e.path().extension().is_some_and(|v| v == "json"))
-        })
-        .map(|e| e.map_err(|e| e.to_string()).and_then(|e| load(&e.path())))
+    let mut rows = file_cache::entries(dir)?
+        .iter()
+        .filter(|entry| entry.path.extension().is_some_and(|v| v == "json"))
+        .map(|entry| load(&entry.path))
         .collect::<Result<Vec<_>>>()?;
     rows.sort_by_key(|r| string(r, "submittedAt").to_owned());
     Ok(rows)
@@ -1067,6 +1064,40 @@ pub(crate) fn select_agent_review(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dispatch_history_polls_read_only_changed_turns() {
+        // Regression: notification and timeline polls repeatedly opened every dispatch in a thread.
+        struct Sandbox(PathBuf);
+        impl Drop for Sandbox {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let dir = Sandbox(std::env::temp_dir().join(format!("arc-dispatch-cache-{}", id())));
+        for n in 0..338 {
+            save(
+                &dir.0.join(format!("{n}.json")),
+                &json!({"turnId":n,"state":"completed"}),
+            )
+            .unwrap();
+        }
+        assert_eq!(read_rows(&dir.0).unwrap().len(), 338);
+        let warm = file_cache::thread_io();
+        for _ in 0..3 {
+            assert_eq!(read_rows(&dir.0).unwrap().len(), 338);
+        }
+        assert_eq!(file_cache::thread_io(), warm);
+        save(&dir.0.join("0.json"), &json!({"turnId":0,"state":"failed"})).unwrap();
+        assert!(read_rows(&dir.0)
+            .unwrap()
+            .iter()
+            .any(|r| r["turnId"] == 0 && r["state"] == "failed"));
+        assert_eq!(file_cache::thread_io().file_opens - warm.file_opens, 1);
+        assert_eq!(
+            file_cache::thread_io().directory_reads,
+            warm.directory_reads
+        );
+    }
 
     #[test]
     fn reconciled_terminal_snapshot_uses_execution_evidence() {

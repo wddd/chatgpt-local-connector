@@ -222,11 +222,11 @@ pub fn resumable_waiting(mut waiting: Value, snapshot: &Value) -> Value {
 
 // Read only durable local intent. Remote callers cannot supply replacement attribution.
 pub(crate) fn continuation_entry(thread: &str, request: &str) -> Result<Option<Value>> {
-    let Ok(entries) = std::fs::read_dir(directory()) else {
+    let Ok(entries) = file_cache::entries(&directory()) else {
         return Ok(None);
     };
-    for file in entries.flatten() {
-        let path = file.path().join("status.json");
+    for file in entries.iter() {
+        let path = file.path.join("status.json");
         if !path.is_file() {
             continue;
         }

@@ -1,4 +1,5 @@
 //! Observe native user inputs without attributing ARC submissions to the user.
+use crate::kernel::file_cache::load;
 use crate::*;
 use std::sync::Mutex;
 

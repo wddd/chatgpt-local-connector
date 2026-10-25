@@ -183,16 +183,22 @@ fn path(dir: &Path, agent: &str, task: &str, request: &str) -> PathBuf {
     ))
 }
 fn binding_for(dir: &Path, agent: &str, task: &str, turn: &Value) -> Result<Option<Binding>> {
-    Ok(records(dir)?
+    let matches = |b: &Binding| {
+        b.thread_id == task
+            && (b.agent == agent || b.agent.is_empty() && agent == "codex")
+            && b.scope_end.is_none()
+    };
+    if let Some(turn) = turn.as_str() {
+        return Ok(binding(dir, task, turn)?.filter(matches));
+    }
+    if !turn.is_null() {
+        return Ok(None);
+    }
+    Ok(matching_records(dir, matches)?
         .into_iter()
-        .filter(|b| {
-            b.thread_id == task
-                && (b.agent == agent || b.agent.is_empty() && agent == "codex")
-                && (turn.is_null() || turn.as_str() == Some(b.turn_id.as_str()))
-                && b.scope_end.is_none()
-        })
         .max_by_key(|b| b.created_at))
 }
+
 fn routable(dir: &Path, b: &Binding, now: i64) -> Result<bool> {
     if settings()?["notificationsEnabled"] == false {
         return Ok(false);

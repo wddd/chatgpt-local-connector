@@ -42,6 +42,7 @@ pub struct AgentHost {
     operations: Mutex<HashMap<String, Operation>>,
     requests: crate::kernel::receipts::RequestLocks,
     session: String,
+    task_records: std::sync::Mutex<crate::kernel::file_cache::Projection<Vec<Value>>>,
     lifecycle: Mutex<()>,
     wake: Arc<tokio::sync::Notify>,
 }
@@ -105,6 +106,7 @@ impl AgentHost {
         Ok(Arc::new(Self {
             activity: Default::default(),
             conversations: Default::default(),
+            task_records: Default::default(),
             disabled: Mutex::new(disabled),
             drivers,
             adapter_job: Default::default(),
@@ -329,9 +331,17 @@ impl AgentHost {
         if !directory.exists() {
             return Ok(Vec::new());
         }
+        use crate::kernel::file_cache::{self, Projection};
+        let dependencies = [directory.clone(), root().join("agents/tasks")];
+        let mut cache = self.task_records.lock().map_err(|e| e.to_string())?;
+        let stamps = Projection::<Vec<Value>>::stamps(&dependencies)?;
+        if let Some(records) = cache.get(&stamps) {
+            return Ok(records);
+        }
+        let mut complete = true;
         let mut records = Vec::new();
-        for entry in std::fs::read_dir(directory).map_err(|e| e.to_string())? {
-            let path = entry.map_err(|e| e.to_string())?.path();
+        for entry in file_cache::entries(&directory)?.iter() {
+            let path = &entry.path;
             let Some(request) = path
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -349,7 +359,13 @@ impl AgentHost {
             let args = &receipt["arguments"];
             let task = task_path(string(&receipt, "taskId"))
                 .ok()
-                .and_then(|p| load(&p).ok())
+                .and_then(|p| match file_cache::load(&p) {
+                    Ok(task) => Some(task),
+                    Err(_) => {
+                        complete &= !p.exists();
+                        None
+                    }
+                })
                 .unwrap_or(Value::Null);
             let state = string(&task, "status");
             let runtime = match state {
@@ -365,6 +381,9 @@ impl AgentHost {
                 "task":{"agentAccountId":receipt["agentAccountId"],"kind":if receipt["operation"] == "agent_create" {"create"}else{"send"},"origin":receipt["origin"],"title":task.get("title").unwrap_or(&args["title"]),"prompt":args["prompt"].as_str().unwrap_or(""),"input":[],"directory":task.get("cwd").unwrap_or(&args["cwd"]),"model":args["model"],"settings":{}},
                 "runtime":{"runtimeStatus":runtime,"title":task["title"],"observedAt":task["updatedAt"],"stale":receipt["backendSession"] != self.session && matches!(runtime, "active" | "waiting")},
                 "error":receipt.get("error").or_else(||receipt["result"].get("error"))}));
+        }
+        if complete {
+            cache.set(&dependencies, stamps, records.clone())?;
         }
         Ok(records)
     }

@@ -16,6 +16,7 @@ pub struct Control {
     schemas: Mutex<Option<Value>>,
     requests: crate::kernel::receipts::RequestLocks,
     pub(crate) projects: Mutex<Option<(std::time::Instant, Vec<Value>)>>,
+    task_records: Mutex<crate::kernel::file_cache::Projection<Vec<Value>>>,
 }
 const RECEIPTS: crate::kernel::receipts::ReceiptStore =
     crate::kernel::receipts::ReceiptStore::new("");
@@ -78,6 +79,7 @@ impl Control {
             schemas: Mutex::new(None),
             requests: Default::default(),
             projects: Default::default(),
+            task_records: Default::default(),
         })
     }
     fn rpc_binary(&self) -> Result<PathBuf> {
@@ -174,7 +176,7 @@ impl Control {
             return Ok(false);
         }
         let path = root().join("execution").join(format!("{thread}.json"));
-        Ok(path.exists() && load(&path)?["owner"] == "connector")
+        Ok(path.exists() && crate::kernel::file_cache::load(&path)?["owner"] == "connector")
     }
     fn handed_to_desktop(&self, thread: &str) -> bool {
         crate::claude_notify::ownership::read(thread)
@@ -1165,15 +1167,17 @@ impl Control {
         Ok(r)
     }
     pub async fn task_records(&self) -> Result<Vec<Value>> {
+        use crate::kernel::file_cache::{self, Projection};
+        let dependencies = [root(), root().join("tasks"), root().join("execution")];
+        let mut cache = self.task_records.lock().await;
+        let stamps = Projection::<Vec<Value>>::stamps(&dependencies)?;
+        if let Some(records) = cache.get(&stamps) {
+            return Ok(records);
+        }
+        let mut complete = true;
         let mut records = Vec::new();
-        for entry in std::fs::read_dir(root()).map_err(|e| e.to_string())? {
-            let path = match entry {
-                Ok(entry) => entry.path(),
-                Err(e) => {
-                    crate::logs::record("WARN", &format!("Skipping task record: {e}"), None);
-                    continue;
-                }
-            };
+        for entry in file_cache::entries(&root())?.iter() {
+            let path = &entry.path;
             if path.extension().is_none_or(|e| e != "json") {
                 continue;
             }
@@ -1186,6 +1190,7 @@ impl Control {
             let mut r = match self.receipt(request).await {
                 Ok(r) => r,
                 Err(e) => {
+                    complete = false;
                     crate::logs::record(
                         "WARN",
                         &format!("Skipping task receipt {request}: {e}"),
@@ -1229,11 +1234,13 @@ impl Control {
                 .or_else(|| r["task"]["threadId"].as_str())
             {
                 if uuid::Uuid::parse_str(thread_id).is_ok() {
-                    if let Ok(mut runtime) =
-                        load(&root().join("tasks").join(format!("{thread_id}.json")))
-                    {
-                        runtime["stale"] = json!(true);
-                        r["runtime"] = runtime;
+                    let path = root().join("tasks").join(format!("{thread_id}.json"));
+                    match file_cache::load(&path) {
+                        Ok(mut runtime) => {
+                            runtime["stale"] = json!(true);
+                            r["runtime"] = runtime;
+                        }
+                        Err(_) => complete &= !path.exists(),
                     }
                 }
             }
@@ -1244,6 +1251,7 @@ impl Control {
                             json!(if background { "connector" } else { "desktop" })
                     }
                     Err(e) => {
+                        complete = false;
                         crate::logs::record(
                             "WARN",
                             &format!("Skipping task {thread_id}: {e}"),
@@ -1259,6 +1267,9 @@ impl Control {
             records.push(r);
         }
         records.sort_by(|a, b| string(b, "createdAt").cmp(string(a, "createdAt")));
+        if complete {
+            cache.set(&dependencies, stamps, records.clone())?;
+        }
         Ok(records)
     }
     pub async fn task_runtime(&self, id: &str) -> Result<Value> {

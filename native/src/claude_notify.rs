@@ -1,4 +1,5 @@
 //! Turn-scoped control-source events, inboxes and fixed notification channels.
+use crate::kernel::file_cache::{self, load};
 use crate::*;
 pub(crate) mod continuation;
 mod diagnostics;
@@ -164,11 +165,20 @@ fn path_in(dir: &Path, thread: &str, turn: &str) -> PathBuf {
     dir.join("tasks")
         .join(format!("{}.json", hash(json!([thread, turn]).to_string())))
 }
+static BINDINGS: std::sync::LazyLock<std::sync::Mutex<file_cache::Cache<Binding>>> =
+    std::sync::LazyLock::new(Default::default);
+fn binding_paths(dir: &Path) -> Result<Arc<Vec<file_cache::Entry>>> {
+    BINDINGS
+        .lock()
+        .map_err(|e| e.to_string())?
+        .entries(&dir.join("tasks"))
+}
 fn persist(dir: &Path, b: &Binding) -> Result<()> {
-    save(
-        &path_in(dir, &b.thread_id, &b.turn_id),
-        &serde_json::to_value(b).map_err(|e| e.to_string())?,
-    )
+    let path = path_in(dir, &b.thread_id, &b.turn_id);
+    let before = file_cache::Stamp::read(path.parent().unwrap())?;
+    let mut cache = BINDINGS.lock().map_err(|e| e.to_string())?;
+    save(&path, &serde_json::to_value(b).map_err(|e| e.to_string())?)?;
+    cache.written(&path, before, b.clone())
 }
 fn binding(dir: &Path, thread: &str, turn: &str) -> Result<Option<Binding>> {
     let path = path_in(dir, thread, turn);
@@ -179,15 +189,19 @@ fn binding(dir: &Path, thread: &str, turn: &str) -> Result<Option<Binding>> {
 }
 // Fail a malformed record closed without making unrelated bindings unavailable.
 fn read_binding(path: &Path) -> Result<Option<Binding>> {
-    let text = std::fs::read(path).map_err(|e| e.to_string())?;
-    match serde_json::from_slice(&text) {
+    Ok(shared_binding(path)?.map(|b| (*b).clone()))
+}
+fn shared_binding(path: &Path) -> Result<Option<Arc<Binding>>> {
+    match BINDINGS.lock().map_err(|e| e.to_string())?.read(path) {
         Ok(binding) => Ok(Some(binding)),
-        Err(_) => {
+        Err(error) if error.starts_with("INVALID_JSON:") => {
             crate::logs::record("WARN", "Ignored malformed notification binding", None);
             Ok(None)
         }
+        Err(error) => Err(error),
     }
 }
+
 fn bind_in(dir: &Path, session: Option<&str>, thread: &str, turn: &str, cwd: &str) -> Result<()> {
     let Some(session) = session else {
         return Ok(());
@@ -509,7 +523,14 @@ fn remove_expired(dir: &Path, b: &Binding, now: i64) -> Result<bool> {
     {
         return Ok(false);
     }
-    std::fs::remove_file(path_in(dir, &b.thread_id, &b.turn_id)).map_err(|e| e.to_string())?;
+    let path = path_in(dir, &b.thread_id, &b.turn_id);
+    let before = file_cache::Stamp::read(path.parent().unwrap())?;
+    std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    file_cache::changed(&path, before.clone());
+    BINDINGS
+        .lock()
+        .map_err(|e| e.to_string())?
+        .changed(&path, before);
     Ok(true)
 }
 fn notification(b: Option<Binding>) -> Value {
@@ -1125,7 +1146,15 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     {
         b.thread_title = title.to_owned();
     }
-    let history = records(dir)?;
+    let history = if b.successor["inherited"] == true
+        || observation["handoffs"]
+            .as_array()
+            .is_some_and(|rows| !rows.is_empty())
+    {
+        records(dir)?
+    } else {
+        Vec::new()
+    };
     let continuation = continuation::notice(b, observation, &history);
     let mut resolved = false;
     if continuation.is_object() {
@@ -1701,17 +1730,41 @@ fn recoverable_response_in(dir: &Path, source_id: &str, key: &str, session: &str
 }
 
 fn records(dir: &Path) -> Result<Vec<Binding>> {
-    let tasks = dir.join("tasks");
-    if !tasks.exists() {
-        return Ok(vec![]);
+    matching_records(dir, |_| true)
+}
+fn matching_records(dir: &Path, matches: impl Fn(&Binding) -> bool) -> Result<Vec<Binding>> {
+    // Bindings are owned by Core and atomically replaced. A directory stamp can
+    // reuse the parsed collection across nested routing/ownership queries.
+    type Snapshot = (PathBuf, file_cache::Projection<Vec<Arc<Binding>>>);
+    static SNAPSHOT: std::sync::LazyLock<std::sync::Mutex<Option<Snapshot>>> =
+        std::sync::LazyLock::new(Default::default);
+    let dependencies = [dir.join("tasks")];
+    let mut snapshot = SNAPSHOT.lock().map_err(|e| e.to_string())?;
+    if snapshot.as_ref().is_none_or(|(path, _)| path != dir) {
+        *snapshot = Some((dir.into(), Default::default()));
     }
-    std::fs::read_dir(tasks)
-        .map_err(|e| e.to_string())?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|v| v == "json"))
-        .map(|e| read_binding(&e.path()))
-        .collect::<Result<Vec<_>>>()
-        .map(|rows| rows.into_iter().flatten().collect())
+    let snapshot = &mut snapshot.as_mut().unwrap().1;
+    let stamps = file_cache::Projection::<Vec<Arc<Binding>>>::stamps(&dependencies)?;
+    let bindings = if let Some(bindings) = snapshot.get(&stamps) {
+        bindings
+    } else {
+        let mut bindings = Vec::new();
+        for entry in binding_paths(dir)?
+            .iter()
+            .filter(|entry| entry.path.extension().is_some_and(|v| v == "json"))
+        {
+            if let Some(binding) = shared_binding(&entry.path)? {
+                bindings.push(binding);
+            }
+        }
+        snapshot.set(&dependencies, stamps, bindings.clone())?;
+        bindings
+    };
+    Ok(bindings
+        .into_iter()
+        .filter(|binding| matches(binding))
+        .map(|binding| (*binding).clone())
+        .collect())
 }
 
 pub(crate) fn settings() -> Result<Value> {
@@ -2473,13 +2526,13 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                 let mut reads = tokio::task::JoinSet::new();
                 let permits = Arc::new(tokio::sync::Semaphore::new(8));
                 let mut owner_threads = std::collections::HashSet::new();
-                if let Ok(entries) = std::fs::read_dir(directory().join("tasks")) {
+                if let Ok(entries) = binding_paths(&directory()) {
                     for entry in entries
-                        .flatten()
-                        .filter(|e| e.path().extension().is_some_and(|v| v == "json"))
+                        .iter()
+                        .filter(|e| e.path.extension().is_some_and(|v| v == "json"))
                     {
                         let _guard = LOCK.lock().await;
-                        let Some(mut b) = read_binding(&entry.path())? else {
+                        let Some(mut b) = read_binding(&entry.path)? else {
                             continue;
                         };
                         if b.source_id.is_empty() {
@@ -4031,6 +4084,45 @@ mod tests {
             fake.calls.lock().unwrap()[0][3],
             "session_010000000000000000000001"
         );
+    }
+    #[test]
+    fn notification_polls_reuse_bindings_and_publish_writes_without_reopening_history() {
+        // Regression: the observer, delivery loop and nested routing reopened all bindings on every poll.
+        let dir = Sandbox::new();
+        let mut first = fixture(&dir.0);
+        for index in 0..458 {
+            let mut b = first.clone();
+            b.thread_id = format!("thread-{index}");
+            persist(&dir.0, &b).unwrap();
+        }
+        let count = records(&dir.0).unwrap().len();
+        let warm = file_cache::thread_io();
+        for _ in 0..3 {
+            assert_eq!(records(&dir.0).unwrap().len(), count);
+            assert_eq!(
+                binding(&dir.0, "thread-1", "turn-1")
+                    .unwrap()
+                    .unwrap()
+                    .source_id,
+                "claude"
+            );
+        }
+        assert_eq!(file_cache::thread_io(), warm);
+        first.scope_end = Some("closed".into());
+        persist(&dir.0, &first).unwrap();
+        assert_eq!(
+            matching_records(&dir.0, |b| b.scope_end.is_none())
+                .unwrap()
+                .len(),
+            count - 1
+        );
+        assert_eq!(file_cache::thread_io(), warm);
+        let state = governance::State::load(&dir.0).unwrap();
+        state.save(&dir.0).unwrap();
+        let path = dir.0.join("subscriptions/state.json");
+        let before = file_cache::Stamp::read(&path).unwrap();
+        state.save(&dir.0).unwrap();
+        assert_eq!(file_cache::Stamp::read(&path).unwrap(), before);
     }
     #[test]
     fn binding_failure_marks_receipt_without_changing_dispatch_result() {
