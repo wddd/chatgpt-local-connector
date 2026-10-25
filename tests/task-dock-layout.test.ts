@@ -28,7 +28,7 @@ test("pending question actions and routing stay inside short panels and narrow s
       assert.ok(a && b);
       assert.ok(a.x >= b.x && a.y >= b.y && a.x + a.width <= b.x + b.width && a.y + a.height <= b.y + b.height, JSON.stringify({ scenario, child: a, parent: b }));
     };
-    for (const viewport of [{ width: 840, height: 578 }, { width: 840, height: 480 }, { width: 360, height: 600 }]) {
+    for (const viewport of [{ width: 840, height: 578 }, { width: 840, height: 480 }, { width: 360, height: 600 }, { width: 320, height: 578 }]) {
       for (const width of [420, 320]) for (const options of [2, 12]) {
         scenario = JSON.stringify({ viewport, width, options });
         await page.setViewportSize(viewport);
@@ -42,7 +42,7 @@ test("pending question actions and routing stay inside short panels and narrow s
           (window as typeof window & { mountTaskDock: (width: number, options: number) => void }).mountTaskDock(width, count);
         }, { width, count });
         await mount(0);
-        const panel = page.getByRole("dialog", { name: "Task layout fixture", exact: true });
+        const panel = page.getByRole("dialog", { name: "Task layout fixture", exact: true, includeHidden: true });
         const timeline = page.getByLabel(copy["timeline.title"], { exact: true });
         await timeline.waitFor();
         const initial = await timeline.boundingBox();
@@ -75,6 +75,10 @@ test("pending question actions and routing stay inside short panels and narrow s
         assert.deepEqual(await submit.boundingBox(), before);
         assert.deepEqual(await routing.boundingBox(), routingBefore);
         await inside(submit, surface); await inside(routing, surface);
+        const panelBounds = await panel.boundingBox(), dockBounds = await dock.boundingBox(), sheetBounds = await surface.boundingBox();
+        assert.ok(panelBounds && dockBounds && sheetBounds);
+        assert.ok(dockBounds.height <= panelBounds.height * .6, scenario);
+        if (narrow) assert.ok(sheetBounds.height <= panelBounds.height * .6, scenario);
         if (!narrow) {
           const remaining = await timeline.boundingBox(), bounds = await panel.boundingBox(), input = await dock.boundingBox();
           assert.ok(remaining && bounds && input);

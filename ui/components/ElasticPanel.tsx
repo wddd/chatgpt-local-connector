@@ -101,7 +101,7 @@ export default function ElasticPanel({
   const origin = useRef<DOMRect | undefined>(undefined);
   const parentPanel = useRef<HTMLElement | undefined>(undefined);
   const [baseDepth, setBaseDepth] = useState(1);
-  const [sheetFrame, setSheetFrame] = useState({ left: innerWidth / 2, bottom: 8, width: Math.min(width ?? 360, innerWidth - 16) });
+  const [sheetFrame, setSheetFrame] = useState({ left: innerWidth / 2, bottom: 8, height: innerHeight, width: Math.min(width ?? 360, innerWidth - 16) });
   useLayoutEffect(() => {
     if (!sheet || !open || !node) return;
     const host = trigger.current?.closest<HTMLElement>("[data-panel-dock]");
@@ -109,7 +109,7 @@ export default function ElasticPanel({
       const rect = host?.getBoundingClientRect();
       setSheetFrame({ left: rect ? rect.left + rect.width / 2 : innerWidth / 2,
         bottom: rect ? Math.max(8, innerHeight - rect.bottom + 8) : 8,
-        width: Math.min(width ?? 360, (rect?.width ?? innerWidth) - 16) });
+        height: rect?.height ?? innerHeight, width: Math.min(width ?? 360, (rect?.width ?? innerWidth) - 16) });
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -343,7 +343,7 @@ export default function ElasticPanel({
           aria-describedby={undefined}
           style={
             {
-              ...(sheet ? { top: "auto", left: sheetFrame.left, bottom: sheetFrame.bottom, width: sheetFrame.width } : {}),
+              ...(sheet ? { top: "auto", left: sheetFrame.left, bottom: sheetFrame.bottom, width: sheetFrame.width, "--sheet-host-height": `${sheetFrame.height}px` } : {}),
               "--preferred-width": dock && expanded ? "calc(100vw - 32px)" : `${width ?? (wide ? 880 : 800)}px`,
               transform: sheet ? "translateX(-50%)" : `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
               zIndex: (dock ? 102 : 101) + Math.max(0, layers.indexOf(node!)) * 2,
