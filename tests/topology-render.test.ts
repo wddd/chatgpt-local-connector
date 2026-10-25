@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { assertNodeIdentity } from "./helpers/dom-assert.ts";
 import { Window } from "happy-dom";
 import { createServer } from "vite";
 import { act, createElement as h } from "react";
@@ -75,19 +76,19 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
     assert.equal(page.getByRole("main").inert, false);
     assert.equal(page.queryByRole("dialog")?.getAttribute("aria-modal"), null);
     await click(page.getByRole("button", { name: /External example/ }));
-    assert.equal(page.queryByRole("dialog"), shell);
-    assert.equal(page.queryByRole("region", { name: t("activity.needsAttention") }), null, "external detail remains read-only");
+    assertNodeIdentity(page.queryByRole("dialog"), shell);
+    assertNodeIdentity(page.queryByRole("region", { name: t("activity.needsAttention") }), null, "external detail remains read-only");
     await click(page.getByRole("button", { name: t("back"), exact: true }));
-    assert.equal(page.queryByRole("dialog"), shell);
+    assertNodeIdentity(page.queryByRole("dialog"), shell);
     assert.equal(agentPanel.get().session, undefined);
     assert.ok(page.getByRole("button", { name: /External example/ }).matches(":focus"));
     await click(codex);
-    assert.equal(page.queryByRole("dialog"), shell, "peer switch never remounts the shell");
+    assertNodeIdentity(page.queryByRole("dialog"), shell, "peer switch never remounts the shell");
     assert.equal(agentPanel.get().agent, "codex");
     await act(() => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     await flush();
     assert.equal(agentPanel.get(), undefined);
-    assert.equal(page.queryByRole("dialog"), null);
+    assertNodeIdentity(page.queryByRole("dialog"), null);
     assert.ok(codex.matches(":focus"));
     await click(claude); await click(claude);
     assert.equal(agentPanel.get(), undefined, "clicking the same node dismisses the panel");
@@ -104,11 +105,11 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
       const detailShell = page.queryByRole("dialog");
       assert.ok(page.getByText("Retained result"));
       await act(() => agentActivity.set({ error: "offline", snapshot: { observedAt: "2026-01-02", agents: {}, activeAgents: [] } }));
-      assert.equal(page.queryByRole("dialog"), detailShell);
+      assertNodeIdentity(page.queryByRole("dialog"), detailShell);
       assert.ok(page.getByText("Retained result"));
       await click(page.getByRole("button", { name: t("back"), exact: true }));
-      assert.equal(page.queryByRole("dialog"), detailShell);
-      assert.equal(page.queryByRole("button", { name: t("back"), exact: true }), null);
+      assertNodeIdentity(page.queryByRole("dialog"), detailShell);
+      assertNodeIdentity(page.queryByRole("button", { name: t("back"), exact: true }), null);
       await act(() => selectAgentPanel({ type: "closed" }));
       await flush();
     } finally { globalThis.fetch = originalFetch; }
@@ -210,18 +211,18 @@ test("control source dock preserves editing, field navigation and cross-side dis
     assert.equal(status.ingresses[0].enabled, false);
     await click(page.getByRole("switch"));
     await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
-    assert.equal(page.getByRole("dialog"), shell);
+    assertNodeIdentity(page.getByRole("dialog"), shell);
     await click(button(t("back")));
-    assert.equal(page.getByRole("dialog"), shell);
+    assertNodeIdentity(page.getByRole("dialog"), shell);
     await act(() => navigation.set({ ingressEdit: { id: "one", field: "name" } })); await flush();
     assert.ok(page.getByRole("textbox", { name: t("sourceName") }).matches(":focus"));
     assert.equal(navigation.get().ingressEdit, undefined);
     await click(button(t("save")));
-    assert.equal(page.getByRole("dialog"), shell);
+    assertNodeIdentity(page.getByRole("dialog"), shell);
     await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
     await click(button(t("cancel")));
     await click(second());
-    assert.equal(page.getByRole("dialog"), shell);
+    assertNodeIdentity(page.getByRole("dialog"), shell);
     assert.equal(ingressPanel.get().ingress.id, "two");
     await escape(); assert.equal(ingressPanel.get(), undefined);
     assert.ok(second().matches(":focus"));
@@ -247,8 +248,8 @@ test("control source dock preserves editing, field navigation and cross-side dis
     await click(first());
     await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
     await click(button(t("remove")));
-    assert.equal(ingressPanel.get(), undefined); assert.equal(page.queryByRole("dialog"), null);
-    assert.equal(page.queryByRole("button", { name: /Source one/ }), null);
+    assert.equal(ingressPanel.get(), undefined); assertNodeIdentity(page.queryByRole("dialog"), null);
+    assertNodeIdentity(page.queryByRole("button", { name: /Source one/ }), null);
     const { default: RecordsPage } = await server.ssrLoadModule("/ui/components/RecordsPage.tsx");
     await act(() => {
       connector.set({ ...connector.get(), status: { ...status, ingresses: [source("one"), source("two")], logs: [
@@ -259,7 +260,7 @@ test("control source dock preserves editing, field navigation and cross-side dis
     });
     await flush();
     assert.ok(page.getByRole("cell", { name: /fixture-one/ }));
-    assert.equal(page.queryByRole("cell", { name: /fixture-two/ }), null);
+    assertNodeIdentity(page.queryByRole("cell", { name: /fixture-two/ }), null);
     assert.ok(page.getByRole("button", { name: /Dispatch fixture/ }));
 
   } finally {
@@ -304,7 +305,7 @@ test("timeline turn disclosures preserve choices through incremental work and re
     assert.equal(group().getAttribute("aria-expanded"), "false");
     await render([first, second, { ...second, id: "third", path: "/project/src/other.ts" }]);
     assert.equal(group().getAttribute("aria-expanded"), "false");
-    assert.equal(page.queryByText(first.output.text), null);
+    assertNodeIdentity(page.queryByText(first.output.text), null);
     await click(group());
     await render([{ ...first, status: "failed", exitCode: 1 }, second]);
     const process = () => page.getByRole("button", { name: name => name.startsWith(t("detail.process", { updates: 0, answers: 0, actions: 2 })) });
@@ -325,10 +326,10 @@ test("timeline turn disclosures preserve choices through incremental work and re
     const thinking = { ...base, id: "thinking", type: "thinking", status: "completed", text: "Reasoning detail" };
     const text = { ...base, id: "text", type: "text", status: "completed", phase: "final_answer", text: '| Name | Value |\n| --- | --- |\n| A | B |\n\n- [x] Done\n\n[Docs](https://example.com/docs)\n\n```js\nconst value = 1;\n```\n\n<script>window.bad = true</script>' };
     await render([thinking, text]);
-    assert.equal(page.queryByText(thinking.text), null);
+    assertNodeIdentity(page.queryByText(thinking.text), null);
     assert.ok(page.getByRole("cell", { name: "B" }));
     assert.ok(page.getByText("const value = 1;"));
-    assert.equal(page.queryByText("window.bad = true"), null);
+    assertNodeIdentity(page.queryByText("window.bad = true"), null);
     assert.equal((page.getByRole("checkbox") as HTMLInputElement).disabled, true);
     let opened = ""; window.open = ((url: string) => { opened = url; return null; }) as typeof window.open;
     await click(page.getByRole("link", { name: "Docs" }));
@@ -343,7 +344,7 @@ test("timeline turn disclosures preserve choices through incremental work and re
     for (const [decision, label] of [["answer", "timeline.answered"], ["deny", "detail.verdict.reject"]]) {
       await act(() => activityApprovals.set({ [key]: { status: "submitted", decision, payload: { op: "agent_respond", args: { value: "A" } } } }));
       assert.ok(page.getByText(t(label)));
-      assert.equal(page.queryByText(t("detail.needsYou")), null);
+      assertNodeIdentity(page.queryByText(t("detail.needsYou")), null);
     }
     await act(() => activityApprovals.set({}));
     await render([{ ...pending, status: "completed" }]);
@@ -502,7 +503,7 @@ test("timeline UI and agent navigation restore follow mode and focus", { timeout
     await act(async () => controlTaskPanel({ agent: 'claude', id: session.id, action: 'follow', following: false }));
     assert.equal(taskPanelSnapshot().following, false);
     await act(() => { viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight - 24; viewport.dispatchEvent(new window.Event('scroll')); });
-    assert.equal(page.queryByRole("button", { name: latestLabel }), null);
+    assertNodeIdentity(page.queryByRole("button", { name: latestLabel }), null);
     assert.equal(taskPanelSnapshot().atLatest, true);
     await act(() => viewport.dispatchEvent(new window.Event('scroll')));
     revision++; height = 3750;
@@ -510,7 +511,7 @@ test("timeline UI and agent navigation restore follow mode and focus", { timeout
     assert.ok(page.getByText("Increment 2"));
     assert.equal(taskPanelSnapshot().following, true);
     assert.equal(taskPanelSnapshot().atLatest, true);
-    assert.equal(page.queryByRole("button", { name: latestLabel }), null);
+    assertNodeIdentity(page.queryByRole("button", { name: latestLabel }), null);
   } finally {
     await act(() => root.unmount()); globalThis.fetch = originalFetch;
     await server.close(); await window.happyDOM.close();
