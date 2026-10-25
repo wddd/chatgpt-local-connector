@@ -591,6 +591,18 @@ test('tool presets use the full registry, preserve exact allowlists and close on
   assert.ok(!readOnly.allowlist.includes('future_read'));
 });
 
+test('update presets expose status to readers and scheduling only to common policies', async () => {
+  // Regression: 03ec3af omitted update operations from exposure metadata, hiding them from default ingress policies.
+  const config: ToolCatalog = await management('tool-catalog');
+  const readOnly = presetPolicy('readOnly', config) as { allowlist: string[] };
+  const common = presetPolicy('common', config) as { allowlist: string[] };
+  assert.ok(readOnly.allowlist.includes('update_status'));
+  assert.ok(!readOnly.allowlist.includes('update_request'));
+  for (const name of ['update_status', 'update_request']) assert.ok(common.allowlist.includes(name));
+  const selection = normalizeSelection(['update_request'], config);
+  for (const name of ['update_request', 'update_status', 'control_output']) assert.ok(selection.includes(name));
+});
+
 test('real HTTP ingresses isolate discovery and direct execution; policy PUT preserves identity, metadata and peer availability', async () => {
   // Contract: ingress discovery and execution obey the authenticated source policy.
   const config: ToolCatalog = await management('tool-catalog');

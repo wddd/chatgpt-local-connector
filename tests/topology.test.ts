@@ -224,7 +224,7 @@ test("path generation skips non-finite coordinates and recovers on the next fram
 
 
 test("Agent dock reserves its width and label clearance without reordering or moving rows", () => {
-  // Property: Agent dock reserves its width and label clearance without reordering or moving rows.
+  // Property: docking preserves rows and task arcs while giving only the selected idle node a panel attachment.
   for (const vw of [760, 900, 1280, 1800]) {
     const scene = { ...fixtures.busy, vw }, base = solve(scene), edge = vw - 416;
     for (const selected of scene.right.map(n => n.id)) {
@@ -235,7 +235,7 @@ test("Agent dock reserves its width and label clearance without reordering or mo
       assert.ok(node.x + LABEL_W * node.scale * node.size / (NODE_R * 2) / 2 <= edge - PANEL_ARC_GAP + 1e-6);
       assert.ok(node.x - node.size * node.scale / 2 >= 0);
       assert.ok(node.scale <= Math.max(1, DEFAULTS.activeScale));
-      assert.ok(docked.wings[1].nodes.every(n => n.active ? n.arc !== null : n.arc === null));
+      for (const n of docked.wings[1].nodes) assert.equal(n.arc !== null, n.active || n.id === selected, n.id);
       assert.ok(docked.wings[1].tasks.every(t => t.hidden));
       assert.ok(docked.balance.every(w => w.squeeze >= DEFAULTS.squeezeMin));
     }

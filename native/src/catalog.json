@@ -7297,6 +7297,29 @@
       "connector_verify"
     ],
     "tools": {
+      "update_status": {
+        "group": "host",
+        "presets": [
+          "common",
+          "readOnly"
+        ],
+        "requires": [
+          "control_output"
+        ],
+        "tier": "default",
+        "conditional": false
+      },
+      "update_request": {
+        "group": "host",
+        "presets": [
+          "common"
+        ],
+        "requires": [
+          "update_status"
+        ],
+        "tier": "default",
+        "conditional": false
+      },
       "task_timeline": {
         "group": "codex",
         "presets": [
