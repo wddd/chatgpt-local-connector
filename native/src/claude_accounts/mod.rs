@@ -23,6 +23,8 @@ struct Account {
 struct Progress {
     id: String,
     account_id: String,
+    browser_id: String,
+    browser_name: String,
     state: String,
     login_url: Option<String>,
     browser_error: Option<String>,
@@ -289,6 +291,11 @@ impl Manager {
             let progress = Arc::new(Mutex::new(Progress {
                 id: id(),
                 account_id: account.id.clone(),
+                browser_id: browser_id.to_owned(),
+                browser_name: browser
+                    .as_ref()
+                    .map(|b| b.name.clone())
+                    .unwrap_or_else(|| "System default browser".into()),
                 state: "starting".into(),
                 login_url: None,
                 browser_error: None,
@@ -407,6 +414,11 @@ impl Manager {
                     return Err("CLAUDE_LOGOUT_FAILED: Account retained; retry removing it".into());
                 }
                 std::fs::remove_dir_all(account_dir(id)?).map_err(|e| e.to_string())?;
+                if let Some(login) = current.as_ref() {
+                    if login.progress.lock().await.account_id == id {
+                        *current = None;
+                    }
+                }
                 return Ok(json!({"removed":true}));
             }
         }

@@ -78,9 +78,14 @@ try {
         }
         if (fixture.claudeAccounts) {
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          await page.getByRole('button', { name: messages['claudeAccounts.login'], exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: messages[fixture.claudeLogin ? 'claudeAccounts.continue' : 'claudeAccounts.login'], exact: true }).waitFor({ state: 'visible' });
           await page.getByRole('combobox', { name: messages['claudeAccounts.browser'], exact: true }).waitFor({ state: 'visible' });
           await page.getByText('work@example.invalid', { exact: true }).waitFor({ state: 'visible' });
+          // Regression: Reopening Settings lost the browser selected for a pending login.
+          if (fixture.claudeLogin) {
+            const browserChoice = page.getByRole('combobox', { name: messages['claudeAccounts.browser'], exact: true });
+            if (await browserChoice.isEnabled() || (await browserChoice.innerText()) !== 'Safari') throw new Error('Pending login lost its selected browser after opening Settings');
+          }
           row.layout = await page.evaluate(() => {
             const login = document.getElementById('claude-account-login');
             const area = login.closest('.claude-account-actions');

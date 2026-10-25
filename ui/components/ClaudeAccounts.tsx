@@ -7,7 +7,7 @@ import { useInterval } from "../state/hooks";
 import { Button, Dialog, Field, Group, IconButton, Input, Notice, Row, SingleChoice } from "./ui";
 
 type Account = { id: string; identity: { loggedIn?: boolean; email?: string; orgName?: string; authMethod?: string }; observedAt: string | null };
-type Login = { id: string; accountId: string; state: string; loginUrl?: string; browserError?: string; error?: string };
+type Login = { id: string; accountId: string; browserId: string; browserName: string; state: string; loginUrl?: string; browserError?: string; error?: string };
 type Snapshot = { accounts: Account[]; cliAvailable: boolean; login: Login | null };
 type Browser = { id: string; name: string };
 const pending = (login?: Login | null) => !!login && ["starting", "waiting"].includes(login.state);
@@ -20,6 +20,9 @@ export default function ClaudeAccounts() {
   const [showLogin, setShowLogin] = useState(false), [remove, setRemove] = useState<Account>();
   const [code, setCode] = useState(""), [codeError, setCodeError] = useState("");
   const login = snapshot?.login, active = pending(login);
+  const selectedBrowser = active ? login!.browserId : browser;
+  const browserOptions = [{ value: "default", label: t("claudeAccounts.defaultBrowser") }, ...browsers.map(b => ({ value: b.id, label: b.name }))];
+  if (active && !browserOptions.some(option => option.value === selectedBrowser)) browserOptions.push({ value: selectedBrowser, label: login!.browserName });
   const label = (account: Account) => account.identity.email || t("claudeAccounts.profile", { id: account.id.slice(0, 8) });
 
   async function refresh() { setSnapshot(await api<Snapshot>("claude-accounts")); setLoadError(""); }
@@ -56,9 +59,9 @@ export default function ClaudeAccounts() {
   const authenticated = login && snapshot?.accounts.find(a => a.id === login.accountId);
   return <Group title={t("claudeAccounts.title")}>
     <div className="claude-account-actions">
-      {!active && <><div className="claude-browser-choice"><SingleChoice label={t("claudeAccounts.browser")} value={browser} onChange={setBrowser} disabled={busy}
-        options={[{ value: "default", label: t("claudeAccounts.defaultBrowser") }, ...browsers.map(b => ({ value: b.id, label: b.name }))]} /></div>
-      <IconButton icon={RefreshCw} label={t("claudeAccounts.refreshBrowsers")} disabled={busy} onClick={() => void action(refreshBrowsers)} /></>}
+      <div className="claude-browser-choice"><SingleChoice label={t("claudeAccounts.browser")} value={selectedBrowser} onChange={setBrowser} disabled={busy || active}
+        options={browserOptions} /></div>
+      <IconButton icon={RefreshCw} label={t("claudeAccounts.refreshBrowsers")} disabled={busy || active} onClick={() => void action(refreshBrowsers)} />
       <Button id="claude-account-login" variant="primary" busy={busy} disabled={!snapshot?.cliAvailable}
         onClick={() => active ? setShowLogin(true) : void start()}>{t(active ? "claudeAccounts.continue" : "claudeAccounts.login")}</Button>
     </div>
