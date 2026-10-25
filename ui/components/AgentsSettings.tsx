@@ -1,5 +1,6 @@
+import { useReducedMotion } from "../state/appEnvironment";
 import { useState, type ReactNode } from "react";
-import { motion, Reorder, useDragControls, useReducedMotion } from "motion/react";
+import { motion, Reorder, useDragControls } from "motion/react";
 import { RefreshCw, Settings, Gauge } from "lucide-react";
 import { t } from "../i18n";
 import { openUrl } from "../platform";

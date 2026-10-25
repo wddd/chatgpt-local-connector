@@ -61,6 +61,6 @@
   padding: 0 4px;
   color: var(--text-tertiary);
 }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .data-table-row { transition: none; }
 }

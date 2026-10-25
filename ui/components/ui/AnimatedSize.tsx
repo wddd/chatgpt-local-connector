@@ -1,5 +1,6 @@
+import { useReducedMotion } from "../../state/appEnvironment";
 import { forwardRef, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { motion, useIsPresent, useReducedMotion, type HTMLMotionProps } from "motion/react";
+import { motion, useIsPresent, type HTMLMotionProps } from "motion/react";
 import "./AnimatedSize.css";
 
 // Animate real layout dimensions, so text and timeline nodes are never scaled.

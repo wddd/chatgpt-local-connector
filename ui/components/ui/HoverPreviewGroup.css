@@ -2,7 +2,7 @@
   transition: transform 200ms cubic-bezier(.2, .8, .2, 1);
 }
 .hover-preview { width: 300px; max-width: calc(100vw - 24px); }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   [data-radix-popper-content-wrapper]:has(> .hover-preview[data-moving="true"]) { transition: none; }
   .hover-preview { animation: none; }
 }

@@ -670,7 +670,7 @@ pre {
     min-height: 40px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   *,
   *::before,
   *::after {
@@ -1076,7 +1076,7 @@ pre {
 .hover-scope [data-hover-target].button[aria-expanded="true"] {
   background: transparent;
 }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .hover-highlight { transition: none; }
 }
 
@@ -1137,7 +1137,7 @@ pre {
 }
 
 .activity-arc.needs-attention { color: var(--warning); animation-play-state: paused; }
-@media (prefers-reduced-motion: reduce) { .activity-arc { animation: none; } }
+:root[data-reduced-motion="true"] { .activity-arc { animation: none; } }
 
 .slider { position: relative; display: flex; align-items: center; min-width: 0; height: var(--control-md); touch-action: none; user-select: none; }
 .slider-track { position: relative; height: 4px; flex: 1; border-radius: var(--radius-pill); background: var(--border-strong); }

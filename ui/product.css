@@ -99,7 +99,7 @@
     rotate: 360deg;
   }
 }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .spinning {
     animation: none;
   }
@@ -137,7 +137,7 @@
       0 5px 3px color-mix(in srgb, var(--color-black) 18.82%, transparent)
     );
 }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .graph-wires path {
     transition: none;
   }
@@ -414,7 +414,7 @@
     padding: 0 20px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .page-sheet {
     transition: none;
   }
@@ -434,7 +434,7 @@
   background: var(--surface);
   box-shadow: var(--shadow);
 }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .navigation-surface {
     transition: none;
   }
@@ -462,7 +462,7 @@
   flex: 0 0 36px;
   transition: opacity 160ms ease;
 }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .navigation-capsule,
   .capsule-icons button {
     transition: none;
@@ -617,7 +617,7 @@
     padding: 12px 20px 20px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .dialog.elastic-panel {
     transition: none;
   }
@@ -867,7 +867,7 @@
 .hub-agent .hub-hint { left: calc(100% + var(--hub-dot-size) * 0.75); }
 @keyframes hub-ripple { from { transform: scale(1); opacity: .45; } 80%, to { transform: scale(1.7); opacity: 0; } }
 @keyframes hub-hint-in { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .hub-dot, .hub-symbol { transition: none; }
   .topology-hub .hub-entry .hub-dot, .hub-symbol { transform: none; }
   .hub-entry[data-empty] .hub-dot::after { animation: none; display: none; }
@@ -907,7 +907,7 @@
 .topology-scene [data-dragging] { z-index: 6; }
 .topology-scene [data-dragging] button { cursor: grabbing; }
 .activity-slot[inert] button { pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .topology-wires .connecting-wire, .topology-wires .activity-flow { animation: none; } }
+:root[data-reduced-motion="true"] { .topology-wires .connecting-wire, .topology-wires .activity-flow { animation: none; } }
 .activity-bubble, .activity-task-row { display: flex; align-items: center; gap: 8px; position: relative; box-sizing: border-box; width: var(--bubble-width, 264px); height: var(--bubble-height, 76px); pointer-events: auto; border: 0; border-radius: 13px; background: var(--surface); color: var(--text); padding: 8px 12px; min-width: 0; text-align: left; font-family: ui-rounded, "SF Pro Rounded", var(--font-ui); font-weight: 400; box-shadow: inset 0 0 0 1px var(--border), var(--shadow); }
 .activity-bubble:hover, .activity-task-row:hover { background: var(--surface-subtle); }
 .activity-bubble.needs-attention, .activity-task-row.needs-attention { background: var(--warning-soft); box-shadow: inset 0 0 0 1.5px var(--warning), var(--shadow); }
@@ -963,7 +963,7 @@ button.activity-bubble:active, .activity-bubble-shell:active { transform: scale(
 .activity-preview { display: grid; place-items: center; padding: 12px 0 20px; overflow: hidden; }
 .activity-preview .activity-bubble { transition: width 180ms cubic-bezier(.34,1.56,.64,1), height 180ms cubic-bezier(.34,1.56,.64,1); }
 .agent-auto-compact { position: absolute; left: 50%; top: calc(100% + 22px); transform: translateX(-50%); padding: 1px 5px; border-radius: var(--radius-pill); background: var(--surface-subtle); color: var(--text-tertiary); font-size: 9px; line-height: 13px; white-space: nowrap; }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   button.activity-bubble, .activity-bubble-shell, .activity-preview .activity-bubble { transition: none; }
   button.activity-bubble:hover, button.activity-bubble:active, .activity-bubble-shell:hover, .activity-bubble-shell:active { transform: none; }
 }
@@ -1001,7 +1001,7 @@ button.activity-bubble:active, .activity-bubble-shell:active { transform: scale(
 .activity-actions .button { flex: none; }
 @keyframes activity-flow { to { stroke-dashoffset: 18; } }
 @keyframes activity-breathe { 50% { opacity: 0.35; } }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .activity-flow, .activity-status::before { animation: none !important; }
 }
 
@@ -1081,7 +1081,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .timeline-table table { border-collapse: collapse; width: max-content; min-width: 100%; }
 .timeline-table th, .timeline-table td { padding: 6px 8px; border: 1px solid var(--border); }
 .timeline-markdown .contains-task-list { list-style: none; padding-left: 4px; }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .timeline-chevron { transition: none; }
   .timeline-spinner { animation: none; }
 }
@@ -1150,7 +1150,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .topology-section-inner { display: flow-root; padding-bottom: 4px; }
 @keyframes topology-expand { from { height: 0; opacity: 0; } to { height: var(--radix-accordion-content-height); opacity: 1; } }
 @keyframes topology-collapse { from { height: var(--radix-accordion-content-height); opacity: 1; } to { height: 0; opacity: 0; } }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .topology-section-trigger > .icon { transition: none; }
   .topology-section-content[data-state] { animation: none; }
 }
@@ -1181,7 +1181,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
   0%, 100% { transform: scale(0.95, 0.82); opacity: 0; }
   50% { transform: scale(1); opacity: 1; }
 }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .activity-bubble::after, .activity-task-row::after { animation: none !important; opacity: 0; }
 }
 
@@ -1238,7 +1238,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .activity-conversation-meta .activity-project { max-width: 25%; }
 .agent-conversation-more { height: 1px; }
 @keyframes agent-task-rise { from { opacity: 0; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .activity-bubble.agent-conversation-row { animation: none; }
   .agent-quota-track > div { transition: none; }
 }
@@ -1316,7 +1316,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 
 @keyframes source-detail-enter { from { opacity:0; transform:translateX(6px); } to { opacity:1; transform:translateX(0); } }
 .source-detail, .connection-detail { animation:source-detail-enter 160ms var(--ease); }
-@media (prefers-reduced-motion:reduce) { .source-detail, .connection-detail { animation:none; } }
+:root[data-reduced-motion="true"] { .source-detail, .connection-detail { animation:none; } }
 
 .settings-breadcrumb-divider { color: var(--text-tertiary); margin-inline: var(--space-2); font-weight: 400; }
 .settings-extras { container-type: inline-size; }
@@ -1456,7 +1456,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
   .welcome-cards { grid-template-columns: 1fr; }
   .welcome-page { justify-content: start; }
 }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .dialog.elastic-panel.setup-dialog { transition: none; }
   .graph-node[data-new-source] { animation: none; box-shadow: 0 0 0 4px var(--canvas), 0 0 0 6px var(--topology-source); }
 }
@@ -1482,7 +1482,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .topology-collapse-symbol > svg { display: block; width: 100%; height: 100%; }
 .topology-node[data-collapse-visible] .topology-collapse-symbol, .topology-node:focus-within .topology-collapse-symbol { opacity: 1; transform: scale(1); }
 .topology-collapse:focus-visible .topology-collapse-symbol { box-shadow: 0 0 0 2px var(--canvas), 0 0 0 3px var(--account-color); }
-@media (prefers-reduced-motion: reduce) { .topology-collapse-symbol { transition: none; } }
+:root[data-reduced-motion="true"] { .topology-collapse-symbol { transition: none; } }
 .topology-path-hit { fill: none; stroke: transparent; stroke-width: 16px; pointer-events: stroke; }
 .topology-node .graph-node:not(:focus-visible), .activity-slot .activity-bubble:not(:focus-visible) { outline: 1px solid color-mix(in srgb, var(--text) calc(var(--path-emphasis, 0) * 18%), transparent); outline-offset: 1px; }
 
@@ -1492,7 +1492,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .sensitive-value > span { display: inline-block; transform-origin: left center; }
 .pii { filter: blur(2.2px); opacity: .5; user-select: text; animation: privacy-in 160ms ease-out; }
 @keyframes privacy-in { from { filter: blur(0); opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .pii { animation: none; } }
+:root[data-reduced-motion="true"] { .pii { animation: none; } }
 .sensitive-identity { min-width: 0; }
 .copy-value { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
 .accounts-workspace { container-type: inline-size; }

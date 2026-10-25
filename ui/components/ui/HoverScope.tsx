@@ -1,3 +1,4 @@
+import { environmentMedia } from "../../state/appEnvironment";
 import { useLayoutEffect, useRef, useState, type HTMLAttributes } from "react";
 import { motion, useSpring } from "motion/react";
 import { springTransition } from "../../motion/geometry";
@@ -42,7 +43,7 @@ function Highlight({ root, activeKey, tracking }: {
   const present = useRef(false);
   useLayoutEffect(() => {
     const scope = root;
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    const reduced = environmentMedia("(prefers-reduced-motion: reduce)");
     let hideTimer: ReturnType<typeof setTimeout> | undefined;
     const hide = () => {
       if (hideTimer) return;

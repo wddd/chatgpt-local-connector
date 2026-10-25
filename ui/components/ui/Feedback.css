@@ -25,6 +25,6 @@
   animation: ui-spin 800ms linear infinite;
 }
 @keyframes ui-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .ui-spinner { animation: none; }
 }

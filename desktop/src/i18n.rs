@@ -11,13 +11,17 @@ static EN: OnceLock<Value> = OnceLock::new();
 static ZH: OnceLock<Value> = OnceLock::new();
 
 #[tauri::command]
-pub async fn set_ui_locale(app: tauri::AppHandle, locale: String) -> Result<(), String> {
+pub async fn set_ui_locale(
+    app: tauri::AppHandle,
+    locale: String,
+    resolved_locale: String,
+) -> Result<(), String> {
     CHINESE.store(locale == "zh-CN", Ordering::Relaxed);
     crate::request(
         &app,
         "preferences",
         "PUT",
-        serde_json::json!({"values":{"resolved-language":locale}}),
+        serde_json::json!({"values":{"resolved-language":resolved_locale}}),
     )
     .await?;
     Ok(())

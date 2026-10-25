@@ -1,5 +1,6 @@
+import { useReducedMotion } from "../state/appEnvironment";
 import { useEffect, useRef, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { t } from "../i18n";
 import { api } from "../api";

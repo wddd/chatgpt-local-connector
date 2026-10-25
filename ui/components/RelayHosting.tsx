@@ -5,7 +5,7 @@ import { api } from "../api";
 import { locale, t } from "../i18n";
 import { copyText } from "../platform";
 import { connector, notify, refreshConnector } from "../state/connector";
-import { useInterval } from "../state/hooks";
+import { appNow, useAppNow } from "../state/appEnvironment";
 import { useRelays, useRelayProgress, type Relay, type RelayProgress as Progress } from "../state/relay";
 import RelayProgress from "./RelayProgress";
 import { Button, DataTable, Dialog, Icon, IconButton, Loading, Notice, Status } from "./ui";
@@ -20,7 +20,7 @@ function hostname(relay: Relay) {
 }
 function compactDate(value: string | null, recent = false) {
   if (!value) return t("connect.neverOnline");
-  const date = new Date(value), age = Date.now() - date.getTime();
+  const date = new Date(value), age = appNow() - date.getTime();
   if (!Number.isFinite(date.getTime())) return t("connect.neverOnline");
   if (recent && age >= 0 && age < 120_000) return t("hosting.justNow");
   return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
@@ -33,8 +33,7 @@ function HostedRelay({ relay, version, startJob, disabled }: {
   const [members, setMembers] = useState<Member[]>([]), [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(""), [error, setError] = useState(""), [membersError, setMembersError] = useState("");
   const [confirm, setConfirm] = useState<Confirmation>();
-  const [, tick] = useState(0);
-  useInterval(() => tick(value => value + 1), 30_000);
+  useAppNow(30_000);
   const ingress = status?.ingresses.find(value => value.id === relay.ingressId);
   const readMembers = useCallback(async () => {
     setLoading(true); setMembersError("");

@@ -1,3 +1,4 @@
+import { appEnvironment, envOverrides } from "../state/appEnvironment";
 import CollapseSymbol from './CollapseSymbol';
 import { t } from '../i18n';
 import { topologyCollapsed } from './accountState';
@@ -201,8 +202,8 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     const selected = latest.current.nodes.find(n => n.selected);
     const selectedNode = selected && layout.current.wings.find(w => w.side === selected.side)?.nodes.find(n => n.id === selected.id);
     const radius = selectedNode && (selectedNode.arc?.R ?? selectedNode.size * selectedNode.scale / 2 + latest.current.params.arcGap);
-    const width = selectedNode && radius !== undefined ? panelWidth(innerWidth, selectedNode.side, origin.current.x + selectedNode.x,
-      radius + 2 * Math.max(0.8, layout.current.hub.Re / 130)) : PANEL_MIN_WIDTH;
+    const width = (latest.current.panelKey?.startsWith("agent:") ? envOverrides().taskPanelWidth : undefined) ?? (selectedNode && radius !== undefined ? panelWidth(innerWidth, selectedNode.side, origin.current.x + selectedNode.x,
+      radius + 2 * Math.max(0.8, layout.current.hub.Re / 130)) : PANEL_MIN_WIDTH);
     const { panelKey: key, panelExpanded: expanded } = latest.current;
     const reported = reportedPanel.current;
     if (!reported || reported.key !== key || reported.width !== width || reported.expanded !== expanded) {
@@ -215,6 +216,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     animator.current.step(0, !!latest.current.reduced);
     paint(); wake();
   }, [paint, wake, scene]);
+  useEffect(() => appEnvironment.subscribe(() => target()), [target]);
   const startDrag = (event: PointerEvent<HTMLDivElement>, kind: Drag["kind"], side: Side, id: string, parent?: string, control = false) => {
     if (!control && (event.target as Element).closest("[data-topology-control]")) return;
     if (event.button !== 0 || !event.isPrimary || latest.current.nodes.some(n => n.selected)) return;

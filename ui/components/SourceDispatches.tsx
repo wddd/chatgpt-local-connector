@@ -1,3 +1,4 @@
+import { useAppNow } from "../state/appEnvironment";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { api } from "../api";
@@ -11,6 +12,7 @@ import { PhaseTile } from "./activity";
 import { Icon, Notice, Tag } from "./ui";
 
 export default function SourceDispatches({ sourceId, summary = false }: { sourceId: string; summary?: boolean }) {
+  const now = useAppNow(60_000);
   const { records, error } = tasks.use(), { snapshot } = agentActivity.use();
   const [runtimes, setRuntimes] = useState<Record<string, TaskRuntime>>({});
   const [visible, setVisible] = useState(8);
@@ -52,7 +54,7 @@ export default function SourceDispatches({ sourceId, summary = false }: { source
     return () => { stopped = true; clearInterval(timer); };
   }, [sourceId, ids.slice().sort().join(",")]);
   return <div className="source-dispatch-list">
-    {summary && <div className="account-chips">{['pending', 'running', 'today'].map(state => <Tag key={state}>{t(`accounts.count.${state}`, { count: dispatches.filter(record => state === 'today' ? new Date(record.createdAt).toDateString() === new Date().toDateString() : stateOf(record) === state).length })}</Tag>)}</div>}
+    {summary && <div className="account-chips">{['pending', 'running', 'today'].map(state => <Tag key={state}>{t(`accounts.count.${state}`, { count: dispatches.filter(record => state === 'today' ? new Date(record.createdAt).toDateString() === new Date(now).toDateString() : stateOf(record) === state).length })}</Tag>)}</div>}
     {error && <Notice>{error}</Notice>}
     {rows.map(record => {
       const id = record.threadId || record.task.threadId;

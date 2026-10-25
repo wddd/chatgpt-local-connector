@@ -257,7 +257,7 @@
 
 .history-popover { animation: quota-fade 150ms ease-out; }
 @keyframes quota-fade { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .history-popover { animation: none; } }
+:root[data-reduced-motion="true"] { .history-popover { animation: none; } }
 
 .reading-timing { display: flex; flex: 0 1 auto; min-width: 0; flex-wrap: nowrap; justify-content: flex-end; align-items: baseline; gap: 4px 10px; color: var(--text-secondary); text-align: right; }
 .reading-meta > span:first-child { white-space: nowrap; }

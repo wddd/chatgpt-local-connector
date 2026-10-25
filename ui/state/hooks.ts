@@ -1,3 +1,4 @@
+import { environmentMedia, useAppNow } from "./appEnvironment";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 export function useInterval(
   callback: () => void,
@@ -15,15 +16,11 @@ export function useInterval(
     return () => clearInterval(timer);
   }, [delay, immediate]);
 }
-export function useNow() {
-  const [now, setNow] = useState(Date.now);
-  useInterval(() => setNow(Date.now()), 60000);
-  return now;
-}
+export function useNow() { return useAppNow(60000); }
 export function useMedia(query: string) {
-  const [matches, setMatches] = useState(() => matchMedia(query).matches);
+  const [matches, setMatches] = useState(() => environmentMedia(query).matches);
   useEffect(() => {
-    const media = matchMedia(query);
+    const media = environmentMedia(query);
     const update = () => setMatches(media.matches);
     update();
     media.addEventListener("change", update);

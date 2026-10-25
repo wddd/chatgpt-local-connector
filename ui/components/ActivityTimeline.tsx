@@ -1,3 +1,4 @@
+import { useAppNow } from "../state/appEnvironment";
 import { pendingSessions } from "../state/taskInteractions";
 import { useTaskPresence } from "../state/requestRouting";
 import { observeTaskPanel } from "../state/taskPanel";
@@ -13,7 +14,6 @@ import { t } from "../i18n";
 import type { AgentTimeline } from "../types";
 import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
 import { followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
-import { useInterval } from "../state/hooks";
 import { Button, Icon, IconButton, LoadingIndicator, Menu } from "./ui";
 import TimelineEntries, { durationText } from "./TimelineEntries";
 import { dispatchSourceLabel, SourceBadge } from "./activity";
@@ -50,7 +50,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const continuationRequest = useRef<{ turnId: string; action: "resume" | "retry"; op: string; args: Record<string, unknown> } | undefined>(undefined);
   const [error, setError] = useState(""), [openError, setOpenError] = useState("");
   const loading = session.timeline && !timeline && !error;
-  const [now, setNow] = useState(Date.now);
   const viewport = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null);
   const following = useRef(true), initial = useRef(true), previousRunning = useRef(true), previousTop = useRef(0);
   const manualDisclosure = useRef(false);
@@ -60,9 +59,9 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   // Completed history entries do not override a session in the live snapshot.
   const running = !!live || session.endedAt === undefined && !external && !timeline?.readOnly && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? "");
 
+  const now = useAppNow(running ? 1000 : null);
   const followAllowed = useRef(true);
   followAllowed.current = running;
-  useInterval(() => setNow(Date.now()), running ? 1000 : null);
   useEffect(() => {
     const node = viewport.current;
     if (!node) return;
@@ -170,7 +169,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
         if (!id) { id = crypto.randomUUID(); disclosureIds.current.set(button, id); }
         return { id, label: button.getAttribute("aria-label") || button.textContent, expanded: button.getAttribute("aria-expanded") === "true", disabled: button.disabled };
       });
-      return { agent, id: session.id, following: following.current, atLatest, expanded, state, turnId, timeline, queue: queue.items, review, disclosures };
+      return { agent, id: session.id, width: detail.current?.closest('[role="dialog"]')?.getBoundingClientRect().width ?? null, following: following.current, atLatest, expanded, state, turnId, timeline, queue: queue.items, review, disclosures };
     },
     act: request => {
       if (request.action === "latest") latest();

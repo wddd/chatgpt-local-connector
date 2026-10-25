@@ -1,3 +1,4 @@
+import { appEnvironment, envOverrides } from "./state/appEnvironment";
 import { createStore, preference } from "./state/store";
 import en from "./locales/en.json";
 import zhCN from "./locales/zh-CN.json";
@@ -38,15 +39,16 @@ export function setLanguage(value: string) {
 }
 function updateLocale() {
   const selected = language.get();
-  const next =
-    selected === "auto" ? resolveLocale(navigator.languages) : selected;
+  const resolvedLocale = selected === "auto" ? resolveLocale(navigator.languages) : selected;
+  const next = envOverrides().locale ?? resolvedLocale;
   locale.set(next);
   document.documentElement.lang = next;
   if ("__TAURI_INTERNALS__" in window)
     void import("@tauri-apps/api/core")
-      .then(({ invoke }) => invoke("set_ui_locale", { locale: next }))
+      .then(({ invoke }) => invoke("set_ui_locale", { locale: next, resolvedLocale }))
       .catch(console.error);
 }
+appEnvironment.subscribe(updateLocale);
 language.subscribe(updateLocale);
 window.addEventListener("languagechange", updateLocale);
 updateLocale();

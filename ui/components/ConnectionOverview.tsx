@@ -1,3 +1,5 @@
+import { useAppNow } from "../state/appEnvironment";
+import { appEnvironment, envOverrides } from "../state/appEnvironment";
 import { controlSource } from '../controlSources';
 import { orderedSubset } from '../topology/order';
 import { accountViews } from '../topology/accountViews';
@@ -8,7 +10,6 @@ import { PhaseTile, PhaseLabel } from "./activity";
 import { resetActivityCore, useActivityTracking } from "../state/activity";
 import { orderActivity, visibleActivity, effectiveBubbleDensity, bubbleWidths, bubbleHeights } from "../state/activityModel";
 import { taskOrder, reorderTasks } from "../state/taskOrder";
-import { useInterval } from "../state/hooks";
 import { maxVisibleAgents, bubbleDensity, bubbleWidth, bubbleAutoCompact } from "../subscriptions/displayPreferences";
 import { subscriptions } from "../state/subscriptions";
 import { navigation } from "../state/navigation";
@@ -71,6 +72,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const [panelExpanded, setPanelExpanded] = useState(false);
   const panelKey = selection && !selection.closing ? `agent:${selection.agent}`
     : sourceSelection && !sourceSelection.closing ? `source:${sourceSelection.client?.id ?? sourceSelection.ingress.id}` : undefined;
+  appEnvironment.use();
   const [panelLayout, setPanelLayout] = useState<PanelLayout>({ width: PANEL_MIN_WIDTH, expanded: false });
   const updatePanelLayout = useCallback(({ key, width, expanded }: PanelLayout) => {
     // Release scene space immediately, retaining the shell's last geometry
@@ -187,8 +189,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     return error ? "unknown" : ingressState(i);
   }
   const core = useRef<HTMLElement>(null), topology = useRef<TopologyHandle>(null);
-  const [now, setNow] = useState(Date.now);
-  useInterval(() => setNow(Date.now()), visible && Object.values(tracked).some(s => s.length) ? 1000 : null);
+  const now = useAppNow(visible && Object.values(tracked).some(s => s.length) ? 1000 : null);
   useEffect(() => { if (status?.core.backendSession) resetActivityCore(status.core.backendSession); }, [status?.core.backendSession]);
   const selectedAgent = selection && (orderedAgents().find(a => a.agent === selection.agent) ?? { agent: selection.agent });
   const panelFrame = useCallback((rect: SurfaceRect | null) => topology.current?.panelFrame(rect), []);
@@ -308,7 +309,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         {accounts.length > 0 && <div className="topology-mode"><SingleChoice label={t('topology.mode')} value={mode}
           options={[{ value: 'tree', label: t('topology.tree') }, { value: 'flat', label: t('topology.flat') }]}
           onChange={value => topologyMode.set(value as 'tree' | 'flat')} /></div>}
-        <Topology ref={topology} boundary={core} accountsEnabled={accounts.length > 0} left={topologyLeft} right={topologyRight} panelKey={panelKey} panelExpanded={panelExpanded} onPanelLayout={updatePanelLayout}
+        <Topology ref={topology} boundary={core} accountsEnabled={accounts.length > 0} left={topologyLeft} right={topologyRight} panelKey={panelKey} panelExpanded={selection && envOverrides().taskPanelWidth != null ? false : panelExpanded} onPanelLayout={updatePanelLayout}
           onReorderNodes={reorderNodes}
           onReorderTasks={(_side, parent, ids) => {
             const agent = flatten(topologyRight).find(n => n.id === parent)?.platform ?? parent;
@@ -318,7 +319,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             onAddSource={() => openOnboarding("product")}
             onManageAgents={() => setAgentsOpen(true)} />} />
         {selectedAgent && visible && (panelReady || selection?.closing || panelLayout.key?.startsWith("agent:")) && <AgentPanel agent={selectedAgent}
-          width={panelLayout.width} expanded={panelLayout.expanded} onToggleWidth={() => setPanelExpanded(value => !value)}
+          width={envOverrides().taskPanelWidth ?? panelLayout.width} expanded={envOverrides().taskPanelWidth == null && panelLayout.expanded} onToggleWidth={() => setPanelExpanded(value => !value)}
           onSettings={() => setDisplaySettingsOpen(true)} onPanelFrame={panelFrame} />}
         {sourceSelection && visible && (panelReady || sourceSelection.closing || panelLayout.key?.startsWith("source:")) && <IngressPanel width={panelLayout.width} expanded={panelLayout.expanded} onToggleWidth={() => setPanelExpanded(value => !value)} onPanelFrame={panelFrame} />}
         <div className="activity-edge-fade" aria-hidden="true" />

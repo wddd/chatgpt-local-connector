@@ -1,3 +1,5 @@
+import { appEnvironment, refreshAppEnvironment } from "./state/appEnvironment";
+import { environmentModel } from "./state/appEnvModel";
 import { activityBubbleSnapshot, controlActivityBubble, type ActivityBubbleRequest } from "./state/activityBubbles";
 import { protectSnapshot } from "./state/privacy";
 import { scenarioReadiness } from "./state/scenarioReadiness";
@@ -22,6 +24,12 @@ export function observeTopology(read: () => unknown) {
 export function viewModel(layoutSettled = false) {
   const detail = taskPanelSnapshot();
   return {
+    env: environmentModel(appEnvironment.get(), Date.now(), {
+      reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+      colorScheme: document.documentElement.dataset.theme ?? "light", locale: locale.get(),
+      windowWidth: innerWidth, taskPanelWidth: (detail?.width as number | undefined) ?? null,
+      presence: !!detail && document.visibilityState === "visible" && document.hasFocus(),
+    }),
     scenario: scenarioReadiness(detail),
     schemaVersion: 1, layoutSettled, capturedAt: new Date().toISOString(),
     window: { width: innerWidth, height: innerHeight, devicePixelRatio },
@@ -68,6 +76,7 @@ export async function captureRequest(request: { id: string; panel?: PanelRequest
   protectSnapshot();
   const { invoke } = await import('@tauri-apps/api/core');
   try {
+    await refreshAppEnvironment();
     await Promise.all([refreshConnector(), refreshAgents(), refreshTasks(), api<AgentActivitySnapshot>('agents/activity').then(acceptActivity)]);
     if (request.panel) { navigate(); openSnapshotPanel(request.panel); }
     if (request.taskPanel) { if (request.taskPanel.action === "open") navigate(); await controlTaskPanel(request.taskPanel); }

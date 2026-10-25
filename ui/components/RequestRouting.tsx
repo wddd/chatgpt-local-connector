@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useAppNow } from "../state/appEnvironment";
 import { t } from "../i18n";
 import type { RequestRouting as Routing } from "../state/requestRouting";
 import { Button } from "./ui";
@@ -7,13 +7,7 @@ export default function RequestRouting({ routing, source, busy, change }: {
   routing?: Routing; source: string; busy: boolean;
   change: (action: "pause" | "resume" | "handoff") => Promise<void>;
 }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (routing?.state !== "deferred") return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [routing?.state, routing?.deferUntil]);
+  const now = useAppNow(routing?.state === "deferred" ? 1000 : null);
   if (!routing) return null;
   const seconds = Math.max(0, Math.ceil(((routing.deferUntil ?? now) - now) / 1000));
   const deferred = routing.state === "deferred";

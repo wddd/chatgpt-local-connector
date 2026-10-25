@@ -1,6 +1,7 @@
+import { useReducedMotion } from "../state/appEnvironment";
 import { useRef, useState } from "react";
 import { Check } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { locale, t } from "../i18n";
 import { PhaseTile, PhaseLabel, StepTrail, SpecPill, SourceBadge, dispatchSourceLabel } from "./activity";
 import { selectAgentPanel } from "../state/overviewPanels";

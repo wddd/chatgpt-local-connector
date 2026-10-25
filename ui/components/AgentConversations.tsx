@@ -1,3 +1,4 @@
+import { useAppNow } from "../state/appEnvironment";
 import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 import { api } from "../api";
 import { locale, t } from "../i18n";
@@ -5,7 +6,6 @@ import type { AgentActivitySession, AgentConversation, AgentConversationPage } f
 import { agentActivity } from "../state/activity";
 import { selectAgentPanel } from "../state/overviewPanels";
 import type { TrackedActivity } from "../state/activityModel";
-import { useInterval } from "../state/hooks";
 import { ActivityBubbleContent } from "./ActivityBubbles";
 import { Button, Loading, Notice } from "./ui";
 
@@ -26,14 +26,13 @@ export default function AgentConversations({ agent, active }: { agent: string; a
   const language = locale.use();
   const { snapshot } = agentActivity.use();
   const [observed, setObserved] = useState<Record<string, AgentActivitySession>>({});
-  const [now, setNow] = useState(Date.now);
   const [rows, setRows] = useState<AgentConversation[]>([]), [next, setNext] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string>(), [retry, setRetry] = useState(0);
   const [loading, setLoading] = useState(true), [error, setError] = useState("");
   const loaded = useRef<string | undefined>(undefined), marker = useRef<HTMLDivElement>(null);
   const pending = useRef<{ key: string; request: Promise<AgentConversationPage> } | undefined>(undefined);
   const live = new Map(snapshot?.agents[agent]?.sessions.map(session => [session.id, session]) ?? []);
-  useInterval(() => setNow(Date.now()), active && live.size ? 1000 : 60000);
+  const now = useAppNow(active && live.size ? 1000 : 60000);
   useEffect(() => {
     const sessions = snapshot?.agents[agent]?.sessions;
     if (sessions?.length) setObserved(old => ({ ...old, ...Object.fromEntries(sessions.map(session => [session.id, session])) }));

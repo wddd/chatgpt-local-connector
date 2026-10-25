@@ -1,6 +1,7 @@
+import { useReducedMotion } from "../state/appEnvironment";
 import { agentPanel, selectAgentPanel } from "../state/overviewPanels";
 import { useLayoutEffect, useRef, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import { ArrowUpRight, Settings, Maximize2, Minimize2, RefreshCw } from "lucide-react";
 import { locale, t } from "../i18n";
 import { api } from "../api";

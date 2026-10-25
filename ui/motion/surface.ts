@@ -1,10 +1,11 @@
+import { environmentMedia } from "../state/appEnvironment";
 import { animate, mix, type AnimationPlaybackControlsWithThen } from "motion";
 
 export const surfaceDuration = 0.2;
 
 export interface SurfaceRect { x: number; y: number; width: number; height: number }
 export type Surface = Record<string, string | number>;
-export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+export const reducedMotion = () => environmentMedia("(prefers-reduced-motion: reduce)").matches;
 
 // Morph the shell's real dimensions; its independently laid-out content is clipped,
 // never scaled. A shared monotonic curve keeps every edge between its endpoints.
@@ -20,7 +21,7 @@ export function surfaceMotion(node: HTMLElement, naturalStyle: () => Surface = (
   let active = false;
   let retained = false;
   let settledSize = node.getBoundingClientRect();
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  const reduced = environmentMedia("(prefers-reduced-motion: reduce)");
   const save = (surface: Surface) => {
     for (const key of Object.keys(surface)) {
       if (!(key in base)) base[key] = (node.style as unknown as Record<string, string>)[key] ?? "";

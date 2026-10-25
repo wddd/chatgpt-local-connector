@@ -1,3 +1,4 @@
+import { environmentMedia } from "../state/appEnvironment";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { animate, motionValue, frame, cancelFrame } from "motion";
 import { createStore } from "../state/store";
@@ -15,7 +16,7 @@ export function useGeometrySpring(initial: number[], response: number, damping: 
   const spring = useMemo(() => {
     const values = initial.map((value) => motionValue(value));
     const state = createStore([...initial]);
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+    const reduced = environmentMedia("(prefers-reduced-motion: reduce)");
     let goal = [...initial];
     const publish = () => state.set(values.map((value) => value.get()));
     const changed = () => frame.preRender(publish);

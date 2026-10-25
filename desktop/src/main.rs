@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
+mod app_env;
 #[cfg(target_os = "macos")]
 mod appearance;
 mod autostart;
@@ -139,6 +140,7 @@ fn main() {
         .manage(updates::UpdateState::default())
         .manage(windows::MainState::default())
         .manage(snapshot::State::default())
+        .manage(app_env::State::default())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             show_main_window(app);
         }))
@@ -162,6 +164,7 @@ fn main() {
             windows::release_main_window,
             service_request,
             snapshot::snapshot_ready,
+            app_env::apply_env_window,
             i18n::set_ui_locale,
             #[cfg(target_os = "windows")]
             windows_frame::set_windows_appearance

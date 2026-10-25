@@ -1,12 +1,16 @@
+import { observeAppEnvironment, useReducedMotion } from "../state/appEnvironment";
+import { MotionConfig } from "motion/react";
 import { useEffect, type ReactNode } from "react";
 import { locale } from "../i18n";
 import { observeNativeTheme } from "../theme";
 import { TooltipProvider } from "./ui";
 export default function UiProvider({ children }: { children: ReactNode }) {
   const language = locale.use();
+  const reduced = useReducedMotion();
+  useEffect(observeAppEnvironment, []);
   useEffect(observeNativeTheme, []);
   return (
-    <TooltipProvider delayDuration={350}>
+    <MotionConfig reducedMotion={reduced ? "always" : "never"}><TooltipProvider delayDuration={350}>
       <div
         className="ui-root"
         lang={language}
@@ -23,6 +27,6 @@ export default function UiProvider({ children }: { children: ReactNode }) {
       >
         {children}
       </div>
-    </TooltipProvider>
+    </TooltipProvider></MotionConfig>
   );
 }

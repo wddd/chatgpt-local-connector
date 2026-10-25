@@ -35,7 +35,7 @@
 @keyframes phase-check { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes phase-sway { 0%, 65%, 100% { transform: rotate(0); } 74% { transform: rotate(-12deg); } 84% { transform: rotate(10deg); } 93% { transform: rotate(-4deg); } }
 @keyframes phase-pulse { 50% { opacity: 0.55; transform: scale(0.85); } }
-@media (prefers-reduced-motion: reduce) {
+:root[data-reduced-motion="true"] {
   .phase-orbit::before, .phase-tile > .icon, .phase-tile > .icon path, .phase-shimmer, .phase-shimmer > span, .step-trail i, .phase-stroke-reveal { animation: none !important; will-change: auto; }
   .phase-shimmer { display: none; }
 }

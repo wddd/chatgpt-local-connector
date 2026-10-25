@@ -1,3 +1,4 @@
+import { appEnvironment, envOverrides } from "./state/appEnvironment";
 import { createStore, preference } from "./state/store";
 import { isDesktop } from "./platform";
 import "./tokens.css";
@@ -30,7 +31,7 @@ let hostDark: boolean | undefined;
 function applyTheme() {
   const value = theme.get();
   const resolved =
-    value === "system" ? (hostDark ?? system.matches) : value === "dark";
+    envOverrides().colorScheme ? envOverrides().colorScheme === "dark" : value === "system" ? (hostDark ?? system.matches) : value === "dark";
   dark.set(resolved);
   document.documentElement.dataset.theme = resolved ? "dark" : "light";
   document.documentElement.style.colorScheme = resolved ? "dark" : "light";
@@ -51,6 +52,7 @@ function applyTheme() {
       )
       .catch(console.error);
 }
+appEnvironment.subscribe(applyTheme);
 theme.subscribe(applyTheme);
 themeColor.subscribe(applyTheme);
 system.addEventListener("change", () => {
