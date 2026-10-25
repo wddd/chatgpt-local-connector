@@ -1,6 +1,7 @@
 //! Turn-scoped control-source events, inboxes and fixed notification channels.
 use crate::*;
 pub(crate) mod continuation;
+mod diagnostics;
 mod governance;
 pub(crate) mod mcp_events;
 pub(crate) mod ownership;
@@ -1016,6 +1017,18 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     };
     *b = current;
     continuation::adopt(dir, b, observation)?;
+    let diagnostic_changed = if observation.get("handoffs").is_none() {
+        let diagnostic = json!({"state":observation["state"],"reason":observation["reason"],
+            "runtimeSource":observation["runtimeSource"],"runtimeStatus":observation["runtimeStatus"],
+            "recordedStatus":observation["recordedStatus"],"observedAt":observation["observedAt"],
+            "reconciliation":if observation["state"]=="unconfirmed" {"pending-after-restart"}else{"reconciled"}});
+        let changed = b.observation != diagnostic;
+        b.observation = diagnostic;
+        changed
+    } else {
+        false
+    };
+
     if let Some(title) = observation["title"]
         .as_str()
         .filter(|title| !title.trim().is_empty())
@@ -1094,6 +1107,9 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
     }
     if events.is_empty() && b.waiting == previous_waiting && b.terminal == was_terminal && !resolved
     {
+        if diagnostic_changed {
+            persist(dir, b)?;
+        }
         return Ok(());
     }
     let first = b.deliveries.len();
@@ -2304,7 +2320,17 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                         }
                         if recovering {
                             recover(&directory(), &mut b)?;
-
+                            if !b.terminal
+                                || (!b.continuation_bound
+                                    && b.scope_end.is_none()
+                                    && b.continuation_until > 0)
+                            {
+                                if !b.observation.is_object() {
+                                    b.observation = json!({});
+                                }
+                                b.observation["reconciliation"] = json!("pending-after-restart");
+                                persist(&directory(), &b)?;
+                            }
                         }
                         drop(_guard);
                         if b.scope_end.is_none()
@@ -2352,7 +2378,30 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                     }
                 }
                 while let Some(result) = reads.join_next().await {
-                    let Ok((old, Ok(Ok(observed)))) = result else { continue; };
+                    let Ok((old, result)) = result else {
+                        continue;
+                    };
+                    let observed = match result {
+                        Ok(Ok(observed)) => observed,
+                        failure => {
+                            let error = match failure {
+                                Ok(Err(error)) => error,
+                                _ => "native-observation-timeout".into(),
+                            };
+                            let _guard = LOCK.lock().await;
+                            if let Some(mut b) =
+                                binding(&directory(), &old.thread_id, &old.turn_id)?
+                            {
+                                if !b.observation.is_object() {
+                                    b.observation = json!({});
+                                }
+                                b.observation["lastError"] = json!(error);
+                                b.observation["reconciliation"] = json!("pending-after-restart");
+                                persist(&directory(), &b)?;
+                            }
+                            continue;
+                        }
+                    };
                     let mut b = old;
                     let mut observed = observed;
                     for request in observed["interaction"].as_array_mut().into_iter().flatten() {
@@ -3713,6 +3762,75 @@ mod tests {
                 if fail { "pending" } else { "delivered" }
             );
             assert_eq!(notification(Some(b))["deliveries"], json!([]));
+        }
+    }
+
+    #[tokio::test]
+    async fn notification_diagnosis_explains_pending_restart_and_excluded_successors() {
+        // Regression: notify_status returned empty deliveries without explaining restart gaps or non-inherited continuations.
+        let dir = Sandbox::new();
+        let mut b = fixture(&dir.0);
+        let pending = governance::status_in(
+            &dir.0,
+            "claude",
+            &json!({"threadId":b.thread_id}),
+            100,
+            &json!({}),
+        )
+        .unwrap();
+        assert!(pending["threads"][0]["diagnosis"]["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("pending-observation")));
+        b.observation = json!({"reconciliation":"pending-after-restart","lastError":"native-observer-unavailable"});
+        persist(&dir.0, &b).unwrap();
+        let restarted = governance::status_in(
+            &dir.0,
+            "claude",
+            &json!({"threadId":b.thread_id}),
+            100,
+            &json!({}),
+        )
+        .unwrap();
+        assert!(restarted["threads"][0]["diagnosis"]["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("pending-after-restart")));
+        let fake = Fake::success();
+        process(
+            &fake,
+            &dir.0,
+            &mut b,
+            &json!({"state":"cancelled","nextTurnId":"user-turn",
+            "nativeContinuation":{"excluded":true,"reason":"new-user-content"}}),
+        )
+        .await
+        .unwrap();
+        let explained = governance::status_in(
+            &dir.0,
+            "claude",
+            &json!({"threadId":b.thread_id}),
+            100,
+            &json!({}),
+        )
+        .unwrap();
+        let diagnosis = &explained["threads"][0]["diagnosis"];
+        assert_eq!(diagnosis["successor"]["turnId"], "user-turn");
+        assert_eq!(diagnosis["successor"]["inherited"], false);
+        assert_eq!(diagnosis["scope"]["active"], false);
+        assert!(diagnosis["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("successor-not-inherited")));
+        for value in [&pending["threads"][0]["diagnosis"], diagnosis] {
+            let catalog = catalog();
+            let spec = catalog["ops"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|op| op["name"] == value["next"]["op"])
+                .unwrap();
+            crate::egress::validate_op(spec, &value["next"]["args"]).unwrap();
         }
     }
 

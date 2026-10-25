@@ -202,6 +202,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       assert.ok(report.threads[0].turns.some((turn:any)=>turn.turnId===successor && turn.target===target));
       assert.equal(report.deliveries.filter((d:any)=>d.kind==='handoff').length,1);
       assert.equal(report.threads[0].ownership.currentOwner,'desktop');
+      assert.ok(report.threads[0].diagnosis.reasons.includes('ownership-moved-to-desktop'));
       const owner = await fixture.call('codex_owner',{threadId:interrupted.threadId});
       assert.equal(owner.history.at(-1).to,'desktop');
       const timeline=await fixture.call('task_timeline',{agent:'codex',id:interrupted.threadId});
