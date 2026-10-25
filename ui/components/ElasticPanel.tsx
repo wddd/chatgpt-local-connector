@@ -178,6 +178,9 @@ export default function ElasticPanel({
       rect = new DOMRect((innerWidth - rect.width) / 2 + x, (innerHeight - rect.height) / 2 + y, rect.width, rect.height);
     }
     const surface = surfaceMotion(node, () => dockRectRef.current ? frameAt(dockRectRef.current, 1, "20px") : ({
+      // A shell first opened in portrait must release its explicit size when
+      // returning to the landscape dock's CSS-owned viewport height.
+      ...(dock ? { width: "", height: "" } : {}),
       transform: sheet ? "translateX(-50%)" : `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
     }), frame => { dockFrame.current = frame; onMotion?.(); onPanelFrame?.(frame); }, !dock && !sheet);
     dockFrame.current = rect;

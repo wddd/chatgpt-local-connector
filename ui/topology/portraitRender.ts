@@ -27,12 +27,13 @@ export class PortraitPainter {
     private onHover?: (target: { side: Side; id: string; task?: boolean } | null) => void) {
     const defs = document.createElementNS(ns, 'defs'), gradient = document.createElementNS(ns, 'linearGradient');
     gradient.id = `${prefix}-portrait-ear`;
+    gradient.setAttribute("gradientUnits", "userSpaceOnUse");
     for (const [offset, color] of [['0', 'var(--mark-agent-start)'], ['1', 'var(--mark-agent-end)']]) {
       const stop = document.createElementNS(ns, 'stop'); stop.setAttribute('offset', offset); stop.style.stopColor = color; gradient.append(stop);
     }
-    defs.append(gradient); svg.append(defs); this.gradient = gradient.id;
+    defs.append(gradient); svg.append(defs); this.gradient = gradient;
   }
-  private gradient: string;
+  private gradient: SVGLinearGradientElement;
   private path(key: string, d: string, className: string, opacity = 1, attrs: Record<string, string | number> = {}, hover?: { side: Side; id: string; task?: boolean }) {
     this.keep.add(key);
     let path = this.paths.get(key);
@@ -45,6 +46,8 @@ export class PortraitPainter {
     const h = a.values('hub'), p = a.values('portrait');
     if (!h || !p) return;
     this.keep.clear();
+    // Horizontal stroked paths have a zero-height object bounding box.
+    for (const [key, value] of Object.entries({ x1: h.x - p.earHalf, x2: h.x + p.earHalf, y1: h.y + p.earOffset, y2: h.y + p.earOffset })) this.gradient.setAttribute(key, String(value));
     const point = (x: number, y: number) => ({ x, y });
     for (const side of [-1, 1] as const) {
       const wing = nodes.filter(n => n.side === side && !n.parent).map(n => a.values(nodeKey(side, n.id))).filter(v => v && v.presence > 0.01);
@@ -52,7 +55,7 @@ export class PortraitPainter {
       const edge = side === -1 ? Math.min(...wing.map(v => v!.y), y) : Math.max(...wing.map(v => v!.y), y);
       this.path(`rail${side}`, railPath([point(h.x + side * p.earHalf, y), point(x, y), point(x, edge)], 26), `portrait-rail ${side === -1 ? 'left' : 'right'}`, 0.45);
       this.path(`ear${side}`, railPath([point(h.x - p.earHalf, y), point(h.x + p.earHalf, y)]), `topology-ear ${side === -1 ? 'left' : 'right'}`, 1,
-        { 'stroke-width': 14 * h.Re / 130, ...(side === 1 ? { style: `stroke:url(#${this.gradient})` } : {}) });
+        { 'stroke-width': 14 * h.Re / 130, ...(side === 1 ? { style: `stroke:url(#${this.gradient.id})` } : {}) });
     }
     for (const node of nodes) {
       const key = nodeKey(node.side, node.id), n = a.values(key);
