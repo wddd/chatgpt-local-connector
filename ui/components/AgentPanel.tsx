@@ -1,6 +1,6 @@
 import { useReducedMotion } from "../state/appEnvironment";
 import { agentPanel, selectAgentPanel } from "../state/overviewPanels";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { ArrowUpRight, Settings, Maximize2, Minimize2, RefreshCw } from "lucide-react";
 import { locale, t } from "../i18n";
@@ -140,7 +140,7 @@ export default function AgentPanel({ agent, onSettings, onPanelFrame, width, exp
 }) {
   const selected = agentPanel.use()!, { error } = agentActivity.use();
   const reduced = useReducedMotion(), previous = useRef(selected), content = useRef<HTMLDivElement>(null);
-  const session = selected.session;
+  const session = selected.session, taskTitleId = useId();
   const returning = previous.current.agent === selected.agent && !!previous.current.session && !session;
   useLayoutEffect(() => {
     if (returning) {
@@ -153,7 +153,7 @@ export default function AgentPanel({ agent, onSettings, onPanelFrame, width, exp
     }
     previous.current = selected;
   }, [selected]);
-  return <Dialog width={width} dock="right" expanded={expanded} headerless title={name(agent)}
+  return <Dialog width={width} dock="right" expanded={expanded} headerless title={name(agent)} labelledBy={session ? taskTitleId : undefined}
     originKey={agent.agent} closeRequested={selected.closing}
     onCloseStart={() => agentPanel.set(old => old?.agent === agent.agent ? { ...old, closing: true } : old)}
     onClose={() => { if (agentPanel.get()?.agent === agent.agent && agentPanel.get()?.closing) selectAgentPanel({ type: "closed" }); }}
@@ -166,7 +166,7 @@ export default function AgentPanel({ agent, onSettings, onPanelFrame, width, exp
       </motion.div>
       {session && <motion.div className="agent-panel-view" key={`${agent.agent}:${session.id}`}
         initial={{ opacity: reduced ? 1 : 0, x: reduced ? 0 : 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>
-        <ActivityTimeline agent={agent.agent} session={session} expanded={expanded} onToggleWidth={onToggleWidth} onBack={() => selectAgentPanel({ type: "back" })} />
+        <ActivityTimeline titleId={taskTitleId} agent={agent.agent} session={session} expanded={expanded} onToggleWidth={onToggleWidth} onBack={() => selectAgentPanel({ type: "back" })} />
       </motion.div>}
     </div>
   </Dialog>;

@@ -13,7 +13,7 @@ test("task detail projects native titles, compact ownership and pending input wi
   window.matchMedia = () => media as unknown as MediaQueryList;
   class Observer { observe() {} unobserve() {} disconnect() {} }
   Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
-    Node: window.Node, NodeFilter: window.NodeFilter, DocumentFragment: window.DocumentFragment, MutationObserver: window.MutationObserver,
+    innerWidth: 840, innerHeight: 578, Node: window.Node, NodeFilter: window.NodeFilter, DocumentFragment: window.DocumentFragment, MutationObserver: window.MutationObserver,
     HTMLInputElement: window.HTMLInputElement, HTMLFormElement: window.HTMLFormElement, HTMLSelectElement: window.HTMLSelectElement,
     Event: window.Event, CustomEvent: window.CustomEvent, CSS: window.CSS, DOMRect: window.DOMRect, localStorage: window.localStorage,
     ResizeObserver: Observer, matchMedia: window.matchMedia, getComputedStyle: window.getComputedStyle.bind(window),
@@ -128,6 +128,19 @@ test("task detail projects native titles, compact ownership and pending input wi
       assert.equal(page.queryByRole("region", { name: t("detail.needsYou") }), null);
       for (const action of ["detail.send", "detail.stop", "detail.pass", "detail.rework"]) assert.equal(page.queryByRole("button", { name: t(action), exact: true }), null);
       assert.equal(payload.entries.some((row: {phase?:string}) => row.phase === "final_answer"), false);
+    }
+    const { default: AgentPanel } = await server.ssrLoadModule("/ui/components/AgentPanel.tsx");
+    const { selectAgentPanel } = await server.ssrLoadModule("/ui/state/overviewPanels.ts");
+    for (const scenario of ["task-owner-desktop", "task-turn-interrupted"]) {
+      await act(async () => { await installScenario(scenario); setPrivacy(false); });
+      const record = scenarioResponse("tasks", "GET").records[0];
+      await act(async () => {
+        selectAgentPanel({ type: "task", agent: "codex", session: { id: record.threadId, source: "codex-thread", phase: "idle", phaseSince: null, headline: "", timeline: true, orderAt: 0 } });
+        root.render(h(TooltipProvider, null, h(AgentPanel, { key: scenario, agent: {agent:"codex"}, expanded:false, onSettings(){}, onPanelFrame(){}, onToggleWidth(){} })));
+      });
+      assert.ok(page.getByRole("dialog", { name: record.task.title, exact: true }));
+      await act(() => selectAgentPanel({ type: "back" }));
+      assert.ok(page.getByRole("dialog", { name: "Codex", exact: true }));
     }
   } finally { await act(() => root.unmount()); globalThis.fetch = originalFetch; await server.close(); await window.happyDOM.close(); }
 });

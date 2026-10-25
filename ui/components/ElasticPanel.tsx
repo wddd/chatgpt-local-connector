@@ -33,6 +33,7 @@ export default function ElasticPanel({
   onCloseStart,
   onDismiss,
   title,
+  labelledBy,
   children,
   footer,
   actions,
@@ -61,6 +62,7 @@ export default function ElasticPanel({
   onCloseStart?: () => void;
   onDismiss?: () => void;
   title: ReactNode;
+  labelledBy?: string;
   children: ReactNode;
   footer?: ReactNode;
   actions?: ReactNode;
@@ -341,6 +343,7 @@ export default function ElasticPanel({
           inert={recessed || undefined}
           data-panel-depth={baseDepth + depthOffset}
           aria-describedby={undefined}
+          {...(labelledBy ? { "aria-labelledby": labelledBy } : {})}
           style={
             {
               ...(sheet ? { top: "auto", left: sheetFrame.left, bottom: sheetFrame.bottom, width: sheetFrame.width, "--sheet-host-height": `${sheetFrame.height}px` } : {}),

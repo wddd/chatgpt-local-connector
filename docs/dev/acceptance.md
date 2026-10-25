@@ -112,6 +112,8 @@ Task-detail fixtures use sanitized payloads matching `AgentTimeline` / `AgentInt
 | `task-long-approval` | Long native approval preview; preview scrolls while decision actions and routing stay pinned. |
 | `task-wide-markdown` | Completed answer with a ten-column table and a long unwrapped code line; horizontal wheel stays in the hovered content. |
 
+Task dialogs take their accessible name from the visible native task-title heading; returning to the Agent overview restores the Agent name.
+
 At narrow panel widths, open the needs-you banner to inspect the capped bottom sheet in either long-input scenario.
 
 Target one fixture with `npm run accept:ui -- --scenario=task-owner-desktop` from main. The runner uses browser fixtures and screenshots. A missing route fails readiness with its method and path in `scenario.missingRoutes` and `data-scenario-error`.

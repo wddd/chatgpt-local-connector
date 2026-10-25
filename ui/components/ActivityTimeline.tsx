@@ -26,8 +26,8 @@ import type { TaskRuntime } from "../state/tasks";
 
 import { name, orderedAgents } from "../state/agents";
 
-export default function ActivityTimeline({ agent, session, expanded, onToggleWidth, onBack }: {
-  agent: string; session: TrackedActivity; expanded: boolean; onToggleWidth: () => void; onBack: () => void;
+export default function ActivityTimeline({ agent, session, expanded, onToggleWidth, onBack, titleId }: {
+  agent: string; session: TrackedActivity; expanded: boolean; onToggleWidth: () => void; onBack: () => void; titleId?: string;
 }) {
   const { snapshot } = agentActivity.use();
   const detail = useRef<HTMLElement>(null);
@@ -221,7 +221,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           { label: t(expanded ? "restorePanelWidth" : "expandPanelWidth"), action: onToggleWidth },
         ]} /></div>}
       </div>
-      <h2 className="activity-panel-title">{title}</h2>
+      <h2 id={titleId} className="activity-panel-title">{title}</h2>
       <div className="task-detail-chips"><span className="task-state" data-state={state}>{t(`detail.state.${state}`)}</span>
         {latestSummary?.model?.trim() && <span className="task-spec-chip" title={latestSummary.model}>{shortModelLabel(latestSummary.model)}</span>}
         {latestSummary?.effort?.trim() && <span className="task-spec-chip">{latestSummary.effort}</span>}
