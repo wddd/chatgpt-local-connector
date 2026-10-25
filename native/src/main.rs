@@ -24,6 +24,8 @@ async fn run() -> Result<()> {
         #[cfg(target_os = "macos")]
         ["replace-run", id] => arc_core::app_replace::run_worker(id).await,
         #[cfg(target_os = "macos")]
+        ["replace-notify", id] => arc_core::app_replace::notify(id),
+        #[cfg(target_os = "macos")]
         ["package-check", path] => {
             arc_core::output::line(arc_core::package::check(std::path::Path::new(path)).await?)
         }

@@ -76,6 +76,14 @@ try {
             if (dialog.stacked && !layout.some(parent => parent.recessed && parent.width > dialog.width)) throw new Error('Stacked dialog is not narrower than its parent');
           }
         }
+        if (fixture.replacement && ['countdown', 'verifying'].includes(fixture.replacement.state)) {
+          // Regression: a local replacement had no visible progress or restart countdown outside Settings.
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          const dialog = page.getByRole('dialog', {name:messages.replacementProgress, exact:true});
+          await dialog.waitFor({state:'visible'});
+          await dialog.getByRole('status').waitFor({state:'visible'});
+          if (fixture.replacement.immediate) await dialog.getByText(messages.replacementImmediate, {exact:true}).waitFor({state:'visible'});
+        }
         if (fixture.claudeAccounts) {
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           await page.getByRole('button', { name: messages[fixture.claudeLogin ? 'claudeAccounts.continue' : 'claudeAccounts.login'], exact: true }).waitFor({ state: 'visible' });

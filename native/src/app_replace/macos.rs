@@ -24,9 +24,10 @@ fn bundle(executable: &str) -> Result<PathBuf> {
         .canonicalize()
         .map_err(|e| e.to_string())
 }
-fn phase(path: &Path, receipt: &mut Value, state: &str, error: Option<&str>) -> Result<()> {
+async fn phase(path: &Path, receipt: &mut Value, state: &str, error: Option<&str>) -> Result<()> {
     receipt["state"] = json!(state);
     receipt["updatedAt"] = json!(now());
+    receipt["phaseStartedAt"] = receipt["updatedAt"].clone();
     if let Some(error) = error {
         receipt["error"] = json!(error);
     }
@@ -35,6 +36,62 @@ fn phase(path: &Path, receipt: &mut Value, state: &str, error: Option<&str>) -> 
     }
     save(&path.join("status.json"), receipt)?;
     eprintln!("{} {state} {}", now(), error.unwrap_or(""));
+    // NSUserNotificationCenter needs a main-thread run loop. A bounded child keeps
+    // notification delivery independent of both Desktop and the worker runtime.
+    receipt["notificationError"] = match tokio::time::timeout(
+        Duration::from_secs(5),
+        output(
+            io(std::env::current_exe())?,
+            &["replace-notify", string(receipt, "id")],
+        ),
+    )
+    .await
+    {
+        Ok(Ok(_)) => Value::Null,
+        Ok(Err(error)) => json!(error),
+        Err(_) => json!("NOTIFICATION_UNAVAILABLE: Read app.replace.status for progress"),
+    };
+    save(&path.join("status.json"), receipt)
+}
+
+pub fn notify(id: &str) -> Result<()> {
+    let receipt = load(&job(id)?.join("status.json"))?;
+    let state = string(&receipt, "state");
+    let key = match state {
+        "preparing" => "replacementPreparing",
+        "awaiting-receipt" => "replacementHandoff",
+        "waiting-for-turns" => "replacementWaiting",
+        "countdown" => "replacementCountdownNotice",
+        "verifying" => "replacementValidating",
+        "stopping" => "replacementStopping",
+        "installing" => "replacementInstalling",
+        "starting" => "replacementStarting",
+        "succeeded" => "replacementSucceeded",
+        "rolling-back" => "replacementRestoring",
+        "rolled-back" => "replacementPreviousRestored",
+        "cancelled" => "replacementCancelled",
+        _ => "replacementFailed",
+    };
+    let body = crate::i18n::text(&crate::i18n::locale(), key);
+    notify_rust::set_application(string(&receipt["package"], "identifier"))
+        .map_err(|e| e.to_string())?;
+    notify_rust::Notification::new()
+        .summary("Agent Remote Control")
+        .body(body)
+        .show()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+// A signed bundle and both binary fingerprints are enough after a same-directory rename.
+async fn verify_identity(app: &Path, expected: &Value) -> Result<()> {
+    crate::package::signature(app, string(expected, "identifier")).await?;
+    if crate::runtime::build_id(&app.join("Contents/Resources/bin/arc"))? != expected["coreBuild"]
+        || crate::runtime::build_id(&app.join("Contents/MacOS/agent-remote-control-desktop"))?
+            != expected["desktopBuild"]
+    {
+        return Err("REPLACE_INVALID_PACKAGE: bundle fingerprints changed".into());
+    }
     Ok(())
 }
 
@@ -109,26 +166,30 @@ pub async fn prepare(body: Value) -> Result<Value> {
     private_dir(&path)?;
     let label = format!("com.whzxc.arc.replace.{id}");
     let service = format!("gui/{}/{label}", unsafe { libc::geteuid() });
-    let backup = target.with_file_name(format!(
-        "{}.backup-{}-{id}",
-        target.file_name().unwrap().to_string_lossy(),
-        chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
-    ));
+    let temporary = std::env::temp_dir().join(format!("arc-replacement-{id}"));
+    private_dir(&temporary)?;
+    let backup = temporary.join("Agent Remote Control.app");
     let staged = target.with_file_name(format!(
         "{}.replacement-{id}.app",
         target.file_name().unwrap().to_string_lossy()
     ));
-    let mut receipt = json!({"replacementReceipt":true,"id":id,"state":"preparing","source":source,"target":target,"backup":backup,"staged":staged,"backupMoved":false,"package":expected,"oldPackage":{"coreBuild":old_core,"desktopBuild":old_desktop,"identifier":identifier},"desktopPid":app["pid"],"corePid":core["pid"],"coreInstance":core["instance"],"service":service,"createdAt":now(),"statusPath":path.join("status.json"),"logPath":path.join("worker.log"),"next":"End this turn after the receipt. Do not continue work depending on ARC. Query app replace --status after reconnecting."});
+    let mut receipt = json!({"replacementReceipt":true,"id":id,"state":"preparing","immediate":body["immediate"]==true,"temporaryDirectory":temporary,"source":source,"target":target,"backup":backup,"staged":staged,"backupMoved":false,"package":expected,"oldPackage":{"coreBuild":old_core,"desktopBuild":old_desktop,"identifier":identifier},"desktopPid":app["pid"],"corePid":core["pid"],"coreInstance":core["instance"],"service":service,"createdAt":now(),"statusPath":path.join("status.json"),"logPath":path.join("worker.log"),"next":"End this turn after the receipt. Do not continue work depending on ARC. Query app replace --status after reconnecting."});
     if let Some(args) = continuation {
         receipt["continuation"] = args;
         receipt["continuationState"] = json!("waiting-for-recovery");
     }
     save(&path.join("status.json"), &receipt)?;
+    save(&directory().join("latest.json"), &json!({"id":id}))?;
     let prepared: Result<()> = async {
+        phase(&path, &mut receipt, "preparing", None).await?;
         // Stage before acknowledging: source cleanup by the caller cannot race installation.
         output("/usr/bin/ditto", &[&source.to_string_lossy(), &staged.to_string_lossy()]).await?;
         let staged_package = inspect(&staged).await?;
         if staged_package != expected { return Err("REPLACE_INVALID_PACKAGE: staging changed package identity".into()); }
+        // Back up while the installed app still runs. Do not remove any installed bytes until this copy is verified.
+        output("/usr/bin/ditto", &[&target.to_string_lossy(), &backup.to_string_lossy()]).await?;
+        verify_identity(&backup, &receipt["oldPackage"]).await?;
+        receipt["backupReady"] = json!(true);
         let helper = path.join("arc-replace");
         io(fs::copy(staged.join("Contents/Resources/bin/arc"), &helper))?;
         io(fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)))?;
@@ -136,15 +197,16 @@ pub async fn prepare(body: Value) -> Result<Value> {
         // plutil converts JSON safely; paths never pass through shell interpolation.
         save(&plist, &json!({"Label":label,"ProgramArguments":[helper,"replace-worker",id],"EnvironmentVariables":{"ARC_STATE_DIR":root()},"RunAtLoad":true,"KeepAlive":false,"ProcessType":"Background","StandardOutPath":path.join("worker.log"),"StandardErrorPath":path.join("worker.log")}))?;
         output("/usr/bin/plutil", &["-convert", "xml1", &plist.to_string_lossy()]).await?;
-        phase(&path, &mut receipt, "awaiting-receipt", None)?;
+        phase(&path, &mut receipt, "awaiting-receipt", None).await?;
         save(&directory().join("latest.json"), &json!({"id":id}))?;
         output("/bin/launchctl", &["bootstrap", &format!("gui/{}", unsafe { libc::geteuid() }), &plist.to_string_lossy()]).await?;
         Ok(())
     }.await;
     drop(guard);
     if let Err(error) = prepared {
-        phase(&path, &mut receipt, "failed", Some(&error))?;
+        phase(&path, &mut receipt, "failed", Some(&error)).await?;
         let _ = fs::remove_dir_all(&staged);
+        let _ = fs::remove_dir_all(&temporary);
         return Err(error);
     }
     // Confirm the launchd-owned worker started before returning an acceptance receipt.
@@ -157,8 +219,10 @@ pub async fn prepare(body: Value) -> Result<Value> {
                 &mut receipt,
                 "failed",
                 Some("REPLACE_HELPER_TIMEOUT"),
-            )?;
+            )
+            .await?;
             let _ = fs::remove_dir_all(&staged);
+            let _ = fs::remove_dir_all(&temporary);
             return Err("REPLACE_HELPER_TIMEOUT: installation was not started".into());
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -359,15 +423,23 @@ async fn rollback(target: &Path, backup: &Path, receipt: &mut Value) -> Result<(
         }
     }
     let core_guard = wait_exit(&pids).await?;
-    let failed = target.with_file_name(format!(
-        "{}.failed-{}",
-        target.file_name().unwrap().to_string_lossy(),
-        string(receipt, "id")
-    ));
+    let failed = backup
+        .parent()
+        .ok_or("REPLACE_BACKUP_MISSING")?
+        .join("failed.app");
     if target.exists() {
-        io(fs::rename(target, failed))?;
+        output(
+            "/usr/bin/ditto",
+            &[&target.to_string_lossy(), &failed.to_string_lossy()],
+        )
+        .await?;
+        io(fs::remove_dir_all(target))?;
     }
-    io(fs::rename(backup, target))?;
+    output(
+        "/usr/bin/ditto",
+        &[&backup.to_string_lossy(), &target.to_string_lossy()],
+    )
+    .await?;
     receipt["backupMoved"] = json!(false);
     crate::package::signature(target, string(&receipt["oldPackage"], "identifier")).await?;
     drop(core_guard);
@@ -467,12 +539,29 @@ pub async fn run_worker(id: &str) -> Result<()> {
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        phase(&path, &mut receipt, "waiting-for-turns", None)?;
-        // Give the command executor time to deliver its own receipt to the calling turn.
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        wait_idle(&path, &mut receipt).await?;
-        phase(&path, &mut receipt, "verifying", None)?;
+        if receipt["immediate"] != true {
+            receipt["waitDeadline"] =
+                json!((chrono::Utc::now() + chrono::Duration::seconds(300)).to_rfc3339());
+            phase(&path, &mut receipt, "waiting-for-turns", None).await?;
+            wait_idle(&path, &mut receipt).await?;
+        } else {
+            // Explicit user-directed replacement bypasses activity and quiet-period probes.
+            // Still establish the process owners to avoid stopping a different installation.
+            let health = request("health", "GET").await?;
+            let app = request("app", "GET").await?;
+            if !same_package_owner(&receipt, &health, &app)
+                || bundle(string(&app, "executable"))? != target
+            {
+                return Err(
+                    "REPLACE_OWNER_CHANGED: retry against the current installed app".into(),
+                );
+            }
+            receipt["corePid"] = health["pid"].clone();
+            receipt["desktopPid"] = app["pid"].clone();
+        }
+        phase(&path, &mut receipt, "verifying", None).await?;
         crate::package::check(&staged).await?;
+        verify_identity(&backup, &receipt["oldPackage"]).await?;
         if crate::runtime::build_id(&target.join("Contents/Resources/bin/arc"))?
             != receipt["oldPackage"]["coreBuild"]
             || crate::runtime::build_id(
@@ -481,40 +570,42 @@ pub async fn run_worker(id: &str) -> Result<()> {
         {
             return Err("REPLACE_OWNER_CHANGED: installed bytes changed during handoff".into());
         }
-        phase(&path, &mut receipt, "stopping", None)?;
+        if receipt["immediate"] != true {
+            receipt["restartAt"] =
+                json!((chrono::Utc::now() + chrono::Duration::seconds(10)).to_rfc3339());
+            let restart = tokio::time::Instant::now() + Duration::from_secs(10);
+            phase(&path, &mut receipt, "countdown", None).await?;
+            tokio::time::sleep_until(restart).await;
+        }
+        phase(&path, &mut receipt, "stopping", None).await?;
         receipt["shutdownRequested"] = json!(true);
         request("app/quit", "POST").await?;
         let core_guard =
             wait_exit(&[pid(&receipt, "desktopPid")?, pid(&receipt, "corePid")?]).await?;
-        phase(&path, &mut receipt, "installing", None)?;
-        io(fs::rename(&target, &backup))?;
+        phase(&path, &mut receipt, "installing", None).await?;
+        // Journal before touching the original: even a partial removal must restore the verified backup.
         receipt["backupMoved"] = json!(true);
         save(&path.join("status.json"), &receipt)?;
-        output(
-            "/usr/bin/ditto",
-            &[&staged.to_string_lossy(), &target.to_string_lossy()],
-        )
-        .await?;
-        if crate::package::check(&target).await? != receipt["package"] {
-            return Err("REPLACE_INVALID_PACKAGE: installed bytes changed".into());
-        }
-        phase(&path, &mut receipt, "starting", None)?;
+        io(fs::remove_dir_all(&target))?;
+        io(fs::rename(&staged, &target))?;
+        verify_identity(&target, &receipt["package"]).await?;
+        phase(&path, &mut receipt, "starting", None).await?;
         drop(core_guard);
         launch(&target, &receipt["package"]).await?;
-        phase(&path, &mut receipt, "succeeded", None)
+        phase(&path, &mut receipt, "succeeded", None).await
     }
     .await;
     if let Err(error) = result {
         if receipt["backupMoved"] == true {
             // A journal write failure must not prevent restoring the backup.
-            let _ = phase(&path, &mut receipt, "rolling-back", Some(&error));
+            let _ = phase(&path, &mut receipt, "rolling-back", Some(&error)).await;
             match rollback(&target, &backup, &mut receipt).await {
                 Ok(()) => {
                     receipt["backupMoved"] = json!(false);
-                    phase(&path, &mut receipt, "rolled-back", Some(&error))?;
+                    phase(&path, &mut receipt, "rolled-back", Some(&error)).await?;
                 }
                 Err(rollback) => {
-                    phase(&path, &mut receipt, "failed", Some(&format!("{error}; rollback: {rollback}. Preserve the backup and recover manually.")))?;
+                    phase(&path, &mut receipt, "failed", Some(&format!("{error}; rollback: {rollback}. Preserve the backup and recover manually."))).await?;
                 }
             }
         } else {
@@ -526,11 +617,12 @@ pub async fn run_worker(id: &str) -> Result<()> {
                         &mut receipt,
                         "failed",
                         Some(&format!("{error}; old app relaunch: {relaunch}")),
-                    )?;
+                    )
+                    .await?;
                     return Ok(());
                 }
             }
-            phase(&path, &mut receipt, "cancelled", Some(&error))?;
+            phase(&path, &mut receipt, "cancelled", Some(&error)).await?;
         }
     }
     if receipt["state"] == "succeeded" {

@@ -65,10 +65,10 @@ Install only when local replacement is authorized. From an ARC-dispatched task, 
 ```sh
 NEW_APP="$PWD/target/aarch64-apple-darwin/debug/bundle/macos/Agent Remote Control.app"
 "$NEW_APP/Contents/Resources/bin/arc" cli app replace "$NEW_APP" --check
-"$NEW_APP/Contents/Resources/bin/arc" cli app replace "$NEW_APP"
+"$NEW_APP/Contents/Resources/bin/arc" cli app replace "$NEW_APP" --now
 ```
 
-Save the receipt and end the turn after the second command. Do not quit ARC first or launch an installer script with `nohup` through `command`. The native launchd helper stages and validates the package, waits for task completion, backs up the app, replaces it, and rolls back on startup failure. Query `arc cli app replace --status` from a new turn after reconnecting. See [Local app replacement](../reference/app-replacement.md) for the exact protocol and recovery limits.
+Save the receipt and end the turn after the second command. Do not quit ARC first or launch an installer script with `nohup` through `command`. The native launchd helper stages and validates the package, uses temporary-directory backups, skips idle waiting with --now, replaces it, and rolls back on startup failure. Query `arc cli app replace --status` from a new turn after reconnecting. See [Local app replacement](../reference/app-replacement.md) for the exact protocol and recovery limits.
 
 Version precedence is ARC_BUILD_VERSION, nearest reachable v-tag, then 0.0.0. package.json, Cargo, and Tauri use 0.0.0 as an internal placeholder. Formal artifacts inject versions into existing feature commits without version-bump commits.
 

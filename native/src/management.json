@@ -220,6 +220,11 @@
                 "default": false,
                 "description": "Validate only; do not stage, launch a worker, or stop ARC."
               },
+              "immediate": {
+                "type": "boolean",
+                "default": false,
+                "description": "Replace after receipt acknowledgment without task-idle checks or countdown. May interrupt ARC-owned work. Package, owner, shutdown and rollback checks still apply."
+              },
               "continuation": {
                 "type": "object",
                 "properties": {
@@ -257,7 +262,7 @@
         },
         "additionalProperties": false
       },
-      "description": "macOS only. Validate and stage a same-identity package, then bootstrap a detached launchd worker. Returns a durable replacement receipt before shutdown. CLI and local management MCP acknowledge after flushing output; raw HTTP clients MUST call app.replace.ack after receiving it. End the dispatching turn immediately after receipt. The helper waits up to five minutes for active turns, then replaces and verifies Core health, rolling back on failure. Read app.replace.status after reconnecting. Optional continuation {threadId,prompt,model?,turn?,notify?} is persisted before shutdown and submitted once through codex_send(sendMode:queue) after verified success. Its requestId and dispatch receipt remain in replacement status; reconcile that original ID after an uncertain submission. Failed or rolled-back replacements do not send it.",
+      "description": "macOS only. Validate and stage a same-identity package, then bootstrap a detached launchd worker. Returns a durable replacement receipt before shutdown. CLI and local management MCP acknowledge after flushing output; raw HTTP clients MUST call app.replace.ack after receiving it. End the dispatching turn immediately after receipt. Without immediate:true, the helper waits up to five minutes for active turns and announces a ten-second restart countdown. Immediate mode skips both waits. Backups use private OS temporary directories. Native notifications and status report phases and outcomes. The helper verifies installed Desktop and Core health and rolls back on failure. Read app.replace.status after reconnecting. Optional continuation {threadId,prompt,model?,turn?,notify?} is persisted before shutdown and submitted once through codex_send(sendMode:queue) after verified success. Its requestId and dispatch receipt remain in replacement status; reconcile that original ID after an uncertain submission. Failed or rolled-back replacements do not send it.",
       "localOnly": true
     },
     {

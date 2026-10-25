@@ -1192,5 +1192,14 @@
   "claudeAccounts.messageRequired": "请输入通知消息。",
   "claudeAccounts.routeSaved": "账号路由已保存。",
   "claudeAccounts.sent": "Claude CLI 已接受消息，请在目标对话确认收到。",
-  "claudeAccounts.routeEffect": "后续发往此对话的 ARC 通知也将使用此账号。保存路由会替换原有账号配置。"
+  "claudeAccounts.routeEffect": "后续发往此对话的 ARC 通知也将使用此账号。保存路由会替换原有账号配置。",
+  "replacementPreparing": "正在准备新应用并备份已安装应用",
+  "replacementHandoff": "安装包已准备好，正在交接替换任务",
+  "replacementCountdownNotice": "ARC 将在 10 秒后重启",
+  "replacementCountdown": "ARC 将在 {seconds} 秒后重启",
+  "replacementStopping": "正在关闭 ARC 以开始替换",
+  "replacementSucceeded": "ARC 替换完成，启动校验通过",
+  "replacementProgress": "正在替换 ARC",
+  "replacementImmediate": "立即替换：ARC 管理的进行中任务可能被中断。",
+  "replacementWaitingDetails": "正在等待：{turns} 个任务、{writes} 项写入、{interactions} 项交互。暂时无法确定重启时间。"
 }

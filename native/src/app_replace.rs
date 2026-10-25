@@ -4,7 +4,30 @@ use crate::*;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
-pub use macos::{prepare, run_worker, worker};
+pub use macos::{notify, prepare, run_worker, worker};
+
+/// Parse explicit local replacement flags without changing the frozen control-source surface.
+pub fn replacement_arguments(path: &str, flags: &[&str], mut body: Value) -> Result<Value> {
+    if !body.is_object() {
+        return Err("INVALID_ARGUMENT: replacement stdin must be an object".into());
+    }
+    let mut seen = std::collections::HashSet::new();
+    for flag in flags {
+        if !seen.insert(*flag) || !["--now", "--check", "--stdin"].contains(flag) {
+            return Err(
+                "INVALID_ARGUMENT: app replace accepts --now, --check and --stdin once each".into(),
+            );
+        }
+    }
+    body["path"] = json!(path);
+    if flags.contains(&"--now") {
+        body["immediate"] = json!(true);
+    }
+    if flags.contains(&"--check") {
+        body["check"] = json!(true);
+    }
+    Ok(body)
+}
 
 /// Continuations are explicit local instructions with one durable dispatch identity.
 pub fn continuation_request(body: &Value, request_id: &str) -> Result<Option<Value>> {
@@ -138,8 +161,10 @@ pub(crate) fn check_dispatch() -> Result<()> {
 pub fn active(value: &Value) -> bool {
     matches!(
         string(value, "state"),
-        "awaiting-receipt"
+        "preparing"
+            | "awaiting-receipt"
             | "waiting-for-turns"
+            | "countdown"
             | "verifying"
             | "stopping"
             | "installing"
@@ -235,6 +260,24 @@ pub fn waiting(activity: &Value, status: &Value, tasks: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn explicit_immediate_replacement_is_preserved_through_cli_and_management() {
+        // Regression: an explicit local installation still waited for idle work and a fixed handoff delay.
+        let body =
+            replacement_arguments("/fixture/ARC.app", &["--check", "--now"], json!({})).unwrap();
+        assert_eq!(body["immediate"], true);
+        assert_eq!(body["check"], true);
+        let (_, method, resolved) =
+            crate::management::resolve("app.replace", &json!({"body":body})).unwrap();
+        assert_eq!(method, "POST");
+        assert_eq!(resolved["immediate"], true);
+        assert!(replacement_arguments("/fixture/ARC.app", &["--force"], json!({})).is_err());
+        assert!(replacement_arguments("/fixture/ARC.app", &["--now", "--now"], json!({})).is_err());
+        assert!(
+            replacement_arguments("/fixture/ARC.app", &[], json!({})).unwrap()["immediate"]
+                .is_null()
+        );
+    }
     #[test]
     fn replacement_reconnects_only_to_the_same_original_package() {
         // Regression: a Desktop restart cancelled replacement even when the original signed package was unchanged.

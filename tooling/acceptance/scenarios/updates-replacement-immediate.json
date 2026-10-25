@@ -1,0 +1,4 @@
+{
+  "theme": "dark", "language": "zh-CN", "agents": ["codex"], "tasks": [], "panel": {"kind": "none"},
+  "replacement": {"id": "fixture-immediate", "state": "verifying", "immediate": true, "package": {"version": "1.2.3"}}
+}

@@ -2,7 +2,7 @@ import { api } from "../api";
 import { createStore, preference, preferenceStorage } from "./store";
 import { t } from "../i18n";
 import { isDesktop, openUrl } from "../platform";
-import { mergeUpdateSnapshot, mergeReplacement, replacementFailed, replacementForApp, type Update, type UpdateSnapshot, type Replacement } from "./updateModel";
+import { mergeUpdateSnapshot, mergeReplacement, replacementActive, replacementFailed, replacementForApp, type Update, type UpdateSnapshot, type Replacement } from "./updateModel";
 export type { Update } from "./updateModel";
 export const skipped = preference("update-skipped-version", "", value => value, value => value);
 const replacementSeen = preference("replacement-notice-id", "", value => value, value => value);
@@ -110,8 +110,11 @@ export async function openDownloads() {
   try { await openUrl("https://github.com/whzxc/agent-remote-control/releases/latest"); }
   catch (error) { patch({ error: t("unableToOpenDownloadsValue", { error: String(error) }) }); }
 }
+let dismissedReplacement = "";
 export function dismissReplacement() {
-  replacementSeen.set(updates.get().replacement?.id ?? "");
+  const current = updates.get().replacement;
+  if (replacementActive(current)) dismissedReplacement = current?.id ?? "";
+  else replacementSeen.set(`${current?.id}:${current?.state}`);
   patch({ replacementOpen: false });
 }
 let desktopBuild: Promise<string> | undefined;
@@ -122,14 +125,15 @@ async function readReplacement() {
     : result;
   const accepted = mergeReplacement(updates.get().replacement, replacement);
   patch({ replacement: accepted });
-  if (replacementFailed(accepted) && accepted.id !== replacementSeen.get()) patch({ replacementOpen: true });
+  if (replacementActive(accepted) && accepted.id !== dismissedReplacement
+    || (replacementFailed(accepted) || accepted.state === "succeeded") && `${accepted.id}:${accepted.state}` !== replacementSeen.get()) patch({ replacementOpen: true });
 }
 export async function retryReplacement() {
   const source = updates.get().replacement?.source;
   if (!source || updates.get().requesting || updates.get().checking || updates.get().phase !== "idle") return;
   patch({ requesting: true, replacementError: "" });
   try {
-    const receipt = await api<Replacement>("app/replace", "POST", { path: source });
+    const receipt = await api<Replacement>("app/replace", "POST", { path: source, immediate: updates.get().replacement?.immediate === true });
     patch({ replacement: mergeReplacement(updates.get().replacement, receipt) });
     await api("app/replace/ack", "POST", { id: receipt.id });
     patch({ replacementOpen: false });

@@ -132,6 +132,7 @@ dependencies = [
  "image",
  "jsonschema",
  "libc",
+ "notify-rust",
  "regex",
  "reqwest",
  "ring",

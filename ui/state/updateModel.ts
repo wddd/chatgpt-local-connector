@@ -28,6 +28,11 @@ export function mergeUpdateSnapshot(previous: UpdateSnapshot | undefined, next: 
 export type Replacement = {
   id?: string;
   state: string;
+  immediate?: boolean;
+  restartAt?: string;
+  waitDeadline?: string;
+  createdAt?: string;
+  notificationError?: string | null;
   error?: string;
   source?: string;
   updatedAt?: string;
@@ -36,7 +41,7 @@ export type Replacement = {
   package?: { version?: string; desktopBuild?: string };
   waiting?: { activeWrites?: number; pendingInteractions?: number; blockingTurns?: unknown[]; error?: string };
 };
-export const replacementActive = (value?: Replacement) => !!value && ["preparing", "awaiting-receipt", "waiting-for-turns", "verifying", "stopping", "installing", "starting", "rolling-back"].includes(value.state);
+export const replacementActive = (value?: Replacement) => !!value && ["preparing", "awaiting-receipt", "waiting-for-turns", "countdown", "verifying", "stopping", "installing", "starting", "rolling-back"].includes(value.state);
 export const replacementFailed = (value?: Replacement) => !!value && ["cancelled", "failed", "rolled-back"].includes(value.state);
 export function replacementForApp(value: Replacement, desktopBuild: string): Replacement {
   return value.state === "cancelled" && value.package?.desktopBuild === desktopBuild
@@ -44,4 +49,13 @@ export function replacementForApp(value: Replacement, desktopBuild: string): Rep
 }
 export function mergeReplacement(previous: Replacement | undefined, next: Replacement): Replacement {
   return previous?.updatedAt && (!next.updatedAt || next.updatedAt < previous.updatedAt) ? previous : next;
+}
+
+export function replacementCountdown(value: Replacement | undefined, now: number): number | undefined {
+  if (value?.state !== "countdown" || !value.restartAt) return undefined;
+  const deadline = Date.parse(value.restartAt);
+  return Number.isFinite(deadline) ? Math.max(0, Math.ceil((deadline - now) / 1000)) : undefined;
+}
+export function replacementPhaseKey(value?: Replacement): string {
+  return ({ preparing: "replacementPreparing", "awaiting-receipt": "replacementHandoff", "waiting-for-turns": "replacementWaiting", countdown: "replacementCountdownNotice", verifying: "replacementValidating", stopping: "replacementStopping", installing: "replacementInstalling", starting: "replacementStarting", "rolling-back": "replacementRestoring", succeeded: "replacementSucceeded" } as Record<string, string>)[value?.state ?? ""] ?? "replacementIncomplete";
 }

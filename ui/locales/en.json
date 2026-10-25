@@ -1192,5 +1192,14 @@
   "claudeAccounts.messageRequired": "Enter a notification message.",
   "claudeAccounts.routeSaved": "Account route saved.",
   "claudeAccounts.sent": "Claude CLI accepted the message. Check the receiving conversation to confirm receipt.",
-  "claudeAccounts.routeEffect": "This account will also send future ARC notifications to this conversation. Saving the route replaces any previous account assignment."
+  "claudeAccounts.routeEffect": "This account will also send future ARC notifications to this conversation. Saving the route replaces any previous account assignment.",
+  "replacementPreparing": "Preparing the new app and backing up the installed app",
+  "replacementHandoff": "Package ready; handing over replacement",
+  "replacementCountdownNotice": "ARC will restart in 10 seconds",
+  "replacementCountdown": "ARC will restart in {seconds} seconds",
+  "replacementStopping": "Closing ARC before replacement",
+  "replacementSucceeded": "ARC replacement completed and startup verified",
+  "replacementProgress": "Replacing ARC",
+  "replacementImmediate": "Immediate replacement: active ARC-managed work may be interrupted.",
+  "replacementWaitingDetails": "Waiting: {turns} tasks, {writes} writes, {interactions} interactions. Restart time is not yet known."
 }

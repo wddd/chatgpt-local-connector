@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { useInterval } from "../state/hooks";
 import { ExternalLink } from "lucide-react";
 import { t } from "../i18n";
 import { isDesktop, openUrl } from "../platform";
@@ -26,7 +28,7 @@ import {
   Icon,
   Tooltip,
 } from "./ui";
-import { replacementActive, replacementFailed } from "../state/updateModel";
+import { replacementActive, replacementFailed, replacementCountdown, replacementPhaseKey } from "../state/updateModel";
 import { displayMessage } from "../messages";
 export function AppUpdate() {
   const { status } = connector.use(),
@@ -70,7 +72,7 @@ export function AppUpdate() {
         </Row>
       )}
       {replacementActive(state.replacement) && <Row title={t("replacementInProgress", {version: state.replacement?.package?.version ?? ""})}>
-        <span role="status">{t(state.replacement?.state === "verifying" ? "replacementValidating" : state.replacement?.state === "installing" ? "replacementInstalling" : state.replacement?.state === "starting" ? "replacementStarting" : state.replacement?.state === "rolling-back" ? "replacementRestoring" : "replacementWaiting")}</span>
+        <span role="status">{t(replacementPhaseKey(state.replacement))}</span>
       </Row>}
       {replacementFailed(state.replacement) && <Row title={t("replacementUnfinished")}>
         <Button onClick={() => updates.set(old => ({...old, replacementOpen: true}))}>{t("viewDetails")}</Button>
@@ -91,10 +93,15 @@ export function AppUpdate() {
   );
 }
 export function AppUpdateDialogs() {
+  const [clock, setClock] = useState(Date.now());
+  useInterval(() => setClock(Date.now()), 1000);
   const s = updates.use(),
     active = s.phase !== "idle" || s.requesting,
     downloading = s.phase === "downloading",
     progress = s.total ? Math.max(0, Math.min(100, s.downloaded / s.total * 100)) : 0;
+  const seconds = replacementCountdown(s.replacement, clock);
+  const replacing = replacementActive(s.replacement);
+  const replacementTitle = replacing ? "replacementProgress" : s.replacement?.state === "succeeded" ? "replacementSucceeded" : s.replacement?.state === "rolled-back" ? "replacementRolledBack" : s.replacement?.state === "cancelled" ? "replacementCancelled" : "replacementFailed";
   const actionLabel = s.phase === "installing"
     ? t("installingRestartingSoon")
     : downloading
@@ -108,12 +115,16 @@ export function AppUpdateDialogs() {
       : t(s.update?.ready ? "updateDownloadedInstall" : "downloadUpdate");
   return (
     <>
-      <Dialog open={s.replacementOpen} onClose={dismissReplacement} title={t(s.replacement?.state === "rolled-back" ? "replacementRolledBack" : s.replacement?.state === "cancelled" ? "replacementCancelled" : "replacementFailed")} busy={s.requesting} footer={<>
+      <Dialog open={s.replacementOpen} onClose={dismissReplacement} title={t(replacementTitle)} busy={s.requesting} footer={<>
         <Button onClick={dismissReplacement} disabled={s.requesting}>{t("close")}</Button>
-        {s.replacement?.source && !s.replacement.backupMoved && <Button variant="primary" disabled={active || s.checking} onClick={() => void retryReplacement()}>{t("retryReplacement")}</Button>}
+        {replacementFailed(s.replacement) && s.replacement?.source && !s.replacement.backupMoved && <Button variant="primary" disabled={active || s.checking} onClick={() => void retryReplacement()}>{t("retryReplacement")}</Button>}
       </>}>
-        <p>{t(s.replacement?.state === "rolled-back" ? "replacementPreviousRestored" : s.replacement?.state === "cancelled" ? "replacementNotInstalled" : "replacementIncomplete", {version: s.replacement?.package?.version ?? ""})}</p>
-        {s.replacement?.backupMoved && <><p>{t("replacementBackupPreserved")}</p><pre className="release-notes">{s.replacement.backup}</pre></>}
+        {replacing ? <div role="status" aria-live="polite">
+          <p>{seconds === undefined ? t(replacementPhaseKey(s.replacement)) : t("replacementCountdown", {seconds})}</p>
+          {replacing && s.replacement?.immediate && <p>{t("replacementImmediate")}</p>}
+          {s.replacement?.state === "waiting-for-turns" && <p>{t("replacementWaitingDetails", {turns: s.replacement.waiting?.blockingTurns?.length ?? "—", writes: s.replacement.waiting?.activeWrites ?? "—", interactions: s.replacement.waiting?.pendingInteractions ?? "—"})}</p>}
+        </div> : s.replacement?.state === "succeeded" ? null : <p>{t(s.replacement?.state === "rolled-back" ? "replacementPreviousRestored" : s.replacement?.state === "cancelled" ? "replacementNotInstalled" : "replacementIncomplete", {version: s.replacement?.package?.version ?? ""})}</p>}
+        {replacementFailed(s.replacement) && s.replacement?.backupMoved && <><p>{t("replacementBackupPreserved")}</p><pre className="release-notes">{s.replacement.backup}</pre></>}
         {s.replacement?.error && <Notice>{displayMessage(s.replacement.error)}</Notice>}
         {s.replacementError && <Notice>{displayMessage(s.replacementError)}</Notice>}
       </Dialog>

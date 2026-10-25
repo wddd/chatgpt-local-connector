@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeUpdateSnapshot, mergeReplacement, replacementActive, replacementFailed, replacementForApp, type UpdateSnapshot } from '../ui/state/updateModel.ts';
+import { replacementCountdown, mergeUpdateSnapshot, mergeReplacement, replacementActive, replacementFailed, replacementForApp, type UpdateSnapshot } from '../ui/state/updateModel.ts';
 const offer = { available: true, version: '1.2.3', notes: 'Release changes', ready: false };
 
 test('failed checks invalidate previous offers instead of retaining their download action', () => {
@@ -62,4 +62,16 @@ test('a later installation resolves only the matching cancelled package', () => 
   const current = {id:'new-job', state:'waiting-for-turns', updatedAt:'2026-01-01T00:00:02Z'};
   assert.deepEqual(mergeReplacement(current, previous), current);
   assert.equal(mergeReplacement(previous, current).id, current.id);
+});
+
+test('replacement countdown reflects a scheduled restart without inventing an ETA for work', () => {
+  // Property: only a valid countdown deadline produces a nonnegative remaining time rounded up to seconds.
+  const now = Date.parse('2026-01-01T00:00:00Z');
+  const job = {state:'countdown',restartAt:'2026-01-01T00:00:10Z'};
+  assert.equal(replacementCountdown(job, now), 10);
+  assert.equal(replacementCountdown(job, now + 1500), 9);
+  assert.equal(replacementCountdown(job, now + 11000), 0);
+  assert.equal(replacementCountdown({...job,state:'installing'}, now), undefined);
+  assert.equal(replacementCountdown({...job,restartAt:'invalid'}, now), undefined);
+  assert.equal(replacementActive(job), true);
 });
