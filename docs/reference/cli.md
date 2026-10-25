@@ -504,3 +504,21 @@ For an ordinary native page, wait for layout readiness: `echo '{"body":{"modelOn
 Only when a development scenario is loaded in the surface being read, wait for its intended detail: `echo '{"body":{"modelOnly":true}}' | arc cli wait --op app.snapshot --stdin --until '/model/scenario/ready == true' --timeout 20`. `model.scenario` exposes `name`, `state`, `ready`, `expectedTaskId`, and `error`; ordinary native pages return null. Loading a browser fixture does not load it in the native app. Browser agents MUST wait on `window.__ARC_VIEW_MODEL__().scenario.ready` in that browser page. Scenario readiness includes the expected task's loaded timeline, not just the initial list render.
 
 Both CLI waits accept the read-only `modelOnly:true` snapshot form; resize, navigation, and file-output arguments are not allowed in a repeated snapshot wait.
+
+### Pending request routing
+
+`cli control` uses the built-in `local-cli` source and can change only tasks bound
+to it. `request_route` changes only
+notification routing; it never answers or approves. See [routing fields and
+lifecycle](tools.md#pending-request-routing).
+
+```sh
+arc cli control request_route --stdin <<'JSON'
+{"taskId":"<thread-id>","id":"<responseId>","action":"handoff"}
+JSON
+```
+
+Use `action:"pause"`, `action:"resume"`, or `action:"read"` with the same arguments.
+For other Agents include `agent` and use their `taskId` and string-form native
+request ID. Local management uses `tasks.request-routing` with the same arguments
+inside `body`; `tasks.settings.set` accepts `body.requestRoutingDelaySeconds`.

@@ -534,6 +534,7 @@
               "autoOpenCodex": {
                 "type": "boolean"
               },
+              "requestRoutingDelaySeconds": { "type": "integer", "minimum": 0, "maximum": 300 },
               "codexRetryMaxAttempts": {
                 "type": "integer",
                 "minimum": 0,
@@ -3424,6 +3425,89 @@
       },
       "description": "Bind a host notification target to an account.",
       "localOnly": true
+    },
+    {
+      "name": "tasks.presence",
+      "description": "Report focused visible task detail presence. Refresh every two seconds; expires after six seconds.",
+      "method": "POST",
+      "route": "tasks/presence",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "agent": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": "string"
+              },
+              "present": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "agent",
+              "taskId",
+              "present"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "tasks.request-routing",
+      "description": "Read, pause, resume or hand off a pending request locally.",
+      "method": "POST",
+      "route": "tasks/request-routing",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "agent": {
+                "type": "string",
+                "default": "codex"
+              },
+              "taskId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Pending responseId, or native id converted to a string."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "read",
+                  "handoff",
+                  "pause",
+                  "resume"
+                ]
+              }
+            },
+            "required": [
+              "taskId",
+              "id",
+              "action"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      }
     }
   ]
 }

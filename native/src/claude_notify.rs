@@ -7,6 +7,7 @@ pub(crate) mod mcp_events;
 pub(crate) mod ownership;
 mod reachability;
 mod retry;
+pub(crate) mod routing;
 pub(crate) mod subscriptions;
 use governance::State;
 pub(crate) use governance::{notify_control, notify_status, source_account};
@@ -577,7 +578,7 @@ fn event(b: &Binding, d: &Delivery) -> Value {
     } else {
         json!({"hint":"Read the result and review its changes.","via":"query","op":"codex_read","args":{"threadId":b.thread_id}})
     };
-    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":task_title(b),"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":if kind=="handoff" {Value::Null}else{d.task_error.clone()},"ownership":if kind=="handoff" {d.task_error.clone()}else{Value::Null},"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
+    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":task_title(b),"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"routing":d.interaction["routing"],"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":if kind=="handoff" {Value::Null}else{d.task_error.clone()},"ownership":if kind=="handoff" {d.task_error.clone()}else{Value::Null},"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
 }
 fn empty_answered_completion(b: &Binding, observed: &Value) -> bool {
     observed["state"] == "completed"
@@ -1182,6 +1183,7 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
             status: "pending".into(),
         });
     }
+    routing::refresh(dir, b)?;
     // Append first: a crash between writes is reconciled by deterministic event IDs.
     for d in &b.deliveries[first..] {
         inbox_append(dir, &b.source_id, event(b, d))?;
@@ -1325,6 +1327,16 @@ fn inbox_select(
                 && (row["threadId"] == b.thread_id || row["taskId"] == b.thread_id)
         });
         if let Some(b) = bound {
+            if row["interaction"].is_object() && row["interaction"]["resolved"] != true {
+                let agent = if b.agent.is_empty() {
+                    "codex"
+                } else {
+                    &b.agent
+                };
+                routing::observe_in(dir, agent, &b.thread_id, &mut row["interaction"])?;
+                row["routing"] = row["interaction"]["routing"].clone();
+                row["questionSummary"] = crate::egress::interaction_preview(&row["interaction"]);
+            }
             row["target"] = json!(b.target);
             row["channel"] = json!(b.channel);
         }
@@ -1615,6 +1627,7 @@ pub(crate) fn settings() -> Result<Value> {
         ("enabled", json!(false)),
         ("autoOpenCodex", json!(!cfg!(target_os = "linux"))),
         ("notificationsEnabled", json!(true)),
+        ("requestRoutingDelaySeconds", json!(15)),
         ("notificationBucketCapacity", json!(10)),
         ("notificationRefillSeconds", json!(60)),
         ("notificationEscalationSeconds", json!(900)),
@@ -1671,6 +1684,9 @@ async fn flush(
             }
         }
     }
+    for b in &mut all {
+        routing::refresh(dir, b)?;
+    }
     subscriptions::route(&state, &mut all, now);
     let mut targets = Vec::new();
     for b in &mut all {
@@ -1712,7 +1728,11 @@ async fn flush(
             let mode = rule.map(|r| r.mode(now)).unwrap_or("normal");
             let digest_due = rule.is_some_and(|r| now.saturating_sub(r.digest_at) >= 3600);
             for (di, d) in b.deliveries.iter_mut().enumerate() {
-                if d.status != "pending" || d.channel != channel || d.target != target {
+                if d.status != "pending"
+                    || d.channel != channel
+                    || d.target != target
+                    || routing::held(d)
+                {
                     continue;
                 }
                 let reason = if settings["notificationsEnabled"] == false {
@@ -2660,6 +2680,16 @@ mod tests {
         super::recover(dir, b)?;
         Ok(())
     }
+    fn verified_fixture_target(dir: &Path, b: &Binding) {
+        if let Some(target) = &b.target {
+            let mut state = State::load(dir).unwrap();
+            state
+                .target(&b.source_id, b.channel, target, 0, &json!({}))
+                .reachability
+                .state = "verified".into();
+            state.save(dir).unwrap();
+        }
+    }
     fn fixture(dir: &Path) -> Binding {
         bind_in(
             dir,
@@ -2671,6 +2701,7 @@ mod tests {
         .unwrap();
         let mut b = binding(dir, "thread-1", "turn-1").unwrap().unwrap();
         b.source_id = "claude".into();
+        verified_fixture_target(dir, &b);
         persist(dir, &b).unwrap();
         b
     }
@@ -2689,6 +2720,7 @@ mod tests {
         let mut b = binding(dir, thread, "turn-1").unwrap().unwrap();
         b.source_id = "claude".into();
         b.created_at = at;
+        verified_fixture_target(dir, &b);
         b.caused_by =
             json!({"op":"codex_send","at":"2026-10-01T00:00:00Z","requestId":"request-test"});
         persist(dir, &b).unwrap();
@@ -3164,7 +3196,10 @@ mod tests {
             "unknown-session"
         )
         .unwrap());
-        assert_eq!(event(&b, &b.deliveries[0])["interaction"], request);
+        let emitted = event(&b, &b.deliveries[0]);
+        for (field, value) in request.as_object().unwrap() {
+            assert_eq!(&emitted["interaction"][field], value);
+        }
         for (state, kind) in [
             ("completed", "completed"),
             ("failed", "failed"),
@@ -3179,6 +3214,63 @@ mod tests {
             assert_eq!(payload["kind"], kind);
             assert_eq!(payload["finalResponse"], "SECRET_OUTPUT");
         }
+    }
+    #[tokio::test]
+    async fn routing_countdown_keeps_inbox_answers_available_and_source_scoped() {
+        // Regression: proactive notification raced a user's pending dock answer; delaying push must not hide the request from its source.
+        let dir = Sandbox::new();
+        let mut b = fixture(&dir.0);
+        b.thread_id = "routing-fixture".into();
+        persist(&dir.0, &b).unwrap();
+        routing::presence(&json!({"agent":"codex","taskId":b.thread_id,"present":true})).unwrap();
+        let lock = Mutex::new(());
+        super::process(&dir.0, &lock, &mut b, &interaction(json!(41)))
+            .await
+            .unwrap();
+        let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
+        assert_eq!(inbox["events"][0]["routing"]["state"], "deferred");
+        assert_eq!(inbox["events"][0]["interaction"]["id"], 41);
+        let args = json!({"taskId":b.thread_id,"id":"41","action":"handoff"});
+        let denied = crate::kernel::origin::ORIGIN.sync_scope(json!({"sourceId":"other"}), || {
+            routing::control_in(&dir.0, &args, false)
+        });
+        assert!(denied.unwrap_err().contains("REQUEST_SOURCE_MISMATCH"));
+        // Native resolution is independent of notification routing and prevents a late push.
+        super::process(
+            &dir.0,
+            &lock,
+            &mut b,
+            &json!({"state":"running","interaction":[]}),
+        )
+        .await
+        .unwrap();
+        let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
+        assert_eq!(inbox["events"][0]["interaction"]["resolved"], true);
+        let resolved = crate::kernel::origin::ORIGIN
+            .sync_scope(json!({"sourceId":"claude"}), || {
+                routing::control_in(&dir.0, &args, false)
+            });
+        assert!(resolved.unwrap_err().contains("REQUEST_RESOLVED"));
+        super::process(&dir.0, &lock, &mut b, &interaction(json!(42)))
+            .await
+            .unwrap();
+        for (action, expected) in [
+            ("pause", "paused"),
+            ("resume", "deferred"),
+            ("handoff", "routed"),
+        ] {
+            let result = crate::kernel::origin::ORIGIN
+                .sync_scope(json!({"sourceId":"claude"}), || {
+                    routing::control_in(
+                        &dir.0,
+                        &json!({"taskId":b.thread_id,"id":"42","action":action}),
+                        false,
+                    )
+                })
+                .unwrap();
+            assert_eq!(result["routing"]["state"], expected);
+        }
+        routing::presence(&json!({"agent":"codex","taskId":b.thread_id,"present":false})).unwrap();
     }
     #[tokio::test]
     async fn receipts_keep_thread_title_and_original_prompt_after_steering() {

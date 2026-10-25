@@ -120,3 +120,19 @@ Desktop interactions reuse thread IPC snapshots and change broadcasts with a two
 `dispatch_queue` persists pending parameters and separate dispatch receipts. Per-thread write locks protect checks and submission. Notification-observer capacity recovery starts another turn only for serverOverloaded failures without tool activity. Both use durable requestId to avoid blind resubmission after Core restarts. `respond_tokens` supplies expiring source-isolated aliases for original interactions without replacing owner validation.
 
 `claude_notify/continuation` recognizes Desktop native retries in the same observation chain. It requires a failed/interrupted predecessor, adjacency in snapshot and persisted history, a known retry trigger, no new user message, complete native turn configuration, and an open thread+origin binding for interrupted-task resumes. Capacity retries require a successor start within ten minutes after predecessor termination. Recognition can occur after restart downtime. Native environment scaffolding is distinguished from new user content. It first idempotently records native-retry/retryOf in dispatch_policy, then inherits source identity, connection diagnostics and notification binding. The new turn shares terminal notification, review, and history paths. New content or insufficient evidence prevents inclusion. No independent poller is added. See [native retry](control-loop.md#72-native-retry).
+
+### Request routing presence
+
+`claude_notify::routing` owns per-request notification routing, separate from native
+response ownership. Request ingestion records presence once before exposing pending
+state. The desktop detail reports focused/visible presence every two seconds through
+`tasks.presence`; a six-second lease prevents stale window state after a crash.
+Only the local management surface accepts presence reports. Request routing mutations
+use `request_route` with source ownership checks, or local `tasks.request-routing`.
+
+Persisted routing includes a process incarnation and paused remaining time. A new
+Core incarnation removes old delays before delivery. The notification scheduler
+refreshes routing before eligibility and token charging. Pending reads, progress and
+inboxes project the same routing record. Native resolution closes routing without
+requiring the user to participate. The dock has no countdown animation; polite
+announcements cover state transitions and the final five-second interval.

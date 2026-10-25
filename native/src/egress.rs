@@ -802,9 +802,9 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
         .filter(|op| {
             let name = string(op, "name");
             full || name == "guide" || match topic {
-                "notify" => matches!(name, "notify_status" | "notify_control" | "notification_ack" | "inbox_wait" | "codex_create" | "codex_send" | "codex_read" | "agent_create" | "agent_send" | "agent_read"),
+                "notify" => matches!(name, "request_route" | "notify_status" | "notify_control" | "notification_ack" | "inbox_wait" | "codex_create" | "codex_send" | "codex_read" | "agent_create" | "agent_send" | "agent_read"),
                 "review" => matches!(name, "codex_review" | "agent_review" | "codex_read" | "agent_read" | "codex_wait" | "agent_wait" | "agent_events" | "codex_changes" | "codex_items" | "codex_send" | "agent_send" | "receipt" | "task_reviews"),
-                "approvals" => matches!(name, "receipt" | "codex_pending" | "codex_interactions" | "codex_respond" | "agent_pending" | "agent_respond" | "codex_read" | "agent_read"),
+                "approvals" => matches!(name, "request_route" | "receipt" | "codex_pending" | "codex_interactions" | "codex_respond" | "agent_pending" | "agent_respond" | "codex_read" | "agent_read"),
                 _ => matches!(name, "notify_control" | "notify_status" | "notification_ack" | "dispatch_policy" | "command" | "read" | "write" | "edit" | "fs" | "git" | "codex_create" | "codex_send" | "codex_read" | "codex_wait" | "receipt" | "agent_create" | "agent_send" | "agent_read" | "agent_wait"),
             }
         })
@@ -1182,7 +1182,7 @@ pub fn interaction_preview(request: &Value) -> Value {
             rows.push(json!({"question":prompt.chars().take(480).collect::<String>(),"options":params["options"].as_array().into_iter().flatten().take(8).cloned().collect::<Vec<_>>()}));
         }
     }
-    json!({"questions":rows,"summary":rows.iter().filter_map(|q|q["question"].as_str()).collect::<Vec<_>>().join("; "),"questionCount":questions.map(Vec::len).unwrap_or(rows.len()),"responseId":request.get("responseId").unwrap_or(&request["id"]),"turnId":params["turnId"],"backendSession":request["backendSession"]})
+    json!({"questions":rows,"summary":rows.iter().filter_map(|q|q["question"].as_str()).collect::<Vec<_>>().join("; "),"questionCount":questions.map(Vec::len).unwrap_or(rows.len()),"responseId":request.get("responseId").unwrap_or(&request["id"]),"turnId":params["turnId"],"backendSession":request["backendSession"],"routing":request["routing"]})
 }
 
 pub fn interaction_history(args: &Value) -> Result<Value> {

@@ -139,7 +139,12 @@ pub(super) async fn sync(events: &SharedEvents, state: &Value, session: &str) {
     events
         .pending
         .retain(|_, r| r["owner"] != "desktop" || r["params"]["threadId"] != state["id"]);
-    for r in requests {
+    for mut r in requests {
+        if let Err(error) =
+            crate::claude_notify::routing::observe("codex", string(state, "id"), &mut r)
+        {
+            crate::logs::record("WARN", &error, None);
+        }
         events.pending.insert(string(&r, "responseId").into(), r);
     }
 }

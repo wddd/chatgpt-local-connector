@@ -81,6 +81,9 @@ impl WaitSource for AgentSource {
                 r
             })
             .collect::<Vec<_>>();
+        for request in &mut interactions {
+            crate::claude_notify::routing::observe(&self.agent, &self.task, request)?;
+        }
         interactions.sort_by_key(|r| r["interactionId"].to_string());
         task["interaction"] = json!(interactions);
         task["runtime"] = runtime;
@@ -122,6 +125,7 @@ impl WaitSource for AgentSource {
             "outputTruncated":t["outputTruncated"],"contextUsage":t["contextUsage"],
             "error":if t["error"].is_null(){&t["lastMessage"]["errorMessage"]}else{&t["error"]},
             "stopReason":if t["stopReason"].is_null(){&t["lastMessage"]["stopReason"]}else{&t["stopReason"]},
+            "progress":{"pendingInteractions":t["interaction"].as_array().into_iter().flatten().take(5).map(crate::egress::interaction_preview).collect::<Vec<_>>()},
             "interaction":t["interaction"].as_array().cloned().unwrap_or_default(),
             "interactionAction":if state=="interaction-required"{Some("Use agent_pending or agent_respond with agent, taskId, interactionId and a new requestId; do not resend the task")}else{None},
             "observedAt":now()})

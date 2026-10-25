@@ -95,7 +95,14 @@ impl Rpc {
                 };
                 if msg.get("method").is_some() {
                     if let Some(key) = msg.get("id") {
-                        events.lock().await.pending.insert(key.to_string(),json!({"id":key,"responseId":key.to_string(),"method":msg["method"],"params":msg["params"],"backendSession":session,"owner":"connector-app-server","canRespond":true,"next":{"via":"act","op":"codex_respond","args":{"id":key.to_string(),"backendSession":session},"hint":"Supply exactly one of result/error using the native response schema."}}));
+                        let mut request = json!({"id":key,"responseId":key.to_string(),"method":msg["method"],"params":msg["params"],"backendSession":session,"owner":"connector-app-server","canRespond":true,"next":{"via":"act","op":"codex_respond","args":{"id":key.to_string(),"backendSession":session},"hint":"Supply exactly one of result/error using the native response schema."}});
+                        let task = string(&request["params"], "threadId").to_owned();
+                        if let Err(error) =
+                            crate::claude_notify::routing::observe("codex", &task, &mut request)
+                        {
+                            crate::logs::record("WARN", &error, None);
+                        }
+                        events.lock().await.pending.insert(key.to_string(), request);
                     }
                     if string(&msg, "method") == "serverRequest/resolved" {
                         events

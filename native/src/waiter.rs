@@ -429,6 +429,7 @@ impl WaitSource for CodexSource {
         drop(events);
         let origin = crate::kernel::origin::current_origin();
         for request in &mut pending {
+            crate::claude_notify::routing::observe("codex", &self.thread, request)?;
             crate::respond_tokens::issue(string(&origin, "ingressId"), request)?;
         }
         crate::external_inputs::observe(

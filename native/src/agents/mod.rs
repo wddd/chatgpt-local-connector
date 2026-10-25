@@ -929,7 +929,11 @@ impl AgentHost {
             let backend = p.state.lock().await["processSession"].clone();
             let e = p.events.lock().await;
             if name == "agent_pending" {
-                return Ok(json!({"requests":e.pending.values().collect::<Vec<_>>() }));
+                let mut requests: Vec<_> = e.pending.values().cloned().collect();
+                for request in &mut requests {
+                    crate::claude_notify::routing::observe(&agent, task, request)?;
+                }
+                return Ok(json!({"requests":requests}));
             }
             let after = num(&args, "after", 0) as u64;
             return Ok(

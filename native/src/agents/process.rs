@@ -162,6 +162,15 @@ impl Process {
                             "select" | "confirm" | "input" | "editor"
                         ))
                 {
+                    let mut msg = msg.clone();
+                    msg["turnId"] = state["turnId"].clone();
+                    if let Err(error) = crate::claude_notify::routing::observe(
+                        string(&state, "agent"),
+                        string(&state, "taskId"),
+                        &mut msg,
+                    ) {
+                        crate::logs::record("WARN", &error, None);
+                    }
                     p.events
                         .lock()
                         .await

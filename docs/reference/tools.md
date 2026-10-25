@@ -583,3 +583,47 @@ Task reads and waits expose `stateScope:"turn"`. A normally interrupted task ret
 `CLAUDE_SESSION_NOT_FOUND` / `reason:"claude-session-not-found"` preserves the CLI's distinct Session not found failure. A different host Claude account or a wrong session ID are likely causes; ARC does not infer the session owner's identity. For this diagnosis, ARC attempts a bounded, read-only `claude auth status --json` probe using the same CLI discovery and environment. `error.localAccount` exposes only `loggedIn`, `email`, `authMethod`, the selected ARC profile ID and observation time when obtainable; unavailable identity does not hide the original failure. Tokens, credentials and raw auth output are never returned or stored. `notify_status.targets[].lastVerificationError` retains this diagnosis for the same control source.
 
 Follow `next` to `notify_control({action:"route",target})`. Select the session owner profile with `accountId`, correct the session ID if needed, then call `notify_control({action:"verify",target})`. Binding remains registered. Login and profile management remain explicit host actions. ARC never logs in or changes the system Claude account automatically. Successful send still requires acknowledgement with the code received in that session.
+
+## Pending request routing
+
+`codex_pending`, `agent_pending`, `progress.pendingInteractions`, and inbox events
+expose `routing` alongside the original native request. Routing never reserves,
+answers, or approves a request. The first accepted answer still wins, including
+answers read through pending or inbox while routing is deferred.
+
+| Field | Meaning |
+| --- | --- |
+| `state` | `deferred`, `paused`, `routed`, or `not-routable` |
+| `deferUntil` | Unix milliseconds for a running countdown; otherwise `null` |
+| `pausedBy` | `user` or the pausing control source ID; otherwise `null` |
+| `reason` | Machine-readable routing reason |
+
+A new request waits only when its task detail is open in the focused, visible ARC
+window and the source has a verified push path. `requestRoutingDelaySeconds` in
+task settings defaults to 15 and accepts integers from 0 to 300. Changing it affects
+new requests. Without presence, routing is immediate. Opening the detail later
+never delays an already-routed request. Losing presence ends a running countdown.
+Dock focus, typing, selection and other interaction pause it; explicit resume
+uses the remaining time. A paused request remains paused until resume, handoff or
+Core recovery. Recovery cancels deferred and paused timers on the first refreshed
+observation. Native callbacks that cannot survive restart retain their existing
+owner-specific limitations.
+
+Without a verified push path (including ChatGPT Chat and unverified targets), the
+state is `not-routable` and the source handles the request at its next check.
+If a push path becomes available later, ARC routes immediately. `routed` means
+eligible for notification scheduling, not proof of delivery. Notification buckets,
+breakers, mutes and retries still apply. Active `notification` subscriptions receive
+the request only once routing permits it; pending/inbox reads remain immediate.
+
+Use `act` with `request_route`. Arguments are `taskId` (Codex thread ID or Agent
+task ID), `id` (pending `responseId`, or native request ID converted to a string),
+`agent` (defaults to `codex`), and `action` (`read`, `handoff`, `pause`, `resume`).
+Only the task's bound source may call it. Actions are idempotent for the current
+routing state and never reopen an answered request.
+
+```json
+{"op":"request_route","args":{"taskId":"<thread-id>","id":"<responseId>","action":"handoff"}}
+{"op":"request_route","args":{"agent":"pi","taskId":"<task-id>","id":"<native-id>","action":"pause"}}
+{"op":"request_route","args":{"taskId":"<thread-id>","id":"<responseId>","action":"resume"}}
+```

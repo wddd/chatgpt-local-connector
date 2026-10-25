@@ -360,6 +360,8 @@ impl Service {
             }
             json!({"config":config,"core":{"desktop":{"state":"unknown"},"appServer":{"state":"unknown"},"chatgpt":{},"logs":[]},"connection":{"running":false,"mcpUrl":""},"connector":{"state":"stopped"},"tunnel":{"state":"stopped","error":""},"logs":[],"version":env!("ARC_BUILD_VERSION"),"platform":if cfg!(target_os="macos"){"darwin"}else if cfg!(windows){"win32"}else{"linux"},"taskApprovalEnabled":self.control.approval_mode()?,"autoOpenCodex":self.control.auto_open_codex()?})
         };
+        status["requestRoutingDelaySeconds"] =
+            crate::claude_notify::settings()?["requestRoutingDelaySeconds"].clone();
         status["cliPath"] = json!(crate::cli_shim::executable()?);
         let desktop = match self.control.ipc().await {
             Ok(_) => {
@@ -744,6 +746,14 @@ impl Service {
         }
         if route.starts_with("runtime/") && method == "POST" {
             return self.runtime.request(route, body);
+        }
+        if route == "tasks/presence" && method == "POST" {
+            crate::management::resolve("tasks.presence", &json!({"body":body}))?;
+            return crate::claude_notify::routing::presence(&body);
+        }
+        if route == "tasks/request-routing" && method == "POST" {
+            crate::management::resolve("tasks.request-routing", &json!({"body":body}))?;
+            return crate::claude_notify::routing::control(&body, true);
         }
         if route == "tasks/control" && method == "POST" {
             crate::management::resolve("tasks.control", &json!({"body":body}))?;
@@ -1310,6 +1320,7 @@ impl Service {
                         }
                     }
                     for (key, min, max) in [
+                        ("requestRoutingDelaySeconds", 0, 300),
                         ("codexRetryMaxAttempts", 0, 10),
                         ("codexRetryInitialSeconds", 1, 3600),
                     ] {

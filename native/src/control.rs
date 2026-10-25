@@ -2074,6 +2074,7 @@ impl Control {
                 }
                 crate::claude_notify::notify_status(&args).await
             }
+            "request_route" => crate::claude_notify::routing::control(&args, false),
             "notify_control" => crate::claude_notify::notify_control(&args).await,
             "inbox_wait" => crate::claude_notify::inbox_wait(self, &args).await,
             "notification_ack" => crate::claude_notify::acknowledge(&args).await,
@@ -2104,6 +2105,8 @@ impl Control {
                 let origin = crate::kernel::origin::current_origin();
                 for request in &mut requests {
                     crate::respond_tokens::issue(string(&origin, "sourceId"), request)?;
+                    let task = string(&request["params"], "threadId").to_owned();
+                    crate::claude_notify::routing::observe("codex", &task, request)?;
                     request["questionSummary"] = crate::egress::interaction_preview(request);
                 }
                 Ok(json!({"backendSession":self.session,"requests":requests}))
