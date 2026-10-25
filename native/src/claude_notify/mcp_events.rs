@@ -189,9 +189,35 @@ async fn authorized(s: &crate::ingress::Ingress, principal: &str) -> bool {
     }
 }
 pub(crate) fn list() -> Value {
-    json!({"events":[{"name":NAME,"description":"ARC notifications. Read guide({topic:notify}) for supported op and args contracts. Currently task_status reports completed, failed, interrupted or needs-input for tasks from this source. Work wakeups may take minutes; read full results with query.","delivery":["webhook"],
+    json!({"events":[{"name":NAME,"description":"ARC notifications. Read guide({topic:notify}) for supported op and args contracts. Currently task_status reports completed, failed, interrupted, needs-input or handoff for tasks from this source. Work wakeups may take minutes; read full results with query.","delivery":["webhook"],
         "inputSchema":subscriptions::guide()["inputSchema"],
-        "payloadSchema":{"type":"object","properties":{"op":{"type":"string"},"kind":{"type":"string"},"summary":{"type":"string"},"threadId":{"type":["string","null"]},"taskId":{"type":["string","null"]},"turnId":{"type":"string"},"agent":{"type":"string"},"project":{"type":"string"},"title":{"type":"string"},"query":{"type":"object"}},"required":["op","kind","summary","threadId","taskId","turnId","agent","project","title","query"],"additionalProperties":false}}]})
+        "payloadSchema":{"type":"object","properties":{"op":{"type":"string"},"kind":{"type":"string"},"summary":{"type":"string"},"threadId":{"type":["string","null"]},"taskId":{"type":["string","null"]},"turnId":{"type":"string"},"agent":{"type":"string"},"project":{"type":"string"},"title":{"type":"string"},"query":{"type":"object"},
+        "ownership":{"type":["object","null"],"properties":{"eventId":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"},"observedAt":{"type":"string","format":"date-time"},"evidence":{"type":["string","null"]},"timeBasis":{"type":"string"}},"required":["eventId","from","to","observedAt","evidence","timeBasis"],"additionalProperties":false}},"required":["op","kind","summary","threadId","taskId","turnId","agent","project","title","query","ownership"],"additionalProperties":false}}]})
+}
+
+pub(crate) fn payload(op: &str, event: &Value) -> Value {
+    let agent = event["agent"] != "codex";
+    let pending = event["kind"] == "needs-input";
+    let query = if agent {
+        json!({"op":if pending {"agent_pending"} else {"agent_read"},"args":{"agent":event["agent"],"taskId":event["taskId"]}})
+    } else {
+        json!({"op":if pending {"codex_pending"} else {"codex_read"},"args":{"threadId":event["threadId"]}})
+    };
+    let mut data = json!({"op":op,"query":query});
+    for key in [
+        "kind",
+        "summary",
+        "threadId",
+        "taskId",
+        "turnId",
+        "agent",
+        "project",
+        "title",
+        "ownership",
+    ] {
+        data[key] = event[key].clone();
+    }
+    data
 }
 pub(crate) async fn request(
     s: &crate::ingress::Ingress,
@@ -385,29 +411,9 @@ pub(super) async fn send(
         return SendOutcome::failed("ingress_disconnected", true);
     }
     let event = event(b, d);
-    let agent = !b.agent.is_empty() && b.agent != "codex";
-    let pending = event["kind"] == "needs-input";
-    let query = if agent {
-        json!({"op":if pending {"agent_pending"} else {"agent_read"},"args":{"agent":b.agent,"taskId":b.thread_id}})
-    } else {
-        json!({"op":if pending {"codex_pending"} else {"codex_read"},"args":{"threadId":b.thread_id}})
-    };
-    if !ingress.allows(string(&query, "op")).await {
+    let data = payload(&sub.op, &event);
+    if !ingress.allows(string(&data["query"], "op")).await {
         return SendOutcome::failed("access_revoked", false);
-    }
-    let mut data = json!({"op":sub.op,"query":query});
-    for k in [
-        "kind",
-        "summary",
-        "threadId",
-        "taskId",
-        "turnId",
-        "agent",
-        "project",
-        "title",
-        "ownership",
-    ] {
-        data[k] = event[k].clone();
     }
     let body = json!({"eventId":d.event_id,"name":NAME,"timestamp":chrono::DateTime::from_timestamp(d.created_at,0).unwrap().to_rfc3339(),"data":data,"cursor":null});
     match post(sub, &d.event_id, &serde_json::to_vec(&body).unwrap()).await {

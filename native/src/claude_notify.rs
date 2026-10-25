@@ -3207,6 +3207,66 @@ mod tests {
         assert!(!string(&fallback, "summary").contains(steer_prompt));
     }
     #[tokio::test]
+    async fn every_emitted_notification_payload_validates_against_discovery_schema() {
+        // Contract: every notification payload variant must validate against the strict public payloadSchema; the envelope is unchanged.
+        let schema = mcp_events::list()["events"][0]["payloadSchema"].clone();
+        let validator = crate::validator("event-payload", "notification", &schema).unwrap();
+        for agent in ["codex", "claude"] {
+            for (state, kind, method) in [
+                ("completed", "completed", ""),
+                ("failed", "failed", ""),
+                ("cancelled", "interrupted", ""),
+                (
+                    "interaction-required",
+                    "needs-input",
+                    "item/commandExecution/requestApproval",
+                ),
+                (
+                    "interaction-required",
+                    "needs-input",
+                    "item/tool/requestUserInput",
+                ),
+            ] {
+                let dir = Sandbox::new();
+                let mut b = fixture(&dir.0);
+                b.agent = agent.into();
+                persist(&dir.0, &b).unwrap();
+                let observation = json!({"state":state,"interaction":if method.is_empty(){json!([])}else{json!([{"id":1,"method":method}])}});
+                super::process(&dir.0, &Mutex::new(()), &mut b, &observation)
+                    .await
+                    .unwrap();
+                let data = mcp_events::payload("task_status", &event(&b, &b.deliveries[0]));
+                validator.validate(&data).unwrap();
+                assert_eq!(data["kind"], kind);
+                assert_eq!(data["agent"], agent);
+                assert!(data["ownership"].is_null());
+            }
+        }
+        let dir = Sandbox::new();
+        let mut b = fixture(&dir.0);
+        super::process(
+            &dir.0,
+            &Mutex::new(()),
+            &mut b,
+            &json!({"state":"unconfirmed","handoffs":[{
+            "eventId":"fixture-handoff","from":"connector","to":"desktop","observedAt":now(),
+            "evidence":"native-writer-file-lock","timeBasis":"observed-not-transition-time"}]}),
+        )
+        .await
+        .unwrap();
+        let data = mcp_events::payload("task_status", &event(&b, &b.deliveries[0]));
+        validator.validate(&data).unwrap();
+        assert_eq!(data["kind"], "handoff");
+        assert!(data["ownership"].is_object());
+        let mut extra = data.clone();
+        extra["undeclared"] = json!(true);
+        assert!(validator.validate(&extra).is_err());
+        let mut missing = data;
+        missing.as_object_mut().unwrap().remove("ownership");
+        assert!(validator.validate(&missing).is_err());
+    }
+
+    #[tokio::test]
     async fn quiet_receipts_health_and_ack_distinguish_consumed_events() {
         // Regression: acknowledging a consumed or foreign event must not consume another event.
         let dir = Sandbox::new();
