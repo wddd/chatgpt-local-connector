@@ -78,6 +78,10 @@ try {
           await summary.waitFor({ state: 'visible' });
           await taskButton(fixture.tasks[1]).waitFor({ state: 'hidden' });
         }
+        if (fixture.detailTask !== undefined) {
+          // Semantic snapshots exclude aria-hidden Radix form inputs and visual announcement mirrors.
+          row.taskAccessibility = await page.getByRole('dialog', { name: fixture.tasks[fixture.detailTask].title, exact: true }).ariaSnapshot();
+        }
         if (setup) {
           // Regression: standard setup steps scrolled inside a fixed 496px shell on large windows.
           const layout = await page.evaluate(() => {

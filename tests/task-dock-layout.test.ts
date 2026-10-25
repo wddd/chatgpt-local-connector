@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import copy from "../ui/locales/en.json" with { type: "json" };
 
 test("pending input actions and routing stay inside short panels and narrow sheets while content scrolls", { timeout: 30000 }, async () => {
-  // Regression: pending input clipped actions and routing; long approval previews collapsed to 20px at 840x578 and in 320px sheets.
+  // Regression: pending input clipped actions and previews; raw fixture snapshots exposed unnamed Radix form radios.
   // Compile only the DOM fixture in memory. No app, dev server or Core is started.
   const built = await build({ configFile: false, logLevel: "error", plugins: [react()],
     define: { __CONNECTOR_VERSION__: JSON.stringify("test"), "process.env.NODE_ENV": JSON.stringify("production") },
@@ -58,6 +58,11 @@ test("pending input actions and routing stay inside short panels and narrow shee
         await routing.waitFor();
         await inside(dock, surface); await inside(submit, surface); await inside(routing, surface);
         const scrollTarget = options < 0 ? dock.getByText(/Preview line 1:/) : dock.getByRole("radio", { name: /Route 1\b/ });
+        if (options > 0) {
+          const snapshot = await dock.ariaSnapshot();
+          assert.equal((snapshot.match(/^\s*- radio\b/gm) ?? []).length, options);
+          assert.equal(await dock.getByRole("radio", { name: "", exact: true }).count(), 0);
+        }
         if (options < 0 && (viewport.height === 800 || viewport.width === 840 && viewport.height === 578 && !narrow)) {
           const visiblePreview = await scrollTarget.evaluate(element => {
             let top = element.getBoundingClientRect().top, bottom = element.getBoundingClientRect().bottom;
