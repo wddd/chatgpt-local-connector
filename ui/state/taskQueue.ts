@@ -8,6 +8,7 @@ export function useTaskQueue(agent: string, id: string) {
     return result.items;
   };
   useEffect(() => {
+    setItems([]); setError("");
     if (agent !== "codex") return;
     let stopped = false, timer: ReturnType<typeof setTimeout>;
     const poll = async () => {

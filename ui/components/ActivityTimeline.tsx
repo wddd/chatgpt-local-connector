@@ -2,6 +2,7 @@ import { observeTaskPanel } from "../state/taskPanel";
 import { useTaskQueue } from "../state/taskQueue";
 import TaskQueuedMessages from "./TaskQueuedMessages";
 import { useTaskReview } from "../state/taskReview";
+import { taskErrorText } from "../state/taskErrors";
 import "./TaskDetail.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2, MoreHorizontal } from "lucide-react";
@@ -191,7 +192,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       </div>
     </header>
     <div className="task-timeline" aria-busy={loading}>
-      {(error || openError || reviewError) && <p className="timeline-error" role="alert">{openError || error || reviewError}</p>}
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => {
           const node = event.currentTarget;
@@ -210,6 +210,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           if ((event.target as Element).closest("button, .timeline-turn[data-state=closed]")) manualDisclosure.current = true;
         }}>
           {loading ? <LoadingIndicator label={t("timeline.loading")} /> : <>
+          {(error || openError || reviewError) && <p className="timeline-error" role="alert">{taskErrorText(openError || error || reviewError)}</p>}
           {timeline?.coverage.state === "partial" && !timeline.coverage.truncated && <p className="timeline-meta">{t("timeline.partial")}</p>}
           {!session.timeline && <section className="activity-session-summary">
             <span className="timeline-meta">{t(`activity.phase.${nativeSession.phase}`)}</span>
@@ -224,6 +225,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       </div>
       {!atLatest && <Button variant="secondary" className="timeline-latest" onClick={latest}>{t("timeline.latest")}</Button>}
     </div>
-    {!external && !timeline?.readOnly && fromControlSource && running && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} onPending={setShowCard} narrow={narrow} /></footer>}
+    {!external && !timeline?.readOnly && fromControlSource && running && <TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} onPending={setShowCard} narrow={narrow} />}
   </section>;
 }

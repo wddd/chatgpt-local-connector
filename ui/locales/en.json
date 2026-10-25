@@ -1209,5 +1209,8 @@
   "detail.owner.unheld": "Released",
   "detail.owner.unknown": "Unknown",
   "detail.handoffHistory": "Observed handoffs",
-  "detail.resumeInterrupted": "Resume"
+  "detail.resumeInterrupted": "Resume",
+  "detail.sourceRevoked": "The control source is disconnected. Reconnect it before trying this action again.",
+  "detail.queueDeliveryFailed": "This queued message could not be delivered. Check its status before trying again.",
+  "detail.queueReadFailed": "Queued messages could not be refreshed."
 }

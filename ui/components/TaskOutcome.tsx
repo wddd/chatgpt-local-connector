@@ -3,6 +3,7 @@ import type { AgentTimelineEntry } from "../types";
 import { t } from "../i18n";
 import { copyText } from "../platform";
 import { changedFiles } from "../state/taskProjection";
+import { taskErrorText } from "../state/taskErrors";
 import { Button } from "./ui";
 import { ChangedFiles } from "./TaskChanges";
 
@@ -17,7 +18,7 @@ export default function TaskOutcome({ state, entries, project }: { state: "faile
     {state === "interrupted" && <div className="task-stop-divider">{t("detail.stoppedUnknown")}{ended && ` · ${new Date(ended).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</div>}
     <article className="task-outcome" data-state={state}>
       <strong>{t(state === "failed" ? "detail.turnFailed" : "detail.leftAsIs")}</strong>
-      {state === "failed" && <><p>{failure?.text || failure?.output?.text || t("detail.failureUnknown")}</p>{(failure?.command || failure?.cwd || failure?.path) && <pre>{[failure.command, failure.cwd, failure.path].filter(Boolean).join("\n")}</pre>}</>}
+      {state === "failed" && <><p>{taskErrorText(failure?.text || failure?.output?.text, "detail.failureUnknown")}</p>{(failure?.command || failure?.cwd || failure?.path) && <pre>{[failure.command, failure.cwd, failure.path].filter(Boolean).join("\n")}</pre>}</>}
       <p>{t(changes.length ? "detail.recordedChanges" : "detail.changesUnknown")}</p>
       <ChangedFiles entries={entries} project={project} />
       <div className="actions">

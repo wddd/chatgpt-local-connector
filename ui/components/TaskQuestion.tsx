@@ -5,6 +5,7 @@ import { activityApprovals, submitActivityResponse } from "../state/activity";
 import { interactionKey } from "../state/activityModel";
 import { inputResponse, interactionQuestions, type Question } from "../state/taskInteractions";
 import { Button, Checkbox, Field, Input, SingleChoice } from "./ui";
+import { taskErrorText } from "../state/taskErrors";
 
 function QuestionField({ question, value, onChange, disabled }: { question: Question; value: string[]; onChange: (value: string[]) => void; disabled: boolean }) {
   const id = useId();
@@ -39,7 +40,7 @@ export default function TaskQuestion({ agent, session, answers, onAnswersChange 
     {questions.map(question => <QuestionField key={question.id} question={question} value={answers[question.id] ?? []} onChange={value => onAnswersChange({ ...answers, [question.id]: value })} disabled={locked || !supported} />)}
     {!supported && <p className="timeline-meta">{t("timeline.responseUnavailable")}</p>}
     {submission?.status === "unconfirmed" && <p role="status">{t("activity.unconfirmed")}</p>}
-    {submission?.status === "failed" && <p role="alert">{submission.error}</p>}
+    {submission?.status === "failed" && <p role="alert">{taskErrorText(submission.error)}</p>}
     <div className="actions"><Button variant="ghost" disabled={!supported || locked && submission.decision !== "cancel" || submission?.status === "unconfirmed"} onClick={() => send(true)}>{t("detail.skip")}</Button>
       <Button type="submit" disabled={!inputResponse(interaction, answers) || locked && submission.decision !== "answer" || submission?.status === "unconfirmed"} busy={submission?.status === "submitting"}>{t(submission?.status === "pending" || submission?.status === "failed" ? "activity.checkResult" : "detail.sendAnswer")}</Button></div>
   </form>;

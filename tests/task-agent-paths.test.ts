@@ -65,6 +65,12 @@ test("task execution questions retain executable agent operation arguments", asy
     assert.ok(page.getByText(queue[0].preview));
     assert.equal(page.queryAllByRole("button").length, 0);
     assert.ok(page.getByRole("status").textContent?.includes(queue[0].preview));
+    await render(h(TaskQueuedMessages, { queue: { items: [], error: "Error: SOURCE_REVOKED" } }));
+    assert.equal(page.queryByRole("alert"), null);
+    await render(h(TaskQueuedMessages, { queue: { items: [{ ...queue[0], state: "failed", error: { code: "SOURCE_REVOKED" } }], error: "" } }));
+    assert.equal(page.getByRole("alert").textContent, t("detail.sourceRevoked"));
+    await render(h(TaskOutcome, { state: "failed", entries: [{ id: "failure", type: "error", text: "SOURCE_REVOKED", status: "failed" }] }));
+    assert.ok(page.getByText(t("detail.sourceRevoked")));
     const catalog = JSON.parse(await readFile(new URL("../native/src/catalog.json", import.meta.url), "utf8"));
     const validator = new AjvJsonSchemaValidator();
     for (const call of calls) {

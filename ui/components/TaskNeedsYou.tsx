@@ -44,8 +44,8 @@ export default function TaskNeedsYou({ agent, session, entries, source, onPendin
     </>}
     <small>{source ? t("detail.routed", { source }) : t("detail.firstAnswer")}</small>
   </section>;
-  if (!narrow) return dock;
-  return <><Button variant="secondary" className="task-needs-banner" onClick={() => setSheetOpen(true)} aria-haspopup="dialog"><span><strong>{t("detail.needsYou")} · {count}</strong><span>{interaction?.summary}</span></span><span>{t("detail.openRequest")}</span></Button>
+  if (!narrow) return <footer className="dialog-footer task-detail-footer">{dock}</footer>;
+  return <><footer className="dialog-footer task-detail-footer"><Button variant="secondary" className="task-needs-banner" onClick={() => setSheetOpen(true)} aria-haspopup="dialog"><span><strong>{t("detail.needsYou")} · {count}</strong><span>{interaction?.summary}</span></span><span>{t("detail.openRequest")}</span></Button></footer>
     {sheetOpen && <Dialog sheet width={360} title={t("detail.needsYou")} onClose={() => setSheetOpen(false)} returnFocus=".task-needs-banner" footer={<Button variant="ghost" onClick={() => setSheetOpen(false)}>{t("detail.later")}</Button>}><div className="task-input-sheet">{dock}</div></Dialog>}
   </>;
 }

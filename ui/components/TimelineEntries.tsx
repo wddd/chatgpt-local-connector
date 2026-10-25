@@ -17,6 +17,7 @@ import { icons } from "../state/agents";
 import { answerLabel, interactionSummary } from "../state/taskInteractions";
 import { copyText } from "../platform";
 import { processOpen, projectTurn, taskState, toolCounts, type ProcessRow } from "../state/taskProjection";
+import { taskErrorText } from "../state/taskErrors";
 import FilePath from "./FilePath";
 import TimelineMarkdown, { TimelineResources } from "./TimelineMarkdown";
 
@@ -122,7 +123,7 @@ function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; ag
   if (entry.type === "plan") return <section className="task-plan" aria-label={t("timeline.plan")}><strong>{t("timeline.plan")}</strong><ul>{entry.plan?.map((step, index) => <li key={index} data-state={step.status}>
     <Icon icon={step.status === "completed" ? Check : Circle} /><span>{step.content.text}</span>
   </li>)}</ul></section>;
-  return <p className="timeline-error">{entry.text || entry.title}</p>;
+  return <p className="timeline-error">{taskErrorText(entry.text || entry.title, "detail.failureUnknown")}</p>;
 }
 function ToolEntry({ entry, live }: { entry: AgentTimelineEntry; live: boolean }) {
   const [open, setOpen] = useState(false);

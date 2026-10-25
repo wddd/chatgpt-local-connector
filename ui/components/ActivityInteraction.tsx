@@ -3,6 +3,7 @@ import { t } from "../i18n";
 import { activityApprovals, submitActivityApproval } from "../state/activity";
 import { interactionKey, permissionResponse } from "../state/activityModel";
 import { Button, Tooltip } from "./ui";
+import { taskErrorText } from "../state/taskErrors";
 
 export default function ActivityInteraction({ agent, session }: { agent: string; session: AgentActivitySession }) {
   const submissions = activityApprovals.use();
@@ -17,6 +18,6 @@ export default function ActivityInteraction({ agent, session }: { agent: string;
     <Button disabled={!permissionResponse(interaction, "allow") || !!submission && submission.decision !== "allow"} busy={submission?.status === "submitting" && submission.decision === "allow"} onClick={() => void submitActivityApproval(agent, session, "allow")}>{t("detail.approve")}</Button>
     {!permissionResponse(interaction, "allow") && <span className="timeline-meta">{t("timeline.responseUnavailable")}</span>}
     {submission?.status === "pending" && <span role="status">{t("activity.checkResult")}</span>}
-    {submission?.status === "failed" && <span role="alert">{submission.error}</span>}
+    {submission?.status === "failed" && <span role="alert">{taskErrorText(submission.error)}</span>}
   </div>;
 }
