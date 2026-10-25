@@ -1,14 +1,68 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { solvePortrait, portraitPanelRect } from '../ui/topology/portrait.ts';
-import { solve, type Entity } from '../ui/topology/solve.ts';
+import { solvePortrait, portraitPanelRect, portraitSourcePanelRoute, type PortraitLabels } from '../ui/topology/portrait.ts';
+import { DEFAULTS, NODE_R, solve, type Entity, type Point } from '../ui/topology/solve.ts';
 import { TopologyAnimator, nodeKey, taskKey } from '../ui/topology/animate.ts';
+import { bubbleWidths } from '../ui/state/activityModel.ts';
 
 const tasks = (id: string, count: number) => Array.from({ length: count }, (_, i) => ({ id: `${id}/${i}`, width: 264, height: 54 + i * 10 }));
 const left: Entity[] = [{ id: 'source', tasks: [], children: [{ id: 'source/a', tasks: [] }, { id: 'source/b', tasks: [] }] }];
 const right: Entity[] = [{ id: 'idle/a', tasks: [] }, { id: 'agent', tasks: [], children: [
   { id: 'account/a', tasks: tasks('a', 5) }, { id: 'account/b', tasks: tasks('b', 2) },
 ] }, { id: 'single', tasks: tasks('single', 1) }, { id: 'idle/b', tasks: [] }];
+const measured = (width: number) => ({ width, twoLineWidth: Math.ceil(width * 0.6), height: 14 });
+const labels: PortraitLabels = {
+  left: new Map([['source', measured(74)], ['source/a', measured(84)], ['source/b', measured(110)]]),
+  right: new Map([['agent', measured(108)], ['single', measured(150)], ['idle/a', measured(140)], ['idle/b', measured(100)],
+    ['account/a', measured(90)], ['account/b', measured(170)]]),
+};
+
+test('portrait rail insets contain measured platform and account labels at every supported width', () => {
+  // Regression: portrait platform labels clipped at 900 and 1080, and account/platform labels escaped the 420 viewport.
+  for (const vw of [320, 420, 600, 900, 1080]) {
+    const scene = { vw, vh: 1600, left, right };
+    const layout = solvePortrait(scene, DEFAULTS, null, labels), p = layout.portrait!;
+    for (const wing of layout.wings) for (const node of wing.nodes) {
+      const metric = labels[node.side === -1 ? 'left' : 'right'].get(node.id)!;
+      const scale = node.size * node.scale / (NODE_R * 2), offset = (NODE_R + 12) * scale;
+      const budget = node.side === -1 ? node.parent ? p.sourceAccountLabelWidth : p.sourceLabelWidth
+        : node.parent ? p.agentAccountLabelWidth : p.agentLabelWidth;
+      assert.ok(budget >= metric.twoLineWidth * scale);
+      const width = Math.min(metric.width * scale, budget);
+      const x = node.side === 1 && node.parent ? node.x - width / 2
+        : node.side === -1 && !node.parent ? node.x - offset - width : node.x + offset;
+      assert.ok(x > 0 && x + width < vw);
+    }
+    const bubbles = layout.wings[1].tasks;
+    assert.ok(bubbles.every(t => t.x - t.width > 0 && t.x < vw));
+    const longest = layout.wings[1].nodes.find(n => n.id === 'single')!;
+    const fullWidth = labels.right.get(longest.id)!.width * longest.scale;
+    const singleLineBubbleWidth = bubbles[0].width - (fullWidth - p.agentLabelWidth);
+    if (singleLineBubbleWidth >= bubbleWidths.narrow) assert.ok(p.agentLabelWidth >= fullWidth);
+    else assert.ok(p.agentLabelWidth < fullWidth);
+  }
+});
+
+test('wider measured labels move the rail and its complete inward hierarchy together', () => {
+  // Property: outer-label growth consumes bubble space without changing hierarchy offsets or source order.
+  const scene = { vw: 600, vh: 1100, left, right };
+  const before = solvePortrait(scene, DEFAULTS, null, labels);
+  const wider: PortraitLabels = { left: new Map(labels.left).set('source', measured(110)), right: new Map(labels.right).set('single', measured(180)) };
+  const after = solvePortrait(scene, DEFAULTS, null, wider);
+  assert.ok(after.portrait!.sourceX > before.portrait!.sourceX);
+  const shift = after.portrait!.agentX - before.portrait!.agentX;
+  assert.ok(shift < 0);
+  for (const [i, node] of after.wings[1].nodes.entries()) {
+    const old = before.wings[1].nodes[i];
+    assert.ok(Math.abs(node.x - old.x - shift) < 1e-6);
+    assert.ok(Math.abs(node.childBusX! - old.childBusX! - shift) < 1e-6);
+    assert.ok(Math.abs(node.taskBusX! - old.taskBusX! - shift) < 1e-6);
+  }
+  for (const [i, task] of after.wings[1].tasks.entries()) {
+    assert.ok(task.width < before.wings[1].tasks[i].width);
+    assert.ok(Math.abs(task.x - before.wings[1].tasks[i].x - shift) < 1e-6);
+  }
+});
 
 test('portrait places every task within its own row and the horizontal viewport', () => {
   // Property: inward hierarchy preserves identity, input order and nonoverlapping task stacks without horizontal overflow.
@@ -72,10 +126,40 @@ test('portrait source panels reserve a vertical gap without moving source rows',
     const shift = open.hub.y - closed.hub.y;
     assert.ok(shift > 0 && shift < scene.vh);
     for (const [i, node] of open.wings[1].nodes.entries()) assert.equal(node.y - closed.wings[1].nodes[i].y, shift);
-    const rect = portraitPanelRect(open, open.wings[0].nodes[1], 0, contentHeight);
+    const rect = portraitPanelRect(open, open.wings[0].nodes[1]);
     assert.ok(rect.y > open.portrait!.sourceBottom);
     assert.ok(rect.y + rect.height < open.hub.y - open.portrait!.earOffset);
     assert.ok(rect.x >= 0 && rect.x + rect.width <= scene.vw);
+    assert.equal(rect.height, open.portrait!.sourcePanelHeight);
+    if (contentHeight < scene.vh / 2) assert.equal(rect.height, contentHeight);
+    else assert.ok(rect.height < contentHeight && rect.height > scene.vh / 2);
+  }
+});
+
+test('source panel routes stay on the selected account bus without intersecting nodes or labels', () => {
+  // Regression: the Personal source connector crossed Personal, Studio and Unidentified labels on its way to the panel.
+  const scene = { vw: 900, vh: 1600, left, right };
+  const intersects = (a: Point, b: Point, box: { x: number; y: number; width: number; height: number }) =>
+    a.x === b.x ? a.x > box.x && a.x < box.x + box.width && Math.max(a.y, b.y) > box.y && Math.min(a.y, b.y) < box.y + box.height
+      : a.y > box.y && a.y < box.y + box.height && Math.max(a.x, b.x) > box.x && Math.min(a.x, b.x) < box.x + box.width;
+  for (const selected of ['source', 'source/a', 'source/b']) {
+    const layout = solvePortrait({ ...scene, panel: { side: -1, selected, edge: 0, contentHeight: 600 } }, DEFAULTS, null, labels);
+    const nodes = layout.wings[0].nodes, node = nodes.find(n => n.id === selected)!;
+    const parent = nodes.find(n => n.id === node.parent), panel = portraitPanelRect(layout, node);
+    const route = portraitSourcePanelRoute(node, parent?.childBusX, panel);
+    assert.equal(route.at(-1)!.y, panel.y);
+    assert.ok(route.at(-1)!.x > panel.x && route.at(-1)!.x < panel.x + panel.width);
+    for (let i = 1; i < route.length; i++) {
+      const a = route[i - 1], b = route[i];
+      assert.ok(a.x === b.x || a.y === b.y);
+      for (const sibling of nodes) {
+        const radius = sibling.size * sibling.scale / 2;
+        assert.equal(intersects(a, b, { x: sibling.x - radius, y: sibling.y - radius, width: radius * 2, height: radius * 2 }), false);
+        const metric = labels.left.get(sibling.id)!, scale = radius / NODE_R, width = metric.width * scale;
+        const x = sibling.parent ? sibling.x + (NODE_R + 12) * scale : sibling.x - (NODE_R + 12) * scale - width;
+        assert.equal(intersects(a, b, { x, y: sibling.y - metric.height * scale / 2, width, height: metric.height * scale }), false);
+      }
+    }
   }
 });
 test('portrait Agent panels fit inside the selected rail and fade tasks without changing queues', () => {

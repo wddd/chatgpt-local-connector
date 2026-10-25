@@ -10,7 +10,7 @@ Nodes and bubbles keep their IDs and spring to new slots in approximately 360ms.
 
 ## Portrait geometry
 
-At 900px width, the source rail is near x=170 and the Agent rail near x=768. The ring rotates clockwise 90 degrees: orange arc right, blue arc left, source dot above, Agent dot below. Entry-point glyphs remain upright. Thick horizontal earmuffs are approximately 144px long at y=hub +/-112, with the landscape stroke weight. Their outer ends join thin translucent rails with rounded 26px corners, forming a point-symmetric Z.
+Rail positions follow measured labels, including node scale and optional auto-compaction chips. The source rail sits to the right of the widest outer source label with a 16px left margin. The Agent rail sits to the left of the widest outer Agent label with a 16px right margin; its account column, task buses and bubble column move together. The ring rotates clockwise 90 degrees: orange arc right, blue arc left, source dot above, Agent dot below. Entry-point glyphs remain upright. Thick horizontal earmuffs are approximately 144px long at y=hub +/-112, with the landscape stroke weight. Their outer ends join thin translucent rails with rounded 26px corners, forming a Z.
 
 Source platforms follow persisted order down the left rail. Their labels sit outside, right-aligned. Tree accounts fork inward to the right through a short stub and vertical bus, with 48px account rows and labels on the right. Each platform reserves its descendants' height.
 
@@ -18,13 +18,15 @@ Agent platforms descend the right rail. Their names and optional auto-compaction
 
 Active rows fit task stacks with existing density and 10px default gaps. Idle platforms use existing idle scale/opacity at the rail bottom, retaining persisted order within active and idle groups without rewriting preferences. Queue selection, five slots, aggregate slots, pending-first ordering and temporary expansion remain upstream responsibilities. Bubble width fills available space from a 16px left margin to the task buses, capped at 480px and normally floored at the narrow preference. At viewports too narrow for that floor plus hierarchy, available width wins to prevent horizontal scrolling. The scene scrolls vertically and reserves bottom dock clearance.
 
+Labels remain complete within the viewport. Keep outer Agent labels on one line while the minimum bubble width and hierarchy fit; otherwise permit two lines using measured wrapping widths before shrinking bubbles below their narrow preference. Source labels wrap only when their full source/account row cannot fit. Account labels use their available inward space, and rows reserve their label height. Never ellipsize portrait labels or chips.
+
 Only final task stubs carry status: accent/flow for running, green for completed, amber for input and border-strong for aggregates. External stubs are dashed. Buses remain neutral Agent color. All colors use theme tokens.
 
 ## Panels
 
 Agent/account panels dock inside the right rail over the bubbles, from a 16px left margin to 40px before the selected node's stubs. Their vertical range starts below the lower earmuff and ends above the dock. A selected-node stub reaches the panel's right edge; bubbles and their stubs fade using existing panel state.
 
-Source panels occupy a full-width inset gap below the source block and above the hub. Content determines height up to a viewport limit; the reserved gap shifts the hub and Agent section down without shifting source order. The selected source connects to the panel's top edge.
+Source panels occupy a full-width inset gap below the source block and above the hub. Measure intrinsic content after its portal mounts and whenever content or width changes. Content determines height up to 55% of the viewport height, with internal scrolling above that cap; the same reserved height shifts the hub and Agent section down without shifting source order. The selected source account connects inward to its parent's bus, then follows that bus orthogonally to the panel's top edge. A selected platform uses its own inward bus. Connectors stay clear of labels and sibling nodes.
 
 Portrait panels use the available rail area and omit the landscape width-expansion control. An explicit `app_env.taskPanelWidth` may narrow the Agent panel within that area.
 

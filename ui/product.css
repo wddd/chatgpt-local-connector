@@ -1556,17 +1556,21 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .hub-source { left: var(--source-dot-x, calc(14 / 92 * 100%)); top: var(--source-dot-y, 50%); }
 .hub-agent { left: var(--agent-dot-x, calc(78 / 92 * 100%)); top: var(--agent-dot-y, 50%); }
 .topology-scene[data-orientation="portrait"] .hub-hint { display: none; }
+.topology-scene[data-orientation="portrait"] :is(.graph-node-name, .agent-auto-compact) {
+  display: block; width: max-content; max-width: var(--portrait-label-width); white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip;
+}
+.topology-scene[data-orientation="portrait"] .topology-unidentified-label > span { display: inline; overflow: visible; }
 .topology-scene[data-orientation="portrait"] .sources:not(.topology-account) .graph-node-name {
-  top: 50%; left: auto; right: calc(100% + 12px); transform: translateY(-50%); text-align: right; max-width: var(--portrait-source-label-width);
+  top: 50%; left: auto; right: calc(100% + 12px); transform: translateY(-50%); text-align: right;
 }
 .topology-scene[data-orientation="portrait"] .sources.topology-account .graph-node-name {
-  top: 50%; left: calc(100% + 12px); transform: translateY(-50%); max-width: 160px;
+  top: 50%; left: calc(100% + 12px); transform: translateY(-50%);
 }
 .topology-scene[data-orientation="portrait"] .agents:not(.topology-account) .graph-node-name {
-  top: 50%; left: calc(100% + 12px); transform: translateY(-50%); max-width: var(--portrait-agent-label-width);
+  top: 50%; left: calc(100% + 12px); transform: translateY(-50%);
 }
 .topology-scene[data-orientation="portrait"] .agents:not(.topology-account) .agent-auto-compact {
-  top: calc(50% + 12px); left: calc(100% + 12px); transform: none; max-width: var(--portrait-agent-label-width); overflow: hidden; text-overflow: ellipsis;
+  top: calc(50% + 16px); left: calc(100% + 12px); transform: none;
 }
 .portrait-wires .portrait-rail { fill: none; stroke: var(--wire-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .portrait-wires .portrait-task { --task-color: var(--accent); fill: none; stroke: var(--task-color); stroke-width: 2; stroke-linecap: round; }

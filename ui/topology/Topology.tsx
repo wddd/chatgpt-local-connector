@@ -2,7 +2,7 @@ import { appEnvironment, envOverrides } from "../state/appEnvironment";
 import { topologyLayout } from "../subscriptions/displayPreferences";
 import { resolveOrientation, type Orientation } from "./orientation";
 import { solvePortrait, portraitPanelRect } from "./portrait";
-import { PortraitPainter } from "./portraitRender";
+import { PortraitPainter, measurePortraitLabels } from "./portraitRender";
 import CollapseSymbol from './CollapseSymbol';
 import { t } from '../i18n';
 import { topologyCollapsed } from './accountState';
@@ -122,8 +122,6 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       element.style.opacity = String(opacity);
       element.dataset.inactive = String(!active);
     }
-    root.style.setProperty('--portrait-source-label-width', `${Math.max(32, (layout.current?.portrait?.sourceX ?? 170) - 44)}px`);
-    root.style.setProperty('--portrait-agent-label-width', `${Math.max(32, (size.current?.vw ?? 900) - (layout.current?.portrait?.agentX ?? 768) - 44)}px`);
     root.style.height = `${a.values("scene")!.height}px`;
     boundary.current?.style.setProperty("--topology-hub-x", `${h.x}px`);
     if (hub.current) {
@@ -147,6 +145,12 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
         el.inert = !a.live.get(key)?.alive || v.op < 0.02;
         const scale = v.scale * v.size / (NODE_R * 2);
         el.style.setProperty('--node-inverse', String(1 / scale));
+        const columns = layout.current?.portrait;
+        if (portrait && columns) {
+          const width = n.side === -1 ? n.parent ? columns.sourceAccountLabelWidth : columns.sourceLabelWidth
+            : n.parent ? columns.agentAccountLabelWidth : columns.agentLabelWidth;
+          el.style.setProperty('--portrait-label-width', `${width / scale}px`);
+        }
         const toggle = portrait ? { x: -n.side * v.radius, y: 0 } : collapseTarget(v.radius, v.alo, v.ahi, n.side);
         el.style.setProperty('--collapse-x', `${toggle.x / scale}px`);
         el.style.setProperty('--collapse-y', `${toggle.y / scale}px`);
@@ -223,6 +227,13 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     }
     return sc;
   }, []);
+  const solveScene = useCallback((activeDrag: Drag | null = null) => {
+    const sc = scene();
+    if (orientation.current !== 'portrait') return solve(sc, latest.current.params, activeDrag);
+    if (graph.current) graph.current.dataset.orientation = 'portrait';
+    const labels = measurePortraitLabels(latest.current.nodes, n => elements.current.get(nodeKey(n.side, n.id)));
+    return solvePortrait(sc, latest.current.params, activeDrag, labels);
+  }, [scene]);
   const target = useCallback(() => {
     if (!size.current) return;
     let d = drag.current;
@@ -234,7 +245,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       if (orientationPending.current && orientationTimer.current === null) queueMicrotask(() => evaluateOrientation.current());
     }
     animator.current.params = latest.current.params;
-    layout.current = (orientation.current === "portrait" ? solvePortrait : solve)(scene(), latest.current.params, d?.active ? d : null);
+    layout.current = solveScene(d?.active ? d : null);
     // Publish the settled destination once per layout change, never a spring's
     // in-flight position. The dock can then open at its final content width.
     const selected = latest.current.nodes.find(n => n.selected);
@@ -245,7 +256,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       const container = boundary.current;
       const viewportTop = origin.current.y + (container?.scrollTop ?? 0);
       if (container && placedPanel.current !== latest.current.panelKey) {
-        const local = portraitPanelRect(layout.current, selectedNode, 0, sourceContentHeight.current);
+        const local = portraitPanelRect(layout.current, selectedNode);
         // Keep enough of the inner area visible when selecting a node far down
         // a scrolling rail. A source panel is part of the gap above the hub.
         const neededBottom = selectedNode.side === -1 ? local.y + local.height : Math.max(local.y + Math.min(320, layout.current.vh * 0.5), selectedNode.y + 44);
@@ -255,7 +266,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
         origin.current = { x: actual.x, y: actual.y };
       }
       placedPanel.current = latest.current.panelKey;
-      const local = portraitPanelRect(layout.current, selectedNode, container?.scrollTop ?? 0, sourceContentHeight.current);
+      const local = portraitPanelRect(layout.current, selectedNode, container?.scrollTop ?? 0);
       if (selectedNode.side === 1 && envOverrides().taskPanelWidth != null) local.width = Math.min(local.width, envOverrides().taskPanelWidth!);
       rect = { ...local, x: local.x + origin.current.x, y: local.y + viewportTop };
     } else placedPanel.current = undefined;
@@ -272,7 +283,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     // Pins follow the pointer immediately; their neighbours continue springing.
     animator.current.step(0, !!latest.current.reduced);
     paint(); wake();
-  }, [paint, wake, scene, boundary]);
+  }, [paint, wake, solveScene, boundary]);
   retarget.current = target;
   evaluateOrientation.current = () => {
     orientationTimer.current = null;
@@ -318,7 +329,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     d.active = true; d.slot.dataset.dragging = "true"; suppressedClick.current = d.key;
     const y = event.clientY - origin.current.y - d.grabY, movedY = y !== d.y;
     d.x = event.clientX - origin.current.x - d.grabX; d.y = y;
-    const layout = (orientation.current === "portrait" ? solvePortrait : solve)(scene(), latest.current.params), wing = layout.wings.find(w => w.side === d.side)!;
+    const layout = solveScene(), wing = layout.wings.find(w => w.side === d.side)!;
     const candidates = (d.kind === "node" ? wing.nodes : wing.tasks.filter(t => t.parent === d.parent)).filter(item => d.order.includes(item.id));
     if (!candidates.some(item => item.id === d.id)) { finishDrag(event, true); return; }
     if (movedY) d.order = moveToY(candidates, d.id, d.y);

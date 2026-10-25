@@ -2,6 +2,49 @@ import type { Point, Side } from './solve';
 import { TopologyAnimator, nodeKey, taskKey } from './animate';
 import type { PaintNode, PaintTask } from './render';
 import type { SurfaceRect } from '../motion/surface';
+import { portraitSourcePanelRoute, type PortraitLabel, type PortraitLabels } from './portrait';
+
+const labelMeasurements = new WeakMap<HTMLElement, { signature: string; label: PortraitLabel }>();
+// Measure intrinsic CSS dimensions, not the animated node transform or the
+// previous viewport's clipped label. The temporary styles never reach a frame.
+function measureLabel(element: HTMLElement): PortraitLabel {
+  const style = getComputedStyle(element);
+  const signature = [element.textContent, style.font, style.letterSpacing, style.padding].join('|');
+  const cached = labelMeasurements.get(element);
+  if (cached?.signature === signature) return cached.label;
+  const original = element.style.cssText;
+  element.style.width = 'max-content'; element.style.maxWidth = 'none'; element.style.whiteSpace = 'nowrap';
+  const width = element.offsetWidth + 1, height = element.offsetHeight;
+  const lineHeight = parseFloat(style.lineHeight) || height;
+  const verticalPadding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) || 0;
+  element.style.whiteSpace = 'normal';
+  let lo = Math.ceil(width / 2), hi = width;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    element.style.maxWidth = `${mid}px`;
+    if (element.offsetHeight <= 2 * lineHeight + verticalPadding) hi = mid;
+    else lo = mid + 1;
+  }
+  element.style.cssText = original;
+  const label = { width, twoLineWidth: lo, height };
+  labelMeasurements.set(element, { signature, label });
+  return label;
+}
+export function measurePortraitLabels(nodes: PaintNode[], element: (node: PaintNode) => HTMLElement | undefined): PortraitLabels {
+  const left = new Map<string, PortraitLabel>(), right = new Map<string, PortraitLabel>();
+  for (const node of nodes) {
+    const host = element(node);
+    const name = host?.querySelector<HTMLElement>('.graph-node-name');
+    if (!name) continue;
+    const label = measureLabel(name), chip = host?.querySelector<HTMLElement>('.agent-auto-compact');
+    const sub = chip && measureLabel(chip);
+    (node.side === -1 ? left : right).set(node.id, {
+      width: Math.max(label.width, sub?.width ?? 0), twoLineWidth: Math.max(label.twoLineWidth, sub?.twoLineWidth ?? 0),
+      height: label.height + (sub ? sub.height + 5 : 0),
+    });
+  }
+  return { left, right };
+}
 
 // Rounded orthogonal polyline. Corners clamp to their adjacent segments, so
 // short stubs and temporarily coincident animated points remain finite.
@@ -89,8 +132,9 @@ export class PortraitPainter {
       if (panel && node.selected) {
         const end = node.side === 1 ? point(panel.x + panel.width, Math.max(panel.y + 27, Math.min(panel.y + panel.height - 27, n.y))) : point(Math.max(panel.x + 27, Math.min(panel.x + panel.width - 27, n.x)), panel.y);
         const start = point(n.x - node.side * (n.size * n.scale / 2 + 4), n.y);
+        const parent = node.parent ? a.values(nodeKey(node.side, node.parent)) : undefined;
         const route = node.side === 1 ? [start, point(n.childBusX, n.y), point(n.childBusX, end.y), end]
-          : [start, point(n.childBusX, n.y), point(n.childBusX, end.y - 20), point(end.x, end.y - 20), end];
+          : portraitSourcePanelRoute({ x: n.x, y: n.y, size: n.size, scale: n.scale, childBusX: n.childBusX }, parent?.childBusX, panel);
         this.path(`${key}:panel`, railPath(route), `portrait-rail ${sideClass}`, 0.9);
       }
     }
