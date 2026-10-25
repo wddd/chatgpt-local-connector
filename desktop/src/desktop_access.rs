@@ -28,6 +28,7 @@ impl DesktopAccess for Owner {
 }
 
 pub async fn request(app: &tauri::AppHandle, operation: DesktopRequest) -> Result<Value, String> {
+    let _permit = arc_core::transport::desktop_request_permit()?;
     if let DesktopRequest::Route(route, method, body) = &operation {
         if method != "GET" {
             check_write(app)?;
@@ -38,7 +39,7 @@ pub async fn request(app: &tauri::AppHandle, operation: DesktopRequest) -> Resul
             ("POST", "app/snapshot") => return crate::snapshot::capture(app, body).await,
             ("GET", "app") => {
                 return Ok(
-                    json!({"pid":std::process::id(),"bundleId":app.config().identifier,"appName":app.config().product_name,"version":env!("ARC_BUILD_VERSION"),"executable":std::env::current_exe().map_err(|e|e.to_string())?,"build":arc_core::runtime::build_id(&std::env::current_exe().map_err(|e|e.to_string())?)?}),
+                    json!({"pid":std::process::id(),"bundleId":app.config().identifier,"appName":app.config().product_name,"version":env!("ARC_BUILD_VERSION"),"executable":std::env::current_exe().map_err(|e|e.to_string())?,"build":arc_core::runtime::process_build_id()?}),
                 )
             }
             ("GET", "updates") => return Ok(crate::updates::snapshot(app)),

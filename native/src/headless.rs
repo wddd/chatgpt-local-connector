@@ -4,7 +4,7 @@ use std::{process::Stdio, time::Duration};
 
 async fn current() -> Result<Option<Value>> {
     init_crypto();
-    crate::runtime::owner(&crate::runtime::build_id(&crate::runtime::binary()?)?).await
+    crate::runtime::owner(crate::runtime::process_build_id()?).await
 }
 
 pub async fn status() -> Result<Value> {

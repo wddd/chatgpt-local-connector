@@ -11,6 +11,21 @@ pub enum DesktopRequest {
     ServiceSet(Value),
     SubscriptionsOpen(Value),
 }
+impl DesktopRequest {
+    fn cancel_on_disconnect(&self) -> bool {
+        matches!(self, Self::ServiceGet)
+            || matches!(self, Self::Route(route, method, _) if method == "GET" || route == "app/snapshot")
+    }
+}
+
+// Fail fast rather than retaining a queue of bodies and abandoned callers.
+// Core forwarding and Desktop's HTTP/Tauri entrypoints each share this budget.
+pub fn desktop_request_permit() -> Result<tokio::sync::SemaphorePermit<'static>> {
+    static REQUESTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(16);
+    REQUESTS.try_acquire().map_err(|_| {
+        "DESKTOP_BUSY: Too many desktop requests are in flight. Wait for completion and read current state before retrying.".into()
+    })
+}
 pub trait DesktopAccess: Send + Sync {
     fn check_write(&self) -> Result<()>;
     fn request(
@@ -31,15 +46,32 @@ pub async fn listen_desktop(
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     let token = id() + &id();
     let endpoint = json!({"port":port,"token":token});
+    let connections = Arc::new(tokio::sync::Semaphore::new(32));
     let job = tokio::spawn(async move {
         while let Ok((stream, peer)) = listener.accept().await {
             if !peer.ip().is_loopback() {
                 continue;
             }
+            let Ok(permit) = connections.clone().try_acquire_owned() else {
+                // Do not spawn a task or retain a socket when the listener is full.
+                continue;
+            };
+            let socket = stream.into_std().map_err(|e| e.to_string());
+            let Ok(socket) = socket else { continue };
+            let disconnect = socket
+                .try_clone()
+                .ok()
+                .and_then(|s| TcpStream::from_std(s).ok());
+            let (Ok(stream), Some(disconnect)) = (TcpStream::from_std(socket), disconnect) else {
+                continue;
+            };
+            let disconnect = Arc::new(disconnect);
             let (owner, token) = (owner.clone(), token.clone());
             tokio::spawn(async move {
+                let _permit = permit;
                 let service = service_fn(move |request: Request<hyper::body::Incoming>| {
-                    let (owner, token) = (owner.clone(), token.clone());
+                    let (owner, token, disconnect) =
+                        (owner.clone(), token.clone(), disconnect.clone());
                     async move {
                         let result: Result<Value> = async {
                             if !local_host(
@@ -56,9 +88,9 @@ pub async fn listen_desktop(
                             }
                             let method = request.method().clone();
                             let path = request.uri().path().to_owned();
-                            let bytes = Limited::new(request.into_body(), 65536)
-                                .collect()
+                            let bytes = tokio::time::timeout(Duration::from_secs(5), Limited::new(request.into_body(), 65536).collect())
                                 .await
+                                .map_err(|_| "desktop request body timed out")?
                                 .map_err(|e| e.to_string())?
                                 .to_bytes();
                             let body = if bytes.is_empty() {
@@ -84,7 +116,16 @@ pub async fn listen_desktop(
                                 }
                                 _ => return Err("UNKNOWN_ROUTE".into()),
                             };
-                            owner.request(operation).await
+                            if operation.cancel_on_disconnect() {
+                                tokio::select! {
+                                    biased;
+                                    _ = wait_disconnect(&disconnect) => Err("desktop caller disconnected".into()),
+                                    result = owner.request(operation) => result,
+                                }
+                            } else {
+                                // Do not add explicit cancellation to mutation paths.
+                                owner.request(operation).await
+                            }
                         }
                         .await;
                         let (status, body) = match result {
@@ -102,6 +143,10 @@ pub async fn listen_desktop(
                     }
                 });
                 let _ = http1::Builder::new()
+                    .timer(hyper_util::rt::TokioTimer::new())
+                    .header_read_timeout(Duration::from_secs(5))
+                    .keep_alive(false)
+                    .max_buf_size(16384)
                     .serve_connection(hyper_util::rt::TokioIo::new(stream), service)
                     .await;
             });
@@ -122,7 +167,7 @@ pub async fn listen(
     service
         .port
         .store(port, std::sync::atomic::Ordering::SeqCst);
-    let build = crate::runtime::build_id(&std::env::current_exe().map_err(|e| e.to_string())?)?;
+    let build = crate::runtime::process_build_id()?;
     save(
         &root().join("app/native.json"),
         &json!({"port":port,"pid":std::process::id(),"token":service.token,"instance":service.control.session,"runtime":"rust","version":env!("ARC_BUILD_VERSION"),"owner":"core","daemon":service.runtime.daemon.load(std::sync::atomic::Ordering::SeqCst),"build":build}),
@@ -237,6 +282,16 @@ async fn local_request(
     let sse = crate::wait_transport::accepts_sse(request.headers());
     let method = request.method().to_string();
     let path = request.uri().path().to_owned();
+    let _desktop_permit = if path.strip_prefix("/api/").is_some_and(|route| {
+        crate::management::desktop_route(route) || matches!(route, "service" | "subscriptions/open")
+    }) {
+        match desktop_request_permit() {
+            Ok(permit) => Some(permit),
+            Err(error) => return local_reply(503, json!({"error":error})),
+        }
+    } else {
+        None
+    };
     let timeline_after = if path.starts_with("/api/agents/timeline/") {
         request
             .uri()
@@ -374,10 +429,22 @@ async fn local_request(
                 _ => None,
             };
             if let Some(operation) = operation {
-                if let Some(desktop) = &desktop {
-                    desktop.request(operation).await
+                let cancel = operation.cancel_on_disconnect();
+                let response = async {
+                    if let Some(desktop) = &desktop {
+                        desktop.request(operation).await
+                    } else {
+                        s.runtime.desktop_request(operation).await
+                    }
+                };
+                if cancel {
+                    tokio::select! {
+                        biased;
+                        _ = wait_disconnect(&disconnect) => Err("desktop caller disconnected".into()),
+                        result = response => result,
+                    }
                 } else {
-                    s.runtime.desktop_request(operation).await
+                    response.await
                 }
             } else {
                 s.request(route, &method, body).await
@@ -1049,5 +1116,146 @@ impl WaitCalls {
         if let Some(tx) = self.0.lock().unwrap().get(key) {
             let _ = tx.send(true);
         }
+    }
+}
+
+#[cfg(test)]
+mod desktop_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    struct Finished(tokio::sync::mpsc::UnboundedSender<()>);
+    impl Drop for Finished {
+        fn drop(&mut self) {
+            let _ = self.0.send(());
+        }
+    }
+    struct HoldingDesktop {
+        started: tokio::sync::mpsc::UnboundedSender<()>,
+        finished: tokio::sync::mpsc::UnboundedSender<()>,
+        release: Arc<tokio::sync::Notify>,
+    }
+    impl DesktopAccess for HoldingDesktop {
+        fn check_write(&self) -> Result<()> {
+            Ok(())
+        }
+        fn request(
+            &self,
+            operation: DesktopRequest,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value>> + Send>> {
+            let (started, finished, release) = (
+                self.started.clone(),
+                self.finished.clone(),
+                self.release.clone(),
+            );
+            Box::pin(async move {
+                let _permit = desktop_request_permit()?;
+                if matches!(&operation, DesktopRequest::Route(route, _, _) if route == "app") {
+                    return Ok(json!({"build":crate::runtime::process_build_id()?}));
+                }
+                let _finished = Finished(finished);
+                started.send(()).unwrap();
+                release.notified().await;
+                Ok(json!({"completed":true}))
+            })
+        }
+    }
+    async fn signal(receiver: &mut tokio::sync::mpsc::UnboundedReceiver<()>) {
+        tokio::time::timeout(Duration::from_secs(2), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    async fn connect(endpoint: &Value, method: &str, route: &str) -> TcpStream {
+        let port = endpoint["port"].as_u64().unwrap();
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{port}"))
+            .await
+            .unwrap();
+        stream.write_all(format!("{method} /api/{route} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", string(endpoint, "token")).as_bytes()).await.unwrap();
+        stream
+    }
+
+    #[tokio::test]
+    async fn desktop_requests_are_bounded_and_abandoned_reads_release_their_work() {
+        // Regression: Desktop had no admission bound while synchronous executable hashing prevented cancellation.
+        crate::init_crypto();
+        let (started, mut starts) = tokio::sync::mpsc::unbounded_channel();
+        let (finished, mut finishes) = tokio::sync::mpsc::unbounded_channel();
+        let release = Arc::new(tokio::sync::Notify::new());
+        let (endpoint, listener) = listen_desktop(Arc::new(HoldingDesktop {
+            started,
+            finished,
+            release: release.clone(),
+        }))
+        .await
+        .unwrap();
+        let mut sockets = Vec::new();
+        for _ in 0..16 {
+            sockets.push(connect(&endpoint, "GET", "permissions/desktop").await);
+            signal(&mut starts).await;
+        }
+        let rejected = tokio::time::timeout(
+            Duration::from_secs(2),
+            forward_to(&endpoint, "app", "GET", json!({})),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+        assert!(rejected.starts_with("DESKTOP_BUSY:"));
+        drop(sockets.pop());
+        signal(&mut finishes).await;
+        let identity = forward_to(&endpoint, "app", "GET", json!({}))
+            .await
+            .unwrap();
+        assert_eq!(
+            identity["build"],
+            crate::runtime::process_build_id().unwrap()
+        );
+        drop(sockets);
+        for _ in 0..15 {
+            signal(&mut finishes).await;
+        }
+
+        // Snapshot cancellation must also remove work queued behind another capture.
+        let snapshot = connect(&endpoint, "POST", "app/snapshot").await;
+        signal(&mut starts).await;
+        drop(snapshot);
+        signal(&mut finishes).await;
+
+        // Mutation dispatch still returns the completed operation's response.
+        let mut write = connect(&endpoint, "POST", "updates/check").await;
+        signal(&mut starts).await;
+        release.notify_waiters();
+        let mut response = String::new();
+        tokio::time::timeout(Duration::from_secs(2), write.read_to_string(&mut response))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(response.starts_with("HTTP/1.1 200"));
+        assert_eq!(
+            serde_json::from_str::<Value>(response.split("\r\n\r\n").nth(1).unwrap()).unwrap(),
+            json!({"completed":true})
+        );
+        signal(&mut finishes).await;
+
+        // Idle sockets cannot create an unbounded number of per-connection tasks.
+        let port = endpoint["port"].as_u64().unwrap();
+        let mut idle = Vec::new();
+        for _ in 0..32 {
+            idle.push(
+                TcpStream::connect(format!("127.0.0.1:{port}"))
+                    .await
+                    .unwrap(),
+            );
+        }
+        let mut overflow = TcpStream::connect(format!("127.0.0.1:{port}"))
+            .await
+            .unwrap();
+        let ended = tokio::time::timeout(Duration::from_secs(2), overflow.read(&mut [0; 1]))
+            .await
+            .unwrap();
+        assert!(ended.is_err() || ended.unwrap() == 0);
+        drop(idle);
+        listener.abort();
     }
 }

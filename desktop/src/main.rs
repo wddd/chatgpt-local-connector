@@ -167,6 +167,7 @@ fn main() {
             windows_frame::set_windows_appearance
         ])
         .setup(|app| {
+            arc_core::runtime::process_build_id().map_err(std::io::Error::other)?;
             #[cfg(debug_assertions)]
             if std::env::var_os("ARC_DEV_SUPERVISED").is_some() {
                 let handle = app.handle().clone();

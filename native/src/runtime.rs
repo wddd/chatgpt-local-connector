@@ -160,7 +160,39 @@ pub fn binary() -> Result<PathBuf> {
 }
 
 pub fn build_id(binary: &Path) -> Result<String> {
-    Ok(hash(std::fs::read(binary).map_err(|e| e.to_string())?))
+    #[cfg(test)]
+    BUILD_HASHES.with(|count| count.set(count.get() + 1));
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = File::open(binary).map_err(|e| e.to_string())?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0; 64 * 1024];
+    loop {
+        let count = match file.read(&mut buffer) {
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            result => result.map_err(|e| e.to_string())?,
+        };
+        if count == 0 {
+            break;
+        }
+        digest.update(&buffer[..count]);
+    }
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+#[cfg(test)]
+thread_local! {
+    static BUILD_HASHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Identity of this running executable, initialized before its request listener.
+/// Candidate and replacement files must still use build_id to observe disk changes.
+pub fn process_build_id() -> Result<&'static str> {
+    static BUILD: std::sync::OnceLock<Result<String>> = std::sync::OnceLock::new();
+    BUILD
+        .get_or_init(|| build_id(&std::env::current_exe().map_err(|e| e.to_string())?))
+        .as_deref()
+        .map_err(Clone::clone)
 }
 
 pub(crate) async fn owner(build: &str) -> Result<Option<Value>> {
@@ -453,12 +485,7 @@ pub async fn serve_mode(daemon: bool) -> Result<()> {
         }
     }
     // A pre-upgrade Desktop may not use the lock. Never overwrite its live owner.
-    if owner(&build_id(
-        &std::env::current_exe().map_err(|e| e.to_string())?,
-    )?)
-    .await?
-    .is_some()
-    {
+    if owner(process_build_id()?).await?.is_some() {
         return Ok(());
     }
     tokio::task::spawn_blocking(crate::sources::initialize)
@@ -530,6 +557,37 @@ pub async fn serve_mode(daemon: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn repeated_process_identity_reads_never_rehash_the_executable() {
+        // Regression: idle GET app repeatedly allocated and hashed the entire Desktop executable.
+        let started = Instant::now();
+        let identity = process_build_id().unwrap().to_owned();
+        let initialized = started.elapsed();
+        let hashed = BUILD_HASHES.with(|count| count.get());
+        let started = Instant::now();
+        for _ in 0..1024 {
+            assert_eq!(process_build_id().unwrap(), identity);
+            assert_eq!(BUILD_HASHES.with(|count| count.get()), hashed);
+        }
+        eprintln!(
+            "process identity: initial={initialized:?}, 1024 cached reads={:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn streamed_build_identity_matches_sha256_and_observes_replaced_files() {
+        // Regression: whole-file build checks allocated entire binaries; streaming must retain fresh replacement evidence.
+        let path = std::env::temp_dir().join(format!("arc-build-id-{}", id()));
+        for size in [0, 3, 65536, 65537, 1024 * 1024 + 13] {
+            let bytes: Vec<_> = (0..size).map(|i| (i % 251) as u8).collect();
+            std::fs::write(&path, &bytes).unwrap();
+            assert_eq!(build_id(&path).unwrap(), hash(&bytes));
+        }
+        std::fs::remove_file(&path).unwrap();
+        assert!(build_id(&path).is_err());
+    }
+
     #[test]
     fn restart_handoff_never_attaches_to_a_core_already_tearing_down() {
         // Regression: 42f9056; restart handoff never attaches to a core already tearing down.

@@ -9,6 +9,14 @@ pub struct State {
     serial: tokio::sync::Mutex<()>,
     pending: Mutex<Option<(String, Reply)>>,
 }
+struct Pending<'a>(&'a State);
+impl Drop for Pending<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut pending) = self.0.pending.lock() {
+            pending.take();
+        }
+    }
+}
 #[tauri::command]
 pub fn snapshot_ready(
     window: tauri::WebviewWindow,
@@ -50,10 +58,14 @@ pub async fn capture(app: &tauri::AppHandle, body: &Value) -> Result<Value, Stri
     }
     let (sender, receiver) = tokio::sync::oneshot::channel();
     *state.pending.lock().map_err(|e| e.to_string())? = Some((id.clone(), sender));
+    let _pending = Pending(&state);
     let handle = app.clone();
     let request = body.clone();
     let (sent, received) = tokio::sync::oneshot::channel();
     app.run_on_main_thread(move || {
+        if sent.is_closed() {
+            return;
+        }
         let result = (|| {
             let window = crate::windows::ensure(&handle)?;
             if request.get("width").is_some() || request.get("height").is_some() {
@@ -93,7 +105,6 @@ pub async fn capture(app: &tauri::AppHandle, body: &Value) -> Result<Value, Stri
             .map_err(|_| "snapshot cancelled")?
     }
     .await;
-    state.pending.lock().map_err(|e| e.to_string())?.take();
     let model = model?;
     let instance = json!({"desktopPid":std::process::id(),"bundleId":app.config().identifier,"appName":app.config().product_name,"version":env!("ARC_BUILD_VERSION")});
     if body["modelOnly"] == true {
