@@ -324,7 +324,7 @@ impl Store {
         actor: &Value,
         evidence: Vec<Value>,
         time: i64,
-        seed: Option<&str>,
+        import_id: Option<&str>,
     ) -> Result<Value> {
         let fp = fingerprint(args);
         let existing = self
@@ -339,7 +339,7 @@ impl Store {
             .map(|e| e.id.clone());
         let key = match existing {
             Some(key) => self.canonical(&key)?,
-            None => seed
+            None => import_id
                 .map(str::to_owned)
                 .unwrap_or_else(|| format!("ax-{}", id())),
         };
@@ -362,10 +362,12 @@ impl Store {
                     )
                     .map_err(|_| "INVALID_ARGUMENT: resources")?,
                     source: actor.clone(),
-                    arc_version: seed.is_none().then(|| crate::egress::arc_version().into()),
+                    arc_version: import_id
+                        .is_none()
+                        .then(|| crate::egress::arc_version().into()),
                     evidence: vec![],
-                    first_seen_at: seed.is_none().then(|| timestamp(time)),
-                    last_seen_at: seed.is_none().then(|| timestamp(time)),
+                    first_seen_at: import_id.is_none().then(|| timestamp(time)),
+                    last_seen_at: import_id.is_none().then(|| timestamp(time)),
                     occurrence_count: 0,
                     candidate_state: None,
                     status: "open".into(),
@@ -416,7 +418,7 @@ impl Store {
             if entry.kind == "friction" {
                 entry.occurrence_count += 1;
             }
-            entry.last_seen_at = seed.is_none().then(|| timestamp(time));
+            entry.last_seen_at = import_id.is_none().then(|| timestamp(time));
             // Retain the first and the most recent representative observations.
             for mut item in evidence {
                 item["source"] = actor.clone();
@@ -435,7 +437,7 @@ impl Store {
                 entry.record(
                     if fresh { "reported" } else { "reopen" },
                     actor,
-                    json!({"reportedOnly":seed.is_some()}),
+                    json!({"reportedOnly":import_id.is_some()}),
                     time,
                 );
             } else {
@@ -799,8 +801,7 @@ impl Store {
             }
             let existing=s.data.entries.values().filter(|e| e.candidate_state.as_deref()!=Some("rejected") && e.status!="merged")
                 .filter(|e| e.candidate_signature.as_deref()==Some(&signature)
-                    || e.evidence.iter().any(|v| v["friction"] == kind.signature())
-                    || matches!((kind, e.id.as_str()), (Friction::StalledReceipt, "AX-07") | (Friction::OwnerDiscoveryTimeout, "AX-05")))
+                    || e.evidence.iter().any(|v| v["friction"] == kind.signature()))
                 .min_by_key(|e| (e.status == "candidate", e.id.clone())).map(|e|e.id.clone());
             let observation=hash(observation);
             if let Some(key)=&existing {
@@ -840,7 +841,7 @@ impl Store {
     pub(super) fn import_reports(&mut self, reports: Vec<Value>, time: i64) -> Result<Value> {
         self.transaction(|s| {
             s.prune(time);
-            let actor=json!({"type":"seed"});
+            let actor=json!({"type":"local-authority"});
             let mut imported=0;
             let mut unchanged=0;
             let mut entries=vec![];
@@ -851,7 +852,7 @@ impl Store {
                 args["requestId"]=json!(import_request);
                 if let Some(e)=s.data.entries.get(&key) {
                     if e.applied.contains(&import_request) {unchanged+=1;entries.push(e.projection(&json!({"type":"local-authority"})));continue;}
-                    // An edited migration row enriches its original seed without another occurrence.
+                    // An edited migration row enriches its original imported entry without another occurrence.
                     let e=s.data.entries.get_mut(&key).unwrap();
                     e.applied.insert(import_request);
                     e.record("import-updated",&actor,json!({"reportedOnly":true,"queueReport":args["queueReport"]}),time);

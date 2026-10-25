@@ -729,7 +729,27 @@ alone never proves a tooling command, and isolated start never proves readiness.
 
 ## AX reports and triage
 
-After working around ARC friction, report metadata with
+AX records stay in the selected instance and do not reach ARC's maintainers.
+Maintainer mode defaults OFF. Enable it locally under Settings > Experimental or
+with `cli config set --stdin` and `{"maintainerMode":true}`. Guide content and hash
+change on the next read without restarting. ON includes AX reporting, candidate
+review, triage cadence and release gating in the common guide and index. OFF omits
+those workflows and common-index AX ops; coordination guidance remains in both.
+Explicit schemas and the full index remain available, as do local AX store ops.
+
+In normal mode, briefly describe ARC friction that required a workaround and
+suggest that the user file an [issue](https://github.com/whzxc/agent-remote-control/issues).
+Never file or post automatically. The optional read-only
+`query({op:"ax_issue_draft",args:{friction,receiptIds?,threadIds?}})` returns `title`,
+`body`, ARC binary `arcBuildVersion`, `os`, `summaryMode:"fixed-category"`,
+`submission:"manual"` and `issueUrl`. It makes no GitHub request or store mutation.
+The description is limited to 4,000 characters; reference lists accept at most 16
+IDs of 128 characters. It uses a fixed symptom category and reference fingerprints,
+never verbatim descriptions, IDs, prompts or evidence bodies. Paths, emails, tokens
+and routes are not copied. The user must review and complete reproduction details;
+fingerprints cannot retrieve another instance's local records.
+
+In Maintainer mode, after working around ARC friction, report metadata with
 `act({op:"ax_report",args:{symptom,expected,severity,requestId?,reproductionHints?,receiptIds?,requestIds?,threadIds?,resources?}})`.
 Use `kind:"idea"` for a desired outcome; ideas may omit severity and have no failure
 occurrence count. Friction requires `blocking`, `workaround` or `cosmetic` severity.
@@ -762,7 +782,7 @@ Reproduction details, evidence and free-form decision details remain owner/local
 Pages default to 50, cap at 100 / 128 KiB, and use a source/authority/filter-bound
 cursor. A cursor expires after 15 minutes or a changed snapshot; `AX_CURSOR_EXPIRED`
 includes a reset query. Candidate and rejected rows never count as confirmed open
-entries. Inspect AX before release (`beforeRelease:true`), at eight open/triaged
+entries. In Maintainer mode, inspect AX before release (`beforeRelease:true`), at eight open/triaged
 entries, or on any confirmed blocker. Record the user's decision for unresolved
 blockers before release; these ops do not authorize a release.
 
@@ -778,6 +798,9 @@ no recursive delivery alerts.
 `act({op:"ax_triage",args:{id,expectedRevision,action,reason,evidenceIds?,commit?,document?,mergedInto?,requestId?}})`
 accepts `fix`, `document`, `wontfix`, `merged` or `reopen`. Only the reporting source
 or local authority may triage; merges require authority over both entries.
+A source also needs Maintainer mode. Otherwise `MAINTAINER_MODE_REQUIRED` includes
+`next:{op:null,hint}` explaining local enablement. Local authority can triage or
+import while the mode is OFF; the toggle never grants authority over another source's entry.
 `fix`/`document` stays triaged until a change/document reference and available
 completed verification receipts (`command`, `native`, `review`, `agent_review`)
 are supplied as `evidenceIds`. A commit alone never closes the entry. Verification

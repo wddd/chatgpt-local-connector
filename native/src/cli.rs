@@ -52,6 +52,8 @@ const COMMANDS: &[&str] = &[
     "uninstall [--purge]",
     "doctor",
     "logs",
+    "config get",
+    "config set --stdin",
     "configure --stdin",
     "network --stdin",
     "connect",
@@ -634,6 +636,7 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
                 {"commands":"ax import --from <path>; ax export --to <path>","description":"Import the interim AX queue or export retained AX history through local Core management. Paths must be absolute; export requires a new file in an existing directory outside ARC state."},
                 {"commands":"subscriptions get|set|refresh|open","description":"Read or refresh subscription usage; set accepts JSON on stdin."},
                 {"commands":"stats control [--since <duration>]; logs [--stdin|--follow|--offline]; watch; storage compact","description":"Inspect logs, watch changes or compact local storage."},
+                {"commands":"config get; config set --stdin","description":"Read or set device configuration. set accepts {maintainerMode:boolean}; default false, effective without restart."},
                 {"commands":"configure --stdin; network --stdin; connect; disconnect; verify [--fresh]","description":"Configure and control the primary connection."},
                 {"commands":"capabilities; schema <operation>; call <operation> [--stdin]; mcp","description":"Discover full operation schemas, execute an operation or serve local management MCP."},
                 {"commands":"help; guide","description":"Show this compact index or the full CLI reference."}
@@ -769,6 +772,17 @@ async fn execute(args: &[String]) -> crate::Result<Value> {
             let body = crate::app_replace::replacement_arguments(path, flags, body)?;
             crate::management::call("app.replace", json!({"body":body})).await
         },
+        ["config", "get"] => {
+            let preferences = forward_request("preferences", "GET", json!({})).await?;
+            Ok(json!({"maintainerMode":preferences["maintainer-mode"] == "on"}))
+        }
+        ["config", "set", "--stdin"] => {
+            let body = stdin_json()?;
+            known_fields(&body, &["maintainerMode"], "")?;
+            let enabled = body["maintainerMode"].as_bool().ok_or("INVALID_ARGUMENT: maintainerMode must be a boolean")?;
+            let preferences = forward_request("preferences", "PUT", json!({"values":{"maintainer-mode":if enabled {"on"} else {"off"}}})).await?;
+            Ok(json!({"maintainerMode":preferences["maintainer-mode"] == "on"}))
+        }
         ["configure", "--stdin"] => forward_request("config/tunnel", "PATCH", stdin_json()?).await,
         ["network", "--stdin"] => forward_request("network", "PUT", stdin_json()?).await,
         ["connect"] => forward_request("start", "POST", json!({})).await,

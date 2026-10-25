@@ -83,7 +83,24 @@ Public query errors carry actionable `next`; normal transport adds `arcVersion`.
 
 ## AX owner store
 
+Maintainer mode defaults OFF. Settings > Experimental and `cli config set --stdin`
+with `{"maintainerMode":true}` update the same device-owned ARC preference. The
+Core stores `maintainer-mode` as `on`/`off` in its existing preference store. Guide
+reads use its current value and include it in `guideHash`; no restart is needed.
+OFF guides omit AX workflow and common-index AX ops. They suggest a user-reviewed
+GitHub issue and the optional local `ax_issue_draft`. ON guides include reporting,
+candidate review, triage cadence and release gating. Coordination guidance remains
+available in both modes. The full index and explicit op schemas still expose AX.
+
 `coordination::ax` owns report/list/candidate/triage and explicit local import/export.
+AX data belongs only to this instance; it is never sent to the project maintainer.
+Triage requires Maintainer mode or authenticated local authority, in addition to
+existing entry ownership checks. Import is reachable only through local authority.
+Mode changes never migrate or delete AX data. `ax_issue_draft` bypasses the owner
+store and journal, reads no receipts or threads, and performs no network requests.
+It maps the supplied friction to a fixed category and hashes reference IDs. This
+intentionally loses verbatim reproduction detail to exclude prompts, paths, account
+emails, credentials and routes; the user reviews and completes the draft manually.
 CLI migration forwards to Core; the state-directory lock remains the single writer.
 Read source authorization and compact reference evidence before AX locking. Acquire
 shared request-ID locks before AX mutation, never owner/discovery/journal locks
@@ -110,9 +127,11 @@ for 24 hours. Only the associated source or local authority confirms them. Pull
 results expose confirmation and triage requirements without adding push or release
 authority. Reproduction and reference details stay owner/local-only.
 
-The local importer recognizes three queue sections and accepted seed aliases,
-without personal runtime paths. The sanitized fixture covers policy/history
-exclusion, reported fixes and idempotency. Retire a queue only after import readback.
+The local importer reads only the supplied file and recognizes three queue
+sections: AX frictions, Backlog ideas and Follow-ups. There is no bundled backlog
+or seed import. Maintainers keep their queue files outside the repository. A small
+synthetic fixture covers policy/history exclusion, reported fixes and idempotency.
+Retire a queue only after import readback.
 
 
 ## Observers and owner boundaries

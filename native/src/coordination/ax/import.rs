@@ -32,41 +32,14 @@ fn queue_rows(text: &str) -> Vec<(String, String)> {
 }
 impl Store {
     pub(super) fn import_queue(&mut self, text: &str, time: i64) -> Result<Value> {
-        let seeds: Vec<Value> =
-            serde_json::from_str(include_str!("seeds.json")).map_err(|_| "INVALID_AX_SEEDS")?;
         let rows = queue_rows(text);
         if rows.len() > 1000 {
             return Err("COORDINATION_CAPACITY: too many queue entries".into());
         }
-        let mut reports: Vec<Value> = seeds
-            .iter()
-            .map(|seed| {
-                let mut args = seed.clone();
-                args.as_object_mut().unwrap().remove("anchor");
-                args["requestId"] = json!(format!("seed-{}", string(seed, "id")));
-                args
-            })
-            .collect();
-        for (kind, text) in rows {
-            let matched: Vec<usize> = seeds
-                .iter()
-                .enumerate()
-                .filter(|(_, seed)| {
-                    text.to_lowercase()
-                        .contains(&string(seed, "anchor").to_lowercase())
-                })
-                .map(|(i, _)| i)
-                .collect();
-            if matched.is_empty() {
-                let stable = format!("import-{}", hash(json!([kind, tokens(&text)]).to_string()));
-                reports.push(json!({"id":stable,"requestId":stable,"kind":kind,"severity":if kind=="friction" {json!("workaround")} else {Value::Null},"symptom":text.chars().take(500).collect::<String>(),"expected":"Review this reported friction or desired outcome before implementation","reproductionHints":text.chars().take(1000).collect::<String>()}));
-            } else {
-                for index in matched {
-                    // Keep reported fixes verbatim as private reported evidence, not closure proof.
-                    reports[index]["queueReport"] = json!(text);
-                }
-            }
-        }
+        let reports = rows.into_iter().map(|(kind, text)| {
+            let stable = format!("import-{}", hash(json!([kind, tokens(&text)]).to_string()));
+            json!({"id":stable,"requestId":stable,"kind":kind,"severity":if kind=="friction" {json!("workaround")} else {Value::Null},"symptom":text.chars().take(500).collect::<String>(),"expected":"Review this reported friction or desired outcome before implementation","reproductionHints":text.chars().take(1000).collect::<String>(),"queueReport":text})
+        }).collect();
         self.import_reports(reports, time)
     }
 }

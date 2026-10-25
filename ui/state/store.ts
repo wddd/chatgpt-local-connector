@@ -100,3 +100,5 @@ export function preference<T>(
 }
 
 export const notificationsPreference = preference("notifications",true, value => value !== "off", value => value ? "on" : "off");
+
+export const maintainerMode = preference("maintainer-mode", false, value => value === "on", value => value ? "on" : "off");

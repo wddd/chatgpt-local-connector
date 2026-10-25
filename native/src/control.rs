@@ -2172,7 +2172,7 @@ impl Control {
             "message_send" | "message_route" | "messages" => {
                 crate::coordination::messages::call(name, args, &self.session).await
             }
-            "ax_report" | "ax_list" | "ax_candidate" | "ax_triage" => {
+            "ax_report" | "ax_list" | "ax_candidate" | "ax_triage" | "ax_issue_draft" => {
                 crate::coordination::ax::call(name, args, &self.session).await
             }
             "codex_review" => self.mutate("review", args).await,

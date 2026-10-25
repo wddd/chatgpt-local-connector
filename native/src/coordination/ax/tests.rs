@@ -171,29 +171,27 @@ fn ax_candidate_rejection_is_build_scoped() {
     );
 }
 #[test]
-fn imported_ax_authority_and_candidate_occurrences() {
-    // Regression: imported AX entries need local triage recovery and matching candidates must enrich their open entry.
+fn imported_ax_entries_require_local_authority() {
+    // Regression: imported AX entries need local triage recovery without attributing unrelated candidate observations to a backlog ID.
     let mut f = Fixture::new();
-    f.store
+    let imported = f
+        .store
         .import_queue(include_str!("queue-fixture.md"), f.time)
         .unwrap();
-    let current = f.call("ax_list", json!({"id":"AX-07"}))["entries"][0].clone();
-    let denied = f.call("ax_triage",json!({"id":"AX-07","expectedRevision":current["revision"],"action":"wontfix","reason":"Fixture"}));
+    let current = imported["entries"][0].clone();
+    let denied = f.call("ax_triage",json!({"id":current["id"],"expectedRevision":current["revision"],"action":"wontfix","reason":"Fixture"}));
     assert_eq!(denied["error"]["code"], "AX_FORBIDDEN");
     assert_eq!(
         denied["next"]["command"],
         "arc cli control ax_triage --stdin"
     );
     let found = f.candidate("fresh-stall", "new-build")["entry"].clone();
-    assert_eq!(found["id"], "AX-07");
-    assert_eq!(
-        found["occurrenceCount"],
-        current["occurrenceCount"].as_u64().unwrap() + 1
-    );
-    assert_eq!(found["status"], "open");
+    assert_ne!(found["id"], current["id"]);
+    assert_eq!(found["status"], "candidate");
     f.actor = json!({"type":"local-authority"});
-    assert_eq!(f.decide(&found, "wontfix")["status"], "closed");
+    assert_eq!(f.decide(&current, "wontfix")["status"], "closed");
 }
+
 #[test]
 // Contract: triage preserves revisions/history, requires verification beyond a commit, and merges unique occurrences without cycles.
 fn ax_triage_history_merge_and_recurrence() {
@@ -283,26 +281,30 @@ fn ax_capacity_and_rate_preserve_last_snapshot() {
     );
 }
 #[test]
-// Contract: explicit queue import includes seeds/ideas/follow-ups, excludes policy/history and is idempotent on a sanitized fixture copy.
+// Contract: explicit queue import uses only supplied rows, excludes policy/history and remains idempotent.
 fn ax_import_idempotency_and_reported_fixes() {
     let mut f = Fixture::new();
     let text = include_str!("queue-fixture.md");
+    assert_eq!(f.store.import_queue("", f.time).unwrap()["imported"], 0);
     let first = f.store.import_queue(text, f.time).unwrap();
-    assert_eq!(first["imported"], 26);
-    assert_eq!(first["entries"].as_array().unwrap().len(), 26);
+    assert_eq!(first["imported"], 4);
+    assert_eq!(first["entries"].as_array().unwrap().len(), 4);
     f.restart();
     let again = f.store.import_queue(text, f.time).unwrap();
     assert_eq!(again["imported"], 0);
-    assert_eq!(again["unchanged"], 26);
+    assert_eq!(again["unchanged"], 4);
     let entries = again["entries"].as_array().unwrap();
-    assert_eq!(entries.iter().filter(|e| e["kind"] == "idea").count(), 2);
+    assert_eq!(entries.iter().filter(|e| e["kind"] == "idea").count(), 1);
     assert!(entries
         .iter()
         .filter(|e| e["kind"] == "idea")
         .all(|e| e["occurrenceCount"] == 0));
-    let fixed = entries.iter().find(|e| e["id"] == "AX-10").unwrap();
+    let fixed = entries
+        .iter()
+        .find(|e| string(e, "symptom").contains("reported fixed"))
+        .unwrap();
     assert_eq!(fixed["status"], "open");
-    assert!(fixed["evidence"].to_string().contains("1eec642"));
+    assert!(fixed["evidence"].to_string().contains("reported fixed"));
     assert!(entries
         .iter()
         .all(|e| e["arcVersion"].is_null() && e["firstSeenAt"].is_null()));
@@ -473,4 +475,30 @@ fn receipt_observer_transition_replay_does_not_duplicate_ax_candidates() {
     assert_eq!(listed["entries"].as_array().unwrap().len(), 1);
     assert_eq!(listed["entries"][0]["occurrenceCount"], 1);
     assert_eq!(listed["entries"][0]["revision"], confirmed["revision"]);
+}
+
+#[test]
+// Contract: issue drafts exclude arbitrary prose and identifiers while returning local version, OS and manual submission.
+fn ax_issue_draft_sanitization() {
+    let private = "notification failed: prompt-secret account@example.invalid /Users/example/private C:\\Users\\example token=abc-secret https://private.invalid/route";
+    let args = json!({"friction":private,"receiptIds":["token-secret"],"threadIds":["account@example.invalid"]});
+    validate("ax_issue_draft", &args).unwrap();
+    let draft = issue::draft(&args);
+    assert_eq!(draft["submission"], "manual");
+    assert_eq!(draft["arcBuildVersion"], env!("ARC_BUILD_VERSION"));
+    assert_eq!(draft["os"], std::env::consts::OS);
+    assert_eq!(draft["summaryMode"], "fixed-category");
+    let text = draft.to_string();
+    for secret in [
+        "prompt-secret",
+        "account@example.invalid",
+        "/Users/",
+        "Users\\example",
+        "abc-secret",
+        "token-secret",
+        "private.invalid",
+    ] {
+        assert!(!text.contains(secret));
+    }
+    assert_eq!(draft, issue::draft(&args));
 }

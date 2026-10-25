@@ -801,6 +801,7 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
         let spec = &spec;
         return json!({"op":name,"via":via(spec),"description":spec["description"],"inputSchema":spec["inputSchema"],"signature":signature(spec),"example":example(spec),"retry":retry_contract(spec)});
     }
+    let maintainer = crate::preferences::maintainer_mode();
     let topic = args["topic"].as_str().unwrap_or("loop");
     let full = args["view"] == "full";
     let source = match string(origin, "controlSource") {
@@ -832,6 +833,9 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
         .iter()
         .filter(|op| {
             let name = string(op, "name");
+            if !full && name.starts_with("ax_") {
+                return topic == "loop" && maintainer;
+            }
             full || matches!(name, "guide" | "update_status" | "update_request") || match topic {
                 "notify" => matches!(name, "request_route" | "notify_status" | "notify_control" | "notification_ack" | "inbox_wait" | "codex_create" | "codex_send" | "codex_read" | "agent_create" | "agent_send" | "agent_read"),
                 "review" => matches!(name, "codex_review" | "agent_review" | "codex_read" | "agent_read" | "codex_wait" | "agent_wait" | "agent_events" | "codex_changes" | "codex_items" | "codex_send" | "agent_send" | "receipt" | "task_reviews"),
@@ -858,6 +862,15 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
         ""
     };
     let mut result = json!({"topic":topic,"controlSource":source,"content":format!("MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.\n\n{}\n{}{}",body.as_str().unwrap_or(""),if topic == "loop" && full {guides["common"].as_str().unwrap_or("")} else {""},context),"examples":examples,"ops":index});
+    if topic == "loop" {
+        let workflow = &guides[if maintainer { "axMaintainer" } else { "axUser" }];
+        result["content"] = json!(format!(
+            "{}\n\n{}",
+            string(&result, "content"),
+            workflow.as_str().unwrap_or("")
+        ));
+        result["maintainerMode"] = json!(maintainer);
+    }
     result["indexScope"] = json!(if full {
         "full"
     } else if topic == "loop" {

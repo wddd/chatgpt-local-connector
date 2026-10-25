@@ -2345,10 +2345,10 @@ test('AX foreground command receipts expose execution and process spawn supports
 });
 
 
-test('common guide discovers shared coordination and AX operations',async()=>{
-  // Contract: default loop guide exposes board, notices, messages and AX through the frozen query/act envelopes.
+test('common guide discovers shared coordination in normal mode',async()=>{
+  // Contract: the default normal-mode guide retains board, notices and messages through the frozen query/act envelopes.
   const guide=(await call('guide')).result;
-  for(const [op,via] of [['board','query'],['notice_post','act'],['messages','query'],['message_send','act'],['ax_report','act'],['ax_list','query']]) {
+  for(const [op,via] of [['board','query'],['notice_post','act'],['messages','query'],['message_send','act']]) {
     assert.equal(guide.ops.find((entry:any)=>entry.op===op)?.via,via,op);
   }
 });
@@ -2357,4 +2357,87 @@ test('logs accepts relative durations through the public schema',async()=>{
   // Regression: AX-12 since:2m reached an RFC3339-only parser and failed.
   const result=await call('logs',{since:'2m'});
   assert.notEqual(result.response.isError,true,JSON.stringify(result.result));
+});
+
+test('Maintainer mode defaults off, persists and switches guide content and common index live', async () => {
+  // Contract: config CLI and local preferences share a persistent mode that changes guide hash/content/index without restarting.
+  const config = (args: string[], input?: unknown) => JSON.parse(execFileSync(fixtureCommand, ['cli', 'config', ...args], {
+    env: fixtureEnv, encoding: 'utf8', ...(input === undefined ? {} : {input: JSON.stringify(input)}),
+  })).result;
+  assert.equal(config(['get']).maintainerMode, false);
+  const off = (await call('guide')).result;
+  assert.equal(off.maintainerMode, false);
+  assert.ok(off.ops.every((op: any) => !op.op.startsWith('ax_')));
+  assert.match(off.content, /https:\/\/github.com\/whzxc\/agent-remote-control\/issues/);
+  assert.match(off.content, /ax_issue_draft/);
+  assert.doesNotMatch(off.content, /ax_report|ax_list|before release/);
+  const before = await management('preferences');
+  try {
+    assert.equal(config(['set', '--stdin'], {maintainerMode:true}).maintainerMode, true);
+    assert.equal((await management('preferences'))['maintainer-mode'], 'on');
+    const on = (await call('guide')).result;
+    assert.equal(on.maintainerMode, true);
+    assert.notEqual(on.guideHash, off.guideHash);
+    assert.match(on.content, /ax_report/);
+    assert.match(on.content, /ax_list/);
+    for (const op of ['ax_report','ax_list','ax_candidate','ax_triage']) assert.ok(on.ops.some((entry:any) => entry.op === op));
+    const cached = await client.callTool({name:'query', arguments:{op:'guide',args:{knownGuideHash:off.guideHash}}});
+    assert.equal((cached.structuredContent as any).result.unchanged, undefined);
+    assert.equal(config(['get']).maintainerMode, true);
+    await management('preferences','PUT',{values:{'maintainer-mode':'off'}});
+    assert.equal(config(['get']).maintainerMode, false);
+    assert.equal((await call('guide')).result.guideHash, off.guideHash);
+    for (const view of [{}, {view:'full'}]) {
+      const guide = (await client.callTool({name:'query',arguments:{op:'guide',args:view}})).structuredContent as any;
+      assert.doesNotMatch(guide.result.content, /ax_report|ax_list/);
+    }
+  } finally { await management('preferences','PUT',{values:before}); }
+});
+
+test('Maintainer mode gates source triage and keeps normal AX reads reports and issue drafts usable', async () => {
+  // Contract: source triage returns MAINTAINER_MODE_REQUIRED and next; local authority bypasses the gate and drafts never echo private input.
+  const entry = (await call('ax_report',{symptom:'Synthetic mode gate report',expected:'Bounded response',severity:'cosmetic'})).result.entry;
+  const args = {id:entry.id,expectedRevision:entry.revision,action:'wontfix',reason:'Synthetic decision'};
+  const denied = (await call('ax_triage',args)).result;
+  assert.equal(denied.error.code,'MAINTAINER_MODE_REQUIRED');
+  assert.equal(denied.next.op,null);
+  assert.match(denied.next.hint,/maintainerMode/);
+  assert.ok((await call('ax_list',{id:entry.id})).result.entries.length);
+  const draft = (await call('ax_issue_draft',{
+    friction:'Notification failed: prompt-secret person@example.invalid /Users/private/file C:\\private\\file token=abc-secret https://private.invalid/route',
+    receiptIds:['token-secret'],threadIds:['person@example.invalid'],
+  })).result;
+  assert.equal(draft.submission,'manual');
+  assert.equal(draft.summaryMode,'fixed-category');
+  assert.equal(draft.arcBuildVersion,'0.0.0');
+  assert.ok(draft.os);
+  for (const privateValue of ['prompt-secret','person@example.invalid','/Users/private','abc-secret','private.invalid','token-secret']) {
+    assert.ok(!JSON.stringify(draft).includes(privateValue));
+  }
+  const local = JSON.parse(execFileSync(fixtureCommand,['cli','control','ax_triage','--stdin'],{env:fixtureEnv,input:JSON.stringify(args),encoding:'utf8'}));
+  assert.equal(local.ok,true);
+  assert.equal(local.result.entry.status,'closed');
+  const next = (await call('ax_report',{symptom:'Synthetic enabled mode report',expected:'Bounded response',severity:'cosmetic'})).result.entry;
+  try {
+    await management('preferences','PUT',{values:{'maintainer-mode':'on'}});
+    const allowed = (await call('ax_triage',{...args,id:next.id,expectedRevision:next.revision})).result;
+    assert.equal(allowed.entry.status,'closed');
+  } finally { await management('preferences','PUT',{values:{'maintainer-mode':'off'}}); }
+});
+
+
+test('Maintainer mode local import reads only the selected synthetic queue', async () => {
+  // Contract: local AX import works with mode off, imports only supplied rows and is idempotent without bundled seeds.
+  const queue = path.join(directory, 'synthetic-queue.md');
+  const importQueue = () => JSON.parse(execFileSync(fixtureCommand,['cli','ax','import','--from',queue],{env:fixtureEnv,encoding:'utf8'})).result;
+  await writeFile(queue,'# Synthetic queue\n');
+  assert.equal(importQueue().imported,0);
+  await writeFile(queue,'# Synthetic queue\n\nPolicy:\n- Ignore this policy.\n\n## AX frictions\n- A synthetic panel stalled during a sample action.\n');
+  const first = importQueue();
+  assert.equal(first.imported,1);
+  assert.equal(first.entries.length,1);
+  assert.equal(first.entries[0].kind,'friction');
+  assert.equal(first.entries[0].status,'open');
+  assert.equal(importQueue().imported,0);
+  assert.equal(importQueue().unchanged,1);
 });

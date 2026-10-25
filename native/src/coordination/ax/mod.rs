@@ -1,6 +1,7 @@
 //! Metadata-only AX owner. Source snapshots and evidence reads precede AX locking;
 //! journal projection runs after releasing AX. No owner/discovery/network locks inside AX.
 mod import;
+mod issue;
 mod store;
 use super::*;
 use std::sync::{LazyLock, Mutex};
@@ -58,6 +59,9 @@ fn validate(op: &str, args: &Value) -> Result<()> {
     if op == "ax_report" && args["kind"] != "idea" && !args["severity"].is_string() {
         return Err("INVALID_ARGUMENT: friction requires severity".into());
     }
+    if op == "ax_issue_draft" {
+        return Ok(());
+    }
     for field in ["receiptIds", "requestIds", "threadIds", "evidenceIds"] {
         for reference in args[field].as_array().into_iter().flatten() {
             super::types::identifier(reference.as_str().unwrap_or(""))?;
@@ -84,12 +88,15 @@ fn failure(message: String, op: &str, args: &Value) -> Value {
             if let Some(fields) = local.as_object_mut() {
                 fields.remove("requestId");
             }
-            json!({"via":"cli","op":null,"command":format!("arc cli control {op} --stdin"),"stdin":local,"hint":format!("Seed/imported entries require local authority. Read the current revision with arc cli control ax_list --stdin locally, then run arc cli control {op} --stdin with id, expectedRevision, action and reason. Omit the source requestId; local authority must reserve its own request.")})
+            json!({"via":"cli","op":null,"command":format!("arc cli control {op} --stdin"),"stdin":local,"hint":format!("Imported entries require local authority. Read the current revision with arc cli control ax_list --stdin locally, then run arc cli control {op} --stdin with id, expectedRevision, action and reason. Omit the source requestId; local authority must reserve its own request.")})
         }
         "AX_CURSOR_EXPIRED" => {
             let mut reset = args.clone();
             reset.as_object_mut().map(|a| a.remove("cursor"));
             json!({"via":"query","op":"ax_list","args":reset,"hint":"Restart pagination; the AX snapshot or authority changed"})
+        }
+        "MAINTAINER_MODE_REQUIRED" => {
+            json!({"op":null,"hint":"Ask the user to enable Maintainer mode under Settings > Experimental, or locally run cli config set --stdin with {\"maintainerMode\":true}. Authenticated local authority may also triage/import without enabling the mode."})
         }
         "INVALID_ARGUMENT" => {
             json!({"via":"query","op":"guide","args":{"op":op},"hint":"Use the current AX schema; include metadata only"})
@@ -170,6 +177,8 @@ pub(crate) async fn call(op: &str, mut args: Value, session: &str) -> Result<Val
     let result = async {
         validate(op,&args)?;
         let (actor, revision)=actor()?;
+        require_maintainer(op, &actor, crate::preferences::maintainer_mode())?;
+        if op == "ax_issue_draft" { return Ok(issue::draft(&args)); }
         // Feed failure cannot undo a durable AX mutation. Readback exposes pending projection.
         let projection = reconcile().err();
         if op=="ax_list" {
@@ -212,8 +221,19 @@ pub(crate) async fn call(op: &str, mut args: Value, session: &str) -> Result<Val
     }.await;
     Ok(result.unwrap_or_else(|message| failure(message, op, &args)))
 }
+fn require_maintainer(op: &str, actor: &Value, enabled: bool) -> Result<()> {
+    if matches!(op, "ax_triage" | "import") && !enabled && actor["type"] != "local-authority" {
+        return Err("MAINTAINER_MODE_REQUIRED: AX triage/import requires Maintainer mode or authenticated local authority".into());
+    }
+    Ok(())
+}
 /// Local management only. Core remains the sole writer even when import is invoked by CLI.
 pub(crate) fn local(action: &str, body: &Value) -> Result<Value> {
+    require_maintainer(
+        action,
+        &json!({"type":"local-authority"}),
+        crate::preferences::maintainer_mode(),
+    )?;
     let result = match action {
         "import" => {
             let path = Path::new(string(body, "from"));

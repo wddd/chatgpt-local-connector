@@ -566,15 +566,34 @@ Authenticated local administration can submit `source: {kind: local, path}` with
 
 See [app replacement](app-replacement.md) for acknowledgment, validation, rollback and recovery details.
 
+## Maintainer mode
+
+`cli config get` returns `{"maintainerMode":false}` on normal installs.
+To enable the mode on this device, send `{"maintainerMode":true}` to
+`cli config set --stdin`. Send `false` to disable it. This is the same persistent
+ARC setting as Settings > Experimental > Maintainer mode. It takes effect on the
+next guide read without disconnecting or restarting. Mode changes do not publish,
+import, migrate or remove AX records. Authenticated local triage/import remains
+available with the mode OFF; remote triage requires the mode and entry ownership.
+
+For a local issue draft, send `{"friction":"A receipt stalled","receiptIds":[],"threadIds":[]}`
+to `cli control ax_issue_draft --stdin`. The returned title/body include ARC version
+and OS, a fixed symptom category and hashed reference IDs. Original descriptions,
+prompts, paths, emails, tokens and routes are omitted. No evidence bodies are read,
+no AX records are written and GitHub is never contacted. Review and complete the
+reproduction details before copying the draft into an issue. Nothing is posted
+automatically.
+
 ## Local AX migration and export
 
 Use `cli ax import --from <absolute-path>` to import the interim Markdown queue
 through the running Core's authenticated local management boundary. It reads only
-AX frictions, backlog ideas and undispatched follow-ups, plus the accepted seed
-backlog. Policy, completed acceptance and history prose are not new defects.
-Known observations map to stable seed IDs; overlapping queue descriptions do not
-invent occurrences. Re-running the same input is idempotent; changed seed notes
-append reported history. Ideas have zero failure occurrences. Imported build/time
+AX frictions, backlog ideas and follow-ups from the given file. No seeds or
+maintainer backlog ship with ARC. Keep personal queue files outside the source
+repository. Policy, completed acceptance and history prose are not new defects.
+Normalized row text determines stable import IDs. Re-running the same input is
+idempotent; imported rows do not imply independently observed occurrences. Ideas
+have zero failure occurrences. Imported build/time
 evidence remains unknown, and reported fixes stay open for triage and verification.
 The input is limited to 256 KiB. The command never changes or deletes the input.
 Read the returned entries and `cli control ax_list --stdin` before retiring an
