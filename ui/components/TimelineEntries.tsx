@@ -147,8 +147,9 @@ function ToolRun({ entries, live }: { entries: AgentTimelineEntry[]; live: boole
     <div className="task-tool-rows">{entries.map(entry => <ToolEntry key={entry.id} entry={entry} live={live} />)}</div>
   </Fold>;
 }
-export default function TimelineEntries({ entries, agent, session, now, running = false, turnStatuses, turnTimings, status }: {
+export default function TimelineEntries({ entries, agent, session, now, running = false, turnStatuses, turnTimings, status, onResume, resuming }: {
   entries: AgentTimelineEntry[]; agent: string; session: AgentActivitySession; now: number; running?: boolean; turnDispatchSummaries?: Record<string, DispatchSummary>; turnStatuses?: Record<string, string>; status?: string; turnTimings?: Record<string, TurnTiming>;
+  onResume?: () => void; resuming?: boolean;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const change = (id: string) => (open: boolean) => setExpanded(previous => ({ ...previous, [id]: open }));
@@ -168,14 +169,14 @@ export default function TimelineEntries({ entries, agent, session, now, running 
     const process = <div className="task-process-rows">{rows.map(renderRow)}</div>;
     return <section className="task-turn" key={group.id} data-timeline-id={group.id}>
       {!latest && <Button variant="ghost" className="task-previous-turn" aria-expanded={turnOpen} onClick={() => change(group.id)(!turnOpen)}>
-        <span>{t("detail.previousTurn", { count: index + 1, actions: projection.actions })}{duration !== undefined && ` · ${durationText(duration)}`}<span>{final?.text?.split("\n")[0] || prompt?.text?.split("\n")[0]}</span></span><Icon icon={ChevronRight} className="timeline-chevron" />
+        <span>{t("detail.previousTurn", { count: index + 1, actions: projection.actions })}{duration !== undefined && ` · ${durationText(duration)}`}<span>{final?.text?.trim().split("\n")[0] || t("detail.noFinalReply")}</span></span><Icon icon={ChevronRight} className="timeline-chevron" />
       </Button>}
       {projection.answeredInteractions.map(entry => <InteractionAnchor key={entry.id} entry={entry} agent={agent} session={session} />)}
       {turnOpen && <div className="task-turn-content">
         {prompt && <div className="task-prompt">{source && <small>{t("detail.via", { source: dispatchSourceLabel(source) })}{prompt.startedAt && ` · ${new Date(prompt.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small>}
           <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[prompt.id] ?? false} onChange={change(prompt.id)} /></div>}
         {!!rows.length && (live ? process : <Fold className="task-process" open={processOpen(state, expanded[workId])} onChange={change(workId)} summary={<span>{t("detail.process", projection)}{duration !== undefined && <> · <Duration value={duration} /></>}</span>}>{process}</Fold>)}
-        {(state === "failed" || state === "interrupted") && <TaskOutcome state={state} entries={group.entries} project={session.project} />}
+        {(state === "failed" || state === "interrupted") && <TaskOutcome state={state} entries={group.entries} project={session.project} onResume={latest && current ? onResume : undefined} resuming={resuming} />}
         <TaskReceiptHistory agent={agent} id={session.id} turnId={group.turnId} latest={latest} />
         {projection.thinking && <div className="task-thinking" role="status">{projection.thinking.text}</div>}
         {final && state !== "failed" && state !== "interrupted" && <article className="task-final"><header><Icon icon={Check} /><strong>{t("detail.finalReply")}</strong><CopyReply text={final.text ?? ""} /></header><TimelineMarkdown text={final.text ?? ""} />{final.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}<ChangedFiles entries={group.entries} project={session.project} /></article>}

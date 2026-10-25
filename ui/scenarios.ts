@@ -45,7 +45,11 @@ export function scenarioResponse(path: string, method: string, body?: unknown): 
   if (method !== 'GET') throw new Error(`SCENARIO_ACTION_UNAVAILABLE: ${path}`);
   const route = path.split('?')[0];
   if (Object.hasOwn(responses, route)) return structuredClone(responses[route]);
-  if (path.startsWith('tasks/runtime/')) return { runtimeStatus: ['running','inProgress'].includes((responses[`agents/timeline/${path.slice('tasks/runtime/'.length)}`] as AgentTimeline)?.status ?? '') ? 'active' : 'idle', observedAt: new Date().toISOString() };
+  if (path.startsWith('tasks/runtime/')) {
+    const id = path.slice('tasks/runtime/'.length);
+    return { title: Object.values(conversations).flat().find(row => row.id === id)?.title,
+      runtimeStatus: ['running','inProgress'].includes((responses[`agents/timeline/${id}`] as AgentTimeline)?.status ?? '') ? 'active' : 'idle', observedAt: new Date().toISOString() };
+  }
   throw new Error(`SCENARIO_ROUTE_UNAVAILABLE: ${path}`);
 }
 export async function installScenario(name: string) {

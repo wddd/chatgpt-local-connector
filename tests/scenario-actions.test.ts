@@ -32,8 +32,13 @@ test('task scenarios execute panel actions with mock receipts and readable state
     const {t} = await server.ssrLoadModule('/ui/i18n.ts');
     await act(async()=>root.render(h(TooltipProvider,null,h(ActivityTimeline,{agent:'codex',session:agentActivity.get().snapshot.agents.codex.sessions[0],expanded:false,onToggleWidth(){},onBack(){}}))));
     const page = within(mount);
+    assert.ok(page.getByRole('heading', {name: agentActivity.get().snapshot.agents.codex.sessions[0].title}));
     assert.equal(page.queryByRole('textbox'), null);
     for (const key of ['detail.send', 'detail.stop', 'detail.pass', 'detail.rework']) assert.equal(page.queryByRole('button', {name:t(key),exact:true}), null);
+    await act(()=>root.unmount());
+    const steered = call('codex_send',{threadId:id,prompt:'Steered fixture input',sendMode:'steer'});
+    assert.equal(steered.dispatchMode,'steered');
+    assert.ok(timeline(id).entries.some((entry:any)=>entry.type==='user'&&entry.text==='Steered fixture input'));
     await act(async () => { call('codex_send',{threadId:id,prompt:'Queued fixture input',sendMode:'next'}); });
     const queued = call('codex_queue',{threadId:id}).items[0];
     call('codex_queue_control',{threadId:id,queueId:queued.queueId,action:'promote'});
@@ -44,7 +49,6 @@ test('task scenarios execute panel actions with mock receipts and readable state
     call('codex_queue_control',{threadId:id,queueId:cancel.queueId,action:'cancel'});
     assert.equal(call('codex_queue',{threadId:id}).items.find((row:any)=>row.queueId===cancel.queueId).state,'cancelled');
     call('codex_interrupt',{threadId:id,turnId:timeline(id).entries.at(-1).turnId}); assert.equal(timeline(id).status,'cancelled');
-    await act(()=>root.unmount());
     const continuation = call('codex_send',{threadId:id,prompt:'Continue',sendMode:'next'});
     assert.equal(continuation.dispatchMode,'new-turn'); assert.equal(timeline(id).status,'completed');
     assert.equal(call('receipt',{requestId:continuation.requestId}).turnId,continuation.turnId);

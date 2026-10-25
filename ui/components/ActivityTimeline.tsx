@@ -5,7 +5,7 @@ import { useTaskReview } from "../state/taskReview";
 import { taskErrorText } from "../state/taskErrors";
 import "./TaskDetail.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2, MoreHorizontal } from "lucide-react";
+import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2, MoreHorizontal, Zap } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { AgentTimeline } from "../types";
@@ -14,12 +14,12 @@ import { followsTimeline, refreshTimeline, timelineScrollTarget } from "../state
 import { useInterval } from "../state/hooks";
 import { Button, Icon, IconButton, LoadingIndicator, Menu } from "./ui";
 import TimelineEntries, { durationText } from "./TimelineEntries";
-import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
+import { dispatchSourceLabel, SourceBadge } from "./activity";
 import { taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import TaskNeedsYou from "./TaskNeedsYou";
 import TaskOwnership from "./TaskOwnership";
-import { activityHeadline, type TrackedActivity } from "../state/activityModel";
+import { activityHeadline, shortModelLabel, type TrackedActivity } from "../state/activityModel";
 import type { TaskRuntime } from "../state/tasks";
 
 import { name, orderedAgents } from "../state/agents";
@@ -42,7 +42,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const [showCard, setShowCard] = useState(false);
   const [atLatest, setAtLatest] = useState(true);
   const [timeline, setTimeline] = useState<AgentTimeline>();
-  const [taskTitle, setTaskTitle] = useState("");
+  const [taskTitle, setTaskTitle] = useState<{ id: string; title: string }>();
   const [resuming, setResuming] = useState(false);
   const resumeRequest = useRef<{turnId:string;requestId:string} | undefined>(undefined);
   const [error, setError] = useState(""), [openError, setOpenError] = useState("");
@@ -60,12 +60,11 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   followAllowed.current = running;
   useInterval(() => setNow(Date.now()), running ? 1000 : null);
   useEffect(() => {
-    setTaskTitle("");
     if (agent !== "codex") return;
     let stopped = false;
     void api<TaskRuntime>(`tasks/runtime/${encodeURIComponent(session.id)}`).then(task => {
-      if (!stopped) setTaskTitle(task.title?.trim() ?? "");
-    }).catch(() => { /* Retain the snapshot title when native metadata is unavailable. */ });
+      if (!stopped) setTaskTitle({ id: session.id, title: task.title?.trim() ?? "" });
+    }).catch(() => { /* Use a neutral label when native thread metadata is unavailable. */ });
     return () => { stopped = true; };
   }, [agent, session.id]);
   useEffect(() => {
@@ -160,36 +159,51 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       }
     },
   }));
-  const title = taskTitle || nativeSession.title || session.title || t("timeline.title");
+  const resumeInterrupted = () => {
+    if (!turnId) return;
+    if (resumeRequest.current?.turnId !== turnId) resumeRequest.current = { turnId, requestId: crypto.randomUUID() };
+    setResuming(true); setOpenError("");
+    void (async () => {
+      let receipt = await api<{ state: string; requestId: string; error?: { message?: string } }>("tasks/control", "POST", { op: "codex_resume", args: { threadId: session.id, turnId, requestId: resumeRequest.current!.requestId } });
+      while (["pending", "reserved", "submitting"].includes(receipt.state)) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        receipt = await api("tasks/control", "POST", { op: "receipt", args: { requestId: receipt.requestId } });
+      }
+      if (receipt.state !== "completed") throw new Error(receipt.error?.message || receipt.state);
+    })().catch(error => setOpenError(String(error))).finally(() => setResuming(false));
+  };
+  // Activity snapshots can derive their title from the dispatch prompt.
+  const title = (agent === "codex" && taskTitle?.id === session.id && taskTitle.title) || t("timeline.title");
   return <section ref={detail} className="agent-panel-layer task-detail-layer" data-narrow={narrow || undefined}>
     <header className="dialog-header task-detail-header">
       <div className="task-detail-navigation"><Button variant="ghost" aria-label={t("back")} title={`${agentName}${project ? ` · ${project}` : ""}`} onClick={onBack}><Icon icon={ArrowLeft} /><span>{agentName}{project && ` · ${project}`}</span></Button>
         {!narrow && <div className="actions">{nativeSession.open && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); }} />}
           <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} /></div>}
+        {narrow && <div className="task-narrow-menu"><Menu label={t("detail.taskActions")} trigger={<IconButton icon={MoreHorizontal} label={t("detail.taskActions")} />} items={[
+          ...(nativeSession.open ? [{ label: t("activity.open"), action: () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } }] : []),
+          { label: t(expanded ? "restorePanelWidth" : "expandPanelWidth"), action: onToggleWidth },
+        ]} /></div>}
       </div>
-      {narrow && <div className="task-narrow-menu"><Menu label={t("detail.taskActions")} trigger={<IconButton icon={MoreHorizontal} label={t("detail.taskActions")} />} items={[
-        ...(nativeSession.open ? [{ label: t("activity.open"), action: () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } }] : []),
-        { label: t(expanded ? "restorePanelWidth" : "expandPanelWidth"), action: onToggleWidth },
-      ]} /></div>}
       <h2 className="activity-panel-title" title={title}>{title}</h2>
       <div className="task-detail-chips"><span className="task-state" data-state={state}>{t(`detail.state.${state}`)}</span>
+        {latestSummary?.model?.trim() && <span className="task-spec-chip" title={latestSummary.model}>{shortModelLabel(latestSummary.model)}</span>}
+        {latestSummary?.effort?.trim() && <span className="task-spec-chip">{latestSummary.effort}</span>}
+        {latestSummary?.serviceTier === "priority" && <span className="task-spec-chip"><Icon icon={Zap} />{t("activity.fast")}</span>}
+        {source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span></span>}
         <TaskOwnership ownership={timeline?.ownership} />
-        {agent === "codex" && !external && !timeline?.readOnly && state === "interrupted" && turnId && <Button variant="secondary" disabled={resuming} onClick={() => {
-          if (resumeRequest.current?.turnId !== turnId) resumeRequest.current = {turnId,requestId:crypto.randomUUID()};
-          setResuming(true); setOpenError("");
-          void (async () => {
-            let receipt = await api<{state:string;requestId:string;error?:{message?:string}}>("tasks/control", "POST", {op:"codex_resume",args:{threadId:session.id,turnId,requestId:resumeRequest.current!.requestId}});
-            while (["pending","reserved","submitting"].includes(receipt.state)) {
-              await new Promise(resolve=>setTimeout(resolve,500));
-              receipt = await api("tasks/control", "POST", {op:"receipt",args:{requestId:receipt.requestId}});
-            }
-            if (receipt.state !== "completed") throw new Error(receipt.error?.message || receipt.state);
-          })().catch(error=>setOpenError(String(error))).finally(()=>setResuming(false));
-        }}>{t("detail.resumeInterrupted")}</Button>}
-        {state === "done" && fromControlSource && <span className="task-review-status" data-verdict={review?.verdict}>{t(review?.verdict === "pass" ? "detail.reviewPassed" : review?.verdict === "rework" ? "detail.reviewRework" : "detail.awaitingReview")}</span>}
-        <div className="task-detail-meta"><SpecPill summary={latestSummary} />{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span></span>}</div>
         {duration !== undefined && <time className="timeline-meta task-duration">{durationText(duration)}</time>}
       </div>
+      {!!groups.length && <div className="task-turn-progress">{groups.map((group, index) => {
+        const current = index === groups.length - 1 && (!nativeSession.turnId || nativeSession.turnId === group.turnId);
+        const turnState = taskState((group.turnId && timeline?.turnStatuses?.[group.turnId]) || (current ? timeline?.status : undefined), current && running);
+        const plan = [...group.entries].reverse().find(entry => entry.type === "plan")?.plan;
+        const completed = plan?.filter(step => step.status === "completed").length ?? 0;
+        const value = plan?.length ? completed / plan.length * 100 : turnState === "done" ? 100 : undefined;
+        return <div key={group.id} role="progressbar" aria-label={t("detail.turnProgress", { count: index + 1, state: t(`detail.state.${turnState}`) })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}
+          aria-valuetext={plan?.length ? t("detail.planProgress", { completed, total: plan.length }) : t(`detail.state.${turnState}`)} data-state={turnState} data-indeterminate={value === undefined || undefined}>
+          <span style={value === undefined ? undefined : { width: `${value}%` }} />
+        </div>;
+      })}</div>}
     </header>
     <div className="task-timeline" aria-busy={loading}>
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
@@ -218,7 +232,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
               .map((text, index) => <p key={index}>{text}</p>)}
           </section>}
           {timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
-          <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} turnTimings={timeline?.turnTimings} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries} />
+          <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} turnTimings={timeline?.turnTimings} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries}
+            onResume={agent === "codex" && !external && !timeline?.readOnly && state === "interrupted" && turnId ? resumeInterrupted : undefined} resuming={resuming} />
           <TaskQueuedMessages queue={queue} />
           </>}
         </div>
