@@ -117,12 +117,24 @@ function list() {
 function land(name) {
   mainOnMain();
   const { directory } = lane(name);
-  if (dirty(main) || dirty(directory)) throw new Error('Commit or stash changes in both main and the lane before landing.');
+  if (dirty(directory)) throw new Error('Commit your lane changes before landing.');
+  const checkMain = () => {
+    const incoming = new Set(git(main, ['log', '--format=', '--name-only', '--no-renames', '-z', `main..${branch(name)}`]).split('\0').filter(Boolean));
+    const changed = new Set([
+      ...git(main, ['diff', '--name-only', '--no-renames', '-z']).split('\0'),
+      ...git(main, ['diff', '--cached', '--name-only', '--no-renames', '-z']).split('\0'),
+      ...git(main, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0'),
+    ]);
+    const overlap = [...changed].filter(file => incoming.has(file)).sort();
+    if (overlap.length) throw new Error(`Cannot land ${branch(name)}: main has uncommitted changes in incoming files:\n${overlap.join('\n')}\nHave the owner resolve these changes, then retry.`);
+  };
+  checkMain();
   try { run(directory, 'git', ['rebase', 'main']); }
   catch (error) {
     const conflicts = git(directory, ['diff', '--name-only', '--diff-filter=U']);
     throw new Error(`Rebase stopped in ${directory}. Resolve and git rebase --continue, or git rebase --abort.\n${conflicts || error.message}`);
   }
+  checkMain();
   run(main, 'git', ['merge', '--ff-only', branch(name)]);
   console.log(`Landed ${branch(name)}. Run acceptance serially in ${main}. Nothing was pushed.`);
 }

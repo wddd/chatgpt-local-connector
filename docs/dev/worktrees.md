@@ -2,6 +2,10 @@
 
 Use a lane only when the dispatching task explicitly assigns one. Create and manage
 lanes through `npm run wt`; do not improvise a runnable environment in a lane.
+A lane belongs to its assigned task. Never check out, commit from, clean or remove
+another task's lane. After every lane commit, run `git show --stat HEAD` and confirm
+it lists only your own files. While lanes are active, do all coding in assigned
+lanes. Reserve the main checkout for `wt land` and acceptance.
 
 From the main checkout, run `npm run wt -- create <name>`. This creates `wt/<name>`
 from main HEAD at `<repository-parent>/<repository-name>.wt/<name>`.
@@ -26,9 +30,12 @@ selects an existing project root; it does not attach an arbitrary external lane 
 the main project. ARC's disk permissions must allow the lane directory. An unregistered
 lane supplies cwd without a native projectId; ARC does not register it as a project.
 
-Commit the lane changes, then run `npm run wt -- land <name>` from main. Both
-checkouts must be clean and main must have `main` checked out. Landing rebases the
-lane on main, then merges with `--ff-only`; it never pushes. If rebase conflicts,
+Commit the lane changes, inspect `git show --stat HEAD`, then run
+`npm run wt -- land <name>` from main. The lane must be clean and main must have
+`main` checked out. Landing refuses if main has staged, unstaged or untracked changes
+in files touched by incoming commits and lists those files. It leaves unrelated main
+changes to Git's merge checks. Landing rebases the lane on main, then merges with
+`--ff-only`; it never pushes. If rebase conflicts,
 resolve the listed files in the lane and run `git rebase --continue`, or abort with
 `git rebase --abort`. Retry landing after resolving. Land one lane at a time.
 
@@ -37,6 +44,13 @@ acceptance serially in main after landing. The shared tooling guard makes npm de
 packaging, release, acceptance and Vite dev entry points refuse in a lane and name
 main. Installed products and the published installer contain no lane guard.
 The marker belongs only to the lane checkout; keep it until the lane is removed.
+
+`check:native`, `desktop:check`, `test` and `desktop:build` share one machine-wide
+queue across main and all lanes. The full native-check lifecycle holds the lock.
+A waiter reports the holder's checkout and command once before waiting. The lock
+lives in the user's cache and uses Rust's native file locking; process exit releases
+it, so leftover lock files do not block later commands. Nested build steps share the
+same lock. Light checks (`check`, `check:format`, `check:tests`) run without it.
 
 After acceptance, run `npm run wt -- remove <name>` from main to delete the worktree,
 its private target and branch. Unmerged branches and dirty worktrees are retained
