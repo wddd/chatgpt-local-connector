@@ -1312,5 +1312,17 @@
   "accounts.notifications.removed": "Removed",
   "accounts.reachable": "MCP Events reachable",
   "accounts.unreachable": "MCP Events reachability not confirmed",
-  "accounts.bindConsequence": "Assigns this session to the Claude profile on this computer. Verification still requires notify_control and receiver acknowledgement."
+  "accounts.bindConsequence": "Assigns this session to the Claude profile on this computer. Verification still requires notify_control and receiver acknowledgement.",
+  "accounts.editAlias": "Edit alias · {alias}",
+  "accounts.addAgentFor": "Add Agent · {alias}",
+  "accounts.agentIdentitySignin": "Sign in with this account. The Agent role is linked when the provider identity matches.",
+  "accounts.agentIdentityUnresolved": "This control source has no confirmed provider identity. Signing in adds an Agent account; linking it to this source requires identity confirmation.",
+  "accounts.agentIdentityMismatch": "The signed-in identity belongs to a different account. The Agent role was not added to {alias}.",
+  "accounts.sessions": "Bound sessions",
+  "accounts.session.verified": "Verified",
+  "accounts.session.reachable": "Reachable",
+  "accounts.session.unavailable": "Unavailable",
+  "accounts.session.failed": "Verification failed",
+  "accounts.session.not-bound": "Not bound",
+  "accounts.session.unverified": "Reachability not confirmed"
 }

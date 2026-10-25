@@ -1,7 +1,11 @@
 import { Globe, Link, Monitor, Shield } from "lucide-react";
 import { controlSource } from "./controlSources";
-import { t } from "./i18n";
+import { locale, t } from "./i18n";
 import type { ControlSource, Ingress } from "./state/types";
+
+export function sourceDate(value?: number | null) {
+  return value ? new Date(value * 1000).toLocaleString(locale.get(), { hour12: false }) : '—';
+}
 
 export function connectionKind(ingress: Ingress) {
   return ingress.transport === "local" ? "local" : ingress.transport === "relay" ? "relay" : ingress.transport === "openai-tunnel" ? "openai" : "tunnel";

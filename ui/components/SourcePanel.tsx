@@ -2,6 +2,8 @@ import { useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { api } from '../api';
 import { t } from '../i18n';
+import { controlSource } from '../controlSources';
+import { name as agentName } from '../state/agents';
 import { connector, refreshConnector } from '../state/connector';
 import { useAccounts, isUnidentified } from '../state/accounts';
 import { navigation } from '../state/navigation';
@@ -10,7 +12,7 @@ import type { ControlSource } from '../state/types';
 import { Button, DialogClose, IconButton, Notice, SingleChoice, Status, Switch, Tag } from './ui';
 import { PrivacyToggle } from './Privacy';
 import { Sensitive, SensitiveIdentity } from './Sensitive';
-import { AccountNotifications, AccountQuota } from './AccountCards';
+import { AccountNotifications, AccountQuota, AccountSharedNotice } from './AccountCards';
 import SourceConnection from './SourceConnection';
 import SourceDispatches from './SourceDispatches';
 import SourceIcon from './SourceIcon';
@@ -24,8 +26,7 @@ export default function SourcePanel({ source, widthControl }: { source: ControlS
   const ingress = status?.ingresses.find(i => i.id === source.ingressId);
   const [tab, setTab] = useState('activity'), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const shared = sources.filter(s => s.ingressId === source.ingressId && s.state !== 'revoked').length > 1;
-  const product = t(`source.product.${source.product}`);
-  const platform = product.startsWith('source.product.') ? source.product === 'claude' ? 'Claude' : source.product === 'chatgpt' ? 'ChatGPT' : source.product : product;
+  const platform = controlSource(source.product)?.displayName ?? agentName({ agent: source.product });
   return <>
     <header className="dialog-header source-account-header"><div className="source-account-brand"><SourceIcon platform={source.product} /><span className="source-account-badge">{(account?.alias ?? t('accounts.identityUnavailable')).slice(0, 1)}</span></div>
       <div className="source-account-heading"><h2>{platform} · {account?.alias ?? t('accounts.identityUnavailable')}</h2><SensitiveIdentity email={account?.email} orgName={account?.orgName} /></div>
@@ -42,8 +43,8 @@ export default function SourcePanel({ source, widthControl }: { source: ControlS
       {tab === 'activity' && <SourceDispatches sourceId={source.id} summary />}
       {tab === 'account' && <>{state.error && <Notice>{state.error}</Notice>}{account ? <>
         <section className="account-card"><div className="source-section-heading"><h3>{account.alias}</h3>{account.plan && <Tag>{account.plan}</Tag>}</div><SensitiveIdentity email={account.email} orgName={account.orgName} /><div><Sensitive>{account.identityKey}</Sensitive></div><p className="muted">{t(isUnidentified(account) ? 'accounts.unidentified' : 'accounts.whoami')}</p>
-          <Button onClick={() => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: 'accounts', accountId: account.id, remoteSourceId: undefined })); }}>{t('accounts.openAccount')}</Button></section>
-        {!!account.agentProfiles.length && <section className="account-card"><p>{t('accounts.sharedQuota')}</p>{account.agentProfiles.map(profile => <Button key={profile.profileId} onClick={() => { selectAgentPanel({ type: 'agent', agent: profile.agent }); navigation.set(old => ({ ...old, page: 'overview', remoteSourceId: undefined })); }}>{profile.agent} · {account.alias}</Button>)}</section>}
+          <Button variant="link" onClick={() => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: 'accounts', accountId: account.id, remoteSourceId: undefined })); }}>{t('accounts.openAccount')}</Button></section>
+        {!!account.agentProfiles.length && <section className="account-card"><AccountSharedNotice />{account.agentProfiles.map(profile => <Button key={profile.profileId} variant="link" onClick={() => { selectAgentPanel({ type: 'agent', agent: profile.agent }); navigation.set(old => ({ ...old, page: 'overview', remoteSourceId: undefined })); }}>{agentName(profile)} · {account.alias}</Button>)}</section>}
         <AccountQuota account={account} /><AccountNotifications account={account} />
       </> : <p role="status" className="muted">{t(state.loading ? 'loading' : 'accounts.identityUnavailable')}</p>}</>}
       {tab === 'connection' && <SourceConnection source={source} onConnection={id => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: 'remote', remoteSourceId: undefined, remoteConnectionId: id })); }} />}

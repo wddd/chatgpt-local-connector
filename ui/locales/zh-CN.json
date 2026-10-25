@@ -1312,5 +1312,17 @@
   "accounts.notifications.removed": "已移除",
   "accounts.reachable": "MCP Events 可达",
   "accounts.unreachable": "尚未确认 MCP Events 可达",
-  "accounts.bindConsequence": "将此会话分配给本机的 Claude 配置。验证仍需要 notify_control 和接收端确认。"
+  "accounts.bindConsequence": "将此会话分配给本机的 Claude 配置。验证仍需要 notify_control 和接收端确认。",
+  "accounts.editAlias": "编辑别名 · {alias}",
+  "accounts.addAgentFor": "添加 Agent · {alias}",
+  "accounts.agentIdentitySignin": "使用此账户登录。提供方身份匹配后，Agent 角色会关联到此账户。",
+  "accounts.agentIdentityUnresolved": "此控制源的提供方身份尚未确认。登录会添加 Agent 账户；与此控制源关联仍需确认身份。",
+  "accounts.agentIdentityMismatch": "登录的身份属于另一个账户，Agent 角色尚未添加到 {alias}。",
+  "accounts.sessions": "已绑定会话",
+  "accounts.session.verified": "已验证",
+  "accounts.session.reachable": "可达",
+  "accounts.session.unavailable": "不可用",
+  "accounts.session.failed": "验证失败",
+  "accounts.session.not-bound": "未绑定",
+  "accounts.session.unverified": "可达性未确认"
 }

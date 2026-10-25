@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { locale, t } from "../i18n";
+import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
 import { connectionSwitch } from "../state/onboarding";
 import type { ControlSource } from "../state/types";
-import { connectionKind, isPendingSource } from "../sourcePresentation";
+import { connectionKind, isPendingSource, sourceDate } from "../sourcePresentation";
 import SourceProductChoice from "./SourceProductChoice";
 import { Button, CopyField, Dialog, Field, Input, Notice, Status } from "./ui";
 
@@ -36,7 +36,6 @@ export default function SourceConnection({ source, onConnection }: { source: Con
   }
   const others = sources.filter(s => s.id !== source.id && s.ingressId === source.ingressId && s.state !== "revoked" && !isPendingSource(s, status?.ingresses ?? []));
   const client = ingress?.oauth?.grants.find(g => g.id === source.credential.grantId)?.clientName;
-  const date = (value: number | null) => value === null ? "—" : new Date(value * 1000).toLocaleString(locale.get(), { hour12: false });
   return <div className="source-detail">
     {error && !confirm && <Notice>{error}</Notice>}
     <section className="source-connection-card">
@@ -49,8 +48,8 @@ export default function SourceConnection({ source, onConnection }: { source: Con
       </> : <Notice tone="warning">{source.connectionName ? `${source.connectionName} · ` : ""}{t("source.connectionRemoved")}</Notice>}
     </section>
     <dl className="source-facts">
-      <div><dt>{t("source.authorizedAt")}</dt><dd>{date(source.connectedAt)}</dd></div>
-      <div><dt>{t("source.lastSeen")}</dt><dd>{date(source.lastSeenAt)}</dd></div>
+      <div><dt>{t("source.authorizedAt")}</dt><dd>{sourceDate(source.connectedAt)}</dd></div>
+      <div><dt>{t("source.lastSeen")}</dt><dd>{sourceDate(source.lastSeenAt)}</dd></div>
       <div><dt>{t("source.clientName")}</dt><dd>{client || "—"}</dd></div>
       <div><dt>{t("accounts.tools")}</dt><dd>guide · query · act</dd></div>
     </dl>

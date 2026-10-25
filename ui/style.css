@@ -111,6 +111,22 @@ pre {
 .button.ghost:hover:not(:disabled) {
   background: var(--hover);
 }
+.button.link {
+  justify-self: start;
+  width: fit-content;
+  padding-inline: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent);
+  text-align: start;
+}
+.button.link:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.task-tag[data-tone="source"] { color: var(--role-source); background: var(--role-source-soft); }
+.task-tag[data-tone="agent"] { color: var(--role-agent); background: var(--role-agent-soft); }
 .button.danger {
   color: var(--danger);
   background: var(--danger-soft);

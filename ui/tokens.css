@@ -46,6 +46,10 @@
   --brand-orange: #d97757;
   --brand-agent-start: #9c8cff;
   --brand-agent-end: #3f63ff;
+  --role-source: #a04625;
+  --role-agent: #5145b5;
+  --role-source-soft: color-mix(in srgb, var(--role-source) 10%, var(--surface));
+  --role-agent-soft: color-mix(in srgb, var(--role-agent) 10%, var(--surface));
   --phase-thinking: #6950b8;
   --phase-command: #285fac;
   --phase-file: #00856d;
@@ -81,6 +85,8 @@
   --brand-orange: #e8865e;
   --brand-agent-start: #b7aaff;
   --brand-agent-end: #5c7cff;
+  --role-source: #ffb399;
+  --role-agent: #c4baff;
   --phase-thinking: #b7aaff;
   --phase-command: #8dbbff;
   --phase-file: #58dfbf;

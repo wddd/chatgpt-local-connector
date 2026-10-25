@@ -3,13 +3,15 @@ import { accountsApi } from '../api';
 import type { ProviderAccount, AccountLogin } from '../types';
 import { t } from '../i18n';
 import { copyText } from '../platform';
-import { refreshAccounts } from '../state/accounts';
+import { isUnidentified, refreshAccounts } from '../state/accounts';
+import { name as agentName } from '../state/agents';
 import { Button, Checkbox, Dialog, Field, Input, Notice, SingleChoice } from './ui';
 import { SensitiveIdentity } from './Sensitive';
 
 type Browser = Awaited<ReturnType<typeof accountsApi.browsers>>['browsers'][number];
-export default function AddAccount({ onClose, initialLogin }: { onClose: () => void; initialLogin?: AccountLogin }) {
-  const [step, setStep] = useState(initialLogin ? 1 : 0), [kind, setKind] = useState<AccountLogin['kind']>(initialLogin?.kind ?? 'claude');
+export default function AddAccount({ onClose, initialLogin, forAccount }: { onClose: () => void; initialLogin?: AccountLogin; forAccount?: ProviderAccount }) {
+  const accountKind = forAccount?.provider === 'openai' ? 'codex' : forAccount?.provider === 'anthropic' ? 'claude' : 'api-key';
+  const [step, setStep] = useState(initialLogin || forAccount ? 1 : 0), [kind, setKind] = useState<AccountLogin['kind']>(initialLogin?.kind ?? (forAccount ? accountKind : 'claude'));
   const [login, setLogin] = useState(initialLogin), [identity, setIdentity] = useState<ProviderAccount>();
   const [detected, setDetected] = useState<ProviderAccount[]>([]), [detectedId, setDetectedId] = useState('');
   const [browsers, setBrowsers] = useState<Browser[]>([]), [browser, setBrowser] = useState(initialLogin?.browserId ?? 'default');
@@ -71,13 +73,15 @@ export default function AddAccount({ onClose, initialLogin }: { onClose: () => v
       await refreshAccounts(); onClose();
     });
   }
-  return <Dialog centered title={t('accounts.add')} width={560} busy={busy} onClose={close}
+  const roleMatched = forAccount && identity && (identity.id === forAccount.id || forAccount.sources.some(id => identity.sources.includes(id)));
+  return <Dialog centered title={forAccount ? t('accounts.addAgentFor', { alias: forAccount.alias }) : t('accounts.add')} width={560} busy={busy} onClose={close}
     stepBar={<ol className="account-steps">{['type', 'signin', 'confirm'].map((name, index) => <li key={name} aria-current={step === index ? 'step' : undefined}>{index + 1} · {t(`accounts.${name}`)}</li>)}</ol>}
-    footer={<><Button disabled={busy} onClick={close}>{t(waiting ? 'cancel' : 'close')}</Button>{step === 1 && !login && <Button onClick={() => setStep(0)}>{t('back')}</Button>}
+    footer={<><Button disabled={busy} onClick={close}>{t(waiting ? 'cancel' : 'close')}</Button>{step === 1 && !login && !forAccount && <Button onClick={() => setStep(0)}>{t('back')}</Button>}
       {step === 0 ? <Button variant="primary" onClick={() => setStep(1)}>{t('accounts.next')}</Button> : step === 2 ? identity && <Button variant="primary" type="submit" form="account-confirm" busy={busy}>{t('accounts.confirm')}</Button>
         : login?.state === 'unfinished' ? <Button busy={busy} onClick={() => start('detect')}>{t('accounts.kind.detect')}</Button>
         : !waiting && login?.state !== 'completed' ? <Button variant="primary" busy={busy} onClick={() => start()}>{t(login ? 'retry' : 'accounts.signin')}</Button> : null}</>}>
     <div className="account-form">
+      {forAccount && step === 1 && <><SensitiveIdentity email={forAccount.email} orgName={forAccount.orgName} /><p className="muted">{t(isUnidentified(forAccount) ? 'accounts.agentIdentityUnresolved' : 'accounts.agentIdentitySignin')}</p></>}
       {step === 0 && <SingleChoice label={t('accounts.type')} value={kind} onChange={value => setKind(value as AccountLogin['kind'])} options={['claude', 'codex', 'api-key', 'detect'].map(value => ({ value, label: t(`accounts.kind.${value}`) }))} />}
       {step === 1 && <>
         {['claude', 'codex'].includes(loginKind) && <SingleChoice label={t('claudeAccounts.browser')} value={browser} disabled={waiting || busy} onChange={setBrowser} options={[{ value: 'default', label: t('claudeAccounts.defaultBrowser') }, ...browsers.map(b => ({ value: b.id, label: b.name }))]} />}
@@ -101,8 +105,9 @@ export default function AddAccount({ onClose, initialLogin }: { onClose: () => v
       {step === 2 && identity && <form id="account-confirm" className="account-form" onSubmit={e => { e.preventDefault(); void confirm(); }}>
         <SensitiveIdentity email={identity.email} orgName={identity.orgName} />
         {!!identity.sources.length && !!identity.agentProfiles.length && <Notice tone="success">{t('accounts.matched')}</Notice>}
+        {forAccount && !roleMatched && <Notice tone="warning">{t(isUnidentified(forAccount) ? 'accounts.agentIdentityUnresolved' : 'accounts.agentIdentityMismatch', { alias: forAccount.alias })}</Notice>}
         <Field id="account-alias" label={t('accounts.alias')} error={fieldError}><Input id="account-alias" autoFocus value={alias} disabled={busy} aria-invalid={!!fieldError} aria-describedby={fieldError ? 'account-alias-error' : undefined} onChange={e => { setAlias(e.target.value); setFieldError(''); }} /></Field>
-        {identity.agentProfiles.length > 0 && <fieldset><legend>{t('accounts.useFor')}</legend>{identity.agentProfiles.map(profile => <Checkbox key={profile.profileId} checked={defaults.includes(profile.agent)} disabled={profile.default || busy || profile.state !== 'signed-in'} onChange={value => setDefaults(old => value ? [...old, profile.agent] : old.filter(agent => agent !== profile.agent))}>{profile.agent} · {t(`accounts.profile.${profile.state}`)}</Checkbox>)}</fieldset>}
+        {identity.agentProfiles.length > 0 && <fieldset><legend>{t('accounts.useFor')}</legend>{identity.agentProfiles.map(profile => <Checkbox key={profile.profileId} checked={defaults.includes(profile.agent)} disabled={profile.default || busy || profile.state !== 'signed-in'} onChange={value => setDefaults(old => value ? [...old, profile.agent] : old.filter(agent => agent !== profile.agent))}>{agentName(profile)} · {t(`accounts.profile.${profile.state}`)}</Checkbox>)}</fieldset>}
       </form>}
       {error && <Notice action={login?.state === 'completed' ? <Button onClick={() => setIdentityRetry(value => value + 1)}>{t('retry')}</Button> : undefined}>{error}</Notice>}
     </div>

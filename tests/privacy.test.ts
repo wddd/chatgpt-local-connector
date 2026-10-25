@@ -81,7 +81,10 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
       document.documentElement.dataset.theme = theme;
       await act(async () => setPrivacy(true));
       await render(h(AccountsPage)); assertPrivate();
+      await act(async () => { fireEvent.click(page.getByRole('button', { name: t('accounts.editAlias', { alias: account.alias }), exact: true })); });
       assert.ok(page.getByRole('textbox', { name: t('accounts.alias'), exact: true }));
+      assertPrivate();
+      await act(async () => { fireEvent.keyDown(page.getByRole('textbox', { name: t('accounts.alias'), exact: true }), { key: 'Escape' }); });
       await act(async () => setPrivacy(false));
       assert.ok(page.getAllByText(account.email, { exact: true }).length > 0);
       assert.ok(page.getByText(account.orgName, { exact: true }));
@@ -96,6 +99,8 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
     const completed = { loginId: 'privacy-confirm', kind: 'claude', state: 'completed', accountId: account.id };
     await render(h(AddAccount, { initialLogin: completed, onClose() {} })); assertPrivate();
     assert.ok(page.getByRole('button', { name: t('accounts.confirm'), exact: true }));
+    await render(h(AddAccount, { key: 'add-role', forAccount: sourceAccount, onClose() {} })); assertPrivate();
+    assert.ok(page.getByRole('dialog', { name: t('accounts.addAgentFor', { alias: sourceAccount.alias }), exact: true }));
     await act(async () => navigation.set((old: any) => ({ ...old, remoteSourceId: undefined, remoteConnectionId: undefined })));
     await render(h(RemoteLinkPage)); assertPrivate();
     await render(h(CopyField, { value: address, label: 'Connection address' })); assertPrivate();

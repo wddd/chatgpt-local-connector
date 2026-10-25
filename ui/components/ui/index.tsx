@@ -43,8 +43,8 @@ export { HoverScope };
 export { HoverPreviewGroup } from "./HoverPreviewGroup";
 export { ErrorCallout, LoadingIndicator } from "./Feedback";
 export { DataTable, Pagination } from "./DataTable";
-export function Tag({ children, title }: { children: ReactNode; title?: string }) {
-  return <span className="task-tag" title={title}>{children}</span>;
+export function Tag({ children, title, tone }: { children: ReactNode; title?: string; tone?: "source" | "agent" }) {
+  return <span className="task-tag" title={title} data-tone={tone}>{children}</span>;
 }
 export function Icon({
   icon: Component,
@@ -72,7 +72,7 @@ export function Button({
   disabled,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost" | "danger" | "danger-outline";
+  variant?: "primary" | "secondary" | "ghost" | "link" | "danger" | "danger-outline";
   busy?: boolean;
   ref?: Ref<HTMLButtonElement>;
 }) {
