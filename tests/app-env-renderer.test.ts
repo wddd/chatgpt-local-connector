@@ -16,7 +16,7 @@ test("environment API updates the live snapshot without changing saved preferenc
   const server = await createServer({ configFile: false, server: { middlewareMode: true, watch: null, ws: false } });
   const now = Date.now();
   let response: Record<string, unknown> = { active: true, expiresAt: now + 60_000, realNowMs: now,
-    overrides: { reducedMotion: true, colorScheme: "dark", locale: "zh-CN", windowWidth: 320, taskPanelWidth: 320, presence: "present" },
+    overrides: { reducedMotion: true, colorScheme: "dark", locale: "zh-CN", windowWidth: 320, windowHeight: 1000, taskPanelWidth: 320, presence: "present" },
     clock: { value: { nowMs: now, speed: 0 }, source: "override" } };
   globalThis.fetch = async input => {
     assert.equal(String(input), "/api/app/env");
@@ -32,7 +32,7 @@ test("environment API updates the live snapshot without changing saved preferenc
     let model = viewModel();
     assert.equal(model.theme, "dark");
     assert.equal(model.language, response.overrides && (response.overrides as Record<string, unknown>).locale);
-    for (const key of ["reducedMotion", "colorScheme", "locale", "windowWidth", "taskPanelWidth", "presence", "clock"]) assert.equal(model.env[key].source, "override");
+    for (const key of ["reducedMotion", "colorScheme", "locale", "windowWidth", "windowHeight", "taskPanelWidth", "presence", "clock"]) assert.equal(model.env[key].source, "override");
     assert.equal(model.env.windowWidth.value, innerWidth);
     assert.equal(model.env.taskPanelWidth.value, null, "a closed panel has no observed width");
     assert.equal(model.env.reducedMotion.value, true);
@@ -49,7 +49,7 @@ test("environment API updates the live snapshot without changing saved preferenc
     await refreshAppEnvironment();
     model = viewModel();
     assert.equal(model.env.active, false);
-    for (const key of ["reducedMotion", "colorScheme", "locale", "windowWidth", "taskPanelWidth", "presence", "clock"]) assert.equal(model.env[key].source, "system");
+    for (const key of ["reducedMotion", "colorScheme", "locale", "windowWidth", "windowHeight", "taskPanelWidth", "presence", "clock"]) assert.equal(model.env[key].source, "system");
     assert.deepEqual({ theme: theme.get(), language: language.get() }, saved);
   } finally {
     globalThis.fetch = previousFetch;

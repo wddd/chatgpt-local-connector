@@ -26,8 +26,8 @@ import type { TaskRuntime } from "../state/tasks";
 
 import { name, orderedAgents } from "../state/agents";
 
-export default function ActivityTimeline({ agent, session, expanded, onToggleWidth, onBack, titleId }: {
-  agent: string; session: TrackedActivity; expanded: boolean; onToggleWidth: () => void; onBack: () => void; titleId?: string;
+export default function ActivityTimeline({ agent, session, expanded, onToggleWidth, onBack, titleId, resizable = true }: {
+  agent: string; session: TrackedActivity; expanded: boolean; onToggleWidth: () => void; onBack: () => void; titleId?: string; resizable?: boolean;
 }) {
   const { snapshot } = agentActivity.use();
   const detail = useRef<HTMLElement>(null);
@@ -176,7 +176,10 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       else if (request.action === "follow") {
         if (typeof request.following !== "boolean") throw new Error("FOLLOW_REQUIRED: supply following:true or false");
         if (request.following) latest(); else following.current = false;
-      } else if (request.action === "width") onToggleWidth();
+      } else if (request.action === "width") {
+        if (!resizable) throw new Error("PANEL_WIDTH_FIXED: portrait panels use the available inner rail area; use app_env taskPanelWidth or switch to landscape");
+        onToggleWidth();
+      }
       else if (request.action === "back") onBack();
       else if (request.action === "disclose") {
         const button = [...(detail.current?.querySelectorAll<HTMLButtonElement>("button[aria-expanded]") ?? [])].find(node => disclosureIds.current.get(node) === request.target);
@@ -215,10 +218,10 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     <header className="dialog-header task-detail-header">
       <div className="task-detail-navigation"><Button variant="ghost" aria-label={t("back")} title={`${agentName}${project ? ` · ${project}` : ""}`} onClick={onBack}><Icon icon={ArrowLeft} /><span>{agentName}{project && ` · ${project}`}</span></Button>
         {!narrow && <div className="actions">{nativeSession.open && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); }} />}
-          <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} /></div>}
-        {narrow && <div className="task-narrow-menu"><Menu label={t("detail.taskActions")} trigger={<IconButton icon={MoreHorizontal} label={t("detail.taskActions")} />} items={[
+          {resizable && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} />}</div>}
+        {narrow && (nativeSession.open || resizable) && <div className="task-narrow-menu"><Menu label={t("detail.taskActions")} trigger={<IconButton icon={MoreHorizontal} label={t("detail.taskActions")} />} items={[
           ...(nativeSession.open ? [{ label: t("activity.open"), action: () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } }] : []),
-          { label: t(expanded ? "restorePanelWidth" : "expandPanelWidth"), action: onToggleWidth },
+          ...(resizable ? [{ label: t(expanded ? "restorePanelWidth" : "expandPanelWidth"), action: onToggleWidth }] : []),
         ]} /></div>}
       </div>
       <h2 id={titleId} className="activity-panel-title">{title}</h2>

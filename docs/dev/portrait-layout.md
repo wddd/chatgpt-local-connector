@@ -26,4 +26,6 @@ Agent/account panels dock inside the right rail over the bubbles, from a 16px le
 
 Source panels occupy a full-width inset gap below the source block and above the hub. Content determines height up to a viewport limit; the reserved gap shifts the hub and Agent section down without shifting source order. The selected source connects to the panel's top edge.
 
+Portrait panels use the available rail area and omit the landscape width-expansion control. An explicit `app_env.taskPanelWidth` may narrow the Agent panel within that area.
+
 Both modes reuse the existing nonmodal shell, open/close timing, outside-click, Escape and focus restoration. Header controls and the bottom-left dock retain their positions.

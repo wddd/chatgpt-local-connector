@@ -1,5 +1,5 @@
 import { useReducedMotion } from "../state/appEnvironment";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { t } from "../i18n";
@@ -13,8 +13,8 @@ import ChangeConnection from "./ChangeConnection";
 import { connectionSwitch } from "../state/onboarding";
 import { Dialog, IconButton, Notice } from "./ui";
 
-export default function IngressPanel({ onPanelFrame, width, expanded, onToggleWidth }: {
-  onPanelFrame: (rect: SurfaceRect | null) => void; width?: number; expanded: boolean; onToggleWidth: () => void;
+export default function IngressPanel({ onPanelFrame, width, expanded, onToggleWidth, dockRect, onContentHeight }: {
+  onPanelFrame: (rect: SurfaceRect | null) => void; width?: number; dockRect?: SurfaceRect; onContentHeight?: (height: number) => void; expanded: boolean; onToggleWidth: () => void;
 }) {
   const switching = connectionSwitch.use();
   const selected = ingressPanel.use()!, { status, sources } = connector.use();
@@ -41,17 +41,25 @@ export default function IngressPanel({ onPanelFrame, width, expanded, onToggleWi
     return () => cancelAnimationFrame(frame);
   }, [selected.editing]);
   const reduced = useReducedMotion();
-  return <Dialog width={width} dock="left" expanded={expanded} headerless title={client?.name ?? entry.name} busy={busy}
+  const content = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!dockRect || !content.current) return;
+    const node = content.current;
+    const measure = () => onContentHeight?.(Math.ceil(node.getBoundingClientRect().height) + 2);
+    const observer = new ResizeObserver(measure); observer.observe(node); measure();
+    return () => observer.disconnect();
+  }, [!!dockRect, dockRect?.width, selected.editing, client?.id, onContentHeight]);
+  return <Dialog width={width} dockRect={dockRect} dock="left" expanded={expanded} headerless title={client?.name ?? entry.name} busy={busy}
     originKey={client?.id ?? entry.id} closeRequested={selected.closing}
     onCloseStart={() => ingressPanel.set(old => old?.ingress.id === entry.id && old.client?.id === selected.client?.id ? { ...old, closing: true } : old)}
     onClose={() => { const current = ingressPanel.get(); if (current?.ingress.id === entry.id && current.client?.id === selected.client?.id && current.closing) ingressPanel.set(undefined); }}
     returnFocus={`[data-source-node="${CSS.escape(client ? client.id : entry.id)}"] button`} onPanelFrame={onPanelFrame}>
-    <motion.div className="side-panel-layer" key={`${entry.id}:${selected.editing ? "edit" : "view"}`}
+    <motion.div ref={content} className="side-panel-layer" key={`${entry.id}:${selected.editing ? "edit" : "view"}`}
       initial={{ opacity: reduced ? 1 : 0, x: reduced ? 0 : selected.editing ? -12 : 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>
       {selected.editing ? <IngressDialog embedded ingress={entry} focusField={selected.field} onBusy={setBusy}
         onClose={() => selectIngressPanel(entry)} onRemoved={() => { if (ingressPanel.get()?.ingress.id === entry.id) ingressPanel.set(undefined); }}
         onSaved={ingress => { if (ingressPanel.get()?.ingress.id === entry.id) selectIngressPanel(ingress, { autoConnect: true }); }} /> : <>
-        {source ? <SourcePanel key={source.id} source={source} widthControl={<IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} />} /> : <Notice>{t("accounts.unidentified")}</Notice>}
+        {source ? <SourcePanel key={source.id} source={source} widthControl={!dockRect && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} />} /> : <Notice>{t("accounts.unidentified")}</Notice>}
         {error && <Notice>{error}</Notice>}
         {switching && <ChangeConnection />}
 

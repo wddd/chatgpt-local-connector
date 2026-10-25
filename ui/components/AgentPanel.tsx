@@ -21,8 +21,8 @@ import type { SurfaceRect } from "../motion/surface";
 import type { ProviderAccount } from "../types";
 import { accountOwns } from "../accountPresentation";
 
-function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWidth, active }: {
-  agent: Agent; active: boolean; account?: ProviderAccount; accountId?: string;
+function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWidth, active, resizable = true }: {
+  agent: Agent; active: boolean; resizable?: boolean; account?: ProviderAccount; accountId?: string;
   onSettings: () => void; expanded: boolean; onToggleWidth: () => void;
 }) {
   const { snapshot } = subscriptions.use(), { status } = connector.use();
@@ -57,8 +57,8 @@ function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWi
       </div>
       <div className="actions">
         <IconButton icon={Settings} label={t("agentDisplaySettings")} onClick={onSettings} />
-        <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
-          aria-pressed={expanded} onClick={onToggleWidth} />
+        {resizable && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
+          aria-pressed={expanded} onClick={onToggleWidth} />}
       </div>
     </header>
     <div className="agent-view-scroll">
@@ -71,8 +71,8 @@ function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWi
   </section>;
 }
 
-export default function AgentPanel({ agent, onSettings, onPanelFrame, width, expanded, onToggleWidth }: {
-  agent: Agent; width?: number;
+export default function AgentPanel({ agent, onSettings, onPanelFrame, width, expanded, onToggleWidth, dockRect }: {
+  agent: Agent; width?: number; dockRect?: SurfaceRect;
   onSettings: () => void; onPanelFrame: (rect: SurfaceRect | null) => void;
   expanded: boolean; onToggleWidth: () => void;
 }) {
@@ -92,7 +92,7 @@ export default function AgentPanel({ agent, onSettings, onPanelFrame, width, exp
     }
     previous.current = selected;
   }, [selected]);
-  return <Dialog width={width} dock="right" expanded={expanded} headerless title={account?.alias ?? name(agent)} labelledBy={session ? taskTitleId : undefined}
+  return <Dialog width={width} dockRect={dockRect} dock="right" expanded={expanded} headerless title={account?.alias ?? name(agent)} labelledBy={session ? taskTitleId : undefined}
     originKey={`${agent.agent}:${selected.accountId ?? ""}`} closeRequested={selected.closing}
     onCloseStart={() => agentPanel.set(old => old?.agent === agent.agent && old.accountId === selected.accountId ? { ...old, closing: true } : old)}
     onClose={() => { const current = agentPanel.get(); if (current?.agent === agent.agent && current.accountId === selected.accountId && current.closing) selectAgentPanel({ type: "closed" }); }}
@@ -101,11 +101,11 @@ export default function AgentPanel({ agent, onSettings, onPanelFrame, width, exp
     <div ref={content} className="agent-panel-view">
       <motion.div className="agent-panel-view" key={`${agent.agent}:${selected.accountId ?? ""}`} style={{ display: session ? "none" : "flex" }}
         initial={{ opacity: reduced ? 1 : 0, x: 0 }} animate={{ opacity: session ? 0 : 1, x: reduced || !session ? 0 : -12 }} transition={{ duration: reduced ? 0 : 0.16 }}>
-        <AgentView agent={agent} account={account} accountId={selected.accountId} active={!session} onSettings={onSettings} expanded={expanded} onToggleWidth={onToggleWidth} />
+        <AgentView resizable={!dockRect} agent={agent} account={account} accountId={selected.accountId} active={!session} onSettings={onSettings} expanded={expanded} onToggleWidth={onToggleWidth} />
       </motion.div>
       {session && <motion.div className="agent-panel-view" key={`${agent.agent}:${session.id}`}
         initial={{ opacity: reduced ? 1 : 0, x: reduced ? 0 : 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>
-        <ActivityTimeline titleId={taskTitleId} agent={agent.agent} session={session} expanded={expanded} onToggleWidth={onToggleWidth} onBack={() => selectAgentPanel({ type: "back" })} />
+        <ActivityTimeline resizable={!dockRect} titleId={taskTitleId} agent={agent.agent} session={session} expanded={expanded} onToggleWidth={onToggleWidth} onBack={() => selectAgentPanel({ type: "back" })} />
       </motion.div>}
     </div>
   </Dialog>;

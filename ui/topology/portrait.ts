@@ -63,10 +63,31 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
   }
   const sourceTop = 74, left = wing(sc.left, -1, sourceTop);
   const sourceBottom = sourceTop + left.H;
-  const hub = { x: vw / 2, y: sourceBottom + 56 + earOffset, Re };
+  const sourcePanelHeight = sc.panel?.side === -1 ? Math.min(sc.panel.contentHeight ?? 280, Math.max(120, vh * 0.5)) : 0;
+  const hub = { x: vw / 2, y: sourceBottom + 56 + earOffset + (sourcePanelHeight ? sourcePanelHeight + 40 : 0), Re };
   const agentTop = hub.y + earOffset + 56, agents = wing(right, 1, agentTop);
   const agentBottom = agentTop + agents.H;
+  for (const wing of [left, agents]) {
+    if (sc.panel?.side !== wing.side) continue;
+    const hidden = new Set<string>();
+    for (const node of wing.nodes) {
+      if (node.parent && (node.parent === sc.panel.selected || hidden.has(node.parent))) { node.opacity = 0; hidden.add(node.id); }
+    }
+    for (const task of wing.tasks) { task.hidden = true; task.x += 12; }
+  }
   return { vw, vh, sceneH: Math.max(vh, agentBottom + 112), hub, wings: [left, agents],
     portrait: { sourceX, agentX, sourceTop, sourceBottom, agentTop, agentBottom, earOffset, earHalf },
     balance: [{ core: sourceX, full: vw / 2, squeeze: 1 }, { core: vw - agentX, full: vw / 2, squeeze: 1 }] };
+}
+
+export interface PortraitPanelRect { x: number; y: number; width: number; height: number }
+// Coordinates are scene-local. The host converts them into viewport coordinates;
+// vertical scrolling never feeds a panel's animated dimensions back into solve.
+export function portraitPanelRect(layout: Layout, selected: NodeGeometry, scrollTop = 0, contentHeight = 280): PortraitPanelRect {
+  const p = layout.portrait!;
+  if (selected.side === -1) return { x: 16, y: p.sourceBottom + 24 - scrollTop, width: Math.max(1, layout.vw - 32),
+    height: Math.min(contentHeight, Math.max(120, layout.vh * 0.5)) };
+  const y = Math.max(16, layout.hub.y + p.earOffset + 16 - scrollTop);
+  const right = selected.x - selected.size * selected.scale / 2 - 40;
+  return { x: 16, y, width: Math.max(1, right - 16), height: Math.max(1, layout.vh - 96 - y) };
 }

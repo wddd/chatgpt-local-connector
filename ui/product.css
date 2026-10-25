@@ -1575,3 +1575,9 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .portrait-wires .portrait-task[data-state="summary"] { --task-color: var(--border-strong); }
 .portrait-wires .portrait-task[data-state="external"] { --task-color: var(--text-tertiary); stroke-dasharray: 3 5; }
 .portrait-wires .portrait-task.activity-flow { stroke: color-mix(in srgb, var(--task-color) 65%, var(--text)); stroke-width: 3; stroke-dasharray: 1 17; }
+.topology-wires[data-inactive="true"] .topology-path-hit { pointer-events: none; }
+.dialog.activity-panel[data-panel-geometry="portrait"] { height: var(--panel-layout-height); max-height: var(--panel-layout-height); }
+.activity-panel[data-panel-geometry="portrait"] > .elastic-panel-content { height: calc(var(--panel-layout-height) - 2px); max-height: calc(var(--panel-layout-height) - 2px); }
+.activity-panel[data-panel-geometry="portrait"][data-panel-dock="left"] > .elastic-panel-content > .dialog-body { display: block; overflow: auto; }
+.activity-panel[data-panel-geometry="portrait"][data-panel-dock="left"] .side-panel-layer { height: auto; }
+.activity-panel[data-panel-geometry="portrait"][data-panel-dock="left"] .side-panel-scroll { overflow: visible; flex: none; }

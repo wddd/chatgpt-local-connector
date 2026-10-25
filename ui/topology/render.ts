@@ -98,7 +98,7 @@ export class TopologyPainter {
       const b = this.branch(key), a = deg(v.port), radial = { x: t.side * Math.cos(a), y: Math.sin(a) };
       const port = { x: n.x + n.radius * radial.x, y: n.y + n.radius * radial.y };
       const end = bridge && panel ? { x: t.side === 1 ? panel.x : panel.x + panel.width,
-        y: clamp(v.y, panel.y + 27, panel.y + panel.height - 27) } : { x: v.x, y: v.y };
+        y: clamp(v.y, panel.y + 27, panel.y + panel.height - 27) } : { x: v.x + ((t.side === -1 ? 1 : 0) - (v.anchor ?? 0)) * (v.width ?? 0), y: v.y };
       const shape = tentacle(end, port, radial, t.side, scale, { t2End: p.t2End, t2Root: p.t2Root, flare: p.flare });
       controls(end, shape.c1, shape.c2, port);
       attr(b.group, { class: `topology-branch secondary ${bridge ? "panel-link" : ""} ${t.side === 1 ? "right" : "left"}`, "data-state": t.state,

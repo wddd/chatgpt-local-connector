@@ -1,7 +1,7 @@
 import { appEnvironment, envOverrides } from "../state/appEnvironment";
 import { topologyLayout } from "../subscriptions/displayPreferences";
 import { resolveOrientation, type Orientation } from "./orientation";
-import { solvePortrait } from "./portrait";
+import { solvePortrait, portraitPanelRect } from "./portrait";
 import { PortraitPainter } from "./portraitRender";
 import CollapseSymbol from './CollapseSymbol';
 import { t } from '../i18n';
@@ -23,8 +23,8 @@ export interface NodeView extends Omit<PaintNode, "side"> { content: ReactNode; 
   sourceIds?: string[]; icon?: ReactNode; selectedAccountId?: PathTask['agentAccountId'];
 }
 type PositionedTask = TaskView & { parent: string; side: Side };
-export interface TopologyHandle { panelFrame: (rect: SurfaceRect | null) => void }
-export interface PanelLayout { key?: string; width: number; expanded: boolean }
+export interface TopologyHandle { panelFrame: (rect: SurfaceRect | null) => void; panelContentHeight: (height: number) => void }
+export interface PanelLayout { key?: string; width: number; expanded: boolean; rect?: SurfaceRect }
 
 export default function Topology({ left: inputLeft, right: inputRight, accountsEnabled = false, brand, boundary, panelKey, panelExpanded = false, onPanelLayout, onReorderNodes, onReorderTasks, ref }: {
   left: NodeView[]; right: NodeView[]; accountsEnabled?: boolean; brand: ReactNode;
@@ -40,6 +40,9 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   const elements = useRef(new Map<string, HTMLDivElement>());
   const animator = useRef(new TopologyAnimator()), painter = useRef<TopologyPainter | null>(null);
   const frame = useRef(0), lastTime = useRef(0), panel = useRef<SurfaceRect | null>(null);
+  const retarget = useRef(() => {}), placeAfterMorph = useRef(false);
+  const orientationSource = useRef<"auto" | "manual">("auto");
+  const sourceContentHeight = useRef(280), placedPanel = useRef<string | undefined>(undefined);
   const reportedPanel = useRef<PanelLayout>(undefined);
   const origin = useRef({ x: 0, y: 0 }), size = useRef<{ vw: number; vh: number } | null>(null);
   const drag = useRef<(Drag & { pointer: number; startClientX: number; startClientY: number; grabX: number; grabY: number; parent?: string;
@@ -99,7 +102,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   const latest = useRef({ nodes, allNodes, tasks, allTasks, left, right, lit, hover, focus, revealed, panelKey, panelExpanded, onPanelLayout, reduced, params, guides, slow, onReorderNodes, onReorderTasks });
   latest.current = { nodes, allNodes, tasks, allTasks, left, right, lit, hover, focus, revealed, panelKey, panelExpanded, onPanelLayout, reduced, params, guides, slow, onReorderNodes, onReorderTasks };
   useEffect(() => observeTopology(() => ({
-    orientation: orientation.current, source: topologyLayout.get() === 'auto' ? 'auto' : 'manual', orientationPending: orientationPending.current,
+    orientation: orientation.current, source: orientationSource.current, orientationPending: orientationPending.current,
     origin: origin.current, size: size.current, panel: panel.current,
     interaction: { hover: latest.current.hover, focus: latest.current.focus, revealed: latest.current.revealed },
     nodes: latest.current.nodes.map(({ content: _content, icon: _icon, children: _children, tasks: _tasks, ...node }) => ({ ...node, position: animator.current.values(nodeKey(node.side, node.id)) })),
@@ -112,8 +115,13 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     if (!h || !root) return;
     const portrait = orientation.current === 'portrait';
     root.dataset.orientation = orientation.current;
-    if (svg.current) svg.current.style.display = portrait ? 'none' : '';
-    if (portraitSvg.current) portraitSvg.current.style.display = portrait ? '' : 'none';
+    const blend = Math.max(0, Math.min(1, a.values('orientation')?.portrait ?? 0));
+    for (const [element, opacity, active] of [[svg.current, 1 - blend, !portrait], [portraitSvg.current, blend, portrait]] as const) {
+      if (!element) continue;
+      element.style.display = opacity < 0.001 ? 'none' : '';
+      element.style.opacity = String(opacity);
+      element.dataset.inactive = String(!active);
+    }
     root.style.setProperty('--portrait-source-label-width', `${Math.max(32, (layout.current?.portrait?.sourceX ?? 170) - 44)}px`);
     root.style.setProperty('--portrait-agent-label-width', `${Math.max(32, (size.current?.vw ?? 900) - (layout.current?.portrait?.agentX ?? 768) - 44)}px`);
     root.style.height = `${a.values("scene")!.height}px`;
@@ -163,8 +171,8 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     const rect = panel.current ? { ...panel.current, x: panel.current.x - origin.current.x, y: panel.current.y - origin.current.y } : null;
     svg.current?.style.setProperty("--topology-time-scale", latest.current.slow ? "4" : "1");
     portraitSvg.current?.style.setProperty("--topology-time-scale", latest.current.slow ? "4" : "1");
-    if (portrait) portraitPainter.current?.paint(a, latest.current.allNodes, latest.current.allTasks, rect);
-    else painter.current?.paint(a, latest.current.allNodes, latest.current.allTasks, rect,
+    if (blend > 0.001) portraitPainter.current?.paint(a, latest.current.allNodes, latest.current.allTasks, rect);
+    if (blend < 0.999) painter.current?.paint(a, latest.current.allNodes, latest.current.allTasks, rect,
       latest.current.guides ? layout.current : null);
   }, [boundary]);
   const tick = useCallback((time: number) => {
@@ -175,6 +183,10 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     if (moving) frame.current = requestAnimationFrame(tick);
     else {
       lastTime.current = 0;
+      if (placeAfterMorph.current) {
+        placeAfterMorph.current = false; placedPanel.current = undefined;
+        retarget.current();
+      }
       setRetainedNodes(old => {
         const remaining = old.filter(n => animator.current.live.has(nodeKey(n.side, n.id)));
         return remaining.length === old.length ? old : remaining;
@@ -194,7 +206,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     const reservedWidth = Math.min(latest.current.panelExpanded ? innerWidth - 2 * PANEL_MARGIN : PANEL_MIN_WIDTH, innerWidth - 2 * PANEL_MARGIN);
     if (selected) sc.panel = { side: selected.side, selected: selected.id,
       edge: selected.side === 1 ? innerWidth - reservedWidth - PANEL_MARGIN - origin.current.x : PANEL_MARGIN + reservedWidth - origin.current.x,
-      narrow: innerWidth < 760 || latest.current.panelExpanded };
+      narrow: innerWidth < 760 || latest.current.panelExpanded, contentHeight: sourceContentHeight.current };
     if (!d?.active) return sc;
     const wing = d.side === -1 ? "left" : "right";
     if (d.kind === "node") {
@@ -219,6 +231,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       delete d.slot.dataset.dragging; drag.current = null;
       if (d.target.hasPointerCapture(d.pointer)) d.target.releasePointerCapture(d.pointer);
       d = null;
+      if (orientationPending.current && orientationTimer.current === null) queueMicrotask(() => evaluateOrientation.current());
     }
     animator.current.params = latest.current.params;
     layout.current = (orientation.current === "portrait" ? solvePortrait : solve)(scene(), latest.current.params, d?.active ? d : null);
@@ -227,25 +240,48 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     const selected = latest.current.nodes.find(n => n.selected);
     const selectedNode = selected && layout.current.wings.find(w => w.side === selected.side)?.nodes.find(n => n.id === selected.id);
     const radius = selectedNode && (selectedNode.arc?.R ?? selectedNode.size * selectedNode.scale / 2 + latest.current.params.arcGap);
-    const width = (latest.current.panelKey?.startsWith("agent:") ? envOverrides().taskPanelWidth : undefined) ?? (selectedNode && radius !== undefined ? panelWidth(innerWidth, selectedNode.side, origin.current.x + selectedNode.x,
-      radius + 2 * Math.max(0.8, layout.current.hub.Re / 130)) : PANEL_MIN_WIDTH);
+    let rect: SurfaceRect | undefined;
+    if (layout.current.portrait && selectedNode) {
+      const container = boundary.current;
+      const viewportTop = origin.current.y + (container?.scrollTop ?? 0);
+      if (container && placedPanel.current !== latest.current.panelKey) {
+        const local = portraitPanelRect(layout.current, selectedNode, 0, sourceContentHeight.current);
+        // Keep enough of the inner area visible when selecting a node far down
+        // a scrolling rail. A source panel is part of the gap above the hub.
+        const neededBottom = selectedNode.side === -1 ? local.y + local.height : Math.max(local.y + Math.min(320, layout.current.vh * 0.5), selectedNode.y + 44);
+        const desired = Math.max(0, Math.min(layout.current.sceneH - layout.current.vh, Math.max(container.scrollTop, neededBottom + 96 - layout.current.vh)));
+        container.scrollTop = selectedNode.side === -1 ? Math.min(desired, local.y - 16) : desired;
+        const actual = graph.current!.getBoundingClientRect();
+        origin.current = { x: actual.x, y: actual.y };
+      }
+      placedPanel.current = latest.current.panelKey;
+      const local = portraitPanelRect(layout.current, selectedNode, container?.scrollTop ?? 0, sourceContentHeight.current);
+      if (selectedNode.side === 1 && envOverrides().taskPanelWidth != null) local.width = Math.min(local.width, envOverrides().taskPanelWidth!);
+      rect = { ...local, x: local.x + origin.current.x, y: local.y + viewportTop };
+    } else placedPanel.current = undefined;
+    const width = rect?.width ?? ((latest.current.panelKey?.startsWith("agent:") ? envOverrides().taskPanelWidth : undefined) ?? (selectedNode && radius !== undefined ? panelWidth(innerWidth, selectedNode.side, origin.current.x + selectedNode.x,
+      radius + 2 * Math.max(0.8, layout.current.hub.Re / 130)) : PANEL_MIN_WIDTH));
     const { panelKey: key, panelExpanded: expanded } = latest.current;
-    const reported = reportedPanel.current;
-    if (!reported || reported.key !== key || reported.width !== width || reported.expanded !== expanded) {
-      reportedPanel.current = { key, width, expanded };
-      latest.current.onPanelLayout?.(reportedPanel.current);
+    const next: PanelLayout = { key, width, expanded: rect ? false : expanded, rect };
+    if (JSON.stringify(reportedPanel.current) !== JSON.stringify(next)) {
+      reportedPanel.current = next;
+      latest.current.onPanelLayout?.(next);
     }
     animator.current.setTargets(layout.current, d?.active ? d : null);
     animator.current.highlight(latest.current.lit);
     // Pins follow the pointer immediately; their neighbours continue springing.
     animator.current.step(0, !!latest.current.reduced);
     paint(); wake();
-  }, [paint, wake, scene]);
+  }, [paint, wake, scene, boundary]);
+  retarget.current = target;
   evaluateOrientation.current = () => {
     orientationTimer.current = null;
     if (drag.current) return;
     const env = envOverrides();
+    const previous = orientation.current;
     orientation.current = resolveOrientation(orientation.current, topologyLayout.get(), env.windowWidth ?? innerWidth, env.windowHeight ?? innerHeight);
+    orientationSource.current = topologyLayout.get() === 'auto' ? 'auto' : 'manual';
+    if (previous !== orientation.current) { placedPanel.current = undefined; placeAfterMorph.current = !!latest.current.panelKey; }
     orientationPending.current = false;
     target();
   };
@@ -303,11 +339,15 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   const suppressClick = (event: MouseEvent, key: string) => {
     if (event.detail !== 0 && suppressedClick.current === key) { event.preventDefault(); event.stopPropagation(); }
   };
-  useImperativeHandle(ref, () => ({ panelFrame(rect) {
+  useImperativeHandle(ref, () => ({ panelContentHeight(height) {
+    if (!Number.isFinite(height) || height <= 0 || Math.abs(sourceContentHeight.current - height) < 1) return;
+    sourceContentHeight.current = height; placedPanel.current = undefined;
+    if (orientation.current === 'portrait' && latest.current.panelKey?.startsWith('source:')) target();
+  }, panelFrame(rect) {
     // DOMRect dimensions are prototype accessors, not enumerable own properties.
     panel.current = rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
     paint();
-  } }), [paint]);
+  } }), [paint, target]);
   useLayoutEffect(() => { setRetained(latest.current.allTasks); setRetainedNodes(latest.current.allNodes); }, [inputLeft, inputRight, collapsed]);
   useLayoutEffect(() => { target(); });
   useLayoutEffect(() => {
@@ -322,7 +362,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   const selectedKey = nodes.find(n => n.selected)?.id;
   useLayoutEffect(() => {
     const container = boundary.current, selected = layout.current?.wings.flatMap(w => w.nodes).find(n => n.id === selectedKey);
-    if (!container || !selected) return;
+    if (!container || !selected || orientation.current === "portrait") return;
     const top = selected.y - selected.size * selected.scale / 2 - 8;
     const bottom = selected.y + selected.size * selected.scale / 2 + 24;
     if (top < container.scrollTop) container.scrollTop = Math.max(0, top);
@@ -348,7 +388,9 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       const rect = graph.current!.getBoundingClientRect();
       const dx = origin.current.x - rect.x, dy = origin.current.y - rect.y;
       origin.current = { x: rect.x, y: rect.y };
-      if (drag.current?.active) { drag.current.x += dx; drag.current.y += dy; target(); } else paint();
+      if (drag.current?.active) { drag.current.x += dx; drag.current.y += dy; target(); }
+      else if (orientation.current === 'portrait' && latest.current.panelKey) target();
+      else paint();
     };
     const observer = new ResizeObserver(measure); observer.observe(container);
     container.addEventListener("scroll", scroll, { passive: true }); window.addEventListener("resize", measure);

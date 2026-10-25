@@ -534,8 +534,8 @@ inside `body`; `tasks.settings.set` accepts `body.requestRoutingDelaySeconds`.
 ## Instance environment overrides
 
 Use `cli control app_env` to read instance-local acceptance inputs. Pass `--stdin`
-with `{"action":"set","reducedMotion":true,"colorScheme":"dark","locale":"en","windowWidth":320,"taskPanelWidth":320,"presence":"present","clock":{"freeze":true}}`
-to set them. `presence` also accepts `absent` and `follow-system`. Widths are logical
+with `{"action":"set","reducedMotion":true,"colorScheme":"dark","locale":"en","windowWidth":320,"windowHeight":900,"taskPanelWidth":320,"presence":"present","clock":{"freeze":true}}`
+to set them. `presence` also accepts `absent` and `follow-system`. Window dimensions and panel widths are logical
 pixels from 320 to 3840; supported locales are `en` and `zh-CN`.
 
 `{"action":"set","clock":{"advanceMs":15000}}` advances the routing/UI clock.

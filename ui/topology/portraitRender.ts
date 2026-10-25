@@ -63,11 +63,11 @@ export class PortraitPainter {
       if (descendants.length) {
         const bx = n.childBusX, ys = descendants.map(c => c.value!.y), start = point(n.x - node.side * (n.size * n.scale / 2 + 4), n.y);
         const lo = Math.min(n.y, ...ys), hi = Math.max(n.y, ...ys);
-        this.path(`${key}:account-bus`, railPath([start, point(bx, n.y), point(bx, lo)]) + railPath([point(bx, n.y), point(bx, hi)]), `portrait-rail ${sideClass}`, opacity);
+        this.path(`${key}:account-bus`, railPath([start, point(bx, n.y), point(bx, lo)]) + railPath([point(bx, n.y), point(bx, hi)]), `portrait-rail ${sideClass}`, opacity * Math.max(...descendants.map(c => c.value!.presence)));
         for (const child of descendants) {
           const v = child.value!, d = railPath([point(bx, n.y), point(bx, v.y), point(v.x + node.side * (v.size * v.scale / 2 + 4), v.y)]);
           this.path(`${key}:${child.node.id}`, d, `portrait-rail ${sideClass}`, opacity * v.presence);
-          this.path(`${key}:${child.node.id}:hit`, d, 'topology-path-hit', v.presence, {}, { side: node.side, id: child.node.id });
+          this.path(`${key}:${child.node.id}:hit`, v.presence >= 0.02 && a.live.get(nodeKey(node.side, child.node.id))?.alive ? d : '', 'topology-path-hit', v.presence, {}, { side: node.side, id: child.node.id });
         }
       }
       const own = tasks.filter(t => t.side === node.side && t.parent === node.id).map(t => ({ task: t, value: a.values(taskKey(t.side, t.id)) })).filter(t => t.value);
@@ -77,7 +77,7 @@ export class PortraitPainter {
         this.path(`${key}:task-bus`, railPath([start, point(bx, n.y), point(bx, Math.min(n.y, ...ys))]) + railPath([point(bx, n.y), point(bx, Math.max(n.y, ...ys))]), `portrait-rail ${sideClass}`, opacity * visible);
         for (const { task, value: v } of own) {
           const tk = taskKey(task.side, task.id);
-          const d = railPath([point(bx, v!.y), point(v!.x, v!.y)]);
+          const d = railPath([point(bx, v!.y), point(v!.x + (1 - v!.anchor) * v!.width, v!.y)]);
           this.path(tk, d, `portrait-task ${sideClass}`, v!.op, { 'data-state': task.state });
           this.path(`${tk}:flow`, task.state === 'running' || task.state === 'external' ? d : '', `portrait-task activity-flow ${sideClass}`, v!.op, { 'data-state': task.state });
           this.path(`${tk}:hit`, v!.op > 0.02 && a.live.get(tk)?.alive ? d : '', 'topology-path-hit', v!.op, {}, { side: task.side, id: task.id, task: true });
@@ -86,7 +86,9 @@ export class PortraitPainter {
       if (panel && node.selected) {
         const end = node.side === 1 ? point(panel.x + panel.width, Math.max(panel.y + 27, Math.min(panel.y + panel.height - 27, n.y))) : point(Math.max(panel.x + 27, Math.min(panel.x + panel.width - 27, n.x)), panel.y);
         const start = point(n.x - node.side * (n.size * n.scale / 2 + 4), n.y);
-        this.path(`${key}:panel`, railPath([start, point(n.childBusX, n.y), point(n.childBusX, end.y), end]), `portrait-rail ${sideClass}`, 0.9);
+        const route = node.side === 1 ? [start, point(n.childBusX, n.y), point(n.childBusX, end.y), end]
+          : [start, point(n.childBusX, n.y), point(n.childBusX, end.y - 20), point(end.x, end.y - 20), end];
+        this.path(`${key}:panel`, railPath(route), `portrait-rail ${sideClass}`, 0.9);
       }
     }
     for (const [key, path] of this.paths) if (!this.keep.has(key)) { path.remove(); this.paths.delete(key); }

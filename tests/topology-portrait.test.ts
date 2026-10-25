@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { solvePortrait } from '../ui/topology/portrait.ts';
+import { solvePortrait, portraitPanelRect } from '../ui/topology/portrait.ts';
 import { solve, type Entity } from '../ui/topology/solve.ts';
 import { TopologyAnimator, nodeKey, taskKey } from '../ui/topology/animate.ts';
 
@@ -60,4 +60,56 @@ test('collapsed subtrees and flat nodes retain their existing queue semantics', 
   const flat = solvePortrait({ vw: 900, vh: 1200, left: [], right: right[1].children! });
   assert.ok(flat.wings[1].nodes.every(n => n.parent === undefined));
   assert.deepEqual(flat.wings[1].tasks.map(t => t.id), right[1].children!.flatMap(n => n.tasks.map(t => t.id)));
+});
+
+test('portrait source panels reserve a vertical gap without moving source rows', () => {
+  // Property: a source panel shifts only the hub and Agent section, with reservation bounded by the viewport.
+  const scene = { vw: 900, vh: 1200, left, right };
+  const closed = solvePortrait(scene);
+  for (const contentHeight of [150, 500, 2000]) {
+    const open = solvePortrait({ ...scene, panel: { side: -1, selected: 'source/a', edge: 0, contentHeight } });
+    assert.deepEqual(open.wings[0].nodes.map(n => [n.id, n.x, n.y]), closed.wings[0].nodes.map(n => [n.id, n.x, n.y]));
+    const shift = open.hub.y - closed.hub.y;
+    assert.ok(shift > 0 && shift < scene.vh);
+    for (const [i, node] of open.wings[1].nodes.entries()) assert.equal(node.y - closed.wings[1].nodes[i].y, shift);
+    const rect = portraitPanelRect(open, open.wings[0].nodes[1], 0, contentHeight);
+    assert.ok(rect.y > open.portrait!.sourceBottom);
+    assert.ok(rect.y + rect.height < open.hub.y - open.portrait!.earOffset);
+    assert.ok(rect.x >= 0 && rect.x + rect.width <= scene.vw);
+  }
+});
+test('portrait Agent panels fit inside the selected rail and fade tasks without changing queues', () => {
+  // Property: panel reservation keeps node order and task identity while placing its edge inside the selected node.
+  const scene = { vw: 900, vh: 1200, left, right };
+  const closed = solvePortrait(scene);
+  for (const id of ['agent', 'account/a', 'single']) {
+    const open = solvePortrait({ ...scene, panel: { side: 1, selected: id, edge: 0 } });
+    const n = open.wings[1].nodes.find(n => n.id === id)!;
+    const scroll = open.hub.y;
+    const rect = portraitPanelRect(open, n, scroll);
+    assert.ok(rect.x >= 0 && rect.x + rect.width < n.x - n.size * n.scale / 2);
+    assert.ok(rect.y > open.hub.y + open.portrait!.earOffset - scroll);
+    assert.ok(rect.y + rect.height < scene.vh);
+    assert.deepEqual(open.wings[1].nodes.map(n => [n.id, n.x, n.y]), closed.wings[1].nodes.map(n => [n.id, n.x, n.y]));
+    assert.deepEqual(open.wings[1].tasks.map(t => t.id), closed.wings[1].tasks.map(t => t.id));
+    assert.ok(open.wings[1].tasks.every(t => t.hidden));
+  }
+});
+test('orientation springs settle within a bounded transition and can reverse', () => {
+  // Property: reversing orientation retains primitives and converges to the latest solver without nonfinite coordinates.
+  const scene = { vw: 900, vh: 1200, left, right }, animator = new TopologyAnimator();
+  const landscape = solve(scene), portrait = solvePortrait(scene);
+  animator.setTargets(landscape); animator.step(0, true);
+  const task = animator.live.get(taskKey(1, 'a/0'));
+  animator.setTargets(portrait);
+  for (let frame = 0; frame < 8; frame++) animator.step(1 / 60);
+  animator.setTargets(landscape);
+  for (let frame = 0; frame < 24; frame++) animator.step(1 / 60);
+  assert.equal(animator.live.get(taskKey(1, 'a/0')), task);
+  for (const wing of landscape.wings) for (const n of wing.nodes) {
+    const actual = animator.values(nodeKey(wing.side, n.id))!;
+    assert.equal(actual.x, n.x); assert.equal(actual.y, n.y);
+    assert.ok(Object.values(actual).every(Number.isFinite));
+  }
+  assert.equal(animator.step(1 / 60), false);
 });

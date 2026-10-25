@@ -645,7 +645,7 @@ routing state and never reopen an answered request.
 
 Use `act({op:"app_env",args:{action:"read"}})` to inspect the current instance.
 `action:"set"` merges explicit `reducedMotion`, `colorScheme`, `locale`,
-`windowWidth`, `taskPanelWidth`, `presence` and `clock` inputs. `action:"clear"`
+`windowWidth`, `windowHeight`, `taskPanelWidth`, `presence` and `clock` inputs. `action:"clear"`
 restores normal resolution. The guide declares ranges and supported values.
 The existing `guide`, `query`, `act` tool shapes and notification envelope are
 unchanged. Read `app snapshot` for rendered `model.env` values and provenance.
