@@ -442,7 +442,14 @@ impl WaitSource for CodexSource {
     }
 }
 async fn codex_source(control: &Arc<Control>, args: &Value) -> Result<CodexSource> {
-    let background = control.background(string(args, "threadId"))?;
+    let thread = string(args, "threadId");
+    let mut background = control.background(thread)?;
+    // The persisted connector preference is not a live writer lease. Desktop can
+    // resume an interrupted task after our app-server exits. Follow that owner
+    // without changing the preference or loading/unsubscribing its thread.
+    if background && crate::writer::probe(thread)["state"] == "held" {
+        background = control.writer_ownership(thread).await["owner"] != "desktop";
+    }
     let owner = if background {
         CodexOwner::Background(control.utility().await?)
     } else {

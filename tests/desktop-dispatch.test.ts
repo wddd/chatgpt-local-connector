@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { createServer, type Socket } from 'node:net';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
@@ -40,7 +41,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
         let result: unknown = {};
         if (method === 'initialize') result = { clientId: 'fixture-follower' };
         else if (method === 'thread-owner-discovery') {
-          if (thread !== desktopThread && (!existsSync(openFile) || !readFileSync(openFile,'utf8').endsWith(thread))) continue;
+          if (thread !== desktopThread && !read()[thread]?.detached && (!existsSync(openFile) || !readFileSync(openFile,'utf8').endsWith(thread))) continue;
           result = {};
         }
         else if (method === 'thread-follower-update-thread-settings') result = { applied: true };
@@ -66,7 +67,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       const {id,method,params}=JSON.parse(line); if(id===undefined)continue;
       const data=JSON.parse(readFileSync(file,'utf8')); let row=data[params?.threadId],result={};
       if(method==='thread/start'){const threadId=randomUUID();row=data[threadId]={id:threadId,cwd:params.cwd,turns:[]};save(data);result={thread:row};}
-      if(method==='thread/read')result={thread:{...row,status:{type:row?.turns.at(-1)?.status==='inProgress'?'active':'idle'}}};
+      if(method==='thread/read')result={thread:{...row,status:{type:row?.detached?'notLoaded':row?.turns.at(-1)?.status==='inProgress'?'active':'idle'}}};
       if(method==='thread/turns/list')result={data:[...row.turns].reverse().slice(0,params.limit),nextCursor:null};
       if(method==='turn/start'){const turn={id:randomUUID(),status:'inProgress',items:[],input:params.input};row.turns.push(turn);save(data);result={turn};}
       if(method==='turn/steer'){row.turns.at(-1).input.push(...params.input);save(data);result={turnId:row.turns.at(-1).id};}
@@ -124,5 +125,20 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       const turns = await fixture.call('codex_call', {method:'thread/turns/list', params:{threadId,limit:1,sortDirection:'desc'}, waitMs:1000});
       assert.equal(turns.result.data[0].id, sent.turnId);
     }
+    // A restarted connector retains its preference while Desktop holds the live writer.
+    const detached = read(); detached[created.threadId].detached = true;
+    detached[created.threadId].turns.at(-1).status = 'completed'; save(detached);
+    await mkdir(path.join(directory, 'thread-writer-locks'));
+    const writer = spawn('python3', ['-c', 'import fcntl,sys; f=open(sys.argv[1],"w"); fcntl.flock(f,fcntl.LOCK_EX); print("ready",flush=True); sys.stdin.read()', path.join(directory, 'thread-writer-locks', created.threadId + '.lock')]);
+    await new Promise<void>(resolve => writer.stdout.once('data', () => resolve()));
+    try {
+      const observed = await fixture.call('codex_wait', {threadId:created.threadId, timeoutMs:5000});
+      assert.equal(observed.state, 'completed', JSON.stringify(observed));
+      assert.equal(observed.runtimeSource, 'codex-desktop-owner');
+      const release = await fixture.completed('codex_release', {threadId:created.threadId});
+      assert.equal(release.error?.code, 'WRITER_RELEASE_REQUIRES_OWNER', JSON.stringify(release));
+      const owner = await fixture.call('codex_owner', {threadId:created.threadId});
+      assert.equal(owner.owner, 'desktop'); assert.equal(owner.state, 'held');
+    } finally { writer.stdin.end(); await new Promise(resolve => writer.once('exit', resolve)); }
   } finally { await fixture.close(); for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); await rm(directory, {recursive:true,force:true}); }
 });

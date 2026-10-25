@@ -181,6 +181,8 @@ Self-tests MUST use purpose:self-test and default notify:null without copying th
 
 ### 7.2 Native retry
 
+Connector execution metadata records ARC's writer preference, not a lease that survives process exit. Native Desktop can take the released writer and resume interrupted work with `resume_interrupted_task`. Native attribution does not distinguish automatic recovery from a Desktop Resume action. ARC observes the current Desktop owner through the follower protocol while retaining its connector preference. Restart observation never resumes a task. An explicit later connector write may resume an unloaded thread only through the native writer acquisition; a live Desktop writer remains authoritative. ARC never deletes a lock, closes a shared app-server, or unsubscribes another owner to reclaim a thread.
+
 After an ARC turn fails/is interrupted, reuse owner snapshots, event wakeups, and the two-second fallback to observe the immediately following turn. Do not add a poller. Read persisted history only after a snapshot shows a candidate. Confirmed new user content stops inheritance observation.
 
 All conditions are required:
