@@ -104,7 +104,7 @@ export function taskScenario(timelines: Record<string, AgentTimeline>, activity:
       let entry = routing.get(key);
       if (!entry) {
         const value = structuredClone(routingByTask[request.taskId] ?? { state: 'not-routable', deferUntil: null, pausedBy: null, reason: 'no-source-binding' });
-        routing.set(key, entry = { value, remaining: Math.max(0, (value.deferUntil ?? appNow()) - appNow()) });
+        routing.set(key, entry = { value, remaining: value.state === 'paused' ? 15000 : Math.max(0, (value.deferUntil ?? appNow()) - appNow()) });
       }
       const now = appNow();
       if (entry.value.state === 'deferred' && (entry.value.deferUntil ?? now) <= now) entry.value = { state: 'routed', deferUntil: null, pausedBy: null, reason: 'countdown-elapsed' };

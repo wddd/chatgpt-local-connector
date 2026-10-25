@@ -1,0 +1,22 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "panel": {
+    "kind": "agent",
+    "id": "codex"
+  },
+  "detailTask": 0,
+  "tasks": [
+    {
+      "agent": "codex",
+      "phase": "interaction",
+      "title": "Routed request fixture",
+      "headline": "Waiting for a sample selection",
+      "question": true,
+      "requestRouting": "routed"
+    }
+  ]
+}

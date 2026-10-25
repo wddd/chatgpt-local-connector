@@ -102,6 +102,10 @@ Task-detail fixtures use sanitized payloads matching `AgentTimeline` / `AgentInt
 | --- | --- |
 | `task-owner-connector` | Connector ownership hides the owner chip. |
 | `task-owner-desktop` | Desktop ownership shows the owner chip; open it to inspect handoff history. |
+| `task-routing-deferred` | A 15-second countdown with pause and handoff controls. |
+| `task-routing-paused` | Paused routing with resume and handoff controls. |
+| `task-routing-routed` | Routed status without delay controls. |
+| `task-routing-not-routable` | Next-check status without delay controls. |
 
 Target one fixture with `npm run accept:ui -- --scenario=task-owner-desktop` from main. The runner uses browser fixtures and screenshots. A missing route fails readiness with its method and path in `scenario.missingRoutes` and `data-scenario-error`.
 

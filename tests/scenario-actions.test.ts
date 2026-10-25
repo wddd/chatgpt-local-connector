@@ -87,6 +87,20 @@ test('task scenarios execute panel actions with mock receipts and readable state
     assert.throws(()=>scenarioResponse('unknown-write','POST',{}),/SCENARIO_ACTION_UNAVAILABLE/);
     assert.deepEqual(scenarioReadiness(null).missingRoutes, ['POST unknown-write']);
     assert.equal(scenarioReadiness(null).state, 'failed');
+    for (const state of ['deferred','paused','routed','not-routable']) {
+      await installScenario(`task-routing-${state}`);
+      const args = {agent:'codex',taskId:'fixture-task-0',id:'fixture-interaction-0'};
+      const route = (action:string) => scenarioResponse('tasks/request-routing','POST',{...args,action}).routing;
+      assert.equal(route('read').state, state);
+      if (state === 'deferred' || state === 'paused') {
+        assert.equal(route('pause').state, 'paused');
+        const resumed = route('resume');
+        assert.equal(resumed.state, 'deferred'); assert.ok(resumed.deferUntil > Date.now());
+        assert.equal(route('handoff').state, 'routed');
+      } else {
+        assert.equal(route('pause').state, state); assert.equal(route('handoff').state, state);
+      }
+    }
     await installScenario('timeline-multi-turn');
     assert.deepEqual(scenarioResponse('tasks/reviews','POST',{id}).reviews,[]);
     assert.deepEqual(call('codex_queue',{threadId:id}).items,[]);
