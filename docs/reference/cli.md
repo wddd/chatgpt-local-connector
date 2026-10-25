@@ -530,3 +530,30 @@ Use `action:"pause"`, `action:"resume"`, or `action:"read"` with the same argume
 For other Agents include `agent` and use their `taskId` and string-form native
 request ID. Local management uses `tasks.request-routing` with the same arguments
 inside `body`; `tasks.settings.set` accepts `body.requestRoutingDelaySeconds`.
+
+## Instance environment overrides
+
+Use `cli control app_env` to read instance-local acceptance inputs. Pass `--stdin`
+with `{"action":"set","reducedMotion":true,"colorScheme":"dark","locale":"en","windowWidth":320,"taskPanelWidth":320,"presence":"present","clock":{"freeze":true}}`
+to set them. `presence` also accepts `absent` and `follow-system`. Widths are logical
+pixels from 320 to 3840; supported locales are `en` and `zh-CN`.
+
+`{"action":"set","clock":{"advanceMs":15000}}` advances the routing/UI clock.
+`clock.speed` accepts 0 through 100; `clock.freeze:false` resumes speed 1 unless a
+speed is supplied. Advances accept 0 through 604800000 ms and are not replay-safe.
+Read back after an uncertain response. Native Codex, security expiry and transport
+clocks remain real.
+
+`{"action":"clear"}` clears every override. Sets merge fields and renew `ttlMs`
+(default 900000; range 1–3600000 real milliseconds). Overrides are stored separately
+from preferences under the selected instance, work in installed and isolated apps,
+and are marked in logs. `cli --state-dir <absolute-directory> control app_env`
+targets an isolated instance explicitly. There is no Settings UI control.
+
+Read `cli app snapshot --stdin` with `{"modelOnly":true}` for `model.env` effective
+values and `source:system|override`, plus `active`/`expiresAt`. Normal app preferences
+and OS resolution are both `system`. Width fields expose actual `value` and override
+`requested`; a closed task panel has `value:null`. Changes are observed within the
+renderer polling cadence; snapshot refreshes inputs before reading. See
+[Acceptance](../dev/acceptance.md#instance-environment) for restoration and scope.
+Acceptance MUST never modify host system settings; use overrides or report a gap.

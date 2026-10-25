@@ -635,3 +635,18 @@ routing state and never reopen an answered request.
 {"op":"request_route","args":{"agent":"pi","taskId":"<task-id>","id":"<native-id>","action":"pause"}}
 {"op":"request_route","args":{"taskId":"<thread-id>","id":"<responseId>","action":"resume"}}
 ```
+
+## Acceptance environment
+
+Use `act({op:"app_env",args:{action:"read"}})` to inspect the current instance.
+`action:"set"` merges explicit `reducedMotion`, `colorScheme`, `locale`,
+`windowWidth`, `taskPanelWidth`, `presence` and `clock` inputs. `action:"clear"`
+restores normal resolution. The guide declares ranges and supported values.
+The existing `guide`, `query`, `act` tool shapes and notification envelope are
+unchanged. Read `app snapshot` for rendered `model.env` values and provenance.
+
+Acceptance MUST never modify host system settings. Use these app/AX inputs or
+report a gap. Overrides expire using real time, remain separate from exported
+preferences and do not alter native Codex timing. See
+[instance environment](../dev/acceptance.md#instance-environment) for CLI examples,
+clock boundaries and width restoration.

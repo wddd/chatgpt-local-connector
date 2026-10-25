@@ -8,6 +8,62 @@ Acceptance MUST default to background operation. Development and isolated deskto
 
 Steps that require keyboard shortcuts or focus-dependent behavior MUST first use `screen` with `front=auto`. It yields to user input within the last 60 seconds and restores the previous app after temporary activation. On `FOREGROUND_REQUIRED`, wait for at most three minutes before retrying. If the error persists, or avoiding focus would require many retries or contorted workarounds, use `front=always`. This bypasses the inactivity gate and restores the previous app afterwards. The acceptance report MUST name the step and the reason for using `front=always`. Explicit `raise` requests foreground activation rather than temporary focus.
 
+## Instance environment
+
+Acceptance MUST never modify host system settings. This includes accessibility,
+appearance, language, date/time, network, notifications and privacy permissions.
+Use `app_env` through the local CLI or the existing `act` tool. If ARC cannot vary
+an input at its app/AX layer, report an acceptance gap. Do not open System Settings
+or use OS configuration commands to work around the gap.
+
+Overrides work in installed and isolated instances and are off by default. Target
+the isolated instance with `cli --state-dir <absolute-directory>` before the command.
+Never target the installed instance accidentally. The operation is not a Settings
+UI preference and does not write exported preferences.
+
+```sh
+arc cli control app_env
+printf '%s' '{"action":"set","ttlMs":900000,"reducedMotion":true,"colorScheme":"dark","locale":"zh-CN","windowWidth":320,"taskPanelWidth":320,"presence":"present","clock":{"freeze":true}}' | arc cli control app_env --stdin
+printf '%s' '{"modelOnly":true}' | arc cli app snapshot --stdin
+printf '%s' '{"action":"set","clock":{"advanceMs":15000}}' | arc cli control app_env --stdin
+printf '%s' '{"action":"set","clock":{"speed":10}}' | arc cli control app_env --stdin
+printf '%s' '{"action":"clear"}' | arc cli control app_env --stdin
+```
+
+`act({op:"app_env",args:{action:"read"}})` reads the same state. `set` merges supplied
+fields and renews the real-time TTL: 15 minutes by default, at most one hour. Set
+`presence:"absent"` to route immediately or `presence:"follow-system"` to resume
+focus/visibility heartbeats. Presence applies to all routable requests in the
+selected instance; verified notification paths and first-answer-wins still apply.
+Freeze before creating a request when testing the complete countdown. Advancing
+is not replay-safe; read back after an uncertain result before another advance.
+
+The renderer observes changes within its 500 ms polling cadence. `app snapshot`
+refreshes overrides before reading the model. Wait for `model.layoutSettled` and
+inspect `model.env`: every field reports `value` and `source:system|override`.
+Here `system` means normal application preference/OS resolution. Widths report
+observed logical pixels in `value` and the override in `requested`; a closed task
+panel has a null observed width. Viewport constraints can clamp a panel width.
+Use a wider window when the task panel itself must measure 320 px. Overrides are
+marked by `active`, `expiresAt` and `app_env` diagnostic logs.
+
+Always clear overrides after acceptance. TTL uses real time even when the virtual
+clock is frozen. Expired values are ignored and removed on the next read. Width
+restoration retains the pre-override baseline across renderer/process restarts so
+a temporary width saved by the window-state plugin is restored on the next UI
+synchronization. Clear/expiry restores ordinary appearance and language without
+changing saved preferences. Leaving an overridden clock cancels its remaining
+routing delays; pause is never permission to answer a request.
+
+The virtual clock covers request-routing delays, conversation/timeline/bubble
+relative times, quota reset/pace displays, Relay last-seen labels and dispatch
+"today" counts. It does not change native Codex time, provider/security expiry,
+network polling/retries, updater/replacement lifecycle, persisted activity read
+retention, animation durations, tooltip delays or copied-feedback durations.
+Timezone/DST boundaries, notification delivery, OS permission prompts, real offline
+behavior and native lifecycle timing still require separately authorized conditions or a reported
+gap; acceptance never changes host settings to manufacture them.
+
 ## Local replacement
 
 Use the [local app replacement protocol](../reference/app-replacement.md) for an authorized installed-build upgrade. Run the candidate Core's `cli app replace <bundle> --check` first, then `cli app replace <bundle> --now` as the dispatching turn's final command for an explicit user-directed installation. Omit `--now` when idle waiting and a restart countdown are desired. Do not call `app quit` before it. Reconnect from the control source and read `app replace --status`, `app status`, and `status`; compare Desktop/Core build hashes and then perform the requested connection or provider acceptance. A staged receipt or successful package check alone is not installed-app acceptance. Build-only or no-restart tasks must stop before the mutating replacement command.
