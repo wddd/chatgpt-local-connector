@@ -3097,6 +3097,108 @@
       },
       "description": "Run official logout in this profile and remove its local configuration after successful logout. Other profiles and the default CLI login are unchanged.",
       "localOnly": true
+    },
+    {
+      "name": "claude.accounts.default",
+      "method": "GET",
+      "route": "claude-accounts/default",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "Read the host Claude CLI login identity in place without importing or copying credentials.",
+      "localOnly": true
+    },
+    {
+      "name": "claude.accounts.routes",
+      "method": "GET",
+      "route": "claude-accounts/routes",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "List host-owned cloud-session to Claude profile assignments. Unassigned sessions retain the default CLI route. Missing assigned profiles fail without falling back.",
+      "localOnly": true
+    },
+    {
+      "name": "claude.accounts.route",
+      "method": "PUT",
+      "route": "claude-accounts/routes",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "description": "ARC profile ID or default for the host CLI login."
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Complete Claude cloud-session ID or claude.ai/code URL. A /chat UUID must first be resolved to its workspace_session_id; do not infer one from the URL."
+              }
+            },
+            "required": [
+              "accountId",
+              "target"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Assign or explicitly replace the account for a target. Scheduled notifications and reachability checks use this route; no message is sent.",
+      "localOnly": true
+    },
+    {
+      "name": "claude.accounts.send",
+      "method": "POST",
+      "route": "claude-accounts/send",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "description": "ARC profile ID or default for the host CLI login."
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Complete Claude cloud-session ID or claude.ai/code URL. A /chat UUID must first be resolved to its workspace_session_id; do not infer one from the URL."
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8000
+              }
+            },
+            "required": [
+              "accountId",
+              "target",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "body"
+        ]
+      },
+      "description": "Send one notification using the selected profile and persist its target route. An existing different route is rejected; use claude.accounts.route to explicitly change it. Successful CLI acknowledgement must match the target. No automatic retries; after an uncertain outcome inspect the receiving conversation before sending again.",
+      "localOnly": true
     }
   ]
 }

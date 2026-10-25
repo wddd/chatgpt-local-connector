@@ -7,6 +7,7 @@ use tokio::{
     sync::mpsc,
 };
 mod browsers;
+pub(crate) mod routing;
 
 const OPENED_URL: &str = "ARC_CLAUDE_LOGIN_URL_FILE";
 
@@ -87,12 +88,13 @@ fn list_accounts() -> Result<Vec<Account>> {
 /// Remove inherited authentication and provider overrides only in ARC's CLI child.
 pub fn isolated_environment(
     env: Vec<(OsString, OsString)>,
-    config: &Path,
+    config: Option<&Path>,
 ) -> Vec<(OsString, OsString)> {
     let blocked = [
         "ANTHROPIC_API_KEY",
         "ANTHROPIC_AUTH_TOKEN",
         "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_CUSTOM_HEADERS",
         "CLAUDE_CODE_OAUTH_TOKEN",
         "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
         "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR",
@@ -103,9 +105,21 @@ pub fn isolated_environment(
         "CLAUDE_CODE_USE_BEDROCK",
         "CLAUDE_CODE_USE_VERTEX",
         "CLAUDE_CODE_USE_FOUNDRY",
+        "CLAUDE_CODE_USE_GATEWAY",
+        "CLAUDE_CODE_HOST_CREDS_FILE",
         "BROWSER",
         OPENED_URL,
     ];
+    let host_config: Vec<_> = env
+        .iter()
+        .filter(|(key, _)| {
+            config.is_none()
+                && ["CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR"]
+                    .iter()
+                    .any(|name| key.to_string_lossy().eq_ignore_ascii_case(name))
+        })
+        .cloned()
+        .collect();
     let mut env: Vec<_> = env
         .into_iter()
         .filter(|(key, _)| {
@@ -114,17 +128,27 @@ pub fn isolated_environment(
                 .any(|item| key.to_string_lossy().eq_ignore_ascii_case(item))
         })
         .collect();
-    env.push(("CLAUDE_CONFIG_DIR".into(), config.as_os_str().to_owned()));
+    if let Some(config) = config {
+        env.push(("CLAUDE_CONFIG_DIR".into(), config.as_os_str().to_owned()));
+    } else {
+        env.extend(host_config);
+    }
     env
 }
 
 async fn cli(config: &Path) -> Result<tokio::process::Command> {
+    command_for(Some(config)).await
+}
+
+async fn command_for(config: Option<&Path>) -> Result<tokio::process::Command> {
     let binary = crate::agents::driver::discover("claude")
         .ok_or("CLAUDE_NOT_FOUND: Install Claude Code before signing in")?;
     let mut cmd = command(binary);
     cmd.env_clear()
-        .envs(isolated_environment(std::env::vars_os().collect(), config))
-        .current_dir(config);
+        .envs(isolated_environment(std::env::vars_os().collect(), config));
+    if let Some(config) = config {
+        cmd.current_dir(config);
+    }
     cmd.env(
         "PATH",
         std::env::join_paths(crate::agents::driver::search_paths()).map_err(|e| e.to_string())?,
@@ -141,6 +165,29 @@ async fn cli(config: &Path) -> Result<tokio::process::Command> {
         .await?
         .apply(&mut cmd);
     Ok(cmd)
+}
+
+// The host login is referenced in place; credentials are never imported into ARC.
+fn config_dir(account_id: &str) -> Result<PathBuf> {
+    if account_id == "default" {
+        return Ok(std::env::var_os("CLAUDE_CONFIG_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| dirs::home_dir().expect("home directory").join(".claude")));
+    }
+    read_account(account_id).map_err(|_| "CLAUDE_ACCOUNT_NOT_FOUND: The assigned profile is missing or unreadable. Select an existing profile with claude.accounts.route; ARC will not use another account automatically".to_owned())?;
+    Ok(account_dir(account_id)?.join("config"))
+}
+
+pub(crate) async fn account_command(account_id: &str) -> Result<tokio::process::Command> {
+    if account_id == "default" {
+        command_for(None).await
+    } else {
+        cli(&config_dir(account_id)?).await
+    }
+}
+
+pub(crate) async fn account_identity(account_id: &str) -> Result<Value> {
+    identity_from_command(account_command(account_id).await?).await
 }
 
 fn safe_identity(value: &Value) -> Value {
@@ -164,7 +211,10 @@ fn safe_identity(value: &Value) -> Value {
 }
 
 async fn identity(config: &Path) -> Result<Value> {
-    let mut cmd = cli(config).await?;
+    identity_from_command(cli(config).await?).await
+}
+
+async fn identity_from_command(mut cmd: tokio::process::Command) -> Result<Value> {
     let result = tokio::time::timeout(
         Duration::from_secs(15),
         cmd.args(["auth", "status", "--json"])
@@ -242,8 +292,22 @@ impl Manager {
     }
 
     pub async fn request(&self, route: &str, method: &str, body: Value) -> Result<Value> {
+        if route == "claude-accounts/default" && method == "GET" {
+            return Ok(
+                json!({"id":"default","identity":account_identity("default").await?,"observedAt":now()}),
+            );
+        }
+        if route == "claude-accounts/routes" && method == "GET" {
+            return Ok(json!({"routes":routing::list()?}));
+        }
+        if route == "claude-accounts/routes" && method == "PUT" {
+            return routing::bind(string(&body, "target"), string(&body, "accountId"), true).await;
+        }
         if route == "claude-accounts/browsers" && method == "GET" {
             return Ok(json!({"browsers":browsers::discover().await?}));
+        }
+        if route == "claude-accounts/send" && method == "POST" {
+            return crate::claude_notify::send_account_notification(&body).await;
         }
         let mut current = self.login.lock().await;
         if route == "claude-accounts" && method == "GET" {
@@ -511,6 +575,21 @@ mod tests {
         }
     }
     #[test]
+    fn host_keychain_namespace_is_preserved() {
+        // Regression: Explicitly setting ~/.claude for the default account selected a different macOS Keychain entry and reported signed out.
+        let original = vec![(OsString::from("PATH"), OsString::from("tools"))];
+        assert_eq!(isolated_environment(original.clone(), None), original);
+        let configured = vec![
+            ("CLAUDE_CONFIG_DIR".into(), "custom".into()),
+            ("CLAUDE_SECURESTORAGE_CONFIG_DIR".into(), "vault".into()),
+        ];
+        assert_eq!(isolated_environment(configured.clone(), None), configured);
+        assert_eq!(
+            isolated_environment(configured, Some(Path::new("profile"))),
+            vec![("CLAUDE_CONFIG_DIR".into(), "profile".into())]
+        );
+    }
+    #[test]
     fn child_environment_keeps_profiles_separate() {
         // Property: each child has exactly one explicit profile and no inherited authentication override.
         let env = vec![
@@ -518,10 +597,12 @@ mod tests {
             ("claude_config_dir".into(), "other".into()),
             ("ANTHROPIC_API_KEY".into(), "secret".into()),
             ("CLAUDE_CODE_USE_VERTEX".into(), "1".into()),
+            ("CLAUDE_CODE_HOST_CREDS_FILE".into(), "other-account".into()),
+            ("CLAUDE_CODE_USE_GATEWAY".into(), "1".into()),
             ("PATH".into(), "tools".into()),
         ];
         for profile in [Path::new("/profiles/a"), Path::new("/profiles/b")] {
-            let actual = isolated_environment(env.clone(), profile);
+            let actual = isolated_environment(env.clone(), Some(profile));
             assert_eq!(
                 actual,
                 vec![

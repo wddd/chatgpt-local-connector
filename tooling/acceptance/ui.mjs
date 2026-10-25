@@ -93,6 +93,17 @@ try {
           });
           if (row.layout.width > width || row.layout.controls.some(r => r.left < 0 || r.right > width)) throw new Error('Claude account controls overflow the viewport');
         }
+        if (fixture.claudeNotify) {
+          // Regression: A notification account must remain explicit while selecting the destination and editing its message.
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          await page.getByRole('button', { name: messages['claudeAccounts.notify'], exact: true }).first().click();
+          const dialog = page.getByRole('dialog', { name: `${messages['claudeAccounts.notify']} · host@example.invalid`, exact: true });
+          await dialog.waitFor({ state: 'visible' });
+          await dialog.getByRole('textbox', { name: messages['claudeAccounts.target'], exact: true }).fill('session_010000000000000000000001');
+          await dialog.getByRole('textbox', { name: messages['claudeAccounts.message'], exact: true }).fill('ARC notification fixture');
+          await dialog.getByRole('button', { name: messages['claudeAccounts.send'], exact: true }).waitFor({ state: 'visible' });
+        }
+
         await writeFile(path.join(out, `${key}.json`), JSON.stringify(model, null, 2));
         if (screenshots) {
           const buffer = await page.screenshot({ path: path.join(out, `${key}.png`), animations: 'disabled' });

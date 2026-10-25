@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import { copyText } from "../platform";
 import { useInterval } from "../state/hooks";
-import { Button, Dialog, Field, Group, IconButton, Input, Notice, Row, SingleChoice } from "./ui";
+import { Button, Dialog, Field, Group, IconButton, Input, Notice, Row, SingleChoice, Textarea } from "./ui";
 
 type Account = { id: string; identity: { loggedIn?: boolean; email?: string; orgName?: string; authMethod?: string }; observedAt: string | null };
 type Login = { id: string; accountId: string; browserId: string; browserName: string; state: string; loginUrl?: string; browserError?: string; error?: string };
@@ -14,6 +14,11 @@ const pending = (login?: Login | null) => !!login && ["starting", "waiting"].inc
 
 export default function ClaudeAccounts() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
+  const [hostAccount, setHostAccount] = useState<Account>();
+  const initialized = useRef(false), refreshing = useRef(false);
+  const [notifyAccount, setNotifyAccount] = useState<Account>();
+  const [target, setTarget] = useState(""), [message, setMessage] = useState("");
+  const [sendResult, setSendResult] = useState(""), [targetError, setTargetError] = useState(""), [messageError, setMessageError] = useState("");
   const [browsers, setBrowsers] = useState<Browser[]>([]), [browser, setBrowser] = useState("default");
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -25,14 +30,25 @@ export default function ClaudeAccounts() {
   if (active && !browserOptions.some(option => option.value === selectedBrowser)) browserOptions.push({ value: selectedBrowser, label: login!.browserName });
   const label = (account: Account) => account.identity.email || t("claudeAccounts.profile", { id: account.id.slice(0, 8) });
 
-  async function refresh() { setSnapshot(await api<Snapshot>("claude-accounts")); setLoadError(""); }
+  async function refresh() {
+    const next = await api<Snapshot>("claude-accounts"); setSnapshot(next);
+    if (!initialized.current) {
+      await Promise.all([refreshBrowsers(), ...(next.cliAvailable ? [refreshHost()] : [])]);
+      initialized.current = true;
+    }
+    setLoadError("");
+  }
   async function refreshBrowsers() {
     const data = await api<{ browsers: Browser[] }>("claude-accounts/browsers");
     setBrowsers(data.browsers);
     setBrowser(current => current === "default" || data.browsers.some(b => b.id === current) ? current : "default");
   }
-  useEffect(() => { void refreshBrowsers().catch(e => setError(String(e))); }, []);
-  useInterval(() => { void refresh().catch(e => setLoadError(String(e))); }, 2000, true);
+  async function refreshHost() { setHostAccount(await api<Account>("claude-accounts/default")); }
+  useInterval(() => {
+    if (refreshing.current) return;
+    refreshing.current = true;
+    void refresh().catch(e => setLoadError(String(e))).finally(() => { refreshing.current = false; });
+  }, 2000, true);
 
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");
@@ -56,6 +72,28 @@ export default function ClaudeAccounts() {
     } catch (e) { setCodeError(String(e)); document.getElementById("claude-login-code")?.focus(); }
     finally { setBusy(false); }
   }
+  async function openNotification(account: Account) {
+    await action(async () => {
+      const { routes } = await api<{ routes: Record<string, string> }>("claude-accounts/routes");
+      setNotifyAccount(account); setTarget(Object.keys(routes).find(key => routes[key] === account.id) || "");
+      setMessage(""); setSendResult(""); setTargetError(""); setMessageError("");
+    });
+  }
+  async function sendNotification(routeOnly = false) {
+    setTargetError(""); setMessageError(""); setSendResult("");
+    if (!target.trim()) { setTargetError(t("claudeAccounts.targetRequired")); document.getElementById("claude-notify-target")?.focus(); return; }
+    if (!routeOnly && !message.trim()) { setMessageError(t("claudeAccounts.messageRequired")); document.getElementById("claude-notify-message")?.focus(); return; }
+    setBusy(true); setError("");
+    try {
+      const body = { accountId: notifyAccount!.id, target: target.trim() };
+      await api(routeOnly ? "claude-accounts/routes" : "claude-accounts/send", routeOnly ? "PUT" : "POST", routeOnly ? body : { ...body, message });
+      setSendResult(t(routeOnly ? "claudeAccounts.routeSaved" : "claudeAccounts.sent"));
+    } catch (e) {
+      const detail = String(e);
+      if (detail.includes("INVALID_CLAUDE_SESSION")) { setTargetError(detail); document.getElementById("claude-notify-target")?.focus(); }
+      else setError(detail);
+    } finally { setBusy(false); }
+  }
   const authenticated = login && snapshot?.accounts.find(a => a.id === login.accountId);
   return <Group title={t("claudeAccounts.title")}>
     <div className="claude-account-actions">
@@ -67,13 +105,14 @@ export default function ClaudeAccounts() {
     </div>
     {snapshot && !snapshot.cliAvailable && <Notice tone="warning">{t("claudeAccounts.installCli")}</Notice>}
     {(error || loadError) && <Notice tone="danger">{error || loadError}</Notice>}
-    {snapshot?.accounts.map(account => <Row key={account.id} title={label(account)} description={account.identity.orgName}>
+    {[...(hostAccount ? [hostAccount] : []), ...(snapshot?.accounts || [])].map(account => <Row key={account.id} title={label(account)} description={account.id === "default" ? t("claudeAccounts.hostAccount") : account.identity.orgName}>
       <div className="claude-account-row">
         <span title={account.observedAt ? new Date(account.observedAt).toLocaleString() : undefined}>{t(account.identity.loggedIn === true ? "claudeAccounts.signedIn" : account.identity.loggedIn === false ? "claudeAccounts.signedOut" : "claudeAccounts.unfinished")}</span>
         <IconButton icon={RefreshCw} label={t("claudeAccounts.checkAccount", { account: label(account) })} disabled={busy || active}
-          onClick={() => void action(async () => { await api(`claude-accounts/${account.id}/refresh`, "POST"); })} />
-        <Button disabled={busy || active} onClick={() => void start(account.id)}>{t("claudeAccounts.relogin")}</Button>
-        <Button variant="ghost" disabled={busy || active} onClick={() => { setError(""); setRemove(account); }}>{t("claudeAccounts.removeAction")}</Button>
+          onClick={() => void action(async () => { if (account.id === "default") await refreshHost(); else await api(`claude-accounts/${account.id}/refresh`, "POST"); })} />
+        <Button id={`claude-notify-${account.id}`} disabled={busy || active} onClick={() => void openNotification(account)}>{t("claudeAccounts.notify")}</Button>
+        {account.id !== "default" && <><Button disabled={busy || active} onClick={() => void start(account.id)}>{t("claudeAccounts.relogin")}</Button>
+        <Button variant="ghost" disabled={busy || active} onClick={() => { setError(""); setRemove(account); }}>{t("claudeAccounts.removeAction")}</Button></>}
       </div>
     </Row>)}
     {showLogin && login && <Dialog centered title={t("claudeAccounts.login")} onClose={() => setShowLogin(false)} returnFocus="#claude-account-login"
@@ -98,6 +137,23 @@ export default function ClaudeAccounts() {
           </details>
         </>}
       </div>
+    </Dialog>}
+    {notifyAccount && <Dialog centered title={`${t("claudeAccounts.notify")} · ${label(notifyAccount)}`} onClose={() => setNotifyAccount(undefined)} busy={busy} returnFocus={`#claude-notify-${notifyAccount.id}`}
+      footer={<><Button disabled={busy} onClick={() => void sendNotification(true)}>{t("claudeAccounts.saveRoute")}</Button>
+        <Button variant="primary" busy={busy} type="submit" form="claude-notify-form">{t("claudeAccounts.send")}</Button></>}>
+      <form id="claude-notify-form" className="claude-login-content" onSubmit={event => { event.preventDefault(); void sendNotification(); }}>
+        <Field id="claude-notify-target" label={t("claudeAccounts.target")} error={targetError}>
+          <Input id="claude-notify-target" value={target} onChange={event => setTarget(event.target.value)} disabled={busy}
+            aria-invalid={!!targetError} aria-describedby={targetError ? "claude-notify-target-error" : undefined} />
+        </Field>
+        <Field id="claude-notify-message" label={t("claudeAccounts.message")} error={messageError}>
+          <Textarea id="claude-notify-message" value={message} onChange={event => setMessage(event.target.value)} maxLength={8000} disabled={busy}
+            aria-invalid={!!messageError} aria-describedby={messageError ? "claude-notify-message-error" : undefined} />
+        </Field>
+        <p>{t("claudeAccounts.routeEffect")}</p>
+        {error && <Notice tone="danger">{error}</Notice>}
+        {sendResult && <p role="status">{sendResult}</p>}
+      </form>
     </Dialog>}
     {remove && <Dialog centered title={t("claudeAccounts.remove")} onClose={() => setRemove(undefined)} busy={busy}
       footer={<><Button disabled={busy} onClick={() => setRemove(undefined)}>{t("cancel")}</Button><Button variant="danger" busy={busy}

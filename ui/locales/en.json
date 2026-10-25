@@ -1180,5 +1180,16 @@
   "claudeAccounts.state.failed": "Login failed",
   "claudeAccounts.state.cancelled": "Login cancelled",
   "claudeAccounts.profile": "Claude profile {id}",
-  "claudeAccounts.removeAction": "Remove"
+  "claudeAccounts.removeAction": "Remove",
+  "claudeAccounts.hostAccount": "Default CLI login",
+  "claudeAccounts.notify": "Notifications",
+  "claudeAccounts.saveRoute": "Save account route",
+  "claudeAccounts.send": "Send notification",
+  "claudeAccounts.target": "Cloud conversation ID or link",
+  "claudeAccounts.message": "Message",
+  "claudeAccounts.targetRequired": "Enter a cloud conversation ID or link.",
+  "claudeAccounts.messageRequired": "Enter a notification message.",
+  "claudeAccounts.routeSaved": "Account route saved.",
+  "claudeAccounts.sent": "Claude CLI accepted the message. Check the receiving conversation to confirm receipt.",
+  "claudeAccounts.routeEffect": "This account will also send future ARC notifications to this conversation. Saving the route replaces any previous account assignment."
 }

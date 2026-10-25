@@ -1180,5 +1180,16 @@
   "claudeAccounts.state.failed": "登录失败",
   "claudeAccounts.state.cancelled": "登录已取消",
   "claudeAccounts.profile": "Claude 账号 {id}",
-  "claudeAccounts.removeAction": "移除"
+  "claudeAccounts.removeAction": "移除",
+  "claudeAccounts.hostAccount": "系统 CLI 登录",
+  "claudeAccounts.notify": "通知",
+  "claudeAccounts.saveRoute": "保存账号路由",
+  "claudeAccounts.send": "发送通知",
+  "claudeAccounts.target": "云端对话 ID 或链接",
+  "claudeAccounts.message": "消息",
+  "claudeAccounts.targetRequired": "请输入云端对话 ID 或链接。",
+  "claudeAccounts.messageRequired": "请输入通知消息。",
+  "claudeAccounts.routeSaved": "账号路由已保存。",
+  "claudeAccounts.sent": "Claude CLI 已接受消息，请在目标对话确认收到。",
+  "claudeAccounts.routeEffect": "后续发往此对话的 ARC 通知也将使用此账号。保存路由会替换原有账号配置。"
 }

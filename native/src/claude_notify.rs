@@ -637,25 +637,28 @@ trait Executor: Sync {
         async { SendOutcome::failed("webhook_unavailable", false) }
     }
     fn send(&self, args: Vec<String>) -> impl Future<Output = Result<Vec<u8>>> + Send;
-    fn local_account(&self) -> impl Future<Output = Value> + Send {
+    fn local_account(&self, _target: &str) -> impl Future<Output = Value> + Send {
         async {json!({"available":false,"reason":"auth-status-unavailable"})}
     }
     fn escalate(&self, body: String) -> impl Future<Output = Result<()>> + Send;
 }
 struct Cli {
     service: std::sync::Weak<crate::service::Service>,
+    account_id: Option<String>,
 }
 impl Executor for Cli {
-    async fn local_account(&self) -> Value {
-        let Some(binary)=crate::agents::driver::discover("claude") else {return json!({"available":false,"reason":"claude-not-found"});};
-        let mut probe=command(&binary);
-        probe.args(["auth","status","--json"]).stdin(std::process::Stdio::null());
-        if let Ok(paths)=std::env::join_paths(crate::agents::driver::search_paths()) {probe.env("PATH",paths);}
-        let mut identity=match tokio::time::timeout(Duration::from_secs(3),probe.output()).await {
-            Ok(Ok(output))=>serde_json::from_slice::<Value>(&output.stdout).ok().map(|v|safe_account(&v)).unwrap_or(json!({"available":false,"reason":"auth-status-unavailable"})),
-            _=>json!({"available":false,"reason":"auth-status-unavailable"}),
+    async fn local_account(&self, target: &str) -> Value {
+        let account_id = match self.account_id.clone().map(Ok).unwrap_or_else(|| crate::claude_accounts::routing::account(target)) {
+            Ok(id) => id,
+            Err(error) => return json!({"available":false,"reason":error}),
         };
-        identity["cliPath"]=json!(binary);identity["observedAt"]=json!(now());identity
+        let mut identity = match crate::claude_accounts::account_identity(&account_id).await {
+            Ok(value) => safe_account(&value),
+            Err(error) => json!({"available":false,"reason":error}),
+        };
+        identity["accountId"] = json!(account_id);
+        identity["observedAt"] = json!(now());
+        identity
     }
 
     async fn webhook(
@@ -682,16 +685,14 @@ impl Executor for Cli {
         if settings()?["notificationsEnabled"] == false {
             return Err("NOTIFICATIONS_DISABLED".into());
         }
-        let binary = crate::agents::driver::discover("claude").ok_or("CLAUDE_NOT_FOUND")?;
-        let paths = std::env::join_paths(crate::agents::driver::search_paths())
-            .map_err(|e| e.to_string())?;
+        let target = args.windows(2).find(|pair| pair[0] == "--cloud")
+            .map(|pair| pair[1].as_str()).ok_or("INVALID_CLAUDE_SESSION")?;
+        let account_id = self.account_id.clone().map(Ok)
+            .unwrap_or_else(|| crate::claude_accounts::routing::account(target))?;
+        let mut cmd = crate::claude_accounts::account_command(&account_id).await?;
         let output = tokio::time::timeout(
             Duration::from_secs(30),
-            command(binary)
-                .args(args)
-                .env("PATH", paths)
-                .stdin(std::process::Stdio::null())
-                .output(),
+            cmd.args(args).stdin(std::process::Stdio::null()).output(),
         )
         .await
         .map_err(|_| "CLAUDE_SEND_TIMEOUT")?
@@ -712,6 +713,21 @@ impl Executor for Cli {
         Ok(output.stdout)
     }
 }
+/// One explicit local send; no automatic retry after an uncertain result.
+pub(crate) async fn send_account_notification(args: &Value) -> Result<Value> {
+    let target = session_id(string(args, "target"))?;
+    let account_id = string(args, "accountId");
+    let message = string(args, "message");
+    if message.trim().is_empty() || message.chars().count() > 8000 {
+        return Err("INVALID_NOTIFICATION_MESSAGE: Supply 1 to 8000 characters".into());
+    }
+    crate::claude_accounts::routing::bind(&target, account_id, false).await?;
+    let executor = Cli { service: std::sync::Weak::new(), account_id: Some(account_id.into()) };
+    deliver_target(&executor, &target, message).await?;
+    Ok(json!({"accountId":account_id,"target":target,"deliveryStatus":"delivered",
+        "hint":"Claude CLI accepted the message for this exact session. This does not confirm receiver display or acknowledgement."}))
+}
+
 async fn deliver_message(executor: &impl Executor, b: &Binding, body: &str) -> &'static str {
     if deliver_target(executor, b.target.as_deref().unwrap(), body).await.is_ok() {"delivered"} else {"failed"}
 }
@@ -1938,6 +1954,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
     let agents = &service.agents;
     let executor = Cli {
         service: Arc::downgrade(service),
+        account_id: None,
     };
     let agents = Arc::downgrade(agents);
     let weak = Arc::downgrade(control);
@@ -2131,7 +2148,8 @@ mod tests {
             let result=reachability::verify_in(&dir.0,"source-a",&args,&settings,&Fake::new(reply)).await.unwrap();
             assert_eq!(result["ok"],false);assert_eq!(result["reason"],"claude-session-not-found");assert_eq!(result["error"]["code"],"CLAUDE_SESSION_NOT_FOUND");
             assert_eq!(result["error"]["localAccount"]["email"],"fixture@example.invalid");
-            assert_eq!(result["next"]["before"]["hostCommand"],json!(["claude","auth","login"]));
+            assert_eq!(result["next"]["before"]["actor"],"user");
+            assert_eq!(result["next"]["before"]["localOperation"],"claude.accounts.routes");
             assert_eq!(result["next"]["args"],json!({"action":"verify","target":"session_010000000000000000000001"}));
             let status=governance::status_in(&dir.0,"source-a",&args,chrono::Utc::now().timestamp(),&settings).unwrap();
             assert_eq!(status["targets"][0]["lastVerificationError"]["code"],"CLAUDE_SESSION_NOT_FOUND");
@@ -2158,7 +2176,7 @@ mod tests {
         }
     }
     impl Executor for Fake {
-        async fn local_account(&self) -> Value {safe_account(&json!({"loggedIn":true,"authMethod":"claude.ai","email":"fixture@example.invalid","accessToken":"fixture-secret","credentials":{"refreshToken":"fixture-secret"}}))}
+        async fn local_account(&self, _target: &str) -> Value {safe_account(&json!({"loggedIn":true,"authMethod":"claude.ai","email":"fixture@example.invalid","accessToken":"fixture-secret","credentials":{"refreshToken":"fixture-secret"}}))}
         async fn send(&self, args: Vec<String>) -> Result<Vec<u8>> {
             self.calls.lock().unwrap().push(args);
             self.result.clone()
