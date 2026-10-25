@@ -3,7 +3,7 @@ import type { Side } from './solve';
 import type { ProviderAccount, AgentActivitySession } from '../types';
 
 // Topology consumes the native account identity and recorded task attribution.
-export type TopologyAccount = Pick<ProviderAccount, 'id' | 'provider' | 'identityKey' | 'alias' | 'sources' | 'agentProfiles'>;
+export type TopologyAccount = Pick<ProviderAccount, 'id' | 'provider' | 'identityKey' | 'alias' | 'sources' | 'agentProfiles' | 'quota'>;
 export type AccountAttribution = Pick<AgentActivitySession, 'agentAccountId' | 'origin'>;
 export interface PathTask extends AccountAttribution { id: string; members?: (AccountAttribution & { pending?: boolean })[] }
 export interface PathNode {

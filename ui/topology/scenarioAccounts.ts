@@ -4,7 +4,7 @@ import type { TopologyAccount } from './accounts';
 
 export function installTopologyAccounts(status: Status, activity: AgentActivitySnapshot): ProviderAccount[] {
   const base = status.ingresses[0].sources![0];
-  const identities: TopologyAccount[] = [
+  const identities: Omit<TopologyAccount, 'quota'>[] = [
     { id: 'example-personal', provider: 'anthropic', identityKey: 'example-anthropic-personal', alias: 'Personal', sources: ['example-claude-personal', 'example-claude-laptop'], agentProfiles: [{ agent: 'claude', profileId: 'example-profile-personal', kind: 'cli-profile', state: 'signed-in', default: true }] },
     { id: 'example-studio', provider: 'anthropic', identityKey: 'example-anthropic-studio', alias: 'Studio', sources: ['example-claude-studio'], agentProfiles: [{ agent: 'claude', profileId: 'example-profile-studio', kind: 'cli-profile', state: 'signed-in', default: false }] },
     { id: 'example-openai', provider: 'openai', identityKey: 'example-openai', alias: 'Personal', sources: ['example-chatgpt'], agentProfiles: [{ agent: 'codex', profileId: 'example-codex-home', kind: 'codex-home', state: 'signed-in', default: true }] },
@@ -16,7 +16,11 @@ export function installTopologyAccounts(status: Status, activity: AgentActivityS
     ...identity, createdAt: activity.observedAt, observedAt: activity.observedAt,
     notifications: { state: identity.sources.length ? identity.provider === 'openai' ? 'mcp-events' : 'not-bound' : 'n/a',
       reachable: identity.provider === 'openai', sessions: [] },
-    quota: { state: 'unavailable', windows: [] },
+    quota: identity.provider === 'anthropic' && identity.agentProfiles.length ? {
+      state: 'ready', observedAt: activity.observedAt,
+      windows: [{ id: 'weekly', poolId: 'main', label: 'weekly', usedPercent: identity.id === 'example-personal' ? 27 : 73,
+        resetsAt: new Date(Date.parse(activity.observedAt) + 3 * 86400000).toISOString() }],
+    } : { state: 'unavailable', windows: [] },
     health: { state: identity.sources.length && identity.provider === 'anthropic' ? 'attention' : 'ready' },
   }));
   status.ingresses[0].sources = accounts.flatMap(a => a.sources.map(id => ({ ...base, id, product: a.provider === 'openai' ? 'chatgpt' : 'claude', label: id === 'example-source-one' ? 'Claude · Laptop' : id === 'example-source-two' ? 'Claude · Desktop' : a.provider === 'openai' ? 'Personal' : 'Claude' })));

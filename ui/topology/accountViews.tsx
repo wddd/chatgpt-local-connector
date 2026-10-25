@@ -4,6 +4,7 @@ import GraphNode from '../components/GraphNode';
 import type { NodeView } from './Topology';
 import { accountNodeId, type TopologyAccount } from './accounts';
 import { orderedSubset } from './order';
+import { AgentQuotaIcon } from '../subscriptions/QuotaRing';
 
 export interface AccountNodeActions {
   open: (side: -1 | 1, platform: string, sourceId?: string, accountId?: string) => void;
@@ -30,6 +31,7 @@ export function accountViews(views: NodeView[], side: -1 | 1, accounts: Topology
     }
     // Equal aliases (including Unidentified) never merge distinct ARC account IDs.
     const unidentified = linked.filter(a => a.alias === 'Unidentified').map(a => a.id).sort();
+    const platformIcon = side === 1 ? <AgentQuotaIcon agent={platform} quota={null} /> : first.icon;
     const childViews = linked.map(account => {
       const sources = members.filter(v => account.sources.includes(v.id));
       const selected = side === -1 ? sources.some(v => v.selected) : members.some(v => v.selected) && members.some(v => v.selectedAccountId === account.id);
@@ -38,14 +40,15 @@ export function accountViews(views: NodeView[], side: -1 | 1, accounts: Topology
       const suffix = account.alias === 'Unidentified' ? String(unidentified.indexOf(account.id) + 1) : undefined;
       const alias = suffix ? `${account.alias} · ${suffix}` : account.alias;
       const nodeLabel = mode === 'flat' ? `${label} · ${alias}` : alias;
+      const icon = side === 1 ? <AgentQuotaIcon agent={platform} quota={account.quota ?? null} /> : first.icon;
       return {
         ...first, id: accountNodeId(platform, account.id), accountId: account.id, sourceIds: sources.map(v => v.id),
-        selected, account: true, sameIdentity, label: nodeLabel,
+        selected, account: true, sameIdentity, label: nodeLabel, icon,
         attention: tasks.some(t => t.agentAccountId === account.id && (t.state === 'attention' || t.pending)),
         state,
         tasks: tasks.filter(t => t.agentAccountId === account.id),
         content: <GraphNode label={nodeLabel} state={state} highlighted={selected} onOpen={() => actions.open(side, platform, sources[0]?.id, account.id)}>
-          {mode === 'tree' ? <span className="topology-account-initial">{account.alias.slice(0, 1)}</span> : first.icon}
+          {icon}
           <span className={`graph-node-name${suffix ? ' topology-unidentified-label' : ''}`}>
             {suffix ? <><span>{mode === 'flat' ? `${label} · ${account.alias}` : account.alias}</span><span> · {suffix}</span></> : nodeLabel}
             {sameIdentity && <Icon icon={Link} />}
@@ -54,11 +57,11 @@ export function accountViews(views: NodeView[], side: -1 | 1, accounts: Topology
       } satisfies NodeView;
     });
     const platformView: NodeView = { ...first, id: side === 1 ? platform : `platform:${platform}`, platform,
-      label, sourceIds: covered.map(v => v.id),
+      label, icon: platformIcon, sourceIds: covered.map(v => v.id),
       selected: covered.some(v => v.selected) && !childViews.some(v => v.selected),
       tasks: tasks.filter(t => !linked.some(a => a.id === t.agentAccountId)),
       content: <GraphNode label={label} state={first.state} highlighted={members.some(v => v.selected)} onOpen={() => actions.open(side, platform, first.id)}>
-        {first.icon}<span className="graph-node-name">{label}</span>
+        {platformIcon}<span className="graph-node-name">{label}</span>
       </GraphNode>,
     };
     if (mode === 'flat') {

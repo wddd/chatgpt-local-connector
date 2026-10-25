@@ -61,6 +61,10 @@ function respondToScenario(path: string, method: string, body?: unknown): unknow
     if (result !== undefined) return structuredClone(result);
   }
   if (method !== 'GET') throw new Error(`SCENARIO_ACTION_UNAVAILABLE: ${path}`);
+  if (path.startsWith('accounts/')) {
+    const account = (responses.accounts as AccountsResult | undefined)?.accounts.find(account => account.id === decodeURIComponent(path.slice('accounts/'.length)));
+    if (account) return structuredClone(account);
+  }
   const route = path.split('?')[0];
   if (Object.hasOwn(responses, route)) return structuredClone(responses[route]);
   if (path.startsWith('tasks/runtime/')) {

@@ -1471,9 +1471,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .topology-mode { position: absolute; top: 16px; right: 20px; width: 154px; z-index: 8; }
 .topology-node.sources { --account-color: var(--topology-source); }
 .topology-node.agents { --account-color: var(--topology-agent); }
-.topology-account .graph-node { background: var(--topology-account-fill); border: 2px solid var(--account-color); border-radius: 50%; }
-.topology-account-initial { color: var(--account-color); font-weight: 600; font-size: 18px; }
-.topology-node .graph-node-name .icon { display: inline-flex; vertical-align: middle; margin-left: 3px; }
+.topology-node .graph-node-name .icon { display: inline-flex; vertical-align: middle; margin-left: 3px; width: 1em; height: 1em; flex: none; }
 .topology-unidentified-label { display: flex; width: max-content; }
 .topology-unidentified-label > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .topology-unidentified-label > span:last-child { flex: none; }

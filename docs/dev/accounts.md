@@ -100,9 +100,10 @@ One side panel replaces the source panel layer one plus the Remote link source d
 ### Topology
 
 - Modes: Tree (default) and Flat, a persisted preference with a top-right segmented control. Switching never reorders nodes.
-- Tree: L1 is the platform. A platform with more than one account grows L2 account nodes (about 36px, white fill, platform-color ring, alias label). Agent tasks attach to their account node (L3). A single-account platform has no L2; tasks attach to the platform.
+- Tree: L1 is the platform. A platform with more than one account grows L2 account nodes (about 36px, platform logo, alias label). Agent tasks attach to their account node (L3). A single-account platform has no L2; tasks attach to the platform.
 - Flat: L1 is `Platform · Alias` (platform name alone for single-account platforms); same-platform nodes stay adjacent.
-- Same identity: account labels carry a small link icon; hovering one also lights its counterpart on the other side.
+- Account visuals: both control-source and Agent account nodes reuse their platform logo. For multi-account Agents, the platform node shows only the logo; each account node shows its own quota ring from that account's profile quota. Missing account quota never falls back to another account's reading.
+- Same identity: account labels carry a link icon sized to the label text; hovering one also lights its counterpart on the other side.
 - Collapse: a hover-only 20px filled circle in the side's theme color (control sources orange, Agents blue-purple) with a white minus or plus, placed between the node and its outer arc, nearer the node. It collapses or expands the node's whole outer arc and children. Hovering the toggle keeps the node's path lit. Keyboard focus counts as hover.
 - Auto rules: L2 expands when a platform has more than one account; L3 expands when an account has tasks; manual choices persist and win. A collapsed node shows a badge with the hidden task count, in warning color when any is pending. Pending work is never hidden without that badge.
 - Path highlight: hovering a task or node lights the union of its paths (source account → source platform → hub → agent platform → agent account → task). Everything else dims (lines about 0.18, nodes 0.32, bubbles 0.35). Lit nodes scale slightly with a soft ring; lit bubbles shift about 6px outward with a stronger shadow. When the target is collapsed, the nearest visible ancestor lights.

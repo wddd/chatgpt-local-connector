@@ -24,5 +24,21 @@ export function useTopologyAccounts(revision: unknown) {
     }).catch(() => { /* Keep the last complete snapshot if a refresh fails. */ });
     return () => { active = false; };
   }, [revision]);
+  const quotaIds = JSON.stringify(accounts.filter(account => account.agentProfiles.some(profile => ['claude', 'codex'].includes(profile.agent))).map(account => account.id).sort());
+  useEffect(() => {
+    const ids = JSON.parse(quotaIds) as string[];
+    if (!ids.length) return;
+    let active = true, timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      const rows = await Promise.all(ids.map(id => accountsApi.get(id).catch(() => undefined)));
+      if (!active) return;
+      const quotas = new Map(rows.filter(row => row !== undefined).map(row => [row.id, row.quota]));
+      setAccounts(old => old.map(account => quotas.has(account.id) ? { ...account, quota: quotas.get(account.id)! } : account));
+      // Account details own profile quota reads and cache them for three minutes.
+      timer = setTimeout(() => void refresh(), 180000);
+    };
+    void refresh();
+    return () => { active = false; clearTimeout(timer); };
+  }, [quotaIds]);
   return accounts;
 }

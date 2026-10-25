@@ -165,5 +165,3 @@
   --task-attention-ring: color-mix(in srgb, var(--warning) 48%, var(--surface));
   --task-lift: 0 10px 24px -16px color-mix(in srgb, var(--text) 30%, transparent);
 }
-
-:root { --topology-account-fill: #fff; }
