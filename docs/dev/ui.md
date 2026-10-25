@@ -147,7 +147,11 @@ Development scenarios mock task receipts, queue/review reads and explicit action
 
 ## Account privacy and development scenarios
 
-The persisted `arc.privacy` preference blurs identity fields, session names, and connection addresses. Accounts and source-panel headers share its toggle. Snapshot requests and development scenarios enable privacy before rendering; AX and management responses remain unchanged.
+The persisted `arc.privacy` preference masks emails, organization names, identity keys, notification session names, and connection addresses. Accounts and source-panel headers share its toggle. Aliases, topology labels, task titles, prompts, and task bubbles remain readable.
+
+Render sensitive fields with `Sensitive` and compound email/organization lines with `SensitiveIdentity`. Hidden fields contain deterministic stand-in letters, preserving whitespace, `@` and `.`, with a soft inline blur and reduced opacity in both themes. Off-DOM font measurement reserves the original text width and scales stand-ins to fit it; narrow containers clip the inline run. Never keep raw values in hidden elements, titles, accessibility labels, input values, or data attributes. Plain-text tooltips and upstream notices use bullet masking for known identities and email substrings. Reduced motion disables the short blur-in animation.
+
+`SensitiveInput` displays bullet stand-ins and becomes read-only while masked; turn privacy off to edit. Copy buttons continue to copy the real value from React state. Turning privacy off restores the exact original text. Snapshot requests and development scenarios enable privacy before rendering; AX and management responses remain unchanged.
 
 `?scenario=accounts` opens the account workspace in English/light mode. `?scenario=source-panel` opens a source panel with pending and running dispatches in Chinese/dark mode. Both use invented example.com identities and in-memory management responses. Claude and Codex sign-in complete after four accounts list reads; only Claude accepts an example code. API-key login remains unfinished with native guidance. Detection lists observed profiles without inventing a single completed identity. Rename, default selection, reauthentication, notification binding/testing, removal, source correction, enablement, and connection switching have readable fixture state. Unsupported mutations fail locally. The scenarios do not authenticate with a provider.
 

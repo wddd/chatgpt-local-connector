@@ -5,7 +5,7 @@ import { t } from '../i18n';
 import { copyText } from '../platform';
 import { refreshAccounts } from '../state/accounts';
 import { Button, Checkbox, Dialog, Field, Input, Notice, SingleChoice } from './ui';
-import { Private } from './Privacy';
+import { SensitiveIdentity } from './Sensitive';
 
 type Browser = Awaited<ReturnType<typeof accountsApi.browsers>>['browsers'][number];
 export default function AddAccount({ onClose, initialLogin }: { onClose: () => void; initialLogin?: AccountLogin }) {
@@ -99,7 +99,7 @@ export default function AddAccount({ onClose, initialLogin }: { onClose: () => v
       {login?.errors?.map((message, index) => <Notice key={index}>{message}</Notice>)}
       {step === 2 && !login?.accountId && <>{detected.length ? <SingleChoice label={t('accounts.detected')} value={detectedId} onChange={value => { setIdentity(undefined); setDetectedId(value); }} options={detected.map(account => ({ value: account.id, label: account.alias }))} /> : <p role="status">{t('accounts.noneDetected')}</p>}</>}
       {step === 2 && identity && <form id="account-confirm" className="account-form" onSubmit={e => { e.preventDefault(); void confirm(); }}>
-        <Private>{[identity.email, identity.orgName].filter(Boolean).join(' · ')}</Private>
+        <SensitiveIdentity email={identity.email} orgName={identity.orgName} />
         {!!identity.sources.length && !!identity.agentProfiles.length && <Notice tone="success">{t('accounts.matched')}</Notice>}
         <Field id="account-alias" label={t('accounts.alias')} error={fieldError}><Input id="account-alias" autoFocus value={alias} disabled={busy} aria-invalid={!!fieldError} aria-describedby={fieldError ? 'account-alias-error' : undefined} onChange={e => { setAlias(e.target.value); setFieldError(''); }} /></Field>
         {identity.agentProfiles.length > 0 && <fieldset><legend>{t('accounts.useFor')}</legend>{identity.agentProfiles.map(profile => <Checkbox key={profile.profileId} checked={defaults.includes(profile.agent)} disabled={profile.default || busy || profile.state !== 'signed-in'} onChange={value => setDefaults(old => value ? [...old, profile.agent] : old.filter(agent => agent !== profile.agent))}>{profile.agent} · {t(`accounts.profile.${profile.state}`)}</Checkbox>)}</fieldset>}

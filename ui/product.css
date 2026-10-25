@@ -1477,7 +1477,14 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .topology-node[data-path-lit="true"] .graph-node { box-shadow: 0 0 0 4px color-mix(in srgb, var(--account-color) 14%, transparent); }
 .activity-slot[data-path-lit="true"] .activity-bubble { box-shadow: inset 0 0 0 1px var(--border-strong), 0 6px 18px color-mix(in srgb, var(--text) 18%, transparent); }
 /* Accounts share the workspace shell and source side panel. */
-.private-value[data-private] > span, .private-input { filter: blur(5px); user-select: none; }
+/* Only inline stand-ins blur. Their raw values never enter hidden DOM. */
+.sensitive-value { display: inline-block; min-inline-size: 0; max-inline-size: 100%; box-sizing: content-box; padding-inline: 3px; margin-inline: -3px; vertical-align: bottom; white-space: nowrap; overflow: hidden; }
+.sensitive-value > span { display: inline-block; transform-origin: left center; }
+.pii { filter: blur(2.2px); opacity: .5; user-select: none; animation: privacy-in 160ms ease-out; }
+@keyframes privacy-in { from { filter: blur(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .pii { animation: none; } }
+.sensitive-identity { min-width: 0; }
+.copy-value { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
 .accounts-workspace { container-type: inline-size; }
 .accounts-columns { display: grid; grid-template-columns: minmax(220px, 330px) minmax(0, 1fr); gap: 24px; }
 .account-list { min-width: 0; }
@@ -1487,12 +1494,12 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .account-avatar { width: 36px; height: 36px; display: grid; place-items: center; flex-shrink: 0; border-radius: 50%; background: color-mix(in srgb, var(--accent) 15%, var(--surface)); color: var(--accent); font-weight: 650; }
 .account-avatar[data-provider="anthropic"] { color: var(--brand-orange); background: color-mix(in srgb, var(--brand-orange) 12%, var(--surface)); }
 .account-row-copy { display: grid; gap: 5px; min-width: 0; flex: 1; }
-.account-row-copy > strong, .account-row-copy > .private-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-row-copy > strong, .account-row-copy > .sensitive-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-roles, .account-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .account-warning { width: 7px; height: 7px; border-radius: 50%; background: var(--warning); }
 .account-detail { min-width: 0; display: grid; align-content: start; gap: 16px; }
 .account-detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.account-detail-header > .private-value { width: 100%; color: var(--text-secondary); }
+.account-detail-header > .sensitive-identity { width: 100%; color: var(--text-secondary); }
 .account-role-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .account-card { min-width: 0; border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: grid; align-content: start; gap: 12px; background: var(--surface); }
 .account-card h3, .account-detail h3 { margin: 0; font-size: 14px; }
@@ -1512,7 +1519,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .source-account-badge { position: absolute; bottom: -4px; right: -6px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); font-size: 10px; }
 .source-account-heading { min-width: 0; flex: 1; }
 .source-account-heading h2 { margin: 0 0 4px; font-size: 16px; overflow: hidden; text-overflow: ellipsis; }
-.source-account-heading > .private-value { color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.source-account-heading > .sensitive-identity { color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
 .source-account-header > .actions { margin-left: auto; }
 .source-panel-content { display: flex; flex-direction: column; gap: 16px; }
 .account-advanced > summary { cursor: pointer; margin-bottom: 12px; }
@@ -1526,6 +1533,4 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
   .sheet-header:has(+ .workspace .accounts-workspace) .capsule-title { flex: 1 1 100%; }
 }
 
-:root[data-privacy="true"] [data-sensitive] { filter: blur(5px); }
 .account-shared-notice { margin: 0; color: var(--text-secondary); }
-.activity-title-row > .private-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

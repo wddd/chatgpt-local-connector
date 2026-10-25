@@ -1,4 +1,5 @@
-import { usePrivacy } from "../../state/privacy";
+import { Sensitive, useSensitiveText } from "../Sensitive";
+import { maskSensitive } from "../../privacyMask";
 import {
   useEffect,
   useId,
@@ -173,12 +174,13 @@ export function Notice({
   tone?: "danger" | "warning" | "success";
   action?: ReactNode;
 }) {
+  const protect = useSensitiveText();
   return (
     <div
       className={`notice ${tone}`}
       role={tone === "danger" ? "alert" : "status"}
     >
-      <span>{children}</span>
+      <span>{typeof children === "string" ? protect(children) : children}</span>
       {action}
     </div>
   );
@@ -495,6 +497,7 @@ export function Tooltip({
   side?: "top" | "bottom" | "left" | "right";
   hoverOnly?: boolean;
 }) {
+  const protect = useSensitiveText();
   const [open, setOpen] = useState(false);
   const pointerHover = useRef(false);
   const dismiss = () => {
@@ -524,7 +527,7 @@ export function Tooltip({
       >{children}</T.Trigger>
       <T.Portal>
         <T.Content className="tooltip" side={side} sideOffset={6} collisionPadding={10}>
-          {text}
+          {typeof text === "string" ? protect(text) : text}
         </T.Content>
       </T.Portal>
     </T.Root>
@@ -610,7 +613,6 @@ export function CopyField({
   loading?: boolean;
   placeholder?: string;
 }) {
-  const privateMode = usePrivacy();
   const [visible, setVisible] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
@@ -622,16 +624,10 @@ export function CopyField({
   return (
     <div>
       <div className="copy-field">
-        <Input
-          className={privateMode ? "private-input" : undefined}
-          aria-label={label}
-          value={value}
-          readOnly
-          type={password && !visible ? "password" : "text"}
-          placeholder={placeholder}
-          aria-busy={loading}
-          autoComplete="off"
-        />
+        <div className="input copy-value" role="textbox" aria-readonly="true" aria-label={label} aria-busy={loading} tabIndex={0}
+          onCopy={event => { event.preventDefault(); event.clipboardData.setData('text/plain', value); }}>
+          {value ? <Sensitive>{password && !visible ? maskSensitive(value, true) : value}</Sensitive> : placeholder}
+        </div>
         {loading ? (
           <Icon icon={LoaderCircle} className="spin" />
         ) : (

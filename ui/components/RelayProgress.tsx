@@ -1,3 +1,5 @@
+import { usePrivacy } from "../state/privacy";
+import { maskSensitive } from "../privacyMask";
 import { Check, Circle } from "lucide-react";
 import { t } from "../i18n";
 import { copyText } from "../platform";
@@ -6,6 +8,8 @@ import { Button, Icon, Loading, Notice, SingleChoice } from "./ui";
 export default function RelayProgress({ progress, busy, account, setAccount, onCancel, onRetry }: {
   progress: Progress; busy: boolean; account: string; setAccount: (value: string) => void; onCancel: () => void; onRetry: () => void;
 }) {
+  const hidden = usePrivacy();
+  const accountOptions = progress.accounts ?? [];
   const phase = ["login", "deploying", "connecting", "ready"].indexOf(progress.phase);
   const reason = progress.reason ?? "";
   const failure = progress.cancelled ? "cancelled" : progress.accounts?.length ? "chooseAccount"
@@ -16,7 +20,7 @@ export default function RelayProgress({ progress, busy, account, setAccount, onC
   return <div className="remote-progress">
     {progress.phase === "failed" ? <>
       <Notice tone="danger">{t(`connect.${failure}`)}</Notice>
-      {!!progress.accounts?.length && <SingleChoice label={t("connect.chooseAccount")} value={account} onChange={setAccount} options={progress.accounts.map(a => ({ value: a.id, label: a.name || a.id }))} />}
+      {!!progress.accounts?.length && <SingleChoice label={t("connect.chooseAccount")} value={String(accountOptions.findIndex(option => option.id === account))} onChange={value => setAccount(accountOptions[Number(value)].id)} options={accountOptions.map((a, index) => ({ value: String(index), label: hidden ? maskSensitive(a.name || a.id, true) : a.name || a.id }))} />}
       <Button variant="primary" busy={busy} disabled={!!progress.accounts?.length && !account} onClick={onRetry}>{t("retry")}</Button>
     </> : <ol className="remote-steps">{["login", "deploying", "connecting"].map((step, index) => <li key={step} aria-current={index === phase ? "step" : undefined}>
       <Icon icon={phase > index ? Check : Circle} /><div><strong>{t(`connect.phase.${step}`)}</strong>{step === "deploying" && <small>{t("connect.twentySeconds")}</small>}{phase === index && <Loading label={t("connect.inProgress")} />}</div>

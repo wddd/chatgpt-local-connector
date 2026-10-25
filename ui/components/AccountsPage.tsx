@@ -7,7 +7,8 @@ import { connector } from '../state/connector';
 import { navigation } from '../state/navigation';
 import { openOnboarding } from '../state/onboarding';
 import { Button, Dialog, Empty, Field, HoverScope, Input, Notice, Status, Switch, Tag } from './ui';
-import { Private, PrivacyToggle } from './Privacy';
+import { PrivacyToggle } from './Privacy';
+import { Sensitive, SensitiveIdentity } from './Sensitive';
 import { AccountNotifications, AccountQuota } from './AccountCards';
 import AddAccount from './AddAccount';
 import { openSourceWorkspace } from './SourcePanel';
@@ -29,7 +30,7 @@ export default function AccountsPage() {
       <nav className="account-list" aria-label={t('accounts.title')}><HoverScope>{['anthropic', 'openai', 'deepseek', 'other'].map(provider => {
         const rows = state.items.filter(a => a.provider === provider);
         return rows.length > 0 && <section key={provider}><h3>{t(`accounts.provider.${provider}`)}</h3>{rows.map(row => <Button key={row.id} variant="ghost" className="account-list-row" data-hover-target={row.id} aria-current={account?.id === row.id ? 'true' : undefined} onClick={() => { setSelected(row.id); navigation.set(old => ({ ...old, accountId: undefined })); }}>
-          <span className="account-avatar" data-provider={row.provider}>{row.alias.slice(0, 1).toUpperCase()}</span><span className="account-row-copy"><strong>{row.alias}</strong><Private>{row.email}</Private><span className="account-roles">{!!row.sources.length && <Tag>SRC</Tag>}{!!row.agentProfiles.length && <Tag>AGENT</Tag>}</span></span>
+          <span className="account-avatar" data-provider={row.provider}>{row.alias.slice(0, 1).toUpperCase()}</span><span className="account-row-copy"><strong>{row.alias}</strong><Sensitive>{row.email}</Sensitive><span className="account-roles">{!!row.sources.length && <Tag>SRC</Tag>}{!!row.agentProfiles.length && <Tag>AGENT</Tag>}</span></span>
           {(row.notifications.state === 'not-bound' || row.agentProfiles.some(p => p.state !== 'signed-in')) && <span className="account-warning" role="img" aria-label={t('accounts.attention')} />}
         </Button>)}</section>;
       })}</HoverScope></nav>
@@ -49,7 +50,7 @@ function AccountDetail({ account, onLogin, onAdd }: { account: Account; onLogin:
     if (alias.trim() !== account.alias && !busy) void action(() => accountsApi.update({ id: account.id, alias: alias.trim() }));
   }
   return <div className="account-detail">
-    <header className="account-detail-header"><form onSubmit={e => { e.preventDefault(); saveAlias(); }}><Field id="account-detail-alias" label={t('accounts.alias')} error={aliasError}><Input id="account-detail-alias" value={alias} disabled={busy} aria-invalid={!!aliasError} aria-describedby={aliasError ? 'account-detail-alias-error' : undefined} onChange={e => { setAlias(e.target.value); setAliasError(''); }} onBlur={saveAlias} /></Field></form>{account.plan && <Tag>{account.plan}</Tag>}<Private>{[account.email, account.orgName].filter(Boolean).join(' · ')}</Private></header>
+    <header className="account-detail-header"><form onSubmit={e => { e.preventDefault(); saveAlias(); }}><Field id="account-detail-alias" label={t('accounts.alias')} error={aliasError}><Input id="account-detail-alias" value={alias} disabled={busy} aria-invalid={!!aliasError} aria-describedby={aliasError ? 'account-detail-alias-error' : undefined} onChange={e => { setAlias(e.target.value); setAliasError(''); }} onBlur={saveAlias} /></Field></form>{account.plan && <Tag>{account.plan}</Tag>}<SensitiveIdentity email={account.email} orgName={account.orgName} /></header>
     {isUnidentified(account) && <p className="muted">{t(account.sources.length ? 'accounts.unidentified' : 'accounts.nativeAuth')}</p>}
     {error && !remove && <Notice>{error}</Notice>}
     <h3>{t('accounts.where')}</h3><div className="account-role-cards">

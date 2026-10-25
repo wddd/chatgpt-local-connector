@@ -7,6 +7,7 @@ import { connector, refreshConnector } from "../state/connector";
 import { onboarding, openOnboarding, connectionSwitch, type ConnectionSetup, type ConnectionMethod } from "../state/onboarding";
 import { connectionKind, isPendingSource } from "../sourcePresentation";
 import { useRelayProgress, type RelayProgress as Progress } from "../state/relay";
+import { SensitiveInput, useSensitiveText } from "./Sensitive";
 import IngressDialog from "./IngressDialog";
 import RelayProgress from "./RelayProgress";
 import SetupDialog from "./SetupDialog";
@@ -20,6 +21,7 @@ export default function AddConnection({ options, onClose, onAdded, returnFocus }
   const [method, setMethod] = useState<ConnectionMethod>(options.localTarget ? `local-${options.localTarget}` : options.method ?? "create");
   const [busy, setBusy] = useState(false), [configBusy, setConfigBusy] = useState(false), [error, setError] = useState("");
   const [link, setLink] = useState(""), [account, setAccount] = useState(""), [deviceName, setDeviceName] = useState(status?.deviceName ?? "");
+  const protect = useSensitiveText([link]);
   const [createdId, setCreatedId] = useState<string | undefined>(options.createdId);
   const [operation, setOperation] = useState<"create" | "join" | "redeploy">();
   const [local, setLocal] = useState<LocalAccess>();
@@ -95,7 +97,7 @@ export default function AddConnection({ options, onClose, onAdded, returnFocus }
       {step === "success" && <>{!(options.forSource || options.forSwitch) && <Button onClick={onClose}>{t("source.done")}</Button>}<span className="spacer" /><Button variant="primary" disabled={!created || busy} onClick={() => { if (!createdId) return; onAdded(createdId); if (!(options.forSource || options.forSwitch)) openOnboarding("product", { ingressId: createdId, fixedConnection: true }); }}>{t((options.forSource || options.forSwitch) ? "setup.continueConnection" : "setup.addSourceForConnection")}</Button></>}
     </>}>
     <div className={`setup-content ${step === "method" ? "setup-methods" : ""}`}>
-      {error && <Notice>{error}</Notice>}
+      {error && <Notice>{protect(error)}</Notice>}
       {step === "method" && <SingleChoice cards label={t("connectionMethod")} value={method} onChange={value => { setMethod(value as ConnectionMethod); setError(""); }} options={methods.filter(option => !option.disabled)} />}
       {["https", "openai-tunnel"].includes(method) && <div hidden={!editing}><IngressDialog key={method} setupFormId={formId} connectionOnly initialProduct={method === "openai-tunnel" ? "chatgpt" : options.product ?? "custom"}
         initialTransport={method === "openai-tunnel" ? "openai-tunnel" : "https"} onBusy={setConfigBusy} onClose={() => setStep("method")} onRemoved={onClose} onSaved={entry => {
@@ -106,7 +108,7 @@ export default function AddConnection({ options, onClose, onAdded, returnFocus }
         <RelayProgress progress={progress} busy={busy} account={account} setAccount={setAccount} onRetry={() => void startRelay(true)} onCancel={() => void perform(async () => { await api("relay/cancel", "POST"); setOperation(undefined); })} />
       </> : <form className="setup-form" id={formId} onSubmit={e => { e.preventDefault(); void configure(); }}>
         {method === "join" && <>
-          <Field id={`${formId}-link`} label={t("connect.sharedLink")}><Input id={`${formId}-link`} required type="url" value={link} onChange={e => setLink(e.target.value)} /></Field>
+          <Field id={`${formId}-link`} label={t("connect.sharedLink")}><SensitiveInput id={`${formId}-link`} required type="url" value={link} onChange={e => setLink(e.target.value)} /></Field>
           <Field id={`${formId}-device`} label={t("setup.deviceName")}><Input id={`${formId}-device`} required value={deviceName} onChange={e => setDeviceName(e.target.value)} /></Field><p className="muted">{t("setup.hostSees")}</p>
         </>}
         {method === "create" && <p>{t("connection.relayLogin")}</p>}

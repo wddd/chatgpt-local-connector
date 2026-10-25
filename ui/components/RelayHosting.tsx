@@ -1,4 +1,4 @@
-import { Private } from "./Privacy";
+import { Sensitive } from "./Sensitive";
 import { useCallback, useEffect, useState } from "react";
 import { Cloud, RefreshCw } from "lucide-react";
 import { api } from "../api";
@@ -66,7 +66,7 @@ function HostedRelay({ relay, version, startJob, disabled }: {
       <div className="hosted-relay-summary">
         <div className="hosted-relay-icon"><Icon icon={Cloud} /></div>
         <div className="hosted-relay-identity">
-          <h3><Private>{hostname(relay)}</Private></h3>
+          <h3><Sensitive>{hostname(relay)}</Sensitive></h3>
           <div className="hosted-relay-provider"><span>Cloudflare Workers</span><span aria-hidden="true"> · </span>
             {outdated || !relay.url ? <Button variant="ghost" disabled={blocked} onClick={() => void startJob({ action: "redeploy", id: relay.id })}>{t(outdated && relay.url ? "hosting.update" : "retry")}</Button> : <span>{t("hosting.upToDate")}</span>}
           </div>

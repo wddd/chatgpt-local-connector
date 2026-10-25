@@ -14,7 +14,7 @@ import ChangeConnection from "./ChangeConnection";
 import AddConnection from "./AddConnection";
 import Onboarding from "./Onboarding";
 import SourcePanel from "./SourcePanel";
-import { Private } from "./Privacy";
+import { Sensitive } from "./Sensitive";
 import SourceIcon from "./SourceIcon";
 import { ApprovalCard } from "./OAuthApproval";
 import { RelaySettings } from "./RelaySettings";
@@ -97,7 +97,7 @@ export default function RemoteLinkPage() {
         <HoverScope>{entries.map(ingress => {
           const count = visible.filter(s => s.ingressId === ingress.id).length;
           return <Button key={ingress.id} variant="ghost" className="source-list-row connection-list-row" data-hover-target={ingress.id} data-remote-row={ingress.id} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: ingress.id }))}>
-            <Icon icon={connectionIcon(ingress)} size={20} /><span className="connection-list-copy"><strong>{ingress.name}</strong><Private>{ingress.url || connectionProvider(ingress)}</Private></span>
+            <Icon icon={connectionIcon(ingress)} size={20} /><span className="connection-list-copy"><strong>{ingress.name}</strong>{ingress.url ? <Sensitive>{ingress.url}</Sensitive> : connectionProvider(ingress)}</span>
             <span className="muted">{t(count ? "source.count" : "source.unused", { count })}</span><Status tone={ingress.state === "ready" ? "success" : "neutral"}>{t(ingress.state === "ready" ? "connect.online" : "connect.offline")}</Status><Icon icon={ChevronRight} />
           </Button>;
         })}</HoverScope>

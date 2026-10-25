@@ -1,3 +1,4 @@
+import { useSensitiveText } from "../components/Sensitive";
 import { useState } from "react";
 import { RefreshCw, TriangleAlert, CircleAlert, Flame } from "lucide-react";
 import { t, locale } from "../i18n";
@@ -36,6 +37,7 @@ export default function QuotaBubble({
   onRefresh?: () => Promise<void>;
   link?: boolean;
 }) {
+  const protect = useSensitiveText();
   const now = useNow();
   quotaDisplay.use();
   resetDisplay.use();
@@ -95,7 +97,7 @@ export default function QuotaBubble({
       return (
         <>
           {notices.map((notice, i) => (
-            <div key={i}>{notice}</div>
+            <div key={i}>{protect(notice)}</div>
           ))}
         </>
       );
@@ -157,7 +159,7 @@ export default function QuotaBubble({
                     aria-expanded={expanded && displayed === "notices"}
                     className={`subscription-notice ${hasError ? "error" : ""}`}
                     role="img"
-                    aria-label={notices.join(" · ")}
+                    aria-label={protect(notices.join(" · "))}
                   >
                     <Icon icon={hasError ? CircleAlert : TriangleAlert} />
                   </span>

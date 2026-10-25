@@ -1,4 +1,3 @@
-import { Private } from "./Privacy";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { api } from "../api";
@@ -73,7 +72,7 @@ export default function SourceDispatches({ sourceId, summary = false }: { source
         navigation.set(old => ({ ...old, page: "overview" }));
       }}>
         <PhaseTile phase={phase} completed={state === "completed"} animated={false} />
-        <span><Private><strong>{title}</strong></Private><span className="source-dispatch-meta">{record.agent ?? "Codex"} · <span>{t(`sourcePanel.${state}`)}</span></span></span>
+        <span><strong>{title}</strong><span className="source-dispatch-meta">{record.agent ?? "Codex"} · <span>{t(`sourcePanel.${state}`)}</span></span></span>
         {canOpen && <Icon icon={ChevronRight} />}
       </button>;
     })}

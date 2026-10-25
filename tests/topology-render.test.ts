@@ -238,7 +238,7 @@ test("control source dock preserves editing, field navigation and cross-side dis
       await click(button(t("source.next")));
       await click(button(t("source.next")));
       assert.equal(onboarding.get().step, "address");
-      assert.ok(page.getByDisplayValue("https://example.com/mcp"));
+      assert.equal(page.getByRole("textbox", { name: t("source.copyAddress"), exact: true }).textContent, status.ingresses[0].url);
       await click(button(t("back"))); await click(button(t("back")));
       assert.equal(onboarding.get().step, "product");
       assert.equal(page.getByRole("radio", { name: id === "custom" ? t("setup.otherClient") : controlSource(id).displayName, exact: true }).getAttribute("aria-checked"), "true");

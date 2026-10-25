@@ -1,6 +1,5 @@
 import RequestRouting from "./RequestRouting";
 import { useRequestRouting } from "../state/requestRouting";
-import { Private } from "./Privacy";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { AgentActivitySession, AgentTimelineEntry } from "../types";
@@ -63,6 +62,6 @@ export function TaskReceiptHistory({ agent, id, turnId, latest }: { agent: strin
   const { records } = tasks.use();
   const rows = taskReceipts(records, agent, id).filter(record => record.approval && ["approved", "bypass", "reject"].includes(record.approval.decision) && (record.turnId ? record.turnId === turnId : latest));
   return <>{rows.map(record => <div className="task-receipt-anchor" key={record.requestId}>
-    <strong data-verdict={record.approval.decision}>{t(record.approval.decision === "approved" ? "detail.verdict.approved" : record.approval.decision === "bypass" ? "detail.verdict.bypass" : "detail.verdict.reject")}</strong><span>{record.task.title ? <Private>{record.task.title}</Private> : record.task.prompt}</span><small>{record.approval.source === "local" ? t("detail.byARC") : record.origin?.sourceLabel || record.approval.source}</small>
+    <strong data-verdict={record.approval.decision}>{t(record.approval.decision === "approved" ? "detail.verdict.approved" : record.approval.decision === "bypass" ? "detail.verdict.bypass" : "detail.verdict.reject")}</strong><span>{record.task.title || record.task.prompt}</span><small>{record.approval.source === "local" ? t("detail.byARC") : record.origin?.sourceLabel || record.approval.source}</small>
   </div>)}</>;
 }

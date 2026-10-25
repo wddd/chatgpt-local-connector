@@ -31,6 +31,7 @@ import {
   Notice,
   SingleChoice,
 } from "./ui";
+import { SensitiveInput, useSensitiveText } from "./Sensitive";
 import SourceIcon from "./SourceIcon";
 import ToolPolicyField from "./ToolPolicyField";
 export default function IngressDialog({
@@ -94,6 +95,7 @@ export default function IngressDialog({
     [toolPolicy, setToolPolicy] = useState<ToolPolicy | undefined>(
       ingress?.toolPolicy,
     );
+  const protect = useSensitiveText([form.domain, form.tunnelId, ...secretFields.map(field => String(form[field.key]))]);
   const [working, setWorking] = useState(false),
     [error, setError] = useState(""),
     [errors, setErrors] = useState<Record<string, string>>({});
@@ -277,7 +279,7 @@ export default function IngressDialog({
       help={key === "domain" ? t("setup.domainHint") : help}
       error={errors[key]}
     >
-      <Input
+      <SensitiveInput
         className={key === "tunnelId" || secretFields.some(field => field.key === key) ? "mono" : undefined}
         id={`ingress-${key}`}
         aria-invalid={!!errors[key]}
@@ -288,7 +290,6 @@ export default function IngressDialog({
         onChange={(e) => change(key, e.target.value as never)}
         placeholder={placeholder}
         disabled={working}
-        data-sensitive={key === "domain" || key === "tunnelId" || undefined}
         required={key === "domain" || key === "tunnelId"}
       />
     </Field>
@@ -530,7 +531,7 @@ export default function IngressDialog({
             onChange={value => { dirty.current.add("toolPolicy"); setToolPolicy(value); }}
             disabled={working}
           />}
-          {error && <Notice>{displayMessage(error)}</Notice>}
+          {error && <Notice>{protect(displayMessage(error))}</Notice>}
         </form>
       )}
     </Frame>
