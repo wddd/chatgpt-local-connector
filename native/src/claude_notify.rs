@@ -319,8 +319,10 @@ pub(crate) async fn bind(
     if b.agent.is_empty() {
         b.agent = args["agent"].as_str().unwrap_or("codex").into();
     }
-    if b.title.is_empty() {
-        b.title = crate::control::dispatch_title(args);
+    if created && b.title.is_empty() {
+        let mut prompt = args.clone();
+        prompt.as_object_mut().map(|args| args.remove("title"));
+        b.title = crate::control::dispatch_title(&prompt);
     }
     if created {
         if cause.is_object() {
@@ -346,6 +348,7 @@ pub(crate) async fn bind(
     if let Some(mut previous) = continued {
         b.target = previous.target.clone();
         b.channel = previous.channel;
+        b.title = previous.title.clone();
         b.scope_started_at = if previous.scope_started_at == 0 {
             previous.created_at.saturating_mul(1000)
         } else {
@@ -574,7 +577,7 @@ fn event(b: &Binding, d: &Delivery) -> Value {
     } else {
         json!({"hint":"Read the result and review its changes.","via":"query","op":"codex_read","args":{"threadId":b.thread_id}})
     };
-    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":b.title,"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":if kind=="handoff" {Value::Null}else{d.task_error.clone()},"ownership":if kind=="handoff" {d.task_error.clone()}else{Value::Null},"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
+    json!({"eventId":d.event_id,"kind":kind,"project":b.project,"threadId":if agent {Value::Null}else{json!(b.thread_id)},"taskId":if agent {json!(b.thread_id)}else{Value::Null},"agent":if agent {json!(b.agent)}else{json!("codex")},"turnId":b.turn_id,"title":task_title(b),"channel":d.channel,"target":if d.target.is_empty(){Value::Null}else{json!(d.target)},"causedBy":b.caused_by,"summary":receipt(b, d),"interaction":d.interaction,"questionSummary":crate::egress::interaction_preview(&d.interaction),"dispatches":d.dispatches,"externalUserInputs":d.external_user_inputs,"finalResponse":d.final_response,"error":if kind=="handoff" {Value::Null}else{d.task_error.clone()},"ownership":if kind=="handoff" {d.task_error.clone()}else{Value::Null},"next":if d.interaction["next"].is_object() {d.interaction["next"].clone()} else {next}})
 }
 fn empty_answered_completion(b: &Binding, observed: &Value) -> bool {
     observed["state"] == "completed"
@@ -597,6 +600,13 @@ fn receipt_line(value: &str, limit: usize) -> String {
         text
     }
 }
+fn task_title(b: &Binding) -> &str {
+    [&b.thread_title, &b.title, &b.project]
+        .into_iter()
+        .map(|title| title.trim())
+        .find(|title| !title.is_empty())
+        .unwrap_or("")
+}
 fn receipt(b: &Binding, d: &Delivery) -> String {
     if d.task_state == "handoff" {
         return format!(
@@ -618,16 +628,7 @@ fn receipt(b: &Binding, d: &Delivery) -> String {
         .dispatches
         .as_array()
         .and_then(|rows| rows.iter().rev().find(|row| row["turnId"] == b.turn_id));
-    let dispatch_title = dispatch
-        .map(crate::control::dispatch_title)
-        .unwrap_or_default();
-    let title = if !dispatch_title.is_empty() {
-        &dispatch_title
-    } else if !b.thread_title.is_empty() {
-        &b.thread_title
-    } else {
-        &b.project
-    };
+    let title = task_title(b);
     let mut configuration = Vec::new();
     if let Some(row) = dispatch {
         let effective = &row["effectiveConfiguration"];
@@ -3178,25 +3179,32 @@ mod tests {
             assert_eq!(payload["kind"], kind);
             assert_eq!(payload["finalResponse"], "SECRET_OUTPUT");
         }
-        b.thread_title = "Existing thread title".into();
-        let dispatch_title = "Prompt-derived dispatch title";
-        b.deliveries[0].dispatches = json!([{"turnId":b.turn_id,"title":dispatch_title}]);
-        assert!(message(&b).contains(dispatch_title));
-        b.deliveries[0].dispatches[0]["title"] = Value::Null;
-        let prompt_title = "Legacy prompt title";
-        b.deliveries[0].dispatches[0]["prompt"] = json!(format!("## {prompt_title}\nDetails"));
-        assert!(message(&b).contains(prompt_title));
-        b.deliveries[0].dispatches[0]["prompt"] = Value::Null;
-        assert!(message(&b).contains(&b.thread_title));
-        b.deliveries[0]
-            .dispatches
-            .as_array_mut()
-            .unwrap()
-            .push(json!({"turnId":"other-turn","title":"Other turn title"}));
-        assert!(message(&b).contains(&b.thread_title));
-        assert!(!message(&b).contains("Other turn title"));
+    }
+    #[tokio::test]
+    async fn receipts_keep_thread_title_and_original_prompt_after_steering() {
+        // Regression: completion labels used the latest steer prompt instead of the thread title or original dispatch prompt.
+        let dir = Sandbox::new();
+        let mut b = fixture(&dir.0);
+        let thread_title = "Stable task title";
+        let initial_prompt = "Original dispatch first line";
+        let steer_prompt = "Later steering instruction";
+        b.title = initial_prompt.into();
+        persist(&dir.0, &b).unwrap();
+        let observation = json!({"state":"completed","title":thread_title,
+            "dispatches":[{"turnId":b.turn_id,"title":initial_prompt},{"turnId":b.turn_id,"title":steer_prompt}]});
+        super::process(&dir.0, &Mutex::new(()), &mut b, &observation)
+            .await
+            .unwrap();
+        let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
+        let delivered = &inbox["events"][0];
+        assert_eq!(delivered["title"], thread_title);
+        assert!(string(delivered, "summary").contains(thread_title));
+        assert!(!string(delivered, "summary").contains(steer_prompt));
         b.thread_title.clear();
-        assert!(message(&b).contains(&b.project));
+        let fallback = event(&b, &b.deliveries[0]);
+        assert_eq!(fallback["title"], initial_prompt);
+        assert!(string(&fallback, "summary").contains(initial_prompt));
+        assert!(!string(&fallback, "summary").contains(steer_prompt));
     }
     #[tokio::test]
     async fn quiet_receipts_health_and_ack_distinguish_consumed_events() {
