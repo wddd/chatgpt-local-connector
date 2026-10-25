@@ -1,0 +1,38 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "panel": {
+    "kind": "agent",
+    "id": "codex"
+  },
+  "detailTask": 0,
+  "tasks": [
+    {
+      "agent": "codex",
+      "phase": "interaction",
+      "title": "Long approval fixture",
+      "headline": "Waiting for sample input",
+      "interaction": {
+        "kind": "permission",
+        "summary": "Review the sample execution preview",
+        "canRespond": true,
+        "method": "item/commandExecution/requestApproval",
+        "respond": {
+          "via": "act",
+          "op": "codex_respond",
+          "args": {
+            "id": "fixture-long-approval",
+            "backendSession": "fixture"
+          }
+        },
+        "preview": "Preview line 1: inspect sample configuration group 1 and retain the documented defaults.\nPreview line 2: inspect sample configuration group 2 and retain the documented defaults.\nPreview line 3: inspect sample configuration group 3 and retain the documented defaults.\nPreview line 4: inspect sample configuration group 4 and retain the documented defaults.\nPreview line 5: inspect sample configuration group 5 and retain the documented defaults.\nPreview line 6: inspect sample configuration group 6 and retain the documented defaults.\nPreview line 7: inspect sample configuration group 7 and retain the documented defaults.\nPreview line 8: inspect sample configuration group 8 and retain the documented defaults.\nPreview line 9: inspect sample configuration group 9 and retain the documented defaults.\nPreview line 10: inspect sample configuration group 10 and retain the documented defaults.\nPreview line 11: inspect sample configuration group 11 and retain the documented defaults.\nPreview line 12: inspect sample configuration group 12 and retain the documented defaults.\nPreview line 13: inspect sample configuration group 13 and retain the documented defaults.\nPreview line 14: inspect sample configuration group 14 and retain the documented defaults.\nPreview line 15: inspect sample configuration group 15 and retain the documented defaults.\nPreview line 16: inspect sample configuration group 16 and retain the documented defaults.\nPreview line 17: inspect sample configuration group 17 and retain the documented defaults.\nPreview line 18: inspect sample configuration group 18 and retain the documented defaults.\nPreview line 19: inspect sample configuration group 19 and retain the documented defaults.\nPreview line 20: inspect sample configuration group 20 and retain the documented defaults.\nPreview line 21: inspect sample configuration group 21 and retain the documented defaults.\nPreview line 22: inspect sample configuration group 22 and retain the documented defaults.\nPreview line 23: inspect sample configuration group 23 and retain the documented defaults.\nPreview line 24: inspect sample configuration group 24 and retain the documented defaults.\nPreview line 25: inspect sample configuration group 25 and retain the documented defaults.\nPreview line 26: inspect sample configuration group 26 and retain the documented defaults.\nPreview line 27: inspect sample configuration group 27 and retain the documented defaults.\nPreview line 28: inspect sample configuration group 28 and retain the documented defaults.\nPreview line 29: inspect sample configuration group 29 and retain the documented defaults.\nPreview line 30: inspect sample configuration group 30 and retain the documented defaults.\nPreview line 31: inspect sample configuration group 31 and retain the documented defaults.\nPreview line 32: inspect sample configuration group 32 and retain the documented defaults.\nPreview line 33: inspect sample configuration group 33 and retain the documented defaults.\nPreview line 34: inspect sample configuration group 34 and retain the documented defaults.\nPreview line 35: inspect sample configuration group 35 and retain the documented defaults.\nPreview line 36: inspect sample configuration group 36 and retain the documented defaults.\nPreview line 37: inspect sample configuration group 37 and retain the documented defaults.\nPreview line 38: inspect sample configuration group 38 and retain the documented defaults.\nPreview line 39: inspect sample configuration group 39 and retain the documented defaults.\nPreview line 40: inspect sample configuration group 40 and retain the documented defaults.\nPreview line 41: inspect sample configuration group 41 and retain the documented defaults.\nPreview line 42: inspect sample configuration group 42 and retain the documented defaults.\nPreview line 43: inspect sample configuration group 43 and retain the documented defaults.\nPreview line 44: inspect sample configuration group 44 and retain the documented defaults.\nPreview line 45: inspect sample configuration group 45 and retain the documented defaults.\nPreview line 46: inspect sample configuration group 46 and retain the documented defaults.\nPreview line 47: inspect sample configuration group 47 and retain the documented defaults.\nPreview line 48: inspect sample configuration group 48 and retain the documented defaults.\nPreview line 49: inspect sample configuration group 49 and retain the documented defaults.\nPreview line 50: inspect sample configuration group 50 and retain the documented defaults.\nPreview line 51: inspect sample configuration group 51 and retain the documented defaults.\nPreview line 52: inspect sample configuration group 52 and retain the documented defaults.\nPreview line 53: inspect sample configuration group 53 and retain the documented defaults.\nPreview line 54: inspect sample configuration group 54 and retain the documented defaults.\nPreview line 55: inspect sample configuration group 55 and retain the documented defaults.\nPreview line 56: inspect sample configuration group 56 and retain the documented defaults.\nPreview line 57: inspect sample configuration group 57 and retain the documented defaults.\nPreview line 58: inspect sample configuration group 58 and retain the documented defaults.\nPreview line 59: inspect sample configuration group 59 and retain the documented defaults.\nPreview line 60: inspect sample configuration group 60 and retain the documented defaults.",
+        "cwd": "/workspace/acceptance",
+        "reason": "Review the complete proposed operation before allowing this one request."
+      },
+      "requestRouting": "not-routable"
+    }
+  ]
+}

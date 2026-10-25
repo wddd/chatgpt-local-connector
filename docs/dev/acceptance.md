@@ -108,6 +108,10 @@ Task-detail fixtures use sanitized payloads matching `AgentTimeline` / `AgentInt
 | `task-routing-not-routable` | Next-check status without delay controls. |
 | `task-turn-failed` | Native failed turn, Retry card, and empty footer. |
 | `task-turn-interrupted` | Native cancelled turn, Resume card, and empty footer. |
+| `task-long-question` | Long question with 16 described options; options scroll while Submit and routing stay pinned. |
+| `task-long-approval` | Long native approval preview; preview scrolls while decision actions and routing stay pinned. |
+
+At narrow panel widths, open the needs-you banner to inspect the capped bottom sheet in either long-input scenario.
 
 Target one fixture with `npm run accept:ui -- --scenario=task-owner-desktop` from main. The runner uses browser fixtures and screenshots. A missing route fails readiness with its method and path in `scenario.missingRoutes` and `data-scenario-error`.
 

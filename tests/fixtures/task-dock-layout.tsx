@@ -10,6 +10,7 @@ import "../../ui/product.css";
 
 const root = createRoot(document.getElementById("fixture")!);
 locale.set("en");
+document.documentElement.dataset.reducedMotion = String(matchMedia("(prefers-reduced-motion: reduce)").matches);
 let timeline: AgentTimeline;
 window.fetch = async input => {
   const path = String(input).replace("/api/", "");
@@ -23,7 +24,9 @@ window.fetch = async input => {
 
 let revision = 0;
 (window as typeof window & { mountTaskDock: (width: number, options: number) => void }).mountTaskDock = (width, options) => {
-  const interaction: AgentInteraction | undefined = options ? { kind: "question", summary: "Choose a route", method: "request_user_input_async",
+  const interaction: AgentInteraction | undefined = options < 0 ? { kind: "permission", summary: "Approval preview fixture", method: "item/commandExecution/requestApproval",
+    preview: Array.from({ length: 60 }, (_, index) => `Preview line ${index + 1}: inspect sample configuration and retain the documented defaults.`).join("\n"),
+    canRespond: true, respond: { via: "act", op: "codex_respond", args: { id: "fixture-approval" } } } : options ? { kind: "question", summary: "Choose a route after reviewing the complete sample verification plan and each option description.", method: "request_user_input_async",
     options: Array.from({ length: options }, (_, index) => ({ label: `Route ${index + 1}`, description: "Keep this description visible with the corresponding option." })),
     respond: { via: "act", op: "codex_respond", args: { id: "fixture-question" } } } : undefined;
   const session: TrackedActivity = { id: "dock-layout", title: "Pending question", source: "arc-task", phase: interaction ? "interaction" : "text",
