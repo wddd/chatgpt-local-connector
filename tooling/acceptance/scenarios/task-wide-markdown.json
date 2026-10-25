@@ -1,0 +1,22 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "panel": {
+    "kind": "agent",
+    "id": "codex"
+  },
+  "detailTask": 0,
+  "tasks": [
+    {
+      "agent": "codex",
+      "phase": "idle",
+      "title": "Wide markdown fixture",
+      "headline": "Sample verification results",
+      "completed": true,
+      "finalAnswer": "Sample verification results\n\n| Sample group 1 | Sample group 2 | Sample group 3 | Sample group 4 | Sample group 5 | Sample group 6 | Sample group 7 | Sample group 8 | Sample group 9 | Sample group 10 |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| `sample_configuration_1_documented_default_verification_result` | `sample_configuration_2_documented_default_verification_result` | `sample_configuration_3_documented_default_verification_result` | `sample_configuration_4_documented_default_verification_result` | `sample_configuration_5_documented_default_verification_result` | `sample_configuration_6_documented_default_verification_result` | `sample_configuration_7_documented_default_verification_result` | `sample_configuration_8_documented_default_verification_result` | `sample_configuration_9_documented_default_verification_result` | `sample_configuration_10_documented_default_verification_result` |\n\n```text\nsample_configuration_group_1=verified sample_configuration_group_2=verified sample_configuration_group_3=verified sample_configuration_group_4=verified sample_configuration_group_5=verified sample_configuration_group_6=verified sample_configuration_group_7=verified sample_configuration_group_8=verified sample_configuration_group_9=verified sample_configuration_group_10=verified sample_configuration_group_11=verified sample_configuration_group_12=verified sample_configuration_group_13=verified sample_configuration_group_14=verified sample_configuration_group_15=verified sample_configuration_group_16=verified sample_configuration_group_17=verified sample_configuration_group_18=verified sample_configuration_group_19=verified sample_configuration_group_20=verified sample_configuration_group_21=verified sample_configuration_group_22=verified sample_configuration_group_23=verified sample_configuration_group_24=verified sample_configuration_group_25=verified sample_configuration_group_26=verified sample_configuration_group_27=verified sample_configuration_group_28=verified sample_configuration_group_29=verified sample_configuration_group_30=verified sample_configuration_group_31=verified sample_configuration_group_32=verified sample_configuration_group_33=verified sample_configuration_group_34=verified sample_configuration_group_35=verified sample_configuration_group_36=verified sample_configuration_group_37=verified sample_configuration_group_38=verified sample_configuration_group_39=verified sample_configuration_group_40=verified\n```\n\nThe sample configuration retains the documented defaults."
+    }
+  ]
+}

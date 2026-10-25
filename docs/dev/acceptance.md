@@ -110,6 +110,7 @@ Task-detail fixtures use sanitized payloads matching `AgentTimeline` / `AgentInt
 | `task-turn-interrupted` | Native cancelled turn, Resume card, and empty footer. |
 | `task-long-question` | Long question with 16 described options; options scroll while Submit and routing stay pinned. |
 | `task-long-approval` | Long native approval preview; preview scrolls while decision actions and routing stay pinned. |
+| `task-wide-markdown` | Completed answer with a ten-column table and a long unwrapped code line; horizontal wheel stays in the hovered content. |
 
 At narrow panel widths, open the needs-you banner to inspect the capped bottom sheet in either long-input scenario.
 
