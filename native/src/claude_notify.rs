@@ -4299,6 +4299,87 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn recovery_honors_disabled_notifications_without_verifying_targets() {
+        // Regression: recovery must preserve 6ed4ed8 verification gates and never promote an unverified target.
+        let dir = Sandbox::new();
+        let b = fixture(&dir.0);
+        let at = chrono::Utc::now().timestamp();
+        let mut unverified = b.clone();
+        unverified.thread_id = "unverified-thread".into();
+        unverified.target = Some("session_010000000000000000000002".into());
+        persist(&dir.0, &unverified).unwrap();
+        let disabled = json!({"notificationsEnabled":false});
+        let mut state = State::load(&dir.0).unwrap();
+        state.target(
+            &b.source_id,
+            b.channel,
+            unverified.target.as_deref().unwrap(),
+            at,
+            &disabled,
+        );
+        state.save(&dir.0).unwrap();
+        let before =
+            governance::status_in(&dir.0, "claude", &json!({"all":true}), at, &disabled).unwrap();
+        recovery::enqueue(&dir.0, &Mutex::new(()), "disabled-restart", at)
+            .await
+            .unwrap();
+        let fake = Fake::success();
+        flush(&fake, &dir.0, &Mutex::new(()), at + 31, 0, &disabled)
+            .await
+            .unwrap();
+        let waiting =
+            governance::status_in(&dir.0, "claude", &json!({"all":true}), at + 31, &disabled)
+                .unwrap();
+        let deliveries = waiting["deliveries"].as_array().unwrap();
+        assert_eq!(deliveries.len(), 1);
+        assert_eq!(deliveries[0]["kind"], "recovered");
+        assert_eq!(deliveries[0]["target"], b.target.as_deref().unwrap());
+        assert_eq!(deliveries[0]["state"], "pending");
+        assert_eq!(deliveries[0]["timing"]["queueReason"], "disabled");
+        for target in waiting["targets"].as_array().unwrap() {
+            let original = before["targets"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["target"] == target["target"])
+                .unwrap();
+            assert_eq!(target["tokens"], original["tokens"]);
+            assert_eq!(target["reachability"], original["reachability"]);
+            assert_eq!(
+                target["verificationAttempts"],
+                original["verificationAttempts"]
+            );
+        }
+        flush(
+            &fake,
+            &dir.0,
+            &Mutex::new(()),
+            at + 32,
+            0,
+            &json!({"notificationsEnabled":true}),
+        )
+        .await
+        .unwrap();
+        let delivered =
+            governance::status_in(&dir.0, "claude", &json!({"all":true}), at + 32, &json!({}))
+                .unwrap();
+        assert_eq!(delivered["deliveries"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            delivered["deliveries"][0]["eventId"],
+            deliveries[0]["eventId"]
+        );
+        assert_eq!(delivered["deliveries"][0]["state"], "delivered");
+        let unverified = delivered["targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["target"] == unverified.target.as_deref().unwrap())
+            .unwrap();
+        assert_eq!(unverified["reachability"], "unverified");
+        assert_eq!(unverified["verificationAttempts"], 0);
+    }
+
+    #[tokio::test]
     async fn recovery_waits_for_bucket_refill_and_keeps_its_event_id() {
         // Regression: a recovery wakeup must not bypass a depleted bucket or duplicate across repeated restarts.
         let dir = Sandbox::new();
