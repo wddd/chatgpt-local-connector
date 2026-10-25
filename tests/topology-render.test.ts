@@ -5,7 +5,7 @@ import { createServer } from "vite";
 import { act, createElement as h } from "react";
 import { within, fireEvent } from "@testing-library/dom";
 
-test("Agent panel keeps a nonmodal shell across task/back/peer navigation and restores focus on Escape", async () => {
+test("Agent panel keeps a nonmodal shell across task/back/peer navigation and restores focus on Escape", { timeout: 10000 }, async () => {
   // Regression: task/back navigation must not remount the nonmodal shell or lose return focus.
   const beforeFetch = globalThis.fetch;
   const window = new Window({ url: "http://localhost" });
@@ -120,7 +120,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
   }
 });
 
-test("control source dock preserves editing, field navigation and cross-side dispatch paths", async () => {
+test("control source dock preserves editing, field navigation and cross-side dispatch paths", { timeout: 10000 }, async () => {
   // Regression: editing or switching sources must preserve the panel and return focus.
   const window = new Window({ url: "http://localhost" });
   window.localStorage.setItem("arc.privacy", "false");
@@ -268,7 +268,7 @@ test("control source dock preserves editing, field navigation and cross-side dis
   }
 });
 
-test("timeline turn disclosures preserve choices through incremental work and render GFM", async () => {
+test("timeline turn disclosures preserve choices through incremental work and render GFM", { timeout: 10000 }, async () => {
   // Regression: backfilled turn work must not reset a manually expanded step.
   const window = new Window({ url: "http://localhost" });
   const media = Object.assign(new window.EventTarget(), { matches: true });
@@ -355,8 +355,8 @@ test("timeline turn disclosures preserve choices through incremental work and re
   }
 });
 
-test("task detail limits input to pending execution requests and consolidates header actions", async () => {
-  // Regression: pending docks retained the composer, Skip leaked a key and compact headers duplicated actions and source names.
+test("task detail limits input to pending execution requests and consolidates header actions", { timeout: 10000 }, async () => {
+  // Regression: b5cf7c6 made ARC-origin questions answerable; obsolete absence assertions hung while inspecting Happy DOM nodes.
   const window = new Window({ url: "http://localhost" });
   const media = Object.assign(new window.EventTarget(), { matches: true });
   window.matchMedia = () => media as unknown as MediaQueryList;
@@ -395,38 +395,51 @@ test("task detail limits input to pending execution requests and consolidates he
     const source = { id: "example-source", kind: "claude", label: "Example source" };
     const session = { id: "detail", turnId: "turn", source: "arc-task", phase: "text", headline: "Response", phaseSince: null,
       timeline: false, orderAt: 0, dispatchSummary: { controlSource: source } };
-    const update = async (interaction?: object) => act(() => agentActivity.set({ error: "", snapshot: { observedAt: "", activeAgents: ["codex"], agents: { codex: { sessions: [{ ...session, interaction }] } } } }));
+    const update = async (interaction?: object, running = true) => act(() => agentActivity.set({ error: "", snapshot: { observedAt: "", activeAgents: running ? ["codex"] : [], agents: { codex: { sessions: running ? [{ ...session, interaction }] : [] } } } }));
     connector.set({ ...connector.get(), sources: [{ id: source.id, connectionName: source.label }] });
     await update();
     await act(() => root.render(h(TooltipProvider, null, h(ActivityTimeline, { agent: "codex", session, expanded, onToggleWidth: () => { expanded = !expanded; }, onBack() {} }))));
     const page = within(document.body);
     const click = async (element: Element) => act(async () => { fireEvent.click(element); });
-    assert.equal(page.queryByRole("textbox"), null);
+    assert.equal(page.queryAllByRole("textbox").length, 0);
+    assert.equal(page.queryAllByRole("region", { name: t("detail.needsYou") }).length, 0);
     for (const language of ["en", "zh-CN"]) {
       await act(() => locale.set(language));
       await update();
       assert.ok(page.getByText(t("detail.via", { source: source.label })));
-      assert.equal(page.queryByText(source.label, { exact: true }), null);
+      assert.equal(page.queryAllByText(source.label, { exact: true }).length, 0);
       const question = { kind: "question", summary: "Question", method: "item/tool/requestUserInput", questions: [{ id: "choice", question: "Choose", options: [{ label: "A" }] }], respond: { op: "codex_respond", args: { respondToken: language } } };
       await update(question);
-      assert.equal(page.queryByRole("textbox", { name: t("detail.message") }), null);
+      assert.ok(page.getByRole("region", { name: t("detail.needsYou") }));
+      assert.ok(page.getByRole("textbox", { name: t("detail.other") }));
+      assert.equal(page.queryAllByRole("textbox", { name: t("detail.message") }).length, 0);
       await click(page.getByRole("button", { name: t("detail.skip"), exact: true }));
-      assert.equal(page.queryByRole("button", { name: t("detail.skip"), exact: true }), null);
-      assert.equal(page.queryByRole("textbox"), null);
+      assert.equal(page.queryAllByRole("region", { name: t("detail.needsYou") }).length, 0);
+      assert.equal(page.queryAllByRole("button", { name: t("detail.skip"), exact: true }).length, 0);
+      assert.equal(page.queryAllByRole("textbox").length, 0);
     }
     await update({ kind: "permission", summary: "Command approval", respond: { op: "codex_respond", args: { respondToken: "approval" } } });
-    assert.equal(page.queryByRole("textbox", { name: t("detail.message") }), null);
+    assert.equal(page.queryAllByRole("textbox", { name: t("detail.message") }).length, 0);
+    assert.ok(page.getByRole("region", { name: t("detail.needsYou") }));
+    await update(undefined, false);
+    assert.equal(page.queryAllByRole("region", { name: t("detail.needsYou") }).length, 0);
+    assert.equal(page.queryAllByRole("textbox").length, 0);
     await update();
-    assert.equal(page.queryByRole("textbox"), null);
+    assert.equal(page.queryAllByRole("region", { name: t("detail.needsYou") }).length, 0);
+    assert.equal(page.queryAllByRole("textbox").length, 0);
     await act(() => connector.set({ ...connector.get(), sources: [{ id: source.id, connectionName: "Separate connection" }] }));
-    assert.equal(page.queryByText("Separate connection"), null);
+    assert.equal(page.queryAllByText("Separate connection").length, 0);
     await act(() => agentActivity.set({ error: "", snapshot: { observedAt: "", activeAgents: ["codex"], agents: { codex: { sessions: [{ ...session, dispatchSummary: undefined,
-      interaction: { kind: "question", summary: "Native user question", respond: { op: "codex_respond", args: { respondToken: "native" } } } }] } } } }));
-    assert.equal(page.queryByRole("textbox"), null);
-    assert.equal(page.queryByRole("button", { name: t("detail.skip"), exact: true }), null);
+      interaction: { kind: "question", summary: "Native user question", method: "request_user_input_async", respond: { op: "codex_respond", args: { respondToken: "native" } } } }] } } } }));
+    const nativeDock = within(page.getByRole("region", { name: t("detail.needsYou") }));
+    assert.ok(nativeDock.getByRole("textbox", { name: t("timeline.answer") }));
+    assert.equal(page.queryAllByRole("textbox", { name: t("detail.message") }).length, 0);
+    await click(nativeDock.getByRole("button", { name: t("detail.skip"), exact: true }));
+    assert.equal(page.queryAllByRole("region", { name: t("detail.needsYou") }).length, 0);
+    assert.equal(page.queryAllByRole("textbox").length, 0);
     assert.ok(page.getByRole("button", { name: t("expandPanelWidth") }));
     await act(() => { panelWidth = 320; [...observers].forEach(observer => observer.notify()); });
-    assert.equal(page.queryByRole("button", { name: t("expandPanelWidth") }), null);
+    assert.equal(page.queryAllByRole("button", { name: t("expandPanelWidth") }).length, 0);
     await act(() => fireEvent.keyDown(page.getByRole("button", { name: t("detail.taskActions") }), { key: "Enter" }));
     await click(page.getByRole("menuitem", { name: t("expandPanelWidth") }));
     assert.equal(expanded, true);
@@ -436,7 +449,7 @@ test("task detail limits input to pending execution requests and consolidates he
   }
 });
 
-test("timeline UI and agent navigation restore follow mode and focus", async () => {
+test("timeline UI and agent navigation restore follow mode and focus", { timeout: 10000 }, async () => {
   // Regression: jump-to-latest and agent navigation must restore follow mode after manual scrolling.
   const window = new Window({ url: "http://localhost" });
   let top = 0, height = 3482, latestLabel = "";

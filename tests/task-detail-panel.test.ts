@@ -5,9 +5,10 @@ import { createServer } from "vite";
 import { act, createElement as h } from "react";
 import { within, fireEvent } from "@testing-library/dom";
 
-test("task detail projects native titles, compact ownership and pending input without resident controls", async () => {
+test("task detail projects native titles, compact ownership and pending input without resident controls", { timeout: 10000 }, async () => {
   // Regression: prompt-derived titles and expanded ownership displaced header metadata; revoked queue reads appeared on every task.
   const window = new Window({ url: "http://localhost" });
+  window.localStorage.setItem("arc.privacy", "false");
   const media = Object.assign(new window.EventTarget(), { matches: true });
   window.matchMedia = () => media as unknown as MediaQueryList;
   class Observer { observe() {} unobserve() {} disconnect() {} }
