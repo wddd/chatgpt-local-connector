@@ -16,7 +16,7 @@ import { Button, Icon, IconButton, LoadingIndicator, Menu } from "./ui";
 import TimelineEntries, { durationText } from "./TimelineEntries";
 import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
 import { connector } from "../state/connector";
-import { projectTurn, taskState } from "../state/taskProjection";
+import { taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import TaskNeedsYou from "./TaskNeedsYou";
 import { activityHeadline, type TrackedActivity } from "../state/activityModel";
@@ -121,7 +121,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const knownSource = source?.id ? connection.sources.find(item => item.id === source.id) : undefined;
   const where = knownSource ? connection.status?.ingresses.find(item => item.id === knownSource.ingressId)?.name || knownSource.connectionName : undefined;
   const groups = timelineGroups(timeline?.entries ?? []);
-  const turnCount = groups.length;
   const state = taskState(timeline?.status, running, showCard);
   const turnId = nativeSession.turnId || groups.at(-1)?.turnId;
   const reviewSource = timeline
@@ -162,8 +161,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       }
     },
   }));
-  const plan = projectTurn(groups.at(-1)?.entries ?? [], state).plan?.plan ?? [];
-  const doneSteps = plan.filter(step => step.status === "completed").length;
   const title = taskTitle || nativeSession.title || session.title || t("timeline.title");
   return <section ref={detail} className="agent-panel-layer task-detail-layer" data-narrow={narrow || undefined}>
     <header className="dialog-header task-detail-header">
@@ -181,7 +178,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
         <div className="task-detail-meta"><SpecPill summary={latestSummary} />{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span>{where && where.trim().toLowerCase() !== sourceLabel?.trim().toLowerCase() && <span className="task-source-where">{where}</span>}</span>}</div>
         {duration !== undefined && <time className="timeline-meta task-duration">{durationText(duration)}</time>}
       </div>
-      {!narrow && turnCount > 0 && <div className="task-progress"><div>{plan.map((step, index) => <span key={index} data-state={step.status} />)}</div><span>{t("timeline.turn", { count: turnCount })}{plan.length > 0 && ` · ${t("detail.planProgress", { done: doneSteps, total: plan.length })}`}</span></div>}
     </header>
     <div className="task-timeline" aria-busy={loading}>
       {(error || openError) && <p className="timeline-error" role="alert">{openError || error}</p>}

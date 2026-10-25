@@ -13,14 +13,10 @@
 .task-state[data-state=done] { color: var(--success); background: var(--success-soft); }
 .task-state[data-state=failed] { color: var(--danger); background: var(--danger-soft); }
 .task-state:is([data-state=running], [data-state=needsYou])::before { animation: task-pulse 1.8s infinite; }
-.task-progress { display: flex; align-items: center; gap: 10px; color: var(--text-tertiary); font-size: 11px; }
-.task-progress > div { display: flex; flex: 1; gap: 4px; }
-.task-progress > div > span { flex: 1; height: 4px; border-radius: 4px; background: var(--border); }
-.task-progress [data-state=completed] { background: var(--success); }
-.task-progress :is([data-state=in_progress], [data-state=inProgress], [data-state=running]) { background: var(--accent); }
 .task-detail-layer .timeline-entries { padding: 14px 16px 18px; gap: 14px; }
 .task-turn, .task-turn-content, .task-process-rows { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .task-previous-turn.button { width: 100%; height: auto; min-height: 44px; text-align: left; justify-content: flex-start; border: 1px solid var(--border); border-radius: 14px; }
+.task-previous-turn.button, .task-process > .timeline-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
 .task-previous-turn[aria-expanded=true] > .timeline-chevron { transform: rotate(90deg); }
 .task-previous-turn > span { display: grid; gap: 4px; min-width: 0; font-size: 12px; color: var(--text-secondary); }
 .task-previous-turn > span > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13px; }
@@ -139,7 +135,6 @@
   .task-detail-meta .activity-source-badge, .task-source-where { display: none; }
   .task-duration { font-size: 11.5px; }
   .task-detail-chips > .task-review-status { display: none; }
-  .task-progress { grid-column: 1 / -1; }
   .task-detail-layer .timeline-entries { padding: 12px; gap: 12px; }
   .task-agent-mark { display: none; }
   .task-phase { font-size: 13.5px; }
@@ -152,7 +147,7 @@
   .task-compose-row > .field { flex-basis: 100%; }
   .task-compose-row > .button { flex: 1; }
   .task-review-dock { flex-wrap: wrap; }
-  .task-process > .timeline-summary { flex-wrap: wrap; padding-inline: 12px; }
+  .task-process > .timeline-summary { padding-inline: 12px; }
   .task-receipt-anchor { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) {
