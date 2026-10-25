@@ -45,8 +45,9 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const [atLatest, setAtLatest] = useState(true);
   const [timeline, setTimeline] = useState<AgentTimeline>();
   const [taskTitle, setTaskTitle] = useState<{ id: string; title: string }>();
-  const [resuming, setResuming] = useState(false);
-  const resumeRequest = useRef<{turnId:string;requestId:string} | undefined>(undefined);
+  const [continuing, setContinuing] = useState(false);
+  const continuationBusy = useRef(false);
+  const continuationRequest = useRef<{ turnId: string; action: "resume" | "retry"; op: string; args: Record<string, unknown> } | undefined>(undefined);
   const [error, setError] = useState(""), [openError, setOpenError] = useState("");
   const loading = session.timeline && !timeline && !error;
   const [now, setNow] = useState(Date.now);
@@ -113,7 +114,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     if (content.current) observer.observe(content.current);
     return () => observer.disconnect();
   }, []);
-  const nativeSession = live ?? { ...session, interaction: undefined };
+  const groups = timelineGroups(timeline?.entries ?? []);
+  const nativeSession = live ?? { ...session, turnId: groups.at(-1)?.turnId || session.turnId, interaction: undefined };
   const agentName = name(orderedAgents().find(a => a.agent === agent) ?? { agent });
   const duration = timelineDuration(timeline?.entries ?? [], now, running, nativeSession.turnId, timeline?.turnTimings, nativeSession.turnStartedAt);
   const project = timeline?.projectName || nativeSession.projectName || session.projectName
@@ -121,7 +123,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const latestSummary = live ? live.dispatchSummary : timeline?.dispatchSummary ?? nativeSession.dispatchSummary;
   const source = latestSummary?.controlSource;
   const sourceLabel = source && dispatchSourceLabel(source);
-  const groups = timelineGroups(timeline?.entries ?? []);
   const hasPending = !external && !timeline?.readOnly && running && pendingSessions(agent, nativeSession, timeline?.entries ?? [], submissions).length > 0;
   const state = taskState(timeline?.status, running, hasPending);
   const turnId = nativeSession.turnId || groups.at(-1)?.turnId;
@@ -163,18 +164,29 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       }
     },
   }));
-  const resumeInterrupted = () => {
-    if (!turnId) return;
-    if (resumeRequest.current?.turnId !== turnId) resumeRequest.current = { turnId, requestId: crypto.randomUUID() };
-    setResuming(true); setOpenError("");
+  const continueTurn = (action: "resume" | "retry") => {
+    if (!turnId || continuationBusy.current) return;
+    if (continuationRequest.current?.turnId !== turnId || continuationRequest.current.action !== action) {
+      const requestId = crypto.randomUUID();
+      const prompt = `Continue from failed turn ${turnId} in this task. Inspect the current results first, skip completed work, and do not repeat successful or uncertain side effects. If the failure is already resolved, report the current state.`;
+      continuationRequest.current = { turnId, action,
+        op: action === "resume" ? "codex_resume" : agent === "codex" ? "codex_send" : "agent_send",
+        args: action === "resume" ? { threadId: session.id, turnId, requestId } : agent === "codex"
+          ? { threadId: session.id, prompt, requestId, sendMode: "next", approval: "approved",
+            ...(latestSummary?.model ? { model: latestSummary.model } : {}), ...(latestSummary?.effort ? { effort: latestSummary.effort } : {}),
+            ...(latestSummary?.serviceTier ? { serviceTier: latestSummary.serviceTier } : {}) }
+          : { agent, taskId: session.id, prompt, requestId, approval: "approved" } };
+    }
+    const request = continuationRequest.current;
+    continuationBusy.current = true; setContinuing(true); setOpenError("");
     void (async () => {
-      let receipt = await api<{ state: string; requestId: string; error?: { message?: string } }>("tasks/control", "POST", { op: "codex_resume", args: { threadId: session.id, turnId, requestId: resumeRequest.current!.requestId } });
+      let receipt = await api<{ state: string; requestId: string; error?: { message?: string } }>("tasks/control", "POST", { op: request.op, args: request.args });
       while (["pending", "reserved", "submitting"].includes(receipt.state)) {
         await new Promise(resolve => setTimeout(resolve, 500));
         receipt = await api("tasks/control", "POST", { op: "receipt", args: { requestId: receipt.requestId } });
       }
       if (receipt.state !== "completed") throw new Error(receipt.error?.message || receipt.state);
-    })().catch(error => setOpenError(String(error))).finally(() => setResuming(false));
+    })().catch(error => setOpenError(String(error))).finally(() => { continuationBusy.current = false; setContinuing(false); });
   };
   // Activity snapshots can derive their title from the dispatch prompt.
   const title = (agent === "codex" && taskTitle?.id === session.id && taskTitle.title) || t("timeline.title");
@@ -237,7 +249,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           </section>}
           {timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
           <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} turnTimings={timeline?.turnTimings} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries}
-            onResume={agent === "codex" && !external && !timeline?.readOnly && state === "interrupted" && turnId ? resumeInterrupted : undefined} resuming={resuming} />
+            onResume={agent === "codex" && !external && !timeline?.readOnly && state === "interrupted" && turnId ? () => continueTurn("resume") : undefined}
+            onRetry={!external && !timeline?.readOnly && state === "failed" && turnId ? () => continueTurn("retry") : undefined} continuing={continuing} />
           <TaskQueuedMessages queue={queue} />
           </>}
         </div>

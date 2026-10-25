@@ -520,7 +520,7 @@ Archiving ended self-test threads is optional and is not an acceptance completio
 
 ## Task detail interaction ownership
 
-Task details display execution and control-source review status. Users answer pending questions and permission requests during execution of control-source tasks. The panel has no composer, purpose selector, queue controls, retry, continuation, stop, or review actions. Control sources use the dedicated dispatch, queue, interrupt, and review ops. For acceptance follow-ups, submit `purpose:"self-test", notify:null` through `codex_send` or `agent_send`. Codex continuations inherit persisted self-test purpose when omitted.
+Task details display execution and control-source review status. Users answer pending questions and permission requests during execution of any task source, including ARC-local turns. The panel has no composer, purpose selector, queue controls, stop, or review actions. The latest failed outcome card offers Retry through `codex_send(sendMode:"next")` or `agent_send`, with an explicit continuation prompt in the same task and a stable receipt requestId. It does not replay the original input. The latest interrupted Codex card offers Resume through `codex_resume`. Control sources use the dedicated dispatch, queue, interrupt, and review ops. For acceptance follow-ups, submit `purpose:"self-test", notify:null` through `codex_send` or `agent_send`. Codex continuations inherit persisted self-test purpose when omitted.
 
 ## Task list cost
 

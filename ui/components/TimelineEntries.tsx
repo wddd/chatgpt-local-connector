@@ -147,9 +147,9 @@ function ToolRun({ entries, live }: { entries: AgentTimelineEntry[]; live: boole
     <div className="task-tool-rows">{entries.map(entry => <ToolEntry key={entry.id} entry={entry} live={live} />)}</div>
   </Fold>;
 }
-export default function TimelineEntries({ entries, agent, session, now, running = false, turnStatuses, turnTimings, status, onResume, resuming }: {
+export default function TimelineEntries({ entries, agent, session, now, running = false, turnStatuses, turnTimings, status, onResume, onRetry, continuing }: {
   entries: AgentTimelineEntry[]; agent: string; session: AgentActivitySession; now: number; running?: boolean; turnDispatchSummaries?: Record<string, DispatchSummary>; turnStatuses?: Record<string, string>; status?: string; turnTimings?: Record<string, TurnTiming>;
-  onResume?: () => void; resuming?: boolean;
+  onResume?: () => void; onRetry?: () => void; continuing?: boolean;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const change = (id: string) => (open: boolean) => setExpanded(previous => ({ ...previous, [id]: open }));
@@ -176,7 +176,7 @@ export default function TimelineEntries({ entries, agent, session, now, running 
         {prompt && <div className="task-prompt">{source && <small>{t("detail.via", { source: dispatchSourceLabel(source) })}{prompt.startedAt && ` · ${new Date(prompt.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small>}
           <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[prompt.id] ?? false} onChange={change(prompt.id)} /></div>}
         {!!rows.length && (live ? process : <Fold className="task-process" open={processOpen(state, expanded[workId])} onChange={change(workId)} summary={<span>{t("detail.process", projection)}{duration !== undefined && <> · <Duration value={duration} /></>}</span>}>{process}</Fold>)}
-        {(state === "failed" || state === "interrupted") && <TaskOutcome state={state} entries={group.entries} project={session.project} onResume={latest && current ? onResume : undefined} resuming={resuming} />}
+        {(state === "failed" || state === "interrupted") && <TaskOutcome state={state} entries={group.entries} project={session.project} onResume={latest && current ? onResume : undefined} onRetry={latest && current ? onRetry : undefined} continuing={continuing} />}
         <TaskReceiptHistory agent={agent} id={session.id} turnId={group.turnId} latest={latest} />
         {projection.thinking && <div className="task-thinking" role="status">{projection.thinking.text}</div>}
         {final && state !== "failed" && state !== "interrupted" && <article className="task-final"><header><Icon icon={Check} /><strong>{t("detail.finalReply")}</strong><CopyReply text={final.text ?? ""} /></header><TimelineMarkdown text={final.text ?? ""} />{final.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}<ChangedFiles entries={group.entries} project={session.project} /></article>}
