@@ -477,6 +477,10 @@ Task detail actions use `cli control` with the same operation arguments as contr
 
 Send `{ "agent": "codex", "id": "<threadId>" }` to `cli control task_mark_read --stdin` to dismiss a completed homepage bubble without opening details. Use `cli control task_bubble --stdin` with the same arguments to read `completed`, `unread`, `readAt`, and `retained`. The same renderer-scoped read state appears in snapshot `model.taskBubbles`, including dismissed completions. It resets on a new turn, Core switch, or renderer reload. This does not acknowledge notification inbox events.
 
+A combined resize/navigation snapshot can return `SNAPSHOT_TIMEOUT` after navigation has already taken effect. Read `{ "modelOnly": true }` without resize or navigation arguments and inspect `model.taskDetail.id` before deciding whether another navigation is needed. Once the intended task is open, capture again without replaying the navigation.
+
+Task names can appear both in topology buttons and in the open Agent dialog. Browser automation SHOULD scope task selectors to that dialog by its accessible role and Agent name, then select the task within it. Native AX automation SHOULD read a fresh tree and select the task ref within that dialog. Do not use a global task-name match when multiple surfaces expose the same task.
+
 ## Explicit instance targeting
 
 Run `npm run dev:isolated` from a source checkout to start a supported side-by-side development Desktop and Core. The launcher allocates a fresh private ARC state directory and uses the existing development bundle identity (`com.whzxc.agent-remote-control.dev`). Core and Desktop bind independent ephemeral loopback ports. The installed application and its state keep running. Signing and the development build remain owned by the normal development supervisor.
