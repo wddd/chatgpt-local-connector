@@ -1053,6 +1053,16 @@ fn recover(dir: &Path, b: &mut Binding) -> Result<bool> {
     }
     Ok(false)
 }
+fn quiet_terminal(b: &Binding) -> bool {
+    b.terminal
+        && b.waiting.is_empty()
+        && !b.deliveries.iter().any(|d| {
+            !d.interaction.is_null()
+                && d.interaction["resolved"] != true
+                && matches!(d.status.as_str(), "pending" | "sending")
+        })
+}
+
 async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Value) -> Result<()> {
     let guard = lock.lock().await;
     let Some(current) = binding(dir, &b.thread_id, &b.turn_id)? else {
@@ -1153,6 +1163,12 @@ async fn process(dir: &Path, lock: &Mutex<()>, b: &mut Binding, observation: &Va
         events.clear();
     }
     for handoff in observation["handoffs"].as_array().into_iter().flatten() {
+        // Ownership observation already persisted history. Its enqueue cursor
+        // advances even when an ended task needs no individual wakeup.
+        if quiet_terminal(b) {
+            continue;
+        }
+
         let started = if b.scope_started_at == 0 {
             b.created_at.saturating_mul(1000)
         } else {
@@ -1767,6 +1783,14 @@ async fn flush(
         .collect::<Vec<_>>();
     for (b, continuation) in all.iter_mut().zip(continuations) {
         let mut changed = false;
+        if quiet_terminal(b) {
+            for d in &mut b.deliveries {
+                if d.task_state == "handoff" && d.status == "pending" {
+                    d.status = "resolved".into();
+                    changed = true;
+                }
+            }
+        }
         for d in &mut b.deliveries {
             if d.key == "terminal"
                 && d.status == "pending"
@@ -2448,11 +2472,8 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                             }
                         }
                         drop(_guard);
-                        if b.scope_end.is_none()
-                            && (b.agent.is_empty() || b.agent == "codex")
-                            && owner_threads.insert(b.thread_id.clone())
-                        {
-                            let _ = control.observe_ownership(&b.thread_id).await;
+                        if b.scope_end.is_none() && (b.agent.is_empty() || b.agent == "codex") {
+                            owner_threads.insert(b.thread_id.clone());
                         }
                         if b.terminal && (b.scope_end.is_some() || b.continuation_bound) {
                             continue;
@@ -2544,6 +2565,9 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                         }
                     }
                     process(&directory(), &LOCK, &mut b, &observed).await?;
+                }
+                for thread in owner_threads {
+                    let _ = control.observe_ownership(&thread).await;
                 }
                 Ok::<_, String>(())
             };
@@ -4131,6 +4155,100 @@ mod tests {
                 .find(|op| op["name"] == value["next"]["op"])
                 .unwrap();
             crate::egress::validate_op(spec, &value["next"]["args"]).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn queued_handoff_is_resolved_if_task_ends_before_delivery() {
+        // Regression: persisted handoff queues replayed idle-thread wakeups after restart.
+        let dir = Sandbox::new();
+        let mut b = fixture(&dir.0);
+        let handoff = json!({"state":"unconfirmed","handoffs":[{"eventId":"queued-handoff","from":"connector","to":"unheld","observedAt":now(),"evidence":null,"timeBasis":"observed-not-transition-time"}]});
+        super::process(&dir.0, &Mutex::new(()), &mut b, &handoff)
+            .await
+            .unwrap();
+        super::process(
+            &dir.0,
+            &Mutex::new(()),
+            &mut b,
+            &json!({"state":"completed"}),
+        )
+        .await
+        .unwrap();
+        let fake = Fake::success();
+        let at = chrono::Utc::now().timestamp() + 31;
+        for _ in 0..3 {
+            super::recover(&dir.0, &mut b).unwrap();
+            flush(&fake, &dir.0, &Mutex::new(()), at, 0, &json!({}))
+                .await
+                .unwrap();
+            b = binding(&dir.0, &b.thread_id, &b.turn_id).unwrap().unwrap();
+        }
+        let status =
+            governance::status_in(&dir.0, "claude", &json!({"all":true}), at, &json!({})).unwrap();
+        let deliveries = status["deliveries"].as_array().unwrap();
+        assert!(deliveries
+            .iter()
+            .filter(|d| d["kind"] == "handoff")
+            .all(|d| d["state"] == "resolved"));
+        assert!(deliveries
+            .iter()
+            .any(|d| d["kind"] == "completed" && d["state"] == "delivered"));
+    }
+
+    #[tokio::test]
+    async fn terminal_handoffs_stay_quiet_while_active_and_pending_tasks_still_push() {
+        // Regression: every ended bound thread emitted connector-to-unheld and desktop-to-unheld notices after restart.
+        for (state, terminal, expected) in [
+            ("completed", true, 0),
+            ("running", false, 2),
+            ("interaction-required", true, 2),
+        ] {
+            let dir = Sandbox::new();
+            let mut b = fixture(&dir.0);
+            let observed = if state == "interaction-required" {
+                interaction(json!(17))
+            } else {
+                json!({"state":state})
+            };
+            super::process(&dir.0, &Mutex::new(()), &mut b, &observed)
+                .await
+                .unwrap();
+            b.terminal = terminal;
+            persist(&dir.0, &b).unwrap();
+            let handoffs = json!({"state":"unconfirmed","handoffs":[
+                {"eventId":"connector-unheld","from":"connector","to":"unheld","observedAt":now(),"evidence":null,"timeBasis":"observed-not-transition-time"},
+                {"eventId":"desktop-unheld","from":"desktop","to":"unheld","observedAt":now(),"evidence":null,"timeBasis":"observed-not-transition-time"}
+            ]});
+            for _ in 0..3 {
+                b = binding(&dir.0, &b.thread_id, &b.turn_id).unwrap().unwrap();
+                super::recover(&dir.0, &mut b).unwrap();
+                super::process(&dir.0, &Mutex::new(()), &mut b, &handoffs)
+                    .await
+                    .unwrap();
+            }
+            let status =
+                governance::status_in(&dir.0, "claude", &json!({"all":true}), i64::MAX, &json!({}))
+                    .unwrap();
+            assert_eq!(
+                status["deliveries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|d| d["kind"] == "handoff")
+                    .count(),
+                expected
+            );
+            let inbox = inbox_in(&dir.0, "claude", &[], false, None).unwrap();
+            assert_eq!(
+                inbox["events"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|e| e["kind"] == "handoff")
+                    .count(),
+                expected
+            );
         }
     }
 
