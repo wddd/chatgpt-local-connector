@@ -6746,7 +6746,7 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 3600000,
-            "default": 900000
+            "description": "Set-only real-time lease; omitted sets use 900000 ms. Read and clear accept action only."
           },
           "reducedMotion": {
             "type": "boolean"

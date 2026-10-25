@@ -80,6 +80,33 @@ pub(crate) fn advance(entry: &mut Entry, session: &str, present: bool, routable:
     }
     entry.session = session.into();
 }
+pub(crate) fn advance_environment(
+    entry: &mut Entry,
+    session: &str,
+    env: &crate::app_env::Overrides,
+    system_present: bool,
+    routable: bool,
+    real: i64,
+) {
+    if !entry.clock_id.is_empty()
+        && entry.clock_id != "system"
+        && entry.clock_id != env.clock_id()
+        && matches!(entry.routing.state.as_str(), "deferred" | "paused")
+    {
+        entry.routing = immediate(
+            if routable { "routed" } else { "not-routable" },
+            "environment-reset",
+        );
+    }
+    entry.clock_id = env.clock_id().into();
+    advance(
+        entry,
+        session,
+        env.presence(system_present),
+        routable,
+        env.clock_now(real),
+    );
+}
 pub(crate) fn change(entry: &mut Entry, action: &str, actor: &str, now: i64) -> Result<()> {
     if entry.resolved {
         return Err("REQUEST_RESOLVED: read pending requests before routing".into());
@@ -240,17 +267,13 @@ pub(super) fn observe_in(dir: &Path, agent: &str, task: &str, request: &mut Valu
     }
     let mut entry = entry.unwrap();
     entry.source_id = b.source_id;
-    if !entry.clock_id.is_empty() && entry.clock_id != "system" && entry.clock_id != env.clock_id()
-    {
-        entry.session.clear();
-    }
-    entry.clock_id = env.clock_id().into();
-    advance(
+    advance_environment(
         &mut entry,
         &SESSION,
-        env.presence(present(agent, task)),
+        &env,
+        present(agent, task),
         available,
-        now,
+        real,
     );
     request["routing"] = json!(entry.routing);
     save_entry(&p, &entry)
@@ -281,17 +304,13 @@ pub(super) fn control_in(dir: &Path, args: &Value, local: bool) -> Result<Value>
     let real = chrono::Utc::now().timestamp_millis();
     let env = crate::app_env::read()?;
     let now = env.clock_now(real);
-    if !entry.clock_id.is_empty() && entry.clock_id != "system" && entry.clock_id != env.clock_id()
-    {
-        entry.session.clear();
-    }
-    entry.clock_id = env.clock_id().into();
-    advance(
+    advance_environment(
         &mut entry,
         &SESSION,
-        env.presence(present(agent, task)),
+        &env,
+        present(agent, task),
         routable(&dir, &b, real)?,
-        now,
+        real,
     );
     change(
         &mut entry,
@@ -348,6 +367,41 @@ mod tests {
             resolved: false,
             clock_id: "system".into(),
         }
+    }
+    #[test]
+    fn routing_app_env_freezes_advances_and_resets_without_focus() {
+        // Property: virtual time and explicit presence control routing while clear cancels overridden delays.
+        let env = crate::app_env::transition(
+            &Default::default(),
+            &json!({"action":"set","presence":"present","clock":{"freeze":true}}),
+            1000,
+        )
+        .unwrap();
+        let mut e = entry(true, true);
+        advance_environment(&mut e, "first", &env, false, true, 100_000);
+        assert_eq!(e.routing.state, "deferred");
+        assert_eq!(e.routing.defer_until, Some(16000));
+        let advanced = crate::app_env::transition(
+            &env,
+            &json!({"action":"set","clock":{"advanceMs":15000}}),
+            100_000,
+        )
+        .unwrap();
+        advance_environment(&mut e, "first", &advanced, false, true, 100_000);
+        assert_eq!(e.routing.state, "routed");
+        assert_eq!(e.routing.reason, "countdown-elapsed");
+        let mut e = entry(true, true);
+        advance_environment(&mut e, "first", &env, false, true, 2000);
+        change(&mut e, "pause", "user", env.clock_now(2000)).unwrap();
+        advance_environment(&mut e, "first", &Default::default(), true, true, 3000);
+        assert_eq!(e.routing.state, "routed");
+        assert_eq!(e.routing.reason, "environment-reset");
+        let absent =
+            crate::app_env::transition(&env, &json!({"action":"set","presence":"absent"}), 2000)
+                .unwrap();
+        let mut e = entry(true, true);
+        advance_environment(&mut e, "first", &absent, true, true, 2000);
+        assert_eq!(e.routing.reason, "user-absent");
     }
     #[test]
     fn routing_presence_only_delays_new_routable_requests() {

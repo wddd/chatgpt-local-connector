@@ -2743,7 +2743,7 @@
       "name": "app.snapshot",
       "method": "POST",
       "route": "app/snapshot",
-      "description": "Read the live UI model. modelOnly:true returns model inline without files or screenshots. Otherwise export view-model.json and macOS snapshot.png; other desktops report png.code=NOT_SUPPORTED. taskPanel reads or navigates one task detail. taskBubble reads or marks one completed homepage bubble read; model.taskBubbles exposes persisted agent/task read acknowledgements (30 days, newest 1000) and renderer retention. out defaults to state/acceptance/<unique id>; width/height are logical pixels; panel.id is required for agent/source.",
+      "description": "Read the live UI model. modelOnly:true returns model inline without files or screenshots. Otherwise export view-model.json and macOS snapshot.png; other desktops report png.code=NOT_SUPPORTED. taskPanel reads or navigates one task detail. taskBubble reads or marks one completed homepage bubble read; model.taskBubbles exposes persisted agent/task read acknowledgements (30 days, newest 1000) and renderer retention. out defaults to state/acceptance/<unique id>; width/height are logical pixels; panel.id is required for agent/source. model.env reports effective instance environment values with source:system|override, active and expiresAt; width fields include observed value and requested override. Use control app_env to set or clear overrides without changing host settings.",
       "inputSchema": {
         "type": "object",
         "properties": {

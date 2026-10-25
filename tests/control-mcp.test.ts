@@ -2155,3 +2155,32 @@ test('Public failures provide a usable next without serialized duplicate reasons
     const guide=await call(failed.result.next.op,failed.result.next.args);assert.equal(guide.response.isError,false);
   }finally{await management('task-settings','PUT',saved);}
 });
+
+test('app_env persists per instance, reads back and clears without exporting preferences', async () => {
+  // Contract: the frozen act envelope carries instance environment set/read/clear and validates inputs.
+  const preferences = await management('preferences');
+  const args = { action: 'set', reducedMotion: true, colorScheme: 'dark', locale: 'zh-CN', windowWidth: 320, taskPanelWidth: 320, presence: 'present', clock: { freeze: true } };
+  const set = await call('app_env', args);
+  assert.equal(set.response.isError, false);
+  assert.equal(set.result.active, true);
+  for (const key of ['reducedMotion','colorScheme','locale','windowWidth','taskPanelWidth','presence']) assert.equal(set.result.overrides[key], args[key as keyof typeof args]);
+  await client.close(); await connectFixture();
+  const read = await call('app_env', { action: 'read' });
+  assert.equal(read.response.isError, false, JSON.stringify(read.result));
+  assert.ok(read.result.overrides, JSON.stringify(read.result));
+  assert.deepEqual(read.result.overrides, set.result.overrides);
+  const cli = (input?: unknown) => JSON.parse(execFileSync(fixtureCommand, ['cli', '--state-dir', stateDir, 'control', 'app_env', ...(input ? ['--stdin'] : [])], { env: fixtureEnv, input: input ? JSON.stringify(input) : undefined, encoding: 'utf8' }));
+  assert.deepEqual(cli().result.overrides, set.result.overrides);
+  assert.equal(cli({ action: 'set', reducedMotion: false }).result.overrides.reducedMotion, false);
+  const advanced = await call('app_env', { action: 'set', clock: { advanceMs: 15_000 } });
+  assert.equal(advanced.result.clock.value.nowMs, set.result.clock.value.nowMs + 15_000);
+  const invalid = await call('app_env', { action: 'set', windowWidth: 319 });
+  assert.equal(invalid.response.isError, true);
+  assert.deepEqual((await call('app_env', { action: 'read' })).result.overrides, advanced.result.overrides);
+  assert.deepEqual(await management('preferences'), preferences);
+  assert.equal(cli({ action: 'clear' }).result.active, false);
+  const cleared = await call('app_env', { action: 'clear' });
+  assert.equal(cleared.result.active, false);
+  assert.equal(cleared.result.clock.source, 'system');
+  assert.equal((await call('app_env', { action: 'read' })).result.overrides.windowWidth, null);
+});
