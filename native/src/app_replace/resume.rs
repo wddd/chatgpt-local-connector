@@ -160,7 +160,21 @@ pub(super) fn status_details(receipt: &mut Value) -> Result<()> {
                 crate::egress::receipt(store.read(request, string(&session, "instance"))?);
         }
     }
+    receipt["resumedCount"] = json!(resumed_count(receipt));
     Ok(())
+}
+
+pub(super) fn resumed_count(receipt: &Value) -> usize {
+    receipt["interruptedTurns"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|entry| {
+            let result = entry.get("resumeReceipt").unwrap_or(&entry["receipt"]);
+            result["state"] == "completed"
+                && result["turnId"].as_str().is_some_and(|v| !v.is_empty())
+        })
+        .count()
 }
 
 /// Only exact observed turns with a complete continuation cease blocking normal replacement.

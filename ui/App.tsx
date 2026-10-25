@@ -12,7 +12,6 @@ import {
   Logs,
   Settings,
   X,
-  Download,
   Maximize2,
   Minimize2,
   ShieldAlert,
@@ -36,7 +35,6 @@ import {
   checkUpdate,
   showUpdate,
   updateVisible,
-  installDirect,
 } from "./state/updates";
 import { onboarding } from "./state/onboarding";
 import { navigation, type Page } from "./state/navigation";
@@ -53,8 +51,7 @@ import SettingsPage from "./components/SettingsPage";
 import RemoteLinkPage from "./components/RemoteLinkPage";
 import AccountsPage, { AccountsActions } from "./components/AccountsPage";
 import { usePrivacy } from "./state/privacy";
-import { AppUpdateDialogs } from "./components/AppUpdate";
-import { replacementActive } from "./state/updateModel";
+import { UpdateDock, UpdateOutcome } from "./components/AppUpdate";
 import { Button, Icon, IconButton, Notice, HoverScope } from "./components/ui";
 import { api } from "./api";
 import PermissionsPage from "./components/PermissionsPage";
@@ -67,7 +64,7 @@ export default function App() {
   const [oauthRequest, setOauthRequest] = useState<{ id: string }>();
   const { feedback, status } = connector.use(),
     taskState = tasks.use();
-  const updateState = updates.use();
+  updates.use();
   const permissionState = permissions.use();
   const ready = !!status && permissionsReady(status.ingresses);
   useEffect(() => {
@@ -91,7 +88,7 @@ export default function App() {
     if (!isDesktop) return;
     // Keep drafts and active dialogs alive; only retire an idle hidden surface.
     const timer = setInterval(() => {
-      if (document.querySelector('[role="dialog"], form') || updates.get().phase !== "idle" || updates.get().checking || updates.get().dialogOpen || updateVisible()) return;
+      if (document.querySelector('[role="dialog"], form') || updates.get().snapshot.state !== "idle" || updates.get().panelOpen || updateVisible()) return;
       void import("@tauri-apps/api/core").then(({ invoke }) => invoke("release_main_window")).catch(() => {});
     }, 30000);
     return () => clearInterval(timer);
@@ -235,8 +232,8 @@ export default function App() {
           e.preventDefault();
           if (page === "remote" && nav.remoteConnectionId) {
             navigation.set(old => ({ ...old, remoteConnectionId: undefined }));
-          } else if (page === "settings" && nav.settingsExtras) {
-            navigation.set(old => ({ ...old, settingsExtras: undefined }));
+          } else if (page === "settings" && (nav.settingsExtras || nav.settingsUpdates)) {
+            navigation.set(old => ({ ...old, settingsExtras: undefined, settingsUpdates: undefined }));
           } else void closeSheet();
         }
         if (e.key === "Tab" && page !== "overview" && !layers.length) {
@@ -300,11 +297,11 @@ export default function App() {
         >
           <div className="page-sheet-content">
             <header className="sheet-header">
-              {page === "settings" && nav.settingsExtras && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsExtras: undefined }))} />}
+              {page === "settings" && (nav.settingsExtras || nav.settingsUpdates) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsExtras: undefined, settingsUpdates: undefined }))} />}
               {page === "remote" && nav.remoteConnectionId && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: undefined }))} />}
               <h1 className="capsule-title" tabIndex={-1}>
                 {page === "remote" ? status?.ingresses.find(i => i.id === nav.remoteConnectionId)?.name ?? t("source.title") : pages.find((item) => item.id === page)?.label}
-                {page === "settings" && nav.settingsExtras && <><span className="settings-breadcrumb-divider" aria-hidden="true"> / </span><span>{t("extras.title")}</span></>}
+                {page === "settings" && (nav.settingsExtras || nav.settingsUpdates) && <><span className="settings-breadcrumb-divider" aria-hidden="true"> / </span><span>{t(nav.settingsUpdates ? "appUpdates" : "extras.title")}</span></>}
                 {page === "logs" && (
                   <span className="muted small records-count">
                     {t("recentRecords", { count: status?.logs.length ?? 0 })}
@@ -366,15 +363,6 @@ export default function App() {
           inert={page !== "overview"}
           aria-hidden={page !== "overview"}
         >
-          {updateVisible() && (
-            <IconButton
-              className="update-shortcut"
-              icon={Download}
-              label={t("viewUpdate")}
-              disabled={updateState.requesting || updateState.checking || updateState.phase !== "idle" || replacementActive(updateState.replacement)}
-              onClick={() => void installDirect()}
-            />
-          )}{" "}
           {pages.map((item) => (
             <button
               key={item.id}
@@ -390,6 +378,7 @@ export default function App() {
               )}
             </button>
           ))}
+          <UpdateDock />
         </HoverScope>
       </nav>
       {feedback.text && (
@@ -408,7 +397,7 @@ export default function App() {
           </Notice>
         </div>
       )}
-      <AppUpdateDialogs />
+      <UpdateOutcome />
       <OAuthApproval inlineEnabled={page === "overview"} requested={oauthRequest} onClose={() => setOauthRequest(undefined)} />
     </div>
   );

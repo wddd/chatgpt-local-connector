@@ -967,7 +967,7 @@ pub(crate) async fn stdio_connection(port: u16, token: String, ingress: String) 
         jobs.spawn(async move {
             let response = client
                 .post(format!("http://127.0.0.1:{port}/mcp/{ingress}"))
-                .bearer_auth(token)
+                .bearer_auth(&token)
                 .header("Accept", "application/json, text/event-stream")
                 .timeout(Duration::from_secs(if is_wait(&request) {
                     1830
@@ -1002,7 +1002,26 @@ pub(crate) async fn stdio_connection(port: u16, token: String, ingress: String) 
             };
             if request.get("id").is_some() && !response.is_null() {
                 let mut out = out.lock().await;
-                let _ = crate::output::async_line(&mut out, response).await;
+                let replacement = &response["result"]["structuredContent"]["result"];
+                let update_submit = request["params"]["name"] == "act"
+                    && request["params"]["arguments"]["op"] == "update_request"
+                    && request["params"]["arguments"]["args"]["action"] == "submit";
+                let acknowledgment = if update_submit {
+                    crate::app_replace::acknowledgment_id("app.replace", replacement)
+                        .map(str::to_owned)
+                } else {
+                    None
+                };
+                if crate::output::async_line(&mut out, response).await.is_ok() {
+                    if let Some(id) = acknowledgment {
+                        let _ = client
+                            .post(format!("http://127.0.0.1:{port}/api/app/replace/ack"))
+                            .bearer_auth(&token)
+                            .json(&json!({"id":id}))
+                            .send()
+                            .await;
+                    }
+                }
             }
         });
         while jobs.try_join_next().is_some() {}

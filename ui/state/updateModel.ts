@@ -1,61 +1,50 @@
-export type Update = {
-  available: boolean;
-  version?: string;
-  notes?: string;
-  date?: string;
-  restarting?: boolean;
-  ready?: boolean;
-};
+export type UpdateState = "idle" | "checking" | "available" | "downloading" | "settling" | "countdown" | "swapping" | "starting" | "verifying" | "resuming" | "succeeded" | "rolling-back" | "rolled-back" | "failed" | "cancelled";
+export type UpdateTiming = "settled" | "now" | "defer";
+export type UpdateWork = { kind: string; agent?: string; taskId?: string; turnId?: string; title?: string; owner?: string; count?: number; reason?: string; question?: unknown };
 export type UpdateSnapshot = {
-  revision: number;
-  phase: "idle" | "checking" | "downloading" | "installing";
-  update?: Update | null;
-  downloaded?: number;
-  total?: number | null;
-  error?: string | null;
-  errorStage?: "check" | "download" | "install" | null;
-};
-export function mergeUpdateSnapshot(previous: UpdateSnapshot | undefined, next: UpdateSnapshot): UpdateSnapshot {
-  if (previous && next.revision <= previous.revision) return previous;
-  // A check invalidates the previous offer. Active work never carries an old error.
-  return {
-    ...next,
-    update: next.phase === "checking" || next.phase === "idle" && next.errorStage === "check" ? null : next.update ?? null,
-    error: next.phase === "idle" ? next.error ?? null : null,
-    errorStage: next.phase === "idle" ? next.errorStage ?? null : null,
-  };
-}
-export type Replacement = {
   id?: string;
-  state: string;
-  immediate?: boolean;
-  restartAt?: string;
-  waitDeadline?: string;
-  createdAt?: string;
-  notificationError?: string | null;
-  error?: string;
-  source?: string;
-  updatedAt?: string;
+  state: UpdateState;
+  source?: { kind: "release" | "local"; version?: string; build?: string; branch?: string; landedLanes?: string[] } | null;
+  instance?: string;
+  work: { blocking: UpdateWork[]; willResume: UpdateWork[]; unaffected: UpdateWork[] };
+  when: UpdateTiming;
+  deferUntil?: string | null;
+  restartAt?: string | null;
+  notes?: string | null;
+  error?: string | null;
+  backup?: string | null;
+  backupReady?: boolean;
   backupMoved?: boolean;
-  backup?: string;
-  package?: { version?: string; desktopBuild?: string };
-  waiting?: { activeWrites?: number; pendingInteractions?: number; blockingTurns?: unknown[]; error?: string };
+  statusPath?: string | null;
+  logPath?: string | null;
+  paths?: { source?: string; target?: string; staged?: string };
+  updatedAt?: string;
+  createdAt?: string;
+  supported?: boolean;
+  canSchedule?: boolean;
+  downloaded?: number;
+  total?: number;
+  resumedCount?: number;
+  settleDurationMs?: number;
+  droppedInteractions?: number;
+  recent?: UpdateSnapshot[];
 };
-export const replacementActive = (value?: Replacement) => !!value && ["preparing", "awaiting-receipt", "waiting-for-turns", "countdown", "verifying", "stopping", "installing", "starting", "rolling-back"].includes(value.state);
-export const replacementFailed = (value?: Replacement) => !!value && ["cancelled", "failed", "rolled-back"].includes(value.state);
-export function replacementForApp(value: Replacement, desktopBuild: string): Replacement {
-  return value.state === "cancelled" && value.package?.desktopBuild === desktopBuild
-    ? { ...value, state: "superseded" } : value;
+export const idleUpdate = (): UpdateSnapshot => ({ state: "idle", when: "settled", work: { blocking: [], willResume: [], unaffected: [] } });
+export const updateTerminal = (value: UpdateSnapshot) => ["succeeded", "rolled-back", "failed", "cancelled"].includes(value.state);
+export const updateActive = (value: UpdateSnapshot) => !["idle", "available", "checking", "succeeded", "rolled-back", "failed", "cancelled"].includes(value.state);
+export function mergeUpdateSnapshot(previous: UpdateSnapshot | undefined, next: UpdateSnapshot): UpdateSnapshot {
+  if (previous?.id && next.id && previous.updatedAt && next.updatedAt && next.updatedAt < previous.updatedAt) return previous;
+  return next;
 }
-export function mergeReplacement(previous: Replacement | undefined, next: Replacement): Replacement {
-  return previous?.updatedAt && (!next.updatedAt || next.updatedAt < previous.updatedAt) ? previous : next;
-}
-
-export function replacementCountdown(value: Replacement | undefined, now: number): number | undefined {
-  if (value?.state !== "countdown" || !value.restartAt) return undefined;
+export function updateCountdown(value: UpdateSnapshot, now: number): number | undefined {
+  if (value.state !== "countdown" || !value.restartAt) return;
   const deadline = Date.parse(value.restartAt);
   return Number.isFinite(deadline) ? Math.max(0, Math.ceil((deadline - now) / 1000)) : undefined;
 }
-export function replacementPhaseKey(value?: Replacement): string {
-  return ({ preparing: "replacementPreparing", "awaiting-receipt": "replacementHandoff", "waiting-for-turns": "replacementWaiting", countdown: "replacementCountdownNotice", verifying: "replacementValidating", stopping: "replacementStopping", installing: "replacementInstalling", starting: "replacementStarting", "rolling-back": "replacementRestoring", succeeded: "replacementSucceeded" } as Record<string, string>)[value?.state ?? ""] ?? "replacementIncomplete";
+export function updateStep(value: UpdateSnapshot): number {
+  if (value.state === "verifying") return value.backupMoved ? 4 : 0;
+  return ({ idle: 0, checking: 0, available: 0, downloading: 0, settling: value.backupReady ? 2 : 1, countdown: 2, swapping: 3, starting: 3, resuming: 5, succeeded: 6, "rolling-back": 3, "rolled-back": 6, failed: 0, cancelled: 0 })[value.state];
+}
+export function updateBlocks(value: UpdateSnapshot, agent: string, taskId: string): boolean {
+  return updateActive(value) && value.when !== "defer" && value.work.blocking.some(item => item.agent === agent && item.taskId === taskId);
 }

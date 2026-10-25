@@ -1,0 +1,31 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "panel": {
+    "kind": "none"
+  },
+  "update": {
+    "id": "fixture-available",
+    "state": "available",
+    "source": {
+      "kind": "release",
+      "version": "1.2.3"
+    },
+    "when": "settled",
+    "work": {
+      "blocking": [],
+      "willResume": [],
+      "unaffected": []
+    },
+    "instance": "isolated:fixture123",
+    "canSchedule": false,
+    "backupReady": true,
+    "notes": "Improve update coordination.\nResume interrupted tasks after recovery.",
+    "supported": true
+  },
+  "updatePanel": false
+}

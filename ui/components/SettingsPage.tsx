@@ -11,20 +11,20 @@ import { useInterval } from "../state/hooks";
 import type { Service } from "../state/types";
 import { Button, Group, Row, Switch, SingleChoice, Input, Field } from "./ui";
 import SettingsExtras from "./SettingsExtras";
-import { AppUpdate } from "./AppUpdate";
+import { AppUpdate, UpdatesSettings } from "./AppUpdate";
 export default function SettingsPage() {
   const { status, busy } = connector.use();
-  const { settingsExtras } = navigation.use();
-  const wasExtras = useRef(false);
+  const { settingsExtras, settingsUpdates } = navigation.use();
+  const previousSettings = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
-    if (settingsExtras) {
+    if (settingsExtras || settingsUpdates) {
       document.querySelector<HTMLElement>(".capsule-title")?.focus({ preventScroll: true });
       document.querySelector(".workspace")?.scrollTo({ top: 0 });
-    } else if (wasExtras.current) {
-      document.getElementById("settings-extras-entry")?.focus();
+    } else if (previousSettings.current) {
+      document.getElementById(previousSettings.current)?.focus();
     }
-    wasExtras.current = !!settingsExtras;
-  }, [settingsExtras]);
+    previousSettings.current = settingsUpdates ? "settings-updates-entry" : settingsExtras ? "settings-extras-entry" : undefined;
+  }, [settingsExtras, settingsUpdates]);
   const currentTheme = theme.use(),
     color = themeColor.use(),
     currentLanguage = language.use();
@@ -99,6 +99,7 @@ export default function SettingsPage() {
       await refreshConnector();
     });
   }
+  if (settingsUpdates) return <UpdatesSettings />;
   if (settingsExtras) return <SettingsExtras />;
   return (
     <div className="settings-page">

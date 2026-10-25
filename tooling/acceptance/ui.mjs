@@ -132,13 +132,25 @@ try {
             if (dialog.stacked && !layout.some(parent => parent.recessed && parent.width > dialog.width)) throw new Error('Stacked dialog is not narrower than its parent');
           }
         }
-        if (fixture.replacement && ['countdown', 'verifying'].includes(fixture.replacement.state)) {
-          // Regression: a local replacement had no visible progress or restart countdown outside Settings.
+        if (fixture.update) {
+          // Regression: update work groups and restart progress were hidden behind modal dialogs.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          const dialog = page.getByRole('dialog', {name:messages.replacementProgress, exact:true});
-          await dialog.waitFor({state:'visible'});
-          await dialog.getByRole('status').waitFor({state:'visible'});
-          if (fixture.replacement.immediate) await dialog.getByText(messages.replacementImmediate, {exact:true}).waitFor({state:'visible'});
+          if (fixture.settingsUpdates) {
+            await page.getByText(messages['updates.currentVersion'], { exact: true }).waitFor({ state: 'visible' });
+          } else if (['succeeded', 'rolled-back', 'failed', 'cancelled'].includes(fixture.update.state)) {
+            const key = fixture.update.state === 'failed' && fixture.update.backupMoved ? 'updates.restoreFailed' : `updates.state.${fixture.update.state}`;
+            await page.getByText(messages[key], { exact: true }).waitFor({ state: 'visible' });
+          } else {
+            const entry = page.getByRole('button', { name: messages.viewUpdate, exact: true });
+            await entry.waitFor({ state: 'visible' });
+            if (fixture.updatePanel === false) await entry.click();
+            const panel = page.getByRole('dialog', { name: messages.appUpdates, exact: true });
+            await panel.waitFor({ state: 'visible' });
+            if (fixture.update.state === 'settling') {
+              for (const group of ['blocking', 'willResume', 'unaffected']) await panel.getByRole('region', { name: messages[`updates.${group}`], exact: true }).waitFor({ state: 'visible' });
+            }
+            if (fixture.update.state === 'countdown') await panel.getByRole('list', { name: messages['updates.progress'] }).waitFor({ state: 'visible' });
+          }
         }
         if (name === 'accounts') {
           // Regression: account management was only reachable through Settings and hid source identities.

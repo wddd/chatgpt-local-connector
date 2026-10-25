@@ -1,3 +1,4 @@
+import { updates } from "./state/updates";
 import { appEnvironment, refreshAppEnvironment } from "./state/appEnvironment";
 import { environmentModel } from "./state/appEnvModel";
 import { activityBubbleSnapshot, controlActivityBubble, type ActivityBubbleRequest } from "./state/activityBubbles";
@@ -31,6 +32,7 @@ export function viewModel(layoutSettled = false) {
       presence: !!detail && document.visibilityState === "visible" && document.hasFocus(),
     }),
     scenario: scenarioReadiness(detail),
+    updates: updates.get(),
     schemaVersion: 1, layoutSettled, capturedAt: new Date().toISOString(),
     window: { width: innerWidth, height: innerHeight, devicePixelRatio },
     theme: document.documentElement.dataset.theme, language: locale.get(),

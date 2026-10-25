@@ -310,8 +310,7 @@
   position: relative;
   color: var(--text);
 }
-.navigation-capsule button svg,
-.update-shortcut svg {
+.navigation-capsule button svg {
   width: 20px;
   height: 20px;
   stroke-width: 1.7;
@@ -479,12 +478,8 @@
 
 .navigation-surface.has-update,
 .navigation-capsule.has-update {
-  width: 290px;
+  width: 298px;
   height: 50px;
-}
-.capsule-icons .update-shortcut {
-  width: 36px;
-  height: 36px;
 }
 
 .sheet-backdrop {

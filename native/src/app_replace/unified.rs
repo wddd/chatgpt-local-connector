@@ -73,11 +73,20 @@ pub fn project(receipt: &Value) -> Value {
 
 pub fn history() -> Result<Value> {
     let path = directory().join("history.json");
-    Ok(if path.exists() {
+    let mut rows = if path.exists() {
         load(&path)?
     } else {
         json!([])
-    })
+    };
+    for row in rows.as_array_mut().into_iter().flatten() {
+        if let Ok(path) = job(string(row, "id")) {
+            if let Ok(mut receipt) = load(&path.join("status.json")) {
+                super::resume::status_details(&mut receipt)?;
+                row["resumedCount"] = receipt["resumedCount"].clone();
+            }
+        }
+    }
+    Ok(rows)
 }
 
 pub(super) fn record_history(receipt: &Value) -> Result<()> {
@@ -100,6 +109,13 @@ pub(super) fn record_history(receipt: &Value) -> Result<()> {
 pub async fn update_status(full: bool) -> Result<Value> {
     let receipt = status()?;
     let mut value = project(&receipt);
+    value["canSchedule"] = json!(
+        matches!(
+            string(&receipt, "state"),
+            "awaiting-receipt" | "waiting-for-turns" | "verifying" | "countdown"
+        ) && job(string(&receipt, "id"))
+            .is_ok_and(|path| !path.join("swap-committed.json").exists())
+    );
     if !active(&receipt) {
         if let Ok(acquisition) =
             crate::transport::forward_request("updates", "GET", json!({})).await
@@ -107,20 +123,49 @@ pub async fn update_status(full: bool) -> Result<Value> {
             let phase = string(&acquisition, "phase");
             if matches!(phase, "checking" | "downloading")
                 || acquisition["update"]["available"] == true
+                || acquisition["error"].is_string()
             {
-                value = json!({"state":if phase == "idle" {"available"} else {phase},"source":{"kind":"release","version":acquisition["update"]["version"]},"notes":acquisition["update"]["notes"],"when":"settled","work":{"blocking":[],"willResume":[],"unaffected":[]},"supported":cfg!(target_os="macos"),"downloaded":acquisition["downloaded"],"total":acquisition["total"],"error":acquisition["error"],"revision":acquisition["revision"],"next":{"op":"update_status","args":{},"hint":"Release updates start from Desktop."}});
+                value = json!({"state":if phase == "installing" {"swapping"} else if phase == "idle" {if acquisition["update"]["available"] == true {"available"} else {"idle"}} else {phase},"source":{"kind":"release","version":acquisition["update"]["version"]},"notes":acquisition["update"]["notes"],"when":"settled","work":{"blocking":[],"willResume":[],"unaffected":[]},"supported":cfg!(target_os="macos"),"downloaded":acquisition["downloaded"],"total":acquisition["total"],"error":acquisition["error"],"revision":acquisition["revision"],"next":{"op":"update_status","args":{},"hint":"Release updates start from Desktop."}});
             }
         }
     }
+    if value["state"] == "available" {
+        let read = |route: &'static str| crate::transport::forward_request(route, "GET", json!({}));
+        let (activity, status, tasks, snapshot) = tokio::join!(
+            read("agents/activity"),
+            read("status"),
+            read("tasks"),
+            read("app/replace/snapshot")
+        );
+        let mut work = waiting(
+            &activity.unwrap_or(Value::Null),
+            &status.unwrap_or(Value::Null),
+            &tasks.unwrap_or(Value::Null),
+        );
+        if let Ok(snapshot) = snapshot {
+            work = resumable_waiting(work, &snapshot);
+        }
+        value["work"] =
+            project(&json!({"state":"waiting-for-turns","waiting":work}))["work"].clone();
+    }
     if value["instance"].is_null() {
+        let identity = crate::transport::forward_request("app", "GET", json!({}))
+            .await
+            .unwrap_or(Value::Null);
         let marker = load(&root().join("acceptance-instance.json")).unwrap_or(Value::Null);
         value["instance"] = json!(if let Some(id) = marker["instanceId"].as_str() {
             format!("isolated:{id}")
         } else {
             receipt["instance"]
                 .as_str()
-                .unwrap_or("production")
-                .to_owned()
+                .map(str::to_owned)
+                .unwrap_or_else(|| {
+                    if string(&identity, "bundleId").ends_with(".dev") {
+                        "dev".into()
+                    } else {
+                        "production".into()
+                    }
+                })
         });
     }
     value["recent"] = history()?;
@@ -148,9 +193,13 @@ pub async fn update_request(mut args: Value) -> Result<Value> {
             if args["source"]["kind"] != "local" {
                 return Err("INVALID_ARGUMENT: submit accepts source.kind local only; release updates start from Desktop".into());
             }
-            args["path"] = args["source"]["path"].clone();
-            args.as_object_mut().unwrap().remove("source");
-            let receipt = prepare(args).await?;
+            let mut body = json!({"path":args["source"]["path"]});
+            for key in ["when", "continuation"] {
+                if let Some(value) = args.get(key) {
+                    body[key] = value.clone();
+                }
+            }
+            let receipt = prepare(body).await?;
             let mut value = project(&receipt);
             value["replacementReceipt"] = json!(true);
             value["continuationRequestId"] = receipt["continuation"]["requestId"].clone();
@@ -158,6 +207,9 @@ pub async fn update_request(mut args: Value) -> Result<Value> {
         }
         "now" | "defer" | "cancel" => {
             let receipt = status()?;
+            if !active(&receipt) {
+                return Err("UPDATE_NOT_SETTLING: query update_status before scheduling".into());
+            }
             let path = job(string(&receipt, "id"))?;
             let guard = command_lock(&path)?;
             if path.join("swap-committed.json").exists() {

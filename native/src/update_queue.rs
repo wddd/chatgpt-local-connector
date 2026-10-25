@@ -13,7 +13,12 @@ pub(crate) async fn hold(name: &str, args: &mut Value, policy: &Value) -> Result
     if !matches!(
         name,
         "codex_create" | "codex_send" | "codex_resume" | "agent_create" | "agent_send"
-    ) {
+    ) && !(name == "codex_call"
+        && matches!(
+            string(args, "method"),
+            "thread/start" | "turn/start" | "turn/steer"
+        ))
+    {
         return Ok(None);
     }
     if crate::app_replace::continuation_context(name, args)?.is_some() {

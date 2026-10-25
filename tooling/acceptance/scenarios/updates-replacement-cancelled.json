@@ -8,13 +8,23 @@
   "panel": {
     "kind": "none"
   },
-  "replacement": {
+  "update": {
     "id": "fixture-replacement",
     "state": "cancelled",
-    "source": "/workspace/candidate.app",
-    "package": {
+    "source": {
+      "kind": "local",
       "version": "1.2.3"
     },
+    "when": "settled",
+    "work": {
+      "blocking": [],
+      "willResume": [],
+      "unaffected": []
+    },
+    "canSchedule": false,
+    "instance": "isolated:fixture123",
+    "notes": "Improve restart recovery.",
     "error": "REPLACE_TASKS_BUSY: no shutdown performed; inspect cli app replace --status for blocking work and retry when it is idle"
-  }
+  },
+  "updatePanel": false
 }

@@ -2,7 +2,7 @@ import { installTopologyAccounts } from './topology/scenarioAccounts';
 import { accountScenario } from "./scenarioAccounts";
 import { beginScenario, finishScenario, missingScenarioRoute, scenarioReadiness } from "./state/scenarioReadiness";
 import { updates, acceptUpdateSnapshot } from './state/updates';
-import type { UpdateSnapshot, Replacement } from './state/updateModel';
+import type { UpdateSnapshot } from './state/updateModel';
 import { onboarding, connectionSetup, connectionSwitch, type ConnectionSwitch, type SourceSetup, type ConnectionSetup } from './state/onboarding';
 import { navigation, type Page } from './state/navigation';
 import type { RelayProgress } from './state/relay';
@@ -23,7 +23,7 @@ import { taskScenario } from './scenarioTasks';
 import type { RequestRouting } from './state/requestRouting';
 import { taskPanelSnapshot } from './state/taskPanel';
 
-type Fixture = { update?: UpdateSnapshot; replacement?: Replacement; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
+type Fixture = { update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 let conversations: Record<string, AgentConversation[]> = {};
@@ -44,6 +44,24 @@ function respondToScenario(path: string, method: string, body?: unknown): unknow
   const accountResult = accountResponse?.(path, method, body);
   if (accountResult !== undefined) return structuredClone(accountResult);
   if (path === 'preferences' || path === 'preferences/import') return responses.preferences;
+  if (path === 'updates/request' && method === 'POST') {
+    const request = body as { action: string; seconds?: number }, snapshot = structuredClone(updates.get().snapshot);
+    if (request.action === 'cancel') { snapshot.state = 'cancelled'; snapshot.canSchedule = false; }
+    else if (request.action === 'now') { snapshot.when = 'now'; snapshot.state = 'swapping'; snapshot.canSchedule = false; }
+    else if (request.action === 'defer') { snapshot.when = 'defer'; snapshot.state = 'settling'; snapshot.deferUntil = new Date(Date.now() + (request.seconds ?? 3600) * 1000).toISOString(); }
+    else throw new Error('SCENARIO_ACTION_UNAVAILABLE: update submit');
+    responses['updates/status'] = snapshot; acceptUpdateSnapshot(snapshot); return { accepted: true };
+  }
+  if (path === 'updates/install' && method === 'POST') {
+    const snapshot = { ...updates.get().snapshot, id: 'fixture-submitted', state: 'settling' as const, when: (body as { when: UpdateSnapshot['when'] }).when, canSchedule: true, backupReady: true };
+    responses['updates/status'] = snapshot; acceptUpdateSnapshot(snapshot); return { accepted: true };
+  }
+  if (path === 'updates/cancel' && method === 'POST') {
+    const snapshot = { ...updates.get().snapshot, state: 'idle' as const };
+    responses['updates/status'] = snapshot; acceptUpdateSnapshot(snapshot); return {};
+  }
+  if (path === 'updates/check' && method === 'POST') return {};
+
   if (path === 'agents/conversations/timeline' && method === 'POST') {
     const timeline = responses[`agents/timeline/${(body as { id: string }).id}`];
     if (timeline) return structuredClone(timeline);
@@ -80,7 +98,7 @@ export async function installScenario(name: string) {
   const fixture = await load() as Fixture;
   beginScenario(name, fixture.detailTask === undefined ? undefined : `fixture-task-${fixture.detailTask}`);
   localStorage.setItem('arc-page', 'overview');
-  const preferences = { 'arc.privacy': 'true', theme: fixture.theme, language: fixture.language, 'arc.agent-order': JSON.stringify(fixture.agents), 'quota-display': fixture.quotaDisplay ?? 'remaining', 'quota-reset-display': fixture.resetDisplay ?? 'countdown', 'task-bubble-density': fixture.bubbles?.density ?? 'standard', 'task-bubble-width': fixture.bubbles?.width ?? 'medium', 'task-bubble-auto-compact': fixture.bubbles?.autoCompact === false ? 'off' : 'on' };
+  const preferences = { 'update-outcome-seen': '', 'update-skipped-version': '', 'arc.privacy': 'true', theme: fixture.theme, language: fixture.language, 'arc.agent-order': JSON.stringify(fixture.agents), 'quota-display': fixture.quotaDisplay ?? 'remaining', 'quota-reset-display': fixture.resetDisplay ?? 'countdown', 'task-bubble-density': fixture.bubbles?.density ?? 'standard', 'task-bubble-width': fixture.bubbles?.width ?? 'medium', 'task-bubble-auto-compact': fixture.bubbles?.autoCompact === false ? 'off' : 'on' };
   acceptPreferences(preferences);
   const now = new Date().toISOString();
   const defaults = Object.fromEntries(Object.entries(config.fields).map(([key, field]) => [key, field.default]));
@@ -213,6 +231,14 @@ export async function installScenario(name: string) {
   }]] : []));
   taskResponse = taskScenario(timelines, activity, records, () => {
     activity.observedAt = new Date().toISOString();
+    const update = responses['updates/status'] as UpdateSnapshot | undefined;
+    if (update) {
+      const nextUpdate = structuredClone(update);
+      const answered = nextUpdate.work.blocking.filter(item => item.taskId && item.question && !activity.agents[item.agent ?? 'codex']?.sessions.find(session => session.id === item.taskId)?.interaction);
+      nextUpdate.work.blocking = nextUpdate.work.blocking.filter(item => !answered.includes(item));
+      nextUpdate.work.willResume.push(...answered.map(item => ({ ...item, question: undefined })));
+      responses['updates/status'] = nextUpdate; acceptUpdateSnapshot(nextUpdate);
+    }
     const visible = { ...activity, agents: Object.fromEntries(Object.entries(activity.agents).map(([agent, group]) => [agent, {
       sessions: group.sessions.filter(session => ['running', 'inProgress'].includes(timelines[`agents/timeline/${session.id}`]?.status ?? '')),
     }])) };
@@ -234,6 +260,7 @@ export async function installScenario(name: string) {
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': initialActivity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
   responses['accounts'] = { accounts: topologyAccounts, login: null } satisfies AccountsResult;
   accountResponse = ['accounts', 'source-panel'].includes(name) ? accountScenario(status, sources) : undefined;
+  responses['updates/status'] = { state: 'idle', when: 'settled', work: { blocking: [], willResume: [], unaffected: [] } };
   responses['service'] = { supported: true, enabled: false };
   connector.set({ status, sources, sourcesLoaded: true, busy: '', loading: false, error: '', feedback: { text: '', error: false } });
   agents.set({ items: inventory, loaded: true, loading: false, saving: '', error: '' });
@@ -265,8 +292,14 @@ export async function installScenario(name: string) {
     if (fixture.sourceSetup) onboarding.set(fixture.sourceSetup);
     if (fixture.connectionSetup) connectionSetup.set(fixture.connectionSetup);
     if (fixture.page) navigation.set({ page: fixture.page, remoteConnectionId: fixture.remoteConnectionId, remoteSourceId: fixture.remoteSourceId });
-    if (fixture.update) { acceptUpdateSnapshot(fixture.update); updates.set(old => ({...old, dialogOpen: true})); }
-    if (fixture.replacement) updates.set(old => ({...old, replacement: fixture.replacement, replacementOpen: true}));
+    if (fixture.update) {
+      const snapshot = structuredClone(fixture.update);
+      if (snapshot.state === 'countdown') snapshot.restartAt = new Date(Date.now() + 10000).toISOString();
+      responses['updates/status'] = snapshot;
+      acceptUpdateSnapshot(snapshot);
+      updates.set(old => ({ ...old, panelOpen: fixture.updatePanel !== false }));
+    }
+    if (fixture.settingsUpdates) navigation.set(old => ({ ...old, page: 'settings', settingsUpdates: true }));
     await settledViewModel();
     finishScenario();
     for (let frame = 0; frame < 120; frame++) {

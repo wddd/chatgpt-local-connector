@@ -1,3 +1,5 @@
+import { updates } from "../state/updates";
+import { updateBlocks } from "../state/updateModel";
 import { useReducedMotion } from "../state/appEnvironment";
 import { useRef, useState } from "react";
 import { Check } from "lucide-react";
@@ -77,6 +79,7 @@ export function ActivityBubbleContent({ session, now, density = "standard", hist
   </>;
 }
 export function ActivityBubble({ agent, session, now, onMove, onRead, density = "standard" }: { agent: string; session: TrackedActivity; now: number; density?: BubbleDensity; onMove?: (by: number) => void; onRead: () => void }) {
+  const blocking = updateBlocks(updates.use().snapshot, agent, session.id);
   const completed = session.endedAt !== undefined, unread = completed && session.readAt === undefined;
   const press = useRef<{ id: number; x: number; y: number; moved: boolean } | undefined>(undefined);
   const cancelled = useRef(false);
@@ -86,6 +89,7 @@ export function ActivityBubble({ agent, session, now, onMove, onRead, density = 
   };
   const hint = t("timeline.open");
   return <div className="activity-bubble-shell"><button type="button" className={`activity-bubble ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
+      data-update-blocking={blocking || undefined}
       data-density={density} data-external={session.source === "transcript" || undefined}
       data-timeline-anchor
       data-unread={unread || undefined}
@@ -98,6 +102,7 @@ export function ActivityBubble({ agent, session, now, onMove, onRead, density = 
         selectAgentPanel({ type: "task", agent, session });
       }}>
       <ActivityBubbleContent session={session} now={now} density={density} showSourceBadge={!unread} />
+      {blocking && <span className="update-blocking-tag">{t("updates.waitingReply")}</span>}
     </button>
     {unread && <Button variant="ghost" className="activity-mark-read" data-topology-control aria-label={t("activity.markRead")} title={t("activity.markRead")}
       onPointerDown={event => {

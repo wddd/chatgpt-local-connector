@@ -63,6 +63,8 @@ fn cleanup_result(result: Result<Value>) -> Result<Value> {
         Err(error) => Err(error),
     }
 }
+tokio::task_local! { static REPLACEMENT_RESUME: bool; }
+
 impl Control {
     pub fn new(binary: PathBuf) -> Arc<Self> {
         Arc::new(Self {
@@ -702,7 +704,12 @@ impl Control {
         fresh_thread: bool,
     ) -> Result<Value> {
         if matches!(method, "turn/start" | "turn/steer") {
-            crate::app_replace::check_dispatch()?;
+            if !REPLACEMENT_RESUME
+                .try_with(|allowed| *allowed)
+                .unwrap_or(false)
+            {
+                crate::app_replace::check_dispatch()?;
+            }
             let thread = string(&args, "threadId");
             let turns = submission_history(fresh_thread, |cursor| {
                 self.request_native("thread/turns/list", json!({"threadId":thread,"limit":100,"cursor":cursor,"sortDirection":"desc","itemsView":"full"}), timeout)
@@ -1070,7 +1077,12 @@ impl Control {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let origin = receipt["origin"].clone();
         let job = tokio::spawn(crate::kernel::origin::ORIGIN.scope(origin, async move {
-            let outcome = c.perform(&op, &args, &mut receipt).await;
+            // Only a validated durable replacement continuation may cross admission.
+            // The private scope cannot be supplied through native tool parameters.
+            let recovery = receipt["replacementContinuation"].is_object();
+            let outcome = REPLACEMENT_RESUME
+                .scope(recovery, c.perform(&op, &args, &mut receipt))
+                .await;
             match outcome {
                 Ok(result) => {
                     receipt["result"] = result;

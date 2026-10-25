@@ -66,6 +66,7 @@ pub fn notify(id: &str) -> Result<()> {
         "stopping" => "replacementStopping",
         "installing" => "replacementInstalling",
         "starting" => "replacementStarting",
+        "resuming" => "updates.state.resuming",
         "succeeded" => "replacementSucceeded",
         "rolling-back" => "replacementRestoring",
         "rolled-back" => "replacementPreviousRestored",
@@ -207,15 +208,21 @@ pub async fn prepare(body: Value) -> Result<Value> {
     }
     let installed =
         load(&target.join("Contents/Resources/bin/build-metadata.json")).unwrap_or(Value::Null);
-    let notes = metadata["commits"].as_array().map(|rows| {
-        let changes = rows
-            .iter()
-            .take_while(|row| row["build"] != installed["build"]);
-        changes
-            .map(|row| string(row, "subject"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    });
+    let notes = metadata["commits"]
+        .as_array()
+        .filter(|rows| {
+            installed["build"].is_string()
+                && rows.iter().any(|row| row["build"] == installed["build"])
+        })
+        .map(|rows| {
+            let changes = rows
+                .iter()
+                .take_while(|row| row["build"] != installed["build"]);
+            changes
+                .map(|row| string(row, "subject"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        });
     receipt["notes"] = body.get("notes").cloned().unwrap_or_else(|| json!(notes));
     receipt["instance"] = json!(if let Some(instance) =
         identifier.strip_prefix("com.whzxc.agent-remote-control.dev.acceptance-")
@@ -703,6 +710,17 @@ pub async fn run_worker(id: &str) -> Result<()> {
             phase(&path, &mut receipt, "waiting-for-turns", None).await?;
             wait_idle(&path, &mut receipt).await?;
         }
+        // Reconfirm the live owners after countdown and any deferred handoff.
+        let live_health = request("health", "GET").await?;
+        let app = request("app", "GET").await?;
+        if !same_package_owner(&receipt, &live_health, &app)
+            || bundle(string(&app, "executable"))? != target
+        {
+            return Err("REPLACE_OWNER_CHANGED: running owners changed before shutdown".into());
+        }
+        receipt["coreInstance"] = live_health["instance"].clone();
+        receipt["corePid"] = live_health["pid"].clone();
+        receipt["desktopPid"] = app["pid"].clone();
         // Snapshot immediately before quit, after validation and the visible countdown.
         // Do not stop a Core whose interrupted work cannot be recorded.
         let snapshot = match request("app/replace/snapshot", "GET").await {
@@ -832,12 +850,7 @@ pub async fn run_worker(id: &str) -> Result<()> {
         Err(error) => json!({"errors":[{"error":error}]}),
     };
     save(&path.join("status.json"), &receipt)?;
-    receipt["resumedCount"] = json!(receipt["interruptedTurns"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|r| r["state"] == "receipt-returned")
-        .count());
+    super::resume::status_details(&mut receipt)?;
     save(&path.join("status.json"), &receipt)?;
     super::unified::record_history(&receipt)?;
     let _ = notice(
