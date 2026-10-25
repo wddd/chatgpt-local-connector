@@ -1511,6 +1511,15 @@ impl Control {
             }
             let args = &resolved;
             let key = string(args, "id");
+            let stale = || {
+                let identity = serde_json::from_str::<Value>(key).unwrap_or(Value::Null);
+                let thread = token_request
+                    .as_ref()
+                    .and_then(|r| r["params"]["threadId"].as_str())
+                    .or_else(|| identity[1].as_str());
+                json!({"code":"STALE_INTERACTION","message":"The original interaction is no longer exposed by its owner. Read the current native interactions and answer the exact current request; do not replay a previous approval.",
+                    "next":{"via":"query","op":"codex_pending","args":thread.map(|thread|json!({"threadId":thread})).unwrap_or(json!({}))}}).to_string()
+            };
             let recovered = args["backendSession"] != self.session;
             if recovered
                 && !token_request
@@ -1518,12 +1527,12 @@ impl Control {
                     .is_some_and(|r| r["owner"] == "desktop")
                 && !crate::claude_notify::recoverable_response(key, string(args, "backendSession"))?
             {
-                return Err("STALE_INTERACTION".into());
+                return Err(stale());
             }
             // Refresh the Desktop snapshot after restart; never depend on an empty pending cache.
             if let Ok(identity) = serde_json::from_str::<Value>(key) {
                 if identity[0] == "desktop" {
-                    let thread = identity[1].as_str().ok_or("STALE_INTERACTION")?;
+                    let thread = identity[1].as_str().ok_or_else(stale)?;
                     self.ipc().await?.read(thread, true).await?;
                 }
             }
@@ -1535,7 +1544,7 @@ impl Control {
                 .pending
                 .get(key)
                 .cloned()
-                .ok_or("STALE_INTERACTION")?;
+                .ok_or_else(stale)?;
             if let Some(expected) = &token_request {
                 if pending["params"]["threadId"] != expected["params"]["threadId"]
                     || pending["params"]["turnId"] != expected["params"]["turnId"]
@@ -1547,7 +1556,7 @@ impl Control {
                 .thread_lock(string(&pending["params"], "threadId"))
                 .await;
             if recovered && pending["owner"] != "desktop" {
-                return Err("STALE_INTERACTION".into());
+                return Err(stale());
             }
             if args.get("result").is_some() == args.get("error").is_some() {
                 return Err("provide exactly one of result/error".into());
@@ -1588,7 +1597,13 @@ impl Control {
                         error,
                     )?;
                 }
-                let result = result?;
+                let result = result.map_err(|error| {
+                    if error == "STALE_INTERACTION" {
+                        stale()
+                    } else {
+                        error
+                    }
+                })?;
                 crate::interaction_responses::record(&pending, args)?;
                 if let Some(turn) = result["nextTurnId"].as_str() {
                     let thread = string(&result, "threadId");

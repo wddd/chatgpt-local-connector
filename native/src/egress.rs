@@ -140,6 +140,7 @@ pub fn failure(e: &str) -> Value {
                     | "RESUME_SOURCE_MISMATCH"
                     | "RESUME_BINDING_MISSING"
                     | "DESKTOP_HANDOFF_UNAVAILABLE"
+                    | "STALE_INTERACTION"
                     | "ACCEPTANCE_FAULT_UNAVAILABLE"
                     | "ACCEPTANCE_SELF_TEST_REQUIRED"
             )

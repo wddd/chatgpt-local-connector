@@ -159,6 +159,8 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
         assert.equal(answer.state,'completed',JSON.stringify(answer));
         assert.equal((await fixture.call('codex_pending',{threadId:created.threadId})).requests.length,0);
       }
+      const staleCallback=await fixture.completed('codex_respond',{id:'stale-connector-callback',backendSession:randomUUID(),result:{decision:'accept'}});
+      assert.equal(staleCallback.error.code,'STALE_INTERACTION'); assert.equal(staleCallback.next.op,'codex_pending');
       const queueAfterHandoff=await fixture.completed('codex_send',{threadId:created.threadId,prompt:'Queue after handoff',sendMode:'queue'});
       const nextAfterHandoff=await fixture.completed('codex_send',{threadId:created.threadId,prompt:'Next after handoff',sendMode:'next'});
       assert.equal(queueAfterHandoff.dispatchMode,'queued'); assert.equal(nextAfterHandoff.dispatchMode,'queued');
