@@ -3,6 +3,11 @@ use serde_json::{json, Value};
 use std::{path::PathBuf, sync::Mutex, time::Duration};
 use tauri::Manager;
 
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+use macos::capture_png;
+
 type Reply = tokio::sync::oneshot::Sender<Result<Value, String>>;
 #[derive(Default)]
 pub struct State {
@@ -128,38 +133,4 @@ pub async fn capture(app: &tauri::AppHandle, body: &Value) -> Result<Value, Stri
 #[cfg(not(target_os = "macos"))]
 async fn capture_png(_: &tauri::AppHandle) -> Result<Vec<u8>, String> {
     Err("WebView PNG capture is supported on macOS only".into())
-}
-#[cfg(target_os = "macos")]
-async fn capture_png(app: &tauri::AppHandle) -> Result<Vec<u8>, String> {
-    use objc2::{class, msg_send, runtime::AnyObject};
-    let window = app
-        .get_webview_window("main")
-        .ok_or("main WebView unavailable")?;
-    let (sent, received) = tokio::sync::oneshot::channel();
-    window.with_webview(move |webview| unsafe {
-        let sender = Mutex::new(Some(sent));
-        let callback = block2::RcBlock::new(move |image: *mut AnyObject, error: *mut AnyObject| {
-            let result = (|| {
-                if !error.is_null() || image.is_null() { return Err("WKWebView takeSnapshot failed".into()); }
-                let tiff: *mut AnyObject = msg_send![image, TIFFRepresentation];
-                if tiff.is_null() { return Err("snapshot TIFF unavailable".into()); }
-                let bitmap: *mut AnyObject = msg_send![class!(NSBitmapImageRep), imageRepWithData: tiff];
-                if bitmap.is_null() { return Err("snapshot bitmap unavailable".into()); }
-                let properties: *mut AnyObject = msg_send![class!(NSDictionary), dictionary];
-                // NSBitmapImageFileTypePNG = 4.
-                let data: *mut AnyObject = msg_send![bitmap, representationUsingType: 4usize, properties: properties];
-                if data.is_null() { return Err("snapshot PNG encoding failed".into()); }
-                let length: usize = msg_send![data, length];
-                let bytes: *const u8 = msg_send![data, bytes];
-                if bytes.is_null() || length == 0 { return Err("empty snapshot".into()); }
-                Ok(std::slice::from_raw_parts(bytes, length).to_vec())
-            })();
-            if let Some(sent) = sender.lock().unwrap().take() { let _ = sent.send(result); }
-        });
-        let _: () = msg_send![webview.inner() as *mut AnyObject, takeSnapshotWithConfiguration: std::ptr::null::<AnyObject>(), completionHandler: &*callback];
-    }).map_err(|e|e.to_string())?;
-    tokio::time::timeout(Duration::from_secs(10), received)
-        .await
-        .map_err(|_| "SNAPSHOT_TIMEOUT: WKWebView")?
-        .map_err(|_| "snapshot cancelled".to_string())?
 }
