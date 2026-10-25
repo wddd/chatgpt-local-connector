@@ -1,18 +1,10 @@
 import type { Side } from './solve';
 
-// Read boundary for docs/dev/accounts.md. No provider identity is inferred here.
-export interface TopologyAccount {
-  id: string;
-  provider: 'anthropic' | 'openai' | 'deepseek' | 'other';
-  identityKey: string;
-  alias: string;
-  sources: string[];
-  agentProfiles: { agent: string; profileId: string; kind: 'cli-profile' | 'codex-home' | 'api-key'; state: 'signed-in' | 'signed-out' | 'unfinished' | 'invalid'; default: boolean }[];
-}
-export interface AccountAttribution {
-  agentAccountId?: string;
-  origin?: { accountId?: string; sourceId?: string; ingressId?: string; controlSource?: string };
-}
+import type { ProviderAccount, AgentActivitySession } from '../types';
+
+// Topology consumes the native account identity and recorded task attribution.
+export type TopologyAccount = Pick<ProviderAccount, 'id' | 'provider' | 'identityKey' | 'alias' | 'sources' | 'agentProfiles'>;
+export type AccountAttribution = Pick<AgentActivitySession, 'agentAccountId' | 'origin'>;
 export interface PathTask extends AccountAttribution { id: string; members?: (AccountAttribution & { pending?: boolean })[] }
 export interface PathNode {
   id: string; side: Side; parent?: string; accountId?: string; sourceIds?: string[];

@@ -13,7 +13,7 @@ import { permissions } from './state/permissions';
 import { subscriptions } from './state/subscriptions';
 import { acceptPreferences } from './state/store';
 import { openSnapshotPanel, settledViewModel, type PanelRequest } from './acceptance';
-import type { AgentActivitySnapshot, AgentActivitySession, AgentConversation, AgentTimeline, AgentTimelineEntry } from './types';
+import type { AccountsResult, AgentActivitySnapshot, AgentActivitySession, AgentConversation, AgentTimeline, AgentTimelineEntry } from './types';
 import type { Snapshot } from './subscriptions/types';
 import { selectAgentPanel } from './state/overviewPanels';
 import type { Status } from './state/types';
@@ -176,8 +176,12 @@ export async function installScenario(name: string) {
     }) : [];
     return [agent, [...current, ...history]];
   }));
-  const records = fixture.tasks.map((task, index) => ({ requestId: `fixture-request-${index}`, threadId: `fixture-task-${index}`, state: task.approval ? 'awaiting-approval' : 'completed', createdAt: now, updatedAt: now,
-    origin: { ingressId: 'fixture-source', sourceId: 'fixture-source' }, approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } }));
+  const records = fixture.tasks.map((task, index) => {
+    const session = activity.agents[task.agent].sessions.find(s => s.id === `fixture-task-${index}`)!;
+    return { requestId: `fixture-request-${index}`, threadId: `fixture-task-${index}`, state: task.approval ? 'awaiting-approval' : 'completed', createdAt: now, updatedAt: now,
+    origin: { ingressId: 'fixture-source', sourceId: 'fixture-source', ...(topologyAccounts.length ? session.origin : {}) },
+    ...(topologyAccounts.length ? { agent: task.agent, agentAccountId: session.agentAccountId } : {}), approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } };
+  });
   taskResponse = taskScenario(timelines, activity, records, () => {
     activity.observedAt = new Date().toISOString();
     const visible = { ...activity, agents: Object.fromEntries(Object.entries(activity.agents).map(([agent, group]) => [agent, {
@@ -196,7 +200,7 @@ export async function installScenario(name: string) {
     ],
   }] : [] };
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': activity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
-  responses['accounts'] = { accounts: topologyAccounts };
+  responses['accounts'] = { accounts: topologyAccounts, login: null } satisfies AccountsResult;
   responses['service'] = { supported: true, enabled: false };
   responses['claude-accounts/system'] = { initialized: true, accountId: '00000000-0000-4000-8000-000000000001', identity: { loggedIn: true, email: 'host@example.invalid', authMethod: 'claude.ai' }, observedAt: now };
   responses['claude-accounts/routes'] = { routes: {} };

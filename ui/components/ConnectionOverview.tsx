@@ -83,7 +83,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const inventory = agentStore.use();
   const accounts = useTopologyAccounts(sourceRecords), mode = topologyMode.use(), accountOrders = topologyAccountOrder.use();
   const [accountSelection, setAccountSelection] = useState<string>();
-  useEffect(() => { if (selection?.session) setAccountSelection(selection.session.agentAccountId); }, [selection?.session?.id, selection?.session?.agentAccountId]);
+  useEffect(() => { if (selection?.session) setAccountSelection(selection.session.agentAccountId ?? undefined); }, [selection?.session?.id, selection?.session?.agentAccountId]);
   const max = maxVisibleAgents.use();
   const density = bubbleDensity.use(), width = bubbleWidths[bubbleWidth.use()], autoCompact = bubbleAutoCompact.use();
   const { snapshot } = subscriptions.use(), nav = navigation.use();
@@ -224,7 +224,9 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   });
   const agentViews: NodeView[] = agents.map(agent => {
     const sessions = orderActivity(tracked[agent.agent] ?? [], manualOrder[agent.agent] ?? []), selected = !selection?.closing && selection?.agent === agent.agent;
-    const groups = accounts.length ? [...new Set(sessions.map(s => s.agentAccountId))].map(id => sessions.filter(s => s.agentAccountId === id)) : [sessions];
+    const accountIds = accounts.filter(a => a.agentProfiles.some(p => p.agent === agent.agent)).map(a => a.id);
+    const accountGroup = (id: string | null | undefined) => id && accountIds.includes(id) ? id : undefined;
+    const groups = accountIds.length > 1 ? [...new Set(sessions.map(s => accountGroup(s.agentAccountId)))].map(id => sessions.filter(s => accountGroup(s.agentAccountId) === id)) : [sessions];
     const shownGroups = groups.map(group => ({ ...visibleActivity(group, selected ? selection.session?.id : undefined), group }));
     const shown = { sessions: shownGroups.flatMap(group => group.sessions) };
     const effectiveDensity = effectiveBubbleDensity(density, autoCompact, sessions.length);
@@ -244,16 +246,16 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
           state: (session.endedAt !== undefined ? "completed" : session.interaction ? "attention" : session.source === "transcript" ? "external" : "running") as import("../topology/render").TaskState,
           selected: selected && selection.session?.id === session.id, reorderable: !panelOpen,
           content: <ActivityBubble agent={agent.agent} session={session} now={now} density={effectiveDensity} onRead={() => markRead(agent.agent, session.id)} onMove={panelOpen ? undefined : by => {
-            const group = shown.sessions.filter(s => s.agentAccountId === session.agentAccountId && !!s.interaction === !!session.interaction);
+            const group = shown.sessions.filter(s => (accountIds.length <= 1 || accountGroup(s.agentAccountId) === accountGroup(session.agentAccountId)) && !!s.interaction === !!session.interaction);
             const from = group.findIndex(s => s.id === session.id), to = from + by;
             if (to < 0 || to >= group.length) return;
             const ids = group.map(s => s.id); ids.splice(from, 1); ids.splice(to, 0, session.id);
             reorderTasks(agent.agent, ids, sessions);
           }} />,
         })),
-        ...shownGroups.flatMap(group => group.hidden ? [{ id: JSON.stringify(accounts.length ? [agent.agent, null, group.group[0]?.agentAccountId] : [agent.agent, null]),
+        ...shownGroups.flatMap(group => group.hidden ? [{ id: JSON.stringify(accountIds.length > 1 ? [agent.agent, null, accountGroup(group.group[0]?.agentAccountId)] : [agent.agent, null]),
           members: group.group.filter(s => !group.sessions.includes(s)).map(s => ({ origin: s.origin, agentAccountId: s.agentAccountId, pending: !!s.interaction })),
-          agentAccountId: group.group[0]?.agentAccountId, count: group.hidden, pending: group.group.some(s => !!s.interaction && !group.sessions.includes(s)), width, height: bubbleHeights.compact, state: "summary" as const, selected: false,
+          agentAccountId: accountIds.length > 1 ? accountGroup(group.group[0]?.agentAccountId) : undefined, count: group.hidden, pending: group.group.some(s => !!s.interaction && !group.sessions.includes(s)), width, height: bubbleHeights.compact, state: "summary" as const, selected: false,
           content: <button type="button" className="activity-bubble activity-summary" onClick={() => selectAgentPanel({ type: "agent", agent: agent.agent })}>
             <PhaseTile phase="tool" animated={false} /><span className="activity-copy"><span className="activity-phase"><PhaseLabel phase="tool">{t("activity.more", { count: group.hidden })}</PhaseLabel></span><span className="activity-headline">{t("activity.viewAll")}</span></span>
           </button>,

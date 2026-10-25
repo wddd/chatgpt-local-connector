@@ -21,12 +21,20 @@ export function accountViews(views: NodeView[], side: -1 | 1, accounts: Topology
     const first = covered[0], label = first.platformLabel ?? platform;
     const unmatched = side === -1 ? members.filter(v => !linked.some(a => a.sources.includes(v.id))) : [];
     const tasks = members.flatMap(v => v.tasks);
+    if (linked.length === 1) {
+      // Preserve the existing node, label, quota, badges and panel behavior.
+      // Multiple connections of this identity still share just one node.
+      const account = linked[0];
+      return [{ ...first, accountId: account.id, sourceIds: covered.map(v => v.id), tasks,
+        selected: covered.some(v => v.selected), sameIdentity: account.sources.length > 0 && account.agentProfiles.length > 0 }, ...unmatched];
+    }
+    // Equal aliases (including Unidentified) never merge distinct ARC account IDs.
     const childViews = linked.map(account => {
       const sources = members.filter(v => account.sources.includes(v.id));
       const selected = side === -1 ? sources.some(v => v.selected) : members.some(v => v.selected) && members.some(v => v.selectedAccountId === account.id);
       const sameIdentity = account.sources.length > 0 && account.agentProfiles.length > 0;
       const state = side === -1 ? sources.find(v => v.state === 'normal')?.state ?? sources[0]?.state ?? first.state : first.state;
-      const nodeLabel = mode === 'flat' && linked.length > 1 ? `${label} · ${account.alias}` : account.alias;
+      const nodeLabel = mode === 'flat' ? `${label} · ${account.alias}` : account.alias;
       return {
         ...first, id: accountNodeId(platform, account.id), accountId: account.id, sourceIds: sources.map(v => v.id),
         selected, account: true, sameIdentity, label: nodeLabel,
@@ -40,15 +48,13 @@ export function accountViews(views: NodeView[], side: -1 | 1, accounts: Topology
       } satisfies NodeView;
     });
     const platformView: NodeView = { ...first, id: side === 1 ? platform : `platform:${platform}`, platform,
-      label, sourceIds: covered.map(v => v.id), accountId: linked.length === 1 ? linked[0].id : undefined,
-      sameIdentity: linked.length === 1 && childViews[0].sameIdentity,
-      selected: covered.some(v => v.selected) && (linked.length === 1 || !childViews.some(v => v.selected)),
-      tasks: tasks.filter(t => linked.length === 1 || !linked.some(a => a.id === t.agentAccountId)),
+      label, sourceIds: covered.map(v => v.id),
+      selected: covered.some(v => v.selected) && !childViews.some(v => v.selected),
+      tasks: tasks.filter(t => !linked.some(a => a.id === t.agentAccountId)),
       content: <GraphNode label={label} state={first.state} highlighted={members.some(v => v.selected)} onOpen={() => actions.open(side, platform, first.id)}>
-        {first.icon}<span className="graph-node-name">{label}{linked.length === 1 && childViews[0].sameIdentity && <Icon icon={Link} />}</span>
+        {first.icon}<span className="graph-node-name">{label}</span>
       </GraphNode>,
     };
-    if (linked.length === 1) return [platformView, ...unmatched];
     if (mode === 'flat') {
       // Legacy unattributed tasks remain attached to their platform, never guessed.
       if (platformView.tasks.length) return [...childViews, { ...platformView, selected: false }, ...unmatched];

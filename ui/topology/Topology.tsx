@@ -13,10 +13,10 @@ import { orderedSubset, moveToY } from "./order";
 import { topologyValues, topologyDebug } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
 
-export interface TaskView extends Task, Pick<PathTask, 'members'>, Omit<PaintTask, "parent" | "side"> { content: ReactNode; reorderable?: boolean; taskId?: string; threadId?: string; agentAccountId?: string; origin?: { accountId?: string; sourceId?: string; ingressId?: string; controlSource?: string }; count?: number; pending?: boolean }
+export interface TaskView extends Task, Pick<PathTask, 'members' | 'agentAccountId' | 'origin'>, Omit<PaintTask, "parent" | "side"> { content: ReactNode; reorderable?: boolean; taskId?: string; threadId?: string; count?: number; pending?: boolean }
 export interface NodeView extends Omit<PaintNode, "side"> { content: ReactNode; tasks: TaskView[]; reorderable?: boolean; children?: NodeView[]; collapsed?: boolean;
   account?: boolean; accountId?: string; sameIdentity?: boolean; platform?: string; platformLabel?: string; label?: string;
-  sourceIds?: string[]; icon?: ReactNode; selectedAccountId?: string;
+  sourceIds?: string[]; icon?: ReactNode; selectedAccountId?: PathTask['agentAccountId'];
 }
 type PositionedTask = TaskView & { parent: string; side: Side };
 export interface TopologyHandle { panelFrame: (rect: SurfaceRect | null) => void }

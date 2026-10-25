@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api';
+import { accountsApi } from '../api';
 import { preference } from '../state/store';
-import type { TopologyAccount } from './accounts';
+import type { ProviderAccount } from '../types';
 
 export const topologyMode = preference<'tree' | 'flat'>('arc.topology-mode', 'tree', raw => JSON.parse(raw) === 'flat' ? 'flat' : 'tree');
 export const topologyCollapsed = preference<Record<string, boolean>>('arc.topology-collapsed', {}, raw => {
@@ -16,12 +16,12 @@ export const topologyAccountOrder = preference<Record<string, string[]>>('arc.to
 });
 
 export function useTopologyAccounts(revision: unknown) {
-  const [accounts, setAccounts] = useState<TopologyAccount[]>([]);
+  const [accounts, setAccounts] = useState<ProviderAccount[]>([]);
   useEffect(() => {
     let active = true;
-    void api<{ accounts: TopologyAccount[] }>('accounts').then(result => {
+    void accountsApi.list().then(result => {
       if (active && Array.isArray(result.accounts)) setAccounts(result.accounts);
-    }).catch(() => { /* Older Core has no accounts endpoint; retain the legacy graph. */ });
+    }).catch(() => { /* Keep the last complete snapshot if a refresh fails. */ });
     return () => { active = false; };
   }, [revision]);
   return accounts;
