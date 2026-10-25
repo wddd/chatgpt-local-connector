@@ -10,7 +10,10 @@ export function requireMainCheckout() {
       let message;
       try { message = readFileSync(path.join(directory, laneMarker), 'utf8'); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
-      if (message !== undefined) throw new Error(message.trim());
+      if (message !== undefined) {
+        console.error(message.trim());
+        process.exit(1);
+      }
       if (path.dirname(directory) === directory) break;
     }
   }
