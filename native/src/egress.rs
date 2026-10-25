@@ -185,6 +185,8 @@ pub fn receipt(value: Value) -> Value {
         "turnId",
         "taskId",
         "agent",
+        "agentAccountId",
+        "agentProfileId",
         "error",
         "notification",
         "notificationError",
@@ -203,6 +205,7 @@ pub fn receipt(value: Value) -> Value {
         for key in [
             "ingressId",
             "sourceId",
+            "accountId",
             "sourceLabel",
             "controlSource",
             "authType",
@@ -315,7 +318,18 @@ pub fn receipt(value: Value) -> Value {
 pub(crate) fn control_source(name: &str, value: &mut Value) {
     fn strip(value: &mut Value) {
         if let Some(fields) = value.as_object_mut() {
-            fields.remove("origin");
+            let origin = fields.remove("origin");
+            if fields.get("agentAccountId").is_some_and(Value::is_string) {
+                if let Some(origin) = origin {
+                    let mut public = json!({});
+                    for key in ["sourceId", "accountId"] {
+                        if origin[key].is_string() {
+                            public[key] = origin[key].clone();
+                        }
+                    }
+                    fields.insert("origin".into(), public);
+                }
+            }
         }
     }
     if (value["requestId"].is_string() && value["state"].is_string())
@@ -361,6 +375,9 @@ pub(crate) fn dispatch_summary(value: &Value) -> Option<Value> {
             .map(str::to_owned)
     };
     let mut summary = json!({});
+    if value["agentAccountId"].is_string() {
+        summary["agentAccountId"] = value["agentAccountId"].clone();
+    }
     for field in ["model", "effort", "serviceTier"] {
         if let Some(text) = [
             &value["turnEvidence"][field],
@@ -389,6 +406,7 @@ pub(crate) fn dispatch_summary(value: &Value) -> Option<Value> {
     let mut source = json!({});
     for (field, origin) in [
         ("id", "sourceId"),
+        ("accountId", "accountId"),
         ("label", "sourceLabel"),
         ("kind", "controlSource"),
     ] {

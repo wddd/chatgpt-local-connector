@@ -54,9 +54,32 @@ pub(crate) struct Manager {
 fn directory() -> PathBuf {
     root().join("claude-accounts")
 }
+
+pub(crate) fn observations() -> Result<Vec<Value>> {
+    Ok(list_accounts()?
+        .into_iter()
+        .map(|a| json!({"profileId":a.id,"identity":a.identity,"observedAt":a.observed_at}))
+        .collect())
+}
+
+pub(crate) async fn refresh_profile(id: &str) -> Result<Value> {
+    let mut account = read_account(id)?;
+    match account_identity(id).await {
+        Ok(identity) => account.identity = identity,
+        Err(error) => {
+            account.identity["statusError"] = json!(error);
+            account.observed_at = Some(now());
+            save_account(&account)?;
+            return Err(error);
+        }
+    }
+    account.observed_at = Some(now());
+    save_account(&account)?;
+    Ok(account.identity)
+}
 fn account_dir(id: &str) -> Result<PathBuf> {
     if uuid::Uuid::parse_str(id).is_err() {
-        return Err("INVALID_CLAUDE_ACCOUNT: Select an account from claude.accounts.list".into());
+        return Err("INVALID_CLAUDE_ACCOUNT: Select an account from accounts.list".into());
     }
     Ok(directory().join(id))
 }
@@ -95,14 +118,10 @@ fn list_accounts() -> Result<Vec<Account>> {
 pub(crate) fn profiles() -> Result<Vec<Value>> {
     Ok(list_accounts()?
         .into_iter()
+        .filter(|a| crate::accounts::profile_account(&a.id).is_ok())
         .map(|a| json!({"accountId":a.id,"identity":safe_identity(&a.identity)}))
         .collect())
 }
-pub(crate) fn account_profile(account_id: &str) -> Result<Value> {
-    let account = read_account(account_id)?;
-    Ok(json!({"accountId":account.id,"identity":safe_identity(&account.identity)}))
-}
-
 /// Remove inherited authentication and provider overrides only in ARC's CLI child.
 pub fn isolated_environment(
     env: Vec<(OsString, OsString)>,
@@ -185,8 +204,8 @@ async fn command_for(config: Option<&Path>) -> Result<tokio::process::Command> {
     Ok(cmd)
 }
 
-fn config_dir(account_id: &str) -> Result<PathBuf> {
-    read_account(account_id).map_err(|_| "CLAUDE_ACCOUNT_NOT_FOUND: The assigned profile is missing or unreadable. Select an existing accountId with notify_control action:route for this source-owned target, or edit the host assignment in ARC Settings; ARC will not use another account automatically".to_owned())?;
+pub(crate) fn config_dir(account_id: &str) -> Result<PathBuf> {
+    read_account(account_id).map_err(|_| "CLAUDE_ACCOUNT_NOT_FOUND: The assigned profile is missing or unreadable. Select an existing accountId with notify_control action:route for this source-owned target, or edit the host assignment in Accounts; ARC will not use another account automatically".to_owned())?;
     Ok(account_dir(account_id)?.join("config"))
 }
 
@@ -269,6 +288,18 @@ pub fn capture_browser_url(args: &[String]) -> Option<Result<()>> {
     })())
 }
 
+pub(crate) async fn open_login_url(browser_id: &str, url: &str) -> Result<()> {
+    if browser_id == "default" {
+        return browsers::open(None, url).await;
+    }
+    let browser = browsers::discover()
+        .await?
+        .into_iter()
+        .find(|b| b.id == browser_id)
+        .ok_or("BROWSER_NOT_FOUND")?;
+    browsers::open(Some(&browser), url).await
+}
+
 async fn read_login_output(reader: impl tokio::io::AsyncRead + Unpin, urls: mpsc::Sender<String>) {
     let mut reader = BufReader::new(reader);
     // Only URLs are retained. CLI output can contain authorization codes and must not enter logs.
@@ -300,23 +331,23 @@ impl Manager {
     }
 
     pub async fn request(&self, route: &str, method: &str, body: Value) -> Result<Value> {
-        if route == "claude-accounts/system" && method == "GET" {
+        if route == "profiles/system" && method == "GET" {
             return system::status().await;
         }
-        if route == "claude-accounts/routes" && method == "GET" {
+        if route == "profiles/routes" && method == "GET" {
             return Ok(json!({"routes":routing::list()?}));
         }
-        if route == "claude-accounts/routes" && method == "PUT" {
+        if route == "profiles/routes" && method == "PUT" {
             return routing::bind(string(&body, "target"), string(&body, "accountId"), true).await;
         }
-        if route == "claude-accounts/browsers" && method == "GET" {
+        if route == "profiles/browsers" && method == "GET" {
             return Ok(json!({"browsers":browsers::discover().await?}));
         }
-        if route == "claude-accounts/send" && method == "POST" {
+        if route == "profiles/send" && method == "POST" {
             return crate::claude_notify::send_account_notification(&body).await;
         }
         let mut current = self.login.lock().await;
-        if route == "claude-accounts/import-system" && method == "POST" {
+        if route == "profiles/import-system" && method == "POST" {
             if current.as_ref().is_some_and(|l| !l.job.is_finished()) {
                 return Err(
                     "CLAUDE_LOGIN_IN_PROGRESS: Complete or cancel the current login first".into(),
@@ -324,13 +355,13 @@ impl Manager {
             }
             return system::import().await;
         }
-        if route == "claude-accounts" && method == "GET" {
+        if route == "profiles" && method == "GET" {
             return Ok(
                 json!({"accounts":list_accounts()?,"cliAvailable":crate::agents::driver::discover("claude").is_some(),
                 "login":match current.as_ref() {Some(login)=>json!(*login.progress.lock().await),None=>Value::Null}}),
             );
         }
-        if route == "claude-accounts/login" && method == "POST" {
+        if route == "profiles/login" && method == "POST" {
             if current.as_ref().is_some_and(|l| !l.job.is_finished()) {
                 return Err(
                     "CLAUDE_LOGIN_IN_PROGRESS: Complete or cancel the current login first".into(),
@@ -439,7 +470,7 @@ impl Manager {
             });
             return Ok(result);
         }
-        if route == "claude-accounts/login/code" && method == "POST" {
+        if route == "profiles/login/code" && method == "POST" {
             let login = current.as_ref().ok_or("CLAUDE_LOGIN_NOT_ACTIVE")?;
             let progress = login.progress.lock().await;
             if body["loginId"] != progress.id || login.job.is_finished() {
@@ -461,7 +492,7 @@ impl Manager {
                 .map_err(|_| "CLAUDE_LOGIN_BUSY: Wait for Claude Code before submitting again")?;
             return Ok(json!({"submitted":true}));
         }
-        if route == "claude-accounts/login/cancel" && method == "POST" {
+        if route == "profiles/login/cancel" && method == "POST" {
             let login = current.as_mut().ok_or("CLAUDE_LOGIN_NOT_ACTIVE")?;
             if body["loginId"] != login.progress.lock().await.id {
                 return Err("CLAUDE_LOGIN_NOT_ACTIVE".into());
@@ -472,7 +503,7 @@ impl Manager {
             let _ = (&mut login.job).await;
             return Ok(json!(*login.progress.lock().await));
         }
-        if let Some(tail) = route.strip_prefix("claude-accounts/") {
+        if let Some(tail) = route.strip_prefix("profiles/") {
             let (id, action) = tail.split_once('/').unwrap_or((tail, ""));
             let mut account = read_account(id)?;
             if current.as_ref().is_some_and(|l| !l.job.is_finished()) {

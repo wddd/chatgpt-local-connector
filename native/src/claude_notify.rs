@@ -823,7 +823,7 @@ impl Executor for Cli {
             Ok(id) => id,
             Err(error) => return json!({"available":false,"reason":error}),
         };
-        let mut identity = match crate::claude_accounts::account_identity(&account_id).await {
+        let mut identity = match crate::accounts::claude::account_identity(&account_id).await {
             Ok(value) => safe_account(&value),
             Err(error) => json!({"available":false,"reason":error}),
         };
@@ -866,7 +866,7 @@ impl Executor for Cli {
             .clone()
             .map(Ok)
             .unwrap_or_else(|| source_account(source_id, target))?;
-        let mut cmd = crate::claude_accounts::account_command(&account_id).await?;
+        let mut cmd = crate::accounts::claude::account_command(&account_id).await?;
         let output = tokio::time::timeout(
             Duration::from_secs(30),
             cmd.args(args).stdin(std::process::Stdio::null()).output(),
@@ -900,7 +900,7 @@ pub(crate) async fn send_account_notification(args: &Value) -> Result<Value> {
     if message.trim().is_empty() || message.chars().count() > 8000 {
         return Err("INVALID_NOTIFICATION_MESSAGE: Supply 1 to 8000 characters".into());
     }
-    crate::claude_accounts::routing::bind(&target, account_id, false).await?;
+    crate::accounts::claude::routing::bind(&target, account_id, false).await?;
     let executor = Cli {
         service: std::sync::Weak::new(),
         account_id: Some(account_id.into()),
@@ -2219,13 +2219,13 @@ pub(crate) async fn migrate() -> Result<()> {
             }
         }
     }
-    let legacy_routes = crate::claude_accounts::routing::list()?;
+    let legacy_routes = crate::accounts::claude::routing::list()?;
     for t in &mut state.targets {
         if t.channel == Channel::ClaudeSession && t.account_id.is_none() {
             t.account_id = legacy_routes.get(&t.target).cloned();
             if t.account_id.is_none() && t.reachability.state == "verified" {
                 // Keep already verified pre-route destinations pinned to their original profile.
-                t.account_id = crate::claude_accounts::routing::legacy_account(&t.target).ok();
+                t.account_id = crate::accounts::claude::routing::legacy_account(&t.target).ok();
             }
         }
     }
@@ -4308,4 +4308,28 @@ pub(crate) async fn read_turns(
     reads.sort();
     reads.dedup();
     Ok(reads)
+}
+
+/// Account workspace projection. Challenges and credentials never leave notification ownership.
+pub(crate) async fn account_sessions() -> Result<Vec<Value>> {
+    let _guard = LOCK.lock().await;
+    let state = governance::State::load(&directory())?;
+    let now = chrono::Utc::now().timestamp();
+    let mut sessions: Vec<Value> = state.targets.into_iter().map(|mut t| {
+        t.reachability.expire(now);
+        json!({"sourceId":t.source_id,"accountId":t.account_id,"channel":t.channel,"target":t.target,
+            "registered":t.registered,"state":t.reachability.state,"verified":t.reachability.state == "verified",
+            "lastDelivery":t.batches.last().map(|b| json!({"at":b.at,"status":b.status})),"lastVerificationDelivery":t.reachability.delivery_status})
+    }).collect();
+    for sub in state
+        .subscriptions
+        .iter()
+        .filter(|s| s.channel == Channel::McpEvents)
+    {
+        let reachable = sub.active(now.saturating_mul(1000))
+            && !sub.muted(now)
+            && sub.webhook.as_ref().is_some_and(|w| w.verified_until > now);
+        sessions.push(json!({"sourceId":sub.source_id,"channel":"mcp-events","target":sub.id,"state":if reachable {"reachable"} else {"unavailable"},"reachable":reachable,"registered":true}));
+    }
+    Ok(sessions)
 }

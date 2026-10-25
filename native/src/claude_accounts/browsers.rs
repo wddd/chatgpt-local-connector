@@ -166,7 +166,16 @@ fn collect_apps(directory: &Path, depth: usize, apps: &mut Vec<PathBuf>) {
 }
 
 pub(super) async fn open(browser: Option<&Browser>, url: &str) -> Result<()> {
-    super::authorization_url(url).ok_or("INVALID_CLAUDE_LOGIN_URL")?;
+    let parsed = reqwest::Url::parse(url).map_err(|_| "INVALID_LOGIN_URL")?;
+    if super::authorization_url(url).is_none()
+        && !(parsed.scheme() == "https"
+            && parsed.host_str() == Some("auth.openai.com")
+            && parsed.username().is_empty()
+            && parsed.password().is_none()
+            && parsed.port_or_known_default() == Some(443))
+    {
+        return Err("INVALID_LOGIN_URL".into());
+    }
     #[cfg(target_os = "macos")]
     let mut cmd = {
         let mut cmd = command("/usr/bin/open");

@@ -20,6 +20,42 @@ pub async fn read() -> std::result::Result<Reading, Failure> {
         ],
     )
     .await?;
+    parse_output(output)
+}
+
+pub(crate) async fn read_profile(profile: &str) -> std::result::Result<Reading, Failure> {
+    let mut cmd = crate::accounts::claude::account_command(profile)
+        .await
+        .map_err(|message| Failure {
+            code: "request-failed",
+            message: Some(message),
+            retry_at: None,
+        })?;
+    let output = tokio::time::timeout(
+        Duration::from_secs(30),
+        cmd.kill_on_drop(true)
+            .env("TZ", "UTC")
+            .args([
+                "-p",
+                "/usage",
+                "--output-format",
+                "json",
+                "--tools",
+                "",
+                "--strict-mcp-config",
+                "--setting-sources",
+                "",
+                "--no-session-persistence",
+            ])
+            .stdin(std::process::Stdio::null())
+            .output(),
+    )
+    .await
+    .map_err(|_| Failure::from("request-timeout"))?
+    .map_err(|_| Failure::from("request-failed"))?;
+    parse_output(output)
+}
+fn parse_output(output: std::process::Output) -> std::result::Result<Reading, Failure> {
     let value: Value = serde_json::from_slice(&output.stdout).map_err(|_| Failure {
         code: "request-failed",
         message: Some("Claude Code did not return a /usage result. Check `claude auth status`, then refresh usage.".into()),

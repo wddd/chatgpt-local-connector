@@ -6,8 +6,8 @@ fn marker() -> PathBuf {
 }
 
 pub(super) fn initial_account() -> Result<String> {
-    load(&marker()).map_err(|_| "CLAUDE_SYSTEM_IMPORT_REQUIRED: Import the system login in ARC Settings or assign this target with claude.accounts.route")?["accountId"].as_str().map(str::to_owned)
-        .ok_or_else(|| "CLAUDE_SYSTEM_IMPORT_REQUIRED: Import the system login in ARC Settings or assign this target with claude.accounts.route".into())
+    load(&marker()).map_err(|_| "CLAUDE_SYSTEM_IMPORT_REQUIRED: Import the system login in Accounts or assign this target with accounts.route")?["accountId"].as_str().map(str::to_owned)
+        .ok_or_else(|| "CLAUDE_SYSTEM_IMPORT_REQUIRED: Import the system login in Accounts or assign this target with accounts.route".into())
 }
 
 pub(super) async fn status() -> Result<Value> {
@@ -41,7 +41,7 @@ pub(super) async fn import() -> Result<Value> {
     // Manager's login lock serializes import, profile removal, and interactive login.
     let host = identity_from_command(command_for(None).await?).await?;
     if host["loggedIn"] != true || host["authMethod"] != "claude.ai" {
-        return Err("CLAUDE_SYSTEM_LOGIN_REQUIRED: Sign in to a Claude account with the system CLI, then import it in ARC Settings".into());
+        return Err("CLAUDE_SYSTEM_LOGIN_REQUIRED: Sign in to a Claude account with the system CLI, then import it in Accounts".into());
     }
     for mut account in list_accounts()? {
         if !same_identity(&account.identity, &host) {
@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn default_marker_matches_identity_not_profile_origin() {
         // Property: system identity matching requires a signed-in Claude identity and the same organization.
-        let a = json!({"loggedIn":true,"authMethod":"claude.ai","accountId":"account-a","email":"a@example.invalid","orgId":"org-a"});
+        let a = json!({"loggedIn":true,"authMethod":"claude.ai","accountId":"account-a","email":"a@example.com","orgId":"org-a"});
         assert!(same_identity(&a, &a));
         assert!(!same_identity(&json!({}), &json!({})));
         for patch in [

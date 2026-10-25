@@ -734,19 +734,23 @@ async fn account_route_control(source_id: &str, args: &Value) -> Result<Value> {
     let t = state.targets.iter_mut().find(|t| t.source_id == source_id && t.channel == Channel::ClaudeSession && t.target == target && (t.registered || owned))
         .ok_or_else(|| json!({"code":"NOTIFICATION_TARGET_NOT_BOUND_TO_SOURCE","message":"Bind this target before reading or changing its account route","next":{"via":"act","op":"notify_control","args":{"action":"bind","target":target}}}).to_string())?;
     if let Some(account_id) = args["accountId"].as_str() {
-        crate::claude_accounts::account_profile(account_id)?;
-        if t.account_id.as_deref() != Some(account_id) {
-            t.account_id = Some(account_id.into());
+        let profile = crate::accounts::claude_profile(account_id)?;
+        if t.account_id.as_deref() != Some(profile.as_str()) {
+            t.account_id = Some(profile);
             // A code sent through the previous profile must not verify the new route.
             t.reachability = Default::default();
         }
     } else if t.account_id.is_none() {
         // Preserve explicit host assignments from the previous routing contract.
-        t.account_id = crate::claude_accounts::routing::list()?
+        t.account_id = crate::accounts::claude::routing::list()?
             .get(&target)
             .cloned();
     }
-    let result = json!({"target":target,"accountId":t.account_id,"profiles":crate::claude_accounts::profiles()?});
+    let account = t
+        .account_id
+        .as_deref()
+        .and_then(|id| crate::accounts::profile_account(id).ok());
+    let result = json!({"target":target,"accountId":account.as_ref().map(|a| &a["id"]),"profiles":crate::accounts::notification_accounts()?});
     state.save(&directory())?;
     Ok(result)
 }
@@ -757,18 +761,29 @@ async fn ensure_account_route(source_id: &str, args: &Value) -> Result<Value> {
         return Ok(route);
     }
     let target = string(&route, "target");
-    let candidates = crate::claude_accounts::candidates(target).await?;
+    let candidates = crate::accounts::claude::candidates(target).await?;
     let visible: Vec<_> = candidates
         .iter()
         .filter(|p| p["visibility"] == "visible")
         .collect();
-    // An unknown profile could also see the session; uniqueness is not established.
-    let selected = if visible.len() == 1 && !candidates.iter().any(|p| p["visibility"] == "unknown")
+    let owners: std::collections::HashSet<_> = visible
+        .iter()
+        .filter_map(|p| crate::accounts::profile_account(string(p, "accountId")).ok())
+        .map(|a| string(&a, "id").to_owned())
+        .collect();
+    // Several visible profiles of one provider identity still represent one account.
+    let selected = if owners.len() == 1 && !candidates.iter().any(|p| p["visibility"] == "unknown")
     {
-        Some(string(visible[0], "accountId").to_owned())
+        visible.first().map(|p| string(p, "accountId").to_owned())
     } else {
         None
     };
+    let mut candidates = candidates;
+    for candidate in &mut candidates {
+        if let Ok(account) = crate::accounts::profile_account(string(candidate, "accountId")) {
+            candidate["accountId"] = account["id"].clone();
+        }
+    }
     let _guard = LOCK.lock().await;
     let mut state = State::load(&directory())?;
     let t = state
@@ -784,7 +799,12 @@ async fn ensure_account_route(source_id: &str, args: &Value) -> Result<Value> {
     if t.account_id.is_none() {
         return Err(json!({"code":"ACCOUNT_SELECTION_REQUIRED","message":"No unique visible Claude profile was confirmed. Select an accountId from candidates for this source-owned target; unknown means the read-only probe was inconclusive. ARC did not send a challenge or change accounts.","target":target,"candidates":candidates,"next":{"via":"act","op":"notify_control","args":{"action":"route","target":target},"hint":"Inspect safe profiles, then set accountId with action:route and retry action:verify. If no profile can see the session, correct the session ID or have the user explicitly sign in to its owner profile."}}).to_string());
     }
-    let result = json!({"target":target,"accountId":t.account_id,"profiles":candidates});
+    let account = t
+        .account_id
+        .as_deref()
+        .and_then(|id| crate::accounts::profile_account(id).ok());
+    let result =
+        json!({"target":target,"accountId":account.map(|a| a["id"].clone()),"profiles":candidates});
     state.save(&directory())?;
     Ok(result)
 }

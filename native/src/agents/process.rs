@@ -42,6 +42,14 @@ impl Process {
         state["processSession"] = json!(id());
         let mut cmd = launch_command(binary, args)?;
         if state["agent"] == "claude" {
+            if let Some(profile) = state["agentProfileId"].as_str() {
+                let config = crate::accounts::claude::config_dir(profile)?;
+                cmd.env_clear()
+                    .envs(crate::accounts::claude::isolated_environment(
+                        std::env::vars_os().collect(),
+                        Some(&config),
+                    ));
+            }
             cmd.env(
                 "CLAUDE_CODE_EXECUTABLE",
                 super::driver::discover("claude").ok_or("AGENT_NOT_INSTALLED")?,

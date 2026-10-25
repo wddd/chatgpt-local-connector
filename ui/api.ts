@@ -23,3 +23,18 @@ export async function api<T = unknown>(
     throw new Error(data.error || data.message || t('requestFailedPleaseRetry'));
   return data as T;
 }
+
+
+export const accountsApi = {
+  list: () => api<import('./types').AccountsResult>('accounts'),
+  get: (id: string) => api<import('./types').ProviderAccount>(`accounts/${encodeURIComponent(id)}`),
+  query: (args: { id?: string; agent?: string }) => api<import('./types').AccountsResult | import('./types').ProviderAccount>('accounts/query', 'POST', args),
+  update: (args: { id: string; alias?: string; defaultFor?: string }) => api<import('./types').ProviderAccount>('accounts/update', 'POST', args),
+  add: (args: { kind: 'claude' | 'codex' | 'api-key' | 'detect'; browserId?: string }) => api<import('./types').AccountLogin>('accounts/add', 'POST', args),
+  login: (args: { loginId: string; action: 'code' | 'cancel'; code?: string }) => api<import('./types').AccountLogin | { submitted: boolean }>('accounts/login', 'POST', args),
+  reauth: (args: { id: string; agent: string }) => api<import('./types').AccountLogin>('accounts/reauth', 'POST', args),
+  remove: (args: { id: string; running: 'finish' | 'cancel' }) => api<import('./types').ProviderAccount>('accounts/remove', 'POST', args),
+  browsers: () => api<{ browsers: Array<{ id: string; name: string }> }>('accounts/browsers'),
+  notify: (id: string, action: 'send' | 'test', args: { target: string; message?: string }) => api(`accounts/${encodeURIComponent(id)}/${action}`, 'POST', args),
+  route: (args: { accountId: string; target: string }) => api('accounts/routes', 'PUT', args),
+};

@@ -960,6 +960,10 @@ impl Control {
         if let Some(receipt) = RECEIPTS.replay(&request, &digest, &self.session)? {
             return Ok(receipt);
         }
+        if matches!(operation, "create" | "send") {
+            let selected = crate::accounts::select("codex", args["account"].as_str())?;
+            crate::accounts::attach(&mut args, &selected);
+        }
         let dispatch = if matches!(operation, "create" | "send") {
             if args["sendMode"] == "queue" {
                 // Validate now, but choose omitted values when the queue actually dispatches.
@@ -971,7 +975,7 @@ impl Control {
         } else {
             Value::Null
         };
-        let mut receipt = json!({"origin":crate::kernel::origin::current_origin(),"requestId":request,"backendSession":self.session,"digest":digest,"operation":operation,"arguments":args,"state":"reserved","createdAt":now(),"updatedAt":now()});
+        let mut receipt = json!({"agentAccountId":args["agentAccountId"],"agentProfileId":args["agentProfileId"],"origin":crate::kernel::origin::current_origin(),"requestId":request,"backendSession":self.session,"digest":digest,"operation":operation,"arguments":args,"state":"reserved","createdAt":now(),"updatedAt":now()});
         if operation == "create" || (operation == "native" && args["method"] == "thread/start") {
             receipt["executionOwner"] = json!(if self.auto_open_codex()? {
                 "desktop"
@@ -987,6 +991,7 @@ impl Control {
                 _ => "automatic",
             };
             receipt["task"] = task;
+            receipt["task"]["agentAccountId"] = receipt["agentAccountId"].clone();
             if !dispatch.is_null() {
                 receipt["task"]["dispatch"] = dispatch;
             }
@@ -1018,9 +1023,15 @@ impl Control {
         drop(request_lock);
         match tokio::time::timeout(Duration::from_millis(wait), rx).await {
             Ok(Ok(r)) => r,
-            _ => Ok(
-                json!({"requestId":request,"state":"pending","operation":operation,"nextAction":"receipt"}),
-            ),
+            _ => {
+                let mut pending = json!({"requestId":request,"state":"pending","operation":operation,"nextAction":"receipt"});
+                if matches!(operation, "create" | "send") {
+                    let receipt = self.receipt(&request).await?;
+                    pending["agentAccountId"] = receipt["agentAccountId"].clone();
+                    pending["origin"] = receipt["origin"].clone();
+                }
+                Ok(pending)
+            }
         }
     }
     fn launch(

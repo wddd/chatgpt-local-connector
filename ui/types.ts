@@ -61,7 +61,8 @@ export interface CoreSnapshot {
 
 export type AgentPhase = "thinking" | "command" | "file" | "tool" | "text" | "interaction" | "idle";
 export interface DispatchSummary {
-  controlSource?: { id?: string; label?: string; kind?: string };
+  controlSource?: { id?: string; accountId?: string; label?: string; kind?: string };
+  agentAccountId?: string;
   model?: string;
   effort?: string;
   serviceTier?: string;
@@ -85,7 +86,8 @@ export interface AgentActivitySession {
   turnCount?: number;
   projectName?: string | null;
   dispatchSummary?: DispatchSummary;
-  origin?: { ingressId?: string; controlSource?: string };
+  origin?: { ingressId?: string; sourceId?: string; accountId?: string; controlSource?: string };
+  agentAccountId?: string | null;
   id: string;
   source: "arc-task" | "codex-thread" | "transcript";
   turnId?: string | null;
@@ -190,4 +192,70 @@ export interface AgentTimeline {
   cursor: number;
   coverage: { state: "complete" | "partial"; truncated: boolean; reason?: string };
   executionEvidence: boolean | "partial";
+}
+
+export interface AccountAgentProfile {
+  agent: string;
+  profileId: string;
+  kind: "cli-profile" | "codex-home" | "api-key";
+  state: "signed-in" | "signed-out" | "unfinished" | "invalid";
+  default: boolean;
+}
+export interface AccountNotifications {
+  reachable?: boolean;
+  state: "verified" | "not-bound" | "mcp-events" | "n/a" | "removed";
+  sessions: Array<{
+    sourceId?: string;
+    accountId?: string | null;
+    channel?: string;
+    target: string;
+    state: string;
+    registered?: boolean;
+    verified?: boolean;
+    lastDelivery?: { at: number; status: string } | null;
+    lastVerificationDelivery?: string;
+  }>;
+}
+export interface ProviderAccount {
+  id: string;
+  provider: "anthropic" | "openai" | "deepseek" | "other";
+  identityKey: string;
+  alias: string;
+  email?: string | null;
+  orgName?: string | null;
+  plan?: string | null;
+  createdAt: string;
+  observedAt: string;
+  sources: string[];
+  agentProfiles: AccountAgentProfile[];
+  notifications: AccountNotifications;
+  quota: {
+    state: string;
+    windows: Array<{ id: string; poolId: string; label: string; usedPercent: number; resetsAt?: string; exhausted?: boolean }>;
+    observedAt?: string;
+    error?: unknown;
+    accountBlocked?: boolean | null;
+    blockedPoolIds?: string[];
+  };
+  health: { state: "ready" | "attention" | "removed" };
+  removedAt?: string;
+  mergedInto?: string;
+  displayName?: string;
+}
+export interface AccountLogin {
+  loginId: string;
+  kind: "claude" | "codex" | "api-key" | "detect";
+  state: string;
+  accountId?: string;
+  loginUrl?: string | null;
+  browserId?: string;
+  browserError?: string | null;
+  error?: string | null;
+  errors?: string[];
+  next?: { message: string };
+}
+export interface AccountsResult { accounts: ProviderAccount[]; login: AccountLogin | null }
+export interface AccountIdentity extends Pick<ProviderAccount, "id" | "alias" | "provider" | "email" | "orgName" | "plan" | "agentProfiles" | "notifications"> {
+  sourceId: string;
+  platform: string;
 }

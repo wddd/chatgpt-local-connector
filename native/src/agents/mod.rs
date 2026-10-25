@@ -359,14 +359,58 @@ impl AgentHost {
                 "completed" | "idle" | "cancelled" => "idle",
                 _ => "unknown",
             };
-            records.push(json!({"requestId":request,"agent":receipt["agent"],"taskId":receipt["taskId"],"turnId":receipt["turnId"],
+            records.push(json!({"agentAccountId":receipt["agentAccountId"],"requestId":request,"agent":receipt["agent"],"taskId":receipt["taskId"],"turnId":receipt["turnId"],
                 "origin":receipt["origin"],"state":receipt["state"],"createdAt":receipt["createdAt"],"updatedAt":receipt["updatedAt"],
                 "approval":{"decision":if receipt["state"] == "awaiting-approval" {"pending"} else {args["approval"].as_str().unwrap_or("automatic")},"source":"cloud","at":receipt["createdAt"]},
-                "task":{"kind":if receipt["operation"] == "agent_create" {"create"}else{"send"},"origin":receipt["origin"],"title":task.get("title").unwrap_or(&args["title"]),"prompt":args["prompt"].as_str().unwrap_or(""),"input":[],"directory":task.get("cwd").unwrap_or(&args["cwd"]),"model":args["model"],"settings":{}},
+                "task":{"agentAccountId":receipt["agentAccountId"],"kind":if receipt["operation"] == "agent_create" {"create"}else{"send"},"origin":receipt["origin"],"title":task.get("title").unwrap_or(&args["title"]),"prompt":args["prompt"].as_str().unwrap_or(""),"input":[],"directory":task.get("cwd").unwrap_or(&args["cwd"]),"model":args["model"],"settings":{}},
                 "runtime":{"runtimeStatus":runtime,"title":task["title"],"observedAt":task["updatedAt"],"stale":receipt["backendSession"] != self.session && matches!(runtime, "active" | "waiting")},
                 "error":receipt.get("error").or_else(||receipt["result"].get("error"))}));
         }
         Ok(records)
+    }
+    pub(crate) async fn cancel_account(
+        self: &Arc<Self>,
+        control: &Arc<control::Control>,
+        account: &str,
+    ) -> Result<()> {
+        let processes: Vec<_> = self.processes.lock().await.values().cloned().collect();
+        for process in processes {
+            let state = process.state.lock().await.clone();
+            if state["agentAccountId"] == account
+                && matches!(
+                    string(&state, "status"),
+                    "running" | "starting" | "waiting-permission"
+                )
+            {
+                self.tool(
+                    control,
+                    "agent_interrupt",
+                    json!({"agent":state["agent"],"taskId":state["taskId"],"approval":"bypass"}),
+                )
+                .await?;
+            }
+        }
+        let records = control.task_records().await?;
+        let active: Vec<_> = control
+            .events
+            .lock()
+            .await
+            .timelines
+            .iter()
+            .filter(|(_, t)| matches!(t.status.as_str(), "running" | "inProgress"))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for task in active {
+            if records
+                .iter()
+                .any(|r| r["agentAccountId"] == account && r["threadId"] == task)
+            {
+                control
+                    .mutate("interrupt", json!({"threadId":task,"approval":"bypass"}))
+                    .await?;
+            }
+        }
+        Ok(())
     }
     pub async fn activity(&self, control: &control::Control) -> Value {
         let processes: Vec<_> = self.processes.lock().await.values().cloned().collect();
@@ -406,6 +450,7 @@ impl AgentHost {
             }
             let mut session = timeline.session(&info, "arc-task", None);
             session["nativeSessionId"] = state["sessionId"].clone();
+            session["agentAccountId"] = state["agentAccountId"].clone();
             if state["origin"].is_object() {
                 session["origin"] = state["origin"].clone();
             }
@@ -525,6 +570,7 @@ impl AgentHost {
                         r["threadId"] == session["id"] || r["task"]["threadId"] == session["id"]
                     }) {
                         session["origin"] = record["origin"].clone();
+                        session["agentAccountId"] = record["agentAccountId"].clone();
                     }
                 }
             }
@@ -905,6 +951,18 @@ impl AgentHost {
         if let Some(receipt) = RECEIPTS.replay(&request, &digest, &self.session)? {
             return Ok(receipt);
         }
+        if matches!(name, "agent_create" | "agent_send") {
+            let selected = crate::accounts::select(agent, args["account"].as_str())?;
+            if name == "agent_send" {
+                let existing = self.task(agent, string(&args, "taskId")).await?;
+                if existing["agentProfileId"].is_string()
+                    && existing["agentProfileId"] != selected["agentProfileId"]
+                {
+                    return Err("ACCOUNT_TASK_MISMATCH: This task retains its original login profile; select its account or create a new task".into());
+                }
+            }
+            crate::accounts::attach(&mut args, &selected);
+        }
         let task = if name == "agent_create" {
             id()
         } else {
@@ -928,7 +986,7 @@ impl AgentHost {
         } else {
             self.task(agent, &task).await?["turnId"].clone()
         };
-        let receipt = json!({"origin":crate::kernel::origin::current_origin(),"requestId":request,"agent":agent,"taskId":task,"previousTurnId":previous_turn,"operation":name,"arguments":args,"digest":digest,"state":if needs_approval{"awaiting-approval"}else{"pending"},"backendSession":self.session,"createdAt":now(),"nextAction":"receipt"});
+        let receipt = json!({"agentAccountId":args["agentAccountId"],"agentProfileId":args["agentProfileId"],"origin":crate::kernel::origin::current_origin(),"requestId":request,"agent":agent,"taskId":task,"previousTurnId":previous_turn,"operation":name,"arguments":args,"digest":digest,"state":if needs_approval{"awaiting-approval"}else{"pending"},"backendSession":self.session,"createdAt":now(),"nextAction":"receipt"});
         RECEIPTS.reserve(&receipt)?;
         if needs_approval {
             return Ok(receipt);
@@ -1034,7 +1092,7 @@ impl AgentHost {
         self.ensure_enabled(agent).await?;
         let p = if name == "agent_create" {
             let _guard = self.lifecycle.lock().await;
-            let t = json!({"origin":crate::kernel::origin::current_origin(),"taskId":task,"agent":agent,"runtimeSource":driver.protocol(),"sessionId":null,"threadId":null,"cwd":args["cwd"],"title":args["title"],"status":"starting","createdAt":now(),"updatedAt":now(),"metadata":{},"output":""});
+            let t = json!({"agentAccountId":args["agentAccountId"],"agentProfileId":args["agentProfileId"],"origin":crate::kernel::origin::current_origin(),"taskId":task,"agent":agent,"runtimeSource":driver.protocol(),"sessionId":null,"threadId":null,"cwd":args["cwd"],"title":args["title"],"status":"starting","createdAt":now(),"updatedAt":now(),"metadata":{},"output":""});
             save_task(&t)?;
             let p = match driver.start(t, false, self.wake.clone()).await {
                 Ok(p) => p,
@@ -1073,6 +1131,8 @@ impl AgentHost {
                     Ok(selection) => {
                         let mut task = p.state.lock().await;
                         task["dispatch"] = selection;
+                        task["agentAccountId"] = args["agentAccountId"].clone();
+                        task["agentProfileId"] = args["agentProfileId"].clone();
                     }
                     Err(error) => {
                         let unconfirmed =

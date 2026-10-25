@@ -3,18 +3,21 @@ use crate::{agents::AgentHost, control::Control, *};
 pub struct Execution {
     pub(crate) control: Arc<Control>,
     agents: Arc<AgentHost>,
+    accounts: Arc<crate::accounts::Manager>,
     subscriptions: Arc<crate::subscriptions::SubscriptionService>,
 }
 impl Execution {
-    pub fn new(
+    pub(crate) fn new(
         control: Arc<Control>,
         agents: Arc<AgentHost>,
         subscriptions: Arc<crate::subscriptions::SubscriptionService>,
+        accounts: Arc<crate::accounts::Manager>,
     ) -> Arc<Self> {
         Arc::new(Self {
             control,
             agents,
             subscriptions,
+            accounts,
         })
     }
     pub fn approval_mode(&self) -> Result<bool> {
@@ -36,6 +39,44 @@ impl Execution {
         true
     }
     pub async fn call(&self, name: &str, args: Value, policy: Value) -> Result<Value> {
+        if matches!(name, "notify_control" | "notify_status") {
+            crate::accounts::migrate()?;
+        }
+        if matches!(
+            name,
+            "account_browsers"
+                | "account_notify"
+                | "whoami"
+                | "accounts"
+                | "account_update"
+                | "account_add"
+                | "account_login"
+                | "account_reauth"
+                | "account_remove"
+        ) {
+            let mut args = args;
+            // Outer act requestId is transport metadata; account mutations use state readback.
+            if !matches!(name, "accounts" | "whoami" | "account_browsers") {
+                args.as_object_mut().map(|args| args.remove("requestId"));
+            }
+            let spec = catalog()["ops"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|op| op["name"] == name)
+                .unwrap();
+            crate::egress::validate_op(spec, &args)?;
+            return self
+                .accounts
+                .op(&self.control, &self.agents, name, args)
+                .await;
+        }
+        if matches!(
+            name,
+            "codex_create" | "codex_send" | "agent_create" | "agent_send" | "dispatch_policy"
+        ) {
+            self.accounts.refresh(&self.control, &self.agents).await?;
+        }
         if matches!(
             name,
             "context_resolve"

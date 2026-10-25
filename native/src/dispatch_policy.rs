@@ -271,6 +271,7 @@ pub(crate) async fn query(
     let snapshot = subscriptions.snapshot().await;
     for row in &mut rows {
         let agent = string(row, "agent").to_owned();
+        row["accounts"] = crate::accounts::dispatch_accounts(&agent)?;
         let providers = snapshot["providers"]
             .as_array()
             .into_iter()
@@ -574,6 +575,7 @@ pub(crate) fn record(receipt: &Value) -> Result<()> {
     }
     row["title"] = json!(crate::control::dispatch_title(&receipt["task"]));
     row["origin"] = receipt["origin"].clone();
+    row["agentAccountId"] = receipt["agentAccountId"].clone();
     row["agent"] = receipt["agent"]
         .as_str()
         .map_or(json!("codex"), |v| json!(v));
@@ -918,7 +920,7 @@ fn save_review(thread: &str, turn: &str, args: &Value, external: &Value) -> Resu
 /// Snapshot at submission; later session changes never rewrite this turn's choices.
 pub(crate) fn agent_record(task: &Value, args: &Value) -> Result<()> {
     record(
-        &json!({"origin":crate::kernel::origin::current_origin(),"agent":task["agent"],"taskId":task["taskId"],"threadId":task["taskId"],
+        &json!({"agentAccountId":task["agentAccountId"],"origin":crate::kernel::origin::current_origin(),"agent":task["agent"],"taskId":task["taskId"],"threadId":task["taskId"],
         "turnId":task["turnId"],"requestId":args["requestId"],"dispatchMode":"new-turn",
         "arguments":args,"task":{"dispatch":task["dispatch"]}}),
     )

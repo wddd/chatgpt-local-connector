@@ -318,3 +318,15 @@ pub(super) fn credential_path(id: &str) -> PathBuf {
         .join("subscriptions/credentials")
         .join(format!("{id}.json"))
 }
+
+pub(crate) async fn account_read(
+    control: &Control,
+    agent: &str,
+    profile: &str,
+) -> std::result::Result<Reading, Failure> {
+    match agent {
+        "codex" => codex::read(control).await,
+        "claude" => claude::read_profile(profile).await,
+        _ => Err("provider-not-integrated".into()),
+    }
+}

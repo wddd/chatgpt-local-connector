@@ -161,6 +161,10 @@ fn compact(
     out["title"] = title.cloned().unwrap_or(Value::Null);
     out["threadId"] = row["id"].clone();
     out["origin"] = crate::sources::task_origin(string(row, "id"), None);
+    out["agentAccountId"] = crate::dispatch_policy::records(string(row, "id"))
+        .ok()
+        .and_then(|rows| rows.last().and_then(|r| r.get("agentAccountId")).cloned())
+        .unwrap_or(Value::Null);
     out["project"] = t["cwd"].clone();
     out["status"] = json!(status);
     out["updatedAt"] = t.get("updatedAt").unwrap_or(&row["updatedAt"]).clone();

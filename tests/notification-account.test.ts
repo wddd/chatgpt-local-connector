@@ -34,7 +34,7 @@ test('Cloud bind preserves a missing-session diagnosis and only safe routed prof
   await writeFile(binary,`#!${process.execPath}
 const args=process.argv.slice(2);
 if(args[0]==='auth' && args[1]==='status') {
-  console.log(JSON.stringify({loggedIn:true,email:'fixture@example.invalid',authMethod:'claude.ai',accessToken:'fixture-secret',credentials:{refreshToken:'fixture-secret'}}));
+  console.log(JSON.stringify({loggedIn:true,email:'fixture@example.com',authMethod:'claude.ai',accessToken:'fixture-secret',credentials:{refreshToken:'fixture-secret'}}));
 } else if(args[0]==='auth' && args[1]==='login') {process.exitCode=0;}
 else if(args[0]==='-p') {console.error('Session not found');process.exitCode=1;}
 else {throw new Error('Unexpected fixture CLI operation');}
@@ -43,12 +43,12 @@ else {throw new Error('Unexpected fixture CLI operation');}
   const fixture=await nativeControl('',{PATH:directory+path.delimiter+process.env.PATH,HOME:directory});
   try {
     const target='session_010000000000000000000011';
-    const login=await fixture.api('claude-accounts/login',{});
+    const login=await fixture.api('accounts/add',{kind:'claude'});
     const deadline=Date.now()+5000;
-    let accounts=await fixture.api('claude-accounts');
+    let accounts=await fixture.api('accounts');
     while(accounts.login?.state!=='completed' && Date.now()<deadline) {
       await new Promise(resolve=>setTimeout(resolve,20));
-      accounts=await fixture.api('claude-accounts');
+      accounts=await fixture.api('accounts');
     }
     assert.equal(accounts.login.state,'completed',JSON.stringify(accounts.login));
     const unowned=await fixture.call('notify_control',{action:'route',target,accountId:login.accountId});
@@ -58,11 +58,11 @@ else {throw new Error('Unexpected fixture CLI operation');}
     assert.equal(result.ok,false);assert.equal(result.bound,true);
     assert.equal(result.error.code,'CLAUDE_SESSION_NOT_FOUND',JSON.stringify(result));
     assert.equal(result.verification.reason,'claude-session-not-found');
-    assert.equal(result.error.localAccount.email,'fixture@example.invalid');
+    assert.equal(result.error.localAccount.email,'fixture@example.com');
     assert.deepEqual(result.next.args,{action:'route',target});
     const route=await fixture.call('notify_control',result.next.args);
     assert.equal(route.accountId,login.accountId);
-    assert.equal(route.profiles[0].identity.email,'fixture@example.invalid');
+    assert.equal(route.profiles[0].identity.email,'fixture@example.com');
     const set=await fixture.call('notify_control',{action:'route',target,accountId:login.accountId});
     assert.equal(set.accountId,login.accountId);
     const status=await fixture.call('notify_status',{target});
@@ -95,7 +95,7 @@ const args=process.argv.slice(2),config=process.env.CLAUDE_CONFIG_DIR,id=path.ba
 if(args[0]==='auth' && args[1]==='login') {
   writeFileSync(path.join(config,'.credentials.json'),JSON.stringify({claudeAiOauth:{accessToken:'fixture-secret-'+id}}));
 } else if(args[0]==='auth' && args[1]==='status') {
-  console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',email:id+'@example.invalid',orgName:'Fixture',subscriptionType:'pro',accessToken:'fixture-secret'}));
+  console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',email:id+'@example.com',orgName:'Fixture',subscriptionType:'pro',accessToken:'fixture-secret'}));
 } else if(args[0]==='-p') {
   appendFileSync(${JSON.stringify(deliveries)},JSON.stringify({accountId:id,target:args[3],message:args[1]})+'\\n');
   console.log(JSON.stringify({ok:true,session_id:args[3]}));
@@ -111,11 +111,11 @@ for await(const line of createInterface({input:process.stdin})) {const {id}=JSON
     assert.deepEqual(empty.error.candidates,[]);
     const profiles:string[]=[];
     for(let i=0;i<2;i++) {
-      const login=await fixture.api('claude-accounts/login',{});
+      const login=await fixture.api('accounts/add',{kind:'claude'});
       const deadline=Date.now()+5000;
-      let status=await fixture.api('claude-accounts');
+      let status=await fixture.api('accounts');
       while(status.login?.state!=='completed' && Date.now()<deadline) {
-        await new Promise(resolve=>setTimeout(resolve,20));status=await fixture.api('claude-accounts');
+        await new Promise(resolve=>setTimeout(resolve,20));status=await fixture.api('accounts');
       }
       assert.equal(status.login.state,'completed',JSON.stringify(status.login));profiles.push(login.accountId);
     }
@@ -145,7 +145,7 @@ for await(const line of createInterface({input:process.stdin})) {const {id}=JSON
     assert.equal((await fixture.call('notify_status',{target})).targets[0].reachability,'verified');
     const saved=await fixture.call('notify_control',{action:'route',target});
     assert.equal(saved.accountId,profiles[1]);
-    const ingress=await fixture.api('ingress',{id:'route-peer',name:'Route peer',controlSource:'custom',transport:'https',auth:'bearer',bearerToken:'fixture-peer'.padEnd(40,'x'),toolPolicy:'all',config:{httpsProvider:'custom',httpsUrl:'https://fixture.example.invalid/mcp'}});
+    const ingress=await fixture.api('ingress',{id:'route-peer',name:'Route peer',controlSource:'custom',transport:'https',auth:'bearer',bearerToken:'fixture-peer'.padEnd(40,'x'),toolPolicy:'all',config:{httpsProvider:'custom',httpsUrl:'https://fixture.example.com/mcp'}});
     assert.equal(ingress.id,'route-peer',JSON.stringify(ingress));
     await fixture.api(`ingress/${ingress.id}/start`,{});
     const denied=await fixture.sourceCall(ingress.id,'notify_control',{action:'route',target,accountId:profiles[0]});
@@ -155,7 +155,7 @@ for await(const line of createInterface({input:process.stdin})) {const {id}=JSON
     assert.equal(peer.accountRoute.accountId,profiles[0],JSON.stringify(peer));
     assert.equal((await fixture.call('notify_control',{action:'route',target})).accountId,profiles[1]);
     // A later host assignment cannot change the source's persisted selection.
-    await fixture.api('claude-accounts/routes',{target,accountId:profiles[0]},'PUT');
+    await fixture.api('accounts/routes',{target,accountId:profiles[0]},'PUT');
     assert.equal((await fixture.call('notify_control',{action:'route',target})).accountId,profiles[1]);
     await fixture.call('notify_control',{action:'route',target,accountId:profiles[0]});
     const changed=await fixture.call('notify_status',{target});

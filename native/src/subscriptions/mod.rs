@@ -529,3 +529,15 @@ fn validate(s: &Settings) -> Result<()> {
     }
     Ok(())
 }
+
+/// Read quota with the same native authentication that owns the selected execution profile.
+pub(crate) async fn account_quota(control: &Control, agent: &str, profile: &str) -> Value {
+    match providers::account_read(control, agent, profile).await {
+        Ok(reading) => {
+            json!({"state":"ready","source":"native-profile","observedAt":now(),"windows":reading.windows,"accountBlocked":reading.account_blocked,"blockedPoolIds":reading.blocked_pool_ids})
+        }
+        Err(error) => {
+            json!({"state":"unavailable","source":"native-profile","observedAt":now(),"windows":[],"error":error})
+        }
+    }
+}

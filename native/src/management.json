@@ -1683,15 +1683,30 @@
           "body": {
             "type": "object",
             "properties": {
-              "agent": { "type": "string", "minLength": 1 },
-              "cursor": { "type": "string", "maxLength": 4096 },
-              "limit": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 }
+              "agent": {
+                "type": "string",
+                "minLength": 1
+              },
+              "cursor": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+                "default": 20
+              }
             },
-            "required": ["agent"],
+            "required": [
+              "agent"
+            ],
             "additionalProperties": false
           }
         },
-        "required": ["body"],
+        "required": [
+          "body"
+        ],
         "additionalProperties": false
       }
     },
@@ -1707,15 +1722,29 @@
           "body": {
             "type": "object",
             "properties": {
-              "agent": { "type": "string", "minLength": 1 },
-              "id": { "type": "string", "format": "uuid" },
-              "after": { "type": "integer", "minimum": 0 }
+              "agent": {
+                "type": "string",
+                "minLength": 1
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "after": {
+                "type": "integer",
+                "minimum": 0
+              }
             },
-            "required": ["agent", "id"],
+            "required": [
+              "agent",
+              "id"
+            ],
             "additionalProperties": false
           }
         },
-        "required": ["body"],
+        "required": [
+          "body"
+        ],
         "additionalProperties": false
       }
     },
@@ -1731,16 +1760,38 @@
           "body": {
             "type": "object",
             "properties": {
-              "agent": { "type": "string", "minLength": 1 },
-              "id": { "type": "string", "format": "uuid" },
-              "path": { "type": "string", "minLength": 1, "maxLength": 8192 },
-              "action": { "enum": ["image", "reveal"] }
+              "agent": {
+                "type": "string",
+                "minLength": 1
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192
+              },
+              "action": {
+                "enum": [
+                  "image",
+                  "reveal"
+                ]
+              }
             },
-            "required": ["agent", "id", "path", "action"],
+            "required": [
+              "agent",
+              "id",
+              "path",
+              "action"
+            ],
             "additionalProperties": false
           }
         },
-        "required": ["body"],
+        "required": [
+          "body"
+        ],
         "additionalProperties": false
       }
     },
@@ -2735,7 +2786,13 @@
                       "purpose"
                     ]
                   },
-                  "purpose": {"enum":["inherit","task","self-test"]},
+                  "purpose": {
+                    "enum": [
+                      "inherit",
+                      "task",
+                      "self-test"
+                    ]
+                  },
                   "following": {
                     "type": "boolean"
                   },
@@ -2974,60 +3031,170 @@
       "localOnly": true
     },
     {
-      "name": "claude.accounts.list",
+      "name": "accounts.list",
       "method": "GET",
-      "route": "claude-accounts",
+      "route": "accounts",
       "inputSchema": {
         "type": "object",
         "properties": {},
         "additionalProperties": false
       },
-      "description": "List ARC-owned Claude profiles and the current login flow. Identity is the last CLI observation, not proof of cloud-session reachability. Credentials are never returned.",
+      "description": "List provider accounts and the current login flow. Lists omit email and orgName; use accounts.get for details.",
       "localOnly": true
     },
     {
-      "name": "claude.accounts.browsers",
+      "name": "accounts.get",
       "method": "GET",
-      "route": "claude-accounts/browsers",
+      "route": "accounts/{id}",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id"
+        ],
         "additionalProperties": false
       },
-      "description": "Discover installed browsers on the Core host. Use browserId default for the system default browser; other IDs come from this result.",
+      "description": "Read full account detail or a retained tombstone.",
       "localOnly": true
     },
     {
-      "name": "claude.accounts.login",
+      "name": "accounts.whoami",
       "method": "POST",
-      "route": "claude-accounts/login",
+      "route": "accounts/whoami",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Read the calling source account from its authorization. Unresolved identities remain Unidentified; client names never establish identity.",
+      "localOnly": true
+    },
+    {
+      "name": "accounts.query",
+      "method": "POST",
+      "route": "accounts/query",
       "inputSchema": {
         "type": "object",
         "properties": {
           "body": {
             "type": "object",
             "properties": {
-              "accountId": {
+              "id": {
                 "type": "string",
                 "minLength": 1
+              },
+              "agent": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "description": "List provider accounts, sources, Agent profiles, health, defaults, notification reachability and quota. id returns full detail; list omits email and orgName. Removed IDs return tombstones.",
+      "localOnly": true
+    },
+    {
+      "name": "accounts.update",
+      "method": "POST",
+      "route": "accounts/update",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "alias": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "defaultFor": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Rename an account or make its profile the default for one Agent.",
+      "localOnly": true
+    },
+    {
+      "name": "accounts.add",
+      "method": "POST",
+      "route": "accounts/add",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "claude",
+                  "codex",
+                  "api-key",
+                  "detect"
+                ]
               },
               "browserId": {
                 "type": "string",
                 "minLength": 1
               }
             },
+            "required": [
+              "kind"
+            ],
             "additionalProperties": false
           }
         },
+        "required": [
+          "body"
+        ],
         "additionalProperties": false
       },
-      "description": "Start official Claude Code login in a fixed independent profile. Omit accountId to add a profile. Each profile owns an independent login; no credentials are copied from the default CLI. Login URLs exist only while the flow is active.",
+      "description": "Start official login or detect native authentication. Returns loginId, state and loginUrl when available. Only sign-in requires the user. Read accounts to poll progress.",
       "localOnly": true
     },
     {
-      "name": "claude.accounts.login.code",
+      "name": "accounts.login",
       "method": "POST",
-      "route": "claude-accounts/login/code",
+      "route": "accounts/login",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3038,135 +3205,196 @@
                 "type": "string",
                 "minLength": 1
               },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "code",
+                  "cancel"
+                ]
+              },
               "code": {
                 "type": "string",
                 "minLength": 1
               }
             },
-            "additionalProperties": false,
             "required": [
               "loginId",
-              "code"
-            ]
+              "action"
+            ],
+            "additionalProperties": false
           }
         },
-        "additionalProperties": false,
         "required": [
           "body"
-        ]
+        ],
+        "additionalProperties": false
       },
-      "description": "Submit the authorization code shown by Claude to the active CLI login. Codes are not persisted or logged.",
+      "description": "Submit the Claude authorization code or cancel an active login. Codex uses its browser callback and cannot accept a pasted code.",
       "localOnly": true
     },
     {
-      "name": "claude.accounts.login.cancel",
+      "name": "accounts.reauth",
       "method": "POST",
-      "route": "claude-accounts/login/cancel",
+      "route": "accounts/reauth",
       "inputSchema": {
         "type": "object",
         "properties": {
           "body": {
             "type": "object",
             "properties": {
-              "loginId": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "agent": {
                 "type": "string",
                 "minLength": 1
               }
             },
-            "additionalProperties": false,
             "required": [
-              "loginId"
-            ]
+              "id",
+              "agent"
+            ],
+            "additionalProperties": false
           }
         },
-        "additionalProperties": false,
         "required": [
           "body"
-        ]
+        ],
+        "additionalProperties": false
       },
-      "description": "Cancel the matching login process and retain its profile for retry or removal.",
+      "description": "Restart native login for the selected account Agent profile.",
       "localOnly": true
     },
     {
-      "name": "claude.accounts.refresh",
+      "name": "accounts.remove",
       "method": "POST",
-      "route": "claude-accounts/{id}/refresh",
+      "route": "accounts/remove",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "running": {
+                "type": "string",
+                "enum": [
+                  "finish",
+                  "cancel"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "running"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Remove an account from future dispatches and keep a tombstone. Let running work finish or cancel it explicitly. Existing source IDs and history are retained.",
+      "localOnly": true
+    },
+    {
+      "name": "accounts.browsers",
+      "method": "GET",
+      "route": "accounts/browsers",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "description": "List installed browsers for login.",
+      "localOnly": true
+    },
+    {
+      "name": "accounts.send",
+      "method": "POST",
+      "route": "accounts/{id}/send",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "minLength": 1
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "target"
+            ],
+            "additionalProperties": false
           }
         },
-        "additionalProperties": false,
         "required": [
-          "id"
-        ]
+          "id",
+          "body"
+        ],
+        "additionalProperties": false
       },
-      "description": "Read claude auth status in this profile and persist only public identity fields.",
+      "description": "Send through the account Claude profile. HTTP success is delivery evidence only, not acknowledgement.",
       "localOnly": true
     },
     {
-      "name": "claude.accounts.remove",
-      "method": "DELETE",
-      "route": "claude-accounts/{id}",
+      "name": "accounts.test",
+      "method": "POST",
+      "route": "accounts/{id}/test",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "minLength": 1
+          },
+          "body": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "target"
+            ],
+            "additionalProperties": false
           }
         },
-        "additionalProperties": false,
         "required": [
-          "id"
-        ]
-      },
-      "description": "Remove an isolated profile. Browser-created logins use official logout; imported logins delete only the local credential to avoid revoking the system authorization. Assigned notification routes are retained and fail until explicitly reassigned.",
-      "localOnly": true
-    },
-    {
-      "name": "claude.accounts.system",
-      "method": "GET",
-      "route": "claude-accounts/system",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
+          "id",
+          "body"
+        ],
         "additionalProperties": false
       },
-      "description": "Read the current system CLI identity and its matching ARC profile ID for the System default tag. No credentials are returned.",
+      "description": "Send through the account Claude profile. HTTP success is delivery evidence only, not acknowledgement.",
       "localOnly": true
     },
     {
-      "name": "claude.accounts.import-system",
-      "method": "POST",
-      "route": "claude-accounts/import-system",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "additionalProperties": false
-      },
-      "description": "Retain the current system Claude account in an isolated ARC profile, reusing a matching signed-in profile. Copy only Claude OAuth credentials and account metadata; verify through the official CLI. The first import pins the fallback profile and migrates previous default routes. Later imports never replace existing routes. Secrets remain local and are never returned.",
-      "localOnly": true
-    },
-    {
-      "name": "claude.accounts.routes",
-      "method": "GET",
-      "route": "claude-accounts/routes",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "additionalProperties": false
-      },
-      "description": "List host-owned cloud-session to Claude profile assignments. Unassigned sessions use the first imported profile. Missing assigned profiles fail without falling back.",
-      "localOnly": true
-    },
-    {
-      "name": "claude.accounts.route",
+      "name": "accounts.route",
       "method": "PUT",
-      "route": "claude-accounts/routes",
+      "route": "accounts/routes",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3175,13 +3403,11 @@
             "properties": {
               "accountId": {
                 "type": "string",
-                "minLength": 1,
-                "description": "ARC profile ID from claude.accounts.list."
+                "minLength": 1
               },
               "target": {
                 "type": "string",
-                "minLength": 1,
-                "description": "Complete Claude cloud-session ID or claude.ai/code URL. A /chat UUID must first be resolved to its workspace_session_id; do not infer one from the URL."
+                "minLength": 1
               }
             },
             "required": [
@@ -3191,54 +3417,12 @@
             "additionalProperties": false
           }
         },
-        "additionalProperties": false,
         "required": [
           "body"
-        ]
+        ],
+        "additionalProperties": false
       },
-      "description": "Assign or explicitly replace the account for a target. Scheduled notifications and reachability checks use this route; no message is sent.",
-      "localOnly": true
-    },
-    {
-      "name": "claude.accounts.send",
-      "method": "POST",
-      "route": "claude-accounts/send",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "body": {
-            "type": "object",
-            "properties": {
-              "accountId": {
-                "type": "string",
-                "minLength": 1,
-                "description": "ARC profile ID from claude.accounts.list."
-              },
-              "target": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Complete Claude cloud-session ID or claude.ai/code URL. A /chat UUID must first be resolved to its workspace_session_id; do not infer one from the URL."
-              },
-              "message": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 8000
-              }
-            },
-            "required": [
-              "accountId",
-              "target",
-              "message"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "additionalProperties": false,
-        "required": [
-          "body"
-        ]
-      },
-      "description": "Send one notification using the selected profile and persist its target route. An existing different route is rejected; use claude.accounts.route to explicitly change it. Successful CLI acknowledgement must match the target. No automatic retries; after an uncertain outcome inspect the receiving conversation before sending again.",
+      "description": "Bind a host notification target to an account.",
       "localOnly": true
     }
   ]

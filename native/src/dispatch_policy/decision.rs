@@ -247,7 +247,7 @@ pub(super) fn present(mut facts: Value, args: &Value) -> Value {
         let text = string(policy, "criteria");
         let history = history(row);
         let no_policy = text.is_empty() && history.is_null();
-        let mut out = json!({"agent":agent,"availability":if no_policy { format!("{status}, no policy") } else {status.into()}});
+        let mut out = json!({"agent":agent,"accounts":row["accounts"],"availability":if no_policy { format!("{status}, no policy") } else {status.into()}});
         if available["discoveryError"].is_string() {
             out["error"] = available["discoveryError"].clone();
         }

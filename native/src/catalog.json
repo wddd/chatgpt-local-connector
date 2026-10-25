@@ -1940,6 +1940,11 @@
             "type": "string",
             "minLength": 1,
             "description": "Root name, directory basename, or relative path ending at a registered root. Required when project roots are ambiguous."
+          },
+          "account": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Account ID or unique alias. Omitted uses the Agent default. A running task retains its execution profile."
           }
         },
         "required": [],
@@ -2122,6 +2127,11 @@
             "type": "string",
             "minLength": 1,
             "description": "Deprecated. Ignored."
+          },
+          "account": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Account ID or unique alias. Omitted uses the Agent default. A running task retains its execution profile."
           }
         },
         "required": [
@@ -3400,6 +3410,11 @@
             "type": "string",
             "minLength": 1,
             "description": "Root name, directory basename, or relative path ending at a registered root. Required when project roots are ambiguous."
+          },
+          "account": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Account ID or unique alias. Omitted uses the Agent default. A running task retains its execution profile."
           }
         },
         "required": [
@@ -3750,6 +3765,11 @@
             "type": "string",
             "minLength": 1,
             "description": "Deprecated. Ignored."
+          },
+          "account": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Account ID or unique alias. Omitted uses the Agent default. A running task retains its execution profile."
           }
         },
         "required": [
@@ -6235,6 +6255,406 @@
         "threadId": "<self-test-thread-id>",
         "mode": "placeholder"
       }
+    },
+    {
+      "name": "whoami",
+      "description": "Read the calling source account from its authorization. Unresolved identities remain Unidentified; client names never establish identity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {}
+    },
+    {
+      "name": "accounts",
+      "description": "List provider accounts, sources, Agent profiles, health, defaults, notification reachability and quota. id returns full detail; list omits email and orgName. Removed IDs return tombstones.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "agent": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {}
+    },
+    {
+      "name": "account_update",
+      "description": "Rename an account or make its profile the default for one Agent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "alias": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "defaultFor": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "id": "<account-id>",
+        "alias": "Example account"
+      }
+    },
+    {
+      "name": "account_add",
+      "description": "Start official login or detect native authentication. Returns loginId, state and loginUrl when available. Only sign-in requires the user. Read accounts to poll progress.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "codex",
+              "api-key",
+              "detect"
+            ]
+          },
+          "browserId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "kind": "claude"
+      }
+    },
+    {
+      "name": "account_login",
+      "description": "Submit the Claude authorization code or cancel an active login. Codex uses its browser callback and cannot accept a pasted code.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "loginId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "code",
+              "cancel"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "loginId",
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "loginId": "<login-id>",
+        "action": "cancel"
+      }
+    },
+    {
+      "name": "account_reauth",
+      "description": "Restart native login for the selected account Agent profile.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "agent": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "agent"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "id": "<account-id>",
+        "agent": "claude"
+      }
+    },
+    {
+      "name": "account_remove",
+      "description": "Remove an account from future dispatches and keep a tombstone. Let running work finish or cancel it explicitly. Existing source IDs and history are retained.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "running": {
+            "type": "string",
+            "enum": [
+              "finish",
+              "cancel"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "running"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "id": "<account-id>",
+        "running": "finish"
+      }
+    },
+    {
+      "name": "account_browsers",
+      "description": "List installed browsers for account_add browserId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {}
+    },
+    {
+      "name": "account_notify",
+      "description": "Send or test a notification through an account, or bind its Claude notification route. Delivery alone does not establish reachability; notify_control verify and acknowledgement do.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "send",
+              "test",
+              "bind"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      },
+      "example": {
+        "id": "<account-id>",
+        "action": "test",
+        "target": "session_010000000000000000000001"
+      }
     }
   ],
   "domains": {
@@ -6458,6 +6878,13 @@
         "label": {
           "zh-CN": "原生高级能力",
           "en": "Advanced native capabilities"
+        }
+      },
+      {
+        "id": "accounts",
+        "label": {
+          "en": "Accounts",
+          "zh-CN": "账户"
         }
       }
     ],
@@ -7331,6 +7758,106 @@
         "presets": [],
         "requires": [],
         "tier": "advanced",
+        "conditional": false
+      },
+      "whoami": {
+        "group": "accounts",
+        "presets": [
+          "common",
+          "readOnly"
+        ],
+        "requires": [],
+        "tier": "default",
+        "conditional": false
+      },
+      "accounts": {
+        "group": "accounts",
+        "presets": [
+          "common",
+          "readOnly"
+        ],
+        "requires": [],
+        "tier": "default",
+        "conditional": false
+      },
+      "account_update": {
+        "group": "accounts",
+        "presets": [
+          "common"
+        ],
+        "requires": [
+          "accounts"
+        ],
+        "tier": "default",
+        "conditional": false
+      },
+      "account_add": {
+        "group": "accounts",
+        "presets": [
+          "common"
+        ],
+        "requires": [
+          "accounts",
+          "account_login",
+          "account_browsers"
+        ],
+        "tier": "default",
+        "conditional": false
+      },
+      "account_login": {
+        "group": "accounts",
+        "presets": [
+          "common"
+        ],
+        "requires": [
+          "accounts"
+        ],
+        "tier": "default",
+        "conditional": false
+      },
+      "account_reauth": {
+        "group": "accounts",
+        "presets": [
+          "common"
+        ],
+        "requires": [
+          "accounts",
+          "account_login",
+          "account_browsers"
+        ],
+        "tier": "default",
+        "conditional": false
+      },
+      "account_remove": {
+        "group": "accounts",
+        "presets": [
+          "common"
+        ],
+        "requires": [
+          "accounts"
+        ],
+        "tier": "default",
+        "conditional": false
+      },
+      "account_browsers": {
+        "group": "accounts",
+        "presets": [
+          "common",
+          "readOnly"
+        ],
+        "requires": [],
+        "tier": "default",
+        "conditional": false
+      },
+      "account_notify": {
+        "group": "accounts",
+        "presets": [
+          "common"
+        ],
+        "requires": [
+          "accounts"
+        ],
+        "tier": "default",
         "conditional": false
       }
     }
