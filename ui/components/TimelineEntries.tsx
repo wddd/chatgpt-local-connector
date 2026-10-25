@@ -118,26 +118,33 @@ function InteractionAnchor({ entry, agent, session }: { entry: AgentTimelineEntr
 }
 function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; agent: string; session: AgentActivitySession }) {
   if (entry.type === "text") return <article className="task-phase"><span className="task-agent-mark" aria-label={agent}>{icons[agent] ? <span dangerouslySetInnerHTML={{ __html: icons[agent] }} /> : <Icon icon={MessageSquare} />}</span><TimelineMarkdown text={entry.text ?? ""} /></article>;
-  if (entry.type === "user") return <div className="task-prompt"><small>{t("timeline.user")}{entry.controlSource && ` · ${t("detail.via", { source: dispatchSourceLabel(entry.controlSource) })}`}{entry.startedAt && ` · ${new Date(entry.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small><TimelineMarkdown text={entry.text ?? ""} /></div>;
+  if (entry.type === "user") return <div className="task-prompt">{entry.controlSource && <small>{t("detail.via", { source: dispatchSourceLabel(entry.controlSource) })}{entry.startedAt && ` · ${new Date(entry.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small>}<TimelineMarkdown text={entry.text ?? ""} /></div>;
   if (entry.type === "interaction") return <InteractionAnchor entry={entry} agent={agent} session={session} />;
   if (entry.type === "plan") return <section className="task-plan" aria-label={t("timeline.plan")}><strong>{t("timeline.plan")}</strong><ul>{entry.plan?.map((step, index) => <li key={index} data-state={step.status}>
     <Icon icon={step.status === "completed" ? Check : Circle} /><span>{step.content.text}</span>
   </li>)}</ul></section>;
   return <p className="timeline-error">{entry.text || entry.title}</p>;
 }
+function ToolEntry({ entry, live }: { entry: AgentTimelineEntry; live: boolean }) {
+  const [open, setOpen] = useState(false);
+  const streaming = entry.type === "command" && live && entry.status === "running";
+  const hasDetails = !!(entry.output?.text || entry.input?.text || entry.text || entry.cwd || entry.path || entry.changes?.length || entry.truncated || entry.input?.truncated || entry.output?.truncated);
+  return <div className="task-tool-row" data-failed={entry.status === "failed" || undefined}>
+    <Fold className="task-tool-entry" open={open} onChange={setOpen} expandable={hasDetails}
+      summary={<><Icon icon={stepIcons[entry.type]} /><ToolTitle entry={entry} /><span>{entry.exitCode !== undefined && t("timeline.exitCode", { code: entry.exitCode })}</span></>}>
+      {!!entry.changes?.length && <ChangedFiles entries={[entry]} />}
+      <ToolDetails entry={entry} />
+    </Fold>
+    {streaming && !open && <pre className="task-live-log">{(entry.output?.text || entry.text || "").split("\n").slice(-8).join("\n")}</pre>}
+  </div>;
+}
 function ToolRun({ entries, live }: { entries: AgentTimelineEntry[]; live: boolean }) {
-  const failed = entries.some(entry => entry.status === "failed");
   const active = live && entries.some(entry => entry.status === "running");
   const [manual, setManual] = useState<boolean>();
   const counts = toolCounts(entries, live);
   const stats = (Object.keys(counts) as (keyof typeof counts)[]).filter(kind => counts[kind] && (kind !== "running" || live)).map(kind => <span key={kind} className="task-tool-count">{t(`detail.tools.${kind}`, { count: counts[kind] })}</span>);
-  return <Fold className="task-tool-run" open={failed || (manual ?? active)} onChange={setManual} summary={<span className="task-tool-counts">{stats}</span>}>
-    <div className="task-tool-rows">{entries.map(entry => <div key={entry.id} className="task-tool-row" data-failed={entry.status === "failed" || undefined}>
-      <div><Icon icon={stepIcons[entry.type]} /><ToolTitle entry={entry} /><span>{entry.exitCode !== undefined && t("timeline.exitCode", { code: entry.exitCode })}</span></div>
-      {!!entry.changes?.length && <ChangedFiles entries={[entry]} />}
-      {entry.type === "command" && live && entry.status === "running" ? <pre className="task-live-log">{(entry.output?.text || entry.text || "").split("\n").slice(-8).join("\n")}</pre>
-        : (entry.output?.text || entry.input?.text || entry.text || entry.cwd) && <details open={entry.status === "failed" || undefined}><summary>{t("detail.evidence")}</summary><ToolDetails entry={entry} /></details>}
-    </div>)}</div>
+  return <Fold className="task-tool-run" open={manual ?? active} onChange={setManual} summary={<span className="task-tool-counts">{stats}</span>}>
+    <div className="task-tool-rows">{entries.map(entry => <ToolEntry key={entry.id} entry={entry} live={live} />)}</div>
   </Fold>;
 }
 export default function TimelineEntries({ entries, agent, session, now, running = false, turnStatuses, turnTimings, status, control }: {
@@ -161,11 +168,11 @@ export default function TimelineEntries({ entries, agent, session, now, running 
     const process = <div className="task-process-rows">{rows.map(renderRow)}</div>;
     return <section className="task-turn" key={group.id} data-timeline-id={group.id}>
       {!latest && <Button variant="ghost" className="task-previous-turn" aria-expanded={turnOpen} onClick={() => change(group.id)(!turnOpen)}>
-        <Icon icon={ChevronRight} /><span>{t("detail.previousTurn", { count: index + 1, actions: projection.actions })}{duration !== undefined && ` · ${durationText(duration)}`}<span>{final?.text?.split("\n")[0] || prompt?.text?.split("\n")[0]}</span></span>
+        <Icon icon={ChevronRight} className="timeline-chevron" /><span>{t("detail.previousTurn", { count: index + 1, actions: projection.actions })}{duration !== undefined && ` · ${durationText(duration)}`}<span>{final?.text?.split("\n")[0] || prompt?.text?.split("\n")[0]}</span></span>
       </Button>}
       {projection.answeredInteractions.map(entry => <InteractionAnchor key={entry.id} entry={entry} agent={agent} session={session} />)}
       {turnOpen && <div className="task-turn-content">
-        {prompt && <div className="task-prompt"><small>{t("timeline.user")}{source && ` · ${t("detail.via", { source: dispatchSourceLabel(source) })}`}{prompt.startedAt && ` · ${new Date(prompt.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small>
+        {prompt && <div className="task-prompt">{source && <small>{t("detail.via", { source: dispatchSourceLabel(source) })}{prompt.startedAt && ` · ${new Date(prompt.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small>}
           <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[prompt.id] ?? false} onChange={change(prompt.id)} /></div>}
         {!!rows.length && (live ? process : <Fold className="task-process" open={processOpen(state, expanded[workId])} onChange={change(workId)} summary={<><span>{t("detail.process", projection)}</span><Duration value={duration} /></>}>{process}</Fold>)}
         {(state === "failed" || state === "interrupted") && <TaskOutcome state={state} entries={group.entries} project={session.project} control={latest ? control : undefined} />}

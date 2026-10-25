@@ -5,7 +5,7 @@ import TaskControls from "./TaskControls";
 import { useTaskControl } from "../state/taskControl";
 import "./TaskDetail.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2, MoreHorizontal, Zap } from "lucide-react";
+import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2, MoreHorizontal } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { AgentTimeline } from "../types";
@@ -14,12 +14,12 @@ import { followsTimeline, refreshTimeline, timelineScrollTarget } from "../state
 import { useInterval } from "../state/hooks";
 import { Button, Icon, IconButton, LoadingIndicator, Menu } from "./ui";
 import TimelineEntries, { durationText } from "./TimelineEntries";
-import { dispatchSourceLabel, SourceBadge } from "./activity";
+import { dispatchSourceLabel, SourceBadge, SpecPill } from "./activity";
 import { connector } from "../state/connector";
 import { projectTurn, taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import TaskNeedsYou from "./TaskNeedsYou";
-import { activityHeadline, shortModelLabel, type TrackedActivity } from "../state/activityModel";
+import { activityHeadline, type TrackedActivity } from "../state/activityModel";
 import type { TaskRuntime } from "../state/tasks";
 
 import { name, orderedAgents } from "../state/agents";
@@ -178,8 +178,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       <h2 className="activity-panel-title" title={title}>{title}</h2>
       <div className="task-detail-chips"><span className="task-state" data-state={state}>{t(`detail.state.${state}`)}</span>
         {state === "done" && reviewRequired && <span className="task-review-status" data-verdict={control.review?.verdict}>{t(control.review?.verdict === "pass" ? "detail.reviewPassed" : control.review?.verdict === "rework" ? "detail.reviewRework" : "detail.awaitingReview")}</span>}
-        <div className="task-detail-meta">{latestSummary?.model && <span className="activity-spec">{shortModelLabel(latestSummary.model)}</span>}{latestSummary?.effort && <span className="activity-spec">{latestSummary.effort}</span>}{latestSummary?.serviceTier === "priority" && <span className="activity-spec"><Icon icon={Zap} />{t("activity.fast")}</span>}{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span>{where && where.trim().toLowerCase() !== sourceLabel?.trim().toLowerCase() && <span className="task-source-where">{where}</span>}</span>}</div>
-        {duration !== undefined && <span className="timeline-meta">{durationText(duration)}</span>}
+        <div className="task-detail-meta"><SpecPill summary={latestSummary} />{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span>{where && where.trim().toLowerCase() !== sourceLabel?.trim().toLowerCase() && <span className="task-source-where">{where}</span>}</span>}</div>
+        {duration !== undefined && <time className="timeline-meta task-duration">{durationText(duration)}</time>}
       </div>
       {!narrow && turnCount > 0 && <div className="task-progress"><div>{plan.map((step, index) => <span key={index} data-state={step.status} />)}</div><span>{t("timeline.turn", { count: turnCount })}{plan.length > 0 && ` · ${t("detail.planProgress", { done: doneSteps, total: plan.length })}`}</span></div>}
     </header>
