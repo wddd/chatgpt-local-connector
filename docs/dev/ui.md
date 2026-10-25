@@ -145,6 +145,8 @@ Task details prioritize pending decisions, final replies, phase prose, the lates
 
 At 360px of panel width or below, the header uses a single-line title, status and compact metadata. Tool counts become chips and the narrative drops its avatar column. Pending requests remain visible as an amber banner that opens the shared modal Dialog as a bottom sheet anchored to the Agent panel. Closing the sheet preserves selection and free-text drafts. Escape dismisses only that layer and restores focus. The overflow menu retains native-open and width controls. Dark theme and reduced motion use shared semantic tokens.
 
+The pending-input dock uses at most 60% of the task panel height. The timeline shrinks into the remaining space. Question fields and permission previews scroll inside the dock while request navigation, answer actions and routing status remain visible. The narrow input sheet uses its actual shell width and available height, with the same internal scrolling boundary.
+
 Development scenarios mock task receipts, queue/review reads and explicit actions in memory. Open `?scenario=task-actions` in the Vite development UI for read-only queue/review state and execution question/permission controls. `timeline-multi-turn` also supports these task operations. Mock control-source sends complete immediately when idle so continuation and review states remain inspectable without running an Agent. Responses and resulting timeline/queue/review state can be read again; reloading resets the scenario. Unsupported mutations fail locally and never fall through to Core. Fixtures exercise UI behavior, not native execution ownership or provider acceptance.
 
 ## Account privacy and development scenarios

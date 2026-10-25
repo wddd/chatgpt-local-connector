@@ -82,11 +82,16 @@
   .task-detail-layer *, .task-detail-layer *::before { animation: none !important; transition: none !important; }
 }
 .task-detail-footer.dialog-footer { display: flex; flex-direction: column; align-items: stretch; padding: 10px 12px 12px; gap: 8px; }
-.task-needs-you { display: grid; gap: 10px; padding: 12px; border: 1.5px solid var(--task-attention-ring); border-radius: 18px; background: var(--surface); box-shadow: 0 8px 20px -12px var(--warning); max-height: min(58dvh, 560px); overflow: auto; overscroll-behavior: contain; animation: task-dock-in 180ms var(--task-spring); overflow-wrap: anywhere; }
+.task-needs-you { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1.5px solid var(--task-attention-ring); border-radius: 18px; background: var(--surface); box-shadow: 0 8px 20px -12px var(--warning); overflow: hidden; animation: task-dock-in 180ms var(--task-spring); overflow-wrap: anywhere; }
+.task-needs-you > :not(.task-question, .task-request-preview) { flex-shrink: 0; }
+.task-question-options, .task-request-preview { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.task-question-options { display: grid; gap: 12px; }
+.task-request-preview { display: grid; gap: 10px; }
 .task-needs-you > header { display: flex; align-items: center; justify-content: space-between; color: var(--warning); font-size: 12px; gap: 6px; }
 .task-needs-you > small { color: var(--text-secondary); font-size: 11px; }
 .task-needs-you pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 var(--font-mono); background: var(--surface-subtle); padding: 10px; border-radius: 12px; max-height: 180px; overflow: auto; }
-.task-question { display: grid; gap: 12px; }
+.task-question { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; gap: 12px; }
+.task-question > :not(.task-question-options) { flex-shrink: 0; }
 .task-question-field { margin: 0; padding: 0; border: 0; display: grid; gap: 8px; min-width: 0; }
 .task-question-field legend { padding: 0; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
 .task-question-field .choice-option, .task-multi-option { min-height: 44px; border-radius: 14px; transition: background 180ms var(--task-spring), transform 180ms var(--task-spring); }
@@ -111,8 +116,8 @@
 .task-receipt-anchor [data-verdict=reject] { color: var(--danger); }
 .task-receipt-anchor [data-verdict=bypass] { color: var(--accent); }
 .task-agent-mark > span, .task-agent-mark svg { width: 16px; height: 16px; display: block; }
-.task-detail-layer.agent-panel-layer > .task-timeline { padding: 0; }
-.task-detail-layer.agent-panel-layer > .task-detail-footer { flex-wrap: nowrap; justify-content: flex-start; max-height: 60%; min-height: 0; overflow: hidden; }
+.task-detail-layer.agent-panel-layer > .task-timeline { flex: 1 1 0; min-height: 0; padding: 0; }
+.task-detail-layer.agent-panel-layer > .task-detail-footer { flex: 0 1 auto; flex-wrap: nowrap; justify-content: flex-start; max-height: 60%; min-height: 0; overflow: hidden; }
 .task-needs-you { flex: 1 1 auto; min-height: 0; }
 .task-needs-banner.button { width: 100%; height: auto; min-height: 52px; justify-content: space-between; text-align: left; border: 1.5px solid var(--task-attention-ring); border-radius: 16px; padding: 10px 12px; box-shadow: 0 8px 20px -12px var(--warning); }
 .task-needs-banner > span:first-child { display: grid; gap: 4px; min-width: 0; }
@@ -123,7 +128,11 @@
 .dialog[data-sheet] .dialog-header { padding: 12px; cursor: default; }
 .dialog[data-sheet] .dialog-body { padding: 0 10px; }
 .dialog[data-sheet] .dialog-footer { padding: 8px 12px; }
-.task-input-sheet .task-needs-you { border: 0; box-shadow: none; padding: 4px 2px 12px; max-height: none; overflow: visible; }
+.dialog[data-sheet]:has(.task-input-sheet) { height: min(82dvh, 760px); }
+.dialog[data-sheet]:has(.task-input-sheet) > .elastic-panel-content { width: 100%; height: 100%; max-height: 100%; }
+.dialog[data-sheet]:has(.task-input-sheet) .dialog-body { display: flex; min-height: 0; overflow: hidden; }
+.task-input-sheet { display: flex; flex: 1; min-height: 0; min-width: 0; }
+.task-input-sheet .task-needs-you { border: 0; box-shadow: none; padding: 4px 2px 12px; }
 .task-input-sheet .task-needs-you > header > strong { display: none; }
 .task-input-sheet .task-needs-you > header { justify-content: flex-end; }
 @container (max-width: 360px) {

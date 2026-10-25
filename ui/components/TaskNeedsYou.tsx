@@ -42,10 +42,10 @@ export default function TaskNeedsYou({ agent, session, entries, source, narrow }
     <header><strong>{t("detail.needsYou")}</strong><div className="actions"><IconButton icon={ChevronLeft} label={t("detail.previousRequest")} disabled={index === 0} onClick={() => setPage(index - 1)} /><span>{t("detail.pager", { current: index + 1, total: count })}</span><IconButton icon={ChevronRight} label={t("detail.nextRequest")} disabled={index === count - 1} onClick={() => setPage(index + 1)} /></div></header>
     {pending && interaction && <>
       {interaction.kind === "question" ? <TaskQuestion key={identity} agent={agent} session={pending} answers={drafts[identity!] ?? {}} onAnswersChange={answers => setDrafts(old => ({ ...old, [identity!]: answers }))} /> : <>
-        <strong>{interaction.title || interaction.summary}</strong>
+        <div className="task-request-preview"><strong>{interaction.title || interaction.summary}</strong>
         {(interaction.command || interaction.preview || interaction.path) && <pre>{interaction.command || interaction.preview || interaction.path}</pre>}
         {interaction.cwd && <div className="mono">{t("timeline.cwd")} · {interaction.cwd}</div>}
-        {interaction.reason && <p>{interaction.reason}</p>}
+        {interaction.reason && <p>{interaction.reason}</p>}</div>
         <ActivityInteraction key={identity} agent={agent} session={pending} />
       </>}
     </>}

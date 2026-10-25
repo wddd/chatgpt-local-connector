@@ -37,7 +37,7 @@ export default function TaskQuestion({ agent, session, answers, onAnswersChange 
     if (payload) void submitActivityResponse(agent, session, skip ? "cancel" : "answer", payload);
   };
   return <form className="task-question" onSubmit={event => { event.preventDefault(); send(false); }}>
-    {questions.map(question => <QuestionField key={question.id} question={question} value={answers[question.id] ?? []} onChange={value => onAnswersChange({ ...answers, [question.id]: value })} disabled={locked || !supported} />)}
+    <div className="task-question-options">{questions.map(question => <QuestionField key={question.id} question={question} value={answers[question.id] ?? []} onChange={value => onAnswersChange({ ...answers, [question.id]: value })} disabled={locked || !supported} />)}</div>
     {!supported && <p className="timeline-meta">{t("timeline.responseUnavailable")}</p>}
     {submission?.status === "unconfirmed" && <p role="status">{t("activity.unconfirmed")}</p>}
     {submission?.status === "failed" && <p role="alert">{taskErrorText(submission.error)}</p>}
