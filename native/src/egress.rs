@@ -129,11 +129,15 @@ pub(crate) fn minimal_text(response: &mut Value) {
 }
 
 pub fn failure(e: &str) -> Value {
+    if e == "REPLACE_PENDING" || e.starts_with("REPLACE_PENDING:") {
+        return json!({"code":"REPLACE_PENDING","message":e});
+    }
     if let Ok(value) = serde_json::from_str::<Value>(e) {
         if matches!(
             value["code"].as_str(),
             Some(
                 "PERMISSION_REQUIRED"
+                    | "REPLACE_PENDING"
                     | "INVALID_ARGUMENTS"
                     | "UNKNOWN_OP"
                     | "OP_UNAVAILABLE"
@@ -926,6 +930,8 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
         || (value["next"].get("op") == Some(&Value::Null) && value["next"]["hint"].is_string())
     {
         value["next"].clone()
+    } else if value["error"]["code"] == "REPLACE_PENDING" {
+        json!({"via":"cli","op":"app.replace.status","args":{},"command":"arc cli app replace --status","hint":"Read the durable replacement status after reconnecting. Finish the current turn and resume dispatch only after replacement is terminal."})
     } else if value["state"] == "awaiting-approval" {
         json!({"hint":"Inspect the original request, then decide according to user intent.","via":"act","op":"receipt","args":{"requestId":value["requestId"],"action":"read"}})
     } else if value["state"] == "interaction-required" {
@@ -1123,6 +1129,31 @@ mod tests {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn pending_replacement_status_replaces_generic_control_guidance() {
+        // Regression: REPLACE_PENDING pointed control clients to guide instead of the replacement status read.
+        for name in ["codex_create", "codex_send", "agent_create", "agent_send"] {
+            for message in [
+                "REPLACE_PENDING",
+                "REPLACE_PENDING: finish the current turn",
+            ] {
+                let mut value = json!({"error":failure(message)});
+                next(&mut value, name, &json!({}), false);
+                assert_eq!(value["error"]["code"], "REPLACE_PENDING");
+                assert_eq!(value["next"]["via"], "cli");
+                assert_eq!(value["next"]["op"], "app.replace.status");
+                assert_eq!(value["next"]["command"], "arc cli app replace --status");
+                let (route, method, _) = crate::management::resolve(
+                    string(&value["next"], "op"),
+                    &value["next"]["args"],
+                )
+                .unwrap();
+                assert_eq!(method, "GET");
+                assert_eq!(route, "app/replace/status");
             }
         }
     }

@@ -446,6 +446,12 @@ pub(crate) fn validate_ingress_input(body: &Value, update: bool) -> crate::Resul
 
 pub fn error_response(message: &str, usage: &str, args: &[&str]) -> Value {
     let code = crate::management::error_code(message);
+    if code == "REPLACE_PENDING" {
+        let mut value =
+            json!({"schemaVersion":1,"ok":false,"error":{"code":code,"message":message}});
+        crate::egress::next(&mut value, "", &json!({}), false);
+        return value;
+    }
     if matches!(
         code,
         "SOURCE_REVOKED" | "SOURCE_REMOVED" | "LOCAL_SOURCE_PROTECTED"
@@ -966,6 +972,23 @@ mod tests {
         let location = "<state>/app-replacements/backups/";
         assert!(string(&guide, "markdown").contains(location));
         assert!(string(&schema, "description").contains(location));
+    }
+
+    #[test]
+    fn pending_replacement_status_is_the_cli_recovery_read() {
+        // Regression: REPLACE_PENDING from a control command suggested guide and syntax correction.
+        let value = error_response(
+            "REPLACE_PENDING: finish the current turn",
+            "cli control codex_create --stdin",
+            &["control", "codex_create"],
+        );
+        assert_eq!(value["schemaVersion"], 1);
+        assert_eq!(value["ok"], false);
+        assert_eq!(value["error"]["code"], "REPLACE_PENDING");
+        assert!(value["error"]["usage"].is_null());
+        assert_eq!(value["next"]["op"], "app.replace.status");
+        assert_eq!(value["next"]["via"], "cli");
+        assert_eq!(value["next"]["args"], json!({}));
     }
 
     #[test]

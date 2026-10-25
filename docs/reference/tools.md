@@ -410,6 +410,8 @@ Notification bindings, subscriptions, inboxes, token buckets, notification contr
 The `guide`, `query`, and `act` parameter schemas and the single `notification` event's `{op,args}` input remain frozen. Source management is available only through the [local API and CLI](cli.md#control-source-management).
 
 
+New dispatch pauses during local app replacement. `REPLACE_PENDING` returns `next:{via:"cli",op:"app.replace.status",args:{},command:"arc cli app replace --status",...}`. Read that durable local status after reconnecting and resume dispatch only after replacement is terminal. The status read belongs to the local CLI/management surface; it is unavailable through control-source `query`.
+
 ## Reducing repeated output
 
 `codex_read` compact view defaults to the latest turn. Explicit `limit` and `cursor` request history; full view retains its two-turn default. Pagination still returns `nextCursor`.
