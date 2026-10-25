@@ -1,0 +1,13 @@
+{
+  "replacementReceipt": true,
+  "state": "succeeded",
+  "snapshotFinalized": true,
+  "resumedCount": 1,
+  "id": "fixture-replacement",
+  "interruptedTurns": [
+    {
+      "state": "receipt-returned"
+    }
+  ],
+  "submitter": null
+}

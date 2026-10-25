@@ -216,19 +216,48 @@ pub(super) fn correlate(
 }
 impl Watcher {
     pub(super) async fn poll(&mut self) {
-        let snapshot =
-            match crate::kernel::file_cache::load(&root().join("coordination/projects.json")) {
-                Ok(v) => v,
-                Err(_) => {
-                    observers::gap("git", "project-catalog-unavailable");
-                    return;
-                }
-            };
-        observers::registry_age(snapshot["observedAt"].clone());
-        let projects = snapshot["projects"].as_array().cloned().unwrap_or_default();
-        self.poll_registered(&projects).await;
+        self.poll_in(
+            &root().join("coordination/projects.json"),
+            &root().join("coordination/ref-watch"),
+            &super::emit,
+        )
+        .await;
     }
+    pub(super) async fn poll_in(
+        &mut self,
+        catalog: &Path,
+        store: &Path,
+        emit: &(dyn Fn(EventInput) -> Result<Value> + Sync),
+    ) {
+        let snapshot = match crate::kernel::file_cache::load(catalog) {
+            Ok(v) if v["projects"].is_array() => v,
+            _ => {
+                observers::gap("git", "project-catalog-unavailable");
+                return;
+            }
+        };
+        observers::registry_age(snapshot["observedAt"].clone());
+        // Startup can precede the first ordinary project/list read. Recovery must
+        // replace the current gap while preserving its history in lastGap.
+        observers::gap("git", "observed");
+        self.poll_registered_in(snapshot["projects"].as_array().unwrap(), store, emit)
+            .await;
+    }
+    #[cfg(test)]
     pub(super) async fn poll_registered(&mut self, projects: &[Value]) {
+        self.poll_registered_in(
+            projects,
+            &root().join("coordination/ref-watch"),
+            &super::emit,
+        )
+        .await;
+    }
+    async fn poll_registered_in(
+        &mut self,
+        projects: &[Value],
+        store: &Path,
+        emit: &(dyn Fn(EventInput) -> Result<Value> + Sync),
+    ) {
         if projects.len() > 32 {
             observers::gap("git", "project-count-capacity");
         }
@@ -253,7 +282,7 @@ impl Watcher {
                 let key = format!("{pid}-{index}");
                 let result = tokio::time::timeout(
                     Duration::from_secs(2),
-                    self.scan(pid, &key, Path::new(string(root, "path"))),
+                    self.scan_in(pid, &key, Path::new(string(root, "path")), store, emit),
                 )
                 .await;
                 match result {
@@ -269,16 +298,6 @@ impl Watcher {
                 }
             }
         }
-    }
-    async fn scan(&mut self, pid: &str, key: &str, root: &Path) -> Result<()> {
-        self.scan_in(
-            pid,
-            key,
-            root,
-            &crate::root().join("coordination/ref-watch"),
-            &super::emit,
-        )
-        .await
     }
     pub(super) async fn scan_in(
         &mut self,

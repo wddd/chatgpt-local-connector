@@ -191,7 +191,16 @@ fn base_on(
     resources: Vec<ResourceKey>,
 ) -> Result<EventInput> {
     let mut input = EventInput::new(hash(key), kind, resources);
-    input.origin = Principal::from_origin(&row["origin"])?;
+    input.origin = if matches!(
+        input.kind,
+        EventKind::ReceiptStalled | EventKind::ReceiptUnconfirmed
+    ) {
+        receipt_origin(&row["origin"])?
+    } else if input.kind == EventKind::AppReplace && !row["submitter"]["origin"].is_null() {
+        Principal::from_origin(&row["submitter"]["origin"])?
+    } else {
+        Principal::from_origin(&row["origin"])?
+    };
     let thread = row["threadId"].as_str().or(row["taskId"].as_str());
     if let Some(thread) = thread.filter(|v| types::identifier(v).is_ok()) {
         input.thread_refs.push(ThreadRef {
@@ -204,6 +213,19 @@ fn base_on(
     }
     Ok(input)
 }
+// Historical receipts predate source IDs. Labels and ingress names cannot prove
+// a principal; preserve unknown attribution without relaxing current wire types.
+fn receipt_origin(origin: &Value) -> Result<Option<Principal>> {
+    if origin.is_object()
+        && (origin["sourceId"].is_null() || origin["sourceId"] == "")
+        && !(origin["authType"] == "local"
+            && matches!(string(origin, "ingressId"), "local-cli" | "local-ui"))
+    {
+        return Ok(None);
+    }
+    Principal::from_origin(origin)
+}
+
 fn evidence(input: &mut EventInput, kind: EvidenceKind, id: &str) {
     if types::identifier(id).is_ok() {
         input.evidence_refs.push(EvidenceRef {
@@ -535,7 +557,9 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) -> tokio::task::Join
             discover(&root().join(name), depth, &mut pending);
         }
         discover(&root(), 0, &mut pending);
-        let mut receipts: BTreeSet<PathBuf> = BTreeSet::new();
+        let mut receipts = ReceiptObserver::default();
+        let receipt_directory = root();
+        let agent_receipt_directory = receipt_directory.join("agents/requests");
         let mut replacement = None;
         let mut watcher = super::git_watch::Watcher::default();
         let mut git_at = Instant::now() - Duration::from_secs(30);
@@ -575,7 +599,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) -> tokio::task::Join
                 if let Some(path) = &replacement {
                     pending.insert(path.clone());
                 }
-                for path in &receipts {
+                for path in &receipts.waiting {
                     pending.insert(path.clone());
                 }
                 super::bulletin::tick(&service.control, &service.agents).await;
@@ -584,56 +608,31 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) -> tokio::task::Join
             let batch = std::mem::take(&mut pending);
             for path in batch {
                 if let Ok(row) = crate::kernel::file_cache::load(&path) {
-                    if row["requestId"].is_string() && row["operation"].is_string() {
-                        let session = if path.starts_with(root().join("agents/requests")) {
+                    let receipt_path = (path.parent() == Some(receipt_directory.as_path())
+                        || path.parent() == Some(agent_receipt_directory.as_path()))
+                        && path
+                            .file_stem()
+                            .and_then(|name| name.to_str())
+                            .is_some_and(|name| uuid::Uuid::parse_str(name).is_ok());
+                    if receipt_path
+                        || (row["requestId"].is_string() && row["operation"].is_string())
+                    {
+                        let session = if path.starts_with(&agent_receipt_directory) {
                             service.agents.backend_session()
                         } else {
                             &service.control.session
                         };
-                        if row["backendSession"]
-                            .as_str()
-                            .is_some_and(|previous| previous != session)
-                            && !matches!(
-                                string(&row, "state"),
-                                "completed"
-                                    | "failed"
-                                    | "cancelled"
-                                    | "rejected"
-                                    | "not-executed"
-                                    | "unconfirmed"
-                                    | "awaiting-approval"
-                            )
-                        {
-                            let mut uncertain = row.clone();
-                            uncertain["state"] = json!("unconfirmed");
-                            unconfirmed(&uncertain);
-                        }
-                        if !matches!(
-                            string(&row, "state"),
-                            "completed" | "failed" | "cancelled" | "rejected" | "not-executed"
-                        ) {
-                            if receipts.len() < MAX_PENDING {
-                                receipts.insert(path.clone());
+                        if let Ok(resource) = host() {
+                            if !receipts.observe(
+                                &path,
+                                &row,
+                                session,
+                                chrono::Utc::now().timestamp_millis(),
+                                resource,
+                                &|input| persist(input).map(|_| ()),
+                            ) {
+                                continue;
                             }
-                            if let Ok(resource) = host() {
-                                match stalled_input(
-                                    &row,
-                                    chrono::Utc::now().timestamp_millis(),
-                                    resource,
-                                ) {
-                                    Ok(Some(input)) => {
-                                        if persist(input).is_ok() {
-                                            receipts.remove(&path);
-                                        } else {
-                                            gap("receipts", "persistence-failed");
-                                        }
-                                    }
-                                    Ok(None) => {}
-                                    Err(_) => gap("receipts", "invalid-metadata"),
-                                }
-                            }
-                        } else {
-                            receipts.remove(&path);
                         }
                     }
                     if project(&path, super::emit).is_err() && pending.len() < MAX_PENDING {
@@ -647,6 +646,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) -> tokio::task::Join
                     }
                 }
             }
+            receipts.report();
             if git_at.elapsed()
                 >= Duration::from_secs(if super::git_watch::active() { 5 } else { 30 })
             {
@@ -657,6 +657,118 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) -> tokio::task::Join
             tokio::select! { _=WAKE.notified()=>{}, _=tokio::time::sleep(Duration::from_secs(5))=>{} }
         }
     })
+}
+
+/// Known receipt paths only. Invalid records leave the age-poll set and are
+/// retried only after an owner write; sampled invalid counts never exceed the cap.
+#[derive(Default)]
+pub(super) struct ReceiptObserver {
+    waiting: BTreeSet<PathBuf>,
+    invalid: BTreeSet<PathBuf>,
+    invalid_capped: bool,
+    failed: BTreeSet<PathBuf>,
+    pending_capped: bool,
+}
+impl ReceiptObserver {
+    pub(super) fn report(&self) {
+        COVERAGE
+            .lock()
+            .unwrap()
+            .insert("receipts".into(), self.coverage());
+    }
+    pub(super) fn coverage(&self) -> Value {
+        json!({
+            "state": if !self.failed.is_empty() { "persistence-failed" } else if self.pending_capped { "pending-capacity" } else { "observed" },
+            "observedAt": now(),
+            "skippedInvalidRecords": self.invalid.len(),
+            "invalidCountCapped": self.invalid_capped,
+        })
+    }
+    pub(super) fn observe(
+        &mut self,
+        path: &Path,
+        row: &Value,
+        session: &str,
+        time: i64,
+        resource: ResourceKey,
+        persist: &dyn Fn(EventInput) -> Result<()>,
+    ) -> bool {
+        let result = receipt_inputs(row, session, time, resource);
+        let (events, watch) = match result {
+            Ok(value) => value,
+            Err(_) => {
+                self.waiting.remove(path);
+                self.failed.remove(path);
+                if self.invalid.len() < MAX_PENDING {
+                    self.invalid.insert(path.into());
+                } else if !self.invalid.contains(path) {
+                    self.invalid_capped = true;
+                }
+                return false;
+            }
+        };
+        self.invalid.remove(path);
+        let mut persistence_failed = false;
+        for input in events {
+            if persist(input).is_err() {
+                persistence_failed = true;
+            }
+        }
+        if persistence_failed && self.failed.len() < MAX_PENDING {
+            self.failed.insert(path.into());
+        } else if !persistence_failed {
+            self.failed.remove(path);
+        }
+        if watch || persistence_failed {
+            if self.waiting.len() < MAX_PENDING {
+                self.waiting.insert(path.into());
+            } else {
+                self.pending_capped = true;
+            }
+        } else {
+            self.waiting.remove(path);
+        }
+        true
+    }
+}
+fn receipt_inputs(
+    row: &Value,
+    session: &str,
+    time: i64,
+    resource: ResourceKey,
+) -> Result<(Vec<EventInput>, bool)> {
+    types::identifier(string(row, "requestId"))?;
+    if string(row, "state").is_empty() || string(row, "operation").is_empty() {
+        return Err("INVALID_RECEIPT: missing operation or state".into());
+    }
+    receipt_origin(&row["origin"])?;
+    if matches!(
+        string(row, "state"),
+        "completed" | "failed" | "cancelled" | "rejected" | "not-executed"
+    ) {
+        return Ok((vec![], false));
+    }
+    // A malformed timestamp must not keep a record in the idle poll forever.
+    let updated = row["updatedAt"]
+        .as_str()
+        .or(row["createdAt"].as_str())
+        .ok_or("INVALID_RECEIPT: missing phase timestamp")?;
+    chrono::DateTime::parse_from_rfc3339(updated)
+        .map_err(|_| "INVALID_RECEIPT: invalid phase timestamp")?;
+    let mut events = vec![];
+    if row["backendSession"]
+        .as_str()
+        .is_some_and(|previous| previous != session)
+        && !matches!(string(row, "state"), "unconfirmed" | "awaiting-approval")
+    {
+        let mut uncertain = row.clone();
+        uncertain["state"] = json!("unconfirmed");
+        events.extend(inputs_on(Owner::Receipt, &uncertain, resource.clone())?);
+    }
+    let stalled = stalled_input(row, time, resource)?;
+    let watch = stalled.is_none();
+    events.extend(stalled);
+    Ok((events, watch))
 }
 
 pub(crate) fn watch_receipt(path: &Path) {

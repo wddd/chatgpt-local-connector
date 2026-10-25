@@ -871,3 +871,237 @@ fn agent_dispatch_requires_observed_transport_submission() {
     assert_eq!(page["events"][0]["status"], "submitted");
     assert_eq!(page["events"][0]["threadRefs"][0]["turnId"], "agent-turn");
 }
+
+#[tokio::test]
+async fn git_catalog_recovers_after_startup_and_watches_main_and_lanes() {
+    // Regression: installed Core retained project-catalog-unavailable after a successful upstream registry read.
+    let fixture = std::sync::Mutex::new(Fixture::new());
+    let dir = fixture.lock().unwrap().dir.clone();
+    let repository = dir.join("repository");
+    std::fs::create_dir_all(&repository).unwrap();
+    fixture_git(&repository, &["init", "-b", "main"]);
+    fixture_git(&repository, &["commit", "--allow-empty", "-m", "initial"]);
+    fixture_git(&repository, &["branch", "wt/example"]);
+    let catalog = dir.join("registered.json");
+    let store = dir.join("observed");
+    let emit = |input| {
+        let mut f = fixture.lock().unwrap();
+        f.time += 20;
+        let time = f.time;
+        f.store.as_mut().unwrap().emit(input, time)
+    };
+    let mut watcher = git_watch::Watcher::default();
+    watcher.poll_in(&catalog, &store, &emit).await;
+    let page = fixture.lock().unwrap().query(json!({}));
+    assert_eq!(
+        page["coverage"]["observers"]["git"]["state"],
+        "project-catalog-unavailable"
+    );
+    let mut registered: Value =
+        serde_json::from_str(include_str!("fixtures/project-catalog.json")).unwrap();
+    registered["projects"][0]["roots"][0]["path"] = json!(repository);
+    save(&catalog, &registered).unwrap();
+    watcher.poll_in(&catalog, &store, &emit).await;
+    let page = fixture.lock().unwrap().query(json!({}));
+    assert!(page["events"].as_array().unwrap().is_empty());
+    assert_eq!(page["coverage"]["observers"]["git"]["state"], "observed");
+    assert_eq!(
+        page["coverage"]["observers"]["git"]["lastGap"]["state"],
+        "project-catalog-unavailable"
+    );
+    assert_eq!(
+        page["coverage"]["observers"]["projectRegistry"]["observedAt"],
+        registered["observedAt"]
+    );
+    fixture_git(&repository, &["commit", "--allow-empty", "-m", "next"]);
+    fixture_git(&repository, &["branch", "-f", "wt/example", "main"]);
+    watcher.poll_in(&catalog, &store, &emit).await;
+    watcher.poll_in(&catalog, &store, &emit).await;
+    let page = fixture
+        .lock()
+        .unwrap()
+        .query(json!({"kinds":["git.ref-moved"]}));
+    let events = page["events"].as_array().unwrap();
+    assert_eq!(events.len(), 2);
+    assert_eq!(
+        events[0]["resources"],
+        json!(["project:fixture-project/main"])
+    );
+    assert_eq!(
+        events[1]["resources"],
+        json!(["lane:fixture-project/example"])
+    );
+    for event in events {
+        assert_eq!(event["observation"]["movement"], "moved");
+        assert_eq!(event["attribution"]["confidence"], "unknown");
+        assert_eq!(event["attribution"]["threadIds"], json!([]));
+    }
+}
+
+#[test]
+fn historical_receipts_preserve_unknown_origins_and_skip_invalid_records_individually() {
+    // Regression: installed historical OAuth receipts with empty sourceId marked the entire receipts observer invalid-metadata.
+    let fixture = std::sync::Mutex::new(Fixture::new());
+    let resource = ResourceKey::parse("host:fixture").unwrap();
+    let rows: Vec<Value> =
+        serde_json::from_str(include_str!("fixtures/receipt-metadata.json")).unwrap();
+    let time = chrono::DateTime::parse_from_rfc3339("2026-01-01T00:01:00Z")
+        .unwrap()
+        .timestamp_millis();
+    let persist = |input| {
+        emit_observation(&mut fixture.lock().unwrap(), input);
+        Ok(())
+    };
+    let mut observer = observers::ReceiptObserver::default();
+    // Keep the historical shapes, including missing createdAt and empty sourceId;
+    // reopen completed fixture phases to exercise the same observer conversion.
+    for (index, row) in rows.iter().enumerate() {
+        let mut row = row.clone();
+        row["state"] = json!("running");
+        let path = PathBuf::from(format!("receipt-{index}"));
+        observer.observe(&path, &row, "new-session", time, resource.clone(), &persist);
+    }
+    observer.report();
+    let page = fixture
+        .lock()
+        .unwrap()
+        .query(json!({"kinds":["receipt.stalled"],"limit":100}));
+    let events = page["events"].as_array().unwrap();
+    assert_eq!(events.len(), rows.len());
+    for (event, row) in events.iter().zip(&rows) {
+        let origin = &row["origin"];
+        if origin["authType"] == "local"
+            && matches!(string(origin, "ingressId"), "local-cli" | "local-ui")
+        {
+            assert_eq!(event["origin"]["type"], "local-authority");
+        } else if string(origin, "sourceId").is_empty() {
+            assert!(event["origin"].is_null());
+        } else {
+            assert_eq!(event["origin"]["sourceId"], origin["sourceId"]);
+            assert_eq!(event["origin"]["accountId"], origin["accountId"]);
+        }
+    }
+    assert_eq!(
+        page["coverage"]["observers"]["receipts"]["skippedInvalidRecords"],
+        0
+    );
+    let mut invalid = rows[0].clone();
+    invalid["state"] = json!("running");
+    invalid["origin"] = json!({"sourceId": ["invalid"]});
+    let bad_path = Path::new("bad-receipt");
+    for _ in 0..3 {
+        observer.observe(
+            bad_path,
+            &invalid,
+            "new-session",
+            time,
+            resource.clone(),
+            &persist,
+        );
+    }
+    let mut valid = rows[0].clone();
+    valid["requestId"] = json!("valid-after-invalid");
+    valid["state"] = json!("running");
+    observer.observe(
+        Path::new("valid-receipt"),
+        &valid,
+        "new-session",
+        time,
+        resource.clone(),
+        &persist,
+    );
+    observer.report();
+    let page = fixture
+        .lock()
+        .unwrap()
+        .query(json!({"kinds":["receipt.stalled"],"limit":100}));
+    assert_eq!(page["events"].as_array().unwrap().len(), rows.len() + 1);
+    assert_eq!(
+        page["coverage"]["observers"]["receipts"]["state"],
+        "observed"
+    );
+    assert_eq!(
+        page["coverage"]["observers"]["receipts"]["skippedInvalidRecords"],
+        1
+    );
+    assert_eq!(
+        page["coverage"]["observers"]["receipts"]["invalidCountCapped"],
+        false
+    );
+    valid["requestId"] = json!("repaired-receipt");
+    observer.observe(
+        bad_path,
+        &valid,
+        "new-session",
+        time,
+        resource.clone(),
+        &persist,
+    );
+    observer.report();
+    assert_eq!(
+        fixture.lock().unwrap().query(json!({}))["coverage"]["observers"]["receipts"]
+            ["skippedInvalidRecords"],
+        0
+    );
+    invalid["origin"] = Value::Null;
+    invalid["updatedAt"] = json!("invalid-time");
+    for index in 0..4100 {
+        observer.observe(
+            &PathBuf::from(format!("invalid-{index}")),
+            &invalid,
+            "new-session",
+            time,
+            resource.clone(),
+            &persist,
+        );
+    }
+    observer.report();
+    let page = fixture.lock().unwrap().query(json!({}));
+    assert_eq!(
+        page["coverage"]["observers"]["receipts"]["state"],
+        "observed"
+    );
+    assert_eq!(
+        page["coverage"]["observers"]["receipts"]["skippedInvalidRecords"],
+        4096
+    );
+    assert_eq!(
+        page["coverage"]["observers"]["receipts"]["invalidCountCapped"],
+        true
+    );
+}
+
+#[test]
+fn replacement_events_use_recorded_command_submitter_through_recovery() {
+    // Regression: 0d01893 stored submitter.origin but app.replace events only read the absent top-level origin.
+    let mut f = Fixture::new();
+    let submitter = json!({"origin":{"sourceId":"source-one","accountId":"account-one","authType":"oauth","ingressId":"fixture"},"notify":{"channel":"claude-session","target":"private-target"}});
+    let mut row: Value =
+        serde_json::from_str(include_str!("fixtures/replacement-metadata.json")).unwrap();
+    row["submitter"] = submitter;
+    row["resumedCount"] = json!(0);
+    for state in ["preparing", "waiting-for-turns", "installing", "succeeded"] {
+        row["state"] = json!(state);
+        for input in observer_events(observers::Owner::Replacement, row.clone()) {
+            emit_observation(&mut f, input);
+        }
+    }
+    row["id"] = json!("terminal-replacement");
+    row["submitter"] = Value::Null;
+    for input in observer_events(observers::Owner::Replacement, row) {
+        emit_observation(&mut f, input);
+    }
+    let page = f.query(json!({"kinds":["app.replace"]}));
+    let events = page["events"].as_array().unwrap();
+    assert_eq!(events.len(), 7);
+    for event in &events[..5] {
+        assert_eq!(
+            event["origin"],
+            json!({"type":"source","sourceId":"source-one","accountId":"account-one"})
+        );
+    }
+    for event in &events[5..] {
+        assert!(event["origin"].is_null());
+    }
+    assert!(!page.to_string().contains("private-target"));
+}

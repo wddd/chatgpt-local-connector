@@ -132,12 +132,22 @@ reconciliation paths. Retry keeps its descriptor and transition ID.
 Receipt reservations enroll a known path for bounded phase-age observation. A phase
 stalls after the same 30-second threshold as `progressStalled`; this does not prove
 execution failure. After recording one stall, the observer stops polling that phase
-until another owner checkpoint. Unconfirmed backend-session reads persist a separate
+until another owner checkpoint. Historical receipts with missing or empty source IDs
+retain unknown origin; ingress names and labels never supply a source identity.
+Malformed receipt metadata is skipped per record and leaves the age-poll set until
+an owner write. `coverage.observers.receipts.skippedInvalidRecords` counts distinct
+sampled invalid paths, removes repaired records, and caps at 4,096 per Core lifetime.
+`invalidCountCapped` indicates that more invalid paths were encountered. These
+records do not invalidate other receipt observations or change receipt execution.
+Unconfirmed backend-session reads persist a separate
 observation without rewriting a live receipt. Replacement interruption counts require
 the finalized shutdown snapshot and exclude `finished-before-shutdown` entries.
 Unknown counts stay absent. `resumeSubmissions` counts completed resume-operation
 receipts with a turn ID, never completed successor turns. Recovery summary is separate
-from replacement success. Restart evidence identifies the new Core instance.
+from replacement success. Replacement events project the recorded `submitter.origin`
+when present, including recovery summaries. A plain terminal without recorded
+submission context remains unattributed. Existing journal events and producer
+checkpoints are not rewritten. Restart evidence identifies the new Core instance.
 
 Startup discovery and the pending path set cap at 4,096 records. Owner records retain
 at most 128 descriptors. Native snapshot ingestion caps at 128 terminal turns per
@@ -156,6 +166,10 @@ The watcher consumes the registered project projection from successful existing
 to discover projects. `coverage.observers.projectRegistry.observedAt` is the last
 upstream read, not proof that registration remained unchanged while disconnected.
 An unavailable projection is a gap until an ordinary project query refreshes it.
+The watcher may start before that first read. A later successful snapshot read
+sets `git.state` to `observed` and retains the earlier failure in `git.lastGap`;
+individual registered-root gaps remain visible separately. An initial ref snapshot
+establishes the baseline and does not fabricate historical ref-movement events.
 Private roots remain in local state; shared events expose only registered IDs.
 
 The initial bounds are 32 roots across at most 32 projects, 8 roots/project and
