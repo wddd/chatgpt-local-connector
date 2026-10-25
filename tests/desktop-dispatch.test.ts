@@ -2,7 +2,7 @@ import test from 'node:test';
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { createServer, type Socket } from 'node:net';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -26,7 +26,7 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
     const row = read()[thread], entities = Object.fromEntries(row.turns.map((turn: any) => [turn.id, { ...turn, turnId: turn.id }]));
     // A real native turn and an unconfirmed Desktop UI placeholder coexist.
     if (row.phantom) entities.placeholder = { turnId: null, status: 'inProgress', items: [] };
-    const state = { id: thread, cwd: directory, threadRuntimeStatus: { type: row.turns.at(-1)?.status === 'inProgress' ? 'active' : 'idle' }, latestModel: 'fixture-model',
+    const state = { id: thread, cwd: directory, rolloutPath: row.path, threadRuntimeStatus: { type: row.turns.at(-1)?.status === 'inProgress' ? 'active' : 'idle' }, latestModel: 'fixture-model',
       turnHistory: { kind: 'canonical', history: { isComplete: true, entitiesByKey: entities, islands: [{ newerBoundary: { status: 'exhausted' }, entries: Object.keys(entities).map(value => ({ value })) }] } } };
     send(socket, { type: 'broadcast', method: 'thread-stream-state-changed', version: 11, sourceClientId: 'fixture-owner', params: { hostId: 'local', conversationId: thread, change: { type: 'snapshot', revision: ++revision, conversationState: state } } });
   };
@@ -140,5 +140,46 @@ test('Desktop and connector owners dispatch FIFO and steer only a confirmed nati
       const owner = await fixture.call('codex_owner', {threadId:created.threadId});
       assert.equal(owner.owner, 'desktop'); assert.equal(owner.state, 'held');
     } finally { writer.stdin.end(); await new Promise(resolve => writer.once('exit', resolve)); }
+    await fixture.api('task-settings', {notificationsEnabled:false}, 'PUT');
+    const target = 'session_010000000000000000000009';
+    const interrupted = await fixture.completed('codex_create', {prompt:'Resume fixture task', thread:{cwd:directory}, notify:{channel:'claude-session',target}});
+    assert.equal(interrupted.state, 'completed', JSON.stringify(interrupted));
+    const successor = randomUUID();
+    const historyPath = path.join(directory, 'sessions', 'resume.jsonl');
+    await mkdir(path.dirname(historyPath));
+    const ended = Math.floor(Date.now() / 1000) - 2000;
+    const history = [
+      {type:'session_meta',payload:{id:interrupted.threadId}},
+      {type:'event_msg',payload:{type:'task_started',turn_id:interrupted.turnId}},
+      {type:'event_msg',payload:{type:'turn_aborted',turn_id:interrupted.turnId,completed_at:ended}},
+      {type:'event_msg',payload:{type:'task_started',turn_id:successor,started_at:ended+18,turn_attribution:{turn_trigger:'resume_interrupted_task'}}},
+      {type:'response_item',payload:{role:'user',content:[{type:'input_text',text:'<environment_context>\n  <current_date>2000-01-01</current_date>\n</environment_context>'}]}},
+      {type:'turn_context',payload:{turn_id:successor,cwd:directory,model:'fixture-model',effort:'high',service_tier:null}},
+      {type:'event_msg',payload:{type:'task_complete',turn_id:successor,completed_at:ended+100}},
+    ];
+    await writeFile(historyPath, history.map(row=>JSON.stringify(row)).join('\n')+'\n');
+    const resumed = read(), row = resumed[interrupted.threadId];
+    row.turns.at(-1).status = 'interrupted'; row.detached = true; row.path = await realpath(historyPath);
+    row.turns.push({id:successor,status:'completed',items:[{type:'agentMessage',text:'Done',status:'completed'}]}); save(resumed);
+    const desktopWriter = spawn('python3', ['-c', 'import fcntl,sys; f=open(sys.argv[1],"w"); fcntl.flock(f,fcntl.LOCK_EX); print("ready",flush=True); sys.stdin.read()', path.join(directory, 'thread-writer-locks', interrupted.threadId + '.lock')]);
+    await new Promise<void>(resolve=>desktopWriter.stdout.once('data',resolve));
+    try {
+      await fixture.restart();
+      const status = async () => fixture.call('notify_status',{threadId:interrupted.threadId,all:true});
+      let report: any;
+      const deadline = Date.now()+20000;
+      do { report=await status(); if(report.deliveries?.length===2)break; await new Promise(resolve=>setTimeout(resolve,100)); } while(Date.now()<deadline);
+      assert.equal(report.deliveries.length,2,JSON.stringify(report));
+      assert.deepEqual(report.deliveries.map((d:any)=>d.kind).sort(),['completed','interrupted']);
+      assert.ok(report.threads[0].turns.some((turn:any)=>turn.turnId===successor && turn.target===target));
+      const eventIds=report.deliveries.map((d:any)=>d.eventId).sort();
+      await fixture.restart();
+      await new Promise(resolve=>setTimeout(resolve,2500));
+      const replayed=await status();
+      assert.deepEqual(replayed.deliveries.map((d:any)=>d.eventId).sort(),eventIds);
+      assert.equal(replayed.targets[0].tokens,report.targets[0].tokens);
+      assert.equal(replayed.targets[0].breaker,report.targets[0].breaker);
+      assert.equal((await fixture.call('codex_owner',{threadId:interrupted.threadId})).owner,'desktop');
+    } finally {desktopWriter.stdin.end(); await new Promise(resolve=>desktopWriter.once('exit',resolve));}
   } finally { await fixture.close(); for (const socket of sockets) socket.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); await rm(directory, {recursive:true,force:true}); }
 });

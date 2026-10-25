@@ -98,6 +98,51 @@ async fn deliver_continuation(path: &Path, receipt: &mut Value) -> Result<()> {
 fn directory() -> PathBuf {
     root().join("app-replacements")
 }
+
+// Only the exact local receipt's durable continuation can reuse dispatch origin.
+// Remote control-source arguments cannot opt into this path.
+pub(crate) fn continuation_context(args: &Value) -> Result<Option<Value>> {
+    let Ok(entries) = std::fs::read_dir(directory()) else {
+        return Ok(None);
+    };
+    for entry in entries.flatten() {
+        let path = entry.path().join("status.json");
+        if !path.is_file() {
+            continue;
+        }
+        let receipt = load(&path)?;
+        if receipt["continuation"] == *args
+            && receipt["continuationBinding"].is_object()
+            && matches!(
+                string(&receipt, "continuationState"),
+                "submitting" | "receipt-returned" | "unconfirmed"
+            )
+        {
+            return Ok(Some(receipt["continuationBinding"].clone()));
+        }
+    }
+    Ok(None)
+}
+
+pub(crate) fn continuation_request_matches(thread: &str, request: &str) -> Result<bool> {
+    let Ok(entries) = std::fs::read_dir(directory()) else {
+        return Ok(false);
+    };
+    for entry in entries.flatten() {
+        let path = entry.path().join("status.json");
+        if !path.is_file() {
+            continue;
+        }
+        let receipt = load(&path)?;
+        if receipt["continuation"]["threadId"] == thread
+            && receipt["continuation"]["requestId"] == request
+            && receipt["continuationBinding"].is_object()
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
 fn job(id: &str) -> Result<PathBuf> {
     uuid::Uuid::parse_str(id).map_err(|_| "INVALID_ARGUMENT: replacement id must be a UUID")?;
     Ok(directory().join(id))

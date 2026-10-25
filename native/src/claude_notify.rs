@@ -134,6 +134,12 @@ struct Binding {
     continuation_bound: bool,
     #[serde(default)]
     continuation_until: i64,
+    #[serde(default)]
+    scope_end: Option<String>,
+    #[serde(default)]
+    successor: Value,
+    #[serde(default)]
+    observation: Value,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     caused_by: Value,
     #[serde(default)]
@@ -203,6 +209,9 @@ fn bind_in(dir: &Path, session: Option<&str>, thread: &str, turn: &str, cwd: &st
         deliveries: vec![],
         continuation_bound: false,
         continuation_until: 0,
+        scope_end: None,
+        successor: Value::Null,
+        observation: Value::Null,
         caused_by: Value::Null,
         retry: Value::Null,
     });
@@ -242,6 +251,19 @@ pub(crate) async fn bind(
     let _guard = LOCK.lock().await;
     let dir = directory();
     let created = binding(&dir, thread, turn)?.is_none();
+    if created
+        && matches!(string(&cause, "op"), "codex_send" | "codex_create")
+        && args["_retryAttempt"].as_u64().unwrap_or(0) == 0
+        && !crate::app_replace::continuation_request_matches(thread, string(&cause, "requestId"))?
+    {
+        for mut previous in records(&dir)?
+            .into_iter()
+            .filter(|b| b.thread_id == thread && b.scope_end.is_none())
+        {
+            previous.scope_end = Some("new-unrelated-dispatch".into());
+            persist(&dir, &previous)?;
+        }
+    }
     if created {
         bind_in(&dir, Some(""), thread, turn, cwd)?;
     }
@@ -323,9 +345,36 @@ pub(crate) async fn inherit(thread: &str, previous: &str, turn: &str) -> Result<
             persist(&directory(), &next)?;
         }
         old.continuation_bound = true;
+        old.successor =
+            json!({"turnId":turn,"reason":"interaction-continuation","inherited":!next.explicit});
         persist(&directory(), &old)?;
     }
     Ok(())
+}
+
+// Local replacement captures the exact active dispatch before stopping Core.
+pub(crate) fn replacement_binding(thread: &str) -> Result<Value> {
+    let all = records(&directory())?;
+    let Some(b) = all
+        .iter()
+        .filter(|b| {
+            b.thread_id == thread && !b.terminal && (b.agent.is_empty() || b.agent == "codex")
+        })
+        .max_by_key(|b| b.created_at)
+    else {
+        return Ok(Value::Null);
+    };
+    let dispatches = crate::dispatch_policy::records(thread)?;
+    let Some(dispatch) = dispatches
+        .iter()
+        .find(|d| d["turnId"] == b.turn_id && d["origin"]["sourceId"] == b.source_id)
+    else {
+        return Ok(Value::Null);
+    };
+    Ok(
+        json!({"threadId":thread,"turnId":b.turn_id,"origin":dispatch["origin"],
+        "purpose":dispatch["purpose"],"notify":b.target.as_ref().map(|target|json!({"channel":b.channel,"target":target}))}),
+    )
 }
 pub(crate) fn record_binding(receipt: &mut Value, result: Result<()>) {
     if let Err(error) = result {
@@ -2082,6 +2131,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
     tokio::spawn(async move {
         crate::logs::record("INFO", "Control-source notification observer started", None);
         let mut recovering = true;
+        let mut pending_reconciliation = std::collections::HashSet::new();
         loop {
             let Some(control) = weak.upgrade() else {
                 break;
@@ -2108,11 +2158,16 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                         }
                         if recovering {
                             recover(&directory(), &mut b)?;
+                            pending_reconciliation.insert((b.thread_id.clone(), b.turn_id.clone()));
                         }
                         drop(_guard);
                         if b.terminal
-                            && (b.continuation_bound
-                                || b.continuation_until < chrono::Utc::now().timestamp())
+                            && (b.scope_end.is_some()
+                                || b.continuation_bound
+                                || b.continuation_until == 0
+                                || (b.continuation_until < chrono::Utc::now().timestamp()
+                                    && !pending_reconciliation
+                                        .contains(&(b.thread_id.clone(), b.turn_id.clone()))))
                         {
                             continue;
                         }
@@ -2151,6 +2206,7 @@ pub(crate) fn start(service: &Arc<crate::service::Service>) {
                         continue;
                     };
                     let mut b = old;
+                    pending_reconciliation.remove(&(b.thread_id.clone(), b.turn_id.clone()));
                     let mut observed = observed;
                     for request in observed["interaction"].as_array_mut().into_iter().flatten() {
                         crate::respond_tokens::issue(&b.source_id, request)?;

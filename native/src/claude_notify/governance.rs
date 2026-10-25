@@ -641,6 +641,9 @@ pub(super) fn control_in(
 }
 pub(super) fn apply_rebind(b: &mut Binding, rule: &Thread) {
     if let Some(rebind) = &rule.rebind {
+        if rebind.target.is_none() {
+            b.scope_end = Some("source-unbound".into());
+        }
         b.target = rebind.target.clone();
         b.channel = rebind.channel;
         for d in &mut b.deliveries {

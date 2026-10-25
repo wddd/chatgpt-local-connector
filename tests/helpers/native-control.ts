@@ -16,14 +16,23 @@ export async function nativeControl(script: string, extraEnv: Record<string, str
   await writeFile(fixture, script);
   const target = process.env.CARGO_TARGET_DIR || path.resolve('target');
   execFileSync('cargo', ['build', '--locked', '--quiet', '-p', 'contract-fixture', '--target-dir', target], { stdio: 'inherit' });
-  const processHandle = spawn(path.join(target, 'debug', `contract-fixture${process.platform === 'win32' ? '.exe' : ''}`), ['http'], {
-    env: { ...process.env, ARC_STATE_DIR: path.join(directory, 'state'), CODEX_HOME:path.join(directory,'codex'), ARC_FIXTURE_SCRIPT: fixture, ARC_FIXTURE_BINARY: process.execPath, ...extraEnv }, stdio: ['pipe', 'pipe', 'inherit'],
-  });
-  const lines = createInterface({ input: processHandle.stdout });
-  const endpoint = JSON.parse((await lines[Symbol.asyncIterator]().next()).value!);
+  const launch = async () => {
+    const processHandle = spawn(path.join(target, 'debug', `contract-fixture${process.platform === 'win32' ? '.exe' : ''}`), ['http'], {
+      env: { ...process.env, ARC_STATE_DIR: path.join(directory, 'state'), CODEX_HOME:path.join(directory,'codex'), ARC_FIXTURE_SCRIPT: fixture, ARC_FIXTURE_BINARY: process.execPath, ...extraEnv }, stdio: ['pipe', 'pipe', 'inherit'],
+    });
+    const lines = createInterface({ input: processHandle.stdout });
+    const endpoint = JSON.parse((await lines[Symbol.asyncIterator]().next()).value!);
+    return {processHandle, lines, endpoint};
+  };
+  let runtime = await launch();
+  const stop = async () => {
+    runtime.processHandle.stdin.end('\n');
+    await new Promise<void>(resolve => runtime.processHandle.once('exit', () => resolve()));
+    runtime.lines.close();
+  };
   const api = async (route: string, body?: unknown, method = body === undefined ? 'GET' : 'POST') => {
-    const response = await fetch(`http://127.0.0.1:${endpoint.port}/api/${route}`, {
-      method, headers: { authorization: `Bearer ${endpoint.token}`, 'content-type': 'application/json' },
+    const response = await fetch(`http://127.0.0.1:${runtime.endpoint.port}/api/${route}`, {
+      method, headers: { authorization: `Bearer ${runtime.endpoint.token}`, 'content-type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     return response.json() as Promise<any>;
@@ -34,8 +43,8 @@ export async function nativeControl(script: string, extraEnv: Record<string, str
     return value.structuredContent?.result ?? value;
   };
   const sourceCall = async (ingressId: string, op: string, args: Record<string,unknown> = {}) => {
-    const response=await fetch(`http://127.0.0.1:${endpoint.port}/mcp/${ingressId}`, {
-      method:'POST',headers:{authorization:`Bearer ${endpoint.token}`,'content-type':'application/json'},
+    const response=await fetch(`http://127.0.0.1:${runtime.endpoint.port}/mcp/${ingressId}`, {
+      method:'POST',headers:{authorization:`Bearer ${runtime.endpoint.token}`,'content-type':'application/json'},
       body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'act',arguments:{op,args}}}),
     });
     const value=await response.json() as any;
@@ -57,9 +66,9 @@ export async function nativeControl(script: string, extraEnv: Record<string, str
     const quoted="'"+binary.replaceAll("'","'\\''")+"'";
     return promisify(execFile)('/bin/sh',['-c',command.replace('arc cli',`${quoted} cli`)],{env:{...process.env,ARC_STATE_DIR:path.join(directory,'state')}});
   };
-  return { api, call, sourceCall, completed, shell, async close() {
-    processHandle.stdin.end('\n');
-    await new Promise<void>(resolve => processHandle.once('exit', () => resolve()));
-    lines.close(); await rm(directory, { recursive: true, force: true });
+  return { api, call, sourceCall, completed, shell, async restart() {
+    await stop(); runtime = await launch();
+  }, async close() {
+    await stop(); await rm(directory, { recursive: true, force: true });
   } };
 }

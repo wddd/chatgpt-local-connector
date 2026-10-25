@@ -175,6 +175,8 @@ pub async fn prepare(body: Value) -> Result<Value> {
     ));
     let mut receipt = json!({"replacementReceipt":true,"id":id,"state":"preparing","immediate":body["immediate"]==true,"backupDirectory":backup_directory,"source":source,"target":target,"backup":backup,"staged":staged,"backupMoved":false,"package":expected,"oldPackage":{"coreBuild":old_core,"desktopBuild":old_desktop,"identifier":identifier},"desktopPid":app["pid"],"corePid":core["pid"],"coreInstance":core["instance"],"service":service,"createdAt":now(),"statusPath":path.join("status.json"),"logPath":path.join("worker.log"),"next":"End this turn after the receipt. Do not continue work depending on ARC. Query app replace --status after reconnecting."});
     if let Some(args) = continuation {
+        receipt["continuationBinding"] =
+            crate::claude_notify::replacement_binding(string(&args, "threadId"))?;
         receipt["continuation"] = args;
         receipt["continuationState"] = json!("waiting-for-recovery");
     }
