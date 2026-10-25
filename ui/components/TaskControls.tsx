@@ -7,23 +7,24 @@ import type { TaskState } from "../state/taskProjection";
 import type { TaskControl } from "../state/taskControl";
 import { Button, Field, IconButton, Menu, SingleChoice, Textarea } from "./ui";
 
-export default function TaskControls({ agent, taskId, state, control, turnId }: { agent: string; taskId: string; state: TaskState; control: TaskControl; turnId?: string }) {
+export default function TaskControls({ agent, taskId, state, control, turnId, reviewRequired }: { agent: string; taskId: string; state: TaskState; control: TaskControl; turnId?: string; reviewRequired: boolean }) {
   const id = useId();
   const purpose = taskPurposes.use()[taskPurposeKey(agent, taskId)] ?? "inherit";
   const [text, setText] = useState(""), [rework, setRework] = useState(false);
   const live = state === "running" || state === "needsYou";
   const canSend = !live || agent === "codex";
-  const reviewed = control.review?.verdict;
+  const reviewed = reviewRequired ? control.review?.verdict : undefined;
+  useEffect(() => setRework(false), [turnId, reviewRequired]);
   useEffect(() => {
     if (control.operation?.intent === "send" && control.operation.receipt?.state === "completed") { setText(""); setRework(false); }
   }, [control.operation]);
   const send = async (steer = false) => {
     if (!text.trim() || control.outstanding) return;
-    if (rework && reviewed !== "rework" && !await control.perform("review", { verdict: "rework", note: text.slice(0, 1000) })) return;
+    if (reviewRequired && rework && reviewed !== "rework" && !await control.perform("review", { verdict: "rework", note: text.slice(0, 1000) })) return;
     if (await control.perform("send", { prompt: text, ...taskPurposeArgs(purpose), ...(agent === "codex" ? { sendMode: steer ? "steer" : "next" } : {}) })) { setText(""); setRework(false); }
   };
   return <section className="task-controls">
-    {state === "done" && !reviewed && !rework ? <div className="task-review-dock"><strong>{t("detail.reviewTurn")}</strong><div className="actions"><Button variant="secondary" disabled={control.outstanding || !turnId} onClick={() => setRework(true)}>{t("detail.rework")}</Button><Button disabled={control.outstanding || !turnId} busy={control.busy} onClick={() => void control.perform("review", { verdict: "pass" })}>{t("detail.pass")}</Button></div></div> : <form onSubmit={event => { event.preventDefault(); void send(); }}>
+    {reviewRequired && state === "done" && !reviewed && !rework ? <div className="task-review-dock"><strong>{t("detail.reviewTurn")}</strong><div className="actions"><Button variant="secondary" disabled={control.outstanding || !turnId} onClick={() => setRework(true)}>{t("detail.rework")}</Button><Button disabled={control.outstanding || !turnId} busy={control.busy} onClick={() => void control.perform("review", { verdict: "pass" })}>{t("detail.pass")}</Button></div></div> : <form onSubmit={event => { event.preventDefault(); void send(); }}>
       <SingleChoice compact label={t("detail.purpose")} value={purpose} disabled={control.outstanding} onChange={value => setTaskPurpose(agent, taskId, value as TaskPurpose)} options={[{ value: "inherit", label: t("detail.purposeInherit") }, { value: "task", label: t("detail.purposeTask") }, { value: "self-test", label: t("detail.purposeSelfTest") }]} />
       <div className="task-compose-row"><Field id={id} label={t(rework ? "detail.reworkPrompt" : "detail.message")}><Textarea id={id} rows={2} value={text} onChange={event => setText(event.target.value)} disabled={control.outstanding || !canSend} placeholder={t(rework ? "detail.reworkPrompt" : live && agent === "codex" ? "detail.queueHint" : "detail.followUp")} /></Field>
         <Button type="submit" disabled={!text.trim() || control.outstanding || !canSend} busy={control.busy}>{t("detail.send")}</Button>

@@ -118,7 +118,7 @@ function InteractionAnchor({ entry, agent, session }: { entry: AgentTimelineEntr
 }
 function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; agent: string; session: AgentActivitySession }) {
   if (entry.type === "text") return <article className="task-phase"><span className="task-agent-mark" aria-label={agent}>{icons[agent] ? <span dangerouslySetInnerHTML={{ __html: icons[agent] }} /> : <Icon icon={MessageSquare} />}</span><TimelineMarkdown text={entry.text ?? ""} /></article>;
-  if (entry.type === "user") return <div className="task-prompt"><small>{t("timeline.user")} · {entry.controlSource ? t("detail.via", { source: dispatchSourceLabel(entry.controlSource) }) : t("detail.sourceUnknown")}{entry.startedAt && ` · ${new Date(entry.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small><TimelineMarkdown text={entry.text ?? ""} /></div>;
+  if (entry.type === "user") return <div className="task-prompt"><small>{t("timeline.user")}{entry.controlSource && ` · ${t("detail.via", { source: dispatchSourceLabel(entry.controlSource) })}`}{entry.startedAt && ` · ${new Date(entry.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small><TimelineMarkdown text={entry.text ?? ""} /></div>;
   if (entry.type === "interaction") return <InteractionAnchor entry={entry} agent={agent} session={session} />;
   if (entry.type === "plan") return <section className="task-plan" aria-label={t("timeline.plan")}><strong>{t("timeline.plan")}</strong><ul>{entry.plan?.map((step, index) => <li key={index} data-state={step.status}>
     <Icon icon={step.status === "completed" ? Check : Circle} /><span>{step.content.text}</span>
@@ -165,7 +165,7 @@ export default function TimelineEntries({ entries, agent, session, now, running 
       </Button>}
       {projection.answeredInteractions.map(entry => <InteractionAnchor key={entry.id} entry={entry} agent={agent} session={session} />)}
       {turnOpen && <div className="task-turn-content">
-        {prompt && <div className="task-prompt"><small>{t("timeline.user")}{` · ${source ? t("detail.via", { source: dispatchSourceLabel(source) }) : t("detail.sourceUnknown")}`}{prompt.startedAt && ` · ${new Date(prompt.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small>
+        {prompt && <div className="task-prompt"><small>{t("timeline.user")}{source && ` · ${t("detail.via", { source: dispatchSourceLabel(source) })}`}{prompt.startedAt && ` · ${new Date(prompt.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</small>
           <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[prompt.id] ?? false} onChange={change(prompt.id)} /></div>}
         {!!rows.length && (live ? process : <Fold className="task-process" open={processOpen(state, expanded[workId])} onChange={change(workId)} summary={<><span>{t("detail.process", projection)}</span><Duration value={duration} /></>}>{process}</Fold>)}
         {(state === "failed" || state === "interrupted") && <TaskOutcome state={state} entries={group.entries} project={session.project} control={latest ? control : undefined} />}

@@ -45,7 +45,7 @@
 .task-tool-row summary { cursor: pointer; }
 .task-live-log { white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 10px; background: var(--task-log-bg); color: var(--task-log-ink); max-height: 160px; overflow: auto; }
 .task-thinking { font-size: 13px; color: var(--text-tertiary); white-space: nowrap; text-overflow: ellipsis; overflow: hidden; animation: task-shimmer 1.8s infinite; }
-.task-process > .timeline-summary { border: 1px dashed var(--border-strong); border-radius: 12px; font-size: 12px; color: var(--text-secondary); }
+.task-process > .timeline-summary { padding: 8px 14px; border: 1px dashed var(--border-strong); border-radius: 12px; font-size: 12px; color: var(--text-secondary); }
 .task-process-rows { padding: 6px 0; }
 .task-final { padding: 14px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); box-shadow: var(--task-lift); font-size: 15px; line-height: 1.6; min-width: 0; overflow-wrap: anywhere; }
 .task-final > header { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 11px; color: var(--success); }
@@ -148,7 +148,7 @@
   .task-compose-row > .field { flex-basis: 100%; }
   .task-compose-row > .button { flex: 1; }
   .task-review-dock { flex-wrap: wrap; }
-  .task-process > .timeline-summary { flex-wrap: wrap; }
+  .task-process > .timeline-summary { flex-wrap: wrap; padding-inline: 12px; }
   .task-receipt-anchor { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) {

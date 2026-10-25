@@ -124,6 +124,11 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const turnCount = groups.length;
   const state = taskState(timeline?.status, running, showCard);
   const turnId = nativeSession.turnId || groups.at(-1)?.turnId;
+  const reviewSource = timeline
+    ? (turnId && timeline.turnDispatchSummaries?.[turnId]?.controlSource) || timeline.dispatchSummary?.controlSource
+      || groups.find(group => group.turnId === turnId)?.entries.find(entry => entry.type === "user")?.controlSource
+    : source;
+  const reviewRequired = !!reviewSource && reviewSource.kind !== "ARC";
   const control = useTaskControl(agent, session.id, turnId, timeline?.status, !external && !timeline?.readOnly);
   const queue = useTaskQueue(external || timeline?.readOnly ? "" : agent, session.id, control.operation?.receipt);
   const latest = () => {
@@ -172,7 +177,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       ]} /></div>}
       <h2 className="activity-panel-title" title={title}>{title}</h2>
       <div className="task-detail-chips"><span className="task-state" data-state={state}>{t(`detail.state.${state}`)}</span>
-        {state === "done" && <span className="task-review-status" data-verdict={control.review?.verdict}>{t(control.review?.verdict === "pass" ? "detail.reviewPassed" : control.review?.verdict === "rework" ? "detail.reviewRework" : "detail.awaitingReview")}</span>}
+        {state === "done" && reviewRequired && <span className="task-review-status" data-verdict={control.review?.verdict}>{t(control.review?.verdict === "pass" ? "detail.reviewPassed" : control.review?.verdict === "rework" ? "detail.reviewRework" : "detail.awaitingReview")}</span>}
         <div className="task-detail-meta">{latestSummary?.model && <span className="activity-spec">{shortModelLabel(latestSummary.model)}</span>}{latestSummary?.effort && <span className="activity-spec">{latestSummary.effort}</span>}{latestSummary?.serviceTier === "priority" && <span className="activity-spec"><Icon icon={Zap} />{t("activity.fast")}</span>}{source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span>{where && where.trim().toLowerCase() !== sourceLabel?.trim().toLowerCase() && <span className="task-source-where">{where}</span>}</span>}</div>
         {duration !== undefined && <span className="timeline-meta">{durationText(duration)}</span>}
       </div>
@@ -212,6 +217,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       </div>
       {!atLatest && <Button variant="secondary" className="timeline-latest" onClick={latest}>{t("timeline.latest")}</Button>}
     </div>
-    {!external && !timeline?.readOnly && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} onPending={setShowCard} narrow={narrow} /><div hidden={showCard}><TaskControls agent={agent} taskId={session.id} state={state} control={control} turnId={turnId || undefined} /></div></footer>}
+    {!external && !timeline?.readOnly && <footer className="dialog-footer task-detail-footer"><TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} onPending={setShowCard} narrow={narrow} /><div hidden={showCard}><TaskControls agent={agent} taskId={session.id} state={state} control={control} turnId={turnId || undefined} reviewRequired={reviewRequired} /></div></footer>}
   </section>;
 }
