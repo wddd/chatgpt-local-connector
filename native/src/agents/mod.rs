@@ -753,6 +753,7 @@ impl AgentHost {
             return Err("AGENT_TASK_MISMATCH".into());
         }
         value["observedAt"] = json!(now());
+        value["srcConversation"] = crate::src_conversations::task_ref(agent, task)?;
         Ok(value)
     }
     async fn process(&self, agent: &str, task: &str, resume: bool) -> Result<Arc<Process>> {
@@ -1050,6 +1051,9 @@ impl AgentHost {
         } else {
             self.task(agent, &task).await?["turnId"].clone()
         };
+        if matches!(name, "agent_create" | "agent_send") {
+            args["srcConversation"] = crate::src_conversations::capture(&args).await?;
+        }
         let receipt = json!({"agentAccountId":args["agentAccountId"],"agentProfileId":args["agentProfileId"],"origin":crate::kernel::origin::current_origin(),"requestId":request,"agent":agent,"taskId":task,"previousTurnId":previous_turn,"operation":name,"arguments":args,"digest":digest,"state":if needs_approval{"awaiting-approval"}else{"pending"},"backendSession":self.session,"createdAt":now(),"nextAction":"receipt"});
         RECEIPTS.reserve(&receipt)?;
         if needs_approval {

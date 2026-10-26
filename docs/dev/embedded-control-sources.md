@@ -1,7 +1,7 @@
 # Embedded control sources
 
-> Status: technical route validated by spike (2026-10-26). Product/UI design not started.
-> Evidence: `~/Developer/research/arc-src-webview-spike` (commit `e8a6aa2`, `REPORT.md`, `evidence/`).
+> Status: Phase 1 implementation. The current SRC topology and panel model are retained.
+> Reference: read-only webview spike, commit `e8a6aa2` (`REPORT.md` and synthetic importer fixtures).
 > Platform: macOS only. Linux hosts are headless and do not need this. Windows is deferred.
 
 ## Goal
@@ -46,13 +46,13 @@ Rough RSS sums (shared pages double-counted): two loaded containers ~1.0-1.7 GiB
 - Remote views are display and user interaction only: no script injection, no DOM reading, no IPC bridge.
 - Cookie values, decrypted plaintext, derived keys and the keychain password never appear in logs, ARC state, AX logs, op results or agent transcripts. Decryption happens only inside the ARC process.
 - Import reads copies of browser files and never modifies the browser profile.
-- AX-facing ops expose only: account/container ID, status (`not-imported | signed-in | expired`), and the nullable current conversation ref. Never cookies or page content.
+- AX-facing ops expose account/container IDs, status (`unsupported | not-imported | signed-in | expired`), safe conversation refs, timestamps, binding provenance, linked task IDs, and Chrome profile directory/display name. Never cookies or page content.
 - No host system settings changes.
 
 ## Conversation <-> task binding
 
 - Cowork: deterministic. ARC's verified notify target `session_<id>` maps 1:1 to URL `/cowork/cse_<id>`.
-- Chat: the model does not know its own conversation UUID. Proposed: correlate a dispatch with the account's active conversation URL at dispatch time, plus manual rebind. To be designed.
+- Chat: correlate a dispatch with the same account's recently active conversation URL, with an explicit `correlated` basis. Manual rebind and unbind correct the association.
 
 ## Open risks
 
@@ -61,7 +61,48 @@ Rough RSS sums (shared pages double-counted): two loaded containers ~1.0-1.7 GiB
 - Cowork deep link needs a positive check with a conversation owned by the container's account.
 - ChatGPT (chatgpt.com, auth.openai.com) is untested.
 
-## Product implications (design inputs, undecided)
+## Phase 1
 
-ARC's current homepage favours fun over space: the centre ring takes the most valuable area but carries no function; the three-level tentacle topology spends space on aesthetics; the tree keeps idle sources and agents on screen permanently.
-Once conversations live inside ARC, the UI must optimise for daily productivity. This likely supersedes the topology-centred placement rules in `object-model.md`. The redesign is pending discussion with the user. Preserving the current playful UI (for example as a tagged version or an optional view) is also undecided.
+### Ownership and compatibility
+
+Keep the current UI model. SRC L2 is the source account, including its login state; conversations are SRC L3. The main-window panels are a separate implementation segment. Phase 1 provides one plain native window per account, with a direct wry child. The renderer uses `ui/srcConversations.ts`; no panel component owns native webview lifecycle.
+
+The native implementation requires macOS 14 or later for identifier-based persistent WK data stores. Other platforms and non-Claude source providers report `unsupported`. Core owns the persisted registry and account scope; Desktop owns native windows and login import. There is no Tauri remote webview, remote IPC handler, initialization script, DOM read, history database scan, or page-content API. Construction verifies that the native user-script count is zero before any navigation.
+
+A random store UUID is generated on the first open/import for each canonical ARC account ID and saved before creating its native view. Reopening reuses that store. Closing destroys the view; no hidden residency is retained. Re-import replaces the loaded view with a blank view of the same store and reuses its plain host window. Account merges never transfer a website session implicitly: historical stores remain keyed to their original IDs, and the canonical owner uses its own store. Store deletion and migration are deferred.
+
+### Import and URL observation
+
+`src_chrome_profiles` reads only profile directories and display names from Chrome Local State. Import accepts only a listed directory beneath the Chrome root. The importer uses a private database copy with WAL/SHM and before/after stamps, the spike's v10 decryption and version-24 host digest validation, and the same domain allowlist and Cloudflare exclusions. Partitioned and expired persistent cookies are skipped. No cookie values or keys enter ARC JSON state, receipts, logs or API results. WebKit retains its own persistent website store.
+
+Keychain waits time out after 30 seconds. A still-pending OS request prevents another request; denial is never bypassed. The process disables core dumps before import. Every native cookie representation is validated before submitting any cookie writes. Navigation waits for all `WKHTTPCookieStore` completion callbacks, with a 30-second blocker timeout. Pending write barriers survive caller cancellation and window closure; another open cannot bypass them. Window mutations are serialized during import; metadata queries remain available. A failed or timed-out import is not a signed-in result.
+
+The native URL poll runs on a 250 ms cadence. Only canonical `/chat/<uuid>` and `/cowork/cse_<id>` URLs cross into Core. Query strings, fragments and unrelated paths are discarded. `expired` is set on `/login`, `/signin`, `/sign-in`, `/sign_in` or `/auth`. A finished claude.ai page whose URL remains stable for five seconds yields `signed-in`. This is a URL heuristic, not an authentication or content assertion. Until then the last observed status is retained; new views start `not-imported`.
+
+Safari UA override is per account and defaults to false. `src_conversation_open` can save it; an already-open view must be closed before the changed preference takes effect. The optional compatibility string uses `Version/27.0.1 Safari/605.1.15` with the frozen WebKit token; it is not an assertion about the host Safari version. Default wry UA is the normal route. Popups and navigation outside the HTTPS claude.ai origin are denied.
+
+### Registry and task bindings
+
+The registry persists canonical account ID, conversation kind/ID/URL, first and last observation times, last active time, and provenance. Linked tasks persist separately and are projected as `taskRefs:[{agent,id,basis}]`. A conversation's `basis` describes its initial evidence (`observed` or `notify-target`); each task binding has its own `notify-target`, `correlated` or `manual` basis. First observations, status changes, bindings and window transitions save immediately; continuous timestamp updates are coalesced for at most 30 seconds. Live window state is never restored as open after Core restart.
+
+Verified source-owned Cowork notification targets register `session_<24 alphanumeric characters>` as `/cowork/cse_<suffix>`, even without opening a local window. Dispatch uses its explicit verified target, or the exact same source/Codex task's still-open inherited notification binding. It never selects an arbitrary account-wide notification target. An unverified explicit target leaves the task unbound.
+
+Chat dispatch snapshots the native window again, with a one-second metadata deadline. Missing Desktop, a failed snapshot or a closed window leaves the task unbound. Only the same account's current Chat URL qualifies, with a native observation no older than two seconds and focused, visible, non-minimized activity within **600 seconds**. The association is captured before execution, so a slow submission cannot follow a later navigation. A queued send is evaluated when it actually dispatches. Non-Claude sources and local authority do not gain inferred cloud conversation bindings.
+
+`src_conversation_bind` allows manual rebind/unbind only to a registered conversation of the task's origin account. The next new dispatch/send evaluates automatic association again; a native resume retains the existing binding. `codex_read` and `agent_read` expose nullable `srcConversation:{accountId,kind,id,url,basis}`. No task is guessed across accounts.
+
+### Operations and bridge
+
+| Entry | Operation | Arguments |
+| --- | --- | --- |
+| query | `src_conversations` | `{accountId?}` |
+| query | `src_chrome_profiles` | `{}` |
+| act | `src_conversation_open` | `{accountId, conversationId? or url?, safariUserAgent?}` |
+| act | `src_login_import` | `{accountId,profile}` |
+| act | `src_conversation_bind` | `{accountId,agent,taskId,conversationId:string|null}` |
+
+Omitting both navigation arguments opens `https://claude.ai/new`. Explicit URLs must be `/new` or valid Chat/Cowork URLs on the same HTTPS claude.ai origin, without credentials, nonstandard ports, query strings or fragments. External sources are restricted to their own account; local management may select any source account. Import returns only `{accountId,status}`. Mutations use the existing `read-back` retry contract: no receipt replay protection, no automatic retry, and no extra guarantee from `act.requestId`.
+
+Local management mirrors these operations at `POST src-conversations/{query,open,import,bind}` and `GET src-conversations/profiles`. CLI names are `src.conversations.{query,profiles,open,import,bind}`. The internal Desktop metadata channel reports URL-derived state only. It is not exposed as a remote MCP operation.
+
+`ui/scenarioSrcConversations.ts` supplies signed-in, expired, not-imported and unsupported states, Chat/Cowork refs, linked tasks and manual binding transitions through the same API routes in browser fixtures. It does not simulate Keychain, native WebKit, or authentication. Panel buttons, L3 cards and task links are deferred to the UI segment; native login, isolation and lifecycle acceptance require a separately authorized main-checkout run.

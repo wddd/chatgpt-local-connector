@@ -69,6 +69,17 @@ Actions:
 
 The management API mirrors these ops for the UI under `accounts/*` and replaces `claude-accounts/*`. Notification send/test stays under the account.
 
+## Source-account containers
+
+SRC accounts also own isolated website containers and an L3 conversation registry.
+Phase 1 opens one native window per account on macOS 14+, keeping existing panels
+unchanged. Account IDs key persistent random WK store UUIDs; no provider cookies
+enter the account JSON store. The `src_*` operations and Desktop bridge are defined
+in [Embedded control sources](embedded-control-sources.md#phase-1) and
+[Source conversations](../reference/tools.md#source-conversations). Identity merges
+do not silently transfer website sessions. Source login status remains separate
+from Agent profile authentication and notification verification.
+
 ## UI
 
 ### Entry

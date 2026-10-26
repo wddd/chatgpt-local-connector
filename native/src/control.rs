@@ -1066,6 +1066,9 @@ impl Control {
             Value::Null
         };
         let mut receipt = json!({"agentAccountId":args["agentAccountId"],"agentProfileId":args["agentProfileId"],"origin":crate::kernel::origin::current_origin(),"requestId":request,"backendSession":self.session,"digest":digest,"operation":operation,"arguments":args,"state":"reserved","createdAt":now(),"updatedAt":now()});
+        if matches!(operation, "create" | "send") {
+            receipt["srcConversation"] = crate::src_conversations::capture(&args).await?;
+        }
         if operation == "resume" {
             if let Some(entry) =
                 crate::app_replace::continuation_entry(string(&args, "threadId"), &request)?
@@ -2349,6 +2352,7 @@ impl Control {
                     json!({"threadId":id,"title":t["name"],"runtimeStatus":t["status"]["type"],"observedAt":now()})
                 };
                 result["origin"] = crate::sources::task_origin(id, None);
+                result["srcConversation"] = crate::src_conversations::task_ref("codex", id)?;
                 if !full
                     && t["status"]["activeFlags"]
                         .as_array()

@@ -40,6 +40,28 @@ Quota detail uses the selected native profile unless `quotaProviderId` selects t
 
 The local management API uses `GET accounts`, `GET accounts/{id}`, `POST accounts/query`, `POST accounts/whoami`, and `POST accounts/{add,login,reauth,update,merge,remove}` with the corresponding op arguments as the JSON body. Browser discovery is `GET accounts/browsers`; notification actions are `POST accounts/{id}/{send,test}` with `{target,message?}` and `PUT accounts/routes` with `{accountId,target}`. `ui/api.ts` exports typed `accountsApi` helpers. The former `claude-accounts/*` management routes are removed. Migration retains the Claude credential directories because their paths participate in the native keychain namespace; host route storage moves to the account store. Source IDs, notification ownership and execution profile IDs are preserved.
 
+## Source conversations
+
+Source conversations extend SRC accounts. Use the existing frozen `query` and `act` tools; `guide({op})` supplies the current schema.
+
+| Via | Op | Arguments | Result |
+| --- | --- | --- | --- |
+| query | `src_conversations` | `{accountId?}` | `{accounts:[{accountId,storeId,status,safariUserAgent,open,currentConversation,conversations}],correlationSeconds:600}` |
+| query | `src_chrome_profiles` | `{}` | `{profiles:[{directory,name}]}`; unsupported platforms include `status:unsupported` |
+| act | `src_conversation_open` | `{accountId,conversationId? or url?,safariUserAgent?}` | `{accountId,status}` |
+| act | `src_login_import` | `{accountId,profile}` | `{accountId,status}` only |
+| act | `src_conversation_bind` | `{accountId,agent,taskId,conversationId:string|null}` | `{conversation:{accountId,kind,id,url,basis}|null}` |
+
+Container status is `unsupported`, `not-imported`, `signed-in` or `expired`. Native containers require macOS 14+ and a Claude source account. Each account uses one persistent isolated WK store and one native window; closing unloads the view. Omit navigation arguments for `/new`; otherwise use a registered ID or a valid HTTPS claude.ai Chat/Cowork URL without query or fragment. `safariUserAgent` defaults off; close an existing window before applying a saved change. External callers can select only their own account. Local management can select any source account.
+
+Conversations contain `accountId`, `kind:chat|cowork`, `id`, canonical `url`, `firstSeenAt`, `lastSeenAt`, nullable `lastActiveAt`, `basis`, and `taskRefs:[{agent,id,basis}]`. `basis` on a conversation describes its initial evidence; task bindings separately describe `notify-target`, `correlated` or `manual` evidence. Verified source-owned Cowork targets map deterministically from `session_<id>` to `cse_<id>`. Chat binding requires a still-open same-account window with a current Chat URL and activity within 600 seconds. The native snapshot at dispatch has a one-second deadline; failure leaves the task unbound. Manual `conversationId:null` unbinds, and the next dispatch/send evaluates association again. `codex_read` and `agent_read` include nullable `srcConversation` with the bound account, kind, ID, URL and basis.
+
+Chrome import reads a private copy of the selected profile and waits for Keychain (30 seconds) and native cookie writes (30 seconds) before navigation. Denial or timeout reports `SRC_IMPORT_BLOCKED`; never work around a denial. Pending writes keep navigation blocked. Cookie values, decrypted bytes, keys and page content are never returned. `signed-in` is based on URL observations only and does not prove authentication or content loading. Import completion may return `not-imported` until the first URL observation.
+
+Queries use `read-only` retry mode. Mutations use `read-back` with no automatic retry or receipt protection. Read `src_conversations` before retrying a side effect. An outer `act.requestId` does not add replay protection.
+
+The Desktop bridge exposes `POST src-conversations/{query,open,import,bind}` and `GET src-conversations/profiles`, with the same arguments. `ui/srcConversations.ts` exports `srcConversationsApi` and typed results. No remote view contains Tauri IPC or user scripts.
+
 ## Discovery and policy
 
 The public MCP surface is frozen at three tools. Call `guide` first; use `guide({"op":"codex_create"})` for a single op’s full schema and example.

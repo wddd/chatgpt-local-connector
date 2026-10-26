@@ -11,6 +11,7 @@ pub mod package;
 pub mod screen;
 mod setup_secret;
 mod shell_command;
+pub mod src_conversations;
 mod task_overview;
 mod task_tracking;
 mod text_files;

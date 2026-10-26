@@ -3712,6 +3712,128 @@
         ],
         "additionalProperties": false
       }
+    },
+    {
+      "name": "src.conversations.query",
+      "method": "POST",
+      "route": "src-conversations/query",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "description": "Read source-account container status and URL-only conversations with linked taskRefs. External callers see only their own account. Status is a URL heuristic, not proof of authentication or page contents. No cookies or page content are returned.",
+      "localOnly": true
+    },
+    {
+      "name": "src.conversations.profiles",
+      "method": "GET",
+      "route": "src-conversations/profiles",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "description": "List Chrome Local State profile directory and display name only. macOS only; other platforms report unsupported.",
+      "localOnly": true
+    },
+    {
+      "name": "src.conversations.open",
+      "method": "POST",
+      "route": "src-conversations/open",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "conversationId": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "safariUserAgent": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accountId"
+        ],
+        "additionalProperties": false,
+        "not": {
+          "required": [
+            "conversationId",
+            "url"
+          ]
+        }
+      },
+      "description": "Open and focus one native window for this source account. Omit conversationId and url to open https://claude.ai/new. Otherwise use a registered conversationId or a claude.ai Chat/Cowork URL without query or fragment. safariUserAgent persists an optional override (default false); close an existing window before changing it. Closing unloads the view. macOS 14+ only. No remote IPC or scripts.",
+      "localOnly": true
+    },
+    {
+      "name": "src.conversations.import",
+      "method": "POST",
+      "route": "src-conversations/import",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "accountId",
+          "profile"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Import login from a profile returned by src_chrome_profiles into this account container, then open /new. Returns accountId and status only. Chrome files are copied read-only. Keychain denial or a 30-second wait returns SRC_IMPORT_BLOCKED; never work around a denial. Wait for all native cookie writes before navigating. Read src_conversations before manually retrying. No cookies, keys or page content are returned.",
+      "localOnly": true
+    },
+    {
+      "name": "src.conversations.bind",
+      "method": "POST",
+      "route": "src-conversations/bind",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "conversationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "agent",
+          "taskId",
+          "conversationId"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Manually bind a dispatched task to a registered conversation on its origin account. conversationId:null unbinds. Cross-account binding is rejected. The next dispatch/send re-evaluates automatic binding. Task reads expose srcConversation including accountId, kind, id, url and basis.",
+      "localOnly": true
     }
   ]
 }

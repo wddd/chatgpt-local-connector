@@ -513,6 +513,8 @@ impl Service {
         let audit = method != "GET"
             && ![
                 "runtime/lease",
+                "src-conversations/observe",
+                "src-conversations/query",
                 "logs/query",
                 "agents/conversations",
                 "agents/dispatch-catalog",
@@ -652,6 +654,20 @@ impl Service {
         }
         if route.starts_with("local-access/") {
             return crate::local_access::request(self, route, method, body).await;
+        }
+        if route == "src-conversations/observe" && method == "POST" {
+            return crate::src_conversations::observe(&body);
+        }
+        if let Some(action) = route.strip_prefix("src-conversations/") {
+            let name = match (method, action) {
+                ("POST", "query") => "src_conversations",
+                ("GET", "profiles") => "src_chrome_profiles",
+                ("POST", "open") => "src_conversation_open",
+                ("POST", "import") => "src_login_import",
+                ("POST", "bind") => "src_conversation_bind",
+                _ => return Err("UNKNOWN_ROUTE".into()),
+            };
+            return crate::src_conversations::op(name, body).await;
         }
         if route == "accounts" || route.starts_with("accounts/") {
             return self

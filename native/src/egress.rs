@@ -129,6 +129,9 @@ pub(crate) fn minimal_text(response: &mut Value) {
 }
 
 pub fn failure(e: &str) -> Value {
+    if let Some(code) = crate::src_conversations::error_code(e) {
+        return json!({"code":code,"message":e,"retryable":false});
+    }
     if e == "REPLACE_PENDING" || e.starts_with("REPLACE_PENDING:") {
         return json!({"code":"REPLACE_PENDING","message":e});
     }

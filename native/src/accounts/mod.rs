@@ -1045,3 +1045,11 @@ mod notification_projection_tests {
         assert_eq!(historical[1]["state"], "failed");
     }
 }
+
+/// Current source-account owners, excluding merged and removed tombstones.
+pub(crate) fn source_rows() -> Result<Vec<Value>> {
+    Ok(read()?
+        .into_iter()
+        .filter(|a| live(a) && a["sources"].as_array().is_some_and(|s| !s.is_empty()))
+        .collect())
+}

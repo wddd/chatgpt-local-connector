@@ -628,6 +628,9 @@ fn read_rows(dir: &Path) -> Result<Vec<Value>> {
     Ok(rows)
 }
 pub(crate) fn record(receipt: &Value) -> Result<()> {
+    crate::src_conversations::record(receipt).map_err(|e| {
+        format!("SUBMISSION_UNCONFIRMED: dispatch accepted; conversation record failed: {e}")
+    })?;
     let _guard = RECORDS_LOCK.lock().map_err(|e| e.to_string())?;
     let mut row = receipt["task"]["dispatch"].clone();
     for key in ["requestId", "threadId", "turnId", "dispatchMode"] {
@@ -1011,7 +1014,7 @@ pub(crate) fn agent_record(task: &Value, args: &Value) -> Result<()> {
     record(
         &json!({"agentAccountId":task["agentAccountId"],"origin":crate::kernel::origin::current_origin(),"agent":task["agent"],"taskId":task["taskId"],"threadId":task["taskId"],
         "turnId":task["turnId"],"requestId":args["requestId"],"dispatchMode":"new-turn",
-        "arguments":args,"task":{"dispatch":task["dispatch"]}}),
+        "srcConversation":args["srcConversation"],"arguments":args,"task":{"dispatch":task["dispatch"]}}),
     )
 }
 /// The Agent transport has flushed the prompt frame; this is submission, not completion.

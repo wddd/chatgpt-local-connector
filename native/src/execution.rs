@@ -42,9 +42,24 @@ impl Execution {
         if let Some(receipt) = crate::update_queue::hold(name, &mut args, &policy).await? {
             return Ok(receipt);
         }
-        self.call_inner(name, args, policy).await
+        let read_task = match name {
+            "codex_read" => Some(("codex".to_owned(), string(&args, "threadId").to_owned())),
+            "agent_read" => Some((
+                string(&args, "agent").to_owned(),
+                string(&args, "taskId").to_owned(),
+            )),
+            _ => None,
+        };
+        let mut result = self.call_inner(name, args, policy).await?;
+        if let Some((agent, task)) = read_task {
+            result["srcConversation"] = crate::src_conversations::task_ref(&agent, &task)?;
+        }
+        Ok(result)
     }
     pub(crate) async fn call_inner(&self, name: &str, args: Value, policy: Value) -> Result<Value> {
+        if name.starts_with("src_") {
+            return crate::src_conversations::op(name, args).await;
+        }
         if matches!(name, "update_status" | "update_request") {
             let spec = catalog()["ops"]
                 .as_array()

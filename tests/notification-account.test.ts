@@ -149,6 +149,8 @@ for await(const line of createInterface({input:process.stdin})) {const {id}=JSON
     const delivered=(await readFile(deliveries,'utf8')).trim().split('\n').map(row=>JSON.parse(row)).find(row=>row.target===target && row.message.includes('notification_ack'));
     assert.ok(delivered);
     const challenge=JSON.parse(delivered.message.slice(delivered.message.indexOf('{'),delivered.message.lastIndexOf('}')+1));
+    const beforeAck=await fixture.sourceCall(owner.id,'src_conversations',{},'query');
+    assert.ok(beforeAck.accounts.every((a:any)=>a.conversations.length===0));
     const acknowledged=await call('notification_ack',challenge.args);
     assert.equal(acknowledged.reachability,'verified');
     assert.equal(acknowledged.identityResolution.state,'resolved');
@@ -159,6 +161,11 @@ for await(const line of createInterface({input:process.stdin})) {const {id}=JSON
     const linked=await call('whoami');
     assert.equal(linked.id,profiles[1]);
     assert.equal(linked.sourceId,unidentified.sourceId);
+    const sourceConversations=await fixture.sourceCall(owner.id,'src_conversations',{accountId:linked.id},'query');
+    const cowork=sourceConversations.accounts[0].conversations.find((r:any)=>r.id===target.replace('session_','cse_'));
+    assert.equal(cowork.accountId,linked.id);
+    assert.equal(cowork.basis,'notify-target');
+    assert.deepEqual(cowork.taskRefs,[]);
     assert.equal(linked.orgName,'Fixture');
     assert.deepEqual(linked.identityResolution,acknowledged.identityResolution);
     const replay=await call('notification_ack',challenge.args);

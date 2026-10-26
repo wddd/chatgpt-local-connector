@@ -6252,3 +6252,46 @@ pub(crate) async fn update_notice(args: &Value) -> Result<Value> {
     .await?;
     Ok(json!({"queued":true}))
 }
+
+/// Conversation association requires a verified target owned by this exact source.
+pub(crate) fn verified_conversation_target(source: &str, target: &str) -> Result<bool> {
+    let mut state = State::load(&directory())?;
+    Ok(state.targets.iter_mut().any(|t| {
+        t.reachability.expire(chrono::Utc::now().timestamp());
+        t.source_id == source
+            && t.target == target
+            && t.channel == Channel::ClaudeSession
+            && t.reachability.state == "verified"
+    }))
+}
+
+/// Registered, verified targets are URL evidence even before a local window opens.
+pub(crate) fn verified_conversation_targets(source_ids: &[String]) -> Result<Vec<String>> {
+    let mut state = State::load(&directory())?;
+    Ok(state
+        .targets
+        .iter_mut()
+        .filter_map(|t| {
+            t.reachability.expire(chrono::Utc::now().timestamp());
+            (source_ids.contains(&t.source_id)
+                && t.channel == Channel::ClaudeSession
+                && t.reachability.state == "verified")
+                .then(|| t.target.clone())
+        })
+        .collect())
+}
+/// Reuse only this task's still-open notification binding, never an account-wide guess.
+pub(crate) fn conversation_target_for_send(source: &str, task: &str) -> Result<Option<String>> {
+    Ok(records(&directory())?
+        .into_iter()
+        .filter(|b| {
+            b.source_id == source
+                && b.thread_id == task
+                && b.scope_end.is_none()
+                && !b.continuation_bound
+                && (b.agent.is_empty() || b.agent == "codex")
+                && b.channel == Channel::ClaudeSession
+        })
+        .max_by_key(|b| b.created_at)
+        .and_then(|b| b.target))
+}

@@ -220,19 +220,22 @@ impl AgentHost {
                     .await?
                     .iter()
                     .any(|r| r["threadId"] == session || r["task"]["threadId"] == session);
-            return if known {
+            let mut timeline = if known {
                 control
                     .timeline(session, num(args, "after", 0) as u64)
                     .await
             } else {
                 control.external_timeline(session).await
-            };
+            }?;
+            timeline["srcConversation"] = crate::src_conversations::task_ref(agent, session)?;
+            return Ok(timeline);
         }
         let task = self.task(agent, session).await?;
         let mut timeline = self
             .timeline(control, session, num(args, "after", 0) as u64)
             .await?;
         timeline["status"] = task["status"].clone();
+        timeline["srcConversation"] = task["srcConversation"].clone();
         if task["processState"] == "stopped" {
             timeline["readOnly"] = json!(true);
         }
