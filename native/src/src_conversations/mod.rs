@@ -8,6 +8,7 @@ use std::{
 pub mod identity;
 pub mod import_state;
 pub mod refs;
+pub mod registry;
 /// Stable SRC errors remain machine-readable through MCP and local management.
 pub fn error_code(message: &str) -> Option<&str> {
     let code = message.split(':').next()?;
@@ -157,6 +158,8 @@ fn upsert(
     at: &str,
     active: bool,
 ) {
+    let canonical = registry::resolve(&store.conversations, account, string(reference, "id"));
+    let reference = canonical.as_ref().unwrap_or(reference);
     if let Some(row) = store.conversations.iter_mut().find(|r| {
         r["accountId"] == account && r["kind"] == reference["kind"] && r["id"] == reference["id"]
     }) {
@@ -171,6 +174,7 @@ fn upsert(
         row["lastSeenAt"] = json!(at);
         row["lastActiveAt"] = if active { json!(at) } else { Value::Null };
         row["basis"] = json!(basis);
+        row["aliases"] = json!([]);
         store.conversations.push(row);
     }
 }
@@ -284,6 +288,54 @@ pub fn task_ref(agent: &str, task: &str) -> Result<Value> {
         false,
     )
 }
+/// Synchronize verified notification evidence without replaying correlation on registry reads.
+pub(crate) fn notify_target(
+    account: &str,
+    target: &str,
+    confirmed_at: Option<&str>,
+    tasks: &[(String, String)],
+) -> Result<()> {
+    let Some(reference) = refs::notify_target(target) else {
+        return Ok(());
+    };
+    change(
+        |store, _| {
+            if let Some(at) = confirmed_at {
+                registry::verified_target(
+                    &mut store.conversations,
+                    &mut store.bindings,
+                    account,
+                    &reference,
+                    at,
+                );
+            }
+            upsert(
+                store,
+                account,
+                &reference,
+                "notify-target",
+                &crate::now(),
+                false,
+            );
+            for (agent, task) in tasks {
+                let previous = store.bindings.get(&format!("{agent}:{task}"));
+                if previous.is_some_and(|b| b["basis"] == "manual") {
+                    continue;
+                }
+                bind(
+                    store,
+                    account,
+                    agent,
+                    task,
+                    Some(reference.clone()),
+                    "notify-target",
+                );
+            }
+            Ok(())
+        },
+        true,
+    )
+}
 /// Pure correlation rule: only a fresh, still-open same-account Chat observation qualifies.
 pub fn correlated(
     current: Option<&Value>,
@@ -314,6 +366,8 @@ fn bind(
     let Some(reference) = reference else {
         return Value::Null;
     };
+    let reference = registry::resolve(&store.conversations, account, string(&reference, "id"))
+        .unwrap_or(reference);
     let mut r = json!({"kind":reference["kind"],"id":reference["id"],"url":reference["url"]});
     r["accountId"] = json!(account);
     r["basis"] = json!(basis);
@@ -385,6 +439,8 @@ pub(crate) async fn capture(args: &Value) -> Result<Value> {
                 return Ok(Value::Null);
             };
             upsert(store, id, &r, basis, &crate::now(), false);
+            r = registry::resolve(&store.conversations, id, string(&r, "id")).unwrap_or(r);
+            r = json!({"kind":r["kind"],"id":r["id"],"url":r["url"]});
             r["accountId"] = json!(id);
             r["basis"] = json!(basis);
             Ok(r)
@@ -434,6 +490,9 @@ fn snapshot(a: &Value, store: &Store, live: &BTreeMap<String, Observation>) -> V
         .filter(|r| r["accountId"] == id)
         .map(|r| {
             let mut r = r.clone();
+            if !r["aliases"].is_array() {
+                r["aliases"] = json!([]);
+            }
             r["taskRefs"] = json!(store
                 .bindings
                 .iter()
@@ -521,10 +580,7 @@ pub async fn op(name: &str, mut args: Value) -> Result<Value> {
                     None
                 } else {
                     Some(
-                        s.conversations
-                            .iter()
-                            .find(|r| r["accountId"] == id && r["id"] == args["conversationId"])
-                            .cloned()
+                        registry::resolve(&s.conversations, id, string(&args, "conversationId"))
                             .ok_or("SRC_CONVERSATION_NOT_FOUND")?,
                     )
                 };
@@ -561,9 +617,8 @@ pub async fn op(name: &str, mut args: Value) -> Result<Value> {
     } else if let Some(cid) = args["conversationId"].as_str() {
         change(
             |s, _| {
-                s.conversations
-                    .iter()
-                    .find(|r| r["accountId"] == id && r["id"] == cid)
+                registry::resolve(&s.conversations, id, cid)
+                    .as_ref()
                     .map(|r| string(r, "url").to_owned())
                     .ok_or("SRC_CONVERSATION_NOT_FOUND".into())
             },

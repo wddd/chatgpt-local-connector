@@ -1749,7 +1749,11 @@ pub(crate) async fn acknowledge(args: &Value) -> Result<Value> {
         return Err("SOURCE_REQUIRED".into());
     }
     let _guard = LOCK.lock().await;
-    acknowledge_in(&directory(), &source_id, args)
+    let result = acknowledge_in(&directory(), &source_id, args)?;
+    if result["reachability"] == "verified" {
+        sync_src_conversation(&source_id, string(&result, "target"), true)?;
+    }
+    Ok(result)
 }
 fn acknowledge_in(dir: &Path, source_id: &str, args: &Value) -> Result<Value> {
     if args.get("code").is_some() {
@@ -6251,6 +6255,57 @@ pub(crate) async fn update_notice(args: &Value) -> Result<Value> {
     )
     .await?;
     Ok(json!({"queued":true}))
+}
+
+/// Project current source-owned notification bindings into the conversation registry.
+fn sync_src_conversation(source: &str, target: &str, handshake: bool) -> Result<()> {
+    let state = State::load(&directory())?;
+    let Some(verified) = state.targets.iter().find(|t| {
+        t.source_id == source
+            && t.target == target
+            && t.channel == Channel::ClaudeSession
+            && t.reachability.state == "verified"
+    }) else {
+        return Ok(());
+    };
+    let confirmed_at = handshake
+        .then(|| chrono::DateTime::from_timestamp_millis(verified.reachability.verified_at))
+        .flatten()
+        .map(|at| at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+    let Some(account) = crate::accounts::source_rows()?.into_iter().find(|a| {
+        a["provider"] == "anthropic"
+            && a["sources"]
+                .as_array()
+                .is_some_and(|sources| sources.iter().any(|s| s == source))
+    }) else {
+        return Ok(());
+    };
+    let tasks = records(&directory())?
+        .into_iter()
+        .filter(|b| {
+            b.source_id == source
+                && b.channel == Channel::ClaudeSession
+                && b.target.as_deref() == Some(target)
+                && b.scope_end.is_none()
+                && !b.continuation_bound
+        })
+        .map(|b| {
+            (
+                if b.agent.is_empty() {
+                    "codex".into()
+                } else {
+                    b.agent
+                },
+                b.thread_id,
+            )
+        })
+        .collect::<Vec<_>>();
+    crate::src_conversations::notify_target(
+        string(&account, "id"),
+        target,
+        confirmed_at.as_deref(),
+        &tasks,
+    )
 }
 
 /// Conversation association requires a verified target owned by this exact source.

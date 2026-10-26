@@ -4,6 +4,7 @@ export type SrcContainerStatus = 'unsupported' | 'not-imported' | 'signed-in' | 
 export type SrcConversationBasis = 'observed' | 'notify-target' | 'correlated' | 'manual';
 export type SrcConversationRef = { accountId: string; kind: 'chat' | 'cowork'; id: string; url: string; basis: SrcConversationBasis };
 export type SrcConversation = SrcConversationRef & {
+  aliases: string[];
   firstSeenAt: string; lastSeenAt: string; lastActiveAt: string | null;
   taskRefs: Array<{ agent: string; id: string; basis: SrcConversationBasis }>;
 };

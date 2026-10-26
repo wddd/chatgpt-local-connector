@@ -1,10 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, writeFile, readFile, chmod, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { nativeControl } from './helpers/native-control.ts';
 
 const server = `import {createInterface} from 'node:readline'; import {randomUUID} from 'node:crypto';
-const threads=new Map();
+import {mkdirSync,existsSync,readFileSync,writeFileSync} from 'node:fs';
+mkdirSync(process.env.CODEX_HOME,{recursive:true});
+const storage=process.env.CODEX_HOME+'/fixture-threads.json';
+const threads=new Map(existsSync(storage)?JSON.parse(readFileSync(storage,'utf8')):[]);
 for await (const line of createInterface({input:process.stdin})) {
  const {id,method,params}=JSON.parse(line); if(id===undefined)continue;
  let result={};
@@ -16,8 +22,114 @@ for await (const line of createInterface({input:process.stdin})) {
  if(method==='thread/resume')result={thread:threads.get(params.threadId)};
  if(method==='thread/turns/list')result={data:[...threads.get(params.threadId).turns].reverse(),nextCursor:null};
  if(method==='turn/start'){const turn={id:randomUUID(),status:'completed',items:[]};threads.get(params.threadId).turns.push(turn);result={turn};}
- console.log(JSON.stringify({id,result}));
+ writeFileSync(storage,JSON.stringify([...threads]));console.log(JSON.stringify({id,result}));
 }`;
+
+test('Verified session aliases preserve Chat identity and task links through Core restart', {skip:process.platform !== 'darwin'}, async () => {
+  // Regression: AX ax-8b883850 split one Chat and its verified session into separate registry records with missing taskRefs.
+  const directory=await mkdtemp(path.join(tmpdir(),'arc-src-alias-'));
+  const deliveries=path.join(directory,'deliveries.jsonl');
+  await writeFile(path.join(directory,'claude'),`#!${process.execPath}
+const {appendFileSync}=require('node:fs');
+const args=process.argv.slice(2);
+if(args[0]==='auth' && args[1]==='status') console.log(JSON.stringify({loggedIn:true,email:'alias@example.com',authMethod:'claude.ai',orgId:'550e8400-e29b-41d4-a716-446655440000'}));
+else if(args[0]==='auth' && args[1]==='login') process.exitCode=0;
+else if(args[0]==='-p') {appendFileSync(${JSON.stringify(deliveries)},JSON.stringify({target:args[3],message:args[1]})+'\\n');console.log(JSON.stringify({ok:true,session_id:args[3]}));}
+else throw new Error('Unexpected fixture CLI operation');
+`);
+  await chmod(path.join(directory,'claude'),0o755);
+  const fixture=await nativeControl(server,{ARC_FIXTURE_SNAPSHOT:'src-conversations',PATH:directory+path.delimiter+process.env.PATH,HOME:directory});
+  try {
+    const source='alias-source';
+    await fixture.api('ingress',{id:source,name:source,controlSource:'claude',transport:'https',auth:'bearer',bearerToken:'synthetic-alias'.padEnd(40,'x'),toolPolicy:'all',config:{httpsProvider:'custom',httpsUrl:'https://fixture.example.com/mcp'}});
+    await fixture.api(`ingress/${source}/start`,{});
+    const login=await fixture.api('accounts/add',{kind:'claude'});
+    let accounts=await fixture.api('accounts');
+    const deadline=Date.now()+5000;
+    while(accounts.login?.state!=='completed' && Date.now()<deadline) {
+      await new Promise(resolve=>setTimeout(resolve,20));
+      accounts=await fixture.api('accounts');
+    }
+    assert.equal(accounts.login.state,'completed',JSON.stringify(accounts.login));
+    const call=(op:string,args:Record<string,unknown>={},tool:'act'|'query'='act')=>fixture.sourceCall(source,op,args,tool);
+    const inventory=async()=> (await call('src_conversations',{accountId:login.accountId},'query')).accounts[0];
+    const confirm=async(target:string,threadId?:string)=>{
+      const bound=await call('notify_control',{action:'bind',target,accountId:login.accountId,...(threadId?{threadId}:{})});
+      assert.equal(bound.verification.deliveryStatus,'delivered',JSON.stringify(bound));
+      const delivered=(await readFile(deliveries,'utf8')).trim().split('\n').map(row=>JSON.parse(row)).filter(row=>row.target===target && row.message.includes('notification_ack')).at(-1);
+      assert.ok(delivered);
+      const challenge=JSON.parse(delivered.message.slice(delivered.message.indexOf('{'),delivered.message.lastIndexOf('}')+1));
+      assert.equal((await call('notification_ack',challenge.args)).reachability,'verified');
+    };
+    // No active Chat: keep a separate session record, then establish the source identity.
+    const standalone='session_010000000000000000000031';
+    await confirm(standalone);
+    assert.equal((await call('whoami',{},'query')).id,login.accountId);
+    const initial=(await inventory()).conversations;
+    assert.equal(initial.length,1);
+    assert.equal(initial[0].kind,'cowork');
+    assert.deepEqual(initial[0].aliases,[]);
+    const firstSeen=initial[0].firstSeenAt;
+    await fixture.api('task-settings',{autoOpenCodex:false,enabled:false},'PUT');
+    const create=async(notify:unknown)=>{
+      const receipt=await call('codex_create',{prompt:'Synthetic alias regression',notify,requestId:randomUUID(),waitMs:10000});
+      assert.equal(receipt.state,'completed',JSON.stringify(receipt));
+      return receipt.threadId as string;
+    };
+    const coworkTask=await create({channel:'claude-session',target:standalone});
+    const chat=randomUUID(),chatUrl=`https://claude.ai/chat/${chat}`;
+    await call('src_conversation_open',{accountId:login.accountId,url:chatUrl});
+    const task=await create(null);
+    assert.equal((await call('codex_read',{threadId:task},'query')).srcConversation.basis,'correlated');
+    // A fresh handshake merges the existing session and upgrades the bound Chat task.
+    await confirm(standalone,task);
+    let row=(await inventory()).conversations.find((r:any)=>r.id===chat);
+    assert.equal((await inventory()).conversations.length,1);
+    assert.equal(row.kind,'chat'); assert.equal(row.url,chatUrl); assert.equal(row.basis,'observed');
+    assert.equal(row.firstSeenAt,firstSeen);
+    assert.deepEqual(row.aliases,[standalone.replace('session_','cse_')]);
+    assert.deepEqual(new Set(row.taskRefs.map((r:any)=>r.id)),new Set([task,coworkTask]));
+    for(const threadId of [task,coworkTask]) {
+      const read=await call('codex_read',{threadId},'query');
+      assert.equal(read.srcConversation.id,chat);
+      assert.equal(read.srcConversation.basis,'notify-target');
+    }
+    // New session, one active Chat: alias immediately, without first creating Cowork.
+    const alias='session_010000000000000000000032';
+    await confirm(alias);
+    assert.equal((await inventory()).conversations.length,1);
+    const aliasedTask=await create({channel:'claude-session',target:alias});
+    assert.equal((await call('codex_read',{threadId:aliasedTask},'query')).srcConversation.id,chat);
+    const lateTask=await create(null);
+    await call('notify_control',{action:'bind',target:alias,threadId:lateTask,accountId:login.accountId,verify:false});
+    assert.equal((await call('codex_read',{threadId:lateTask},'query')).srcConversation.basis,'notify-target');
+    // Two recently active Chats: no inference, including on a later registry read.
+    const second=randomUUID();
+    await call('src_conversation_open',{accountId:login.accountId,url:`https://claude.ai/chat/${second}`});
+    const secondTask=await create(null);
+    const ambiguous='session_010000000000000000000033';
+    await confirm(ambiguous,secondTask);
+    assert.equal((await call('codex_read',{threadId:secondTask},'query')).srcConversation.kind,'cowork');
+    await fixture.restart();
+    const restarted=await inventory();
+    assert.equal(restarted.open,false);
+    assert.equal(restarted.conversations.length,3);
+    row=restarted.conversations.find((r:any)=>r.id===chat);
+    assert.deepEqual(new Set(row.aliases),new Set([standalone,alias].map(t=>t.replace('session_','cse_'))));
+    assert.equal(row.firstSeenAt,firstSeen);
+    assert.ok(row.taskRefs.some((r:any)=>r.id===lateTask && r.basis==='notify-target'));
+    assert.equal((await call('codex_read',{threadId:task},'query')).srcConversation.id,chat);
+    const afterRestart=await create({channel:'claude-session',target:alias});
+    assert.equal((await call('codex_read',{threadId:afterRestart},'query')).srcConversation.id,chat);
+    const rebound=await call('src_conversation_bind',{accountId:login.accountId,agent:'codex',taskId:task,conversationId:alias.replace('session_','cse_')});
+    assert.equal(rebound.conversation.id,chat);
+    assert.equal(rebound.conversation.basis,'manual');
+    await call('src_conversation_bind',{accountId:login.accountId,agent:'codex',taskId:task,conversationId:second});
+    await call('notify_control',{action:'bind',target:alias,threadId:task,accountId:login.accountId,verify:false});
+    const manual=(await call('codex_read',{threadId:task},'query')).srcConversation;
+    assert.equal(manual.id,second); assert.equal(manual.basis,'manual');
+  } finally { await fixture.close(); await rm(directory,{recursive:true,force:true}); }
+});
 
 test('Source conversation ops isolate accounts and persist bindings through restart', {skip:process.platform !== 'darwin'}, async () => {
   // Contract: src ops preserve source-account scope, task refs and manual binding through the frozen query/act surface.

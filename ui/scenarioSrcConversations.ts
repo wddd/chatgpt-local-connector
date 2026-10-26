@@ -9,8 +9,8 @@ export function srcConversationsScenario() {
     accountId: i === 0 ? 'account-source' : `source-${status}`, storeId: status === 'unsupported' ? null : `550e8400-e29b-41d4-a716-${String(i + 1).padStart(12, '0')}`,
     status, detectedAccountId: status === 'import-mismatch' ? 'account-source' : null, reason: status === 'import-mismatch' ? 'org-mismatch' : status === 'import-unverified' ? 'org-unverified' : status === 'import-blocked' ? 'keychain-denied' : null, hint: status === 'import-mismatch' ? 'Import this profile into the detected ARC account instead.' : status === 'import-unverified' ? 'Select a known matching profile or explicitly retry with allowUnverified:true.' : ['importing', 'import-blocked'].includes(status) ? 'Enter the macOS login password in the Chrome Safe Storage prompt and choose Always Allow.' : null, safariUserAgent: false, open: i === 0, currentConversation: i === 0 ? { kind: 'chat', id: chatId, url: `https://claude.ai/chat/${chatId}` } : null,
     conversations: i === 0 ? [
-      { accountId: 'account-source', kind: 'chat', id: chatId, url: `https://claude.ai/chat/${chatId}`, firstSeenAt: at, lastSeenAt: at, lastActiveAt: at, basis: 'observed', taskRefs: [{ agent: 'codex', id: 'fixture-task-1', basis: 'correlated' }] },
-      { accountId: 'account-source', kind: 'cowork', id: coworkId, url: `https://claude.ai/cowork/${coworkId}`, firstSeenAt: at, lastSeenAt: at, lastActiveAt: null, basis: 'notify-target', taskRefs: [{ agent: 'claude', id: 'fixture-task-2', basis: 'notify-target' }] },
+      { accountId: 'account-source', aliases: [], kind: 'chat', id: chatId, url: `https://claude.ai/chat/${chatId}`, firstSeenAt: at, lastSeenAt: at, lastActiveAt: at, basis: 'observed', taskRefs: [{ agent: 'codex', id: 'fixture-task-1', basis: 'correlated' }] },
+      { accountId: 'account-source', aliases: [], kind: 'cowork', id: coworkId, url: `https://claude.ai/cowork/${coworkId}`, firstSeenAt: at, lastSeenAt: at, lastActiveAt: null, basis: 'notify-target', taskRefs: [{ agent: 'claude', id: 'fixture-task-2', basis: 'notify-target' }] },
     ] : [],
   }));
   return (path: string, method: string, raw?: unknown): unknown => {
