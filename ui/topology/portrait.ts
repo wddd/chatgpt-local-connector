@@ -40,11 +40,12 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
   // Two-line measurements are the lower bound; bubbles absorb any remaining squeeze.
   const agentLabelWidth = Math.max(agentLabels.twoLineWidth, Math.min(agentLabels.width, vw - 32 - hierarchy - bubbleWidths.narrow - agentLabels.offset));
   const agentX = vw - 16 - agentLabels.offset - agentLabelWidth;
-  const sourceHierarchy = sc.left.some(e => children(e).length) ? column + sourceAccounts.offset : 0;
+  const sourceHierarchy = sc.left.some(e => children(e).length) ? column : 0;
   const sourceAvailable = vw - 32 - sourceLabels.offset - sourceHierarchy;
-  const sourceLabelWidth = Math.max(sourceLabels.twoLineWidth, Math.min(sourceLabels.width, sourceAvailable - sourceAccounts.width));
-  const sourceAccountLabelWidth = Math.max(sourceAccounts.twoLineWidth, Math.min(sourceAccounts.width, sourceAvailable - sourceLabelWidth));
+  const sourceLabelWidth = Math.max(sourceLabels.twoLineWidth, Math.min(sourceLabels.width, sourceAvailable - sourceAccounts.twoLineWidth / 2));
   const sourceX = 16 + sourceLabels.offset + sourceLabelWidth;
+  const sourceAccountX = sourceX + column;
+  const sourceAccountLabelWidth = Math.min(sourceAccounts.width, 2 * Math.max(1, Math.min(sourceAccountX - 16, vw - 16 - sourceAccountX)));
   const accountX = agentX - column;
   const agentAccountLabelWidth = Math.min(agentAccounts.width, 2 * Math.max(1, Math.min(accountX - 16, vw - 16 - accountX)));
   const taskRight = agentX - hierarchy;
@@ -56,7 +57,7 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
     const measured = label(e, side), s = scale(e, side, account);
     const labelWidth = side === -1 ? account ? sourceAccountLabelWidth : sourceLabelWidth : account ? agentAccountLabelWidth : agentLabelWidth;
     const labelHeight = (measured?.height ?? 0) * s * (measured && measured.width * s > labelWidth ? 2 : 1);
-    const labelRow = side === 1 && account ? 2 * (ACCOUNT_NODE_SIZE / 2 + 4 * s + labelHeight) : labelHeight + 16;
+    const labelRow = account ? 2 * (ACCOUNT_NODE_SIZE / 2 + 4 * s + labelHeight) : labelHeight + 16;
     return Math.max(base, labelRow, own + (own ? 20 : 0) + subtree + (own && subtree ? p.rowGap : 0));
   };
   function wing(list: readonly Entity[], side: Side, top: number): Wing {
@@ -110,14 +111,11 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
 }
 
 export interface PortraitPanelRect { x: number; y: number; width: number; height: number }
-export function portraitSourcePanelRoute(node: Pick<NodeGeometry, 'x' | 'y' | 'size' | 'scale' | 'parent'>, panel: PortraitPanelRect) {
+export function portraitSourcePanelRoute(node: Pick<NodeGeometry, 'x' | 'y' | 'size' | 'scale'>, panel: PortraitPanelRect) {
   const radius = node.size * node.scale / 2;
   const start = { x: node.x + radius + 4, y: node.y };
   const end = { x: panel.x, y: Math.max(panel.y + 27, Math.min(panel.y + panel.height - 27, node.y)) };
-  // Account labels sit to the right of the icon. Pass underneath them before
-  // turning toward the panel; the account row leaves clearance for this route.
-  const y = node.parent ? node.y + radius + 12 : node.y;
-  return [start, { x: start.x, y }, { x: panel.x - 12, y }, { x: panel.x - 12, y: end.y }, end];
+  return [start, { x: panel.x - 12, y: node.y }, { x: panel.x - 12, y: end.y }, end];
 }
 // Coordinates are scene-local. The host converts them into viewport coordinates;
 // vertical scrolling never feeds a panel's animated dimensions back into solve.
@@ -125,8 +123,8 @@ export function portraitPanelRect(layout: Layout, selected: NodeGeometry, scroll
   const p = layout.portrait!;
   if (selected.side === -1) {
     const sources = layout.wings[0].nodes.filter(node => node.opacity > 0);
-    const edge = Math.max(...sources.map(node => node.x + node.size * node.scale / 2
-      + (node.parent ? 12 * node.size * node.scale / (NODE_R * 2) + p.sourceAccountLabelWidth : 0)));
+    const edge = Math.max(...sources.map(node => node.x + Math.max(node.size * node.scale / 2,
+      node.parent ? p.sourceAccountLabelWidth / 2 : 0)));
     const x = Math.min(layout.vw - 17, edge + 24);
     return { x, y: 16, width: Math.max(1, layout.vw - 16 - x), height: Math.max(1, layout.vh - 112) };
   }

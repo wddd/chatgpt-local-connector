@@ -120,22 +120,29 @@ export class PortraitPainter {
       }
       const own = tasks.filter(t => t.side === node.side && t.parent === node.id).map(t => ({ task: t, value: a.values(taskKey(t.side, t.id)) })).filter(t => t.value);
       if (own.length) {
-        const bx = n.taskBusX, ys = own.map(t => t.value!.y), start = point(n.x - n.size * n.scale / 2 - 4, n.y);
+        const bx = n.taskBusX, start = point(n.x - n.size * n.scale / 2 - 4, n.y);
+        const branches = own.map(({ task, value }) => {
+          const v = value!, end = point(v.x + (1 - v.anchor) * v.width, v.y);
+          const join = point(bx + Math.sign(end.x - bx) * Math.min(20, Math.abs(end.x - bx) / 2), v.y);
+          const route = [start, point(bx, n.y), point(bx, v.y), join];
+          return { task, v, branch: railPath(route), stub: railPath([join, end]), hit: railPath([...route, end]) };
+        });
         const visible = Math.max(...own.map(t => t.value!.op));
-        this.path(`${key}:task-bus`, railPath([start, point(bx, n.y), point(bx, Math.min(n.y, ...ys))]) + railPath([point(bx, n.y), point(bx, Math.max(n.y, ...ys))]), `portrait-rail ${sideClass}`, opacity * visible);
-        for (const { task, value: v } of own) {
+        // Each branch rounds both junctions and ends horizontally at the exact
+        // start of its status stub. A separate straight bus would cut the curves.
+        this.path(`${key}:task-bus`, branches.filter(b => b.v.op > 0.01).map(b => b.branch).join(' '), `portrait-rail ${sideClass}`, opacity * visible);
+        for (const { task, v, stub: d, hit } of branches) {
           const tk = taskKey(task.side, task.id);
-          const d = railPath([point(bx, v!.y), point(v!.x + (1 - v!.anchor) * v!.width, v!.y)]);
-          this.path(tk, d, `portrait-task ${sideClass}`, v!.op, { 'data-state': task.state });
-          this.path(`${tk}:flow`, task.state === 'running' || task.state === 'external' ? d : '', `portrait-task activity-flow ${sideClass}`, v!.op, { 'data-state': task.state });
-          this.path(`${tk}:hit`, v!.op > 0.02 && a.live.get(tk)?.alive ? d : '', 'topology-path-hit', v!.op, {}, { side: task.side, id: task.id, task: true });
+          this.path(tk, d, `portrait-task ${sideClass}`, v.op, { 'data-state': task.state });
+          this.path(`${tk}:flow`, task.state === 'running' || task.state === 'external' ? d : '', `portrait-task activity-flow ${sideClass}`, v.op, { 'data-state': task.state });
+          this.path(`${tk}:hit`, v.op > 0.02 && a.live.get(tk)?.alive ? hit : '', 'topology-path-hit', v.op, {}, { side: task.side, id: task.id, task: true });
         }
       }
       if (panel && node.selected) {
         const end = point(panel.x + panel.width, Math.max(panel.y + 27, Math.min(panel.y + panel.height - 27, n.y)));
         const start = point(n.x - node.side * (n.size * n.scale / 2 + 4), n.y);
         const route = node.side === 1 ? [start, point(n.childBusX, n.y), point(n.childBusX, end.y), end]
-          : portraitSourcePanelRoute({ x: n.x, y: n.y, size: n.size, scale: n.scale, parent: node.parent }, panel);
+          : portraitSourcePanelRoute({ x: n.x, y: n.y, size: n.size, scale: n.scale }, panel);
         this.path(`${key}:panel`, railPath(route), `portrait-rail ${sideClass}`, 0.9);
       }
     }

@@ -29,7 +29,7 @@ test('portrait rail insets contain measured platform and account labels at every
         : node.parent ? p.agentAccountLabelWidth : p.agentLabelWidth;
       assert.ok(budget >= metric.twoLineWidth * scale);
       const width = Math.min(metric.width * scale, budget);
-      const x = node.side === 1 && node.parent ? node.x - width / 2
+      const x = node.parent ? node.x - width / 2
         : node.side === -1 && !node.parent ? node.x - offset - width : node.x + offset;
       assert.ok(x > 0 && x + width < vw);
     }
@@ -157,8 +157,9 @@ test('source panel routes reach the inward panel edge without intersecting nodes
         const radius = sibling.size * sibling.scale / 2;
         assert.equal(intersects(a, b, { x: sibling.x - radius, y: sibling.y - radius, width: radius * 2, height: radius * 2 }), false);
         const metric = labels.left.get(sibling.id)!, scale = radius / NODE_R, width = metric.width * scale;
-        const x = sibling.parent ? sibling.x + (NODE_R + 12) * scale : sibling.x - (NODE_R + 12) * scale - width;
-        assert.equal(intersects(a, b, { x, y: sibling.y - metric.height * scale / 2, width, height: metric.height * scale }), false);
+        const x = sibling.parent ? sibling.x - width / 2 : sibling.x - (NODE_R + 12) * scale - width;
+        const y = sibling.parent ? sibling.y + radius + 4 * scale : sibling.y - metric.height * scale / 2;
+        assert.equal(intersects(a, b, { x, y, width, height: metric.height * scale }), false);
       }
     }
   }

@@ -1565,9 +1565,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .topology-scene[data-orientation="portrait"] .sources:not(.topology-account) .graph-node-name {
   top: 50%; left: auto; right: calc(100% + 12px); transform: translateY(-50%); text-align: right;
 }
-.topology-scene[data-orientation="portrait"] .sources.topology-account .graph-node-name {
-  top: 50%; left: calc(100% + 12px); transform: translateY(-50%);
-}
+.topology-scene[data-orientation="portrait"] .topology-account .graph-node-name { text-align: center; }
 .topology-scene[data-orientation="portrait"] .agents:not(.topology-account) .graph-node-name {
   top: 50%; left: calc(100% + 12px); transform: translateY(-50%);
 }

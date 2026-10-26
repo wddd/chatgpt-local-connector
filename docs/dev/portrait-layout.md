@@ -14,7 +14,7 @@ Rail positions follow measured labels, including node scale and optional auto-co
 
 The hub radius also fits 8% of the viewport height, with a 56px minimum before applying the ring-size preference. The gaps above and below the hub shrink with its radius. Node logos have opaque canvas backgrounds so rails cannot show through them.
 
-Source platforms follow persisted order down the left rail. Their labels sit outside, right-aligned. Tree accounts fork inward to the right through rounded routes, with 42px nodes, at least 24px of vertical clearance between account icons, and labels on the right. Shared stems are painted once without a separate overlapping vertical bus. Each platform reserves its descendants' height.
+Source platforms follow persisted order down the left rail. Their labels sit outside, right-aligned. Tree accounts fork inward to the right through rounded routes, with 42px nodes, at least 24px of vertical clearance between account icons, and centered labels below icons, matching Agent account nodes. Account rows reserve the complete label height. Shared stems are painted once without a separate overlapping vertical bus. Each platform reserves its descendants' height.
 
 Agent platforms descend the right rail. Their names and optional auto-compaction chips sit outside. Tree accounts expand left through the same rounded fork routes into one account column, with labels below nodes. Each account has its own task bus farther left; horizontal final stubs terminate at bubble right edges. Inner routing uses rounded 10px corners. Single-account platforms skip the account level. Flat mode retains existing account semantics. Multi-account platform quota rings remain absent; account nodes carry their own rings.
 
@@ -22,13 +22,13 @@ Active rows fit task stacks with existing density and 10px default gaps. Idle pl
 
 Labels remain complete within the viewport. Keep outer Agent labels on one line while the minimum bubble width and hierarchy fit; otherwise permit two lines using measured wrapping widths before shrinking bubbles below their narrow preference. Source labels wrap only when their full source/account row cannot fit. Account labels use their available inward space, and rows reserve their label height. Never ellipsize portrait labels or chips.
 
-Only final task stubs carry status: accent/flow for running, green for completed, amber for input and border-strong for aggregates. External stubs are dashed. Buses remain neutral Agent color. All colors use theme tokens.
+Task branches form complete rounded routes from the node through the bus column. Shared stems are painted once without a straight bus cutting across their bends. Each neutral branch ends horizontally at the exact start of its status stub. Only final task stubs carry status: accent/flow for running, green for completed, amber for input and border-strong for aggregates. External stubs are dashed. Buses remain neutral Agent color. All colors use theme tokens.
 
 ## Panels
 
 Agent/account panels dock inside the right rail over the bubbles, from a 16px left margin to 40px before the selected node's stubs. Their vertical range starts below the lower earmuff and ends above the dock. A selected-node stub reaches the panel's right edge; bubbles and their stubs fade using existing panel state.
 
-Source panels open to the right of the visible source nodes and account labels, inside the viewport and above the dock. They overlay the scene without reserving a vertical gap or moving the hub and Agent section. The shared panel scroll area contains long content. The selected source connects to the panel's left edge; account connectors pass below their label before turning toward that edge. Opening the panel keeps the selected node visible.
+Source panels open to the right of the visible source nodes and account labels, inside the viewport and above the dock. They overlay the scene without reserving a vertical gap or moving the hub and Agent section. The shared panel scroll area contains long content. The selected source connects directly from the icon's right edge to the panel's left edge, clear of the labels below account nodes. Opening the panel keeps the selected node visible.
 
 Portrait panels use the available rail area and omit the landscape width-expansion control. An explicit `app_env.taskPanelWidth` may narrow the Agent panel within that area.
 
