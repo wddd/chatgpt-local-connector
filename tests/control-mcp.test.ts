@@ -1635,7 +1635,7 @@ test('external terminal reviews retain provenance, replay, rework links and sepa
   group=history.groups.find((g:any)=>g.model==='fixture-external-model');
   assert.deepEqual(group.external,{reviews:1,pass:1,rework:0});assert.equal(group.dispatches,0);
   const compact=(await call('dispatch_policy',{agent:'codex'})).result.agents.find((a:any)=>a.agent==='codex').history;
-  assert.ok(compact.groups.some((g:string)=>g.includes('external reviews')));
+  assert.ok(compact.groups.some((g:string)=>/\bext[1-9]\d* pass[1-9]/.test(g)));
   const noConfig=await seed(false);
   const nullable=(await call('codex_review',{threadId:noConfig.threadId,turnId:noConfig.turnId,verdict:'pass',requestId:randomUUID()})).result;
   assert.equal(nullable.state,'completed');
