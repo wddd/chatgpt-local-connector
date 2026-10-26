@@ -4,82 +4,73 @@ MUST means a requirement.
 SHOULD means the default unless a concrete task-specific reason justifies an exception.
 MAY means an option.
 
-## Scope and compatibility
+## Boundaries
 
-Phase 1 covers profiles, progressive guide disclosure, and compact task results through the existing CLI.
-Existing sources MUST retain their current discovery, execution policy, notification behavior, and CLI defaults until explicitly opted in.
-The frozen boundaries are defined in [Tool surface](tool-surface.md), [Tools](../reference/tools.md), and [CLI](../reference/cli.md).
-Profiles MUST NOT create a second dispatcher or authorization system.
-`operations.rs` owns durable management receipts rather than the control-source operation catalog.
-Profile changes MUST preserve its receipt replay and unconfirmed-write semantics.
+Profiles specialize discovery without changing execution authorization.
+Existing sources remain Legacy until explicitly changed through local management.
+New-source setup offers a profile without changing the ingress policy.
+The frozen boundaries are described in [Tool surface](tool-surface.md), [Tools](../reference/tools.md), and [CLI](../reference/cli.md).
+`operations.rs` retains ownership of durable management receipts and unconfirmed-write handling.
 
-## Profile model
+## Dimensions and derivation
 
-| Dimension | Values | Meaning |
+| Dimension | Values | Authority |
 | --- | --- | --- |
-| Host access | `host`, `none`, `unknown` | Whether the controller can operate this ARC host's shell, files, and Git directly. |
-| Wait mode | `background-cli`, `push`, `poll` | How the controller revisits a dispatched task. |
-| Transport | `cli`, `mcp` | The actual request entry point, independent of ingress transport such as HTTPS or relay. |
+| Host access | `host`, `none`, `unknown` | Built-in local authority or the saved source preference. |
+| Wait mode | `background-cli`, `push`, `poll` | Explicit source preference. |
+| Transport | `cli`, `mcp` | Actual request entry point. |
 
-Host access MUST refer to the ARC execution host rather than the controller's own computer or cloud sandbox.
+| View | Host access | Wait mode | Transport |
+| --- | --- | --- | --- |
+| Legacy | No profile opt-in | Existing behavior | CLI or MCP |
+| Local Code | `host` | `background-cli` | Built-in CLI only |
+| Remote push | `none` or `unknown` | `push` | MCP |
+| Remote polling | `none` or `unknown` | `poll` | MCP |
 
-| View | Dimensions | Intended controller |
-| --- | --- | --- |
-| Legacy | No profile opt-in | Every existing source, including built-in Local CLI. |
-| Local Code | `host` + `background-cli` + `cli` or `mcp` | A local Code session that can run ARC's CLI and receive its background-command completion. |
-| Remote push | `none` or `unknown` + `push` + `mcp` | Chat or cloud Code with a supported notification return path. |
-| Remote polling | `none` or `unknown` + `poll` + `mcp` | Chat or cloud Code without usable push delivery. |
+Local Code MUST require the authenticated built-in authority identified by `ingressId:local-cli` and `credential.type:local` through `arc cli control`.
+A product name, loopback address, local MCP connection, or OAuth client name MUST NOT establish Local Code authority.
+The `claude` OAuth source can be shared by Code, Chat and Cowork.
+An MCP request from that source MUST remain Legacy, Remote push, or Remote polling.
+Host access refers to the ARC execution host rather than a remote controller's sandbox.
+Background session re-invocation is provided by the controller's command facility rather than ARC.
+Local CLI callers share one setting because they share one built-in authority.
 
-A host-capable MCP controller MAY select polling when its client cannot run a background CLI wait.
-Host-capable polling or explicitly selected push MUST retain Local Code's host-operation projection with the chosen wait workflow.
+`capabilityProfile` stores `{hostAccess,waitMode}` on the stable source record.
+An absent or null setting means Legacy.
+Local authority accepts only `host` with `background-cli`.
+MCP sources accept only `none` or `unknown` with `push` or `poll`.
+The effective guide profile reports its name, host access, wait mode, observed transport, and provenance.
+Profile overrides MUST remain attached to the stable source ID across connection switches.
+Account merges MUST NOT copy settings to sibling sources.
+Built-in local authority MUST remain excluded from ordinary source/account lists and protected from revocation.
 
-### Derivation and overrides
+Use `cli source update <id> --stdin` to save a setting through authenticated local management.
+Use the `sourceId` returned by `cli control guide` to update built-in local authority.
+New sources expose `capabilityProfileOffer` in local source readback until explicitly selected.
+The offer recommends Remote push for ChatGPT and Claude and Remote polling for other products.
+Unknown products receive an `unknown` host-access recommendation.
+OAuth approval offers the choice only for a new source rather than reauthorization or switching.
+Non-OAuth setup offers the choice before finishing a newly created source.
+Closing setup without saving MUST leave the source Legacy.
+Source settings also allow an existing MCP source to change or clear its profile.
 
-Resolution MUST start from the authenticated source record in `sources.rs` and the actual request entry point.
-The reserved combination `ingressId:"local-cli"` and `credential.type:"local"` establishes built-in local authority.
-The product name `local-cli` alone MUST NOT establish that authority.
-OAuth grants identify individual sources on a shared ingress.
-Authentication type, HTTPS, relay, and loopback addresses MUST NOT independently imply host access.
-`control_sources.rs` and `shared/control-sources.json` SHOULD supply correctable product defaults.
-The current `claude` product does not distinguish local Code, Chat, Cowork, and cloud Code.
-ChatGPT, Grok, and remote Claude SHOULD be offered host access `none` during explicit profile setup.
-Unknown products SHOULD start with host access `unknown` and polling.
-Push selection MUST retain existing route binding and reachability verification requirements where applicable.
-Missing push reachability MUST produce the existing repair path or an explicit polling fallback without claiming delivery.
-Background CLI waiting MUST NOT require notification binding or a notification verification handshake.
-Background CLI wait selection MUST require host access and controller-supported background completion.
-The proposal adds `capabilityProfile` and dimension provenance to existing local source readback, with `capabilityProfile` writable through source update.
-`arc cli source update <id> --stdin` with `{"capabilityProfile":{"hostAccess":"host","waitMode":"background-cli"}}` is the proposed Local Code override.
-`{"capabilityProfile":null}` restores legacy behavior.
-The local management boundary MUST own writes to this setting.
-Transport MUST be observed per request rather than accepted as a caller-supplied identity claim.
-An explicit override MUST take precedence over product defaults.
-An override MUST follow the stable source ID across a connection switch.
-Account merging MUST NOT copy a profile to sibling sources.
-New sources SHOULD receive a proposed selection during setup before it is saved.
-Built-in local authority MUST retain its non-revocable lifecycle and absence from ordinary account/source lists.
-Local CLI profile setup SHOULD use its stable source ID returned by authenticated local readback through the existing source-update route.
-The built-in local profile applies to all local CLI callers because those callers currently share one authority.
+## Projection
 
-## Catalog projection
-
-Profiles SHOULD filter initial discovery only.
-Direct schema reads and execution MUST continue to use the existing effective op policy and runtime availability.
-An op omitted from the initial guide MUST remain discoverable through `guide({op})` and the full view when permitted.
-An op denied by the existing policy MUST remain unavailable through discovery and execution.
-This trades automatic capability minimization for stable execution behavior and recoverable discovery.
-Users requiring execution restrictions MUST configure the existing op allowlist.
-The implementation SHOULD extend the existing `toolExposure.tools[op].presets` metadata for profile selections.
-The implementation MUST reuse `group`, `tier:default|advanced`, `conditional`, `required`, and `requires` instead of creating a parallel capability registry.
-The existing common/readOnly/all/custom policy selections MUST retain their meanings.
-Profile selection MUST NOT rewrite persisted allowlists or expand them through dependency closure.
-An explicit policy edit MUST continue to use existing dependency normalization and required ops, including `connector_verify`.
-The policy exceptions for `guide`, `notification_ack`, `notify_status`, and `inbox_wait` MUST remain unchanged.
-Profile discovery MUST preserve each op's existing `via` classification, including mixed ops that use `act`.
+Profiles filter initial discovery only.
+Per-op schema reads, full discovery, and execution MUST use the existing effective op policy and runtime availability.
+An omitted initial-guide op remains callable when its policy permits it.
+Users requiring execution restrictions MUST use the existing op allowlist.
+This preserves recoverable discovery at the cost of not automatically minimizing execution capabilities.
+`toolExposure.tools[op].presets` owns profile and topic membership.
+Existing groups, default/advanced tiers, conditional availability, required ops, and dependency normalization remain authoritative.
+Selecting a profile MUST NOT rewrite saved allowlists or expand dependencies.
+The existing common/readOnly/all/custom policy meanings remain unchanged.
+Mixed operations MUST retain their existing `act` classification.
+SRC entries have explicit advanced exposure metadata without being added to existing policy presets.
 
 `1` means an initial-guide candidate within the character budget.
-`D` means available on demand through a per-op guide or full view.
-`C` means included only when the relevant workflow is needed.
+`D` means on-demand discovery.
+`C` means disclosure through the relevant topic or explicit op request.
 Every cell is intersected with policy and runtime availability.
 
 | Current operations | Local Code | Remote push | Remote polling | Legacy |
@@ -105,146 +96,98 @@ Every cell is intersected with policy and runtime availability.
 | `update_status`, `update_request`, `app_env`, `acceptance_fault` | D | D | D | Current |
 | `ax_issue_draft`, `ax_report`, `ax_list`, `ax_candidate`, `ax_triage` | C | C | C | Current |
 
-Chat profiles SHOULD lead with `command` for shell, Git, and edits while keeping specialized read/search operations discoverable.
-Local Code SHOULD use its own shell, files, and Git for host work.
-Quota and model selection SHOULD use the existing compact `dispatch_policy` decision view.
-Optional Agent entries MUST disappear when the existing availability check excludes them.
-SRC operations currently lack explicit `toolExposure` entries and use the generic fallback.
-Profile implementation SHOULD classify those entries in `toolExposure` without adding them to existing policy snapshots.
 
-## Progressive guide disclosure
+Chat profiles lead with `command` for host shell, Git, and edits.
+Local Code SHOULD use its own host tools and ARC for Agent dispatch, quota-aware selection, and review.
+The shared `dispatch_policy` decision view supplies current selection criteria.
 
-Layer 1 is `guide()` or `query({op:"guide",args:{}})` with the source's effective profile.
-Local Code's uncached Layer 1 result MUST target at most 2,500 Unicode characters in its complete serialized result, including the index, examples, hashes, and CLI path.
-Transport envelope overhead and duplicate MCP text MUST be measured separately.
-Remote profiles SHOULD target at most 4,000 characters before an explicitly requested detailed topic.
-Layer 1 MUST contain the normative vocabulary, effective workflow, dispatch-policy step, dispatch/wait/review skeleton, receipt recovery, and discovery links.
-The budget MUST include enabled conditional guidance rather than allowing unbounded appended sections.
-Layer 2 is `guide({op:"codex_create"})` or `query({op:"guide",args:{op:"codex_create"}})`.
-Layer 2 MUST return the complete permitted input schema, signature, example, `via`, and retry contract.
-Layer 3 is `query({op:"guide",args:{view:"full"}})`.
-Layer 3 MUST expose every policy-enabled, available op even when it is absent from Layer 1.
-Layer 3 SHOULD include the detailed workflow for the selected profile rather than every product's workflow.
-The frozen `guide` tool MUST NOT gain a `view` or `profile` parameter.
-Notification prose and event examples MUST appear automatically only for push profiles.
-Coordination prose MUST appear automatically only when the source is participating in shared coordination or the user has selected that workflow.
-SRC prose MUST appear automatically only for source-conversation management or an associated conversation-binding workflow.
-Maintainer prose MUST retain the existing Maintainer-mode gate.
-An explicit related topic or op request MUST disclose its details regardless of automatic prose suppression.
-The `guideHash` MUST cover the final projected response, including effective profile and conditional sections.
-Local profile changes MUST invalidate the projection hash without requiring a new catalog `arcVersion`.
-Published guide and op-schema changes MUST continue to change `arcVersion` through the existing visible-contract hash.
-Minimal MCP text MUST remain a separate opt-in setting rather than a hidden profile side effect.
+## Guide layers
 
-## Code-oriented CLI flow
+Layer 1 is `guide()` or `query({op:"guide",args:{}})`.
+Local Code targets at most 2,500 Unicode characters in the complete serialized result.
+The budget includes profile metadata, operation index, CLI path, source ID, guide hash, and catalog version.
+Optional index entries are removed when necessary to preserve the workflow within that budget.
+Local Code guide responses do not attach inbox reminders.
+Layer 2 is `guide({op})` or `query({op:"guide",args:{op}})` with a complete schema and retry contract.
+Layer 3 is `query({op:"guide",args:{view:"full"}})` with every enabled available op.
+The frozen `guide` tool MUST NOT gain a profile or view parameter.
+The query guide op additionally supports `coordination`, `src`, and `context` topics.
+Notification prose appears automatically only for Remote push.
+Coordination, SRC, and context workflow prose appears only on an explicit related topic request.
+Maintainer guidance retains the existing Maintainer-mode gate.
+Full views retain unrelated op discoverability without expanding unrelated workflow prose.
+`guideHash` covers the final projection rather than just catalog text.
+An effective profile change invalidates cached guide content.
+`knownGuideHash` retains its unchanged-response contract.
+Published guide and schema changes continue to change `arcVersion`.
+Minimal MCP text remains a separate opt-in setting.
 
-`cli control` already forwards op arguments through the control dispatcher with built-in local authority.
-`cli wait` already performs bounded read waits and returns `matched`, `elapsedMs`, and `lastResult`.
-The controller's background-command facility owns session re-invocation when the CLI exits.
-ARC MUST NOT promise re-invocation when that client facility is unavailable.
+## CLI outcomes and review
 
-```sh
-arc cli control guide
-arc cli control dispatch_policy
-arc cli control guide codex_create
-printf '%s' '{"project":"/workspace/project","prompt":"Implement the requested change.","purpose":"task","notify":null}' | arc cli control codex_create --stdin
-# Retain the returned requestId, threadId, and turnId; read receipt if dispatch is pending.
-# Run this command through the controller's background-command facility.
-# Proposed op argument: view:"summary".
-printf '%s' '{"threadId":"<threadId>","turnId":"<turnId>","until":"terminal-or-interaction","view":"summary"}' | arc cli wait --control --op codex_wait --stdin --until '/conditionMet==true' --timeout 1800
-# Inspect lastResult, review local changes, and obtain another Agent's assessment when needed.
-printf '%s' '{"threadId":"<threadId>","turnId":"<turnId>","verdict":"pass","note":"Reviewed the change and validation evidence."}' | arc cli control codex_review --stdin
-```
+The bundled [arc-local-code skill](../../skills/arc-local-code/SKILL.md) teaches the local discovery, dispatch, wait, and review flow.
+`cli skill install --target claude-code` installs it alongside `arc-setup`.
+Normal local work MUST explicitly set `purpose:"task"` and `notify:null` because dispatch defaults remain unchanged.
+The controller SHOULD read live operation schemas and `dispatch_policy` before dispatch.
+The controller SHOULD run `cli wait --control --op codex_wait` through its background-command facility with `view:"summary"` and the returned task/turn identifiers.
+A shell background operator alone does not arrange session re-invocation.
+A matched wait MUST NOT be treated as proof of task success.
+The controller MUST inspect task status and handle pending interactions before recording review.
+Cross-model review requires a separate Agent task rather than merely calling a review-recording operation.
+Timeout recovery MUST continue observing the original task rather than submit it again.
 
-Normal work MUST set `purpose:"task"` because the existing local CLI dispatch default is `self-test`.
-Timeout recovery MUST retain task identifiers and read the original task rather than resubmitting dispatch.
-Interaction exits MUST direct the controller to the existing pending/respond operations.
-CLI success means the wait condition matched rather than that the task succeeded.
-`codex_review` and `agent_review` record verdicts rather than launch an independent model review.
-Cross-model review SHOULD dispatch a separate review task through `codex_create` or `agent_create` before recording the verdict.
-The minimum result additions are opt-in `view:"summary"` on `codex_wait`, `codex_read`, `agent_wait`, and `agent_read`, plus `turnId` on Codex reads for pinned recovery.
-The summary SHOULD reuse the existing `codex_read` review projection and `codex_changes` attribution logic.
-The summary MUST retain task/turn identifiers, task status, wait state, `conditionMet`, snapshot hash, errors, and actionable `next` fields.
-The summary SHOULD include a final-message excerpt capped at 800 characters, up to 50 changed paths, and aggregate diffstat.
-The summary MUST expose truncation and a continuation to complete evidence.
-Changed files and diffstat MUST describe the selected turn's observed changes rather than all current worktree changes.
-Unavailable attribution or Agent change evidence MUST be null with a reason rather than an empty successful result.
-Diffstat SHOULD include file count, added lines, deleted lines, and explicit unknown or binary counts where applicable.
-Omitting `view` MUST preserve existing complete terminal replies and current read defaults.
-This design needs no new top-level CLI command, background daemon, notification route, or result envelope.
-An optional `skills/` Claude Code skill MAY package the same discovery and background-wait flow.
-The skill MUST read live op schemas rather than embed a second policy or model catalog.
+`codex_wait`, `codex_read`, `agent_wait`, and `agent_read` accept opt-in `view:"summary"`.
+Codex reads accept `turnId` for pinned recovery, including review and full views.
+Summaries retain task identifiers, status, wait condition, snapshot hash, errors, and actionable `next`.
+Final-message excerpts are limited to 800 Unicode characters.
+Changed paths are limited to 50 entries.
+Diffstat covers the complete attributed file list and records unknown line counts.
+`completeEvidence` provides a schema-valid operation for the full result.
+Truncation indicators MUST remain explicit.
+Summary file evidence comes from the selected turn's native file-change records.
+A shell-only change or unsupported Agent attribution returns null files and diffstat with an unavailable reason.
+Workspace Git correlation remains accessible through the existing full review/change operations rather than being presented as directly attributed summary evidence.
+Summary responses MUST omit `arcInbox`, conversation bindings, dispatch history, unrelated inputs, and other cross-thread data.
+The final response projection uses a field allowlist and skips inbox retrieval entirely.
+Omitting `view` preserves existing complete terminal replies and current read defaults.
 
 ## Frozen surfaces
 
-MCP tools MUST remain `guide({topic?,op?})`, `query({op,args})`, and `act({op,args,requestId?})`.
-MCP results MUST retain their current content and structured-result envelopes.
-The event name MUST remain `notification` with subscription parameters `{op,args}`.
-Suppressing notification guidance MUST NOT revoke subscriptions, acknowledge events, or alter delivery.
-CLI output MUST retain `schemaVersion:1`, `ok`, and the existing success/error/next structure.
-Compact wait data belongs inside the existing `result.lastResult` payload.
-CLI timeout MUST retain `WAIT_TIMEOUT` and its existing `error.lastResult` placement.
-Authorization, source isolation, resource boundaries, and replay protection MUST remain independent of profile selection.
+MCP tools remain `guide({topic?,op?})`, `query({op,args})`, and `act({op,args,requestId?})`.
+Profile configuration belongs to local source management.
+Summary selection belongs inside operation arguments.
+The `notification` event retains subscription parameters `{op,args}`.
+Discovery preferences MUST NOT acknowledge events, revoke subscriptions, or establish notification reachability.
+CLI envelopes retain `schemaVersion:1`, `ok`, and the existing result/error/next structure.
+Wait summaries appear inside `result.lastResult` or `error.lastResult` on `WAIT_TIMEOUT`.
+Task failure and successful CLI observation remain distinct states.
 
-## Measurement
+## Metrics
 
-Comparison SHOULD use `cli stats control --since <duration>` and content-free rows from `control_metrics.rs` over equivalent task cohorts.
-The current report does not expose an authenticated conversation-session identifier or calls-before-dispatch metric.
-A source sequence separated by the existing 300-second inactivity threshold SHOULD serve as an explicitly labeled session proxy.
-Concurrent conversations sharing a source and all built-in local CLI callers MUST be reported as attribution limitations.
+`cli stats control --since <duration>` reports content-free control-call accounting.
+Rows record bounded effective-profile, transport, guide-layer, and dispatch-outcome metadata.
+Dispatch outcomes distinguish submitted, pending, failed, and unconfirmed observations.
+Successful submission requires a completed receipt with task and turn identifiers.
+`profileSequences` groups source activity by profile, transport, and a 300-second inactivity gap.
+A sequence is a session proxy rather than an authenticated conversation identity.
+Concurrent conversations sharing one source and all local CLI callers share that attribution limitation.
 
-| Measure | Existing evidence and proposed aggregation |
+| Measure | Report evidence |
 | --- | --- |
-| Guide bytes per session proxy | Sum guide `responseBytes`, `textBytes`, and `structuredContentBytes` separately within each source sequence; report median and p95. |
-| Calls before first successful dispatch | Count calls preceding the first successful `codex_create`/`agent_create`; require returned task identifiers or a linked successful receipt. |
-| Invalid-argument retries | Compare `errorCode:"INVALID_ARGUMENTS"` counts and `wasteCandidates.argumentErrorRetries`, normalized per 100 dispatch attempts. |
-| Discovery repetition | Compare `unchangedReads`, `uncachedUnchangedReads`, and `lookupThenAct` alongside guide cache requests. |
-| Completion cost and quality | Compare task calls/bytes through recorded review, dispatch error rates, and sequences with no successful dispatch. |
+| Guide cost | Per-sequence guide response, text, and structured-content bytes with cohort median/p95. |
+| Cold-start calls | Calls before first confirmed dispatch with cohort median/p95 and sequences without successful dispatch. |
+| Argument correction | INVALID_ARGUMENTS counts, same-op retries within five minutes, and retries per 100 dispatch attempts. |
+| Repeated discovery | Existing unchangedReads, uncachedUnchangedReads, and cache-request counts. |
+| Completion cost | Existing task calls/bytes through recorded review and dispatch error counts. |
 
-Phase 1 metrics SHOULD add effective profile, transport, guide layer, and dispatch outcome as bounded metadata for cohort and success attribution.
-Per-sequence guide totals and calls-before-dispatch SHOULD be report aggregations rather than new content logs.
-An absent error code alone MUST NOT count an unconfirmed or pending receipt as successful dispatch.
-Byte counts MUST NOT be presented as token counts or confirmed client context consumption.
-Lower guide cost MUST NOT be accepted at the expense of more failed dispatches or hidden interaction recovery.
+Comparisons SHOULD use equivalent task cohorts and distinguish cached guide requests.
+Bytes MUST NOT be reported as token counts or confirmed client context consumption.
+Reduced guide cost MUST NOT justify increased failed dispatches or missing recovery paths.
 
-## Phasing
+## Scope and verification
 
-Phase 1 MUST deliver opt-in source profiles, catalog projection, guide layering, compact CLI task results, and the metadata needed to compare them.
-Later multi-device targeting SHOULD carry an explicit target through the relay with authenticated device identity and target-specific availability.
-Host access MUST then be evaluated against the selected device rather than assumed from the controller's local profile.
-Later cross-source project context SHOULD reuse existing context-provider and coordination boundaries with source attribution and explicit project scope.
-
-## Contract-test impact
-
-`tests/contract/` is a protected destination with no cases present in this source layout.
-Any relocation or new case under `tests/contract/` requires an explicit dispatch grant.
-This proposal requires no modification to `tooling/test-policy-allowlist.json`.
-
-| Existing file and exact case | Required coverage |
-| --- | --- |
-| `tests/control-mcp.test.ts`: `MCP lists frozen tools and guide exposes existing ops and native domains with valid object schemas` | Preserve frozen names, parameters, and valid per-op schemas. |
-| Same file: `tool presets use the full registry, preserve exact allowlists and close only necessary read dependencies` | Preserve exact saved policies while reusing exposure metadata. |
-| Same file: `real HTTP ingresses isolate discovery and direct execution; policy PUT preserves identity, metadata and peer availability` | Prove profile omission does not deny execution or broaden policy. |
-| Same file: `guide progressively discloses every enabled op and caches projected content` | Cover legacy defaults, profile projection, full discovery, and hash invalidation. |
-| Same file: `control stats report byte baselines and waste candidates without call content` | Cover cohort metadata and sequence aggregates without retaining content. |
-| Same file: `minimal MCP text is opt-in per source and preserves structured results and errors` | Keep text mode independent of profiles. |
-| Same file: `wait omits repeated nonterminal text and retains complete terminal replies` | Preserve defaults while covering explicit summaries and interactions. |
-| Same file: `review read returns complete outcomes without command outputs or intermediate messages` | Keep complete review evidence available behind summary continuation. |
-| Same file: `historical review file counts stop at the next clean turn baseline` | Preserve turn attribution in summary diffstat. |
-| Same file: `AX2 CLI guides accept full views and subcommands expose help without execution` | Preserve CLI guide routing and envelopes. |
-| Same file: `common guide discovers shared coordination in normal mode` | Preserve legacy visibility and add conditional opt-in discovery. |
-| Same file: `source connection switching binds consent and preserves disconnected identities` | Keep overrides on the stable source and isolate OAuth peers. |
-| Same file: `Maintainer mode defaults off, persists and switches guide content and common index live` | Retain the gate while enforcing the profile budget. |
-| `tests/cli-failures.test.ts`: `Direct CLI failures retain schema-valid recovery and fail the process` | Preserve failure envelopes and actionable recovery. |
-| Same file: `Interrupted task reads and waits succeed through the CLI envelope` | Preserve distinction between terminal task outcome and CLI failure. |
-
-Owner-authorized new contract cases SHOULD cover profile migration, the 2,500-character budget, unchanged event schemas, summary truncation, missing attribution, and background-wait timeout recovery.
-Every future case MUST assert public operation or CLI behavior with exactly one permitted test-policy comment.
-
-## Decisions requested
-
-1. Should profile selection affect discovery only, as recommended, or also materialize an explicitly approved existing-policy allowlist?
-2. Should new-source setup offer profiles immediately while existing sources remain legacy, as recommended?
-3. Is one shared Local Code preference for built-in local authority sufficient for Phase 1?
-4. Should opt-in summaries use the proposed 800-character message and 50-path limits with complete-evidence continuations?
-5. Should Phase 1 ship the optional Claude Code skill or only document the CLI flow?
+Phase 1 includes profile selection, guide layering, summary outcomes, metrics, and the Claude Code skill.
+Multi-device relay targeting and cross-source project context remain later work.
+Host access for later devices MUST be evaluated against the selected execution device.
+The relevant behavior contracts live in `tests/control-mcp.test.ts` and `tests/cli-failures.test.ts`.
+They cover frozen tool schemas, legacy defaults, profile isolation, allowlist enforcement, guide caching and budget, task summaries, pinned turns, metrics, and CLI failure recovery.
+`tests/contract/` and `tooling/test-policy-allowlist.json` remain protected by the existing ownership rules.

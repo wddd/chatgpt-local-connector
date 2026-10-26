@@ -696,3 +696,46 @@ source identity. `import-mismatch` identifies `detectedAccountId` without instal
 cookies. `import-unverified` requires explicit `allowUnverified:true` before installation.
 The flag cannot bypass a known mismatch. `src.conversations.clear` removes only
 the account website store and UUID mapping; conversations and task bindings remain.
+
+
+## Local Code profile
+
+`cli control guide` returns the built-in local authority's `sourceId`.
+Enable its shared Local Code discovery preference through local management:
+
+```sh
+printf '%s' '{"capabilityProfile":{"hostAccess":"host","waitMode":"background-cli"}}' | arc cli source update <sourceId> --stdin
+arc cli control guide
+```
+
+This setting affects all built-in CLI callers and does not change execution permissions.
+Set `capabilityProfile:null` to restore Legacy.
+MCP sources instead accept `{hostAccess:"none"|"unknown",waitMode:"push"|"poll"}`.
+A `claude` MCP connector can serve Code, Chat and Cowork, so it cannot select Local Code.
+New sources offer a selection through `capabilityProfileOffer` and source setup; existing sources remain Legacy until explicitly changed.
+Source preferences follow the stable source ID across connection switches.
+
+Read `cli control dispatch_policy` and `cli control guide codex_create` before dispatch.
+For ordinary work, explicitly provide `purpose:"task"` and `notify:null`.
+Retain the returned receipt, thread, and turn identifiers.
+Use the controller's background-command facility for the wait:
+
+```sh
+printf '%s' '{"threadId":"<threadId>","turnId":"<turnId>","until":"terminal-or-interaction","view":"summary"}' | arc cli wait --control --op codex_wait --stdin --until '/conditionMet==true' --timeout 1800
+```
+
+Session re-invocation depends on the controller's command facility, not shell backgrounding alone.
+No notification binding or verification handshake is required.
+`result.lastResult` contains the bounded outcome; timeout retains it under `error.lastResult` with `WAIT_TIMEOUT`.
+A matched wait may contain a failed or interrupted task, so inspect its status and `next` before reviewing.
+The summary excludes all inbox and cross-thread data.
+It includes an 800-character final-message excerpt, up to 50 attributed changed paths, diffstat, truncation flags, and `completeEvidence`.
+Unavailable attribution is null rather than an empty successful diff.
+Use `view:"summary"` on Codex/Agent reads and waits; Codex reads additionally accept `turnId`.
+Follow `completeEvidence` for full evidence before recording `codex_review` or `agent_review`.
+An independent model review requires a separate dispatched task.
+
+`cli skill install --target claude-code` installs both `arc-setup` and `arc-local-code`.
+`cli stats control --since 1d` includes profile/transport cohorts under `profileSequences`.
+Sequences use the existing five-minute inactivity threshold and are not conversation identities.
+Compare guide-byte median/p95, calls before confirmed dispatch, and argument-error retries per 100 dispatch attempts.

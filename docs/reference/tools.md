@@ -954,3 +954,27 @@ mail pushes only when one verified destination is unambiguous. Bursts produce a
 count and query pointer rather than one wakeup per message. `deliveryMode` describes
 eligibility; send acceptance does not guarantee delivery. Pull `messages` for current
 state. Existing explicit op allowlists require local adoption of these new ops.
+
+
+## Capability profiles and task summaries
+
+Profiles change initial guide discovery only; execution retains the existing op policy and runtime availability.
+Existing sources remain Legacy until changed through authenticated local source management.
+MCP sources can select Legacy, Remote push, or Remote polling.
+Local Code applies only to built-in `arc cli control`, never to the shared `claude` MCP source.
+Use `guide({op})` for complete schemas and `query({op:"guide",args:{view:"full"}})` for all enabled operations.
+The query guide op supports `coordination`, `src`, and `context` topics without changing the frozen guide tool parameters.
+`guideHash` covers the profile projection, and `knownGuideHash` retains its unchanged response.
+
+`codex_wait`, `codex_read`, `agent_wait`, and `agent_read` accept `view:"summary"`.
+Codex reads also accept `turnId` to select an exact turn across pages.
+Summary results retain this task's status, identifiers, wait condition, snapshot hash, errors, and actionable `next`.
+`finalResponse` is a string of at most 800 Unicode characters, or null when unavailable.
+`files` contains at most 50 attributed native changed paths, or null when attribution is unavailable.
+`diffstat` contains the total file count, added/removed line counts, and the number with unknown counts.
+`finalResponseTruncated` and `filesTruncated` identify bounded results.
+`completeEvidence:{via,op,args}` retrieves complete evidence; Codex continuations pin the selected turn.
+`changeEvidence` identifies direct native file changes or the reason attribution is unavailable.
+Current workspace Git changes are not attributed to a summary turn merely because they exist.
+Summary mode omits inbox reminders, conversation bindings, dispatch history, and unrelated task data.
+Existing defaults remain unchanged when `view` is omitted.
