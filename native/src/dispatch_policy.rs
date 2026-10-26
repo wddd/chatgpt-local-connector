@@ -517,7 +517,7 @@ pub(crate) fn summarize_history(
     if compact {
         let mut other = Group::default();
         groups.retain(|_, group| {
-            if group.dispatches + group.external_reviews >= 3 {
+            if group.dispatches >= 10 {
                 return true;
             }
             other.external_reviews += group.external_reviews;
@@ -562,8 +562,14 @@ pub(crate) fn summarize_history(
             g["dispatches"].as_u64().unwrap_or(0) + g["external"]["reviews"].as_u64().unwrap_or(0),
         )
     });
-    let omitted = groups.len().saturating_sub(12);
-    groups.truncate(12);
+    let omitted = if compact {
+        groups.len().saturating_sub(12)
+    } else {
+        0
+    };
+    if compact {
+        groups.truncate(12);
+    }
     let mut history = json!({"windowDays":30,"excludedPurpose":"self-test","groups":groups});
     if omitted > 0 {
         history["omittedGroups"] = json!(omitted);

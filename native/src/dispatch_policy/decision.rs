@@ -50,53 +50,57 @@ fn empty(value: &Value) -> bool {
 }
 fn model_list(row: &Value) -> Vec<String> {
     let models = row.get("models").unwrap_or(&row["capabilities"]["models"]);
-    models
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|m| {
-            let mut parts = vec![];
-            let efforts: Vec<_> = m["efforts"]
+    let mut grouped = BTreeMap::<String, Vec<String>>::new();
+    for m in models.as_array().into_iter().flatten() {
+        let mut parts = vec![];
+        let efforts: Vec<_> = m["efforts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        let order = [
+            "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+        ];
+        if !efforts.is_empty() {
+            let contiguous = order.windows(efforts.len()).any(|v| v == efforts);
+            parts.push(if contiguous && efforts.len() > 2 {
+                format!("{}-{}", efforts[0], efforts[efforts.len() - 1])
+            } else {
+                efforts.join("/")
+            });
+        }
+        for tier in m["serviceTiers"].as_array().into_iter().flatten() {
+            parts.push(format!(
+                "{}={}",
+                string(tier, "name").to_lowercase(),
+                string(tier, "id")
+            ));
+        }
+        for option in m["options"].as_array().into_iter().flatten() {
+            let values = option["values"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .filter_map(Value::as_str)
-                .collect();
-            let order = [
-                "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
-            ];
-            if !efforts.is_empty() {
-                let contiguous = order.windows(efforts.len()).any(|v| v == efforts);
-                parts.push(if contiguous && efforts.len() > 2 {
-                    format!("{}-{}", efforts[0], efforts[efforts.len() - 1])
-                } else {
-                    efforts.join("/")
-                });
+                .filter_map(|v| v["value"].as_str())
+                .collect::<Vec<_>>()
+                .join("/");
+            if !values.is_empty() {
+                parts.push(format!("{}={values}", string(option, "id")));
             }
-            for tier in m["serviceTiers"].as_array().into_iter().flatten() {
-                parts.push(format!(
-                    "{}={}",
-                    string(tier, "name").to_lowercase(),
-                    string(tier, "id")
-                ));
-            }
-            for option in m["options"].as_array().into_iter().flatten() {
-                let values = option["values"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|v| v["value"].as_str())
-                    .collect::<Vec<_>>()
-                    .join("/");
-                if !values.is_empty() {
-                    parts.push(format!("{}={values}", string(option, "id")));
-                }
-            }
-            let id = string(m, "model");
-            if parts.is_empty() {
-                id.into()
+        }
+        grouped
+            .entry(parts.join(", "))
+            .or_default()
+            .push(string(m, "model").into());
+    }
+    grouped
+        .into_iter()
+        .map(|(settings, ids)| {
+            if settings.is_empty() {
+                ids.join(",")
             } else {
-                format!("{id}: {}", parts.join(", "))
+                format!("{}: {settings}", ids.join(","))
             }
         })
         .collect()
@@ -110,32 +114,37 @@ fn history(row: &Value) -> Value {
         .into_iter()
         .flatten()
         .map(|g| {
-            let mut label = ["model", "effort", "serviceTier"]
+            let mut label = ["model", "effort"]
                 .iter()
                 .filter_map(|k| g[k].as_str())
                 .filter(|v| !v.is_empty() && *v != "unknown")
                 .collect::<Vec<_>>()
                 .join("/");
+            match g["serviceTier"].as_str() {
+                Some("default" | "") | None => {}
+                Some("unknown") => label.push_str("/?"),
+                Some(tier) => label.push_str(&format!("/{tier}")),
+            }
             for (k, v) in g["options"].as_object().into_iter().flatten() {
                 label.push_str(&format!(" {k}={}", v.as_str().unwrap_or("")));
             }
-            let mut s = format!("{label}: {} dispatches", g["dispatches"]);
+            let mut s = format!("{label}: n{}", g["dispatches"]);
             if let Some(ms) = g["medianObservedDurationMs"].as_f64() {
-                s.push_str(&format!(", {:.1}m median", ms / 60000.0));
+                s.push_str(&format!(" med{:.1}m", ms / 60000.0));
             }
             s.push_str(&format!(
-                ", {}/{}/{} pass/rework/unreviewed",
+                " pass{} rework{} unrev{}",
                 g["pass"], g["rework"], g["unreviewed"]
             ));
             if let Some(n) = g["external"]["reviews"].as_u64() {
                 s.push_str(&format!(
-                    ", {n} external reviews ({}/{} pass/rework)",
+                    " ext{n} pass{} rework{}",
                     g["external"]["pass"], g["external"]["rework"]
                 ));
             }
-            for k in ["failed", "interrupted"] {
+            for (k, short) in [("failed", "fail"), ("interrupted", "int")] {
                 if g[k].as_u64().unwrap_or(0) > 0 {
-                    s.push_str(&format!(", {} {k}", g[k]));
+                    s.push_str(&format!(" {short}{}", g[k]));
                 }
             }
             s
@@ -217,6 +226,42 @@ fn quotas(row: &Value) -> Vec<(String, Value)> {
     result
 }
 
+fn accounts(row: &Value) -> Value {
+    json!(row["accounts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|a| {
+            let mut out = json!({"id":a["id"],"alias":a["alias"],"health":a["health"]["state"]});
+            if a["default"] == true {
+                out["default"] = json!(true);
+            }
+            let q = &a["quota"];
+            let windows = q["windows"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|w| {
+                    let used = w["usedPercent"].as_f64()?;
+                    let label = w["label"].as_str().unwrap_or_else(|| string(w, "id"));
+                    let reset = w["resetsAt"]
+                        .as_str()
+                        .map(|at| format!(" reset={at}"))
+                        .unwrap_or_default();
+                    Some(format!("{label} {used}%{reset}"))
+                })
+                .collect::<Vec<_>>();
+            out["quota"] = json!({"state":q["state"],"summary":windows.join(", ")});
+            for key in ["observedAt", "error", "accountBlocked", "blockedPoolIds"] {
+                if q[key] != false {
+                    out["quota"][key] = q[key].clone();
+                }
+            }
+            out
+        })
+        .collect::<Vec<_>>())
+}
+
 pub(super) fn present(mut facts: Value, args: &Value) -> Value {
     let global = string(&facts, "criteria").to_owned();
     criteria(&mut facts, &global, "global", args);
@@ -247,7 +292,7 @@ pub(super) fn present(mut facts: Value, args: &Value) -> Value {
         let text = string(policy, "criteria");
         let history = history(row);
         let no_policy = text.is_empty() && history.is_null();
-        let mut out = json!({"agent":agent,"accounts":row["accounts"],"availability":if no_policy { format!("{status}, no policy") } else {status.into()}});
+        let mut out = json!({"agent":agent,"accounts":accounts(row),"availability":if no_policy { format!("{status}, no policy") } else {status.into()}});
         if available["discoveryError"].is_string() {
             out["error"] = available["discoveryError"].clone();
         }
@@ -319,7 +364,62 @@ pub(super) fn present(mut facts: Value, args: &Value) -> Value {
         };
         rows.push(out);
     }
+    if rows.iter().any(|r| !r["history"].is_null()) {
+        facts["legend"] = json!("30d; no self-test; n=dispatches med=successful observed minutes unrev=unreviewed int=interrupted fail=failed ext=external reviews with own pass/rework; /tier omitted=default ?=unknown; other=mixed n<10; quota=% used");
+    }
     facts["agents"] = json!(rows);
     clean(&mut facts);
     facts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn account_selection_facts_survive_projection_and_full_view_retains_detail() {
+        // Property: compact projection retains account identity, readiness, quota units, resets and stale/blocking evidence without inventing usage.
+        let accounts = json!([
+            {"id":"account-one","alias":"Primary","default":true,"health":{"state":"attention"},
+             "agentProfiles":[{"profileId":"profile-one","state":"signed-in"}],
+             "quota":{"state":"stale","observedAt":"2026-01-01T00:00:00Z","accountBlocked":true,
+                      "windows":[{"id":"weekly","label":"7d","usedPercent":100,"resetsAt":"2026-01-02T00:00:00Z"}]}},
+            {"id":"account-two","alias":"Secondary","health":{"state":"ready"},"quota":{"state":"unavailable"}}
+        ]);
+        let facts = json!({"agents":[{"agent":"example","accounts":accounts,
+            "availability":{"installed":true,"enabled":true,"available":true},
+            "policy":{"criteria":"Use current evidence.","denyModels":["denied"]}}]});
+        let first = present(facts.clone(), &json!({}));
+        let row = &first["agents"][0];
+        let primary = &row["accounts"][0];
+        assert_eq!(primary["id"], accounts[0]["id"]);
+        assert_eq!(primary["alias"], accounts[0]["alias"]);
+        assert_eq!(primary["default"], true);
+        assert_eq!(primary["health"], accounts[0]["health"]["state"]);
+        assert_eq!(primary["quota"]["state"], "stale");
+        assert_eq!(
+            primary["quota"]["observedAt"],
+            accounts[0]["quota"]["observedAt"]
+        );
+        assert_eq!(primary["quota"]["accountBlocked"], true);
+        let summary = primary["quota"]["summary"].as_str().unwrap();
+        assert!(
+            summary.contains("7d")
+                && summary.contains("100%")
+                && summary.contains("2026-01-02T00:00:00Z")
+        );
+        assert_eq!(row["accounts"][1]["quota"]["state"], "unavailable");
+        assert!(row["accounts"][1]["quota"].get("summary").is_none());
+        assert_eq!(
+            row["denyModels"],
+            facts["agents"][0]["policy"]["denyModels"]
+        );
+        let cached = present(
+            facts.clone(),
+            &json!({"knownCriteriaHash":row["criteriaHash"]}),
+        );
+        assert_eq!(cached["agents"][0]["accounts"], row["accounts"]);
+        let full = present(facts, &json!({"view":"full"}));
+        assert_eq!(full["agents"][0]["accounts"], accounts);
+    }
 }

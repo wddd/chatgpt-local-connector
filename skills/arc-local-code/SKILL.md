@@ -21,7 +21,11 @@ arc cli control guide
 ```
 
 This preference changes discovery for all built-in CLI callers, not execution permissions.
-Read `arc cli control dispatch_policy` before selecting the Agent, account, model or effort.
+Read `arc cli control dispatch_policy` before selecting the Agent, account, model, effort or tier.
+Retain the returned `criteriaHash` after the first read in this session.
+On later reads, pass it as `knownCriteriaHash` to omit unchanged criteria.
+For multiple criteria blocks, pass a hash map keyed by Agent ID and `global` for top-level criteria.
+Use `arc cli control dispatch_policy --stdin` with the args object, such as `{"agent":"codex","knownCriteriaHash":"<criteriaHash>"}`.
 Read `arc cli control guide <op>` for each operation's live schema and retry contract.
 Do not embed model names, quotas or dispatch criteria from previous sessions.
 Refresh the guide when `arcVersion` changes.

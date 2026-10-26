@@ -99,7 +99,13 @@ Every cell is intersected with policy and runtime availability.
 
 Chat profiles lead with `command` for host shell, Git, and edits.
 Local Code SHOULD use its own host tools and ARC for Agent dispatch, quota-aware selection, and review.
-The shared `dispatch_policy` decision view supplies current selection criteria.
+The shared `dispatch_policy` decision view supplies current selection criteria across every profile.
+It omits unsolicited inbox attachments and fields unrelated to Agent, account, model, effort or tier selection.
+Model IDs with identical choices share a row.
+A single legend defines terse history rows; groups with fewer than 10 dispatches merge into `other` using their original duration samples.
+The Codex decision response targets at most 2,000 serialized characters with unchanged criteria and 4,500 with compact local criteria.
+Controllers SHOULD retain `criteriaHash` on the first session read and pass `knownCriteriaHash` on subsequent reads.
+`view:"full"` retains detailed facts and every history group.
 
 ## Guide layers
 

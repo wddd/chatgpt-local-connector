@@ -752,11 +752,19 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
     }
     if error {
         crate::egress::next(&mut value, name, &args, false);
-        if summary { value = crate::task_summary::project(name, &args, &value); }
+        if summary {
+            value = crate::task_summary::project(name, &args, &value);
+        }
         return Ok(crate::egress::tool(value, true));
     }
-    if summary { value = crate::task_summary::project(name, &args, &value); }
-    let inbox = if summary || (name == "guide" && value["profile"]["name"] == "local-code") || name == "inbox_wait" {
+    if summary {
+        value = crate::task_summary::project(name, &args, &value);
+    }
+    let inbox = if summary
+        || (name == "dispatch_policy" && args["view"] != "full")
+        || (name == "guide" && value["profile"]["name"] == "local-code")
+        || name == "inbox_wait"
+    {
         Value::Null
     } else {
         match crate::claude_notify::inbox(
