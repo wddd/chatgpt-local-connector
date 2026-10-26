@@ -3,7 +3,8 @@ import { locale, t } from "../i18n";
 import { useNow } from "../state/hooks";
 import { agentQuotaWindows } from "../subscriptions/QuotaRing";
 import { quotaDisplay, quotaLabel, quotaPercent, quotaValue, resetDisplay } from "../subscriptions/displayPreferences";
-import { isWeekly, windowLabel } from "../subscriptions/labels";
+import { windowLabel } from "../subscriptions/labels";
+import { quotaPeriod } from "../subscriptions/quotaTiming";
 import { compactAge, compactReset, preciseTime, quotaColor } from "../subscriptions/presentation";
 import { quotaPace } from "../subscriptions/pace";
 import type { ProviderSnapshot } from "../subscriptions/types";
@@ -19,7 +20,6 @@ export default function AgentQuota({ provider, onRefresh, refreshing }: { provid
   const selected = [short, weekly].filter(window => window !== undefined);
   const windows = selected.length ? selected : provider.windows.filter(window => Number.isFinite(window.usedPercent)).slice(0, 2);
   const pace = windows.map(window => quotaPace(window, provider, now));
-  const warning = pace.find(value => value?.label);
   const observed = Date.parse(provider.observedAt ?? "");
   const age = compactAge(provider.observedAt, now);
   const summaryWindow = weekly ?? windows[0];
@@ -28,8 +28,9 @@ export default function AgentQuota({ provider, onRefresh, refreshing }: { provid
     <div className="agent-quota-cards">
       {windows.map((window, index) => {
         const resetAt = Date.parse(window.resetsAt ?? "");
-        const elapsed = isWeekly(window.label) && Number.isFinite(resetAt)
-          ? Math.max(0, Math.min(1, (now - resetAt + 7 * 86400000) / (7 * 86400000))) : undefined;
+        const period = quotaPeriod(window, provider);
+        const elapsed = period && Number.isFinite(resetAt) && now < resetAt && now >= resetAt - period
+          ? (now - resetAt + period) / period : undefined;
         const tick = elapsed === undefined ? undefined : (display === "remaining" ? 1 - elapsed : elapsed) * 100;
         const label = windowLabel(window.label), value = quotaValue(window);
         const resetText = reset === "time" && Number.isFinite(resetAt) ? preciseTime(window.resetsAt) : compactReset(window.resetsAt, now);
@@ -48,7 +49,7 @@ export default function AgentQuota({ provider, onRefresh, refreshing }: { provid
           </div>
           <div className="agent-quota-balance">
             <strong className="agent-quota-percent" aria-label={`${label} · ${quotaLabel()} ${quotaPercent(window)}`}>{quotaPercent(window)}</strong>
-            {window === summaryWindow && warning?.label && <span className="agent-quota-warning" title={warning.tooltip}>{warning.label}</span>}
+            {pace[index]?.label && <span className="agent-quota-warning" title={pace[index]?.tooltip}>{pace[index]?.label}</span>}
             {window === summaryWindow && (Number.isFinite(provider.creditBalance) || provider.availableResetCount != null) && <div className="agent-quota-extras">
               {Number.isFinite(provider.creditBalance) && <span>{Math.ceil(provider.creditBalance!)} credits</span>}
               {provider.availableResetCount != null && <UsageHistory detail={() => <ResetCreditDetails credits={provider.resetCredits} now={now} />}>

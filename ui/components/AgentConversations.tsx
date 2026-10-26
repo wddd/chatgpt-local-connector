@@ -1,4 +1,5 @@
 import { useAppNow } from "../state/appEnvironment";
+import { MessagesSquare } from "lucide-react";
 import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 import { api } from "../api";
 import { locale, t } from "../i18n";
@@ -9,7 +10,7 @@ import { trackedActivity } from "../state/activityBubbles";
 import { selectAgentPanel } from "../state/overviewPanels";
 import type { TrackedActivity } from "../state/activityModel";
 import { ActivityBubbleContent } from "./ActivityBubbles";
-import { Button, Loading, Notice } from "./ui";
+import { Button, Empty, Loading, Notice } from "./ui";
 
 const ConversationRow = memo(function ConversationRow({ agent, session, live, now, index }: {
   agent: string; session: TrackedActivity; live: boolean; now: number; index: number;
@@ -117,7 +118,8 @@ export default function AgentConversations({ agent, account, accountId, active }
     group.entries.push(session);
   }
   const sections = [groups.attention, groups.running, groups.unread, groups.today, groups.yesterday, ...dates.values(), groups.earlier];
-  return <div className="activity-task-list agent-conversations">
+  const empty = !loading && !error && !visibleSessions.length && !next;
+  return <div className="activity-task-list agent-conversations" data-empty={empty || undefined}>
     {sections.map(({ id, label, entries }) => entries.length > 0 && <section className="agent-task-section" key={id} aria-label={label}>
       <h3 className="agent-task-section-heading" data-attention={id === "attention" || undefined}>
         {label}<span className="agent-section-count">{entries.length}</span>
@@ -127,7 +129,7 @@ export default function AgentConversations({ agent, account, accountId, active }
     </section>)}
     {loading && <Loading label={t("timeline.loading")} />}
     {error && <Notice action={<Button onClick={() => setRetry(value => value + 1)}>{t("retry")}</Button>}>{error}</Notice>}
-    {!loading && !error && !visibleSessions.length && <p className="timeline-meta">{t("agentPanel.noConversations")}</p>}
+    {empty && <Empty icon={MessagesSquare}>{t("agentPanel.noConversations")}</Empty>}
     {next && <div ref={marker} className="agent-conversation-more" aria-hidden="true" />}
   </div>;
 }

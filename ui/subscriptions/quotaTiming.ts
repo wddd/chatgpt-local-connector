@@ -3,7 +3,7 @@ export function quotaPeriod(w:QuotaWindow,p:ProviderSnapshot):number|undefined {
   const numeric=/^(\d+) (min|s)$/.exec(w.label);
   if(numeric)return Number(numeric[1])*(numeric[2]==='min'?60000:1000);
   if(['rolling','five_hour','session'].includes(w.label))return 5*3600000;
-  if(['weekly','seven_day','weekly_all','weekly_scoped'].includes(w.label))return 7*86400000;
+  if(['weekly','seven_day','weekly_all','weekly_scoped'].includes(w.label)||w.label.startsWith('seven_day_'))return 7*86400000;
   if(p.agentId==='cursor') {
     const raw=p.rawUsage as {summary?:Record<string,unknown>;usage?:Record<string,unknown>}|undefined;
     const summary=raw?.usage ?? raw?.summary;

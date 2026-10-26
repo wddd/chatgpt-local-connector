@@ -212,7 +212,6 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const now = useAppNow(visible && Object.values(tracked).some(s => s.length) ? 1000 : null);
   useEffect(() => { if (status?.core.backendSession) resetActivityCore(status.core.backendSession); }, [status?.core.backendSession]);
   const selectedAgent = selection && (orderedAgents().find(a => a.agent === selection.agent) ?? { agent: selection.agent });
-  const panelContentHeight = useCallback((height: number) => topology.current?.panelContentHeight(height), []);
   const panelFrame = useCallback((rect: SurfaceRect | null) => topology.current?.panelFrame(rect), []);
   const [switchOn, setSwitchOn] = useState<boolean>();
   useEffect(() => { if (!progressing && status) setSwitchOn(running); }, [running, progressing, status]);
@@ -350,7 +349,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         {selectedAgent && visible && (panelReady || selection?.closing || panelLayout.key?.startsWith("agent:")) && <AgentPanel agent={selectedAgent} dockRect={panelLayout.rect}
           width={envOverrides().taskPanelWidth ?? panelLayout.width} expanded={envOverrides().taskPanelWidth == null && panelLayout.expanded} onToggleWidth={() => setPanelExpanded(value => !value)}
           onSettings={() => setDisplaySettingsOpen(true)} onPanelFrame={panelFrame} />}
-        {sourceSelection && visible && (panelReady || sourceSelection.closing || panelLayout.key?.startsWith("source:")) && <IngressPanel dockRect={panelLayout.rect} onContentHeight={panelContentHeight} width={panelLayout.width} expanded={panelLayout.expanded} onToggleWidth={() => setPanelExpanded(value => !value)} onPanelFrame={panelFrame} />}
+        {sourceSelection && visible && (panelReady || sourceSelection.closing || panelLayout.key?.startsWith("source:")) && <IngressPanel dockRect={panelLayout.rect} width={panelLayout.width} expanded={panelLayout.expanded} onToggleWidth={() => setPanelExpanded(value => !value)} onPanelFrame={panelFrame} />}
         <div className="activity-edge-fade" aria-hidden="true" />
 
         {error && (

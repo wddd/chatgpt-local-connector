@@ -132,11 +132,10 @@ export class PortraitPainter {
         }
       }
       if (panel && node.selected) {
-        const end = node.side === 1 ? point(panel.x + panel.width, Math.max(panel.y + 27, Math.min(panel.y + panel.height - 27, n.y))) : point(Math.max(panel.x + 27, Math.min(panel.x + panel.width - 27, n.x)), panel.y);
+        const end = point(panel.x + panel.width, Math.max(panel.y + 27, Math.min(panel.y + panel.height - 27, n.y)));
         const start = point(n.x - node.side * (n.size * n.scale / 2 + 4), n.y);
-        const parent = node.parent ? a.values(nodeKey(node.side, node.parent)) : undefined;
         const route = node.side === 1 ? [start, point(n.childBusX, n.y), point(n.childBusX, end.y), end]
-          : portraitSourcePanelRoute({ x: n.x, y: n.y, size: n.size, scale: n.scale, childBusX: n.childBusX }, parent?.childBusX, panel);
+          : portraitSourcePanelRoute({ x: n.x, y: n.y, size: n.size, scale: n.scale, parent: node.parent }, panel);
         this.path(`${key}:panel`, railPath(route), `portrait-rail ${sideClass}`, 0.9);
       }
     }

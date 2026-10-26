@@ -250,7 +250,7 @@ export async function installScenario(name: string) {
     providerId: 'codex', agentId: 'codex', agentIds: ['codex'], name: 'ChatGPT', eligible: true, state: 'ready', refreshing: false,
     observedAt: new Date(Date.parse(now) - 120000).toISOString(), blockedPoolIds: [], hasCredential: true, acceptsKey: false, displayWindowId: 'weekly',
     windows: [
-      { id: 'five-hour', poolId: 'main', label: 'five_hour', usedPercent: 37, resetsAt: new Date(Date.parse(now) + 2 * 3600000).toISOString() },
+      { id: 'five-hour', poolId: 'main', label: 'five_hour', usedPercent: 73, resetsAt: new Date(Date.parse(now) + 2 * 3600000).toISOString() },
       { id: 'weekly', poolId: 'main', label: 'weekly', usedPercent: 68, resetsAt: new Date(Date.parse(now) + 3 * 86400000).toISOString() },
     ],
   }] : [] };

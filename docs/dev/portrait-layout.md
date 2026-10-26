@@ -14,7 +14,7 @@ Rail positions follow measured labels, including node scale and optional auto-co
 
 The hub radius also fits 8% of the viewport height, with a 56px minimum before applying the ring-size preference. The gaps above and below the hub shrink with its radius. Node logos have opaque canvas backgrounds so rails cannot show through them.
 
-Source platforms follow persisted order down the left rail. Their labels sit outside, right-aligned. Tree accounts fork inward to the right through rounded routes, with 42px nodes, 48px account rows and labels on the right. Shared stems are painted once without a separate overlapping vertical bus. Each platform reserves its descendants' height.
+Source platforms follow persisted order down the left rail. Their labels sit outside, right-aligned. Tree accounts fork inward to the right through rounded routes, with 42px nodes, at least 24px of vertical clearance between account icons, and labels on the right. Shared stems are painted once without a separate overlapping vertical bus. Each platform reserves its descendants' height.
 
 Agent platforms descend the right rail. Their names and optional auto-compaction chips sit outside. Tree accounts expand left through the same rounded fork routes into one account column, with labels below nodes. Each account has its own task bus farther left; horizontal final stubs terminate at bubble right edges. Inner routing uses rounded 10px corners. Single-account platforms skip the account level. Flat mode retains existing account semantics. Multi-account platform quota rings remain absent; account nodes carry their own rings.
 
@@ -28,7 +28,7 @@ Only final task stubs carry status: accent/flow for running, green for completed
 
 Agent/account panels dock inside the right rail over the bubbles, from a 16px left margin to 40px before the selected node's stubs. Their vertical range starts below the lower earmuff and ends above the dock. A selected-node stub reaches the panel's right edge; bubbles and their stubs fade using existing panel state.
 
-Source panels occupy a full-width inset gap below the source block and above the hub. Measure intrinsic content after its portal mounts and whenever content or width changes. Content determines height up to 55% of the viewport height, with internal scrolling above that cap; the same reserved height shifts the hub and Agent section down without shifting source order. The selected source account connects inward to its parent's bus, then follows that bus orthogonally to the panel's top edge. A selected platform uses its own inward bus. Connectors stay clear of labels and sibling nodes.
+Source panels open to the right of the visible source nodes and account labels, inside the viewport and above the dock. They overlay the scene without reserving a vertical gap or moving the hub and Agent section. The shared panel scroll area contains long content. The selected source connects to the panel's left edge; account connectors pass below their label before turning toward that edge. Opening the panel keeps the selected node visible.
 
 Portrait panels use the available rail area and omit the landscape width-expansion control. An explicit `app_env.taskPanelWidth` may narrow the Agent panel within that area.
 

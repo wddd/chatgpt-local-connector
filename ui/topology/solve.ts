@@ -47,7 +47,7 @@ export const DEFAULTS = Object.fromEntries(PARAMETERS.map(p => [p.key, p.default
 export type Side = -1 | 1;
 export interface Task { id: string; width: number; height: number }
 export interface Entity { id: string; tasks: readonly Task[]; children?: readonly Entity[]; collapsed?: boolean }
-export interface Scene { vw: number; vh: number; left: readonly Entity[]; right: readonly Entity[]; panel?: { side: Side; edge: number; selected: string; narrow?: boolean; contentHeight?: number } }
+export interface Scene { vw: number; vh: number; left: readonly Entity[]; right: readonly Entity[]; panel?: { side: Side; edge: number; selected: string; narrow?: boolean } }
 export interface Drag extends Point { kind: "node" | "task"; side: Side; id: string }
 export interface Point { x: number; y: number }
 export interface NodeGeometry extends Point {

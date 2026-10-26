@@ -23,7 +23,7 @@ export interface NodeView extends Omit<PaintNode, "side"> { content: ReactNode; 
   sourceIds?: string[]; icon?: ReactNode; selectedAccountId?: PathTask['agentAccountId'];
 }
 type PositionedTask = TaskView & { parent: string; side: Side };
-export interface TopologyHandle { panelFrame: (rect: SurfaceRect | null) => void; panelContentHeight: (height: number) => void }
+export interface TopologyHandle { panelFrame: (rect: SurfaceRect | null) => void }
 export interface PanelLayout { key?: string; width: number; expanded: boolean; rect?: SurfaceRect }
 
 export default function Topology({ left: inputLeft, right: inputRight, accountsEnabled = false, brand, boundary, panelKey, panelExpanded = false, onPanelLayout, onReorderNodes, onReorderTasks, ref }: {
@@ -42,7 +42,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   const frame = useRef(0), lastTime = useRef(0), panel = useRef<SurfaceRect | null>(null);
   const retarget = useRef(() => {}), placeAfterMorph = useRef(false);
   const orientationSource = useRef<"auto" | "manual">("auto");
-  const sourceContentHeight = useRef(280), placedPanel = useRef<string | undefined>(undefined);
+  const placedPanel = useRef<string | undefined>(undefined);
   const reportedPanel = useRef<PanelLayout>(undefined);
   const origin = useRef({ x: 0, y: 0 }), size = useRef<{ vw: number; vh: number } | null>(null);
   const drag = useRef<(Drag & { pointer: number; startClientX: number; startClientY: number; grabX: number; grabY: number; parent?: string;
@@ -210,7 +210,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     const reservedWidth = Math.min(latest.current.panelExpanded ? innerWidth - 2 * PANEL_MARGIN : PANEL_MIN_WIDTH, innerWidth - 2 * PANEL_MARGIN);
     if (selected) sc.panel = { side: selected.side, selected: selected.id,
       edge: selected.side === 1 ? innerWidth - reservedWidth - PANEL_MARGIN - origin.current.x : PANEL_MARGIN + reservedWidth - origin.current.x,
-      narrow: innerWidth < 760 || latest.current.panelExpanded, contentHeight: sourceContentHeight.current };
+      narrow: innerWidth < 760 || latest.current.panelExpanded };
     if (!d?.active) return sc;
     const wing = d.side === -1 ? "left" : "right";
     if (d.kind === "node") {
@@ -257,11 +257,10 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       const viewportTop = origin.current.y + (container?.scrollTop ?? 0);
       if (container && placedPanel.current !== latest.current.panelKey) {
         const local = portraitPanelRect(layout.current, selectedNode);
-        // Keep enough of the inner area visible when selecting a node far down
-        // a scrolling rail. A source panel is part of the gap above the hub.
-        const neededBottom = selectedNode.side === -1 ? local.y + local.height : Math.max(local.y + Math.min(320, layout.current.vh * 0.5), selectedNode.y + 44);
+        // Keep the selected node visible while the panel overlays its inward side.
+        const neededBottom = Math.max(local.y + Math.min(320, layout.current.vh * 0.5), selectedNode.y + 44);
         const desired = Math.max(0, Math.min(layout.current.sceneH - layout.current.vh, Math.max(container.scrollTop, neededBottom + 96 - layout.current.vh)));
-        container.scrollTop = selectedNode.side === -1 ? Math.min(desired, local.y - 16) : desired;
+        container.scrollTop = desired;
         const actual = graph.current!.getBoundingClientRect();
         origin.current = { x: actual.x, y: actual.y };
       }
@@ -350,15 +349,11 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   const suppressClick = (event: MouseEvent, key: string) => {
     if (event.detail !== 0 && suppressedClick.current === key) { event.preventDefault(); event.stopPropagation(); }
   };
-  useImperativeHandle(ref, () => ({ panelContentHeight(height) {
-    if (!Number.isFinite(height) || height <= 0 || Math.abs(sourceContentHeight.current - height) < 1) return;
-    sourceContentHeight.current = height; placedPanel.current = undefined;
-    if (orientation.current === 'portrait' && latest.current.panelKey?.startsWith('source:')) target();
-  }, panelFrame(rect) {
+  useImperativeHandle(ref, () => ({ panelFrame(rect) {
     // DOMRect dimensions are prototype accessors, not enumerable own properties.
     panel.current = rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
     paint();
-  } }), [paint, target]);
+  } }), [paint]);
   useLayoutEffect(() => { setRetained(latest.current.allTasks); setRetainedNodes(latest.current.allNodes); }, [inputLeft, inputRight, collapsed]);
   useLayoutEffect(() => { target(); });
   useLayoutEffect(() => {

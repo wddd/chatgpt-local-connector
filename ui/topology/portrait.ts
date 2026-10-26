@@ -5,7 +5,6 @@ export interface PortraitGeometry {
   sourceX: number; agentX: number; sourceTop: number; sourceBottom: number; agentTop: number; agentBottom: number;
   earOffset: number; earHalf: number;
   sourceLabelWidth: number; agentLabelWidth: number; sourceAccountLabelWidth: number; agentAccountLabelWidth: number;
-  sourcePanelHeight: number;
 }
 export interface PortraitLabel { width: number; twoLineWidth: number; height: number }
 export interface PortraitLabels { left: ReadonlyMap<string, PortraitLabel>; right: ReadonlyMap<string, PortraitLabel> }
@@ -52,7 +51,7 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
   const stackHeight = (e: Entity) => tasks(e).reduce((h, t) => h + t.height, 0) + Math.max(0, tasks(e).length - 1) * p.taskGap;
   const rowHeight = (e: Entity, side: Side, account = false): number => {
     const nested = children(e), own = stackHeight(e);
-    const base = side === -1 ? account ? 48 : p.sourceRow : account ? 66 : busy && !hasTasks(e) ? p.minIdleRow : p.idleRow;
+    const base = account ? ACCOUNT_NODE_SIZE + 24 : side === -1 ? p.sourceRow : busy && !hasTasks(e) ? p.minIdleRow : p.idleRow;
     const subtree = nested.reduce((h, child) => h + rowHeight(child, side, true), 0) + Math.max(0, nested.length - 1) * (side === -1 ? 0 : p.rowGap);
     const measured = label(e, side), s = scale(e, side, account);
     const labelWidth = side === -1 ? account ? sourceAccountLabelWidth : sourceLabelWidth : account ? agentAccountLabelWidth : agentLabelWidth;
@@ -93,8 +92,7 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
   }
   const sourceTop = 74, left = wing(sc.left, -1, sourceTop);
   const sourceBottom = sourceTop + left.H;
-  const sourcePanelHeight = sc.panel?.side === -1 ? Math.min(sc.panel.contentHeight ?? 280, vh * 0.55) : 0;
-  const hub = { x: vw / 2, y: sourceBottom + hubGap + earOffset + (sourcePanelHeight ? sourcePanelHeight + 40 : 0), Re };
+  const hub = { x: vw / 2, y: sourceBottom + hubGap + earOffset, Re };
   const agentTop = hub.y + earOffset + hubGap, agents = wing(right, 1, agentTop);
   const agentBottom = agentTop + agents.H;
   for (const wing of [left, agents]) {
@@ -107,24 +105,31 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
   }
   return { vw, vh, sceneH: Math.max(vh, agentBottom + 112), hub, wings: [left, agents],
     portrait: { sourceX, agentX, sourceTop, sourceBottom, agentTop, agentBottom, earOffset, earHalf,
-      sourceLabelWidth, agentLabelWidth, sourceAccountLabelWidth, agentAccountLabelWidth, sourcePanelHeight },
+      sourceLabelWidth, agentLabelWidth, sourceAccountLabelWidth, agentAccountLabelWidth },
     balance: [{ core: sourceX, full: vw / 2, squeeze: 1 }, { core: vw - agentX, full: vw / 2, squeeze: 1 }] };
 }
 
 export interface PortraitPanelRect { x: number; y: number; width: number; height: number }
-export function portraitSourcePanelRoute(node: Pick<NodeGeometry, 'x' | 'y' | 'size' | 'scale' | 'childBusX'>, parentBusX: number | undefined, panel: PortraitPanelRect) {
-  const busX = parentBusX ?? node.childBusX ?? node.x;
-  const direction = Math.sign(busX - node.x);
-  const start = { x: node.x + direction * (node.size * node.scale / 2 + 4), y: node.y };
-  const endX = Math.max(panel.x + 27, Math.min(panel.x + panel.width - 27, busX));
-  return [start, { x: busX, y: node.y }, { x: busX, y: panel.y - 20 }, { x: endX, y: panel.y - 20 }, { x: endX, y: panel.y }];
+export function portraitSourcePanelRoute(node: Pick<NodeGeometry, 'x' | 'y' | 'size' | 'scale' | 'parent'>, panel: PortraitPanelRect) {
+  const radius = node.size * node.scale / 2;
+  const start = { x: node.x + radius + 4, y: node.y };
+  const end = { x: panel.x, y: Math.max(panel.y + 27, Math.min(panel.y + panel.height - 27, node.y)) };
+  // Account labels sit to the right of the icon. Pass underneath them before
+  // turning toward the panel; the account row leaves clearance for this route.
+  const y = node.parent ? node.y + radius + 12 : node.y;
+  return [start, { x: start.x, y }, { x: panel.x - 12, y }, { x: panel.x - 12, y: end.y }, end];
 }
 // Coordinates are scene-local. The host converts them into viewport coordinates;
 // vertical scrolling never feeds a panel's animated dimensions back into solve.
 export function portraitPanelRect(layout: Layout, selected: NodeGeometry, scrollTop = 0): PortraitPanelRect {
   const p = layout.portrait!;
-  if (selected.side === -1) return { x: 16, y: p.sourceBottom + 24 - scrollTop, width: Math.max(1, layout.vw - 32),
-    height: p.sourcePanelHeight };
+  if (selected.side === -1) {
+    const sources = layout.wings[0].nodes.filter(node => node.opacity > 0);
+    const edge = Math.max(...sources.map(node => node.x + node.size * node.scale / 2
+      + (node.parent ? 12 * node.size * node.scale / (NODE_R * 2) + p.sourceAccountLabelWidth : 0)));
+    const x = Math.min(layout.vw - 17, edge + 24);
+    return { x, y: 16, width: Math.max(1, layout.vw - 16 - x), height: Math.max(1, layout.vh - 112) };
+  }
   const y = Math.max(16, layout.hub.y + p.earOffset + 16 - scrollTop);
   const right = selected.x - selected.size * selected.scale / 2 - 40;
   return { x: 16, y, width: Math.max(1, right - 16), height: Math.max(1, layout.vh - 96 - y) };

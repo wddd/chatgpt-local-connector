@@ -116,43 +116,44 @@ test('collapsed subtrees and flat nodes retain their existing queue semantics', 
   assert.deepEqual(flat.wings[1].tasks.map(t => t.id), right[1].children!.flatMap(n => n.tasks.map(t => t.id)));
 });
 
-test('portrait source panels reserve a vertical gap without moving source rows', () => {
-  // Property: a source panel shifts only the hub and Agent section, with reservation bounded by the viewport.
-  const scene = { vw: 900, vh: 1200, left, right };
-  const closed = solvePortrait(scene);
-  for (const contentHeight of [150, 500, 2000]) {
-    const open = solvePortrait({ ...scene, panel: { side: -1, selected: 'source/a', edge: 0, contentHeight } });
-    assert.deepEqual(open.wings[0].nodes.map(n => [n.id, n.x, n.y]), closed.wings[0].nodes.map(n => [n.id, n.x, n.y]));
-    const shift = open.hub.y - closed.hub.y;
-    assert.ok(shift > 0 && shift < scene.vh);
-    for (const [i, node] of open.wings[1].nodes.entries()) assert.equal(node.y - closed.wings[1].nodes[i].y, shift);
-    const rect = portraitPanelRect(open, open.wings[0].nodes[1]);
-    assert.ok(rect.y > open.portrait!.sourceBottom);
-    assert.ok(rect.y + rect.height < open.hub.y - open.portrait!.earOffset);
-    assert.ok(rect.x >= 0 && rect.x + rect.width <= scene.vw);
-    assert.equal(rect.height, open.portrait!.sourcePanelHeight);
-    if (contentHeight < scene.vh / 2) assert.equal(rect.height, contentHeight);
-    else assert.ok(rect.height < contentHeight && rect.height > scene.vh / 2);
+test('portrait source panels open inward without moving the topology', () => {
+  // Property: source panel selection preserves node geometry and opens to the right within the viewport.
+  for (const vw of [600, 900, 1080]) {
+    const scene = { vw, vh: 1200, left, right };
+    const closed = solvePortrait(scene, DEFAULTS, null, labels);
+    for (const selected of ['source', 'source/a', 'source/b']) {
+      const open = solvePortrait({ ...scene, panel: { side: -1, selected, edge: 0 } }, DEFAULTS, null, labels);
+      assert.deepEqual(open.hub, closed.hub);
+      for (const [i, wing] of open.wings.entries()) {
+        assert.deepEqual(wing.nodes.map(n => [n.id, n.x, n.y]), closed.wings[i].nodes.map(n => [n.id, n.x, n.y]));
+      }
+      const node = open.wings[0].nodes.find(n => n.id === selected)!;
+      const rect = portraitPanelRect(open, node);
+      assert.ok(rect.x > node.x + node.size * node.scale / 2);
+      assert.ok(rect.x + rect.width <= vw && rect.width > 0);
+      assert.ok(rect.y >= 0 && rect.y + rect.height <= scene.vh);
+      assert.deepEqual(portraitPanelRect(open, node, node.y), rect);
+    }
   }
 });
 
-test('source panel routes stay on the selected account bus without intersecting nodes or labels', () => {
+test('source panel routes reach the inward panel edge without intersecting nodes or labels', () => {
   // Regression: the Personal source connector crossed Personal, Studio and Unidentified labels on its way to the panel.
   const scene = { vw: 900, vh: 1600, left, right };
   const intersects = (a: Point, b: Point, box: { x: number; y: number; width: number; height: number }) =>
     a.x === b.x ? a.x > box.x && a.x < box.x + box.width && Math.max(a.y, b.y) > box.y && Math.min(a.y, b.y) < box.y + box.height
       : a.y > box.y && a.y < box.y + box.height && Math.max(a.x, b.x) > box.x && Math.min(a.x, b.x) < box.x + box.width;
   for (const selected of ['source', 'source/a', 'source/b']) {
-    const layout = solvePortrait({ ...scene, panel: { side: -1, selected, edge: 0, contentHeight: 600 } }, DEFAULTS, null, labels);
+    const layout = solvePortrait({ ...scene, panel: { side: -1, selected, edge: 0 } }, DEFAULTS, null, labels);
     const nodes = layout.wings[0].nodes, node = nodes.find(n => n.id === selected)!;
-    const parent = nodes.find(n => n.id === node.parent), panel = portraitPanelRect(layout, node);
-    const route = portraitSourcePanelRoute(node, parent?.childBusX, panel);
-    assert.equal(route.at(-1)!.y, panel.y);
-    assert.ok(route.at(-1)!.x > panel.x && route.at(-1)!.x < panel.x + panel.width);
+    const panel = portraitPanelRect(layout, node);
+    const route = portraitSourcePanelRoute(node, panel);
+    assert.equal(route.at(-1)!.x, panel.x);
+    assert.ok(route.at(-1)!.y > panel.y && route.at(-1)!.y < panel.y + panel.height);
     for (let i = 1; i < route.length; i++) {
       const a = route[i - 1], b = route[i];
       assert.ok(a.x === b.x || a.y === b.y);
-      for (const sibling of nodes) {
+      for (const sibling of nodes.filter(n => n.opacity > 0)) {
         const radius = sibling.size * sibling.scale / 2;
         assert.equal(intersects(a, b, { x: sibling.x - radius, y: sibling.y - radius, width: radius * 2, height: radius * 2 }), false);
         const metric = labels.left.get(sibling.id)!, scale = radius / NODE_R, width = metric.width * scale;

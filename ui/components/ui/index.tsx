@@ -188,12 +188,15 @@ export function Notice({
 export function Empty({
   children,
   action,
+  icon,
 }: {
   children: ReactNode;
   action?: ReactNode;
+  icon?: LucideIcon;
 }) {
   return (
     <div className="empty" role="status">
+      {icon && <Icon icon={icon} size={20} />}
       <p>{children}</p>
       {action}
     </div>
