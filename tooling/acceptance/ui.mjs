@@ -54,6 +54,15 @@ try {
         if (!fixture.page && !fixture.shells && !fixture.panel && representedTasks !== fixture.tasks.length) throw new Error(`Task count mismatch: ${representedTasks}/${fixture.tasks.length}`);
         if (fixture.panel?.kind === 'agent' && model.panels.agent?.agent !== fixture.panel.id) throw new Error('Agent panel not opened');
         if (fixture.panel?.kind === 'source' && model.panels.source !== fixture.panel.id) throw new Error('Source panel not opened');
+        if (name === 'topology-accounts') {
+          // Regression: PlatformIcon convergence shrank the unringed Agent parent and ringed account logos.
+          const parent = page.getByRole('button', { name: 'Claude Code', exact: true });
+          if (await parent.getByRole('img').count()) throw new Error('Agent parent must remain without quota for the logo fixture');
+          for (const name of ['Personal', 'Studio']) {
+            const account = page.getByRole('button', { name, exact: true }).filter({ has: page.getByRole('img') });
+            if (await account.count() !== 1) throw new Error('Each Agent account must expose its quota ring in the logo fixture');
+          }
+        }
         if (name === 'agent-panel-unread') {
           // Regression: completed unread tasks were mixed into date groups instead of appearing between Running and Today.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));

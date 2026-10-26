@@ -70,7 +70,7 @@ export function ActivityBubbleContent({ agent, session, now, density = "standard
       {density === "detailed" && <span className="activity-detail-line" title={detail}>{detail || "\u00a0"}</span>}
       {density !== "compact" && <span className={`activity-spec-row ${conversation ? "activity-conversation-meta" : ""}`}>
         {conversation && project && <span className="activity-project" title={session.project!}>{project}</span>}
-        <DispatchSpec agent={agent} record={{ kind: "session", value: session }} />
+        <DispatchSpec agent={agent} record={{ kind: "session", value: session }} variant="inline" />
         {conversation && !!session.turnCount && <span className="activity-spec">{t("timeline.turnCount", { count: session.turnCount })}</span>}
         {!conversation && project && <span className="activity-project" title={session.project!}>{project}</span>}
         {density === "detailed" && source && <span className="activity-source-name" title={dispatchSourceLabel(source)}>{dispatchSourceLabel(source)}</span>}

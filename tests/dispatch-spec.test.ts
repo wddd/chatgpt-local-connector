@@ -7,7 +7,7 @@ import { within } from '@testing-library/dom';
 import type { CatalogState } from '../ui/state/dispatchCatalog';
 
 test('recorded dispatch specs expose readable catalog labels on focus and identify unresolved models', async () => {
-  // Regression: resolved dsh JSON model IDs leaked into the tooltip and accessible name.
+  // Regression: resolved dsh IDs leaked into labels; absent Claude models left separators and default-tier labels.
   const window = new Window({ url: 'http://localhost' });
   class Observer { observe() {} unobserve() {} disconnect() {} }
   Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
@@ -35,9 +35,9 @@ test('recorded dispatch specs expose readable catalog labels on focus and identi
       { kind: 'task', value: { agent: 'dsh', taskId: 'dsh-task', requestId: 'request', task: summary } },
     ];
     const page = within(document.body);
-    const render = async (record: unknown, resolver: CatalogState = { status: 'ready', catalog }) => {
+    const render = async (record: unknown, resolver: CatalogState = { status: 'ready', catalog }, variant: 'panel' | 'inline' = 'panel') => {
       await act(() => root.render(h(TooltipProvider, null, h(DispatchSpec, {
-        agent: 'dsh', record, resolver,
+        agent: 'dsh', record, resolver, variant,
       }))));
     };
     for (const record of records) {
@@ -77,6 +77,19 @@ test('recorded dispatch specs expose readable catalog labels on focus and identi
     const failed = page.getByLabelText((label) => label.includes(model));
     assert.ok(failed.getAttribute('aria-label')!.includes(t('dispatchSpec.unresolved')));
     assert.ok(failed.getAttribute('aria-label')!.includes(t('dispatchSpec.error')));
+    for (const variant of ['panel', 'inline'] as const) {
+      const record = { kind: 'session', value: { id: 'no-model', source: 'arc-task', dispatchSummary: { effort: 'high', serviceTier: 'default' } } };
+      await render(record, { status: 'error' }, variant);
+      const effort = page.getByLabelText(t('dispatchSpec.effort.high'), { exact: true });
+      assert.ok(!effort.textContent?.includes('·'));
+      assert.ok(!effort.textContent?.includes(t('dispatchSpec.standard')));
+      assert.ok(!effort.textContent?.includes(t('dispatchSpec.unresolved')));
+      await render({ ...record, value: { ...record.value, dispatchSummary: { effort: 'high', serviceTier: 'priority' } } }, { status: 'ready' }, variant);
+      const fast = page.getByLabelText(label => label.includes(t('activity.fast')));
+      assert.equal(fast.getAttribute('aria-label')?.split(' · ').length, 2);
+      assert.ok(!fast.textContent?.trim().startsWith('·'));
+      assert.ok(!fast.textContent?.trim().endsWith('·'));
+    }
     let complete!: (response: Response) => void;
     globalThis.fetch = () => new Promise<Response>(resolve => { complete = resolve; });
     let firstFrame: { text: string | null; label: string | null } | undefined;

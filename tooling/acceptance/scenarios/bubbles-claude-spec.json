@@ -1,0 +1,11 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": ["claude"],
+  "bubbles": { "density": "standard", "autoCompact": false },
+  "tasks": [
+    { "agent": "claude", "phase": "thinking", "title": "Review default dispatch", "headline": "Reviewing project configuration", "dispatchSummary": { "effort": "high", "serviceTier": "default" } },
+    { "agent": "claude", "phase": "command", "title": "Validate priority dispatch", "headline": "Checking project configuration", "dispatchSummary": { "effort": "high", "serviceTier": "priority" } },
+    { "agent": "claude", "phase": "text", "title": "Review unrecorded dispatch", "headline": "Reading project documentation", "dispatchSummary": { "serviceTier": "default" } }
+  ]
+}

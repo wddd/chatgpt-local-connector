@@ -26,7 +26,7 @@ function resolveModel(catalog: DispatchCatalog | undefined, model: string) {
   return Array.isArray(catalog?.models) ? catalog.models.find(item => modelKey(item.model) === modelKey(model)) : undefined;
 }
 const effortKeys: Record<string, string> = Object.fromEntries(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].map(key => [key, `dispatchSpec.effort.${key}`]));
-export function DispatchSpec({ agent, record, resolver }: { agent: string; record: DispatchSpecRecord; resolver?: CatalogState }) {
+export function DispatchSpec({ agent, record, resolver, variant = 'panel' }: { agent: string; record: DispatchSpecRecord; resolver?: CatalogState; variant?: 'panel' | 'inline' }) {
   const summary = recordedDispatchSpec(record);
   const owner = record.kind === 'task' ? record.value.agent ?? agent : agent;
   const taskId = owner === 'codex' ? undefined : record.kind === 'timeline' ? (record.source === 'transcript' ? undefined : record.taskId)
@@ -42,9 +42,9 @@ export function DispatchSpec({ agent, record, resolver }: { agent: string; recor
     .flatMap(option => option.values ?? []).find(option => typeof option !== 'string' && option.value === effort);
   const effortName = typeof effortOption === 'object' && effortOption.name || (effort && (effortKeys[effort] ? t(effortKeys[effort]) : `${t('dispatchSpec.unresolved')}: ${effort}`));
   const modelLabel = model && (modelName ? [modelName, resolved?.group].filter(Boolean).join(' · ') : loadingModel ? t('dispatchSpec.loading') : `${t('dispatchSpec.unresolved')}: ${model}`);
-  const details = [effortName, tier && (tier === 'priority' ? t('activity.fast') : tier === 'default' ? t('dispatchSpec.standard') : `${t('dispatchSpec.unresolved')}: ${tier}`)].filter(Boolean);
-  const unresolved = unresolvedModel || !!effort && !effortKeys[effort] && !(typeof effortOption === 'object' && effortOption.name) || !!tier && !['priority', 'default'].includes(tier);
-  const status = !modelLabel && !details.length ? 'missing' : loadingModel ? 'loading' : state?.status === 'error' ? 'error' : unresolved ? 'unresolved' : 'ready';
+  const details = [effortName, tier === 'priority' ? t('activity.fast') : undefined].filter(Boolean);
+  const unresolved = unresolvedModel || !!effort && !effortKeys[effort] && !(typeof effortOption === 'object' && effortOption.name);
+  const status = !modelLabel && !details.length ? 'missing' : loadingModel ? 'loading' : model && state?.status === 'error' ? 'error' : unresolved ? 'unresolved' : 'ready';
   if (modelName && status === 'loading') details.push(t('dispatchSpec.loading'));
   if (model && status === 'error') details.push(t('dispatchSpec.error'));
   const label = [modelLabel, ...details].filter(Boolean).join(' · ') || t('dispatchSpec.missing');
@@ -63,7 +63,8 @@ export function DispatchSpec({ agent, record, resolver }: { agent: string; recor
     document.fonts?.addEventListener('loadingdone', check);
     return () => { observer.disconnect(); document.fonts?.removeEventListener('loadingdone', check); };
   }, [leading]);
-  return <Tooltip text={label}><span className="dispatch-spec" data-state={status} tabIndex={0} aria-busy={status === 'loading' || undefined} aria-label={label}>
+  if (variant === 'inline' && status === 'missing') return null;
+  return <Tooltip text={label}><span className="dispatch-spec" data-variant={variant} data-state={status} tabIndex={0} aria-busy={status === 'loading' || undefined} aria-label={label}>
     {leading && <span className="dispatch-spec-model" aria-hidden="true">
       <span ref={measure} className="dispatch-spec-measure">{leading}</span>
       <span className="dispatch-spec-name">{shortened ? shortModel : leading}</span>
