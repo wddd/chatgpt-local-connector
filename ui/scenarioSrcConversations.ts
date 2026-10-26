@@ -5,9 +5,9 @@ export function srcConversationsScenario() {
   const at = '2026-01-01T12:00:00.000Z';
   const chatId = '550e8400-e29b-41d4-a716-446655440000';
   const coworkId = 'cse_010000000000000000000001';
-  const accounts: SrcContainer[] = (['signed-in', 'expired', 'not-imported', 'unsupported'] as SrcContainerStatus[]).map((status, i) => ({
+  const accounts: SrcContainer[] = (['signed-in', 'expired', 'not-imported', 'unsupported', 'importing', 'signed-in-pending', 'import-blocked'] as SrcContainerStatus[]).map((status, i) => ({
     accountId: i === 0 ? 'account-source' : `source-${status}`, storeId: status === 'unsupported' ? null : `550e8400-e29b-41d4-a716-${String(i + 1).padStart(12, '0')}`,
-    status, safariUserAgent: false, open: i === 0, currentConversation: i === 0 ? { kind: 'chat', id: chatId, url: `https://claude.ai/chat/${chatId}` } : null,
+    status, reason: status === 'import-blocked' ? 'keychain-denied' : null, hint: ['importing', 'import-blocked'].includes(status) ? 'Enter the macOS login password in the Chrome Safe Storage prompt and choose Always Allow.' : null, safariUserAgent: false, open: i === 0, currentConversation: i === 0 ? { kind: 'chat', id: chatId, url: `https://claude.ai/chat/${chatId}` } : null,
     conversations: i === 0 ? [
       { accountId: 'account-source', kind: 'chat', id: chatId, url: `https://claude.ai/chat/${chatId}`, firstSeenAt: at, lastSeenAt: at, lastActiveAt: at, basis: 'observed', taskRefs: [{ agent: 'codex', id: 'fixture-task-1', basis: 'correlated' }] },
       { accountId: 'account-source', kind: 'cowork', id: coworkId, url: `https://claude.ai/cowork/${coworkId}`, firstSeenAt: at, lastSeenAt: at, lastActiveAt: null, basis: 'notify-target', taskRefs: [{ agent: 'claude', id: 'fixture-task-2', basis: 'notify-target' }] },
@@ -28,8 +28,8 @@ export function srcConversationsScenario() {
       return { conversation: conversation ? { accountId: account.accountId, kind: conversation.kind, id: conversation.id, url: conversation.url, basis: 'manual' } : null };
     }
     if (path === 'src-conversations/import' && method === 'POST') {
-      if (account.status !== 'unsupported') { account.status = 'not-imported'; account.open = true; account.currentConversation = null; }
-      return { accountId: account.accountId, status: account.status };
+      if (account.status !== 'unsupported') { account.status = 'importing'; account.reason = null; account.hint = 'Enter the macOS login password in the Chrome Safe Storage prompt and choose Always Allow.'; }
+      return { accountId: account.accountId, status: account.status, ...(account.status === 'importing' ? { next: { via: 'query', op: 'src_conversations', args: { accountId: account.accountId }, hint: 'Poll this account import status.' } } : {}) };
     }
     if (path === 'src-conversations/open' && method === 'POST') {
       if (account.status === 'unsupported') return { accountId: account.accountId, status: account.status };

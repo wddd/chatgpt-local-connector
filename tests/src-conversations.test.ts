@@ -86,5 +86,19 @@ test('Source conversation ops isolate accounts and persist bindings through rest
     assert.equal(unbound.conversation,null);
     const after=await fixture.call('src_conversations',{accountId:a.accountId});
     assert.ok(after.accounts[0].conversations.every((r:any)=>r.taskRefs.length===0));
+    const importing=await fixture.sourceCall(a.ingressId,'src_login_import',{accountId:a.accountId,profile:'Default'});
+    assert.equal(importing.status,'importing');
+    assert.equal(importing.next.op,'src_conversations');
+    assert.deepEqual(importing.next.args,{accountId:a.accountId});
+    assert.equal((await fixture.sourceCall(a.ingressId,'src_login_import',{accountId:a.accountId,profile:'Default'})).status,'importing');
+    const progress=await fixture.sourceCall(a.ingressId,'src_conversations',{accountId:a.accountId},'query');
+    assert.equal(progress.accounts[0].status,'importing');
+    await fixture.api('src-conversations/observe',{containers:[{accountId:a.accountId,storeId:store,status:'import-blocked',reason:'keychain-timeout',open:false}]});
+    const blocked=await fixture.sourceCall(a.ingressId,'src_conversations',{accountId:a.accountId},'query');
+    assert.equal(blocked.accounts[0].status,'import-blocked');
+    assert.equal(blocked.accounts[0].reason,'keychain-timeout');
+    assert.ok(blocked.accounts[0].hint.includes('macOS login password'));
+    assert.ok(blocked.accounts[0].hint.includes('Always Allow'));
+    assert.equal(blocked.accounts[0].open,false);
   } finally {await fixture.close();}
 });

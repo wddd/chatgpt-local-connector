@@ -21,6 +21,15 @@ impl arc_core::transport::DesktopAccess for SnapshotDesktop {
                     let rows = self.1.lock().unwrap().clone();
                     return Box::pin(async move { Ok(serde_json::json!({"containers":rows})) });
                 }
+                if route == "src-containers/import" && method == "POST" {
+                    let mut rows = self.1.lock().unwrap();
+                    rows.retain(|r| r["accountId"] != body["accountId"]);
+                    rows.push(serde_json::json!({"accountId":body["accountId"],"storeId":body["storeId"],"url":null,"active":false,"open":false,"status":"importing"}));
+                    let result =
+                        arc_core::src_conversations::import_state::ImportState::importing()
+                            .response(arc_core::string(body, "accountId"));
+                    return Box::pin(async move { Ok(result) });
+                }
                 if route == "src-containers/open" && method == "POST" {
                     let mut rows = self.1.lock().unwrap();
                     rows.retain(|r| r["accountId"] != body["accountId"]);

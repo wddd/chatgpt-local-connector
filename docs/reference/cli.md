@@ -682,7 +682,11 @@ JSON arguments to `cli call <operation> --stdin`. The frozen control equivalents
 are `src_conversations`, `src_chrome_profiles`, `src_conversation_open`,
 `src_login_import` and `src_conversation_bind`.
 
-Native containers require macOS 14+. Import returns status only, and Keychain
-or cookie-write timeouts are blockers. Never retry automatically or work around
+Native containers require macOS 14+. Import returns `importing` immediately
+with a `next` call to poll `src_conversations`; duplicate same-account requests
+reuse the running import. The background Keychain wait is 180 seconds.
+Completion is `signed-in-pending` or `not-imported`; failure is `import-blocked`
+with a safe reason and human-action hint. For a Keychain prompt, enter the macOS
+login password and choose Always Allow. Never retry automatically or work around
 a denial. See [Source conversations](tools.md#source-conversations) for arguments,
 URL restrictions, binding provenance and the URL-only status limitation.

@@ -3798,7 +3798,7 @@
         ],
         "additionalProperties": false
       },
-      "description": "Import login from a profile returned by src_chrome_profiles into this account container, then open /new. Returns accountId and status only. Chrome files are copied read-only. Keychain denial or a 30-second wait returns SRC_IMPORT_BLOCKED; never work around a denial. Wait for all native cookie writes before navigating. Read src_conversations before manually retrying. No cookies, keys or page content are returned.",
+      "description": "Start a background Chrome login import for this source account and return immediately with {accountId,status:\"importing\",next:{via:\"query\",op:\"src_conversations\",args:{accountId}}}. Concurrent imports for the same account return the in-flight status. Poll src_conversations: importing -> signed-in-pending when cookies are installed, not-imported when none are imported, or import-blocked with reason and a human-action hint. URL observation later yields signed-in or expired. Keychain waits up to 180 seconds; timeout/denial become keychain-timeout/keychain-denied. Enter the macOS login password in the Chrome Safe Storage prompt and choose Always Allow; never work around a denial. Native cookie writes must complete before navigation (30-second write timeout). No cookies, keys, decrypted bytes or page content are returned. No automatic retry after completion or failure.",
       "localOnly": true
     },
     {

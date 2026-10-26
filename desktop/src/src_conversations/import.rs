@@ -112,29 +112,43 @@ fn password() -> Result<Zeroizing<Vec<u8>>> {
         return Err("keychain-request-still-pending");
     }
 
+    wait_for_password(
+        move || {
+            let result = ItemSearchOptions::new()
+                .class(ItemClass::generic_password())
+                .service("Chrome Safe Storage")
+                .load_data(true)
+                .limit(1)
+                .search()
+                .map_err(|_| "keychain-denied-or-unavailable")
+                .and_then(|items| {
+                    items
+                        .into_iter()
+                        .find_map(|item| match item {
+                            SearchResult::Data(bytes) => Some(Zeroizing::new(bytes)),
+                            _ => None,
+                        })
+                        .ok_or("keychain-no-password")
+                });
+            WAITING.store(false, Ordering::SeqCst);
+            result
+        },
+        Duration::from_secs(arc_core::src_conversations::import_state::KEYCHAIN_WAIT_SECONDS),
+    )
+}
+
+pub fn wait_for_password(
+    fetch: impl FnOnce() -> Result<Zeroizing<Vec<u8>>> + Send + 'static,
+    timeout: Duration,
+) -> Result<Zeroizing<Vec<u8>>> {
     let (tx, rx) = mpsc::sync_channel(1);
     std::thread::spawn(move || {
-        let result = ItemSearchOptions::new()
-            .class(ItemClass::generic_password())
-            .service("Chrome Safe Storage")
-            .load_data(true)
-            .limit(1)
-            .search()
-            .map_err(|_| "keychain-denied-or-unavailable")
-            .and_then(|items| {
-                items
-                    .into_iter()
-                    .find_map(|item| match item {
-                        SearchResult::Data(bytes) => Some(Zeroizing::new(bytes)),
-                        _ => None,
-                    })
-                    .ok_or("keychain-no-password")
-            });
-        WAITING.store(false, Ordering::SeqCst);
-        let _ = tx.send(result);
+        let _ = tx.send(fetch());
     });
-    rx.recv_timeout(Duration::from_secs(30))
-        .map_err(|_| "keychain-blocked-timeout")?
+    rx.recv_timeout(timeout).map_err(|error| match error {
+        mpsc::RecvTimeoutError::Timeout => "keychain-timeout",
+        mpsc::RecvTimeoutError::Disconnected => "keychain-unavailable",
+    })?
 }
 
 fn decrypt<'a>(

@@ -1,5 +1,6 @@
 //! Plain native windows with direct wry children; never Tauri remote webviews.
 mod import;
+mod jobs;
 mod native;
 use arc_core::src_conversations::refs;
 use serde_json::{json, Value};
@@ -152,9 +153,9 @@ fn metadata() -> Value {
             let url = refs::conversation(&c.current).map(|r| r["url"].clone()).unwrap_or(Value::Null);
             let active = c.window.is_focused().unwrap_or(false)
                 && c.window.is_visible().unwrap_or(false) && !c.window.is_minimized().unwrap_or(true);
-            json!({"accountId":account,"storeId":c.store_id,"status":c.status,"url":url,"active":active})
+            json!({"accountId":account,"storeId":c.store_id,"status":c.status,"url":url,"active":active,"open":true})
         }).collect();
-        json!({"containers":containers})
+        jobs::jobs().metadata(containers)
     })
 }
 pub fn install(app: &tauri::AppHandle) {
@@ -214,41 +215,53 @@ pub async fn request(app: &tauri::AppHandle, route: &str, args: Value) -> Result
     let account = arc_core::string(&args, "accountId").to_owned();
     let store = arc_core::string(&args, "storeId").to_owned();
     let url = refs::open_url(arc_core::string(&args, "url")).ok_or("SRC_URL_INVALID")?;
-    let importing = route == "src-containers/import";
-    // Serialize operations across the import barrier. No navigation can overtake writes.
-    static OPERATIONS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    let _guard = OPERATIONS
-        .try_lock()
-        .map_err(|_| "SRC_CONTAINER_BUSY: Read src_conversations before retrying")?;
+    if let Some(in_flight) = jobs::jobs().in_flight(&account) {
+        return Ok(in_flight);
+    }
+    if route == "src-containers/import" {
+        let profile = arc_core::string(&args, "profile");
+        if !import::profiles()
+            .map_err(|e| format!("SRC_IMPORT_BLOCKED: {e}"))?
+            .iter()
+            .any(|p| p["directory"] == profile)
+        {
+            return Err("SRC_IMPORT_BLOCKED: chrome-profile-not-found".into());
+        }
+        let handle = app.clone();
+        return Ok(jobs::jobs().start(account, store, async move {
+            perform_import(&handle, args).await
+        }));
+    }
+    main_thread(app, move |app| {
+        create(app, &args, false)?;
+        navigate(&account, &url)
+    })
+    .await
+}
+async fn perform_import(app: &tauri::AppHandle, args: Value) -> Result<bool, String> {
+    let store = arc_core::string(&args, "storeId").to_owned();
     main_thread(app, move |_| check_barrier(&store)).await?;
-    let imported = if importing {
-        let profile = arc_core::string(&args, "profile").to_owned();
-        Some(
-            tokio::task::spawn_blocking(move || {
-                if !disable_core_dump() {
-                    return Err("core-dump-disable-failed");
-                }
-                import::chrome(&profile)
-            })
-            .await
-            .map_err(|_| "SRC_IMPORT_BLOCKED: Import worker failed")?
-            .map_err(|e| format!("SRC_IMPORT_BLOCKED: {e}"))?,
-        )
-    } else {
-        None
-    };
+    let profile = arc_core::string(&args, "profile").to_owned();
+    let imported = tokio::task::spawn_blocking(move || {
+        if !disable_core_dump() {
+            return Err("core-dump-disable-failed");
+        }
+        import::chrome(&profile)
+    })
+    .await
+    .map_err(|_| "import-worker-failed")?
+    .map_err(str::to_owned)?;
+    let installed = !imported.cookies.is_empty();
+    let account = arc_core::string(&args, "accountId").to_owned();
+    let url = arc_core::string(&args, "url").to_owned();
     let pending = main_thread(app, move |app| {
-        create(app, &args, importing)?;
+        create(app, &args, true)?;
         VIEWS.with(|slot| {
             let views = slot.borrow();
             let c = views
                 .get(arc_core::string(&args, "accountId"))
                 .ok_or("SRC_WINDOW_CLOSED")?;
-            let pending = if let Some(cookies) = imported {
-                native::install(&c.view, cookies).map_err(|e| format!("SRC_IMPORT_BLOCKED: {e}"))?
-            } else {
-                Arc::new(AtomicUsize::new(0))
-            };
+            let pending = native::install(&c.view, imported).map_err(str::to_owned)?;
             IMPORTS.with(|slot| {
                 slot.borrow_mut()
                     .insert(c.store_id.clone(), pending.clone())
@@ -263,11 +276,11 @@ pub async fn request(app: &tauri::AppHandle, route: &str, args: Value) -> Result
         }
     })
     .await
-    .map_err(|_| {
-        "SRC_IMPORT_BLOCKED: Cookie writes timed out; navigation remains blocked until completion"
-    })?;
-    main_thread(app, move |_| navigate(&account, &url)).await
+    .map_err(|_| "cookie-write-timeout")?;
+    main_thread(app, move |_| navigate(&account, &url)).await?;
+    Ok(installed)
 }
+
 fn disable_core_dump() -> bool {
     unsafe extern "C" {
         fn setrlimit(resource: i32, rlim: *const [u64; 2]) -> i32;

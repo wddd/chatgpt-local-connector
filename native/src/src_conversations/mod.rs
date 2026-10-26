@@ -5,6 +5,7 @@ use std::{
     collections::BTreeMap,
     sync::{Mutex, OnceLock},
 };
+pub mod import_state;
 pub mod refs;
 /// Stable SRC errors remain machine-readable through MCP and local management.
 pub fn error_code(message: &str) -> Option<&str> {
@@ -27,6 +28,10 @@ struct Container {
     store_id: String,
     safari_user_agent: bool,
     status: String,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    hint: Option<String>,
 }
 #[derive(Clone, Default)]
 struct Observation {
@@ -131,6 +136,8 @@ fn ensure(store: &mut Store, id: &str) -> Container {
             store_id: crate::id(),
             safari_user_agent: false,
             status: "not-imported".into(),
+            reason: None,
+            hint: None,
         })
         .clone()
 }
@@ -159,6 +166,31 @@ fn upsert(
         store.conversations.push(row);
     }
 }
+fn apply_status(container: &mut Container, row: &Value) {
+    let Some(status) = row["status"].as_str().filter(|s| {
+        matches!(
+            *s,
+            "unsupported"
+                | "not-imported"
+                | "signed-in"
+                | "expired"
+                | "importing"
+                | "signed-in-pending"
+                | "import-blocked"
+        )
+    }) else {
+        return;
+    };
+    container.status = status.into();
+    if status == "import-blocked" {
+        let blocked = import_state::ImportState::blocked(string(row, "reason"));
+        container.reason = blocked.reason.map(str::to_owned);
+        container.hint = blocked.hint.map(str::to_owned);
+    } else {
+        container.reason = None;
+        container.hint = (status == "importing").then(|| import_state::KEYCHAIN_HINT.to_owned());
+    }
+}
 /// Accept only metadata from the authenticated Desktop management channel.
 pub fn observe(body: &Value) -> Result<Value> {
     change(
@@ -174,10 +206,9 @@ pub fn observe(body: &Value) -> Result<Value> {
                 if row["storeId"] != c.store_id {
                     continue;
                 }
-                if let Some(status) = row["status"].as_str().filter(|s| {
-                    matches!(*s, "not-imported" | "signed-in" | "expired" | "unsupported")
-                }) {
-                    c.status = status.into();
+                apply_status(c, row);
+                if row["open"] == false {
+                    continue;
                 }
                 let current = row["url"].as_str().and_then(refs::conversation);
                 let old = live.get(id).cloned().unwrap_or_default();
@@ -201,6 +232,20 @@ pub fn observe(body: &Value) -> Result<Value> {
                         open: true,
                     },
                 );
+            }
+            for (id, c) in &mut store.containers {
+                if matches!(c.status.as_str(), "importing" | "signed-in-pending")
+                    && !body["containers"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .any(|row| row["accountId"] == *id && row["storeId"] == c.store_id)
+                {
+                    apply_status(
+                        c,
+                        &json!(import_state::ImportState::blocked("import-interrupted")),
+                    );
+                }
             }
             *live = next;
             Ok(json!({"accepted":true}))
@@ -382,7 +427,7 @@ fn snapshot(a: &Value, store: &Store, live: &BTreeMap<String, Observation>) -> V
             r
         })
         .collect();
-    json!({"accountId":id,"storeId":c.map(|c|&c.store_id),"status":if supported(a){c.map(|c|c.status.as_str()).unwrap_or("not-imported")}else{"unsupported"},"safariUserAgent":c.is_some_and(|c|c.safari_user_agent),"open":obs.is_some_and(|o|o.open),"currentConversation":obs.and_then(|o|o.current.clone()),"conversations":conversations})
+    json!({"accountId":id,"storeId":c.map(|c|&c.store_id),"status":if supported(a){c.map(|c|c.status.as_str()).unwrap_or("not-imported")}else{"unsupported"},"reason":c.and_then(|c|c.reason.as_ref()),"hint":c.and_then(|c|c.hint.as_ref()),"safariUserAgent":c.is_some_and(|c|c.safari_user_agent),"open":obs.is_some_and(|o|o.open),"currentConversation":obs.and_then(|o|o.current.clone()),"conversations":conversations})
 }
 pub async fn op(name: &str, mut args: Value) -> Result<Value> {
     args.as_object_mut().map(|a| a.remove("requestId"));
@@ -503,7 +548,19 @@ pub async fn op(name: &str, mut args: Value) -> Result<Value> {
     } else {
         "src-containers/open"
     };
-    crate::transport::forward_request(route, "POST", body).await
+    let result = crate::transport::forward_request(route, "POST", body).await?;
+    if name == "src_login_import" {
+        change(
+            |s, _| {
+                if let Some(c) = s.containers.get_mut(id) {
+                    apply_status(c, &result);
+                }
+                Ok(())
+            },
+            true,
+        )?;
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
