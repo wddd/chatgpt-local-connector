@@ -8,6 +8,6 @@
   "remoteLink": {
     "joined": false
   },
-  "page": "remote",
+  "page": "connections",
   "remoteConnectionId": "relay-main"
 }

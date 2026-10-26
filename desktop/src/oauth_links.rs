@@ -38,6 +38,16 @@ fn open(app: &tauri::AppHandle, url: &tauri::Url) {
             let _ = crate::windows::show(app, Some(("permissions:open".into(), json!(null))));
             return;
         }
+        Some("remote" | "accounts" | "connections" | "settings") => {
+            let target = match url.host_str() {
+                Some("remote") => "connections",
+                Some("accounts") => "overview",
+                Some(value) => value,
+                None => return,
+            };
+            let _ = crate::windows::show(app, Some(("navigate".into(), json!(target))));
+            return;
+        }
         Some("setup")
             if params
                 .iter()

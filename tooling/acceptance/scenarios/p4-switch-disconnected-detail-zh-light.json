@@ -9,6 +9,6 @@
     "switching": true,
     "disconnected": true
   },
-  "page": "remote",
+  "page": "overview",
   "remoteSourceId": "source-personal"
 }

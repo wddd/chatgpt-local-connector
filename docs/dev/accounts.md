@@ -1,8 +1,8 @@
 # Accounts
 
-[UI conventions](ui.md) · [Coding lanes](worktrees.md) · [Architecture](architecture.md) · [Tools](../reference/tools.md)
+[UI conventions](ui.md) · [Object model](object-model.md) · [Architecture](architecture.md) · [Tools](../reference/tools.md)
 
-This page describes account ownership, identity resolution and the Accounts workspace.
+This page describes account ownership, identity resolution and homepage SRC/AGENT account panels.
 
 ## Model
 
@@ -23,7 +23,7 @@ ARC manages control sources and Agents by Platform → Account → Task.
 
 Local CLI (`ingressId:local-cli`, credential type `local`) and the local panel share one durable local source identity. The panel records `ingressId:local-ui` in its origin. They are built-in authority on this computer, not external control sources or provider accounts. Their source ID remains available for task and receipt attribution; new local origins have no account ID. Local `whoami` reports `authority:local`, a null account `id`, and `identityResolution.state:not-applicable`.
 
-Control-source lists, Accounts, topology account nodes and source pickers exclude the built-in local source. Other configured local transports remain ordinary control sources. Local product metadata remains available to label historical records. Local authority cannot be disconnected, revoked, removed or switched to an external connection. Native mutations reject it with `LOCAL_SOURCE_PROTECTED`; the UI offers no control-source actions for it.
+Control-source lists, account panels, topology account nodes and source pickers exclude the built-in local source. Other configured local transports remain ordinary control sources. Local product metadata remains available to label historical records. Local authority cannot be disconnected, revoked, removed or switched to an external connection. Native mutations reject it with `LOCAL_SOURCE_PROTECTED`; the UI offers no control-source actions for it.
 
 For legacy installations, ensuring the built-in local ingress repairs its local credential marked `revoked` or `connectionRemoved` to `connected`, clears removal and pending-switch metadata, persists the repair and logs the transition once. It preserves the source ID and historical origins. Account reconciliation detaches local source membership and retains a tombstone for any resulting empty account; Agent profiles and other source memberships remain intact. External sources never receive this repair. A local notification handshake may verify delivery, but its identity resolution stays `not-applicable` and never attaches a provider account.
 
@@ -71,20 +71,9 @@ The management API mirrors these ops for the UI under `accounts/*` and replaces 
 
 ## UI
 
-### Entry
+### Management placement
 
-The bottom-left capsule becomes horizontal: Tasks, Records, Remote link, Accounts, Permissions & readiness, Settings. Accounts is a first-level workspace. Claude accounts leave Settings.
-
-### Accounts workspace
-
-- Title bar: Accounts, count line, Privacy toggle, primary Add account, close.
-- Left list (about 330px) grouped by known provider family or platform. List and detail scroll independently below the fixed title bar. Rows use platform logos, alias, an email line only when present, role chips SRC / AGENT, and a warning dot when notifications or a profile need attention. Row height follows its content.
-- Detail: header with platform logo, inline-editable alias, `email · org`, plan pill, and Merge accounts. The merge dialog selects confirmed account IDs, the resulting alias and an optional shared quota provider.
-- Where this account works: two cards. Control source lists connections with state dots and last seen, plus Open source panel. Agent shows profile state and kind, a Default for new dispatches switch and Sign in again. An empty side says so and offers to add that role.
-- Same identity notice: dispatching to this Agent draws from the same subscription quota.
-- Notifications card: state pill (Verified, Not bound, MCP Events, n/a), bound sessions with last delivery, Send test, and a secondary Bind manually. Sessions bind themselves through `notify_control`; nobody pastes IDs in the normal path.
-- Quota: before notifications, reuse the Agent panel window cards, including remaining/used display, reset times, pace, update age, and refresh. Percentage and pace text align at the bottom.
-- Bottom: Remove with its consequence (running tasks finish first; history keeps the tombstone).
+[Object model](object-model.md) defines SRC L1/L2 and AGENT L1/L2/L3. There is no Accounts workspace. L1 lists accounts and opens the existing add flow. L2 owns identity, alias, merge and removal. SRC owns notification binding and OAuth grants; AGENT owns profile defaults, reauthentication, quota and account-scoped tasks. Shared identities link between their canonical panels.
 
 ### Add account
 
@@ -92,14 +81,11 @@ Centered dialog, no scrim, three steps: Account type (Claude, ChatGPT / Codex, A
 
 ### Privacy mode
 
-One persisted preference, toggled from the Accounts title bar and the source panel header. It blurs emails, organizations, identity keys, session names and connection addresses everywhere they render. `cli app snapshot` and UI scenario screenshots default to privacy on. The topology shows aliases only, so it needs no blurring.
+One persisted preference, toggled from the SRC and AGENT account headers. It blurs emails, organizations, identity keys, session names and connection addresses everywhere they render. `cli app snapshot` and UI scenario screenshots default to privacy on. The topology shows aliases only, so it needs no blurring.
 
-### Control source panel
+### SRC panel
 
-One side panel replaces the source panel layer one plus the Remote link source detail. Remote link keeps the source and connection lists; opening a source opens this panel.
-
-- Header: product icon with a small account-initial badge, `Platform · Alias`, email only, connection enable switch, privacy toggle, close. Chips: state, connection, notification state.
-- Tabs: Activity (needs you / running / today counts, recent dispatches with pending rows first), Account (identity card, `whoami` line, link to the same-identity Agent with quota, notification binding with Copy bind prompt and Bind manually), Connection (connection card with Change, address copy, authorized / last seen / client reports / tools facts, collapsed Advanced with product correction, Disconnect at the bottom).
+The homepage SRC panel follows [Object model](object-model.md#homepage-panels). Connections links to SRC L2 instead of rendering another copy. Connection changes use the existing centered dialog; connection editing belongs only to Connections detail. Shared identity quota appears only on AGENT L2.
 
 ### Topology
 
@@ -117,11 +103,3 @@ One side panel replaces the source panel layer one plus the Remote link source d
 ## Fixtures
 
 Fixtures, scenarios and docs use invented identities on `example.com` and placeholder organizations. No real emails, organization names or session IDs.
-
-## Lanes
-
-- `accounts-core`: native model, identity resolution, migration, ops, management API, dispatch `account` parameter, task and activity attribution, reference docs.
-- `accounts-ui`: capsule, Accounts workspace, Add account, privacy mode, control source panel. Builds against this contract with `?scenario=accounts` and `?scenario=source-panel` mocks until core lands.
-- `topology-accounts`: modes, L2/L3, collapse, path highlight. Builds against this contract with a `?scenario=topology-accounts` mock until core lands.
-
-Shared files such as `ui/types.ts` and locale JSON are expected to conflict lightly; resolve on landing.

@@ -60,10 +60,9 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
     const { navigation } = await server.ssrLoadModule('/ui/state/navigation.ts');
     const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
-    const { default: AccountsPage } = await server.ssrLoadModule('/ui/components/AccountsPage.tsx');
     const { default: AddAccount } = await server.ssrLoadModule('/ui/components/AddAccount.tsx');
     const { default: SourcePanel } = await server.ssrLoadModule('/ui/components/SourcePanel.tsx');
-    const { default: RemoteLinkPage } = await server.ssrLoadModule('/ui/components/RemoteLinkPage.tsx');
+    const { default: ConnectionsPage } = await server.ssrLoadModule('/ui/components/ConnectionsPage.tsx');
     const { ActivityBubble } = await server.ssrLoadModule('/ui/components/ActivityBubbles.tsx');
     const { CopyField, Dialog, TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
     const { Sensitive, SensitiveInput } = await server.ssrLoadModule('/ui/components/Sensitive.tsx');
@@ -94,18 +93,6 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
     await act(async () => setPrivacy(false));
     assert.ok(page.getByText(account.email, { exact: true }));
     assert.equal(fireEvent.copy(page.getByText(account.email, { exact: true }), { clipboardData: clipboard }), true);
-    for (const theme of ['light', 'dark']) {
-      document.documentElement.dataset.theme = theme;
-      await act(async () => setPrivacy(true));
-      await render(h(AccountsPage)); assertPrivate();
-      await act(async () => { fireEvent.click(page.getByRole('button', { name: t('accounts.editAlias', { alias: account.alias }), exact: true })); });
-      assert.ok(page.getByRole('textbox', { name: t('accounts.alias'), exact: true }));
-      assertPrivate();
-      await act(async () => { fireEvent.keyDown(page.getByRole('textbox', { name: t('accounts.alias'), exact: true }), { key: 'Escape' }); });
-      await act(async () => setPrivacy(false));
-      assert.ok(page.getAllByText(account.email, { exact: true }).length > 0);
-      assert.ok(page.getByText(account.orgName, { exact: true }));
-    }
     await act(async () => setPrivacy(true));
     await render(h(Dialog, { title: 'Source', onClose() {} }, h(SourcePanel, { source })));
     await act(async () => { fireEvent.click(page.getByRole('radio', { name: t('accounts.tab.account'), exact: true })); });
@@ -119,7 +106,7 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
     await render(h(AddAccount, { key: 'add-role', forAccount: sourceAccount, onClose() {} })); assertPrivate();
     assert.ok(page.getByRole('dialog', { name: t('accounts.addAgentFor', { alias: sourceAccount.alias }), exact: true }));
     await act(async () => navigation.set((old: any) => ({ ...old, remoteSourceId: undefined, remoteConnectionId: undefined })));
-    await render(h(RemoteLinkPage)); assertPrivate();
+    await render(h(ConnectionsPage)); assertPrivate();
     await render(h(CopyField, { value: address, label: 'Connection address' })); assertPrivate();
     await act(async () => { fireEvent.click(page.getByRole('button', { name: t('copy'), exact: true })); });
     assert.equal(copied, address);

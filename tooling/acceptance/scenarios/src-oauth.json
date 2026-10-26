@@ -1,0 +1,14 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "claude",
+    "codex"
+  ],
+  "tasks": [],
+  "remoteLink": {},
+  "panel": {
+    "kind": "source",
+    "id": "source-personal"
+  }
+}

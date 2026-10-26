@@ -47,7 +47,8 @@ import type { WireState } from "../topology/render";
 import Onboarding from "./Onboarding";
 import AddConnection from "./AddConnection";
 import { onboarding, openOnboarding, connectionSetup, connectionSwitch, addedSource } from "../state/onboarding";
-import IngressPanel from "./IngressPanel";
+import { openSourceWorkspace } from "./SourcePanel";
+import SrcPanel from "./SrcPanel";
 import AgentsSettings from "./AgentsSettings";
 import AgentDisplaySettings from "./AgentDisplaySettings";
 import { Button, Icon, Notice } from "./ui";
@@ -110,6 +111,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     return () => { window.removeEventListener("pointerdown", outside, true); window.removeEventListener("keydown", escape); };
   }, [expandedQueue]);
   const { snapshot } = subscriptions.use(), nav = navigation.use();
+  useEffect(() => { if (nav.remoteSourceId && sourceRecords.some(source => source.id === nav.remoteSourceId)) openSourceWorkspace(nav.remoteSourceId); }, [nav.remoteSourceId, sourceRecords]);
   const [agentsOpen, setAgentsOpen] = useState(false), [displaySettingsOpen, setDisplaySettingsOpen] = useState(false);
   const initialSetupShown = useRef(false);
   useEffect(() => {
@@ -125,17 +127,10 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const running = sources.some((i) => i.running),
     progressing =
       !!busy || sources.some((i) => ["starting", "stopping"].includes(i.state));
-  function edit(ingress?: Ingress, field?: string) {
-    if (ingress) { selectIngressPanel(ingress, { editing: true, field }); return; }
+  function edit(ingress?: Ingress) {
+    if (ingress) { navigation.set(old => ({ ...old, page: "connections", remoteConnectionId: ingress.id })); return; }
     openOnboarding("product");
   }
-  useEffect(() => {
-    if (!nav.ingressEdit) return;
-    const ingress = status?.ingresses.find((i) => i.id === nav.ingressEdit?.id);
-    if (!ingress) return;
-    edit(ingress, nav.ingressEdit.field);
-    navigation.set((old) => ({ ...old, ingressEdit: undefined }));
-  }, [nav.ingressEdit, status?.ingresses]);
   async function toggle() {
     if (busy) return;
     if (
@@ -349,7 +344,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         {selectedAgent && visible && (panelReady || selection?.closing || panelLayout.key?.startsWith("agent:")) && <AgentPanel agent={selectedAgent} dockRect={panelLayout.rect}
           width={envOverrides().taskPanelWidth ?? panelLayout.width} expanded={envOverrides().taskPanelWidth == null && panelLayout.expanded} onToggleWidth={() => setPanelExpanded(value => !value)}
           onSettings={() => setDisplaySettingsOpen(true)} onPanelFrame={panelFrame} />}
-        {sourceSelection && visible && (panelReady || sourceSelection.closing || panelLayout.key?.startsWith("source:")) && <IngressPanel dockRect={panelLayout.rect} width={panelLayout.width} expanded={panelLayout.expanded} onToggleWidth={() => setPanelExpanded(value => !value)} onPanelFrame={panelFrame} />}
+        {sourceSelection && visible && (panelReady || sourceSelection.closing || panelLayout.key?.startsWith("source:")) && <SrcPanel dockRect={panelLayout.rect} width={panelLayout.width} expanded={panelLayout.expanded} onToggleWidth={() => setPanelExpanded(value => !value)} onPanelFrame={panelFrame} />}
         <div className="activity-edge-fade" aria-hidden="true" />
 
         {error && (
