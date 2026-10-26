@@ -50,7 +50,7 @@ import { onboarding, openOnboarding, connectionSetup, connectionSwitch, addedSou
 import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
 import AgentDisplaySettings from "./AgentDisplaySettings";
-import { Button, Icon, Notice, SingleChoice } from "./ui";
+import { Button, Icon, Notice } from "./ui";
 import AgentPanel from "./AgentPanel";
 import Hub from "../topology/Hub";
 function wireState(state: string): WireState {
@@ -338,9 +338,6 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             </span>
           </button>
         </div>
-        {accounts.length > 0 && <div className="topology-mode"><SingleChoice label={t('topology.mode')} value={mode}
-          options={[{ value: 'tree', label: t('topology.tree') }, { value: 'flat', label: t('topology.flat') }]}
-          onChange={value => topologyMode.set(value as 'tree' | 'flat')} /></div>}
         <Topology ref={topology} boundary={core} accountsEnabled={accounts.length > 0} left={topologyLeft} right={topologyRight} panelKey={panelKey} panelExpanded={selection && envOverrides().taskPanelWidth != null ? false : panelExpanded} onPanelLayout={updatePanelLayout}
           onReorderNodes={reorderNodes}
           onReorderTasks={(_side, parent, ids) => {

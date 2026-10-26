@@ -1,5 +1,6 @@
 import { navigation } from "../state/navigation";
 import { notificationsPreference } from "../state/store";
+import { topologyMode } from "../topology/accountState";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Monitor, Sun, Moon } from "lucide-react";
 import { t, language, languageOptions, setLanguage } from "../i18n";
@@ -39,7 +40,7 @@ export default function SettingsPage() {
     }),
     [appearanceReady, setAppearanceReady] = useState(false),
     [service, setService] = useState<Service>();
-  const notifications = notificationsPreference.use();
+  const notifications = notificationsPreference.use(), topology = topologyMode.use();
   const mac = isDesktop && navigator.platform.toLowerCase().includes("mac");
   useEffect(() => {
     if (mac)
@@ -228,6 +229,11 @@ export default function SettingsPage() {
             />
           </Row>
         )}
+        <Row title={t("topology.mode")}>
+          <SingleChoice label={t("topology.mode")} value={topology}
+            options={[{ value: "tree", label: t("topology.tree") }, { value: "flat", label: t("topology.flat") }]}
+            onChange={value => topologyMode.set(value as "tree" | "flat")} />
+        </Row>
       </Group>
       <Group title={t("network")}>
         <Row

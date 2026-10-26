@@ -107,13 +107,15 @@ export class PortraitPainter {
       const opacity = n.presence * (node.state === 'inactive' ? 0.2 : 0.55 + 0.3 * n.emphasis);
       const descendants = nodes.filter(c => c.parent === node.id && c.side === node.side).map(c => ({ node: c, value: a.values(nodeKey(c.side, c.id)) })).filter(c => c.value);
       if (descendants.length) {
-        const bx = n.childBusX, ys = descendants.map(c => c.value!.y), start = point(n.x - node.side * (n.size * n.scale / 2 + 4), n.y);
-        const lo = Math.min(n.y, ...ys), hi = Math.max(n.y, ...ys);
-        this.path(`${key}:account-bus`, railPath([start, point(bx, n.y), point(bx, lo)]) + railPath([point(bx, n.y), point(bx, hi)]), `portrait-rail ${sideClass}`, opacity * Math.max(...descendants.map(c => c.value!.presence)));
-        for (const child of descendants) {
-          const v = child.value!, d = railPath([point(bx, n.y), point(bx, v.y), point(v.x + node.side * (v.size * v.scale / 2 + 4), v.y)]);
-          this.path(`${key}:${child.node.id}`, d, `portrait-rail ${sideClass}`, opacity * v.presence);
-          this.path(`${key}:${child.node.id}:hit`, v.presence >= 0.02 && a.live.get(nodeKey(node.side, child.node.id))?.alive ? d : '', 'topology-path-hit', v.presence, {}, { side: node.side, id: child.node.id });
+        const bx = n.childBusX, start = point(n.x - node.side * (n.size * n.scale / 2 + 4), n.y);
+        const branches = descendants.map(child => {
+          const v = child.value!;
+          return { ...child, d: railPath([start, point(bx, n.y), point(bx, v.y), point(v.x + node.side * (v.size * v.scale / 2 + 4), v.y)]) };
+        });
+        // Paint shared stems once; each route rounds both ends of the fork.
+        this.path(`${key}:account-branches`, branches.filter(c => c.value!.presence > 0.01).map(c => c.d).join(' '), `portrait-rail ${sideClass}`, opacity * Math.max(...descendants.map(c => c.value!.presence)));
+        for (const { node: child, value: v, d } of branches) {
+          this.path(`${key}:${child.id}:hit`, v!.presence >= 0.02 && a.live.get(nodeKey(node.side, child.id))?.alive ? d : '', 'topology-path-hit', v!.presence, {}, { side: node.side, id: child.id });
         }
       }
       const own = tasks.filter(t => t.side === node.side && t.parent === node.id).map(t => ({ task: t, value: a.values(taskKey(t.side, t.id)) })).filter(t => t.value);

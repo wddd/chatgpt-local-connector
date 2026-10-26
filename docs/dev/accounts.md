@@ -103,8 +103,8 @@ One side panel replaces the source panel layer one plus the Remote link source d
 
 ### Topology
 
-- Modes: Tree (default) and Flat, a persisted preference with a top-right segmented control. Switching never reorders nodes.
-- Tree: L1 is the platform. A platform with more than one account grows L2 account nodes (about 36px, platform logo, alias label). Agent tasks attach to their account node (L3). A single-account platform has no L2; tasks attach to the platform.
+- Modes: Tree (default) and Flat, a persisted preference at the end of Settings > General. Switching never reorders nodes.
+- Tree: L1 is the platform. A platform with more than one account grows L2 account nodes (42px, platform logo, alias label). Agent tasks attach to their account node (L3). A single-account platform has no L2; tasks attach to the platform.
 - Flat: L1 is `Platform · Alias` (platform name alone for single-account platforms); same-platform nodes stay adjacent.
 - Account visuals: both control-source and Agent account nodes reuse their platform logo. For multi-account Agents, the platform node shows only the logo; each account node shows its own quota ring from that account's profile quota. Missing account quota never falls back to another account's reading.
 - Same identity: hovering an account also lights its counterpart on the other side. Account labels contain no link icon.

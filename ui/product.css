@@ -1464,7 +1464,6 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .pairing-card .pairing-fact { font-size: var(--text-xs); color: var(--text-secondary); }
 .pairing-card .pairing-summary { font-size: var(--text-sm); }
 
-.topology-mode { position: absolute; top: 16px; right: 20px; width: 154px; z-index: 8; }
 .topology-node.sources { --account-color: var(--topology-source); }
 .topology-node.agents { --account-color: var(--topology-agent); }
 .topology-unidentified-label { display: flex; width: max-content; }
@@ -1556,6 +1555,8 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .hub-source { left: var(--source-dot-x, calc(14 / 92 * 100%)); top: var(--source-dot-y, 50%); }
 .hub-agent { left: var(--agent-dot-x, calc(78 / 92 * 100%)); top: var(--agent-dot-y, 50%); }
 .topology-scene[data-orientation="portrait"] .hub-hint { display: none; }
+.topology-scene[data-orientation="portrait"] .topology-node .graph-node,
+.topology-scene[data-orientation="portrait"] .topology-node .graph-node:hover { background: var(--canvas); border-radius: 50%; }
 .topology-scene[data-orientation="portrait"] :is(.graph-node-name, .agent-auto-compact) {
   display: block; width: max-content; max-width: var(--portrait-label-width); white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip;
 }

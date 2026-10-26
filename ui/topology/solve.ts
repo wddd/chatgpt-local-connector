@@ -63,6 +63,7 @@ export interface WingBalance { core: number; full: number; squeeze: number }
 export interface Layout { portrait?: PortraitGeometry; balance: WingBalance[]; vw: number; vh: number; sceneH: number; hub: Point & { Re: number }; wings: Wing[] }
 export const deg = (d: number) => d * Math.PI / 180;
 export const NODE_R = 22, LABEL_W = 110;
+export const ACCOUNT_NODE_SIZE = 42;
 export const PANEL_MIN_WIDTH = 400, PANEL_MARGIN = 16, PANEL_ARC_GAP = 40;
 
 export const COLLAPSE_HIT_SIZE = 32, COLLAPSE_SYMBOL_SIZE = 20;
@@ -164,7 +165,7 @@ function solveWing(list: readonly Entity[], side: Side, hub: Point, Re: number, 
     const angles = distribute(child.nodes.filter(n => !n.parent).map(n => Math.atan2(n.y - parent.y, p.bubbleOffset) * 180 / Math.PI), p.arcFollow, 9, p.arcMax);
     let i = 0;
     for (const n of child.nodes) {
-      if (!n.parent) { n.parent = parent.id; n.port = angles[i++]; n.size = 36; n.scale = 1; n.opacity = 1; if (n.arc) n.arc.R = 18 + p.arcGap; }
+      if (!n.parent) { n.parent = parent.id; n.port = angles[i++]; n.size = ACCOUNT_NODE_SIZE; n.scale = 1; n.opacity = 1; if (n.arc) n.arc.R = ACCOUNT_NODE_SIZE / 2 + p.arcGap; }
       descendants.push(n);
     }
     parent.arc = { R: parent.size / 2 * parent.scale + p.arcGap, lo: Math.min(parent.arc?.lo ?? -14, angles[0] - p.arcPad), hi: Math.max(parent.arc?.hi ?? 14, angles.at(-1)! + p.arcPad) };

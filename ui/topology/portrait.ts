@@ -1,4 +1,4 @@
-import { DEFAULTS, NODE_R, type Drag, type Entity, type Layout, type NodeGeometry, type Params, type Scene, type Side, type TaskGeometry, type Wing } from './solve.ts';
+import { ACCOUNT_NODE_SIZE, DEFAULTS, NODE_R, type Drag, type Entity, type Layout, type NodeGeometry, type Params, type Scene, type Side, type TaskGeometry, type Wing } from './solve.ts';
 import { bubbleWidths } from '../state/activityModel.ts';
 
 export interface PortraitGeometry {
@@ -17,14 +17,15 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
   const column = Math.min(88, Math.max(56, vw * 88 / 900));
   const busGap = Math.min(62, Math.max(30, vw * 62 / 900));
   const finalStub = Math.min(24, Math.max(12, vw * 24 / 900));
-  const Re = Math.min(112, vw * 0.16) * p.ringScale;
+  const Re = Math.min(112, vw * 0.16, Math.max(56, vh * 0.08)) * p.ringScale;
+  const hubGap = Math.min(56, Re / 2);
   const earOffset = Re, earHalf = Re * 72 / 112;
   const hasTasks = (e: Entity): boolean => !e.collapsed && (e.tasks.length > 0 || !!e.children?.some(hasTasks));
   const busy = sc.right.some(hasTasks);
   const right = [...sc.right.filter(hasTasks), ...sc.right.filter(e => !hasTasks(e))];
   const children = (e: Entity) => e.collapsed ? [] : e.children ?? [];
   const tasks = (e: Entity) => e.collapsed ? [] : e.tasks;
-  const scale = (e: Entity, side: Side, account = false) => account ? 36 / (NODE_R * 2)
+  const scale = (e: Entity, side: Side, account = false) => account ? ACCOUNT_NODE_SIZE / (NODE_R * 2)
     : p.nodeSize / (NODE_R * 2) * (hasTasks(e) ? p.activeScale : side === 1 && busy ? p.minIdleScale : 1);
   const label = (e: Entity, side: Side) => labels?.[side === -1 ? 'left' : 'right'].get(e.id);
   const extents = (list: readonly Entity[], side: Side, account = false) => ({
@@ -56,7 +57,7 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
     const measured = label(e, side), s = scale(e, side, account);
     const labelWidth = side === -1 ? account ? sourceAccountLabelWidth : sourceLabelWidth : account ? agentAccountLabelWidth : agentLabelWidth;
     const labelHeight = (measured?.height ?? 0) * s * (measured && measured.width * s > labelWidth ? 2 : 1);
-    const labelRow = side === 1 && account ? 2 * (18 + 4 * s + labelHeight) : labelHeight + 16;
+    const labelRow = side === 1 && account ? 2 * (ACCOUNT_NODE_SIZE / 2 + 4 * s + labelHeight) : labelHeight + 16;
     return Math.max(base, labelRow, own + (own ? 20 : 0) + subtree + (own && subtree ? p.rowGap : 0));
   };
   function wing(list: readonly Entity[], side: Side, top: number): Wing {
@@ -65,7 +66,7 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
       const height = rowHeight(e, side, !!parent), own = tasks(e), nested = children(e);
       const active = hasTasks(e), idle = side === 1 && busy && !active && !parent;
       const node: NodeGeometry = { id: e.id, parent, tasks: own, active, side, x, y: y + height / 2,
-        size: parent ? 36 : p.nodeSize, scale: parent ? 1 : active ? p.activeScale : idle ? p.minIdleScale : 1,
+        size: parent ? ACCOUNT_NODE_SIZE : p.nodeSize, scale: parent ? 1 : active ? p.activeScale : idle ? p.minIdleScale : 1,
         opacity: idle ? 0.62 : 1, dim: idle, port: 0, arc: null,
         taskBusX: x - busGap, childBusX: x - side * column / 2 };
       if (drag?.kind === 'node' && drag.side === side && drag.id === e.id) {
@@ -93,8 +94,8 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
   const sourceTop = 74, left = wing(sc.left, -1, sourceTop);
   const sourceBottom = sourceTop + left.H;
   const sourcePanelHeight = sc.panel?.side === -1 ? Math.min(sc.panel.contentHeight ?? 280, vh * 0.55) : 0;
-  const hub = { x: vw / 2, y: sourceBottom + 56 + earOffset + (sourcePanelHeight ? sourcePanelHeight + 40 : 0), Re };
-  const agentTop = hub.y + earOffset + 56, agents = wing(right, 1, agentTop);
+  const hub = { x: vw / 2, y: sourceBottom + hubGap + earOffset + (sourcePanelHeight ? sourcePanelHeight + 40 : 0), Re };
+  const agentTop = hub.y + earOffset + hubGap, agents = wing(right, 1, agentTop);
   const agentBottom = agentTop + agents.H;
   for (const wing of [left, agents]) {
     if (sc.panel?.side !== wing.side) continue;

@@ -65,15 +65,16 @@ function PanelContents() {
   const primary = () => available() ? installUpdate(timing) : scheduleUpdate(timing === "now" ? "now" : "defer", timing === "settled" ? 1 : undefined);
   return <>
     <header className="update-panel-header"><div><Identity job={job} /></div><IconButton icon={X} label={t("close")} onClick={dismissUpdate} /></header>
+    <div className="update-panel-body">
     {advancing ? <div className="update-countdown" role="status" aria-live="polite">
       <h2>{seconds === undefined ? t(`updates.state.${job.state}`) : t("replacementCountdown", { seconds })}</h2>
       <Steps job={job} />
     </div> : <div className="update-columns">
-      <section className="update-notes" aria-label={t(job.source?.kind === "local" ? "updates.localNotes" : "updates.notes")}><h3>{t(job.source?.kind === "local" ? "updates.localNotes" : "updates.notes")}</h3><pre>{job.notes || t("updates.noNotes")}</pre>
+      <section className="update-notes" tabIndex={0} aria-label={t(job.source?.kind === "local" ? "updates.localNotes" : "updates.notes")}><h3>{t(job.source?.kind === "local" ? "updates.localNotes" : "updates.notes")}</h3><pre>{job.notes || t("updates.noNotes")}</pre>
         {downloading && <><Progress label={t("updateDownloadProgress")} value={job.total ? (job.downloaded ?? 0) / job.total * 100 : 0} /><p role="status">{t("downloadingValueMb", { size: ((job.downloaded ?? 0) / 1048576).toFixed(1) })}</p></>}
         {job.state === "checking" && <p role="status">{t("checkingLabel")}</p>}
       </section>
-      <section className="update-impact"><WorkGroups job={job} />
+      <section className="update-impact" tabIndex={0}><WorkGroups job={job} />
         <SingleChoice label={t("updates.timing")} value={timing} onChange={value => setSelection(value as UpdateTiming)} disabled={job.supported === false || s.requesting || !available() && !canSchedule} options={(["settled", "now", "defer"] as const).map(value => ({ value, label: t(`updates.when.${value}`) }))} />
         {job.supported === false && <p>{t("updates.pipelineUnsupported")}</p>}
         {timing === "now" && job.work.blocking.length > 0 && <p className="update-consequence">{t("updates.dropInteractions")}</p>}
@@ -82,6 +83,7 @@ function PanelContents() {
     </div>}
     {(s.error || job.error) && <Notice>{s.error || job.error}</Notice>}
     {s.message && <p role="status">{s.message}</p>}
+    </div>
     <footer className="update-panel-footer">
       {available() && <Button variant="ghost" disabled={s.requesting} onClick={skipUpdate}>{t("skipThisVersion")}</Button>}
       {canSchedule && <Button variant="ghost" disabled={s.requesting} onClick={() => action(scheduleUpdate("cancel"))}>{t(job.source?.kind === "local" ? "updates.cancelReplacement" : "cancel")}</Button>}
