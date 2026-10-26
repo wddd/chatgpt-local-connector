@@ -1,6 +1,8 @@
 .platform-icon { position: relative; display: inline-grid; place-items: center; flex: none; vertical-align: middle; }
 .platform-icon > span:not(.platform-mask) { display: contents; }
+.platform-icon.agent-logo { width: 65%; height: 65%; }
 .platform-icon.agent-logo > span { display: flex; width: 100%; height: 100%; }
+.platform-icon.agent-logo > span > svg { display: block; width: 100%; height: 100%; }
 .platform-icon[data-sized] svg { width: 100%; height: 100%; }
 .platform-icon > img { width: 100%; height: 100%; object-fit: contain; }
 .platform-icon > .platform-mask { display: block; width: 100%; height: 100%; background: currentColor; mask-size: contain; mask-repeat: no-repeat; mask-position: center; }

@@ -1,0 +1,3 @@
+.agent-quota-icon > .platform-icon { width: 65%; height: 65%; }
+.dual-quota.has-quota > .platform-icon { width: 46%; height: 46%; }
+.topology-node .agent-quota-icon:not(.has-quota) > .platform-icon { width: 38px; height: 38px; }

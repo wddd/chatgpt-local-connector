@@ -4,6 +4,7 @@ import type { TaskRecord } from '../../state/tasks';
 import { useDispatchCatalog, type CatalogState, type DispatchCatalog } from '../../state/dispatchCatalog';
 import { t } from '../../i18n';
 import { Tooltip } from '../ui';
+import { shortenModelLabel } from './dispatchSpecLabel';
 import './DispatchSpec.css';
 
 export type DispatchSpecRecord =
@@ -34,7 +35,8 @@ export function DispatchSpec({ agent, record, resolver, variant = 'panel' }: { a
   const native = useDispatchCatalog(owner, taskId, !resolver && !!summary?.model);
   const state = resolver ?? native, model = summary?.model?.trim(), effort = summary?.effort?.trim(), tier = summary?.serviceTier?.trim();
   const resolved = model ? resolveModel(state?.catalog, model) : undefined;
-  const modelName = resolved?.name?.trim();
+  const nativeModelName = resolved?.name?.trim();
+  const modelName = nativeModelName ? shortenModelLabel(nativeModelName) : undefined;
   const loadingModel = !!model && (!state || state.status === 'loading');
   const unresolvedModel = !!model && !modelName && !loadingModel;
   const options = resolved?.options ?? (model && [state?.catalog?.currentModel, state?.catalog?.optionsForModel].includes(model) ? state?.catalog?.options : undefined);

@@ -678,21 +678,6 @@ pre {
   flex: none;
   vertical-align: middle;
 }
-.agent-logo {
-  display: flex;
-  width: 65%;
-  height: 65%;
-  align-items: center;
-  justify-content: center;
-}
-.agent-logo svg {
-  width: 100%;
-  height: 100%;
-}
-.has-quota .agent-logo {
-  width: 55%;
-  height: 55%;
-}
 .quota-outline {
   position: absolute;
   inset: 0;

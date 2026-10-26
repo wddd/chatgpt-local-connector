@@ -2,7 +2,8 @@ import type { CatalogState, DispatchCatalog } from './state/dispatchCatalog';
 import type { DispatchSpecRecord } from './components/composites/DispatchSpec';
 
 export const dispatchCatalogFixtures: Record<string, DispatchCatalog> = {
-  codex: { source: 'codex-model-list', models: [{ model: 'gpt-6.1-sol', name: 'GPT-6.1 Sol' }] },
+  codex: { source: 'codex-model-list', models: [{ model: 'gpt-6.1-sol', name: 'GPT-6.1 Sol' }, { model: 'gpt-6-astra', name: 'GPT-6-Astra' }] },
+  claude: { source: 'persisted-session-snapshot', models: [{ model: 'claude-opus-5-5', name: 'Claude Opus 5.5' }] },
   dsh: { source: 'persisted-session-snapshot', currentModel: '["magpie","opencode-go/deepseek-v4.1-flash"]', models: [
     { model: '["magpie","opencode-go/deepseek-v4.1-flash"]', name: 'DeepSeek V4.1 Flash · OpenCode Go' },
   ], options: [{ id: 'reasoning_effort', values: [{ value: 'max', name: 'Max' }] }] },
@@ -11,6 +12,8 @@ const session = (id: string, dispatchSummary: { model?: string; effort?: string;
 export const dispatchSpecFixtures: { label: string; agent: string; record: DispatchSpecRecord; resolver: CatalogState; variant?: 'panel' | 'inline' }[] = [
   { label: 'Native catalog', agent: 'codex', record: session('codex-task', { model: 'gpt-6.1-sol', effort: 'high', serviceTier: 'priority' }), resolver: { status: 'ready', catalog: dispatchCatalogFixtures.codex } },
   { label: 'ACP model labels', agent: 'dsh', record: session('dsh-task', { model: '["magpie","opencode-go/deepseek-v4.1-flash"]', effort: 'max' }), resolver: { status: 'ready', catalog: dispatchCatalogFixtures.dsh } },
+  { label: 'Claude recorded model', agent: 'claude', record: session('claude-recorded', { model: 'claude-opus-5-5', effort: 'medium' }), resolver: { status: 'ready', catalog: dispatchCatalogFixtures.claude }, variant: 'inline' },
+  { label: 'GPT brand prefix', agent: 'codex', record: session('astra-recorded', { model: 'gpt-6-astra', effort: 'high' }), resolver: { status: 'ready', catalog: dispatchCatalogFixtures.codex }, variant: 'inline' },
   { label: 'Unknown model', agent: 'unknown', record: session('opaque-task', { model: 'opaque/model-id', effort: 'high' }), resolver: { status: 'ready', catalog: { unavailable: 'needs-session' } } },
   { label: 'Loading labels', agent: 'dsh', record: session('loading-task', { model: '["magpie","opencode-go/deepseek-v4.1-flash"]', effort: 'max', serviceTier: 'priority' }), resolver: { status: 'loading' } },
   { label: 'Catalog failure', agent: 'dsh', record: session('error-task', { model: 'opaque/model-id' }), resolver: { status: 'error' } },

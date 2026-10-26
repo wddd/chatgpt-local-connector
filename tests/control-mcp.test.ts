@@ -1655,6 +1655,41 @@ test('review receipts omit notification delivery details including replay',async
 });
 
 
+test('Claude transcript activity preserves its recorded turn spec', async () => {
+  // Regression: external Claude tasks omitted their recorded model and effort.
+  const home = path.join(directory, 'home'), transcriptDir = path.join(home, '.claude/projects/account-attribution');
+  const sessionId = randomUUID(), firstTurn = randomUUID(), nextTurn = randomUUID();
+  const transcriptPath = path.join(transcriptDir, sessionId + '.jsonl');
+  const timestamp = new Date().toISOString();
+  const records: Record<string, unknown>[] = [
+    { type: 'user', uuid: firstTurn, sessionId, timestamp, message: { role: 'user', content: 'Inspect the fixture' } },
+    { type: 'assistant', sessionId, timestamp, effort: 'high', perTurnEffort: 'medium', message: { role: 'assistant', model: 'claude-opus-5-5', stop_reason: null, content: [{ type: 'thinking', thinking: 'Inspecting the fixture' }] } },
+  ];
+  const saveRecords = () => writeFile(transcriptPath, records.map(record => JSON.stringify(record)).join('\n') + '\n');
+  const readSession = async () => (await management('agents/activity')).agents.claude?.sessions.find((row: any) => row.id === sessionId);
+  try {
+    await mkdir(transcriptDir, { recursive: true });
+    await saveRecords();
+    const observed = await eventually(readSession, row => row?.turnId === firstTurn);
+    assert.equal(observed.agentAccountId, undefined);
+    assert.equal(observed.source, 'transcript');
+    assert.equal(observed.turnId, firstTurn);
+    assert.equal(observed.dispatchSummary.model, 'claude-opus-5-5');
+    assert.equal(observed.dispatchSummary.effort, 'medium');
+    assert.equal(observed.dispatchSummary.serviceTier, undefined);
+    records.push({ type: 'user', uuid: nextTurn, sessionId, timestamp, message: { role: 'user', content: 'Inspect the next turn' } });
+    await saveRecords();
+    const next = await eventually(readSession, row => row?.turnId === nextTurn);
+    assert.equal(next.dispatchSummary, undefined);
+    records.push({ type: 'assistant', sessionId, timestamp, effort: 'low', message: { role: 'assistant', stop_reason: null, content: [{ type: 'thinking', thinking: 'Inspecting the next turn' }] } });
+    await saveRecords();
+    const effortOnly = await eventually(readSession, row => row?.dispatchSummary?.effort === 'low');
+    assert.equal(effortOnly.dispatchSummary.model, undefined);
+  } finally {
+    await rm(transcriptPath, { force: true });
+  }
+});
+
 test('ACP task tracking keeps approvals active and projects context, SSE and incremental timeline', async () => {
   // Regression: an unresolved ACP approval must stay actionable while execution output arrives.
   const transcriptDir=path.join(directory,'home/.claude/projects/example');
@@ -1675,7 +1710,7 @@ test('ACP task tracking keeps approvals active and projects context, SSE and inc
   assert.equal(compactWait.arcInbox,undefined);assert.equal(compactWait.files,null);assert.equal(compactWait.diffstat,null);
 
 
-  const activity=await management('agents/activity');
+  const activity=await eventually(() => management('agents/activity'), snapshot => snapshot.agents.claude?.sessions.filter((row: any) => transcriptIds.includes(row.id)).length === transcriptIds.length);
   assert.ok(activity.activeAgents.includes('tracking-example'));
   const transcripts=activity.agents.claude.sessions.filter((r: any)=>transcriptIds.includes(r.id));
   assert.equal(transcripts.length,2);

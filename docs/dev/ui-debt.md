@@ -26,7 +26,7 @@ Counts are outstanding violations per file and rule, sorted by count.
 | File | Rule | Count |
 | --- | --- | ---: |
 | ui/product.css | shared-layout-css | 486 |
-| ui/style.css | shared-layout-css | 113 |
+| ui/style.css | shared-layout-css | 112 |
 | ui/components/TaskDetail.css | shared-layout-css | 111 |
 | ui/components/AppUpdate.css | shared-layout-css | 39 |
 | ui/subscriptions/bubble.css | shared-layout-css | 29 |

@@ -16,7 +16,7 @@ export function installTopologyAccounts(status: Status, activity: AgentActivityS
     ...identity, createdAt: activity.observedAt, observedAt: activity.observedAt,
     notifications: { state: identity.sources.length ? identity.provider === 'openai' ? 'mcp-events' : 'not-bound' : 'n/a',
       reachable: identity.provider === 'openai', sessions: [] },
-    quota: identity.provider === 'anthropic' && identity.agentProfiles.length ? {
+    quota: ['anthropic', 'openai'].includes(identity.provider) && identity.agentProfiles.length ? {
       state: 'ready', observedAt: activity.observedAt,
       windows: [
         { id: 'five-hour', poolId: 'main', label: 'five_hour', usedPercent: identity.id === 'example-personal' ? 18 : 58,

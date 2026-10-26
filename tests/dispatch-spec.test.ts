@@ -4,6 +4,7 @@ import { Window } from 'happy-dom';
 import { createServer } from 'vite';
 import { act, createElement as h, useLayoutEffect } from 'react';
 import { within } from '@testing-library/dom';
+import { shortenModelLabel } from '../ui/components/composites/dispatchSpecLabel.ts';
 import type { CatalogState } from '../ui/state/dispatchCatalog';
 
 test('recorded dispatch specs expose readable catalog labels on focus and identify unresolved models', async () => {
@@ -27,7 +28,7 @@ test('recorded dispatch specs expose readable catalog labels on focus and identi
     const { dispatchCatalogFixtures } = await server.ssrLoadModule('/ui/scenarioDispatchSpec.ts');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
     const catalog = dispatchCatalogFixtures.dsh;
-    const { model, name } = catalog.models[0];
+    const { model } = catalog.models[0], name = shortenModelLabel(catalog.models[0].name);
     const summary = { model, effort: 'max', serviceTier: 'priority' };
     const records = [
       { kind: 'session', value: { id: 'dsh-task', source: 'arc-task', dispatchSummary: summary } },
@@ -135,7 +136,7 @@ test('task rows expose the recorded model and effort through the shared dispatch
     const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
     const { dispatchCatalogFixtures } = await server.ssrLoadModule('/ui/scenarioDispatchSpec.ts');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
-    const catalog = dispatchCatalogFixtures.dsh, { model, name } = catalog.models[0];
+    const catalog = dispatchCatalogFixtures.dsh, { model } = catalog.models[0], name = shortenModelLabel(catalog.models[0].name);
     const record = { agent: 'dsh', taskId: 'recorded-task', requestId: 'request', state: 'completed',
       createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', approval: { decision: 'automatic', source: 'remote', at: '' },
       task: { kind: 'create', title: 'Recorded task', prompt: 'Review configuration', input: [], model, effort: 'max', settings: { serviceTier: 'priority' } } };
@@ -156,4 +157,16 @@ test('task rows expose the recorded model and effort through the shared dispatch
     await server.close();
     await window.happyDOM.close();
   }
+});
+
+
+test('model label shortening preserves unmatched names and native version text', () => {
+  // Property: only complete recognized leading brands are removed; other names remain unchanged.
+  for (const [name, expected] of [
+    ['GPT-6-Astra', '6 Astra'], ['GPT-6.1-Sol', '6.1 Sol'],
+    ['Claude Opus 5.5', 'Opus 5.5'], ['DeepSeek V4.1 Flash · OpenCode Go', 'V4.1 Flash · OpenCode Go'],
+    ['claude-Sonnet-5.2', 'Sonnet 5.2'], ['OpenAI Research-Preview', 'Research Preview'],
+    ['Unknown-model-v2', 'Unknown-model-v2'], ['My Claude model', 'My Claude model'],
+    ['GPTish-6', 'GPTish-6'], ['Claude', 'Claude'], ['Claude-', 'Claude-'], ['GPT--', 'GPT--'], ['GPT  ', 'GPT  '], ['', ''],
+  ]) assert.equal(shortenModelLabel(name), expected);
 });

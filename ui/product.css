@@ -821,7 +821,6 @@
 .topology-node .graph-node { width: 44px; height: 44px; margin: 0; --agent-quota-size: 44px; }
 .topology-node .source-icon, .topology-node .source-icon > span { display: grid; place-items: center; width: 44px; height: 44px; }
 .topology-node .source-icon svg { width: 38px; height: 38px; }
-.topology-node .agent-quota-icon:not(.has-quota) .agent-logo { width: 38px; height: 38px; }
 .graph-node-name { line-height: 14px; }
 .graph-node[data-connection-state="inactive"] .source-icon,
 .graph-node[data-connection-state="inactive"] .agent-logo,
@@ -1136,7 +1135,6 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .agent-panel-header .actions { flex: none; }
 .agent-panel-header .agent-quota-icon { --agent-quota-size: 44px; }
 .dual-quota .quota-outline { stroke-width: 3; }
-.dual-quota.has-quota .agent-logo { width: 46%; height: 46%; }
 .agent-no-quota { margin: 0; }
 .agent-quota-block { display: flex; flex-direction: column; flex: none; gap: 5px; font-family: ui-rounded, "SF Pro Rounded", var(--font-ui); }
 .agent-quota-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

@@ -54,7 +54,7 @@ try {
         if (!fixture.page && !fixture.shells && !fixture.panel && representedTasks !== fixture.tasks.length) throw new Error(`Task count mismatch: ${representedTasks}/${fixture.tasks.length}`);
         if (fixture.panel?.kind === 'agent' && model.panels.agent?.agent !== fixture.panel.id) throw new Error('Agent panel not opened');
         if (fixture.panel?.kind === 'source' && model.panels.source !== fixture.panel.id) throw new Error('Source panel not opened');
-        if (name === 'topology-accounts') {
+        if (name.startsWith('topology-accounts')) {
           // Regression: PlatformIcon convergence shrank the unringed Agent parent and ringed account logos.
           const parent = page.getByRole('button', { name: 'Claude Code', exact: true });
           if (await parent.getByRole('img').count()) throw new Error('Agent parent must remain without quota for the logo fixture');
@@ -62,6 +62,35 @@ try {
             const account = page.getByRole('button', { name, exact: true }).filter({ has: page.getByRole('img') });
             if (await account.count() !== 1) throw new Error('Each Agent account must expose its quota ring in the logo fixture');
           }
+        }
+        if (name.startsWith('topology-accounts')) {
+          const attributed = model.topology.tasks.find(task => task.taskId === 'fixture-task-0');
+          const account = model.topology.nodes.find(node => node.side === 1 && node.accountId === 'example-personal');
+          if (!account || attributed?.parent !== account.id) throw new Error('Claude task did not branch from its execution account');
+          const unknown = model.topology.tasks.find(task => task.taskId === 'fixture-task-2');
+          if (unknown?.parent !== 'claude') throw new Error('Unknown execution account was guessed');
+          const logos = await page.locator('.topology-node[data-agent-node] .agent-quota-icon').evaluateAll(nodes => nodes.map(node => {
+            const logo = node.querySelector('.platform-icon'), svg = logo?.querySelector('svg');
+            const box = node.getBoundingClientRect(), mark = svg?.getBoundingClientRect();
+            return { width: box.width, logo: mark?.width ?? 0, height: mark?.height ?? 0, ring: node.classList.contains('has-quota') };
+          }));
+          row.agentLogos = logos;
+          if (!logos.length || logos.some(logo => logo.logo / logo.width < (logo.ring ? .63 : .84) || Math.abs(logo.logo - logo.height) > 1)) throw new Error('Agent logo shrank inside its node');
+          await page.getByLabel('Opus 5.5 · Medium', { exact: true }).waitFor({ state: 'visible' });
+        }
+        if (name.startsWith('bubbles-claude-spec')) {
+          for (const label of ['Opus 5.5 · Medium', '6 Astra · High']) {
+            const chip = page.getByLabel(label, { exact: true });
+            await chip.waitFor({ state: 'visible' });
+            const treatment = await chip.evaluate(node => {
+              const project = node.parentElement.querySelector('.activity-project');
+              const spec = getComputedStyle(node), tag = getComputedStyle(project);
+              return ['borderTopWidth', 'borderTopColor', 'borderRadius', 'backgroundColor', 'fontSize', 'lineHeight', 'paddingLeft', 'paddingRight'].every(key => spec[key] === tag[key]);
+            });
+            if (!treatment) throw new Error('DispatchSpec does not share the project tag pill treatment');
+          }
+          const missing = page.getByRole('button', { name: /^Review unrecorded dispatch ·/ });
+          if (await missing.locator('.dispatch-spec').count()) throw new Error('Unrecorded Claude task invented a dispatch spec');
         }
         if (name === 'agent-panel-unread') {
           // Regression: completed unread tasks were mixed into date groups instead of appearing between Running and Today.
@@ -205,7 +234,7 @@ try {
           const scope = name === 'tasks-dispatch-dsh'
             ? page.getByRole('button', { name: fixture.tasks[0].title, exact: true })
             : taskDetail;
-          const chips = scope.getByLabel('DeepSeek V4.1 Flash · OpenCode Go · Max', { exact: true }).filter({ visible: true });
+          const chips = scope.getByLabel('V4.1 Flash · OpenCode Go · Max', { exact: true }).filter({ visible: true });
           await chips.first().waitFor({ state: 'visible' });
           for (const chip of await chips.all()) {
             if ((await chip.innerText()).includes(fixture.tasks[0].dispatchSummary.model)) throw new Error('Resolved dispatch chip exposes a raw model ID');
@@ -308,7 +337,7 @@ try {
           await field.waitFor({ state: 'visible' });
           const spec = page.getByRole('region', { name: 'Recorded dispatch specs', exact: true });
           await spec.scrollIntoViewIfNeeded();
-          await spec.getByLabel('DeepSeek V4.1 Flash · OpenCode Go · Max', { exact: true }).waitFor({ state: 'visible' });
+          await spec.getByLabel('V4.1 Flash · OpenCode Go · Max', { exact: true }).waitFor({ state: 'visible' });
           // Regression: loading labels exposed an opaque model ID instead of a neutral placeholder.
           const loadingSpec = spec.getByLabel('Loading labels · Max · Fast', { exact: true });
           await loadingSpec.waitFor({ state: 'visible' });

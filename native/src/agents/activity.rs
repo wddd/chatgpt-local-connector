@@ -187,26 +187,36 @@ fn scan(selected: &[String], cache: &mut ScanCache) -> Vec<External> {
     let codex_home = std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".codex"));
-    let roots: Vec<_> = selected
+    let claude_roots = if selected.iter().any(|agent| agent == "claude") {
+        crate::accounts::claude::transcript_roots()
+    } else {
+        Vec::new()
+    };
+    let mut roots: Vec<_> = claude_roots
         .iter()
-        .map(|agent| {
-            let root = if agent == "codex" {
-                codex_home.join("sessions")
-            } else {
-                std::env::var_os("CLAUDE_CONFIG_DIR")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| home.join(".claude"))
-                    .join("projects")
-            };
-            (agent.clone(), root)
-        })
+        .map(|(path, _)| ("claude".to_owned(), path.clone()))
         .collect();
-    scan_roots(
+    if selected.iter().any(|agent| agent == "codex") {
+        roots.push(("codex".to_owned(), codex_home.join("sessions")));
+    }
+    let mut sessions = scan_roots(
         &roots,
         &codex_home.join("session_index.jsonl"),
         SystemTime::now(),
         cache,
-    )
+    );
+    for external in &mut sessions {
+        if external.agent == "claude" {
+            if let Some(account) = claude_roots
+                .iter()
+                .find(|(root, _)| external.path.starts_with(root))
+                .and_then(|(_, account)| account.as_ref())
+            {
+                external.session["agentAccountId"] = json!(account);
+            }
+        }
+    }
+    sessions
 }
 fn scan_roots(
     roots: &[(String, PathBuf)],
@@ -365,12 +375,34 @@ fn read_clock(mut file: File, agent: &str, clock: &mut TurnClock) -> Result<Valu
             if let Some(start) = turn_start(&record, agent) {
                 clock.started_at = start;
                 clock.turn_tier = clock.thread_tier.clone();
-                if let Some(turn) = record["payload"]["turn_id"].as_str() {
+                let turn = if agent == "claude" {
+                    record["uuid"].as_str()
+                } else {
+                    record["payload"]["turn_id"].as_str()
+                };
+                if let Some(turn) = turn {
                     if clock.turn_id != turn {
                         clock.dispatch_summary = None;
                     }
                     clock.turn_id = turn.into();
                     clock.turns.insert(turn.into());
+                }
+            }
+            if agent == "claude" && record["type"] == "assistant" && record["isSidechain"] != true {
+                // These are execution records, not current CLI settings or dispatch defaults.
+                // Synthetic assistant errors carry no executed model.
+                if record["message"]["model"] != "<synthetic>" {
+                    clock.dispatch_summary = crate::egress::dispatch_summary(&json!({
+                        "model": record["message"]["model"],
+                        "effort": record.get("perTurnEffort").filter(|value| value.as_str().is_some_and(|s| !s.is_empty())).unwrap_or(&record["effort"])
+                    }));
+                    if !clock.turn_id.is_empty() {
+                        if let Some(summary) = &clock.dispatch_summary {
+                            clock
+                                .turn_dispatch_summaries
+                                .insert(clock.turn_id.clone(), summary.clone());
+                        }
+                    }
                 }
             }
             if agent == "codex" && record["type"] == "turn_context" {

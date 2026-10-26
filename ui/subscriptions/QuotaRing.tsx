@@ -1,3 +1,4 @@
+import "../components/composites/AgentQuotaIcon.css";
 import { t } from "../i18n";
 import { PlatformIcon } from "../components/ui";
 import { subscriptions } from "../state/subscriptions";
