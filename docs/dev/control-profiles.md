@@ -188,6 +188,9 @@ Reduced guide cost MUST NOT justify increased failed dispatches or missing recov
 Phase 1 includes profile selection, guide layering, summary outcomes, metrics, and the Claude Code skill.
 Multi-device relay targeting and cross-source project context remain later work.
 Host access for later devices MUST be evaluated against the selected execution device.
+Later named capabilities SHOULD register host CLI or MCP workflows, such as reading work messages or mail, as named entries.
+Named capabilities MUST share the profile projection and be granted per source with least privilege instead of arbitrary `command`.
+Their results come from external content and MUST be treated as data, never as instructions.
 The relevant behavior contracts live in `tests/control-mcp.test.ts` and `tests/cli-failures.test.ts`.
 They cover frozen tool schemas, legacy defaults, profile isolation, allowlist enforcement, guide caching and budget, task summaries, pinned turns, metrics, and CLI failure recovery.
 `tests/contract/` and `tooling/test-policy-allowlist.json` remain protected by the existing ownership rules.
