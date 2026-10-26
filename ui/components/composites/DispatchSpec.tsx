@@ -14,7 +14,7 @@ export type DispatchSpecRecord =
 /** Explicit turns never inherit task-level or current-default configuration. */
 export function recordedDispatchSpec(record: DispatchSpecRecord): DispatchSummary | undefined {
   if (record.kind === 'timeline') return record.turnId ? record.value.turnDispatchSummaries?.[record.turnId] : record.value.dispatchSummary;
-  if (record.kind === 'task') return { model: record.value.task.model, effort: record.value.task.effort };
+  if (record.kind === 'task') return { model: record.value.task.model, effort: record.value.task.effort, serviceTier: record.value.task.dispatch?.serviceTier ?? undefined };
   return record.value.dispatchSummary ?? undefined;
 }
 function modelKey(value: string) {
@@ -35,16 +35,17 @@ export function DispatchSpec({ agent, record, resolver }: { agent: string; recor
   const state = resolver ?? native, model = summary?.model?.trim(), effort = summary?.effort?.trim(), tier = summary?.serviceTier?.trim();
   const resolved = model ? resolveModel(state?.catalog, model) : undefined;
   const modelName = resolved?.name?.trim();
-  const unresolvedModel = !!model && !modelName;
+  const loadingModel = !!model && (!state || state.status === 'loading');
+  const unresolvedModel = !!model && !modelName && !loadingModel;
   const options = resolved?.options ?? (model && [state?.catalog?.currentModel, state?.catalog?.optionsForModel].includes(model) ? state?.catalog?.options : undefined);
   const effortOption = options?.filter(option => option.category === 'thought_level' || ['reasoning_effort', 'reasoningEffort', 'thinkingLevel', 'effort', 'thought_level'].includes(option.id))
     .flatMap(option => option.values ?? []).find(option => typeof option !== 'string' && option.value === effort);
   const effortName = typeof effortOption === 'object' && effortOption.name || (effort && (effortKeys[effort] ? t(effortKeys[effort]) : `${t('dispatchSpec.unresolved')}: ${effort}`));
-  const modelLabel = model && (modelName ? [modelName, resolved?.group].filter(Boolean).join(' · ') : `${t('dispatchSpec.unresolved')}: ${model}`);
+  const modelLabel = model && (modelName ? [modelName, resolved?.group].filter(Boolean).join(' · ') : loadingModel ? t('dispatchSpec.loading') : `${t('dispatchSpec.unresolved')}: ${model}`);
   const details = [effortName, tier && (tier === 'priority' ? t('activity.fast') : tier === 'default' ? t('dispatchSpec.standard') : `${t('dispatchSpec.unresolved')}: ${tier}`)].filter(Boolean);
   const unresolved = unresolvedModel || !!effort && !effortKeys[effort] && !(typeof effortOption === 'object' && effortOption.name) || !!tier && !['priority', 'default'].includes(tier);
-  const status = !modelLabel && !details.length ? 'missing' : state?.status === 'loading' ? 'loading' : state?.status === 'error' ? 'error' : unresolved ? 'unresolved' : 'ready';
-  if (model && status === 'loading') details.push(t('dispatchSpec.loading'));
+  const status = !modelLabel && !details.length ? 'missing' : loadingModel ? 'loading' : state?.status === 'error' ? 'error' : unresolved ? 'unresolved' : 'ready';
+  if (modelName && status === 'loading') details.push(t('dispatchSpec.loading'));
   if (model && status === 'error') details.push(t('dispatchSpec.error'));
   const label = [modelLabel, ...details].filter(Boolean).join(' · ') || t('dispatchSpec.missing');
   const leading = modelLabel || (!details.length ? label : undefined);

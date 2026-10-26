@@ -102,9 +102,25 @@ try {
           await summary.waitFor({ state: 'visible' });
           await taskButton(fixture.tasks[1]).waitFor({ state: 'hidden' });
         }
+        let taskDetail;
         if (fixture.detailTask !== undefined) {
+          const task = fixture.tasks[fixture.detailTask];
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          const title = task.agent === 'codex' ? task.title : messages['timeline.title'];
+          taskDetail = page.getByRole('dialog', { name: title, exact: true });
           // Semantic snapshots exclude aria-hidden Radix form inputs and visual announcement mirrors.
-          row.taskAccessibility = await page.getByRole('dialog', { name: fixture.tasks[fixture.detailTask].title, exact: true }).ariaSnapshot();
+          row.taskAccessibility = await taskDetail.ariaSnapshot();
+        }
+        if (name === 'task-dispatch-dsh' || name === 'tasks-dispatch-dsh') {
+          // Regression: dsh task rows omitted the recorded model and effort chip.
+          const scope = name === 'tasks-dispatch-dsh'
+            ? page.getByRole('button', { name: fixture.tasks[0].title, exact: true })
+            : taskDetail;
+          const chips = scope.getByLabel('DeepSeek V4.1 Flash · OpenCode Go · Max', { exact: true }).filter({ visible: true });
+          await chips.first().waitFor({ state: 'visible' });
+          for (const chip of await chips.all()) {
+            if ((await chip.innerText()).includes(fixture.tasks[0].dispatchSummary.model)) throw new Error('Resolved dispatch chip exposes a raw model ID');
+          }
         }
         if (setup) {
           // Regression: standard setup steps scrolled inside a fixed 496px shell on large windows.
@@ -198,7 +214,11 @@ try {
           await field.waitFor({ state: 'visible' });
           const spec = page.getByRole('region', { name: 'Recorded dispatch specs', exact: true });
           await spec.scrollIntoViewIfNeeded();
-          await spec.getByText('DeepSeek V4.1 Flash · OpenCode Go · Max', { exact: true }).waitFor();
+          await spec.getByLabel('DeepSeek V4.1 Flash · OpenCode Go · Max', { exact: true }).waitFor({ state: 'visible' });
+          // Regression: loading labels exposed an opaque model ID instead of a neutral placeholder.
+          const loadingSpec = spec.getByLabel('Loading labels · Max · Fast', { exact: true });
+          await loadingSpec.waitFor({ state: 'visible' });
+          if ((await loadingSpec.innerText()).includes('["magpie"')) throw new Error('Loading dispatch chip exposes a raw model ID');
           if ((await spec.innerText()).includes('current-must-not-leak')) throw new Error('A historical turn inherited current defaults');
           if (screenshots) await page.screenshot({ path: path.join(out, `${key}-specs.png`), animations: 'disabled' });
           const collisions = await page.locator('.setting-row').evaluateAll(rows => rows.filter(row => {

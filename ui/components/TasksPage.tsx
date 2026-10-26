@@ -259,6 +259,7 @@ export default function TasksPage() {
                   <strong className="task-document-title">
                     {titleOf(g.first)}
                   </strong>
+                  <DispatchSpec agent={g.first.agent || "codex"} record={{ kind: "task", value: g.first }} />
                 </span>
                 <span className="task-document-meta">
                   {projectName(g.first) && <span className="task-tag task-document-project" title={projectOf(g.first)}>{projectName(g.first)}</span>}

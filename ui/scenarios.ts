@@ -224,7 +224,7 @@ export async function installScenario(name: string) {
     const session = activity.agents[task.agent].sessions.find(s => s.id === `fixture-task-${index}`)!;
     return { requestId: `fixture-request-${index}`, agent: task.agent, ...(task.agent === 'codex' ? { threadId: session.id } : { taskId: session.id }), state: task.approval ? 'awaiting-approval' : 'completed', createdAt: now, updatedAt: now,
     origin: { ingressId: 'fixture-source', sourceId: 'fixture-source', ...(topologyAccounts.length ? session.origin : {}) },
-    ...(topologyAccounts.length ? { agentAccountId: session.agentAccountId } : {}), approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', model: session.dispatchSummary?.model, effort: session.dispatchSummary?.effort, settings: {} } };
+    ...(topologyAccounts.length ? { agentAccountId: session.agentAccountId } : {}), approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', model: session.dispatchSummary?.model, effort: session.dispatchSummary?.effort, dispatch: { serviceTier: session.dispatchSummary?.serviceTier }, settings: {} } };
   });
   const routingByTask: Record<string, RequestRouting> = Object.fromEntries(fixture.tasks.flatMap((task, index) => task.requestRouting ? [[`fixture-task-${index}`, {
     state: task.requestRouting, deferUntil: task.requestRouting === 'deferred' ? Date.parse(now) + 15000 : null,

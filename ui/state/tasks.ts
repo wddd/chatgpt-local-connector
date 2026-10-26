@@ -30,6 +30,7 @@ export interface TaskRecord {
     threadId?: string;
     model?: string;
     effort?: string;
+    dispatch?: { serviceTier?: string | null };
     settings: unknown;
   };
 }
