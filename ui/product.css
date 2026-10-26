@@ -1187,7 +1187,7 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .agent-view-scroll { flex: 1; min-height: 0; overflow: auto; padding: 0 16px 16px; display: flex; flex-direction: column; gap: 16px; }
 .agent-panel-layer > .task-timeline { flex: 1; height: auto; padding: 0 16px 16px; }
 .agent-panel-layer > .dialog-footer { max-height: 50%; }
-.activity-panel .agent-panel-header { grid-template-columns: 44px minmax(0, 1fr) auto; }
+.activity-panel .agent-panel-header { grid-template-columns: auto minmax(0, 1fr) auto; }
 .agent-panel-heading { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .agent-panel-title-row { display: flex; align-items: center; min-width: 0; gap: 4px; }
 .agent-panel-title-row > .activity-panel-title { flex: 0 1 auto; min-width: 0; width: auto; overflow: hidden; }
@@ -1582,3 +1582,9 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .topology-wires[data-inactive="true"] .topology-path-hit { pointer-events: none; }
 .dialog.activity-panel[data-panel-geometry="portrait"] { height: var(--panel-layout-height); max-height: var(--panel-layout-height); }
 .activity-panel[data-panel-geometry="portrait"] > .elastic-panel-content { height: calc(var(--panel-layout-height) - 2px); max-height: calc(var(--panel-layout-height) - 2px); }
+
+.policy-criteria { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.activity-panel .source-account-header { grid-template-columns: auto minmax(0, 1fr) auto; }
+.source-account-header .actions > .source-icon { width: 32px; height: 32px; }
+.account-card h2 { margin: 0; font-size: var(--text-lg); }

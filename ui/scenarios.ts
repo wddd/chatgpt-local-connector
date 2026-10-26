@@ -1,4 +1,5 @@
 import { installTopologyAccounts } from './topology/scenarioAccounts';
+import { refreshAccounts } from './state/accounts';
 import { accountScenario } from "./scenarioAccounts";
 import { beginScenario, finishScenario, missingScenarioRoute, scenarioReadiness } from "./state/scenarioReadiness";
 import { updates, acceptUpdateSnapshot } from './state/updates';
@@ -23,7 +24,7 @@ import { taskScenario } from './scenarioTasks';
 import type { RequestRouting } from './state/requestRouting';
 import { taskPanelSnapshot } from './state/taskPanel';
 
-type Fixture = { update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsPermissions?: boolean; accountModel?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page | "remote" | "accounts" | "permissions"; remoteConnectionId?: string; relayProgress?: RelayProgress };
+type Fixture = { update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsPermissions?: boolean; accountModel?: boolean; objectModel?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page | "remote" | "accounts" | "permissions"; remoteConnectionId?: string; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 let conversations: Record<string, AgentConversation[]> = {};
@@ -77,6 +78,16 @@ function respondToScenario(path: string, method: string, body?: unknown): unknow
   if (method === 'POST') {
     const result = taskResponse?.(path, body);
     if (result !== undefined) return structuredClone(result);
+  }
+  if (path === 'task-settings' && method === 'PUT') {
+    const status = responses.status as Status, patch = body as Partial<Status> & { enabled?: boolean };
+    Object.assign(status, patch, patch.enabled === undefined ? {} : { taskApprovalEnabled: patch.enabled }); return status;
+  }
+  const connectionAction = path.match(/^ingress\/([^/]+)\/(start|stop)$/);
+  if (connectionAction && method === 'POST') {
+    const ingress = (responses.status as Status).ingresses.find(item => item.id === connectionAction[1]);
+    if (!ingress) throw new Error('INGRESS_NOT_FOUND');
+    ingress.running = connectionAction[2] === 'start'; ingress.state = ingress.running ? 'ready' : 'stopped'; return ingress;
   }
   if (method !== 'GET') throw new Error(`SCENARIO_ACTION_UNAVAILABLE: ${path}`);
   if (path.startsWith('accounts/')) {
@@ -147,6 +158,7 @@ export async function installScenario(name: string) {
       status.ingresses = status.ingresses.filter(i => i.id !== old.id);
     }
   }
+  accountResponse = (fixture.accountModel || fixture.objectModel || ['accounts', 'source-panel'].includes(name)) ? accountScenario(status, sources, fixture.objectModel) : undefined;
   const inventory: Agent[] = fixture.agents.map(agent => ({ agent, installed: true, available: true, enabled: true, status: 'ready', version: 'fixture' }));
   const activity: AgentActivitySnapshot = { observedAt: now, activeAgents: fixture.agents, agents: Object.fromEntries(fixture.agents.map(a => [a, { sessions: [] }])) };
   fixture.tasks.forEach((task, index) => {
@@ -161,6 +173,11 @@ export async function installScenario(name: string) {
   });
   const topologyAccounts = name === 'topology-accounts' ? installTopologyAccounts(status, activity) : [];
   if (topologyAccounts.length) sources.splice(0, sources.length, ...status.ingresses.flatMap(i => i.sources ?? []));
+  if (fixture.objectModel) for (const [agent, group] of Object.entries(activity.agents)) group.sessions.forEach((session, index) => {
+    session.agentAccountId = agent === 'codex' ? 'account-openai' : agent === 'claude' ? index === 1 ? 'account-review' : 'account-claude' : 'account-key';
+    session.origin = { sourceId: agent === 'codex' ? 'example-chatgpt-source' : 'example-studio-source', accountId: agent === 'codex' ? 'account-openai' : 'account-claude', ingressId: agent === 'codex' ? 'example-chatgpt-connection' : 'fixture-source' };
+    if (session.dispatchSummary) session.dispatchSummary.agentAccountId = session.agentAccountId;
+  });
   const timelines: Record<string, AgentTimeline> = {};
   fixture.tasks.forEach((task, taskIndex) => {
     const session = activity.agents[task.agent].sessions.find(session => session.id === `fixture-task-${taskIndex}`)!;
@@ -204,7 +221,7 @@ export async function installScenario(name: string) {
   });
   conversations = Object.fromEntries(fixture.agents.map(agent => {
     const current = activity.agents[agent].sessions.map(session => ({ id: session.id, source: session.source as AgentConversation['source'], title: session.title,
-      project: session.project, createdAt: session.startedAt ?? null }));
+      project: session.project, createdAt: session.startedAt ?? null, dispatchSummary: session.dispatchSummary }));
     const today = new Date(now); today.setHours(0, 0, 0, 0);
     const history: AgentConversation[] = fixture.panelHistory ? Array.from({ length: 24 }, (_, index) => {
       const id = `fixture-history-${agent}-${index}`, title = `Review project change ${index + 1}`;
@@ -221,8 +238,8 @@ export async function installScenario(name: string) {
   const records = fixture.tasks.map((task, index) => {
     const session = activity.agents[task.agent].sessions.find(s => s.id === `fixture-task-${index}`)!;
     return { requestId: `fixture-request-${index}`, threadId: `fixture-task-${index}`, state: task.approval ? 'awaiting-approval' : 'completed', createdAt: now, updatedAt: now,
-    origin: { ingressId: 'fixture-source', sourceId: 'fixture-source', ...(topologyAccounts.length ? session.origin : {}) },
-    ...(topologyAccounts.length ? { agent: task.agent, agentAccountId: session.agentAccountId } : {}), approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } };
+    origin: { ingressId: 'fixture-source', sourceId: 'fixture-source', ...(topologyAccounts.length || fixture.objectModel ? session.origin : {}) },
+    ...(topologyAccounts.length || fixture.objectModel ? { agent: task.agent, agentAccountId: session.agentAccountId } : {}), approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } };
   });
   const routingByTask: Record<string, RequestRouting> = Object.fromEntries(fixture.tasks.flatMap((task, index) => task.requestRouting ? [[`fixture-task-${index}`, {
     state: task.requestRouting, deferUntil: task.requestRouting === 'deferred' ? Date.parse(now) + 15000 : null,
@@ -259,8 +276,8 @@ export async function installScenario(name: string) {
   }])) };
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': initialActivity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
   responses['accounts'] = { accounts: topologyAccounts, login: null } satisfies AccountsResult;
-  accountResponse = (fixture.accountModel || ['accounts', 'source-panel'].includes(name)) ? accountScenario(status, sources) : undefined;
   responses['updates/status'] = { state: 'idle', when: 'settled', work: { blocking: [], willResume: [], unaffected: [] } };
+  responses['agents/dispatch-policy'] = { criteria: 'Use the smallest suitable Agent for routine changes.', agents: { codex: { model: 'gpt-6.1-sol', effort: 'high', criteria: 'Use high effort for cross-module changes.' }, claude: { model: 'sonnet', effort: null, criteria: 'Prefer this Agent for review.' } } };
   responses['service'] = { supported: true, enabled: false };
   connector.set({ status, sources, sourcesLoaded: true, busy: '', loading: false, error: '', feedback: { text: '', error: false } });
   agents.set({ items: inventory, loaded: true, loading: false, saving: '', error: '' });
@@ -281,6 +298,7 @@ export async function installScenario(name: string) {
       responses['agents/activity'] = finished;
       acceptActivity(finished);
     }
+    if (fixture.objectModel || fixture.accountModel) await refreshAccounts();
     openSnapshotPanel(fixture.panel);
     if (fixture.detailTask !== undefined) {
       await settledViewModel();

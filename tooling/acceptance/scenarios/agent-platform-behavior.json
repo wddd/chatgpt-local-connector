@@ -5,9 +5,31 @@
     "claude",
     "codex"
   ],
-  "tasks": [],
+  "objectModel": true,
+  "tasks": [
+    {
+      "agent": "claude",
+      "phase": "thinking",
+      "title": "Review navigation",
+      "headline": "Reading the source changes"
+    },
+    {
+      "agent": "claude",
+      "phase": "command",
+      "title": "Review another account",
+      "headline": "Waiting for a decision",
+      "approval": true
+    },
+    {
+      "agent": "codex",
+      "phase": "command",
+      "title": "Verify configuration",
+      "headline": "Checking configuration"
+    }
+  ],
   "panel": {
     "kind": "agent",
-    "id": "codex"
+    "id": "codex",
+    "layer": "platform"
   }
 }

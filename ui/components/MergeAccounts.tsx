@@ -3,7 +3,7 @@ import { accountsApi } from '../api';
 import type { ProviderAccount } from '../types';
 import { accounts, refreshAccounts } from '../state/accounts';
 import { subscriptions } from '../state/subscriptions';
-import { navigation } from '../state/navigation';
+import { refreshConnector } from '../state/connector';
 import { t } from '../i18n';
 import { Button, Checkbox, Dialog, Field, Input, Notice, SingleChoice } from './ui';
 
@@ -19,9 +19,9 @@ export default function MergeAccounts({ account, onClose }: { account: ProviderA
   async function merge() {
     setBusy(true); setError('');
     try {
-      const result = await accountsApi.merge({ into: account.id, ids, alias: alias.trim(), quotaProviderId: quotaProviderId === 'native' ? null : quotaProviderId });
+      await accountsApi.merge({ into: account.id, ids, alias: alias.trim(), quotaProviderId: quotaProviderId === 'native' ? null : quotaProviderId });
       await refreshAccounts();
-      navigation.set(old => ({ ...old, accountId: result.id }));
+      await refreshConnector();
       onClose();
     } catch (error) { setError(String(error)); }
     finally { setBusy(false); }

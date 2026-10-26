@@ -911,6 +911,7 @@
                 "type": "string"
               },
               "toolPolicy": {
+                "description": "Compatibility input. Published connections always normalize this value to all.",
                 "oneOf": [
                   {
                     "const": "all"
@@ -1006,6 +1007,7 @@
                 "type": "string"
               },
               "toolPolicy": {
+                "description": "Compatibility input. Published connections always normalize this value to all.",
                 "oneOf": [
                   {
                     "const": "all"
@@ -1391,6 +1393,7 @@
                 "type": "string"
               },
               "toolPolicy": {
+                "description": "Compatibility input. Published connections always normalize this value to all.",
                 "oneOf": [
                   {
                     "const": "all"
@@ -1500,6 +1503,7 @@
                 "type": "string"
               },
               "toolPolicy": {
+                "description": "Compatibility input. Published connections always normalize this value to all.",
                 "oneOf": [
                   {
                     "const": "all"
@@ -1681,6 +1685,18 @@
         "required": [
           "id"
         ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "agents.dispatch-policy",
+      "route": "agents/dispatch-policy",
+      "method": "GET",
+      "description": "Read stored per-Agent default model, effort and criteria, plus global criteria. This view never edits policy or probes native Agents.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
         "additionalProperties": false
       }
     },

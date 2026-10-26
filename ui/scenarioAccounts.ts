@@ -1,14 +1,14 @@
 import type { ProviderAccount, AccountLogin, AccountsResult } from './types';
 import type { Status, ControlSource } from './state/types';
 // In-memory implementation of the native management routes in docs/reference/tools.md.
-export function accountScenario(status: Status, sources: ControlSource[]) {
+export function accountScenario(status: Status, sources: ControlSource[], objectModel = false) {
   const now = new Date().toISOString();
   const primary = status.ingresses[0];
   primary.url = 'https://arc.example.com/mcp';
   const chatgpt: ControlSource = { ...sources[0], id: 'example-chatgpt-source', ingressId: 'example-chatgpt-connection', product: 'chatgpt', platform: 'openai', label: 'Personal', credential: { type: 'ingress' } };
   sources.push(chatgpt);
   status.ingresses.push({ ...primary, id: chatgpt.ingressId, name: 'ChatGPT connection', transport: 'openai-tunnel', auth: 'openai', controlSource: 'chatgpt', sources: [chatgpt], url: 'https://chatgpt.example.com/mcp', oauth: { pending: [], grants: [] } });
-  status.ingresses.push({ ...primary, id: 'example-spare-connection', name: 'Spare connection', transport: 'https', auth: 'oauth', sources: [], url: 'https://spare.example.com/mcp', oauth: { pending: [], grants: [] } });
+  status.ingresses.push({ ...primary, id: 'example-spare-connection', name: 'Spare connection', transport: 'https', auth: 'oauth', config: { ...primary.config, httpsProvider: 'custom', httpsUrl: 'https://spare.example.com/mcp', configured: true }, sources: [], url: 'https://spare.example.com/mcp', oauth: { pending: [], grants: [] } });
   const accounts: ProviderAccount[] = [
     { id: 'account-source', provider: 'anthropic', identityKey: `anthropic:unidentified:${sources[0].id}`, alias: 'Unidentified', createdAt: now, observedAt: now, sources: [sources[0].id], agentProfiles: [], health: { state: 'ready' }, notifications: { state: 'not-bound', reachable: false, sessions: [] }, quota: { state: 'unavailable', windows: [] } },
     { id: 'account-claude', provider: 'anthropic', identityKey: 'anthropic:id:example-claude-identity', alias: 'Studio', email: 'alex@example.com', orgName: 'Example Studio', plan: 'Max', createdAt: now, observedAt: now, sources: [], health: { state: 'ready' }, agentProfiles: [{ agent: 'claude', profileId: 'profile-claude', kind: 'cli-profile', state: 'signed-in', default: true }], notifications: { state: 'verified', reachable: true, sessions: [{ target: 'session_010000000000000000000001', state: 'verified', verified: true, lastDelivery: { at: Math.floor(Date.now() / 1000), status: 'sent' } }] }, quota: { state: 'ready', windows: [{ id: 'five-hour', poolId: 'main', label: '5 h', usedPercent: 37, resetsAt: new Date(Date.now() + 7200000).toISOString() }, { id: 'weekly', poolId: 'main', label: '7 d', usedPercent: 68, resetsAt: new Date(Date.now() + 259200000).toISOString() }] } },
@@ -16,6 +16,17 @@ export function accountScenario(status: Status, sources: ControlSource[]) {
     { id: 'account-review', provider: 'anthropic', identityKey: 'anthropic:id:example-review-identity', alias: 'Review', email: 'review@example.com', orgName: 'Example Review', createdAt: now, observedAt: now, sources: [], health: { state: 'attention' }, agentProfiles: [{ agent: 'claude', profileId: 'profile-review', kind: 'cli-profile', state: 'signed-out', default: false }], notifications: { state: 'n/a', sessions: [] }, quota: { state: 'unavailable', windows: [] } },
     { id: 'account-key', provider: 'deepseek', identityKey: 'deepseek:unidentified:api-key:dsh', alias: 'Unidentified', createdAt: now, observedAt: now, sources: [], health: { state: 'attention' }, agentProfiles: [{ agent: 'dsh', profileId: 'api-key:dsh', kind: 'api-key', state: 'unfinished', default: true }], notifications: { state: 'n/a', sessions: [] }, quota: { state: 'unavailable', windows: [] } },
   ];
+  if (objectModel) {
+    const source = sources[0];
+    source.credential = { type: 'oauth-grant', grantId: 'example-grant-primary', clientId: 'example-client-primary' };
+    primary.transport = 'https'; primary.auth = 'oauth'; primary.name = 'Primary connection';
+    primary.config = { ...primary.config, httpsProvider: 'custom', httpsUrl: 'https://arc.example.com/mcp', configured: true };
+    const studio: ControlSource = { ...source, id: 'example-studio-source', label: 'Studio', credential: { type: 'oauth-grant', grantId: 'example-grant-studio', clientId: 'example-client-studio' } };
+    sources.push(studio); primary.sources = [source, studio];
+    primary.oauth = { pending: [], grants: [source, studio].map(item => ({ id: item.credential.grantId!, clientId: item.credential.clientId!, clientName: 'Claude', connectedAt: 1, registeredAt: 1 })) };
+    accounts.find(account => account.id === 'account-claude')!.sources = [studio.id];
+    accounts.find(account => account.id === 'account-claude')!.notifications.sessions[0].sourceId = studio.id;
+  }
   let polls = 0, sequence = 0, login: AccountLogin | null = null;
   let loginAccount: string | undefined;
   const requireAccount = (id: string): ProviderAccount => {
@@ -39,6 +50,7 @@ export function accountScenario(status: Status, sources: ControlSource[]) {
   }
   return (path: string, method: string, raw?: unknown): unknown => {
     const route = path.split('?')[0], body = (raw ?? {}) as Record<string, string>;
+    const clearDefault = (raw as { default?: boolean } | undefined)?.default === false;
     if (route === 'accounts' && method === 'GET') return list();
     if (route === 'accounts/query' && method === 'POST') return body.id ? requireAccount(body.id) : list(body.agent);
     if (route === 'accounts/browsers' && method === 'GET') return { browsers: [{ id: 'safari', name: 'Safari' }, { id: 'chrome', name: 'Chrome' }, { id: 'firefox', name: 'Firefox' }] };
@@ -98,12 +110,13 @@ export function accountScenario(status: Status, sources: ControlSource[]) {
         if (body.alias !== undefined) { if (!body.alias.trim()) throw new Error('ACCOUNT_ALIAS_REQUIRED'); account.alias = body.alias.trim(); }
         if (body.defaultFor) {
           if (!account.agentProfiles.some(p => p.agent === body.defaultFor)) throw new Error('ACCOUNT_AGENT_MISSING');
-          accounts.forEach(a => a.agentProfiles.forEach(p => { if (p.agent === body.defaultFor) p.default = !a.removedAt && a.id === account.id; }));
+          accounts.forEach(a => a.agentProfiles.forEach(p => { if (p.agent === body.defaultFor && (!clearDefault || a.id === account.id)) p.default = !clearDefault && !a.removedAt && a.id === account.id; }));
         }
       } else {
         if (!['finish', 'cancel'].includes(body.running)) throw new Error('INVALID_RUNNING_POLICY');
         account.removedAt = now; account.health.state = 'removed'; account.displayName = `Removed account · ${account.alias}`; account.notifications.state = 'removed';
         account.agentProfiles.forEach(p => { p.default = false; });
+        sources.filter(source => account.sources.includes(source.id)).forEach(source => { source.state = 'revoked'; });
       }
       return account;
     }
@@ -144,10 +157,16 @@ export function accountScenario(status: Status, sources: ControlSource[]) {
       else throw new Error(`SCENARIO_ACTION_UNAVAILABLE: ${path}`);
       return { source };
     }
-    const ingressMatch = route.match(/^ingress\/([^/]+)$/);
-    if (ingressMatch && method === 'PUT') {
-      const ingress = status.ingresses.find(i => i.id === ingressMatch[1]); if (!ingress) throw new Error('INGRESS_NOT_FOUND');
-      if (typeof raw === 'object' && raw && 'enabled' in raw) ingress.enabled = !!raw.enabled;
+    const ingressMatch = route.match(/^ingress\/([^/]+)(?:\/(start|stop))?$/);
+    if (ingressMatch && ['PUT', 'POST', 'DELETE'].includes(method)) {
+      const ingress = status.ingresses.find(item => item.id === ingressMatch[1]); if (!ingress) throw new Error('INGRESS_NOT_FOUND');
+      if (method === 'DELETE') {
+        sources.filter(source => source.ingressId === ingress.id).forEach(source => { source.state = 'disconnected'; source.connectionName = ingress.name; source.connectionRemoved = true; });
+        status.ingresses = status.ingresses.filter(item => item.id !== ingress.id);
+        return {};
+      }
+      if (ingressMatch[2]) { ingress.running = ingressMatch[2] === 'start'; ingress.state = ingress.running ? 'ready' : 'stopped'; }
+      else if (raw && typeof raw === 'object') Object.assign(ingress, raw, { toolPolicy: 'all' });
       return ingress;
     }
     return undefined;

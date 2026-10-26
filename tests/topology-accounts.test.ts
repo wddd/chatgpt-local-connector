@@ -61,8 +61,11 @@ test('topology account source keeps its platform name in both modes', async () =
     const status = { ingresses: [ingress], core: { backendSession: 'fixture', appServer: { state: 'ready' } }, platform: 'darwin', logs: [] };
     connector.set({ status, sources: [source, local], sourcesLoaded: true, loading: false, busy: '', error: '', feedback: { text: '', error: false } });
     agents.set({ items: [], loading: false, error: '' });
+    const account = { id: 'account-one', provider: 'openai', identityKey: 'openai:example', alias: 'Personal', sources: [source.id], agentProfiles: [],
+      quota: { state: 'unavailable', windows: [] }, notifications: { state: 'mcp-events', sessions: [] }, health: { state: 'ready' } };
     globalThis.fetch = async input => new Response(JSON.stringify(String(input).endsWith('/accounts')
-      ? { accounts: [{ id: 'account-one', alias: 'Personal', sources: [source.id], agentProfiles: [] }] }
+      ? { accounts: [account], login: null }
+      : String(input).endsWith('/accounts/account-one') ? account
       : { hasState: false, complete: true, steps: [], progress: { done: 0, total: 0 } }));
     await act(() => root.render(h(UiProvider, null, h(Overview))));
     const label = `${controlSource(source.product).displayName}: ${t('connected')}`;

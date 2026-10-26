@@ -3,7 +3,7 @@ import { Accessibility, Bell, Check, Circle, HardDrive, LogIn, Monitor, Terminal
 import { api } from "../api";
 import { locale, t } from "../i18n";
 import { isDesktop, openUrl } from "../platform";
-import { Button, Group, Icon, Tooltip } from "./ui";
+import { Button, Group, Icon, Notice, Tooltip } from "./ui";
 import { connector, notify } from "../state/connector";
 import { permissions, refreshPermissions, type PermissionItem } from "../state/permissions";
 
@@ -14,7 +14,7 @@ function combined(a?: PermissionItem, b?: PermissionItem): string {
   return states.includes("missing") ? "missing" : states.includes("unknown") ? "unknown" : states.every(s => s === "not-applicable") ? "not-applicable" : "granted";
 }
 export default function PermissionsSection() {
-  const { data, loading } = permissions.use();
+  const { data, loading, error } = permissions.use();
   const [acting, setActing] = useState(false);
   const busy = loading || acting;
   const { status } = connector.use();
@@ -70,6 +70,7 @@ export default function PermissionsSection() {
   }
   return <div className="permissions-page">
     <Button disabled={busy} onClick={() => void refreshPermissions().catch(error => notify(String(error), true))}>{t("permissionsRefresh")}</Button>
+    {error && <Notice>{error}</Notice>}
     {data && <>
       {mac && <Group title={t("permissionsSystem")}><p className="permission-hint">{t("permissionsAppHint", {app: appName})}</p>{visible.filter(item => systemIds.includes(item.id)).map(row)}</Group>}
       <Group title={t("permissionsEnvironment")}>{visible.filter(item => !systemIds.includes(item.id)).map(row)}</Group>

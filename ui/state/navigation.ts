@@ -1,8 +1,6 @@
 import { createStore } from "./store";
 export type Page = "overview" | "tasks" | "logs" | "connections" | "settings";
 export const navigation = createStore<{
-  accountId?: string;
-  addAccount?: boolean;
   settingsExtras?: boolean;
   settingsUpdates?: boolean;
   remoteSourceId?: string;

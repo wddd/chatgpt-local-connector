@@ -1,7 +1,7 @@
 import { useReducedMotion } from "../state/appEnvironment";
 import { useState, type ReactNode } from "react";
 import { motion, Reorder, useDragControls } from "motion/react";
-import { RefreshCw, Settings, Gauge } from "lucide-react";
+import { RefreshCw, Settings } from "lucide-react";
 import { t } from "../i18n";
 import { openUrl } from "../platform";
 import {
@@ -16,10 +16,7 @@ import {
   refreshAgents,
   type Agent,
 } from "../state/agents";
-import { subscriptions } from "../state/subscriptions";
 import { AgentQuotaIcon } from "../subscriptions/QuotaRing";
-import UsageOverview from "../subscriptions/UsageOverview";
-import QuotaBubble from "../subscriptions/QuotaBubble";
 import AgentDisplaySettings from "./AgentDisplaySettings";
 import { springTransition } from "../motion/geometry";
 import { Dialog, IconButton, Switch, Notice, Loading } from "./ui";
@@ -86,16 +83,10 @@ export function AgentDetails({
 }) {
   const inventory = agents.use();
   const agent = inventory.items.find((item) => item.agent === selected.agent) || selected;
-  const { snapshot } = subscriptions.use();
-  const provider = snapshot?.settings.enabled
-    ? snapshot.providers.find(
-        (p) => p.agentIds.includes(agent.agent) && p.eligible,
-      )
-    : undefined;
   return (
     <Dialog title={name(agent)} onClose={onClose} headerless width={440}>
       <div className="agent-summary">
-        <AgentQuotaIcon agent={agent.agent} />
+        <AgentQuotaIcon agent={agent.agent} quota={null} />
         <div>
           <strong>{name(agent)}</strong>
           {agent.installed !== undefined && <p title={agent.version || undefined}>{agent.installed ? compactAgentVersion(agent.version) : t("agentNotInstalled")}</p>}
@@ -104,7 +95,6 @@ export function AgentDetails({
       {showOfficialLink && agentLinks[agent.agent] && <a href={agentLinks[agent.agent]} onClick={e => { e.preventDefault(); void openUrl(agentLinks[agent.agent]!); }}>{t("officialSetup")}</a>}
       {agent.installed !== undefined && agent.discoveryError && agent.discoveryError !== "AGENT_NOT_INSTALLED" &&
         <Notice>{agent.discoveryError}</Notice>}
-      {provider && <QuotaBubble provider={provider} />}
     </Dialog>
   );
 }
@@ -113,7 +103,6 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
     items = orderedAgents();
   const [detail, setDetail] = useState<Agent | undefined>(initialAgent),
     [display, setDisplay] = useState(false),
-    [overview, setOverview] = useState(false),
     [error, setError] = useState("");
   function move(id: string, by: number) {
     const list = items.filter(canReorder),
@@ -128,7 +117,6 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
         wide
         actions={
           <>
-            <IconButton icon={Gauge} label={t("trayUsage")} onClick={() => setOverview(true)} />
             <IconButton
               icon={Settings}
               label={t("agentDisplaySettings")}
@@ -167,7 +155,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
                 aria-haspopup="dialog"
                 onClick={() => setDetail(agent)}
               >
-                <AgentQuotaIcon agent={agent.agent} />
+                <AgentQuotaIcon agent={agent.agent} quota={null} />
               </button>
               <div className="agent-copy">
                 {agentLinks[agent.agent] ? (
@@ -238,7 +226,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
                 void openUrl(agentLinks[agent.agent]!).catch(error => setError(String(error)));
               }}
             >
-              <AgentQuotaIcon agent={agent.agent} />
+              <AgentQuotaIcon agent={agent.agent} quota={null} />
               <span>{name(agent)}</span>
             </a>
           ))}
@@ -249,9 +237,6 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
       {detail && (
         <AgentDetails showOfficialLink agent={detail} onClose={() => setDetail(undefined)} />
       )}{" "}
-      {overview && <Dialog title={t("trayUsage")} onClose={() => setOverview(false)} width={440}>
-        <UsageOverview onNavigate={() => { setOverview(false); setDisplay(true); }} />
-      </Dialog>}
       {display && <AgentDisplaySettings onClose={() => setDisplay(false)} />}
     </>
   );

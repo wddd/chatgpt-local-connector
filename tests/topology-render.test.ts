@@ -44,7 +44,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
     globalThis.fetch = async (input, init) => {
       const path = String(input).replace("/api/", "");
       const body = init?.body ? JSON.parse(String(init.body)) : {};
-      const result = path === "agents/conversations" ? {
+      const result = path === "agents/dispatch-policy" ? { criteria: "", agents: {} } : path === "accounts" ? { accounts: [], login: null } : path === "agents/conversations" ? {
         data: body.agent === "claude" ? [{ id: "example", source: "arc-task", title: "External example", createdAt: "2026-01-01" }] : [],
         nextCursor: null, scope: "arc-tasks",
       } : { sessionId: "example", readOnly: true, status: "completed", entries: [], cursor: 0, coverage: { state: "complete" } };
@@ -95,7 +95,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
     // A bubble can open the second layer without visiting the Agent list first.
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
-      if (String(input).endsWith("/agents/conversations")) return originalFetch(input, init);
+      if (["/agents/conversations", "/agents/dispatch-policy", "/accounts"].some(path => String(input).endsWith(path))) return originalFetch(input, init);
       return new Response(JSON.stringify({ sessionId: "owned", status: "completed", cursor: 1,
         coverage: { state: "partial", truncated: true }, entries: [{ id: "result", type: "text", text: "Retained result", status: "completed", cursor: 1, turnId: "turn", startedAt: null, updatedAt: "2026-01-01" }] }), { status: 200 });
     };
@@ -117,154 +117,6 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
   } finally {
     globalThis.fetch = beforeFetch;
     await act(() => root.unmount());
-    await server.close(); await window.happyDOM.close();
-  }
-});
-
-test("control source dock preserves editing, field navigation and cross-side dispatch paths", { timeout: 10000 }, async () => {
-  // Regression: editing or switching sources must preserve the panel and return focus.
-  const window = new Window({ url: "http://localhost" });
-  window.localStorage.setItem("arc.privacy", "false");
-  const frames = new Map<number, FrameRequestCallback>(); let sequence = 0;
-  const media = { matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} };
-  class Observer { observe() {} unobserve() {} disconnect() {} }
-  Object.assign(globalThis, {
-    window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element, Node: window.Node,
-    NodeFilter: window.NodeFilter, DocumentFragment: window.DocumentFragment, HTMLInputElement: window.HTMLInputElement, HTMLFormElement: window.HTMLFormElement, HTMLSelectElement: window.HTMLSelectElement,
-    CustomEvent: window.CustomEvent, Event: window.Event, MutationObserver: window.MutationObserver, DOMRect: window.DOMRect, CSS: window.CSS,
-    localStorage: window.localStorage, getComputedStyle: window.getComputedStyle.bind(window),
-    ResizeObserver: Observer, matchMedia: () => media, innerHeight: 800, IS_REACT_ACT_ENVIRONMENT: true,
-    requestAnimationFrame: (callback: FrameRequestCallback) => { frames.set(++sequence, callback); return sequence; },
-    cancelAnimationFrame: (id: number) => frames.delete(id),
-  });
-  Object.defineProperty(globalThis, "innerWidth", { configurable: true, value: 1280 });
-  // Happy DOM has no layout engine; expose a visible viewport for dock sizing.
-  Object.defineProperties(window.HTMLElement.prototype, {
-    clientWidth: { configurable: true, get() { return globalThis.innerWidth; } },
-    clientHeight: { configurable: true, get() { return globalThis.innerHeight; } },
-  });
-  window.matchMedia = () => media as unknown as MediaQueryList;
-  window.HTMLElement.prototype.getBoundingClientRect = function () {
-    return this.getAttribute("role") === "dialog" ? new window.DOMRect(16, 16, 400, 768) : new window.DOMRect(550, 260, 44, 44);
-  };
-  const server = await createServer({ configFile: false, server: { middlewareMode: true, watch: null, ws: false } });
-  const { createRoot } = await import("react-dom/client");
-  const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
-  const originalFetch = globalThis.fetch;
-  try {
-    const { default: Overview } = await server.ssrLoadModule("/ui/components/ConnectionOverview.tsx");
-    const { default: UiProvider } = await server.ssrLoadModule("/ui/components/UiProvider.tsx");
-    const { capturePanelOrigin } = await server.ssrLoadModule("/ui/components/panelMorph.ts");
-    const { connector } = await server.ssrLoadModule("/ui/state/connector.ts");
-    const { agentPanel, ingressPanel } = await server.ssrLoadModule("/ui/state/overviewPanels.ts");
-    const { navigation } = await server.ssrLoadModule("/ui/state/navigation.ts");
-    const { agentActivity } = await server.ssrLoadModule("/ui/state/activity.ts");
-    const { tasks } = await server.ssrLoadModule("/ui/state/tasks.ts");
-    const { agents } = await server.ssrLoadModule("/ui/state/agents.ts");
-    const { t } = await server.ssrLoadModule("/ui/i18n.ts");
-    const config = { configured: true, httpsProvider: "cloudflare", cloudflareMode: "quick", httpsUrl: "", tunnelId: "tunnel_fixture", hasApiKey: true };
-    const source = (id: string) => ({ id, sources: [{ id, ingressId: id, credential: { type: "oauth-grant", grantId: `grant-${id}`, clientId: `client-${id}` }, product: "claude", platform: "anthropic", label: `Source ${id}`, createdAt: "2026-01-01", connectedAt: 1, lastSeenAt: 1, state: "connected" }], name: `Source ${id}`, controlSource: "claude", enabled: true, running: true, state: "ready", auth: "oauth", transport: "https", error: "", config, url: "https://example.com/mcp" });
-    const status = { ingresses: [source("one"), source("two")], core: { backendSession: "fixture", appServer: { state: "ready" } }, platform: "darwin", logs: [], autoOpenCodex: false };
-    connector.set({ status, sources: status.ingresses.flatMap(i => i.sources), sourcesLoaded: true, loading: false, busy: "", error: "", feedback: { text: "", error: false } });
-    agents.set({ items: [{ agent: "codex", installed: true, enabled: true, available: true, status: "ready" }], loading: false, error: "" });
-    const session = { id: "thread", source: "codex-thread", title: "Dispatch fixture", phase: "command", headline: "Fixture", phaseSince: null, timeline: true };
-    agentActivity.set({ snapshot: { observedAt: "2026-01-01", activeAgents: ["codex"], agents: { codex: { sessions: [session] } } }, error: "" });
-    tasks.set({ records: [{ requestId: "dispatch", origin: { ingressId: "one", sourceId: "one" }, state: "completed", createdAt: "2026-01-01", task: { kind: "create", threadId: "thread", title: "Dispatch fixture", prompt: "Fixture" } }], error: "", loading: false });
-    globalThis.fetch = async (input, init) => {
-      const path = String(input).replace("/api/", ""), method = init?.method || "GET", body = init?.body ? JSON.parse(String(init.body)) : {};
-      let value: unknown = {};
-      if (path === "tasks/control" && body.op === "codex_queue") value = { items: [] };
-      else if (path === "status") value = status;
-      else if (path === "accounts") value = { accounts: [], login: null };
-      else if (path === "setup/next") value = { hasState: false, complete: false, goal: null, steps: [], step: null, progress: { done: 0, total: 0 }, cliPath: "arc", stateDir: "fixture" };
-      else if (path === "relay/list") value = { relays: [], version: "test" };
-      else if (path === "relay/progress") value = { phase: "idle" };
-      else if (path === "tool-catalog") value = { tools: [], groups: [], required: [] };
-      else if (path === "codex/login") value = { state: "authenticated" };
-      else if (path === "agents/conversations") value = { data: [], nextCursor: null, scope: "arc-tasks" };
-      else if (path === "source") value = { sources: status.ingresses.flatMap(i => i.sources) };
-      else if (path.endsWith("/oauth")) value = { grants: [] };
-      else if (path.startsWith("tasks/runtime/")) value = { runtimeStatus: "active", observedAt: "2026-01-01" };
-      else if (path.startsWith("agents/timeline/")) value = { sessionId: "thread", status: "running", entries: [], cursor: 0, coverage: { state: "complete" } };
-      else if (path === "ingress/one" && method === "PUT") { Object.assign(status.ingresses[0], body); value = status.ingresses[0]; }
-      else if (path === "ingress/one" && method === "DELETE") status.ingresses = status.ingresses.filter(i => i.id !== "one");
-      return new Response(JSON.stringify(value), { status: 200 });
-    };
-    const flush = async () => {
-      for (let i = 0; i < 4; i++) await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0));
-        const pending = [...frames.values()]; frames.clear(); pending.forEach(cb => cb(16));
-      });
-    };
-    const click = async (node: Element | null) => { assert.ok(node); await act(() => fireEvent.click(node)); await flush(); };
-    const page = within(document.body);
-    const button = (name: string) => page.getByRole("button", { name, exact: true });
-    const escape = async () => { await act(() => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }))); await flush(); };
-    await act(() => root.render(h(UiProvider, null, h("div", { onClickCapture: (e: { target: EventTarget }) => capturePanelOrigin(e.target) }, h(Overview)))));
-    await flush();
-    const first = () => page.getByRole("button", { name: /Source one/ });
-    const second = () => page.getByRole("button", { name: /Source two/ });
-    await click(first());
-    const shell = page.getByRole("dialog");
-    assert.equal(shell.getAttribute("aria-modal"), null);
-    await click(page.getByRole("switch"));
-    assert.equal(status.ingresses[0].enabled, false);
-    await click(page.getByRole("switch"));
-    await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
-    assertNodeIdentity(page.getByRole("dialog"), shell);
-    await click(button(t("back")));
-    assertNodeIdentity(page.getByRole("dialog"), shell);
-    await act(() => navigation.set({ ingressEdit: { id: "one", field: "name" } })); await flush();
-    assert.ok(page.getByRole("textbox", { name: t("sourceName") }).matches(":focus"));
-    assert.equal(navigation.get().ingressEdit, undefined);
-    await click(button(t("save")));
-    assertNodeIdentity(page.getByRole("dialog"), shell);
-    await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
-    await click(button(t("cancel")));
-    await click(second());
-    assertNodeIdentity(page.getByRole("dialog"), shell);
-    assert.equal(ingressPanel.get().ingress.id, "two");
-    await escape(); assert.equal(ingressPanel.get(), undefined);
-    assert.ok(second().matches(":focus"));
-    await click(first()); await click(first()); assert.equal(ingressPanel.get(), undefined);
-    await click(first()); await click(within(page.getByRole("dialog")).getByRole("button", { name: /Dispatch fixture/ }));
-    assert.equal(ingressPanel.get(), undefined); assert.equal(agentPanel.get().session.id, "thread");
-    await click(first()); assert.equal(agentPanel.get(), undefined); assert.ok(ingressPanel.get());
-    await escape();
-    const { onboarding } = await server.ssrLoadModule("/ui/state/onboarding.ts");
-    const { controlSource } = await server.ssrLoadModule("/ui/controlSources.ts");
-    for (const id of ["claude", "chatgpt", "custom"]) {
-      await click(button(t("addControlSource")));
-      await click(page.getByRole("radio", { name: id === "custom" ? t("setup.otherClient") : controlSource(id).displayName, exact: true }));
-      await click(button(t("source.next")));
-      await click(button(t("source.next")));
-      assert.equal(onboarding.get().step, "address");
-      assert.equal(page.getByRole("textbox", { name: t("source.copyAddress"), exact: true }).textContent, status.ingresses[0].url);
-      await click(button(t("back"))); await click(button(t("back")));
-      assert.equal(onboarding.get().step, "product");
-      assert.equal(page.getByRole("radio", { name: id === "custom" ? t("setup.otherClient") : controlSource(id).displayName, exact: true }).getAttribute("aria-checked"), "true");
-      await escape();
-    }
-    await click(first());
-    await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
-    await click(button(t("remove")));
-    assert.equal(ingressPanel.get(), undefined); assertNodeIdentity(page.queryByRole("dialog"), null);
-    assertNodeIdentity(page.queryByRole("button", { name: /Source one/ }), null);
-    const { default: RecordsPage } = await server.ssrLoadModule("/ui/components/RecordsPage.tsx");
-    await act(() => {
-      connector.set({ ...connector.get(), status: { ...status, ingresses: [source("one"), source("two")], logs: [
-        JSON.stringify({ ingressId: "one", msg: "Request processed: fixture-one" }),
-        JSON.stringify({ ingressId: "two", msg: "Request processed: fixture-two" }),
-      ] } });
-      navigation.set({ recordsSource: "one" }); root.render(h(UiProvider, null, h(RecordsPage)));
-    });
-    await flush();
-    assert.ok(page.getByRole("cell", { name: /fixture-one/ }));
-    assertNodeIdentity(page.queryByRole("cell", { name: /fixture-two/ }), null);
-    assert.ok(page.getByRole("button", { name: /Dispatch fixture/ }));
-
-  } finally {
-    await act(() => root.unmount()); globalThis.fetch = originalFetch;
     await server.close(); await window.happyDOM.close();
   }
 });

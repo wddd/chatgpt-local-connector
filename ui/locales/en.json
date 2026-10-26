@@ -1408,5 +1408,9 @@
   "accounts.mergeConfirm": "Merge selected accounts",
   "accounts.mergeAlias": "Account name",
   "accounts.mergeQuota": "Shared quota source",
-  "accounts.mergeNativeQuota": "Native account quota"
+  "accounts.mergeNativeQuota": "Native account quota",
+  "object.dispatchPolicy": "Dispatch policy",
+  "object.defaultModel": "Default model",
+  "object.defaultEffort": "Default effort",
+  "object.nativeDefault": "Native default"
 }

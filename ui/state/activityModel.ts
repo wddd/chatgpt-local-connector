@@ -42,11 +42,11 @@ export function activityReadMatches(read: ActivityRead, session: AgentActivitySe
   return true;
 }
 export type AgentPanelSelection = { agent: string; accountId?: string; session?: TrackedActivity; closing?: boolean } | undefined;
-export type AgentPanelAction = { type: "agent" | "toggle"; agent: string; accountId?: string } | { type: "task"; agent: string; session: TrackedActivity } | { type: "back" } | { type: "dismiss" } | { type: "closed" };
+export type AgentPanelAction = { type: "agent" | "toggle" | "platform"; agent: string; accountId?: string } | { type: "task"; agent: string; session: TrackedActivity } | { type: "back" } | { type: "dismiss" } | { type: "closed" };
 export function agentPanelSelection(current: AgentPanelSelection, action: AgentPanelAction): AgentPanelSelection {
   if (action.type === "closed") return undefined;
   if (action.type === "dismiss") return current && { ...current, closing: true };
-  if (action.type === "back") return current && { agent: current.agent, ...(current.accountId ? { accountId: current.accountId } : {}) };
+  if (action.type === "back") return current && { agent: current.agent, ...(current.session && current.accountId ? { accountId: current.accountId } : {}) };
   if (action.type === "toggle" && current?.agent === action.agent && current.accountId === action.accountId) return { ...current, closing: true };
   const accountId = action.type === "task" ? action.session.agentAccountId ?? action.session.dispatchSummary?.agentAccountId : action.accountId;
   return { agent: action.agent, ...(accountId ? { accountId } : {}), ...(action.type === "task" ? { session: action.session } : {}) };

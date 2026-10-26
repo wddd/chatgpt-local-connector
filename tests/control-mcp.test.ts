@@ -11,7 +11,6 @@ import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv
 import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createConnection } from 'node:net';
-import { identifyPolicy, normalizeSelection, presetPolicy, type ToolCatalog, type ToolPolicy } from '../ui/toolPolicy.ts';
 import { buildVersion } from '../tooling/version.mjs';
 import { toolFingerprint } from '../tooling/catalog.mjs';
 const catalog = JSON.parse(await readFile(new URL('../native/src/catalog.json', import.meta.url), 'utf8'));
@@ -289,7 +288,7 @@ async function completed(name: string, args: Record<string, unknown>) {
 
 test('MCP lists frozen tools and guide exposes existing ops and native domains with valid object schemas', async () => {
   // Contract: MCP lists frozen tools and guide exposes existing ops and native domains with valid object schemas.
-  assert.deepEqual(inventory.tools.map(tool => tool.name), ['guide', 'query', 'act']);
+  assert.deepEqual(inventory.tools.map((tool: any) => tool.name), ['guide', 'query', 'act']);
   const status = await call('notify_status');
   assert.equal(status.response.isError, false);
   assert.equal(status.result.arcInbox, undefined);
@@ -564,110 +563,40 @@ server.listen(0, '127.0.0.1', () => fs.writeFileSync(process.argv[process.argv.i
   }
 });
 
-test('tool presets use the full registry, preserve exact allowlists and close only necessary read dependencies', async () => {
-  // Property: policy normalization preserves selected operations and closes only their required dependencies.
-  const config: ToolCatalog = await management('tool-catalog');
-  assert.deepEqual(config.tools.filter(tool => tool.available !== false).map(tool => tool.name), operations.map(tool => tool.name));
-  assert.deepEqual(Object.keys(catalog.toolExposure.tools).sort(), config.tools.map(tool => tool.name).sort());
-  for (const tool of config.tools) {
-    assert.ok(config.groups.some(group => group.id === tool.group));
-    for (const dependency of tool.requires) assert.ok(config.tools.some(tool => tool.name === dependency));
-  }
-  const readOnly = presetPolicy('readOnly', config) as { allowlist: string[] };
-  const common = presetPolicy('common', config) as { allowlist: string[] };
-  for (const forbidden of ['git_write', 'edit', 'write', 'receipt', 'fs', 'command', 'process', 'mcp', 'codex_call', 'codex_thread', 'codex_query', 'codex_account', 'codex_resume', ...['agent', 'codex'].flatMap(prefix => ['create', 'send', 'interrupt', 'respond'].map(action => `${prefix}_${action}`))]) {
-    assert.ok(!readOnly.allowlist.includes(forbidden), forbidden);
-  }
-  assert.ok(!common.allowlist.includes('git_write'));
-  assert.ok(common.allowlist.includes('codex_resume'));
-  for (const name of ['codex_resume', 'codex_read', 'codex_wait', 'receipt', 'control_output']) assert.ok(normalizeSelection(['codex_resume'], config).includes(name));
-  for (const dependency of ['git_write', 'receipt', 'control_output']) assert.ok(normalizeSelection(['git_write'], config).includes(dependency));
-  // Read-only closure must not silently pull in any entry excluded from this preset.
-  assert.deepEqual(new Set(readOnly.allowlist), new Set(config.tools.filter(tool => tool.presets.includes('readOnly')).map(tool => tool.name)));
-  for (const prefix of ['agent', 'codex']) {
-    for (const action of ['create', 'send', 'interrupt', 'respond', 'read', 'wait', 'pending', 'tasks']) assert.ok(common.allowlist.includes(`${prefix}_${action}`));
-    const selection = normalizeSelection([`${prefix}_send`, `${prefix}_send`], config);
-    for (const name of [`${prefix}_send`, 'receipt', `${prefix}_read`, `${prefix}_wait`, 'control_output', 'connector_verify']) assert.ok(selection.includes(name));
-    assert.deepEqual(normalizeSelection(selection, config), selection);
-    assert.ok(!selection.includes(`${prefix}_respond`), 'optional write response must not be auto-enabled');
-  }
-  assert.equal(identifyPolicy(undefined, config), 'common');
-  assert.equal(identifyPolicy('all', config), 'all');
-  for (const mode of ['common', 'readOnly'] as const) {
-    const policy = presetPolicy(mode, config) as { allowlist: string[] };
-    assert.equal(identifyPolicy({ allowlist: [...policy.allowlist].reverse().concat(policy.allowlist[0]) }, config), mode);
-  }
-  const legacy = { allowlist: ['read'] };
-  assert.equal(identifyPolicy(legacy, config), 'custom');
-  assert.deepEqual(legacy, { allowlist: ['read'] });
-  const future = structuredClone(config);
-  future.tools.push({ name: 'future_read', description: '', via: 'query', group: 'project', presets: ['readOnly'], requires: ['control_output'] });
-  assert.equal(identifyPolicy(readOnly, future), 'custom');
-  assert.ok(!readOnly.allowlist.includes('future_read'));
-});
-
-test('update presets expose status to readers and scheduling only to common policies', async () => {
-  // Regression: 03ec3af omitted update operations from exposure metadata, hiding them from default ingress policies.
-  const config: ToolCatalog = await management('tool-catalog');
-  const readOnly = presetPolicy('readOnly', config) as { allowlist: string[] };
-  const common = presetPolicy('common', config) as { allowlist: string[] };
-  assert.ok(readOnly.allowlist.includes('update_status'));
-  assert.ok(!readOnly.allowlist.includes('update_request'));
-  for (const name of ['update_status', 'update_request']) assert.ok(common.allowlist.includes(name));
-  const selection = normalizeSelection(['update_request'], config);
-  for (const name of ['update_request', 'update_status', 'control_output']) assert.ok(selection.includes(name));
-});
-
-test('real HTTP ingresses isolate discovery and direct execution; policy PUT preserves identity, metadata and peer availability', async () => {
-  // Contract: ingress discovery and execution obey the authenticated source policy.
-  const config: ToolCatalog = await management('tool-catalog');
+test('connections grant full discovery and execution while legacy policy writes preserve identity', async () => {
+  // Contract: authenticated connections grant full tool access, including after legacy policy updates.
+  const config = await management('tool-catalog');
   const a = await management('ingress', 'POST', { id: 'policy-all', name: 'Policy all', toolPolicy: 'all', controlSource: 'custom', transport: 'https', auth: 'bearer', bearerToken: 'test-policy-all'.padEnd(40, 'x'), config: { httpsProvider: 'custom', httpsUrl: 'https://policy-all.example/mcp' } });
-  const b = await management('ingress', 'POST', { id: 'policy-read', name: 'Policy read', controlSource: 'custom', transport: 'https', auth: 'bearer', bearerToken: 'test-policy-read'.padEnd(40, 'x'), toolPolicy: presetPolicy('readOnly', config), config: { httpsProvider: 'custom', httpsUrl: 'https://policy-read.example/mcp' } });
+  const b = await management('ingress', 'POST', { id: 'policy-read', name: 'Policy read', controlSource: 'custom', transport: 'https', auth: 'bearer', bearerToken: 'test-policy-read'.padEnd(40, 'x'), toolPolicy: { allowlist: ['read'] }, config: { httpsProvider: 'custom', httpsUrl: 'https://policy-read.example/mcp' } });
   try {
     assert.equal(a.toolPolicy, 'all');
     await management(`ingress/${a.id}/start`, 'POST');
     await management(`ingress/${b.id}/start`, 'POST');
     const list = async (i: any) => (await ingressRpc(i, 'tools/call', {name:'query',arguments:{op:'guide',args:{view:'full'}}})).result.structuredContent.result.ops.map((op: any) => op.op);
-    assert.deepEqual(await list(a), config.tools.filter(tool => tool.available !== false).map(tool => tool.name));
-    assert.deepEqual(await list(b), config.tools.filter(tool => (b.toolPolicy.allowlist.includes(tool.name) || ['notification_ack', 'notify_status', 'inbox_wait'].includes(tool.name)) && tool.available !== false).map(tool => tool.name));
-    assert.deepEqual((await management('tool-catalog')).tools, config.tools, 'management inventory remains unfiltered');
-    for (const name of config.tools.filter(tool => !b.toolPolicy.allowlist.includes(tool.name) && !['notification_ack', 'notify_status', 'inbox_wait'].includes(tool.name)).map(tool => tool.name)) {
-      assert.equal((await ingressRpc(b, 'tools/call', { name, arguments: { action: 'approve', requestId: randomUUID() } })).result.structuredContent.result.error.code, 'OP_UNAVAILABLE', name);
-    }
-    const args = { requestId: randomUUID(), method: 'fixture/counts', params: {} };
-    const blocked = await ingressRpc(b, 'tools/call', { name: 'codex_call', arguments: args });
-    assert.equal(blocked.result.isError, true);
-    assert.equal(blocked.result.structuredContent.result.error.code, 'OP_UNAVAILABLE');
-    const missingReceipt = await ingressRpc(a, 'tools/call', { name: 'receipt', arguments: { requestId: args.requestId } });
-    assert.equal(missingReceipt.result.structuredContent.result.state, 'not-found', 'blocked mutation did not create a receipt');
-    const allowed = await ingressRpc(a, 'tools/call', { name: 'codex_call', arguments: args });
+    assert.deepEqual(await list(a), config.tools.filter((tool: any) => tool.available !== false).map((tool: any) => tool.name));
+    assert.deepEqual(await list(b), await list(a));
+    const allowed = await ingressRpc(b, 'tools/call', { name: 'codex_call', arguments: { requestId: randomUUID(), method: 'fixture/counts', params: {} } });
     assert.equal(allowed.result.isError, false);
-    // A restricted real read succeeds, not merely schema validation or list filtering.
     const read = await ingressRpc(b, 'tools/call', { name: 'read', arguments: { project: directory, path: 'app-server.mjs' } });
     assert.equal(read.result.isError, false, JSON.stringify(read));
     const identity = (await management(`ingress/${b.id}`)).verification;
     const verified = await ingressRpc(b, 'tools/call', { name: 'connector_verify', arguments: { code: identity.code } });
     assert.equal(verified.result.isError, false, JSON.stringify(verified));
-    for (const policy of [presetPolicy('common', config), { allowlist: normalizeSelection(['agent_send'], config) }, 'all'] as ToolPolicy[]) {
+    for (const policy of [{ allowlist: ['read'] }, { allowlist: [] }, 'all']) {
       await management(`ingress/${b.id}/stop`, 'POST');
       const saved = await management(`ingress/${b.id}`, 'PUT', { toolPolicy: policy });
-      assert.deepEqual(saved.toolPolicy, policy);
+      assert.equal(saved.toolPolicy, "all");
       assert.equal(saved.name, b.name);
       assert.equal(saved.controlSource, b.controlSource);
       assert.equal(saved.auth, b.auth);
       assert.deepEqual(saved.config, b.config);
       assert.equal((await management(`ingress/${b.id}`)).verification.code, identity.code);
-      assert.deepEqual((await management(`ingress/${b.id}`)).toolPolicy, policy);
+      assert.equal((await management(`ingress/${b.id}`)).toolPolicy, "all");
       await management(`ingress/${b.id}/start`, 'POST');
       assert.equal((await management(`ingress/${b.id}`)).verification.code, identity.code);
-      assert.deepEqual(await list(b), config.tools.filter(tool => (policy === 'all' || policy.allowlist.includes(tool.name) || ['notification_ack', 'notify_status', 'inbox_wait'].includes(tool.name)) && tool.available !== false).map(tool => tool.name));
-      assert.deepEqual(await list(a), config.tools.filter(tool => tool.available !== false).map(tool => tool.name), 'other ingress stays online and unchanged');
+      assert.deepEqual(await list(b), await list(a));
+      assert.deepEqual(await list(a), config.tools.filter((tool: any) => tool.available !== false).map((tool: any) => tool.name), 'other ingress stays online and unchanged');
     }
-    await management(`ingress/${b.id}/stop`, 'POST');
-    await management(`ingress/${b.id}`, 'PUT', { toolPolicy: { allowlist: [] } });
-    await management(`ingress/${b.id}/start`, 'POST');
-    assert.deepEqual(await list(b), ['guide', 'inbox_wait', 'notification_ack', 'notify_status']);
-    for (const name of ['connector_verify', 'codex_wait', 'agent_wait']) assert.equal((await ingressRpc(b, 'tools/call', { name, arguments: {} })).result.structuredContent.result.error.code, 'OP_UNAVAILABLE');
   } finally {
     await management(`ingress/${a.id}`, 'DELETE');
     await management(`ingress/${b.id}`, 'DELETE');
@@ -676,8 +605,8 @@ test('real HTTP ingresses isolate discovery and direct execution; policy PUT pre
 
 // Simulate only the tunnel provider's loopback readiness API; ingress commit and
 // persistence still run through the compiled production Service implementation.
-test('managed draft commits the selected policy instead of publishing all tools', { skip: process.platform !== 'darwin' }, async () => {
-  // Regression: a committed restricted draft must not expose unselected operations.
+test('managed drafts stay restricted until commitment grants full connection access', { skip: process.platform !== 'darwin' }, async () => {
+  // Contract: unpublished drafts expose no execution operations and committed connections grant full access.
   const dependency = path.join(directory, 'dependencies/cloudflare', `darwin-${process.arch === 'arm64' ? 'arm64' : 'amd64'}`);
   await mkdir(dependency, { recursive: true });
   const binary = path.join(dependency, 'cloudflared');
@@ -689,8 +618,7 @@ http.createServer((req, res) => { res.setHeader('Content-Type', 'application/jso
   await writeFile(binary, script);
   await chmod(binary, 0o700);
   await writeFile(path.join(dependency, 'installed.json'), JSON.stringify({sha256:createHash('sha256').update(script).digest('hex')}));
-  const config: ToolCatalog = await management('tool-catalog');
-  for (const policy of [presetPolicy('readOnly', config), {allowlist:normalizeSelection(['agent_send'], config)}]) {
+  for (const policy of [{ allowlist: ['read'] }, { allowlist: [] }]) {
     let draft = await management('ingress-drafts', 'POST', {config:{httpsProvider:'cloudflare',cloudflareMode:'quick',proxyMode:'direct'}});
     let committed = false;
     try {
@@ -703,8 +631,8 @@ http.createServer((req, res) => { res.setHeader('Content-Type', 'application/jso
       assert.deepEqual(draft.toolPolicy, {allowlist:[]});
       const saved = await management(`ingress-drafts/${draft.id}/commit`, 'POST', { name:'Policy draft',controlSource:'custom',auth:'bearer',toolPolicy:policy,url:draft.url });
       committed = true;
-      assert.deepEqual(saved.toolPolicy, policy);
-      assert.deepEqual((await management(`ingress/${saved.id}`)).toolPolicy, policy);
+      assert.equal(saved.toolPolicy, "all");
+      assert.equal((await management(`ingress/${saved.id}`)).toolPolicy, "all");
     } finally {
       await management(`${committed ? 'ingress' : 'ingress-drafts'}/${draft.id}`, 'DELETE');
     }

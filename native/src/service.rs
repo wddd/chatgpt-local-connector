@@ -816,6 +816,9 @@ impl Service {
                 )
                 .await;
         }
+        if route == "agents/dispatch-policy" && method == "GET" {
+            return crate::dispatch_policy::summary();
+        }
         if route == "agents/activity" && method == "GET" {
             return Ok(self.agents.activity(&self.control).await);
         }

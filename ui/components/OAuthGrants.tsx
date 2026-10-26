@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { refreshConnector } from "../state/connector";
 import { api } from "../api";
 import { locale, t } from "../i18n";
 import { useInterval } from "../state/hooks";
@@ -7,13 +8,11 @@ import type { ControlSource } from "../state/types";
 export default function OAuthGrants({
   ingressId,
   sourceId,
-  running,
   disabled,
   onBusy,
 }: {
   ingressId: string;
   sourceId: string;
-  running: boolean;
   disabled?: boolean;
   onBusy: (value: boolean) => void;
 }) {
@@ -31,11 +30,6 @@ export default function OAuthGrants({
   }, []);
   async function refresh(afterAction = false) {
     if (busy && !afterAction) return;
-    if (!running) {
-      setGrants([]);
-      setError("");
-      return;
-    }
     const version = revision.current;
     try {
       const result = await api<{ sources: ControlSource[] }>(
@@ -52,9 +46,9 @@ export default function OAuthGrants({
   useInterval(() => void refresh(), 3000, true);
   useEffect(() => {
     void refresh();
-  }, [running]);
+  }, [sourceId, ingressId]);
   async function action(id: string) {
-    if (busy || disabled || !running) return;
+    if (busy || disabled) return;
     revision.current++;
     setBusy(true);
     onBusy(true);
@@ -62,6 +56,7 @@ export default function OAuthGrants({
     try {
       await api(`source/${id}/disconnect`, "POST");
       await refresh(true);
+      await refreshConnector();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -86,7 +81,7 @@ export default function OAuthGrants({
               ) : t("oauthTimeUnknown")}
             </span>
             <Button
-              disabled={busy || disabled || !running || grant.state === "revoked"}
+              disabled={busy || disabled || grant.state === "revoked"}
               onClick={() => void action(grant.id)}
             >
               {t("oauthRevoke")}
