@@ -47,11 +47,11 @@ try {
         await page.waitForFunction(name => document.documentElement.dataset.scenarioError || document.documentElement.dataset.scenarioReady === name, name, { timeout: 15000 });
         const model = await page.evaluate(() => window.__ARC_VIEW_MODEL__());
         if (!model.scenario?.ready) throw new Error(model.scenario?.error || 'Fixture task detail is not ready');
-        if (!fixture.page && !model.topology) throw new Error('No rendered topology exported');
+        if (!fixture.page && !fixture.shells && !model.topology) throw new Error('No rendered topology exported');
         const actualAgents = (model.topology?.nodes ?? []).filter(n => n.side === 1).map(n => n.id);
-        if (!fixture.page && fixture.agents.some(a => !actualAgents.includes(a))) throw new Error('Fixture agents were not rendered');
+        if (!fixture.page && !fixture.shells && fixture.agents.some(a => !actualAgents.includes(a))) throw new Error('Fixture agents were not rendered');
         const representedTasks = model.topology?.tasks.reduce((sum, task) => sum + (task.count ?? 1), 0);
-        if (!fixture.page && !fixture.panel && representedTasks !== fixture.tasks.length) throw new Error(`Task count mismatch: ${representedTasks}/${fixture.tasks.length}`);
+        if (!fixture.page && !fixture.shells && !fixture.panel && representedTasks !== fixture.tasks.length) throw new Error(`Task count mismatch: ${representedTasks}/${fixture.tasks.length}`);
         if (fixture.panel?.kind === 'agent' && model.panels.agent?.agent !== fixture.panel.id) throw new Error('Agent panel not opened');
         if (fixture.panel?.kind === 'source' && model.panels.source !== fixture.panel.id) throw new Error('Source panel not opened');
         if (name === 'agent-panel-unread') {

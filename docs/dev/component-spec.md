@@ -2,7 +2,7 @@
 
 MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.
 
-This is a target specification for later convergence and mounting real React components in design tools. It does not describe completed implementation. [Component inventory](component-inventory.md) records current renderers; [Object model](object-model.md) supplies the draft management placement. Component reuse does not itself authorize that draft's page removals or backend changes.
+The shell layer and domain state presentation map are implemented in the current hosts. Object components and cross-object composites below remain target contracts for later convergence and design-tool mounting. [Component inventory](component-inventory.md) records current renderers; [Object model](object-model.md) supplies the draft management placement. Component reuse does not itself authorize that draft's page removals or backend changes.
 
 ## Boundaries and composition
 
@@ -27,6 +27,16 @@ Shells accept presentation values and callbacks, never domain records or stores.
 | Freshness | Observation timestamp, relative age, refresh callback, busy/disabled, unknown time. Caller supplies clock and stale state. Refresh preserves readable content; fetch errors remain separate from domain state. | Quota age/refresh and last-seen presentations. |
 | AddressField | Label, raw value, masked display, explicit reveal/copy, loading/disabled and copy error. Copy uses the raw value only on an explicit action. Missing value has no enabled copy action. | CopyField/address fragments; reuse Sensitive and existing privacy policy. |
 | Existing primitives | Button, IconButton, Switch, SingleChoice, Notice, Empty and Loading keep their existing contracts. Dialog, Field/Input, menus and privacy helpers are reused as needed. | No redesign. Homepage async power behavior remains in its adapter while reusing Switch when converged. |
+
+### Shell implementation and mounts
+
+Import shells from `ui/components/ui`. `PlatformIcon.tsx` owns role-aware asset resolution; `Shells.tsx` owns the remaining presentation contracts. Domain adapters call `objects/statePresentation.ts` after the existing projector. Notification binding and audit-record outcomes retain their separate primitives because they are not domains in this map.
+
+`Address.tsx` owns clipboard feedback and the existing Sensitive policy, passing display values and callbacks to AddressField. Freshness receives the caller's formatted age and observation timestamp; it has no timer or fetch loop. EntityRow keeps independent actions outside the navigation target. EntityCard uses Radix Slot when an existing motion/reorder article or form must remain the root element. Editable titles and title-area controls can supply their own root through `titleAsChild`; other titles use the explicit heading level. Dialog still owns its focus, title association and overlay header.
+
+Use `dev:ui ?scenario=shells-light`, `shells-dark`, or `shells-narrow` to mount the actual shells with fixed timestamps and local action receipts. Set a narrow viewport for `shells-narrow`. Tab navigation reaches row selection and its independent action separately. The copy-error switch, missing address, unknown brand/state, disabled row, privacy toggle and retained stale timestamp expose the shell boundaries. Quota rings and full quota visuals remain in `agent-panel`, `agent-panel-used`, and `topology-accounts`.
+
+The shared row baseline uses the account list's 12px padding and gap. Cards use the account card's 16px padding, 12px gap and radius; host-specific catalog, setup and relay dimensions remain explicit CSS overrides. Source rows keep an inline connection label on wide layouts, while connection rows retain their second address line. Task state uses the shared Status dot and mapped tones instead of an independent animated pill. Source headers use brand artwork without alias initials. Provider quota masks and Agent artwork preserve their separate existing assets under one resolver.
 
 ### One domain state map
 

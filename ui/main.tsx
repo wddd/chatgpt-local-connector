@@ -5,9 +5,10 @@ import App from "./App";
 import "./product.css";
 import { scenarioName } from './scenarioMode';
 const ready = import.meta.env.DEV && scenarioName ? await (await import('./scenarios')).installScenario(scenarioName) : undefined;
+const ShellFixture = import.meta.env.DEV && scenarioName?.startsWith("shells-") ? (await import("./scenarioShells")).default : undefined;
 createRoot(document.getElementById("app")!).render(
   <UiProvider>
-    <App />
+    {ShellFixture ? <ShellFixture /> : <App />}
   </UiProvider>,
 );
 
