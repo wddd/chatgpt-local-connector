@@ -21,7 +21,15 @@ Default, hover, focus, pressed, busy and disabled. A busy action cannot be click
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.Button" variant="primary"
-  on-click=${() => {}}>${Arc.fixtures.labels.button}</x-import>`
+const renderVals = {
+  click: () => {},
+  label: Arc.fixtures.labels.button,
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.Button" variant="primary" on-click="{{click}}">{{label}}</x-import>
 ```

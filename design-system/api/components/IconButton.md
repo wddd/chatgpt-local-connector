@@ -8,7 +8,7 @@ Requires [Arc.Root](Root.md). Non-string props use template holes.
 
 | Prop | Type / allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `icon` | `"RefreshCw" &#124; "Plus" &#124; "Check" &#124; "X" &#124; "Info"` | `required` | Named Lucide icon. |
+| `icon` | `"RefreshCw" &#124; "Plus" &#124; "Check" &#124; "X" &#124; "Info" &#124; "Plug" &#124; "Bot"` | `required` | Named Lucide icon. |
 | `label` | `string` | `required` | Accessible button name. |
 | `size` | `16 &#124; 20` | `16` | Icon size. |
 | `busy` | `boolean` | `false` | Spinner; disables the action. |
@@ -22,7 +22,15 @@ Default, focus, busy and disabled. Invalid icon names are rejected.
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.IconButton" icon="RefreshCw"
-  label=${Arc.fixtures.labels.button} on-click=${() => {}}></x-import>`
+const renderVals = {
+  label: Arc.fixtures.labels.button,
+  click: () => {},
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.IconButton" icon="RefreshCw" label="{{label}}" on-click="{{click}}"></x-import>
 ```

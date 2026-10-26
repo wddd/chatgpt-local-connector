@@ -20,8 +20,16 @@ Ready, refreshing, stale, unavailable, blocked, exhausted, empty, unknown reset 
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.QuotaBubble"
-  provider=${Arc.fixtures.quotaStates.stale} on-refresh=${async () => {}}
-  link=${false}></x-import>`
+const renderVals = {
+  quota: Arc.fixtures.quotaStates.stale,
+  refresh: async () => {},
+  link: false,
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.QuotaBubble" provider="{{quota}}" on-refresh="{{refresh}}" link="{{link}}"></x-import>
 ```

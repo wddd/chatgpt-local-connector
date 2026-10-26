@@ -18,9 +18,17 @@ Independent light/dark, English/Chinese and visible/masked artboards. Prop updat
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.Root" mode="dark" locale="zh-CN"
-  privacy=${true} now=${Arc.fixtures.now}>
+const renderVals = {
+  privacy: true,
+  now: Arc.fixtures.now,
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.Root" mode="dark" locale="zh-CN" privacy="{{privacy}}" now="{{now}}">
   <x-import component-from-global-scope="Arc.Loading"></x-import>
-</x-import>`
+</x-import>
 ```

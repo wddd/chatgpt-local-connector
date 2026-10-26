@@ -18,6 +18,14 @@ With/without icon and trailing text. Exposes role=status.
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.Empty">${Arc.fixtures.labels.empty}</x-import>`
+const renderVals = {
+  label: Arc.fixtures.labels.empty,
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.Empty">{{label}}</x-import>
 ```

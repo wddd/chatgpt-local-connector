@@ -23,9 +23,16 @@ Running, needs attention, completed, unread, cancelled/interrupted and external 
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.ActivityBubble"
-  agent=${Arc.fixtures.activitySessions[0].agent}
-  session=${Arc.fixtures.activitySessions[0]} density="detailed"
-  on-read=${() => {}}></x-import>`
+const renderVals = {
+  agent: Arc.fixtures.activitySessions[0].agent,
+  session: Arc.fixtures.activitySessions[0],
+  read: () => {},
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.ActivityBubble" agent="{{agent}}" session="{{session}}" density="detailed" on-read="{{read}}"></x-import>
 ```

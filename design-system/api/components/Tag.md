@@ -18,6 +18,14 @@ Neutral, source and Agent.
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.Tag" tone="source">${Arc.fixtures.labels.tag}</x-import>`
+const renderVals = {
+  label: Arc.fixtures.labels.tag,
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.Tag" tone="source">{{label}}</x-import>
 ```

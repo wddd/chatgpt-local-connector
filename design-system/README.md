@@ -27,20 +27,26 @@ Token JSON retains CSS expressions such as `var()` and `color-mix()`. The `color
 
 Wrap every mounted component in `Arc.Root`. Use a separate Root for each independently configured artboard. It supplies `mode`, `locale`, `privacy` and a fixed `now` in epoch milliseconds. It sets attributes on its own element, never on the host document. Native service calls and preferences are replaced with memory-only design adapters. Reduced motion is enabled for deterministic mounts.
 
-The examples use the canvas `html` template tag. Kebab-case attributes become camelCase props. Pass booleans, numbers, objects and callbacks through template holes; `privacy="false"` is a string, not a boolean.
+Canvas examples use `{{name}}` template holes resolved from the canvas `renderVals` object. Kebab-case attributes become camelCase props. Pass booleans, numbers, objects and callbacks through holes; `privacy="false"` is a string, not a boolean. Define the named values before rendering; do not wrap the markup in an `html` template tag.
 
 ```js
-html`<x-import component-from-global-scope="Arc.Root"
-  mode="light" locale="en" privacy=${false} now=${Arc.fixtures.now}>
-  <x-import component-from-global-scope="Arc.AgentQuota"
-    provider=${Arc.fixtures.quotaSnapshots[0]}
-    refreshing=${false} on-refresh=${() => {}}></x-import>
-</x-import>`
+const renderVals = {
+  privacy: false, now: Arc.fixtures.now,
+  quota: Arc.fixtures.quotaSnapshots[0], refreshing: false, refresh: () => {},
+};
 ```
 
-Root accepts ordinary host React children, including multiple `x-import` elements. Every other component accepts **plain text children and text slots only**. Do not pass React 18 elements, component functions, refs or render props into a React 19 island. Icon props use the names `RefreshCw`, `Plus`, `Check`, `X` or `Info`, resolved to real Lucide components inside the island. `SingleChoice` option icons use those names too.
+```html
+<x-import component-from-global-scope="Arc.Root"
+  mode="light" locale="en" privacy="{{privacy}}" now="{{now}}">
+  <x-import component-from-global-scope="Arc.AgentQuota"
+    provider="{{quota}}" refreshing="{{refreshing}}" on-refresh="{{refresh}}"></x-import>
+</x-import>
+```
 
-Controlled inputs still require the owner to update their props from `onChange`. Explicit callbacks run normally. Built-in task selection, quota refresh, URL and clipboard actions emit a bubbling `arc:action` CustomEvent on the enclosing Root with `{ kind, value }`; they do not contact ARC, navigate or write to the clipboard. Listen for that event to visualize design interactions. `now` is fixed until the owner changes it. Keep fixture timestamps aligned with it.
+Root accepts ordinary host React children, including multiple `x-import` elements. Every other component accepts **plain text children and text slots only**. Do not pass React 18 elements, component functions, refs or render props into a React 19 island. Lucide icon props use the names `RefreshCw`, `Plus`, `Check`, `X`, `Info`, `Plug` or `Bot`, resolved to real Lucide components inside the island. `SingleChoice` option icons, `StateBadge.presentation.icon` and `PlatformIcon.fallback` use those names too. `EntityCard.icon` is a plain-text slot, not a Lucide icon name. Nested FactList labels, values and missing placeholders are text only. `SectionHeader.titleProps` accepts heading attributes without children, refs or HTML injection. `EntityCard.asChild` and `SectionHeader.titleAsChild` support only false because their element composition cannot cross the island boundary. All eight shells are exported; no whole component is skipped.
+
+Controlled inputs still require the owner to update their props from `onChange`. Explicit callbacks run normally. Built-in task selection, quota refresh and platform-adapter URL/clipboard actions emit a bubbling `arc:action` CustomEvent on the enclosing Root with `{ kind, value }`; these adapters do not contact ARC, navigate or write to the clipboard. Listen for that event to visualize design interactions. AddressField calls the owner's `onCopy` callback for its button and retains native selection-copy of its raw value; its `display` text and reveal state are owner-controlled. `now` is fixed until the owner changes it. Keep fixture timestamps aligned with it.
 
 ## Exports
 
@@ -61,7 +67,14 @@ Controlled inputs still require the owner to update their props from `onChange`.
 | [QuotaBubble](api/components/QuotaBubble.md) | Full quota detail and disclosures |
 | [GraphNode](api/components/GraphNode.md) | Existing topology node button |
 | [ActivityBubble](api/components/ActivityBubble.md) | Compact, standard and detailed task nodes |
-| [SourceIcon](api/components/SourceIcon.md) | Current platform icon renderer |
+| [PlatformIcon](api/components/PlatformIcon.md) | Source, Agent and provider branding |
+| [StateBadge](api/components/StateBadge.md) | Explicit domain presentation and status variants |
+| [SectionHeader](api/components/SectionHeader.md) | Heading hierarchy and text slots |
+| [EntityRow](api/components/EntityRow.md) | Static, action or navigation row |
+| [EntityCard](api/components/EntityCard.md) | Titled entity surface with footer and danger slots |
+| [FactList](api/components/FactList.md) | Facts with explicit missing-value policy |
+| [Freshness](api/components/Freshness.md) | Observation age and refresh action |
+| [AddressField](api/components/AddressField.md) | Read-only address, reveal and copy actions |
 | [fixtures](api/components/fixtures.md) | Typed synthetic domain records and quota states |
 
 ## React compatibility boundary
@@ -80,6 +93,6 @@ npm run design:bundle
 python3 -m http.server 5198 --bind 127.0.0.1 --directory design-system
 ```
 
-Open `http://127.0.0.1:5198/preview.html`. This standalone fixture page loads React/ReactDOM **18.3.1 development UMD from a CDN**, mounts every component in light and dark under StrictMode, and includes all activity densities and extra quota states. The CDN scripts are preview dependencies only. It neither launches nor connects to the desktop app. The page uses ordinary React to exercise the same exported functions; the canvas owns the `x-import` parser.
+Open `http://127.0.0.1:5198/preview.html`. This standalone fixture page loads React/ReactDOM **18.3.1 development UMD from a CDN**, mounts every component in light and dark under StrictMode, and includes all activity densities, platform roles, badge variants, text slots, and extra quota states. Reveal/copy and refresh callbacks remain controlled by the preview owner. The CDN scripts are preview dependencies only. It neither launches nor connects to the desktop app. The page uses ordinary React to exercise the same exported functions; the canvas owns the `x-import` parser.
 
 Source types are in `ui/design-mount/host.tsx` and `ui/design-mount/fixtures.ts`. Rebuild against the current shared components whenever their props or styles change. No generated output belongs in Git.

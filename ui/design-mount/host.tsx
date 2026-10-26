@@ -6,7 +6,6 @@ import type { AgentQuotaIcon as AgentQuotaIconComponent } from '../subscriptions
 import type QuotaBubbleComponent from '../subscriptions/QuotaBubble';
 import type GraphNodeComponent from '../components/GraphNode';
 import type { ActivityBubble as ActivityBubbleComponent } from '../components/ActivityBubbles';
-import type SourceIconComponent from '../components/SourceIcon';
 import type { Environment } from './environment';
 import { fixtures } from './fixtures';
 import { bubbleHeights, type BubbleDensity } from '../state/activityModel';
@@ -31,10 +30,18 @@ export function Root({ mode = 'light', locale = 'en', privacy = false, now = fix
       'data-reduced-motion': 'true', lang: locale, style: { colorScheme: mode } }, children));
 }
 
-export type IconName = 'RefreshCw' | 'Plus' | 'Check' | 'X' | 'Info';
-const iconNames: readonly string[] = ['RefreshCw', 'Plus', 'Check', 'X', 'Info'];
+export type IconName = 'RefreshCw' | 'Plus' | 'Check' | 'X' | 'Info' | 'Plug' | 'Bot';
+const iconNames: readonly string[] = ['RefreshCw', 'Plus', 'Check', 'X', 'Info', 'Plug', 'Bot'];
 type TextProps<P> = Omit<P, 'children' | 'ref' | 'action' | 'icon' | 'dangerouslySetInnerHTML'> &
   (P extends { children: unknown } ? { children: string } : { children?: string });
+type TextSlots<P, K extends keyof P> = Omit<{ [Key in keyof P]: Key extends K ? string : P[Key] }, 'ref' | 'dangerouslySetInnerHTML'>;
+const textSlots: Record<string, readonly string[]> = {
+  PlatformIcon: ['quotaRing'],
+  SectionHeader: ['title', 'leading', 'actions', 'back', 'close', 'widthControl', 'secondary', 'titleActions'],
+  EntityRow: ['leading', 'title', 'secondary', 'state', 'actions'],
+  EntityCard: ['icon', 'title', 'headerActions', 'footer', 'danger'],
+  Freshness: ['age', 'unknown'], AddressField: ['display'],
+};
 function island<P extends object>(name: string) {
   function Island(props: P) {
     const context = useContext(Context);
@@ -48,14 +55,31 @@ function island<P extends object>(name: string) {
     }, [runtime]);
     useLayoutEffect(() => {
       const raw = props as Record<string, unknown>;
-      for (const key of ['children', 'action']) {
-        if (raw[key] != null && typeof raw[key] !== 'string') throw new Error(`Arc.${name}.${key} accepts plain text only across React versions.`);
-      }
-      if (raw.ref != null || raw.dangerouslySetInnerHTML != null) throw new Error(`Arc.${name} does not accept ref or dangerouslySetInnerHTML.`);
-      const checkIcon = (value: unknown) => {
-        if (value != null && (typeof value !== 'string' || !iconNames.includes(value))) throw new Error(`Arc.${name}.icon requires one of ${iconNames.join(', ')}.`);
+      const checkText = (value: unknown, key: string) => {
+        if (value != null && typeof value !== 'string') throw new Error(`Arc.${name}.${key} accepts plain text only across React versions.`);
       };
-      checkIcon(raw.icon);
+      for (const key of ['children', 'action', ...(textSlots[name] ?? [])]) checkText(raw[key], key);
+      if (raw.ref != null || raw.dangerouslySetInnerHTML != null) throw new Error(`Arc.${name} does not accept ref or dangerouslySetInnerHTML.`);
+      if (raw.asChild || raw.titleAsChild) throw new Error(`Arc.${name} does not support asChild or titleAsChild across React versions.`);
+      if (raw.titleProps != null) {
+        const titleProps = raw.titleProps as Record<string, unknown>;
+        if (titleProps.children != null || titleProps.ref != null || titleProps.dangerouslySetInnerHTML != null) {
+          throw new Error(`Arc.${name}.titleProps accepts heading attributes only, without children, ref or dangerouslySetInnerHTML.`);
+        }
+      }
+      const checkIcon = (value: unknown, key = 'icon') => {
+        if (value != null && (typeof value !== 'string' || !iconNames.includes(value))) throw new Error(`Arc.${name}.${key} requires one of ${iconNames.join(', ')}.`);
+      };
+      if (name !== 'EntityCard') checkIcon(raw.icon);
+      checkIcon(raw.fallback, 'fallback');
+      if (name === 'StateBadge') checkIcon((raw.presentation as { icon?: unknown } | undefined)?.icon, 'presentation.icon');
+      if (name === 'FactList') {
+        for (const [index, item] of (raw.items as { label: unknown; value?: unknown }[]).entries()) {
+          checkText(item.label, `items[${index}].label`);
+          checkText(item.value, `items[${index}].value`);
+        }
+        if (raw.missing && 'placeholder' in (raw.missing as object)) checkText((raw.missing as { placeholder: unknown }).placeholder, 'missing.placeholder');
+      }
       if (Array.isArray(raw.options)) for (const option of raw.options) {
         checkIcon(option.icon);
         if (option.graphic != null && typeof option.graphic !== 'string') throw new Error('Arc.SingleChoice option.graphic accepts plain text only.');
@@ -84,4 +108,19 @@ export const AgentQuota = island<ComponentProps<typeof AgentQuotaComponent>>('Ag
 export const QuotaBubble = island<ComponentProps<typeof QuotaBubbleComponent>>('QuotaBubble');
 export const GraphNode = island<TextProps<ComponentProps<typeof GraphNodeComponent>>>('GraphNode');
 export const ActivityBubble = island<Omit<ComponentProps<typeof ActivityBubbleComponent>, 'now'> & { now?: number }>('ActivityBubble');
-export const SourceIcon = island<ComponentProps<typeof SourceIconComponent>>('SourceIcon');
+export const PlatformIcon = island<Omit<TextSlots<ComponentProps<typeof UI.PlatformIcon>, 'quotaRing'>, 'fallback'> & { fallback?: IconName }>('PlatformIcon');
+type BadgeProps = ComponentProps<typeof UI.StateBadge>;
+export const StateBadge = island<Omit<BadgeProps, 'presentation'> & { presentation: Omit<BadgeProps['presentation'], 'icon'> & { icon: IconName } }>('StateBadge');
+type HeaderProps = TextSlots<ComponentProps<typeof UI.SectionHeader>, 'children' | 'title' | 'leading' | 'actions' | 'back' | 'close' | 'widthControl' | 'secondary' | 'titleActions'>;
+export const SectionHeader = island<Omit<HeaderProps, 'titleProps' | 'titleAsChild'> & {
+  titleProps?: Omit<NonNullable<HeaderProps['titleProps']>, 'children' | 'dangerouslySetInnerHTML'>;
+  titleAsChild?: false;
+}>('SectionHeader');
+export const EntityRow = island<TextSlots<ComponentProps<typeof UI.EntityRow>, 'children' | 'leading' | 'title' | 'secondary' | 'state' | 'actions'>>('EntityRow');
+export const EntityCard = island<Omit<TextSlots<ComponentProps<typeof UI.EntityCard>, 'children' | 'icon' | 'title' | 'headerActions' | 'footer' | 'danger'>, 'asChild'> & { asChild?: false }>('EntityCard');
+export const FactList = island<Omit<ComponentProps<typeof UI.FactList>, 'items' | 'missing'> & {
+  items: readonly { label: string; value?: string | null; key?: string }[];
+  missing: { omit: true } | { placeholder: string };
+}>('FactList');
+export const Freshness = island<TextSlots<ComponentProps<typeof UI.Freshness>, 'age' | 'unknown'>>('Freshness');
+export const AddressField = island<TextSlots<ComponentProps<typeof UI.AddressField>, 'display'>>('AddressField');

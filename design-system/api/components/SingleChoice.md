@@ -15,7 +15,7 @@ Requires [Arc.Root](Root.md). Non-string props use template holes.
 | `disabled` | `boolean` | `false` | Disables selection. |
 | `swatches / compact / cards / navigation / tiles` | `boolean` | `false` | Existing renderer layout flags; use one presentation family at a time. |
 
-`Choice` is `{ value: string; label: string; icon?: IconName; graphic?: string; color?: string; description?: string; warning?: string; disabled?: boolean }`. IconName is `RefreshCw`, `Plus`, `Check`, `X` or `Info`. Rich React graphics are not accepted across versions.
+`Choice` is `{ value: string; label: string; icon?: IconName; graphic?: string; color?: string; description?: string; warning?: string; disabled?: boolean }`. IconName is `RefreshCw`, `Plus`, `Check`, `X`, `Info`, `Plug` or `Bot`. Rich React graphics are not accepted across versions.
 
 ## States
 
@@ -23,7 +23,15 @@ Selected/unselected, disabled options, disabled control, keyboard focus, narrow 
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.SingleChoice" label="Agent"
-  value="claude" options=${Arc.fixtures.choices} on-change=${value => {}}></x-import>`
+const renderVals = {
+  choices: Arc.fixtures.choices,
+  change: value => {},
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.SingleChoice" label="Agent" value="claude" options="{{choices}}" on-change="{{change}}"></x-import>
 ```

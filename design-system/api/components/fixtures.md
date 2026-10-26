@@ -53,11 +53,19 @@ Account quota is `ProviderAccount['quota']`, a separate subset with `state`, `wi
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.Root" mode="light"
-  locale="en" privacy=${false} now=${Arc.fixtures.now}>
-  <x-import component-from-global-scope="Arc.QuotaBubble"
-    provider=${Arc.fixtures.quotaStates.exhausted}
-    on-refresh=${async () => {}}></x-import>
-</x-import>`
+const renderVals = {
+  privacy: false,
+  now: Arc.fixtures.now,
+  quota: Arc.fixtures.quotaStates.exhausted,
+  refresh: async () => {},
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.Root" mode="light" locale="en" privacy="{{privacy}}" now="{{now}}">
+  <x-import component-from-global-scope="Arc.QuotaBubble" provider="{{quota}}" on-refresh="{{refresh}}"></x-import>
+</x-import>
 ```

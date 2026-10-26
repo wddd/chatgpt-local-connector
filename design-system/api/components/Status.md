@@ -17,6 +17,14 @@ Neutral, success, warning and danger.
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.Status" tone="success">${Arc.fixtures.labels.status}</x-import>`
+const renderVals = {
+  label: Arc.fixtures.labels.status,
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.Status" tone="success">{{label}}</x-import>
 ```

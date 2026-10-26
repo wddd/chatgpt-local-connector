@@ -33,6 +33,8 @@
     function Board({ mode, locale, privacy, now }) {
       const [checked, setChecked] = React.useState(true);
       const [choice, setChoice] = React.useState('claude');
+      const [revealed, setRevealed] = React.useState(false);
+      const [copied, setCopied] = React.useState(false);
       const sample = (name, props = {}, children, label = name) => h('section', { className: 'preview-sample', key: label },
         h('h3', null, label), h(Arc[name], props, children));
       return h(Arc.Root, { mode, locale, privacy, now },
@@ -53,7 +55,24 @@
         ...['compact', 'standard', 'detailed'].map(density => sample('ActivityBubble', {
           agent: f.activitySessions[0].agent, session: f.activitySessions[0], density, onRead: noop,
         }, undefined, `ActivityBubble · ${density}`)),
-        sample('SourceIcon', { platform: f.sources[0].product }),
+        ...['source', 'agent', 'provider'].map(role => sample('PlatformIcon', {
+          platform: role === 'source' ? f.sources[0].product : 'claude', role, size: 24,
+        }, undefined, `PlatformIcon · ${role}`)),
+        sample('PlatformIcon', { platform: 'unknown', role: 'provider', fallback: 'Info', size: 24 }, undefined, 'PlatformIcon · fallback'),
+        sample('PlatformIcon', { platform: 'codex', role: 'agent', add: true, size: 24 }, undefined, 'PlatformIcon · add'),
+        ...['badge', 'dot', 'compact', 'text'].map(variant => sample('StateBadge', {
+          presentation: { tone: 'success', labelKey: 'connected', icon: 'Check' }, label: 'Connected', variant,
+        }, undefined, `StateBadge · ${variant}`)),
+        sample('SectionHeader', { title: 'Providers', level: 2, count: 2, leading: 'P', secondary: 'Quota', actions: 'Refresh' }),
+        sample('EntityRow', { title: 'Claude', secondary: 'Provider', leading: 'C', state: 'Ready', actions: 'Open', selected: true, chevron: true,
+          onClick: () => window.previewActions.push({ kind: 'entity-row' }) }),
+        sample('EntityCard', { icon: 'C', title: 'Claude', headerActions: 'Refresh', footer: 'Observed now', danger: 'Unavailable' }, 'Provider details'),
+        sample('FactList', { items: [{ label: 'Agent', value: 'Claude' }, { label: 'Plan' }], missing: { placeholder: 'Unknown' } }),
+        sample('Freshness', { observedAt: new Date(f.now).toISOString(), age: 'Just now', stale: true, timestampLabel: new Date(f.now).toISOString(),
+          refreshLabel: 'Refresh observation', onRefresh: () => window.previewActions.push({ kind: 'freshness' }) }),
+        sample('AddressField', { label: 'Fixture address', value: 'https://example.com', display: revealed ? 'https://example.com' : '••••',
+          revealed, onReveal: () => setRevealed(value => !value), copied,
+          onCopy: value => { setCopied(true); window.previewActions.push({ kind: 'address-copy', value }); } }),
         h('details', null, h('summary', null, 'Quota and activity states'),
           sample('AgentQuotaIcon', { agent: 'claude', quota: null }, undefined, 'AgentQuotaIcon · missing quota'),
           ...Object.entries(f.quotaStates).map(([state, provider]) => h('section', { className: 'preview-state', key: state },

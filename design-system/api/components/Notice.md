@@ -18,6 +18,14 @@ Danger, warning, success and masked/unmasked text.
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.Notice" tone="warning">${Arc.fixtures.accounts[0].email}</x-import>`
+const renderVals = {
+  email: Arc.fixtures.accounts[0].email,
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.Notice" tone="warning">{{email}}</x-import>
 ```

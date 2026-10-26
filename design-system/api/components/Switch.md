@@ -20,7 +20,16 @@ On, off, disabled, keyboard focus. Space changes the value through onChange.
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.Switch" label=${Arc.fixtures.agents[0].agent}
-  checked=${true} on-change=${value => {}}></x-import>`
+const renderVals = {
+  label: Arc.fixtures.agents[0].agent,
+  checked: true,
+  change: value => {},
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.Switch" label="{{label}}" checked="{{checked}}" on-change="{{change}}"></x-import>
 ```

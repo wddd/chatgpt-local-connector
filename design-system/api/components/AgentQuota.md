@@ -20,8 +20,16 @@ Ready, refreshing, missing windows, stale data, blocked/exhausted windows, pace 
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.AgentQuota"
-  provider=${Arc.fixtures.quotaSnapshots[0]} refreshing=${false}
-  on-refresh=${() => {}}></x-import>`
+const renderVals = {
+  quota: Arc.fixtures.quotaSnapshots[0],
+  refreshing: false,
+  refresh: () => {},
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.AgentQuota" provider="{{quota}}" refreshing="{{refreshing}}" on-refresh="{{refresh}}"></x-import>
 ```

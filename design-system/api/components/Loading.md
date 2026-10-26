@@ -16,6 +16,14 @@ Loading with default locale label or explicit text. Exposes role=status.
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.Loading" label=${Arc.fixtures.labels.loading}></x-import>`
+const renderVals = {
+  label: Arc.fixtures.labels.loading,
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.Loading" label="{{label}}"></x-import>
 ```

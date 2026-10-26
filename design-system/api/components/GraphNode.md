@@ -22,8 +22,16 @@ Normal, connecting, error, inactive, highlighted, newly added, keyboard focus an
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.GraphNode"
-  label=${Arc.fixtures.sources[0].label} state="normal" on-open=${() => {}}
-  on-move=${by => {}}>C</x-import>`
+const renderVals = {
+  label: Arc.fixtures.sources[0].label,
+  open: () => {},
+  move: by => {},
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.GraphNode" label="{{label}}" state="normal" on-open="{{open}}" on-move="{{move}}">C</x-import>
 ```

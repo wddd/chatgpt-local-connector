@@ -126,7 +126,8 @@ styles.append(postcss.parse(`
 .arc-island[data-arc-component="Button"], .arc-island[data-arc-component="IconButton"],
 .arc-island[data-arc-component="Switch"], .arc-island[data-arc-component="Status"],
 .arc-island[data-arc-component="Tag"], .arc-island[data-arc-component="AgentQuotaIcon"],
-.arc-island[data-arc-component="SourceIcon"], .arc-island[data-arc-component="GraphNode"] { display: inline-block; vertical-align: middle; }
+.arc-island[data-arc-component="PlatformIcon"], .arc-island[data-arc-component="StateBadge"],
+.arc-island[data-arc-component="Freshness"], .arc-island[data-arc-component="GraphNode"] { display: inline-block; vertical-align: middle; }
 .arc-island[data-arc-component="ActivityBubble"] { width: var(--bubble-width, 264px); }
 `));
 const css = transform({ filename: 'arc.css', code: Buffer.from(styles.toString()), minify: true }).code;

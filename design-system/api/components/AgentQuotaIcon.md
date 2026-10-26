@@ -20,7 +20,15 @@ Single ring, dual rings, logo only, unavailable, stale, exhausted and expired wi
 
 ## Canvas example
 
+Values for the canvas `renderVals`:
+
 ```js
-html`<x-import component-from-global-scope="Arc.AgentQuotaIcon" agent="claude"
-  dual=${true} quota=${Arc.fixtures.accounts[0].quota}></x-import>`
+const renderVals = {
+  dual: true,
+  quota: Arc.fixtures.accounts[0].quota,
+};
+```
+
+```html
+<x-import component-from-global-scope="Arc.AgentQuotaIcon" agent="claude" dual="{{dual}}" quota="{{quota}}"></x-import>
 ```
