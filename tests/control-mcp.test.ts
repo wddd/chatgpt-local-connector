@@ -2026,9 +2026,10 @@ test('historical review file counts stop at the next clean turn baseline',async(
   const git=(...args:string[])=>execFileSync('git',['-C',project,...args],{stdio:'pipe'});
   const commit=(subject:string)=>{git('add','.');git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgSign=false','commit','-m',subject);};
   git('init');await writeFile(path.join(project,'first.txt'),'before\n');commit('test: seed history');
-  const created=await completed('codex_create',{project,prompt:'harmless fixture',thread:{model:'fixture-dispatch'},purpose:'self-test',notify:null,requestId:randomUUID()});
+  const created=await completed('codex_create',{project,prompt:'harmless fixture',thread:{model:'fixture-dispatch-queue'},purpose:'self-test',notify:null,requestId:randomUUID()});
   assert.equal(created.state,'completed');
   await writeFile(path.join(project,'first.txt'),'after\n');commit('test: complete reviewed work');
+  await completed('codex_call',{method:'fixture/finish-turn',params:{threadId:created.threadId},requestId:randomUUID()});
   const sent=await completed('codex_send',{threadId:created.threadId,prompt:'next harmless turn',purpose:'self-test',notify:null,requestId:randomUUID()});assert.equal(sent.state,'completed');
   await writeFile(path.join(project,'later.txt'),'later\n');commit('test: add later work');
   const latest=(await call('codex_read',{threadId:created.threadId,view:'review'})).result;
@@ -2038,8 +2039,80 @@ test('historical review file counts stop at the next clean turn baseline',async(
   const pinned=(await call('codex_read',{threadId:created.threadId,turnId:created.turnId,view:'review'})).result;
   assert.equal(pinned.turns[0].turnId,created.turnId);assert.deepEqual(pinned.turns[0].files,previous.turns[0].files);
   const summary=(await call('codex_read',{threadId:created.threadId,turnId:created.turnId,view:'summary'})).result;
-  assert.equal(summary.turnId,created.turnId);assert.equal(summary.files,null);assert.equal(summary.diffstat,null);
+  assert.equal(summary.turnId,created.turnId);assert.deepEqual(summary.files,previous.turns[0].files);assert.deepEqual(summary.diffstat,{files:1,added:1,removed:1,unknown:0});
 
+});
+
+test('lane summaries retain committed paths and diffstat across CLI and MCP dispatch and workspace removal',async()=>{
+  // Regression: lane task summaries missed committed files and removed lanes returned GIT_QUERY_FAILED or empty reviews.
+  for(const source of ['cli','mcp']) {
+    const project=path.join(directory,`summary-lane-${source}`);await mkdir(project);
+    const common=path.join(directory,`summary-objects-${source}`);
+    const git=(...args:string[])=>execFileSync('git',['-C',project,...args],{stdio:'pipe'});
+    const commit=(subject:string)=>{git('add','.');git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgSign=false','commit','-m',subject);};
+    git('init',`--separate-git-dir=${common}`);
+    await writeFile(path.join(project,'first.txt'),'before\n');commit('test: seed lane');
+    const args={project,prompt:'harmless fixture',thread:{model:'fixture-dispatch-queue'},purpose:'self-test',notify:null,requestId:randomUUID()};
+    const created=source==='mcp'?await completed('codex_create',args):JSON.parse(execFileSync(fixtureCommand,['cli','control','codex_create','--stdin'],{env:fixtureEnv,input:JSON.stringify(args),encoding:'utf8'})).result;
+    assert.equal(created.state,'completed');assert.ok(created.turnId);
+    await writeFile(path.join(project,'first.txt'),'after\n');
+    await writeFile(path.join(project,'new.txt'),'one\ntwo\n');commit('test: finish lane work');
+    // The event must save evidence before any summary/changes read or notification binding.
+    await completed('codex_call',{method:'fixture/finish-with-pending',params:{threadId:created.threadId},requestId:randomUUID()});
+    const expected=[{path:'first.txt',added:1,removed:1},{path:'new.txt',added:2,removed:0}];
+    if(source==='cli') {
+      const live=JSON.parse(execFileSync(fixtureCommand,['cli','control','codex_read','--stdin'],{env:fixtureEnv,input:JSON.stringify({threadId:created.threadId,turnId:created.turnId,view:'summary'}),encoding:'utf8'})).result;
+      assert.deepEqual(live.files,expected);assert.deepEqual(live.diffstat,{files:2,added:3,removed:1,unknown:0});
+    }
+    await writeFile(path.join(project,'later.txt'),'unrelated\n');commit('test: later unrelated work');
+    await rm(project,{recursive:true});
+    for(const op of ['codex_read','codex_wait']) {
+      const summary=(await call(op,{threadId:created.threadId,turnId:created.turnId,view:'summary',...(op==='codex_wait'?{timeoutMs:1000}:{})})).result;
+      assert.deepEqual(summary.files,expected);assert.deepEqual(summary.diffstat,{files:2,added:3,removed:1,unknown:0});
+      assert.equal(summary.changeEvidence,'terminal-git-snapshot');
+    }
+    const changes=(await call('codex_changes',{threadId:created.threadId,turnId:created.turnId,limit:1})).result;
+    assert.equal(changes.fallback,false);assert.equal(changes.commitCount,1);assert.equal(changes.summary.files,2);assert.equal(changes.summary.added,3);
+    const diff=(await call('codex_changes',{threadId:created.threadId,turnId:created.turnId,path:'first.txt',length:12})).result;
+    assert.ok(diff.diff.text);assert.equal(diff.diff.text.length,12);assert.ok(diff.diff.nextOffset);
+    const review=(await call('codex_read',{threadId:created.threadId,turnId:created.turnId,view:'review'})).result;
+    assert.deepEqual(review.turns[0].files,expected);
+    await rm(common,{recursive:true});
+    const missingPatch=(await call('codex_changes',{threadId:created.threadId,turnId:created.turnId,path:'first.txt'})).result;
+    assert.equal(missingPatch.summary.files,2);assert.equal(missingPatch.diff,null);assert.ok(missingPatch.diffUnavailable);assert.ok(missingPatch.next.hint);
+  }
+});
+
+test('terminal snapshots preserve uncommitted text and binary statistics after workspace removal',async()=>{
+  // Regression: live-only lane evidence lost untracked changes when a terminal workspace was removed.
+  const project=path.join(directory,'dirty-summary-lane');await mkdir(project);
+  execFileSync('git',['init',project],{stdio:'pipe'});
+  const created=await completed('codex_create',{project,prompt:'harmless fixture',thread:{model:'fixture-dispatch-queue'},purpose:'self-test',notify:null,requestId:randomUUID()});
+  await writeFile(path.join(project,'draft.txt'),'draft\n');await writeFile(path.join(project,'asset.bin'),Buffer.from([0,255]));
+  const live=(await call('codex_changes',{threadId:created.threadId,turnId:created.turnId,path:'draft.txt'})).result;
+  assert.match(live.diff.text,/\+draft/);
+  // Terminal polling also captures evidence when an owner does not emit an event.
+  await completed('codex_call',{method:'fixture/finish-turn',params:{threadId:created.threadId},requestId:randomUUID()});
+  const summary=(await call('codex_read',{threadId:created.threadId,turnId:created.turnId,view:'summary'})).result;
+  assert.deepEqual(summary.diffstat,{files:2,added:1,removed:0,unknown:1});
+  await rm(project,{recursive:true});
+  const changes=(await call('codex_changes',{threadId:created.threadId,turnId:created.turnId,path:'draft.txt'})).result;
+  assert.equal(changes.summary.files,2);assert.equal(changes.summary.binaryOrUnreadable,1);assert.equal(changes.diff,null);assert.ok(changes.next.hint);
+});
+
+test('removed lane without terminal evidence reports an explicit gap instead of an empty success',async()=>{
+  // Regression: querying a removed lane without a snapshot leaked GIT_QUERY_FAILED or silently reported zero files.
+  const project=path.join(directory,'missing-summary-lane');await mkdir(project);
+  execFileSync('git',['init',project],{stdio:'pipe'});
+  const created=await completed('codex_create',{project,prompt:'harmless fixture',thread:{model:'fixture-dispatch-queue'},purpose:'self-test',notify:null,requestId:randomUUID()});
+  await rm(project,{recursive:true});
+  await completed('codex_call',{method:'fixture/finish-turn',params:{threadId:created.threadId},requestId:randomUUID()});
+  const changes=(await call('codex_changes',{threadId:created.threadId,turnId:created.turnId})).result;
+  assert.equal(changes.files,null);assert.equal(changes.summary,null);assert.ok(changes.reason);assert.ok(changes.next.hint);assert.equal(changes.error,undefined);
+  const review=(await call('codex_read',{threadId:created.threadId,turnId:created.turnId,view:'review'})).result.turns[0];
+  assert.equal(review.files,null);assert.ok(review.reason);assert.ok(review.next.hint);
+  const summary=(await call('codex_wait',{threadId:created.threadId,turnId:created.turnId,view:'summary',timeoutMs:1000})).result;
+  assert.equal(summary.files,null);assert.equal(summary.diffstat,null);assert.match(summary.changeEvidence,/unavailable/);assert.ok(summary.changeCorrection.hint);
 });
 
 test('AX binary transfers verify bytes and reject duplicate append offsets', async () => {

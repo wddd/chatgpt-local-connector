@@ -729,8 +729,9 @@ No notification binding or verification handshake is required.
 `result.lastResult` contains the bounded outcome; timeout retains it under `error.lastResult` with `WAIT_TIMEOUT`.
 A matched wait may contain a failed or interrupted task, so inspect its status and `next` before reviewing.
 The summary excludes all inbox and cross-thread data.
-It includes an 800-character final-message excerpt, up to 50 attributed changed paths, diffstat, truncation flags, and `completeEvidence`.
-Unavailable attribution is null rather than an empty successful diff.
+It includes an 800-character final-message excerpt, up to 50 changed paths, diffstat, truncation flags, and `completeEvidence`.
+Codex summaries reuse terminal Git snapshots, including committed work after a lane is removed, with native file changes as fallback.
+Git evidence may include concurrent or pre-existing workspace changes. Unavailable evidence is null with a reason and correction hint rather than an empty successful diff.
 Use `view:"summary"` on Codex/Agent reads and waits; Codex reads additionally accept `turnId`.
 Follow `completeEvidence` for full evidence before recording `codex_review` or `agent_review`.
 An independent model review requires a separate dispatched task.

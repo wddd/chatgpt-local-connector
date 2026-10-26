@@ -147,16 +147,14 @@ pub(crate) fn native_files(items: &[Value]) -> Value {
         .map(|(path, (added, removed, unknown))| json!({"path":path,"added":if unknown{None}else{Some(added)},"removed":if unknown{None}else{Some(removed)}}))
         .collect::<Vec<_>>())
 }
-pub(crate) async fn turn(c: &control::Control, thread: &str, turn: &Value) -> Value {
+pub(crate) async fn turn(_c: &control::Control, thread: &str, turn: &Value) -> Value {
     let items = turn["items"].as_array().map(Vec::as_slice).unwrap_or(&[]);
     let message = items
         .iter()
         .rev()
         .find(|i| i["type"] == "agentMessage" && i["phase"] != "commentary")
         .and_then(|i| i["text"].as_str());
-    let files = crate::changes::review_files(c, thread, string(turn, "id"))
-        .await
-        .unwrap_or_else(|| native_files(items));
+    let evidence = crate::changes::review_evidence(thread, turn).await;
     let checks: Vec<_> = items
         .iter()
         .filter(|i| i["type"] == "commandExecution")
@@ -165,7 +163,13 @@ pub(crate) async fn turn(c: &control::Control, thread: &str, turn: &Value) -> Va
             Some(json!({"command":command,"exitCode":i["exitCode"],"summary":check_summary(i)}))
         })
         .collect();
-    json!({"turnId":turn["id"],"recordedStatus":turn["status"],"finalResponse":message,"files":files,"checks":checks})
+    let mut out = json!({"turnId":turn["id"],"recordedStatus":turn["status"],"finalResponse":message,"checks":checks});
+    for key in ["files", "changeEvidence", "attribution", "reason", "next"] {
+        if let Some(value) = evidence.get(key) {
+            out[key] = value.clone();
+        }
+    }
+    out
 }
 
 /// Compact native evidence for revisits; command exit codes retain their batch semantics.

@@ -52,6 +52,20 @@ impl Execution {
         };
         let summary = crate::task_summary::requested(name, &args);
         let mut result = self.call_inner(name, args.clone(), policy).await?;
+        if !summary
+            && name == "codex_wait"
+            && result["turnId"].is_string()
+            && matches!(
+                result["state"].as_str(),
+                Some("completed" | "failed" | "cancelled")
+            )
+        {
+            let _ = crate::changes::query(
+                &self.control,
+                &json!({"threadId":args["threadId"],"turnId":result["turnId"],"limit":1}),
+            )
+            .await;
+        }
         if summary {
             crate::task_summary::evidence(&self.control, name, &args, &mut result).await;
         }

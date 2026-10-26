@@ -40,6 +40,28 @@ pub(crate) async fn evidence(
             Err(_) => value["files"] = Value::Null,
         }
     }
+    if name.starts_with("codex_") && value["turnId"].is_string() {
+        let thread = string(args, "threadId");
+        let turn = string(value, "turnId");
+        let git =
+            crate::changes::query(control, &json!({"threadId":thread,"turnId":turn,"limit":1}))
+                .await;
+        if let Ok(git) = git {
+            if git["fallback"] == false {
+                value["files"] = json!(git["files"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|f| json!({"path":f["path"],"added":f["added"],"removed":f["removed"]}))
+                    .collect::<Vec<_>>());
+                value["changeEvidence"] = git["changeEvidence"].clone();
+                value["attribution"] = git["attribution"].clone();
+            } else if !value["files"].is_array() {
+                value["changeEvidence"] = json!(format!("unavailable: {}", string(&git, "reason")));
+                value["changeCorrection"] = git["next"].clone();
+            }
+        }
+    }
     if value["state"].is_null() && value["status"].is_string() {
         value["state"] = value["status"].clone();
         value["recordedStatus"] = value["status"].clone();
@@ -67,6 +89,8 @@ pub(crate) fn project(name: &str, args: &Value, value: &Value) -> Value {
         "error",
         "next",
         "finalResponseUnchanged",
+        "attribution",
+        "changeCorrection",
     ] {
         if let Some(v) = value.get(key) {
             out[key] = v.clone();
@@ -104,10 +128,12 @@ pub(crate) fn project(name: &str, args: &Value, value: &Value) -> Value {
         "unknown":files.iter().filter(|f|f["added"].is_null() || f["removed"].is_null()).count()})
         })
         .unwrap_or(Value::Null);
-    out["changeEvidence"] = json!(if files.is_some() {
-        "native-file-changes"
-    } else {
-        "unavailable: no attributed native file-change evidence"
+    out["changeEvidence"] = value.get("changeEvidence").cloned().unwrap_or_else(|| {
+        json!(if files.is_some() {
+            "native-file-changes"
+        } else {
+            "unavailable: no attributed native file-change evidence"
+        })
     });
     out["completeEvidence"] = if name.starts_with("codex_") {
         let mut pinned = json!({"threadId":out["threadId"],"view":"review"});

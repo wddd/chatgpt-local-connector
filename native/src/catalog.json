@@ -4505,7 +4505,7 @@
     },
     {
       "name": "codex_changes",
-      "description": "Query commits since the turn baseline, diff statistics, and a specified file diff. Missing baselines explicitly fall back to recent commits and workspace changes. Changes are not attributed exclusively to the task. completed notifications save a changes snapshot within a five-second budget, with up to five commits (eight-character hashes and titles up to 120 characters) and file/added-line/deleted-line/binary statistics. Other tasks and pre-existing changes may be included. This op is a live paginated query, not the frozen snapshot. Delivery retries reuse the original snapshot.",
+      "description": "Query commits since the turn baseline, file statistics, and a paged file diff. Terminal events and reads persist file statistics and the commit range within a five-second budget, independently of dispatch source or notification bindings. Summary, review and changes reuse this evidence after lane removal. Active turns use live workspace evidence. Missing evidence returns null with a reason and correction hint, never an empty successful list. Committed patches use the saved range in the common repository; unavailable objects or uncommitted snapshot patches return diff:null with a correction hint. Git attribution may include other tasks and pre-existing dirty files. Completed notifications retain a compact snapshot with up to five commits; delivery retries reuse it.",
       "inputSchema": {
         "type": "object",
         "properties": {
