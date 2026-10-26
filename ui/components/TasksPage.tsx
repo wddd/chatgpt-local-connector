@@ -1,3 +1,4 @@
+import { DispatchSpec } from "./composites/DispatchSpec";
 import { StateBadge } from "./ui";
 import { statePresentation } from "./objects/statePresentation";
 import { SectionHeader, EntityRow, Button, Empty, IconButton, Loading, Notice, Dialog } from "./ui";
@@ -159,14 +160,7 @@ export default function TasksPage() {
         </div>
       }
     >
-      {(selected.first.task.model || selected.first.task.effort) && <div className="task-document-heading">
-        {selected.first.task.model && (
-          <span className="task-tag">{selected.first.task.model}</span>
-        )}
-        {selected.first.task.effort && (
-          <span className="task-tag">{selected.first.task.effort}</span>
-        )}
-      </div>}
+      <DispatchSpec agent={selected.first.agent || "codex"} record={{ kind: "task", value: selected.first }} />
       <div className="task-focus-content">
         <TaskOwnership ownership={runtime(selected.first)?.ownership} />
         {[...selected.records].reverse().map((r) => (
@@ -207,8 +201,7 @@ export default function TasksPage() {
                 }[r.approval.decision] || r.approval.decision,
               )}{" "}
               · {t((r.origin ?? r.task.origin)?.ingressId === "local-cli" ? "localCli" : r.approval.source === "local" ? "local" : "cloud")}
-              {r.task.model ? ` · ${r.task.model}` : ""}
-              {r.task.effort ? ` · ${r.task.effort}` : ""}
+              {" "}<DispatchSpec agent={r.agent || "codex"} record={{ kind: "task", value: r }} />
             </p>
             {r.error?.message && (
               <Notice>{displayMessage(r.error.message)}</Notice>

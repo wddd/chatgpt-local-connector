@@ -1418,5 +1418,20 @@
   "authorization.denied": "Denied",
   "authorization.expired": "Expired",
   "connect.phase.idle": "Idle",
-  "connect.phase.ready": "Ready"
+  "connect.phase.ready": "Ready",
+  "dispatchSpec.unresolved": "Unresolved",
+  "dispatchSpec.loading": "Loading labels",
+  "dispatchSpec.error": "Labels unavailable",
+  "dispatchSpec.missing": "Spec not recorded",
+  "dispatchSpec.standard": "Standard",
+  "dispatchSpec.effort.none": "None",
+  "dispatchSpec.effort.minimal": "Minimal",
+  "dispatchSpec.effort.low": "Low",
+  "dispatchSpec.effort.medium": "Medium",
+  "dispatchSpec.effort.high": "High",
+  "dispatchSpec.effort.xhigh": "Extra high",
+  "dispatchSpec.effort.max": "Max",
+  "dispatchSpec.effort.ultra": "Ultra",
+  "source.disconnectConsequence": "This source will lose access; its dispatch history will remain.",
+  "setup.removeConsequence": "Removing this connection disconnects its sources; their history remains."
 }

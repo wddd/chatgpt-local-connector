@@ -10,7 +10,7 @@ import { isDesktop } from "../platform";
 import { connector, run, notify, refreshConnector } from "../state/connector";
 import { useInterval } from "../state/hooks";
 import type { Service } from "../state/types";
-import { Button, Group, Row, Switch, SingleChoice, Input, Field } from "./ui";
+import { ActionGroup, FormSection, Button, SettingsSection, SettingRow, Switch, ChoiceControl, Input, FormField } from "./ui";
 import SettingsExtras from "./SettingsExtras";
 import { AppUpdate, UpdatesSettings } from "./AppUpdate";
 export default function SettingsPage() {
@@ -68,6 +68,7 @@ export default function SettingsPage() {
         if (!["http:", "https:"].includes(url.protocol)) throw new Error();
       } catch {
         setProxyError(t("validProxyUrl"));
+        document.getElementById("proxy-url")?.focus();
         return;
       }
     }
@@ -104,21 +105,21 @@ export default function SettingsPage() {
   if (settingsExtras) return <SettingsExtras />;
   return (
     <div className="settings-page">
-      <Group title={t("behavior")}>
-        <Row title={t("routing.delaySetting")}>
+      <SettingsSection title={t("behavior")}>
+        <SettingRow label={t("routing.delaySetting")}>
           <Input key={status?.requestRoutingDelaySeconds ?? 15} type="number" min={0} max={300} step={1} aria-label={t("routing.delaySetting")} defaultValue={status?.requestRoutingDelaySeconds ?? 15} disabled={!!busy || !status}
             onBlur={event => {
               const seconds = event.currentTarget.valueAsNumber;
               if (event.currentTarget.validity.valid && Number.isInteger(seconds) && seconds !== status?.requestRoutingDelaySeconds) void saveTask({ requestRoutingDelaySeconds: seconds });
               else event.currentTarget.value = String(status?.requestRoutingDelaySeconds ?? 15);
             }} />
-        </Row>
-        <Row title={t("controlSourceNotifications")} description={t("controlSourceNotificationsDescription")}>
+        </SettingRow>
+        <SettingRow label={t("controlSourceNotifications")} description={t("controlSourceNotificationsDescription")}>
           <Switch label={t("controlSourceNotifications")} checked={status?.notificationsEnabled !== false}
             disabled={!!busy || !status} onChange={(value) => void saveTask({ notificationsEnabled: value })} />
-        </Row>
-        <Row
-          title={t("automaticallyOpenCodexTasks")}
+        </SettingRow>
+        <SettingRow
+          label={t("automaticallyOpenCodexTasks")}
           description={t("whenDisabledNewTasksRunInTheBackground")}
         >
           <Switch
@@ -127,9 +128,9 @@ export default function SettingsPage() {
             disabled={!!busy || !status}
             onChange={(value) => void saveTask({ autoOpenCodex: value })}
           />
-        </Row>
-        <Row
-          title={t("taskApprovalMode")}
+        </SettingRow>
+        <SettingRow
+          label={t("taskApprovalMode")}
           description={t("askForConfirmationByDefaultTheCloudCan")}
         >
           <Switch
@@ -138,10 +139,10 @@ export default function SettingsPage() {
             disabled={!!busy || !status}
             onChange={(value) => void saveTask({ enabled: value })}
           />
-        </Row>
-      </Group>
-      <Group title={t("general")}>
-        <Row title={t("connectAtSystemSignIn")}>
+        </SettingRow>
+      </SettingsSection>
+      <SettingsSection title={t("general")}>
+        <SettingRow label={t("connectAtSystemSignIn")}>
           <Switch
             label={t("connectAtSystemSignIn")}
             checked={!!service?.enabled}
@@ -152,9 +153,9 @@ export default function SettingsPage() {
               )
             }
           />
-        </Row>
+        </SettingRow>
         {isDesktop && (
-          <Row title={t("connectionNotifications")} description={t("connectionNotificationsDescription")}>
+          <SettingRow label={t("connectionNotifications")} description={t("connectionNotificationsDescription")}>
             <Switch
               label={t("connectionNotifications")}
               checked={notifications}
@@ -162,18 +163,18 @@ export default function SettingsPage() {
                 notificationsPreference.set(value);
               }}
             />
-          </Row>
+          </SettingRow>
         )}
-        <Row title={t("language")}>
-          <SingleChoice
+        <SettingRow label={t("language")}>
+          <ChoiceControl
             value={currentLanguage}
             onChange={setLanguage}
             label={t("language")}
             options={languageOptions.map(option => option.value === "auto" ? { ...option, label: t("system") } : option)}
           />
-        </Row>
-        <Row title={t("appearance")}>
-          <SingleChoice
+        </SettingRow>
+        <SettingRow label={t("appearance")}>
+          <ChoiceControl
             value={currentTheme}
             onChange={(value) => theme.set(value as Theme)}
             label={t("appearance")}
@@ -183,9 +184,9 @@ export default function SettingsPage() {
               { value: "dark", label: t("dark"), icon: Moon },
             ]}
           />
-        </Row>
-        <Row title={t("themeColor")}>
-          <SingleChoice
+        </SettingRow>
+        <SettingRow label={t("themeColor")}>
+          <ChoiceControl
             swatches
             value={color}
             onChange={(value) =>
@@ -198,10 +199,10 @@ export default function SettingsPage() {
               color: value === "arc" ? "linear-gradient(90deg, var(--brand-orange) 0% 50%, var(--brand-agent-start) 50%, var(--brand-agent-end) 100%)" : `linear-gradient(90deg, ${"sourceLight" in color ? color.sourceLight : color.light} 0% 50%, ${color.light} 50% 100%)`,
             }))}
           />
-        </Row>
+        </SettingRow>
         {mac && (
-          <Row title={t("showAppIn")}>
-            <SingleChoice
+          <SettingRow label={t("showAppIn")}>
+            <ChoiceControl
               value={
                 appearance.showMenuBar
                   ? appearance.showDock
@@ -227,20 +228,20 @@ export default function SettingsPage() {
                 { value: "dock", label: t("dockOnly") },
               ]}
             />
-          </Row>
+          </SettingRow>
         )}
-        <Row title={t("topology.mode")}>
-          <SingleChoice label={t("topology.mode")} value={topology}
+        <SettingRow label={t("topology.mode")}>
+          <ChoiceControl label={t("topology.mode")} value={topology}
             options={[{ value: "tree", label: t("topology.tree") }, { value: "flat", label: t("topology.flat") }]}
             onChange={value => topologyMode.set(value as "tree" | "flat")} />
-        </Row>
-      </Group>
-      <Group title={t("network")}>
-        <Row
-          title={t("proxy")}
+        </SettingRow>
+      </SettingsSection>
+      <SettingsSection title={t("network")}>
+        <SettingRow
+          label={t("proxy")}
           description={t("useTheSystemProxyOrAProxyJust")}
         >
-          <SingleChoice
+          <ChoiceControl
             value={proxyMode}
             disabled={!!busy}
             label={t("proxyMode")}
@@ -255,36 +256,33 @@ export default function SettingsPage() {
               { value: "custom", label: t("custom") },
             ]}
           />
-        </Row>
+        </SettingRow>
         {proxyMode === "custom" && (
-          <Field id="proxy-url" label={t("proxyUrl")} error={proxyError}>
-            <form
-              className="actions"
+          <form
               onSubmit={(e) => {
                 e.preventDefault();
                 void saveProxy();
               }}
             >
+              <FormSection><FormField id="proxy-url" label={t("proxyUrl")} error={proxyError}>
               <Input
                 id="proxy-url"
                 value={proxyUrl}
                 onChange={(e) => setProxyUrl(e.target.value)}
                 placeholder="http://127.0.0.1:7890"
-                aria-invalid={!!proxyError}
-                aria-describedby={proxyError ? "proxy-url-error" : undefined}
                 disabled={!!busy}
               />
+              </FormField><ActionGroup>
               <Button type="submit" variant="primary" disabled={!!busy}>
                 {t("save")}
-              </Button>
+              </Button></ActionGroup></FormSection>
             </form>
-          </Field>
         )}
-      </Group>
-      <Group title={t("extras.title")}>
-        <Row id="settings-extras-entry" highlight={false} title={t("extras.entryTitle")} description={t("extras.entryDescription")}
+      </SettingsSection>
+      <SettingsSection title={t("extras.title")}>
+        <SettingRow id="settings-extras-entry" label={t("extras.entryTitle")} description={t("extras.entryDescription")}
           onNavigate={() => navigation.set(old => ({ ...old, settingsExtras: true }))} />
-      </Group>
+      </SettingsSection>
       <AppUpdate />
     </div>
   );

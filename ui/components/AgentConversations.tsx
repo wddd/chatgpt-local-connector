@@ -16,7 +16,7 @@ const ConversationRow = memo(function ConversationRow({ agent, session, live, no
   agent: string; session: TrackedActivity; live: boolean; now: number; index: number;
 }) {
   return <EntityRow className={`activity-bubble agent-conversation-row ${session.interaction ? "needs-attention" : ""}`} data-density="standard" data-external={session.source === "transcript" || undefined} data-timeline-anchor style={{ "--row-delay": `${Math.min(index, 5) * 24}ms` } as CSSProperties} data-activity-session={JSON.stringify([agent, session.id])} aria-label={`${session.title || t("timeline.title")} · ${t("timeline.open")}`} onClick={() => selectAgentPanel({ type: "task", agent, session })}>
-    <ActivityBubbleContent session={session} now={now} density="standard" historical={!live} conversationRow />
+    <ActivityBubbleContent agent={agent} session={session} now={now} density="standard" historical={!live} conversationRow />
   </EntityRow>;
 });
 

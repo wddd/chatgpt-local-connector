@@ -1418,5 +1418,20 @@
   "authorization.denied": "已拒绝",
   "authorization.expired": "已过期",
   "connect.phase.idle": "空闲",
-  "connect.phase.ready": "就绪"
+  "connect.phase.ready": "就绪",
+  "dispatchSpec.unresolved": "未解析",
+  "dispatchSpec.loading": "正在读取标签",
+  "dispatchSpec.error": "标签不可用",
+  "dispatchSpec.missing": "未记录规格",
+  "dispatchSpec.standard": "标准",
+  "dispatchSpec.effort.none": "无",
+  "dispatchSpec.effort.minimal": "极低",
+  "dispatchSpec.effort.low": "低",
+  "dispatchSpec.effort.medium": "中",
+  "dispatchSpec.effort.high": "高",
+  "dispatchSpec.effort.xhigh": "极高",
+  "dispatchSpec.effort.max": "最高",
+  "dispatchSpec.effort.ultra": "超高",
+  "source.disconnectConsequence": "此来源将失去访问权限，派发历史将保留。",
+  "setup.removeConsequence": "移除此连接将断开其控制源，历史记录将保留。"
 }

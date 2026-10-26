@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { t } from "../i18n";
 import { topologyTuningEnabled } from "../state/topology";
-import { Group, HoverScope, Row, SingleChoice, Switch } from "./ui";
+import { SettingsSection, HoverScope, SettingRow, ChoiceControl, Switch } from "./ui";
 import { api } from "../api";
 import { connector, run } from "../state/connector";
 import { acceptPreferences, maintainerMode } from "../state/store";
@@ -20,20 +20,20 @@ export default function SettingsExtras() {
   return <div className="settings-extras">
     <div className="extras-layout">
       <aside className="extras-nav">
-        <HoverScope><SingleChoice navigation label={t("extras.title")} value={pane} onChange={setPane} options={[
+        <HoverScope><ChoiceControl navigation label={t("extras.title")} value={pane} onChange={setPane} options={[
           { value: "hosting", label: t("extras.hosting"), description: t("extras.hostingDescription") },
           { value: "experimental", label: t("topology.experimental"), description: t("extras.experimentalDescription") },
         ]} /></HoverScope>
       </aside>
       <div className="extras-content">
-        {pane === "hosting" ? <RelayHosting /> : <Group title={t("topology.experimental")}>
-          <Row title={t("extras.maintainerMode")}>
+        {pane === "hosting" ? <RelayHosting /> : <SettingsSection title={t("topology.experimental")}>
+          <SettingRow label={t("extras.maintainerMode")}>
             <Switch label={t("extras.maintainerMode")} checked={maintainer} disabled={!!busy || !status} onChange={saveMaintainer} />
-          </Row>
-          <Row title={t("topology.tuning")} description={t("topology.settingDescription")}>
+          </SettingRow>
+          <SettingRow label={t("topology.tuning")} description={t("topology.settingDescription")}>
             <Switch label={t("topology.tuning")} checked={tuning} onChange={topologyTuningEnabled.set} />
-          </Row>
-        </Group>}
+          </SettingRow>
+        </SettingsSection>}
       </div>
     </div>
   </div>;

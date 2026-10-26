@@ -1,3 +1,4 @@
+import { DispatchSpec } from "./composites/DispatchSpec";
 import { SectionHeader, StateBadge, Button, Icon, IconButton, LoadingIndicator, Menu } from "./ui";
 import { statePresentation } from "./objects/statePresentation";
 import { useAppNow } from "../state/appEnvironment";
@@ -10,7 +11,7 @@ import { useTaskReview } from "../state/taskReview";
 import { taskErrorText } from "../state/taskErrors";
 import "./TaskDetail.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2, MoreHorizontal, Zap } from "lucide-react";
+import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2, MoreHorizontal } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { AgentTimeline } from "../types";
@@ -22,7 +23,7 @@ import { taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import TaskNeedsYou from "./TaskNeedsYou";
 import TaskOwnership from "./TaskOwnership";
-import { activityHeadline, shortModelLabel, type TrackedActivity } from "../state/activityModel";
+import { activityHeadline, type TrackedActivity } from "../state/activityModel";
 import type { TaskRuntime } from "../state/tasks";
 import { name, orderedAgents } from "../state/agents";
 
@@ -223,9 +224,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           ...(resizable ? [{ label: t(expanded ? "restorePanelWidth" : "expandPanelWidth"), action: onToggleWidth }] : []),
         ]} /></div>}
       </div></>} title={title} titleProps={{ id: titleId, className: 'activity-panel-title' }}><div className="task-detail-chips"><StateBadge presentation={statePresentation("task", state)} />
-        {latestSummary?.model?.trim() && <span className="task-spec-chip" title={latestSummary.model}>{shortModelLabel(latestSummary.model)}</span>}
-        {latestSummary?.effort?.trim() && <span className="task-spec-chip">{latestSummary.effort}</span>}
-        {latestSummary?.serviceTier === "priority" && <span className="task-spec-chip"><Icon icon={Zap} />{t("activity.fast")}</span>}
+        <DispatchSpec agent={agent} record={timeline ? { kind: "timeline", value: timeline, taskId: session.id, turnId, source: nativeSession.source } : { kind: "session", value: nativeSession }} />
         {source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span></span>}
         <TaskOwnership ownership={timeline?.ownership} />
         {duration !== undefined && <time className="timeline-meta task-duration">{durationText(duration)}</time>}

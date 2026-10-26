@@ -12,10 +12,10 @@ import { ActivityBubbleContent } from "./ActivityBubbles";
 import type { CSSProperties } from "react";
 import {
   Dialog,
-  Group,
-  Row,
+  SettingsSection,
+  SettingRow,
   Notice,
-  SingleChoice,
+  ChoiceControl,
   Switch,
 } from "./ui";
 export default function AgentDisplaySettings({
@@ -43,27 +43,27 @@ export default function AgentDisplaySettings({
   return (
     <Dialog title={t("agentDisplaySettings")} onClose={onClose} busy={saving}>
       {error && <Notice>{error}</Notice>}
-      <Group title={t("activity.bubbleSettings")}>
+      <SettingsSection title={t("activity.bubbleSettings")}>
         <div className="activity-preview" aria-label={t("activity.preview")}>
           <div className="activity-bubble" data-density={density} style={{ "--bubble-width": `${bubbleWidths[width]}px`, "--bubble-height": `${bubbleHeights[density]}px` } as CSSProperties}>
-            <ActivityBubbleContent density={density} now={83000} session={{ id: "preview", source: "arc-task", title: t("activity.previewTitle"), phase: "command", headline: "npm run check", phaseSince: null,
+            <ActivityBubbleContent agent="codex" density={density} now={83000} session={{ id: "preview", source: "arc-task", title: t("activity.previewTitle"), phase: "command", headline: "npm run check", phaseSince: null,
               turnStartedAt: "1970-01-01T00:00:00Z", timeline: false, orderAt: 0, project: "/workspace/arc", recentContent: [t("activity.previewPrevious"), "npm run check"], recentSteps: ["thinking", "file", "command"],
               dispatchSummary: { model: "gpt-6.1-sol", effort: "high", serviceTier: "priority", controlSource: { kind: "claude", label: "Claude" } },
             }} />
           </div>
         </div>
-        <Row title={t("activity.density")}><SingleChoice label={t("activity.density")} value={density} onChange={value => bubbleDensity.set(value as BubbleDensity)}
-          options={Object.keys(bubbleHeights).map(value => ({ value, label: t(`activity.density.${value}`) }))} /></Row>
-        <Row title={t("activity.width")}><SingleChoice label={t("activity.width")} value={width} onChange={value => bubbleWidth.set(value as BubbleWidth)}
-          options={Object.keys(bubbleWidths).map(value => ({ value, label: t(`activity.width.${value}`) }))} /></Row>
-        <Row title={t("activity.autoCompact")} description={t("activity.autoCompactHint")}><Switch label={t("activity.autoCompact")} checked={autoCompact} onChange={bubbleAutoCompact.set} /></Row>
-      </Group>
-      <Group title={t("usageAppearance")}>
-        <Row title={t("topology.layout")}><SingleChoice label={t("topology.layout")} value={layout}
+        <SettingRow label={t("activity.density")}><ChoiceControl label={t("activity.density")} value={density} onChange={value => bubbleDensity.set(value as BubbleDensity)}
+          options={Object.keys(bubbleHeights).map(value => ({ value, label: t(`activity.density.${value}`) }))} /></SettingRow>
+        <SettingRow label={t("activity.width")}><ChoiceControl label={t("activity.width")} value={width} onChange={value => bubbleWidth.set(value as BubbleWidth)}
+          options={Object.keys(bubbleWidths).map(value => ({ value, label: t(`activity.width.${value}`) }))} /></SettingRow>
+        <SettingRow label={t("activity.autoCompact")} description={t("activity.autoCompactHint")}><Switch label={t("activity.autoCompact")} checked={autoCompact} onChange={bubbleAutoCompact.set} /></SettingRow>
+      </SettingsSection>
+      <SettingsSection title={t("usageAppearance")}>
+        <SettingRow label={t("topology.layout")}><ChoiceControl label={t("topology.layout")} value={layout}
           onChange={value => topologyLayout.set(value as LayoutPreference)}
-          options={['auto', 'landscape', 'portrait'].map(value => ({ value, label: t(`topology.layout.${value}`) }))} /></Row>
-        <Row title={t("agentsMaxVisible")}>
-          <SingleChoice
+          options={['auto', 'landscape', 'portrait'].map(value => ({ value, label: t(`topology.layout.${value}`) }))} /></SettingRow>
+        <SettingRow label={t("agentsMaxVisible")}>
+          <ChoiceControl
             value={String(max)}
             onChange={(value) => maxVisibleAgents.set(Number(value))}
             label={t("agentsMaxVisible")}
@@ -72,16 +72,16 @@ export default function AgentDisplaySettings({
               label: value,
             }))}
           />
-        </Row>
-      </Group>
-      <Group title={t("agentQuotaGroup")}>
-        <Row title={t("usageEnabled")}>
+        </SettingRow>
+      </SettingsSection>
+      <SettingsSection title={t("agentQuotaGroup")}>
+        <SettingRow label={t("usageEnabled")}>
           <Switch label={t("usageEnabled")} checked={!!snapshot?.settings.enabled}
             disabled={saving || !snapshot}
             onChange={(enabled) => void save(() => saveSubscriptions({ enabled }))} />
-        </Row>
-        <Row title={t("agentQuotaDisplay")}>
-          <SingleChoice
+        </SettingRow>
+        <SettingRow label={t("agentQuotaDisplay")}>
+          <ChoiceControl
             value={quota}
             onChange={(value) =>
               quotaDisplay.set(value as "remaining" | "used")
@@ -92,9 +92,9 @@ export default function AgentDisplaySettings({
               { value: "used", label: t("usageUsed") },
             ]}
           />
-        </Row>
-        <Row title={t("agentResetDisplay")}>
-          <SingleChoice
+        </SettingRow>
+        <SettingRow label={t("agentResetDisplay")}>
+          <ChoiceControl
             value={reset}
             onChange={(value) =>
               resetDisplay.set(value as "countdown" | "time")
@@ -105,9 +105,9 @@ export default function AgentDisplaySettings({
               { value: "time", label: t("usageResetTime") },
             ]}
           />
-        </Row>
-        <Row title={t("usageAutoRefresh")}>
-          <SingleChoice
+        </SettingRow>
+        <SettingRow label={t("usageAutoRefresh")}>
+          <ChoiceControl
             value={String(snapshot?.settings.refreshMinutes ?? 3)}
             onChange={(value) =>
               void save(() =>
@@ -121,8 +121,8 @@ export default function AgentDisplaySettings({
               label: `${value} min`,
             }))}
           />
-        </Row>
-      </Group>
+        </SettingRow>
+      </SettingsSection>
     </Dialog>
   );
 }

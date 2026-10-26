@@ -515,6 +515,7 @@ impl Service {
                 "runtime/lease",
                 "logs/query",
                 "agents/conversations",
+                "agents/dispatch-catalog",
                 "agents/conversations/timeline",
                 "state/wait",
                 "setup/next",
@@ -847,6 +848,10 @@ impl Service {
                     ),
                 )
                 .await;
+        }
+        if route == "agents/dispatch-catalog" && method == "POST" {
+            crate::management::resolve("agents.dispatch_catalog", &json!({"body":body}))?;
+            return crate::dispatch_policy::catalog(&self.control, &self.agents, &body).await;
         }
         if route == "agents/activity" && method == "GET" {
             return Ok(self.agents.activity(&self.control).await);

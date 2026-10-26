@@ -1697,6 +1697,39 @@
       }
     },
     {
+      "name": "agents.dispatch_catalog",
+      "route": "agents/dispatch-catalog",
+      "method": "POST",
+      "description": "Read Agent-native model and option labels for recorded dispatch specs. Codex reads model/list. Other Agents reuse live or persisted session catalogs, or native catalog snapshots. This read never creates or resumes a task or changes dispatch configuration. taskId is optional and applies only to non-Codex ARC tasks.",
+      "localOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "object",
+            "properties": {
+              "agent": {
+                "type": "string",
+                "minLength": 1
+              },
+              "taskId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "agent"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "agents.conversations",
       "route": "agents/conversations",
       "method": "POST",

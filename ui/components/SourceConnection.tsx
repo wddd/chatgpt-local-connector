@@ -1,4 +1,4 @@
-import { Freshness, EntityCard, StateBadge, SectionHeader, FactList, Button, Dialog, Field, Input, Notice } from "./ui";
+import { Freshness, EntityCard, StateBadge, SectionHeader, FactList, ActionGroup, Disclosure, FormSection, DangerZone, Button, Dialog, FormField, Input, Notice } from "./ui";
 import { statePresentation } from "./objects/statePresentation";
 import Address from "./Address";
 import { useEffect, useRef, useState } from "react";
@@ -56,18 +56,18 @@ export default function SourceConnection({ source, onConnection }: { source: Con
       { label: t("source.clientName"), value: client },
       { label: t("accounts.tools"), value: 'guide · query · act' },
     ]} />
-    <details className="account-advanced"><summary>{t("accounts.advanced")}</summary>
+    <Disclosure title={t("accounts.advanced")}><FormSection>
       <form onSubmit={e => { e.preventDefault(); void update({ label: label.trim() }); }}>
-      <Field id="source-label" label={t("source.label")} error={labelError}>
-        <Input id="source-label" value={label} disabled={busy} aria-invalid={!!labelError} aria-describedby={labelError ? "source-label-error" : undefined}
+      <FormField id="source-label" label={t("source.label")} error={labelError}>
+        <Input id="source-label" value={label} disabled={busy}
           onChange={e => { setLabel(e.target.value); setLabelError(""); }} onBlur={() => void update({ label: label.trim() })} />
-      </Field>
+      </FormField>
     </form>
-    <Field label={t("source.product")}><SourceProductChoice value={source.product} disabled={busy} onChange={product => void update({ product })} /></Field>
-    </details>
-    <div className="account-remove"><Button variant="danger-outline" disabled={busy || source.state === "revoked"} onClick={() => setConfirm(true)}>{t("source.disconnect")}</Button></div>
+    <FormField label={t("source.product")}><SourceProductChoice value={source.product} disabled={busy} onChange={product => void update({ product })} /></FormField>
+    </FormSection></Disclosure>
+    <DangerZone consequence={t("source.disconnectConsequence")}><Button variant="danger-outline" disabled={busy || source.state === "revoked"} onClick={() => setConfirm(true)}>{t("source.disconnect")}</Button></DangerZone>
     {confirm && <Dialog title={t("source.disconnectTitle", { name: source.label })} onClose={() => setConfirm(false)} busy={busy}
-      footer={<><Button disabled={busy} onClick={() => setConfirm(false)}>{t("cancel")}</Button><Button variant="danger" busy={busy} onClick={() => void disconnect()}>{t("disconnect")}</Button></>}>
+      footer={<ActionGroup><Button disabled={busy} onClick={() => setConfirm(false)}>{t("cancel")}</Button><Button variant="danger" busy={busy} onClick={() => void disconnect()}>{t("disconnect")}</Button></ActionGroup>}>
       <p>{t("source.disconnectHint")}</p>{error && <Notice>{error}</Notice>}
     </Dialog>}
   </div>;

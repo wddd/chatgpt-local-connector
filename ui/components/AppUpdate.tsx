@@ -1,4 +1,4 @@
-import { SectionHeader, Button, Group, Row, Notice, Progress, Icon, IconButton, SingleChoice, Switch } from "./ui";
+import { ActionGroup, SectionHeader, Button, SettingsSection, SettingRow, Notice, Progress, Icon, IconButton, ChoiceControl, Switch } from "./ui";
 import { useState } from "react";
 import { Popover } from "radix-ui";
 import { ArrowUp, Check, LoaderCircle, X } from "lucide-react";
@@ -75,7 +75,7 @@ function PanelContents() {
         {job.state === "checking" && <p role="status">{t("checkingLabel")}</p>}
       </section>
       <section className="update-impact" tabIndex={0}><WorkGroups job={job} />
-        <SingleChoice label={t("updates.timing")} value={timing} onChange={value => setSelection(value as UpdateTiming)} disabled={job.supported === false || s.requesting || !available() && !canSchedule} options={(["settled", "now", "defer"] as const).map(value => ({ value, label: t(`updates.when.${value}`) }))} />
+        <ChoiceControl label={t("updates.timing")} value={timing} onChange={value => setSelection(value as UpdateTiming)} disabled={job.supported === false || s.requesting || !available() && !canSchedule} options={(["settled", "now", "defer"] as const).map(value => ({ value, label: t(`updates.when.${value}`) }))} />
         {job.supported === false && <p>{t("updates.pipelineUnsupported")}</p>}
         {timing === "now" && job.work.blocking.length > 0 && <p className="update-consequence">{t("updates.dropInteractions")}</p>}
         {job.when === "defer" && job.deferUntil && <time dateTime={job.deferUntil}>{t("updates.deferredUntil", { time: new Date(job.deferUntil).toLocaleTimeString() })}</time>}
@@ -125,28 +125,29 @@ export function UpdateOutcome() {
   </aside>;
 }
 export function AppUpdate() {
-  return <Group title={t("appUpdates")}><Row id="settings-updates-entry" title={t("appUpdates")} onNavigate={() => navigation.set(old => ({ ...old, settingsUpdates: true }))} /></Group>;
+  const { status } = connector.use();
+  return <SettingsSection title={t("appUpdates")}><SettingRow id="settings-updates-entry" label={t("updates.currentVersion")} description={`Agent Remote Control v${status?.version ?? "—"}`} onNavigate={() => navigation.set(old => ({ ...old, settingsUpdates: true }))} /></SettingsSection>;
 }
 export function UpdatesSettings() {
   const s = updates.use(), { status } = connector.use();
   const automatic = updateAutomatic.use(), local = acceptLocal.use(), resume = resumeInterrupted.use(), scheduling = controlScheduling.use();
   const [notes, setNotes] = useState(false);
   return <div className="settings-page">
-    <Group title={t("updates.currentVersion")}><Row title={`Agent Remote Control v${status?.version ?? "—"}`}>
-      <Button onClick={() => action(openReleaseNotes())}>{t("updates.notes")}</Button><Button disabled={!isDesktop || s.requesting || updateActive(s.snapshot)} busy={s.snapshot.state === "checking"} onClick={() => action(checkUpdate())}>{t("checkForUpdates")}</Button>
-    </Row>{updateActive(s.snapshot) && <Row title={t(`updates.state.${s.snapshot.state}`)}><Button onClick={() => { navigation.set(old => ({ ...old, page: "overview" })); showUpdate(); }}>{t("viewUpdate")}</Button></Row>}{available() && <Row title={t("newVersionValue", { version: s.snapshot.source?.version })}><Button onClick={() => setNotes(!notes)}>{t("updates.notes")}</Button><Button onClick={() => action(installUpdate())}>{t("updates.action.settled")}</Button></Row>}{notes && <pre className="release-notes">{s.snapshot.notes}</pre>}
+    <SettingsSection title={t("updates.currentVersion")}><SettingRow label={`Agent Remote Control v${status?.version ?? "—"}`}>
+      <ActionGroup><Button onClick={() => action(openReleaseNotes())}>{t("updates.notes")}</Button><Button disabled={!isDesktop || s.requesting || updateActive(s.snapshot)} busy={s.snapshot.state === "checking"} onClick={() => action(checkUpdate())}>{t("checkForUpdates")}</Button></ActionGroup>
+    </SettingRow>{updateActive(s.snapshot) && <SettingRow label={t(`updates.state.${s.snapshot.state}`)}><Button onClick={() => { navigation.set(old => ({ ...old, page: "overview" })); showUpdate(); }}>{t("viewUpdate")}</Button></SettingRow>}{available() && <SettingRow label={t("newVersionValue", { version: s.snapshot.source?.version })}><ActionGroup><Button onClick={() => setNotes(!notes)}>{t("updates.notes")}</Button><Button onClick={() => action(installUpdate())}>{t("updates.action.settled")}</Button></ActionGroup></SettingRow>}{notes && <pre className="release-notes">{s.snapshot.notes}</pre>}
       {s.error && <Notice>{s.error}</Notice>}{s.message && <p role="status">{s.message}</p>}
-    </Group>
-    <Group title={t("updates.sources")}><Row title={t("updates.releaseChannel")}><SingleChoice value="stable" label={t("updates.releaseChannel")} onChange={() => {}} options={[{ value: "stable", label: t("updates.stable") }]} /></Row>
-      <Row title={t("updates.acceptLocal")}><Switch label={t("updates.acceptLocal")} checked={local === "on"} onChange={value => acceptLocal.set(value ? "on" : "off")} /></Row></Group>
-    <Group title={t("updates.timing")}><Row title={t("updates.installTiming")}><SingleChoice value={automatic} label={t("updates.installTiming")} onChange={updateAutomatic.set} options={[{ value: "automatic", label: t("updates.automatic") }, { value: "ask", label: t("updates.ask") }]} /></Row>
-      <Row title={t("updates.resumeInterrupted")}><Switch label={t("updates.resumeInterrupted")} checked={resume === "on"} onChange={value => resumeInterrupted.set(value ? "on" : "off")} /></Row>
-      <Row title={t("updates.controlScheduling")}><Switch label={t("updates.controlScheduling")} checked={scheduling === "on"} onChange={value => controlScheduling.set(value ? "on" : "off")} /></Row></Group>
-    <Group title={t("updates.recent")}>
+    </SettingsSection>
+    <SettingsSection title={t("updates.sources")}><SettingRow label={t("updates.releaseChannel")}><ChoiceControl value="stable" label={t("updates.releaseChannel")} onChange={() => {}} options={[{ value: "stable", label: t("updates.stable") }]} /></SettingRow>
+      <SettingRow label={t("updates.acceptLocal")}><Switch label={t("updates.acceptLocal")} checked={local === "on"} onChange={value => acceptLocal.set(value ? "on" : "off")} /></SettingRow></SettingsSection>
+    <SettingsSection title={t("updates.timing")}><SettingRow label={t("updates.installTiming")}><ChoiceControl value={automatic} label={t("updates.installTiming")} onChange={updateAutomatic.set} options={[{ value: "automatic", label: t("updates.automatic") }, { value: "ask", label: t("updates.ask") }]} /></SettingRow>
+      <SettingRow label={t("updates.resumeInterrupted")}><Switch label={t("updates.resumeInterrupted")} checked={resume === "on"} onChange={value => resumeInterrupted.set(value ? "on" : "off")} /></SettingRow>
+      <SettingRow label={t("updates.controlScheduling")}><Switch label={t("updates.controlScheduling")} checked={scheduling === "on"} onChange={value => controlScheduling.set(value ? "on" : "off")} /></SettingRow></SettingsSection>
+    <SettingsSection title={t("updates.recent")}>
       {!s.snapshot.recent?.length && <p>{t("updates.noHistory")}</p>}
-      {s.snapshot.recent?.map(job => <Row key={job.id} title={<span className="update-history-title"><Identity job={job} /><span>{job.instance} · {t(`updates.state.${job.state}`)}</span></span>}>
+      {s.snapshot.recent?.map(job => <SettingRow key={job.id} label={<span className="update-history-title"><Identity job={job} /><span>{job.instance} · {t(`updates.state.${job.state}`)}</span></span>}>
         {job.backupReady && job.backup && <Button disabled={s.requesting || updateActive(s.snapshot)} onClick={() => action(submitLocal(job.backup!))}>{t("updates.restore")}</Button>}
-      </Row>)}
-    </Group>
+      </SettingRow>)}
+    </SettingsSection>
   </div>;
 }

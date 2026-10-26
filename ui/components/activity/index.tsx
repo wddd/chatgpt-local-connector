@@ -1,7 +1,6 @@
 import { useId, type CSSProperties, type ReactNode } from "react";
-import { Brain, Terminal, Pencil, Wrench, MessageSquare, ShieldAlert, CirclePause, Check, Zap } from "lucide-react";
+import { Brain, Terminal, Pencil, Wrench, MessageSquare, ShieldAlert, CirclePause, Check } from "lucide-react";
 import type { AgentPhase, DispatchSummary } from "../../types";
-import { shortModelLabel } from "../../state/activityModel";
 import { controlSource } from "../../controlSources";
 import { t } from "../../i18n";
 import { PlatformIcon, Icon } from "../ui";
@@ -31,14 +30,6 @@ export function dispatchSourceLabel(source?: DispatchSummary["controlSource"]) {
 export function SourceBadge({ source }: { source: NonNullable<DispatchSummary["controlSource"]> }) {
   return <span className="activity-source-badge" title={dispatchSourceLabel(source)}>
     {source.kind === "local-cli" ? <Icon icon={Terminal} /> : <PlatformIcon role="source" platform={source.kind ?? ""} />}
-  </span>;
-}
-export function SpecPill({ summary }: { summary?: DispatchSummary }) {
-  if (!summary || !summary.model && !summary.effort && summary.serviceTier !== "priority") return null;
-  const label = [summary.model, summary.effort, summary.serviceTier === "priority" ? t("activity.fast") : undefined].filter(Boolean).join(" · ");
-  return <span className="activity-spec" title={label}>
-    <span>{[summary.model && shortModelLabel(summary.model), summary.effort].filter(Boolean).join(" · ")}</span>
-    {summary.serviceTier === "priority" && <span role="img" aria-label={t("activity.fast")}><Icon icon={Zap} /></span>}
   </span>;
 }
 export function PhaseLabel({ phase, running = false, completed = false, children }: {

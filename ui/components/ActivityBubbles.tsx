@@ -1,3 +1,4 @@
+import { DispatchSpec } from "./composites/DispatchSpec";
 import { updates } from "../state/updates";
 import { updateBlocks } from "../state/updateModel";
 import { useReducedMotion } from "../state/appEnvironment";
@@ -5,7 +6,7 @@ import { useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { locale, t } from "../i18n";
-import { PhaseTile, PhaseLabel, StepTrail, SpecPill, SourceBadge, dispatchSourceLabel } from "./activity";
+import { PhaseTile, PhaseLabel, StepTrail, SourceBadge, dispatchSourceLabel } from "./activity";
 import { selectAgentPanel } from "../state/overviewPanels";
 import { activityHeadline, type TrackedActivity, type BubbleDensity } from "../state/activityModel";
 import { useInterval } from "../state/hooks";
@@ -33,7 +34,7 @@ function Headline({ session }: { session: TrackedActivity }) {
     </AnimatePresence>
   </span>;
 }
-export function ActivityBubbleContent({ session, now, density = "standard", historical = false, conversationRow = false, showSourceBadge = true }: { session: TrackedActivity; now: number; density?: BubbleDensity; historical?: boolean; conversationRow?: boolean; showSourceBadge?: boolean }) {
+export function ActivityBubbleContent({ agent, session, now, density = "standard", historical = false, conversationRow = false, showSourceBadge = true }: { agent: string; session: TrackedActivity; now: number; density?: BubbleDensity; historical?: boolean; conversationRow?: boolean; showSourceBadge?: boolean }) {
   const language = locale.use();
   const paused = ["cancelled", "interrupted", "aborted"].includes(session.status ?? "");
   const completed = !paused && (session.endedAt !== undefined || historical), external = session.source === "transcript";
@@ -69,7 +70,7 @@ export function ActivityBubbleContent({ session, now, density = "standard", hist
       {density === "detailed" && <span className="activity-detail-line" title={detail}>{detail || "\u00a0"}</span>}
       {density !== "compact" && <span className={`activity-spec-row ${conversation ? "activity-conversation-meta" : ""}`}>
         {conversation && project && <span className="activity-project" title={session.project!}>{project}</span>}
-        <SpecPill summary={session.dispatchSummary} />
+        <DispatchSpec agent={agent} record={{ kind: "session", value: session }} />
         {conversation && !!session.turnCount && <span className="activity-spec">{t("timeline.turnCount", { count: session.turnCount })}</span>}
         {!conversation && project && <span className="activity-project" title={session.project!}>{project}</span>}
         {density === "detailed" && source && <span className="activity-source-name" title={dispatchSourceLabel(source)}>{dispatchSourceLabel(source)}</span>}
@@ -101,7 +102,7 @@ export function ActivityBubble({ agent, session, now, onMove, onRead, density = 
       aria-label={`${session.title || t("timeline.title")}${unread ? ` · ${t("activity.unread")}` : ""} · ${hint}`} onClick={() => {
         selectAgentPanel({ type: "task", agent, session });
       }}>
-      <ActivityBubbleContent session={session} now={now} density={density} showSourceBadge={!unread} />
+      <ActivityBubbleContent agent={agent} session={session} now={now} density={density} showSourceBadge={!unread} />
       {blocking && <span className="update-blocking-tag">{t("updates.waitingReply")}</span>}
     </button>
     {unread && <Button variant="ghost" className="activity-mark-read" data-topology-control aria-label={t("activity.markRead")} title={t("activity.markRead")}

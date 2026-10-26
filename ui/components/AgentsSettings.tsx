@@ -1,4 +1,4 @@
-import { EntityCard, SectionHeader, Dialog, IconButton, Switch, Notice, Loading } from "./ui";
+import { ActionGroup, SettingsSection, SettingRow, EntityCard, SectionHeader, Dialog, IconButton, Switch, Notice, Loading } from "./ui";
 import { useReducedMotion } from "../state/appEnvironment";
 import { useState, type ReactNode } from "react";
 import { motion, Reorder, useDragControls } from "motion/react";
@@ -121,7 +121,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
         onClose={onClose}
         wide
         actions={
-          <>
+          <ActionGroup>
             <IconButton icon={Gauge} label={t("trayUsage")} onClick={() => setOverview(true)} />
             <IconButton
               icon={Settings}
@@ -135,12 +135,11 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
               disabled={!!state.saving}
               onClick={() => void refreshAgents(true)}
             />
-          </>
+          </ActionGroup>
         }
       >
         {!state.loaded && state.loading && <Loading />}
-        {items.some((agent) => agent.installed) && <>
-        <h3 className="agent-section-title">{t("installedAgents")}</h3>
+        {items.some((agent) => agent.installed) && <SettingsSection title={t("installedAgents")}>
         <Reorder.Group
           as="div"
           axis="xy"
@@ -163,7 +162,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
               >
                 <AgentQuotaIcon agent={agent.agent} />
               </button>
-              <div className="agent-copy">
+              <SettingRow label={<>
                 {agentLinks[agent.agent] ? (
                   <a
                     href={agentLinks[agent.agent]}
@@ -180,10 +179,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
                 ) : (
                   <strong>{name(agent)}</strong>
                 )}
-                <span title={agent.version || undefined}>
-                  {agent.installed ? compactAgentVersion(agent.version) : t("agentNotInstalled")}
-                </span>
-              </div>
+              </>} description={<span title={agent.version || undefined}>{agent.installed ? compactAgentVersion(agent.version) : t("agentNotInstalled")}</span>}>
               {agent.installed && (
                 <Switch
                   label={t("allowConnectorToUseValue", { agent: name(agent) })}
@@ -197,6 +193,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
                   onChange={(enabled) => void toggleAgent(agent, enabled)}
                 />
               )}
+              </SettingRow>
               {agent.installed &&
                 agent.adapter &&
                 agent.adapter.state !== "ready" && (
@@ -218,9 +215,8 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
             </AgentCard>
           ))}
         </Reorder.Group>
-        </>}
-        {items.some((agent) => !agent.installed) && <>
-        <h3 className="agent-section-title">{t("notInstalledAgents")}</h3>
+        </SettingsSection>}
+        {items.some((agent) => !agent.installed) && <SettingsSection title={t("notInstalledAgents")}>
         <div className="uninstalled-agents">
           {items.filter(agent => !agent.installed).map(agent => (
             <a
@@ -237,7 +233,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
             </a>
           ))}
         </div>
-        </>}
+        </SettingsSection>}
         {(error || state.error) && <Notice>{error || state.error}</Notice>}
       </Dialog>
       {detail && (

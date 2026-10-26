@@ -258,6 +258,7 @@ async fn models(c: &control::Control) -> Result<Value> {
         for model in page["data"].as_array().ok_or("NATIVE_MODELS_MISSING")? {
             rows.push(json!({
                 "model":model["model"],
+                "name":model["displayName"],
                 "defaultServiceTier":model["defaultServiceTier"],
                 "serviceTiers":model["serviceTiers"],
                 "efforts":model["supportedReasoningEfforts"].as_array().into_iter().flatten()
@@ -271,6 +272,24 @@ async fn models(c: &control::Control) -> Result<Value> {
     }
     Ok(json!(rows))
 }
+/// Read labels only; recorded specs and dispatch defaults are not changed.
+pub(crate) async fn catalog(
+    c: &control::Control,
+    agents: &agents::AgentHost,
+    args: &Value,
+) -> Result<Value> {
+    if args["agent"] == "codex" {
+        return Ok(json!({"source":"codex-model-list","models":models(c).await?}));
+    }
+    let mut request = args.clone();
+    request["all"] = json!(true);
+    let rows = agents.dispatch_facts(&request).await?;
+    Ok(rows
+        .first()
+        .map(|row| row["capabilities"].clone())
+        .unwrap_or_else(|| json!({"unavailable":"agent-catalog-unavailable"})))
+}
+
 async fn codex_facts(c: &control::Control, compact: bool) -> Result<Value> {
     let policy = read()?;
     let (models, quota) = tokio::join!(

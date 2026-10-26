@@ -1373,8 +1373,6 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .setup-success p { color: var(--text-secondary); font-size: var(--text-sm); }
 .setup-success > .field { width: 100%; text-align: start; margin-top: 18px; }
 .entity-card.setup-connection-card { gap: 8px; padding: 14px 16px; border-radius: var(--radius-card); text-align: start; }
-.connection-advanced > summary { font-size: var(--text-xs); color: var(--text-secondary); cursor: pointer; margin-bottom: 12px; }
-.connection-advanced > .field { margin-block: 12px; }
 .welcome-page { position: fixed; inset: 0; z-index: 30; background: var(--canvas); display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: auto; padding: 48px 24px; }
 .welcome-mark { width: 64px; height: 64px; }
 .welcome-page h1 { margin: 24px 0 0; font-size: var(--text-title); font-weight: 600; letter-spacing: -.01em; }
