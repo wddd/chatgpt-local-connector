@@ -1,7 +1,9 @@
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { AgentActivitySession, AgentConversation, AgentTimeline, DispatchSummary } from '../../types';
 import type { TaskRecord } from '../../state/tasks';
 import { useDispatchCatalog, type CatalogState, type DispatchCatalog } from '../../state/dispatchCatalog';
 import { t } from '../../i18n';
+import { Tooltip } from '../ui';
 import './DispatchSpec.css';
 
 export type DispatchSpecRecord =
@@ -38,13 +40,33 @@ export function DispatchSpec({ agent, record, resolver }: { agent: string; recor
   const effortOption = options?.filter(option => option.category === 'thought_level' || ['reasoning_effort', 'reasoningEffort', 'thinkingLevel', 'effort', 'thought_level'].includes(option.id))
     .flatMap(option => option.values ?? []).find(option => typeof option !== 'string' && option.value === effort);
   const effortName = typeof effortOption === 'object' && effortOption.name || (effort && (effortKeys[effort] ? t(effortKeys[effort]) : `${t('dispatchSpec.unresolved')}: ${effort}`));
-  const parts = [model && (modelName ? [modelName, resolved?.group].filter(Boolean).join(' · ') : `${t('dispatchSpec.unresolved')}: ${model}`), effortName,
-    tier && (tier === 'priority' ? t('activity.fast') : tier === 'default' ? t('dispatchSpec.standard') : `${t('dispatchSpec.unresolved')}: ${tier}`) ].filter(Boolean);
+  const modelLabel = model && (modelName ? [modelName, resolved?.group].filter(Boolean).join(' · ') : `${t('dispatchSpec.unresolved')}: ${model}`);
+  const details = [effortName, tier && (tier === 'priority' ? t('activity.fast') : tier === 'default' ? t('dispatchSpec.standard') : `${t('dispatchSpec.unresolved')}: ${tier}`)].filter(Boolean);
   const unresolved = unresolvedModel || !!effort && !effortKeys[effort] && !(typeof effortOption === 'object' && effortOption.name) || !!tier && !['priority', 'default'].includes(tier);
-  const status = !parts.length ? 'missing' : state?.status === 'loading' ? 'loading' : state?.status === 'error' ? 'error' : unresolved ? 'unresolved' : 'ready';
-  if (model && status === 'loading') parts.push(t('dispatchSpec.loading'));
-  if (model && status === 'error') parts.push(t('dispatchSpec.error'));
-  const label = parts.join(' · ') || t('dispatchSpec.missing');
-  const evidence = [model, effort, tier].filter(Boolean).join(' · ');
-  return <span className="dispatch-spec" data-state={status} aria-busy={status === 'loading' || undefined} aria-label={`${label}${evidence ? ` (${evidence})` : ''}`} title={`${label}${evidence ? `\n${evidence}` : ''}`}>{label}</span>;
+  const status = !modelLabel && !details.length ? 'missing' : state?.status === 'loading' ? 'loading' : state?.status === 'error' ? 'error' : unresolved ? 'unresolved' : 'ready';
+  if (model && status === 'loading') details.push(t('dispatchSpec.loading'));
+  if (model && status === 'error') details.push(t('dispatchSpec.error'));
+  const label = [modelLabel, ...details].filter(Boolean).join(' · ') || t('dispatchSpec.missing');
+  const leading = modelLabel || (!details.length ? label : undefined);
+  // Shorten only readable catalog text, never opaque model identities.
+  const shortModel = modelName?.split(' · ')[0].trim() || leading;
+  const measure = useRef<HTMLSpanElement>(null);
+  const [shortened, setShortened] = useState(false);
+  useLayoutEffect(() => {
+    const node = measure.current;
+    if (!node) return;
+    const check = () => setShortened(node.scrollWidth > node.clientWidth);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(node);
+    document.fonts?.addEventListener('loadingdone', check);
+    return () => { observer.disconnect(); document.fonts?.removeEventListener('loadingdone', check); };
+  }, [leading]);
+  return <Tooltip text={label}><span className="dispatch-spec" data-state={status} tabIndex={0} aria-busy={status === 'loading' || undefined} aria-label={label}>
+    {leading && <span className="dispatch-spec-model" aria-hidden="true">
+      <span ref={measure} className="dispatch-spec-measure">{leading}</span>
+      <span className="dispatch-spec-name">{shortened ? shortModel : leading}</span>
+    </span>}
+    {!!details.length && <span className="dispatch-spec-details" aria-hidden="true">{leading ? ' · ' : ''}{details.join(' · ')}</span>}
+  </span></Tooltip>;
 }

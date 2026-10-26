@@ -32,6 +32,7 @@ for (const width of [232, 264, 304]) for (const mode of ["default", "tree", "fla
   const mount = document.createElement("main"); document.body.append(mount); const root = createRoot(mount);
   try {
     const { default: Topology } = await server.ssrLoadModule("/ui/topology/Topology.tsx");
+    const { TooltipProvider } = await server.ssrLoadModule("/ui/components/ui/index.tsx");
     const { ActivityBubble } = await server.ssrLoadModule("/ui/components/ActivityBubbles.tsx");
     const { agentPanel } = await server.ssrLoadModule("/ui/state/overviewPanels.ts");
     const { t } = await server.ssrLoadModule("/ui/i18n.ts");
@@ -50,8 +51,8 @@ for (const width of [232, 264, 304]) for (const mode of ["default", "tree", "fla
       content: h("button", null, "Codex"), tasks: [{ id: session.id, agentAccountId: accounts[0]?.id, width, height: 76, state: "completed", selected: false, reorderable: true,
         content: h(ActivityBubble, { agent: "codex", session, now: 1, onRead: () => { read = true; } }) }] }], 1, accounts, mode === "flat" ? "flat" : "tree", {}, actions);
     const expectedParent = mode === "default" ? "codex" : accountNodeId("codex", accounts[0].id);
-    await act(() => root.render(h(Topology, { boundary: { current: mount }, left: [], right, accountsEnabled: accounts.length > 0,
-      onReorderNodes() {}, onReorderTasks: (_side: number, parent: string, ids: string[]) => { order = ids; reorderedParent = parent; } })));
+    await act(() => root.render(h(TooltipProvider, null, h(Topology, { boundary: { current: mount }, left: [], right, accountsEnabled: accounts.length > 0,
+      onReorderNodes() {}, onReorderTasks: (_side: number, parent: string, ids: string[]) => { order = ids; reorderedParent = parent; } }))));
     assert.equal(viewModel().topology.tasks.find((task: any) => task.id === session.id).parent, expectedParent);
     assert.equal(viewModel().topology.nodes.find((node: any) => node.id === expectedParent).parent, mode === "tree" ? "codex" : undefined);
     const page = within(mount), button = page.getByRole("button", { name: t("activity.markRead"), exact: true });
@@ -140,6 +141,7 @@ test("agents and UI share completion read state without opening details or mutat
   const mount = document.createElement("main"); document.body.append(mount); const root = createRoot(mount);
   try {
     const { useActivityTracking, acceptActivity, resetActivityCore } = await server.ssrLoadModule("/ui/state/activity.ts");
+    const { TooltipProvider } = await server.ssrLoadModule("/ui/components/ui/index.tsx");
     const { controlActivityBubble } = await server.ssrLoadModule("/ui/state/activityBubbles.ts");
     const { ActivityBubble } = await server.ssrLoadModule("/ui/components/ActivityBubbles.tsx");
     const { agentPanel } = await server.ssrLoadModule("/ui/state/overviewPanels.ts");
@@ -153,7 +155,7 @@ test("agents and UI share completion read state without opening details or mutat
       return h("div", null, (tracked.codex ?? []).map((session: any) => h("section", { key: session.id, "aria-label": session.title }, h(ActivityBubble, { agent: "codex", session, now: 1, onRead: () => markRead("codex", session.id) }))));
     }
     resetActivityCore("first");
-    await act(() => root.render(h(Harness)));
+    await act(() => root.render(h(TooltipProvider, null, h(Harness))));
     const snapshot = async (active: any[], time: number) => act(() => acceptActivity({ observedAt: new Date(time).toISOString(), agents: { codex: { sessions: active } }, activeAgents: ["codex"] }));
     await snapshot([...sessions, pending], 1); await snapshot([pending], 2);
     const page = within(mount), request = { agent: "codex", id: sessions[0].id };
@@ -218,6 +220,7 @@ test("read acknowledgements survive a fresh renderer and task replay while a new
     const { createRoot } = await import("react-dom/client");
     const mount = document.createElement("main"); document.body.append(mount); const root = createRoot(mount);
     const { useActivityTracking, acceptActivity } = await server.ssrLoadModule("/ui/state/activity.ts");
+    const { TooltipProvider } = await server.ssrLoadModule("/ui/components/ui/index.tsx");
     const { controlActivityBubble } = await server.ssrLoadModule("/ui/state/activityBubbles.ts");
     const { viewModel } = await server.ssrLoadModule("/ui/acceptance.ts");
     const { ActivityBubble } = await server.ssrLoadModule("/ui/components/ActivityBubbles.tsx");
@@ -228,7 +231,7 @@ test("read acknowledgements survive a fresh renderer and task replay while a new
         h("section", { key: `${agent}/${session.id}`, "aria-label": `${agent}/${session.id}` },
           h(ActivityBubble, { agent, session, now: 1, onRead: () => markRead(agent, session.id) })))));
     }
-    await act(() => root.render(h(Harness)));
+    await act(() => root.render(h(TooltipProvider, null, h(Harness))));
     let time = 0;
     return { window, page: within(mount), t, viewModel, controlActivityBubble,
       hideTopology: async () => act(() => root.render(h("div"))),

@@ -3,7 +3,8 @@
   "language": "zh-CN",
   "agents": [
     "codex",
-    "claude"
+    "claude",
+    "dsh"
   ],
   "tasks": [
     {
@@ -26,6 +27,16 @@
       "headline": "All checks passed.",
       "completed": true,
       "elapsedSeconds": 1314
+    },
+    {
+      "agent": "dsh",
+      "phase": "thinking",
+      "title": "Review configuration with DeepSeek",
+      "headline": "Review project configuration",
+      "dispatchSummary": {
+        "model": "[\"magpie\",\"opencode-go/deepseek-v4.1-flash\"]",
+        "effort": "max"
+      }
     }
   ],
   "bubbles": {

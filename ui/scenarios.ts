@@ -15,7 +15,7 @@ import { permissions } from './state/permissions';
 import { subscriptions } from './state/subscriptions';
 import { acceptPreferences } from './state/store';
 import { openSnapshotPanel, settledViewModel, type PanelRequest } from './acceptance';
-import type { AccountsResult, AgentActivitySnapshot, AgentActivitySession, AgentConversation, AgentInteraction, AgentTimeline, AgentTimelineEntry } from './types';
+import type { AccountsResult, AgentActivitySnapshot, AgentActivitySession, AgentConversation, AgentInteraction, AgentTimeline, AgentTimelineEntry, DispatchSummary } from './types';
 import type { Snapshot } from './subscriptions/types';
 import { selectAgentPanel } from './state/overviewPanels';
 import type { Status } from './state/types';
@@ -24,7 +24,7 @@ import { taskScenario } from './scenarioTasks';
 import type { RequestRouting } from './state/requestRouting';
 import { taskPanelSnapshot } from './state/taskPanel';
 
-type Fixture = { shells?: boolean; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
+type Fixture = { shells?: boolean; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; phase: AgentActivitySession['phase']; title: string; headline: string; dispatchSummary?: DispatchSummary; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 let conversations: Record<string, AgentConversation[]> = {};
@@ -155,7 +155,7 @@ export async function installScenario(name: string) {
     activity.agents[task.agent].sessions.push({ id: `fixture-task-${index}`, source: task.agent === 'codex' ? 'codex-thread' : 'arc-task', title: task.title, headline: task.headline, phase: task.phase,
       turnId: `fixture-turn-${index}-${fixture.timeline ? 2 : 1}`, project: '/workspace/acceptance', phaseSince: now, turnStartedAt: new Date(Date.parse(now) - (task.elapsedSeconds ?? 83) * 1000).toISOString(), startedAt: now, timeline: true, recentSteps: ['thinking', 'command', 'file'],
       recentContent: ['Reviewed project files', task.headline],
-      dispatchSummary: { controlSource: { id: 'fixture-source', label: 'Claude', kind: 'claude' }, model: 'gpt-6.1-sol', effort: 'high', serviceTier: 'priority' },
+      dispatchSummary: { controlSource: { id: 'fixture-source', label: 'Claude', kind: 'claude' }, ...(task.dispatchSummary ?? { model: 'gpt-6.1-sol', effort: 'high', serviceTier: 'priority' }) },
       ...(task.approval ? { interaction: { kind: 'permission' as const, summary: 'Read README.md', command: 'cat README.md', canRespond: true, respond: { via: 'act' as const, op: 'codex_respond' as const, args: { id: `fixture-interaction-${index}`, backendSession: 'fixture' } } } } : {}),
       ...(task.question ? { interaction: { kind: 'question' as const, method: 'item/tool/requestUserInput', summary: 'Select a fixture option', questions: [{id:'choice',question:'Choose an option',options:[{label:'Alpha'},{label:'Beta'}]}], canRespond:true, respond:{op:'codex_respond' as const,args:{id:`fixture-interaction-${index}`,backendSession:'fixture'}} } } : {}),
       ...(task.interaction ? { interaction: task.interaction } : {}),
@@ -222,9 +222,9 @@ export async function installScenario(name: string) {
   }));
   const records = fixture.tasks.map((task, index) => {
     const session = activity.agents[task.agent].sessions.find(s => s.id === `fixture-task-${index}`)!;
-    return { requestId: `fixture-request-${index}`, threadId: `fixture-task-${index}`, state: task.approval ? 'awaiting-approval' : 'completed', createdAt: now, updatedAt: now,
+    return { requestId: `fixture-request-${index}`, agent: task.agent, ...(task.agent === 'codex' ? { threadId: session.id } : { taskId: session.id }), state: task.approval ? 'awaiting-approval' : 'completed', createdAt: now, updatedAt: now,
     origin: { ingressId: 'fixture-source', sourceId: 'fixture-source', ...(topologyAccounts.length ? session.origin : {}) },
-    ...(topologyAccounts.length ? { agent: task.agent, agentAccountId: session.agentAccountId } : {}), approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', settings: {} } };
+    ...(topologyAccounts.length ? { agentAccountId: session.agentAccountId } : {}), approval: { decision: 'automatic', source: 'remote', at: now }, task: { kind: 'create', title: task.title, prompt: task.headline, input: [], directory: '/workspace/acceptance', model: session.dispatchSummary?.model, effort: session.dispatchSummary?.effort, settings: {} } };
   });
   const routingByTask: Record<string, RequestRouting> = Object.fromEntries(fixture.tasks.flatMap((task, index) => task.requestRouting ? [[`fixture-task-${index}`, {
     state: task.requestRouting, deferUntil: task.requestRouting === 'deferred' ? Date.parse(now) + 15000 : null,

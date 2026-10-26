@@ -12,5 +12,10 @@ function PopoverPortal(props: ComponentProps<typeof Radix.Popover.Portal>) {
   const container = useContext(PortalHost);
   return <Radix.Popover.Portal {...props} container={container ?? undefined} />;
 }
+function TooltipPortal(props: ComponentProps<typeof Radix.Tooltip.Portal>) {
+  const container = useContext(PortalHost);
+  return <Radix.Tooltip.Portal {...props} container={container ?? undefined} />;
+}
 export const Select = { ...Radix.Select, Portal: SelectPortal };
 export const Popover = { ...Radix.Popover, Portal: PopoverPortal };
+export const Tooltip = { ...Radix.Tooltip, Portal: TooltipPortal };

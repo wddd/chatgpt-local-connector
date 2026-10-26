@@ -2,7 +2,7 @@ import { DispatchSpec } from '../components/composites/DispatchSpec';
 import { createElement, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RefreshCw, Plus, Check, X, Info, Plug, Bot } from 'lucide-react';
-import { Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
+import { Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag, TooltipProvider,
   PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, ChoiceControl, SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone } from '../components/ui';
 import AgentQuota from '../components/AgentQuota';
 import { AgentQuotaIcon } from '../subscriptions/QuotaRing';
@@ -36,7 +36,7 @@ export function mount(node: HTMLElement, name: keyof typeof components) {
         ...(typeof option.icon === 'string' ? { icon: icons[option.icon as keyof typeof icons] } : {}) }));
       if (name === 'ActivityBubble') props.now ??= environment.get().now;
       root.render(createElement(PortalHost.Provider, { value: node },
-        createElement(components[name] as ComponentType<Record<string, unknown>>, props)));
+        createElement(TooltipProvider, null, createElement(components[name] as ComponentType<Record<string, unknown>>, props))));
     },
     unmount: () => root.unmount(),
   };
