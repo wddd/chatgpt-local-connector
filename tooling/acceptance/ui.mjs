@@ -152,6 +152,66 @@ try {
             if (fixture.update.state === 'countdown') await panel.getByRole('list', { name: messages['updates.progress'] }).waitFor({ state: 'visible' });
           }
         }
+        if (name === 'source-panel') {
+          // Regression: the source connection advanced area lacked shared fields, disclosure and destructive-action framing.
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          await page.getByRole('radio', { name: messages['accounts.tab.connection'], exact: true }).click();
+          const advanced = page.getByRole('button', { name: messages['accounts.advanced'], exact: true });
+          await advanced.click();
+          await page.getByRole('textbox', { name: messages['source.label'], exact: true }).waitFor();
+          await page.getByText(messages['source.disconnectConsequence'], { exact: true }).waitFor();
+        }
+        if (name.startsWith('settings-')) {
+          // Regression: the App updates entry repeated its title and used a full-width hover target.
+          const section = page.getByRole('region', { name: 'App updates', exact: true });
+          if (await section.getByText('App updates', { exact: true }).count() !== 1) throw new Error('Repeated update title');
+          const entry = section.getByRole('button', { name: /^Current version/ });
+          await entry.scrollIntoViewIfNeeded();
+          await entry.hover();
+          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-entry.png`), animations: 'disabled' });
+          await entry.click();
+          await page.getByRole('heading', { name: 'Current version', exact: true }).waitFor();
+          if (await page.getByRole('combobox', { name: 'Release channel', exact: true }).count() || await page.getByRole('radiogroup', { name: 'Release channel', exact: true }).count()) throw new Error('Single release channel remains interactive');
+        }
+        if (name.startsWith('forms-')) {
+          // Regression: settings forms had touching actions, decorative selectors and unlabelled advanced fields.
+          const nav = page.getByRole('button', { name: 'Current version Agent Remote Control v1.0.0', exact: true });
+          await nav.click();
+          await page.getByText('Navigate to updates', { exact: true }).waitFor();
+          for (const name of ['Release channel', 'Empty choices', 'Unlisted recorded choice']) {
+            if (await page.getByRole('combobox', { name, exact: true }).count() || await page.getByRole('radiogroup', { name, exact: true }).count()) throw new Error('A static choice still exposes a selector');
+          }
+          await page.getByRole('button', { name: 'Save', exact: true }).click();
+          const field = page.getByRole('textbox', { name: 'Label', exact: true });
+          if (!await field.evaluate(node => node === document.activeElement && node.getAttribute('aria-invalid') === 'true')) throw new Error('Invalid field is not focused and marked');
+          if (!await field.evaluate(node => node.getAttribute('aria-describedby').split(' ').every(id => document.getElementById(id)?.textContent))) throw new Error('Field help/error descriptions are not associated');
+          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-validation.png`), animations: 'disabled' });
+          await field.fill('Updated source');
+          await page.getByRole('button', { name: 'Save', exact: true }).click();
+          await page.getByText('Saved', { exact: true }).waitFor();
+          const advanced = page.getByRole('button', { name: 'Advanced', exact: true });
+          await advanced.focus();
+          await page.keyboard.press('Space');
+          if (await advanced.getAttribute('aria-expanded') !== 'false') throw new Error('Disclosure did not collapse');
+          if (await field.isVisible()) throw new Error('Collapsed disclosure exposes fields');
+          await page.keyboard.press('Enter');
+          await field.waitFor({ state: 'visible' });
+          const spec = page.getByRole('region', { name: 'Recorded dispatch specs', exact: true });
+          await spec.scrollIntoViewIfNeeded();
+          await spec.getByText('DeepSeek V4.1 Flash · OpenCode Go · Max', { exact: true }).waitFor();
+          if ((await spec.innerText()).includes('current-must-not-leak')) throw new Error('A historical turn inherited current defaults');
+          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-specs.png`), animations: 'disabled' });
+          const collisions = await page.locator('.setting-row').evaluateAll(rows => rows.filter(row => {
+            const label = row.querySelector('.setting-row-copy')?.getBoundingClientRect();
+            const control = row.querySelector('.setting-row-control')?.getBoundingClientRect();
+            return label && control && label.bottom > control.top && label.top < control.bottom && label.right > control.left;
+          }).length);
+          if (collisions) throw new Error('Setting labels overlap their trailing controls');
+          const overflow = await page.getByRole('main').evaluate(node => node.scrollWidth > node.clientWidth);
+          if (overflow) throw new Error('Forms overflow horizontally');
+          await nav.scrollIntoViewIfNeeded();
+          await nav.hover();
+        }
         if (name === 'accounts') {
           // Regression: account management was only reachable through Settings and hid source identities.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));

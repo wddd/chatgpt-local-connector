@@ -1,3 +1,4 @@
+import { dispatchCatalogFixtures } from './scenarioDispatchSpec';
 import { installTopologyAccounts } from './topology/scenarioAccounts';
 import { accountScenario } from "./scenarioAccounts";
 import { beginScenario, finishScenario, missingScenarioRoute, scenarioReadiness } from "./state/scenarioReadiness";
@@ -37,6 +38,7 @@ export function scenarioResponse(path: string, method: string, body?: unknown): 
   }
 }
 function respondToScenario(path: string, method: string, body?: unknown): unknown {
+  if (path === 'agents/dispatch-catalog' && method === 'POST') return structuredClone(dispatchCatalogFixtures[(body as { agent: string }).agent] ?? { unavailable: 'fixture-catalog-unavailable' });
   if (path === 'app/env' && method === 'GET') {
     const now = Date.now();
     return { active: false, expiresAt: null, realNowMs: now, overrides: {}, clock: { value: { nowMs: now, speed: 1 }, source: 'system' } } satisfies import('./state/appEnvModel').EnvSample;

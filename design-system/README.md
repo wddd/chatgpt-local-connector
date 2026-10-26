@@ -50,14 +50,25 @@ const renderVals = {
 </x-import>
 ```
 
-Root accepts ordinary host React children, including multiple `x-import` elements. Every other component accepts **plain text children and text slots only**. Do not pass React 18 elements, component functions, refs or render props into a React 19 island. Lucide icon props use the names `RefreshCw`, `Plus`, `Check`, `X`, `Info`, `Plug` or `Bot`, resolved to real Lucide components inside the island. `SingleChoice` option icons, `StateBadge.presentation.icon` and `PlatformIcon.fallback` use those names too. `EntityCard.icon` is a plain-text slot, not a Lucide icon name. Nested FactList labels, values and missing placeholders are text only. `SectionHeader.titleProps` accepts heading attributes without children, refs or HTML injection. `EntityCard.asChild` and `SectionHeader.titleAsChild` support only false because their element composition cannot cross the island boundary. All eight shells are exported; no whole component is skipped.
+Root accepts ordinary host React children, including multiple `x-import` elements. Every other component accepts **plain text children and text slots only**. Do not pass React 18 elements, component functions, refs or render props into a React 19 island. Lucide icon props use the names `RefreshCw`, `Plus`, `Check`, `X`, `Info`, `Plug` or `Bot`, resolved to real Lucide components inside the island. `SingleChoice` option icons, `StateBadge.presentation.icon` and `PlatformIcon.fallback` use those names too. `EntityCard.icon` is a plain-text slot, not a Lucide icon name. Nested FactList labels, values and missing placeholders are text only. `SectionHeader.titleProps` accepts heading attributes without children, refs or HTML injection. `EntityCard.asChild` and `SectionHeader.titleAsChild` support only false because their element composition cannot cross the island boundary. Settings/form shells and DispatchSpec are also exported. Form controls and actions use text stand-ins in individual islands; browser fixtures show their real composition.
 
 Controlled inputs still require the owner to update their props from `onChange`. Explicit callbacks run normally. Built-in task selection, quota refresh and platform-adapter URL/clipboard actions emit a bubbling `arc:action` CustomEvent on the enclosing Root with `{ kind, value }`; these adapters do not contact ARC, navigate or write to the clipboard. Listen for that event to visualize design interactions. AddressField calls the owner's `onCopy` callback for its button and retains native selection-copy of its raw value; its `display` text and reveal state are owner-controlled. `now` is fixed until the owner changes it. Keep fixture timestamps aligned with it.
+
+DispatchSpec accepts recorded task/turn data and native-shaped label snapshots. `Arc.fixtures.dispatchSpecs` covers resolved, unresolved, missing, loading and failed catalogs, including dsh and historical turns.
 
 ## Exports
 
 | Export | Purpose |
 | --- | --- |
+| [ChoiceControl](api/components/ChoiceControl.md) | Static settings value for zero or one option; SingleChoice otherwise |
+| [SettingsSection](api/components/SettingsSection.md) | Settings heading and body |
+| [SettingRow](api/components/SettingRow.md) | Aligned control or content-sized navigation row |
+| [FormField](api/components/FormField.md) | Label, control, help and error |
+| [FormSection](api/components/FormSection.md) | Semantic field grouping |
+| [ActionGroup](api/components/ActionGroup.md) | Wrapping button layout |
+| [Disclosure](api/components/Disclosure.md) | Accessible collapsible section |
+| [DangerZone](api/components/DangerZone.md) | Destructive actions and consequence |
+| [DispatchSpec](api/components/DispatchSpec.md) | Recorded spec with Agent-native labels |
 | [Root](api/components/Root.md) | Artboard environment and isolation |
 | [Button](api/components/Button.md) | Primary, secondary, ghost, link and destructive actions |
 | [IconButton](api/components/IconButton.md) | Accessible icon action |

@@ -1,8 +1,9 @@
+import { DispatchSpec } from '../components/composites/DispatchSpec';
 import { createElement, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RefreshCw, Plus, Check, X, Info, Plug, Bot } from 'lucide-react';
 import { Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
-  PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField } from '../components/ui';
+  PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, ChoiceControl, SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone } from '../components/ui';
 import AgentQuota from '../components/AgentQuota';
 import { AgentQuotaIcon } from '../subscriptions/QuotaRing';
 import QuotaBubble from '../subscriptions/QuotaBubble';
@@ -14,7 +15,7 @@ import { PortalHost } from './radix';
 
 const components = { Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
   AgentQuotaIcon, AgentQuota, QuotaBubble, GraphNode, ActivityBubble,
-  PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField };
+  PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, ChoiceControl, SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone, DispatchSpec };
 const icons = { RefreshCw, Plus, Check, X, Info, Plug, Bot };
 export function configure(value: Environment, target?: HTMLElement) {
   environment.set(value);

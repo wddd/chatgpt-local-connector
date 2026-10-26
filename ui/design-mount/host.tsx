@@ -1,5 +1,6 @@
 import { createContext, createElement, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { createRuntime } from 'virtual:arc-runtime';
+import type { DispatchSpec as DispatchSpecComponent } from '../components/composites/DispatchSpec';
 import type * as UI from '../components/ui';
 import type AgentQuotaComponent from '../components/AgentQuota';
 import type { AgentQuotaIcon as AgentQuotaIconComponent } from '../subscriptions/QuotaRing';
@@ -36,6 +37,9 @@ type TextProps<P> = Omit<P, 'children' | 'ref' | 'action' | 'icon' | 'dangerousl
   (P extends { children: unknown } ? { children: string } : { children?: string });
 type TextSlots<P, K extends keyof P> = Omit<{ [Key in keyof P]: Key extends K ? string : P[Key] }, 'ref' | 'dangerouslySetInnerHTML'>;
 const textSlots: Record<string, readonly string[]> = {
+  SettingsSection: ['title', 'description'], SettingRow: ['label', 'description'],
+  FormField: ['label', 'help'], FormSection: ['title', 'description'],
+  Disclosure: ['title'], DangerZone: ['consequence'],
   PlatformIcon: ['quotaRing'],
   SectionHeader: ['title', 'leading', 'actions', 'back', 'close', 'widthControl', 'secondary', 'titleActions'],
   EntityRow: ['leading', 'title', 'secondary', 'state', 'actions'],
@@ -82,7 +86,7 @@ function island<P extends object>(name: string) {
       }
       if (Array.isArray(raw.options)) for (const option of raw.options) {
         checkIcon(option.icon);
-        if (option.graphic != null && typeof option.graphic !== 'string') throw new Error('Arc.SingleChoice option.graphic accepts plain text only.');
+        if (option.graphic != null && typeof option.graphic !== 'string') throw new Error(`Arc.${name} option.graphic accepts plain text only.`);
       }
       mounted.current!.update({ ...raw, ...(name === 'ActivityBubble' ? { now: raw.now ?? environment.now } : {}) });
     });
@@ -124,3 +128,14 @@ export const FactList = island<Omit<ComponentProps<typeof UI.FactList>, 'items' 
 }>('FactList');
 export const Freshness = island<TextSlots<ComponentProps<typeof UI.Freshness>, 'age' | 'unknown'>>('Freshness');
 export const AddressField = island<TextSlots<ComponentProps<typeof UI.AddressField>, 'display'>>('AddressField');
+
+export const SettingsSection = island<TextSlots<ComponentProps<typeof UI.SettingsSection>, 'title' | 'description' | 'children'>>('SettingsSection');
+export const SettingRow = island<TextSlots<ComponentProps<typeof UI.SettingRow>, 'label' | 'description' | 'children'>>('SettingRow');
+export const FormField = island<TextSlots<ComponentProps<typeof UI.FormField>, 'label' | 'help' | 'children'>>('FormField');
+export const FormSection = island<TextSlots<ComponentProps<typeof UI.FormSection>, 'title' | 'description' | 'children'>>('FormSection');
+export const ActionGroup = island<TextProps<ComponentProps<typeof UI.ActionGroup>>>('ActionGroup');
+export const Disclosure = island<TextSlots<ComponentProps<typeof UI.Disclosure>, 'title' | 'children'>>('Disclosure');
+export const DangerZone = island<TextSlots<ComponentProps<typeof UI.DangerZone>, 'consequence' | 'children'>>('DangerZone');
+export const DispatchSpec = island<ComponentProps<typeof DispatchSpecComponent>>('DispatchSpec');
+
+export const ChoiceControl = island<Omit<ComponentProps<typeof UI.ChoiceControl>, 'options'> & { options: readonly Choice[] }>('ChoiceControl');

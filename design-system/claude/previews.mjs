@@ -6,6 +6,7 @@ export const previews = {
   IconButton: ['Primitives', 80, "Row(...['RefreshCw','Plus','Check','X'].map(icon=>h(A.IconButton,{key:icon,icon,label:icon})),h(A.IconButton,{icon:'RefreshCw',label:'Refreshing',busy:true}),h(A.IconButton,{icon:'Plus',label:'Disabled',disabled:true}))"],
   Switch: ['Primitives', 110, 'h(SwitchDemo)'],
   SingleChoice: ['Primitives', 110, 'h(ChoiceDemo)'],
+  ChoiceControl: ['Forms', 120, "Col(h(A.ChoiceControl,{label:'Release channel',value:'stable',options:[{value:'stable',label:'Stable'}],onChange:noop}),h(A.ChoiceControl,{label:'Empty choices',value:'',options:[],onChange:noop}))"],
   Notice: ['Primitives', 220, "Col(h(A.Notice,{tone:'danger'},F.labels.notice),h(A.Notice,{tone:'warning'},'Reauthorization required'),h(A.Notice,{tone:'success'},'Connection added'))"],
   Empty: ['Primitives', 160, "h(A.Empty,{icon:'Info'},F.labels.empty)"],
   Loading: ['Primitives', 80, 'h(A.Loading)'],
@@ -24,6 +25,14 @@ export const previews = {
   FactList: ['Shells', 220, "Col(...[{placeholder:'Unknown'},{omit:true}].map(missing=>h(A.FactList,{items:[{label:'Agent',value:F.agents[0].agent},{label:'Plan'}],missing})))"],
   Freshness: ['Shells', 160, "Col(h(A.Freshness,{observedAt:new Date(F.now).toISOString(),age:'Just now',onRefresh:noop}),h(A.Freshness,{observedAt:F.quotaStates.stale.observedAt,age:'Two hours ago',stale:true,onRefresh:noop}),h(A.Freshness,{observedAt:null,age:'',unknown:'Unknown',busy:true,onRefresh:noop}))"],
   AddressField: ['Shells', 260, 'h(AddressDemo)'],
+  SettingsSection: ['Forms', 160, "h(A.SettingsSection,{title:'App updates',description:'Current version'},'Agent Remote Control v1.0.0')"],
+  SettingRow: ['Forms', 220, "Col(h(A.SettingRow,{label:'Release channel'},'Stable'),h(A.SettingRow,{label:'Current version',description:'Agent Remote Control v1.0.0',onNavigate:noop}),h(A.SettingRow,{label:'Unavailable',onNavigate:noop,disabled:true}))"],
+  FormField: ['Forms', 180, "Col(h(A.FormField,{label:'Label',help:'Maximum 120 bytes.'},'Example source'),h(A.FormField,{label:'Invalid value',error:'Enter a value.'},'Unavailable'))"],
+  FormSection: ['Forms', 140, "h(A.FormSection,{title:'Connection'},'Connection fields')"],
+  ActionGroup: ['Forms', 140, "Col(h(A.ActionGroup,{align:'leading'},'Leading actions'),h(A.ActionGroup,{},'Trailing actions'))"],
+  Disclosure: ['Forms', 180, "Col(h(A.Disclosure,{title:'Advanced',defaultOpen:true},'Advanced settings'),h(A.Disclosure,{title:'Collapsed'},'Additional settings'))"],
+  DangerZone: ['Forms', 140, "h(A.DangerZone,{consequence:'Disconnecting removes source access.'},'Disconnect')"],
+  DispatchSpec: ['Composites', 380, "Col(...F.dispatchSpecs.map(spec=>h(A.DispatchSpec,{key:spec.label,...spec})))"],
 };
 
 const prelude = `const h=React.createElement, A=window.Arc, F=A.fixtures;

@@ -1,6 +1,6 @@
 # Arc.SingleChoice
 
-The existing responsive single-choice control. Width and option count select pills or dropdown.
+The responsive single-choice control. Width and option count select pills or dropdown. Use [ChoiceControl](ChoiceControl.md) for settings that render zero or one option as a static value.
 
 Requires [Arc.Root](Root.md). Non-string props use template holes.
 

@@ -1,3 +1,4 @@
+import { dispatchSpecFixtures } from '../scenarioDispatchSpec';
 import scenario from '../../tooling/acceptance/scenarios/topology-accounts.json';
 import configSchema from '../../native/src/ingress/config.json';
 import { installTopologyAccounts } from '../topology/scenarioAccounts';
@@ -61,6 +62,7 @@ const quotaStates = {
   empty: { ...ready, windows: [] },
 } satisfies Record<string, ProviderSnapshot>;
 export const fixtures = {
+  dispatchSpecs: dispatchSpecFixtures,
   now, accounts, agents, sources: ingresses.flatMap(ingress => ingress.sources ?? []), ingresses,
   quotaSnapshots, quotaStates, activitySessions, activity,
   choices: [{ value: 'claude', label: 'Claude' }, { value: 'codex', label: 'Codex' }],

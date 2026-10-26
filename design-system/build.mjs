@@ -13,6 +13,7 @@ const out = path.join(root, 'design-system/dist');
 const resolve = name => path.join(root, name);
 const adapter = name => resolve(`ui/design-mount/${name}`);
 const aliases = new Map([
+  ['ui/state/dispatchCatalog.ts', 'dispatchCatalog.ts'],
   ['ui/i18n.ts', 'i18n.ts'], ['ui/state/store.ts', 'store.ts'],
   ['ui/state/appEnvironment.ts', 'environment.ts'], ['ui/state/privacy.ts', 'privacy.ts'],
   ['ui/platform.ts', 'platform.ts'], ['ui/api.ts', 'api.ts'],

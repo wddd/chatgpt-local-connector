@@ -1,0 +1,9 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "page": "settings"
+}
