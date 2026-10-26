@@ -31,7 +31,6 @@ export default function ElasticPanel({
   open = true,
   onClose,
   onCloseStart,
-  onBack,
   onDismiss,
   title,
   labelledBy,
@@ -62,7 +61,6 @@ export default function ElasticPanel({
   open?: boolean;
   onClose: () => void | Promise<void>;
   onCloseStart?: () => void;
-  onBack?: () => void;
   onDismiss?: () => void;
   title: ReactNode;
   labelledBy?: string;
@@ -386,8 +384,7 @@ export default function ElasticPanel({
           }}
           onEscapeKeyDown={(e) => {
             e.preventDefault();
-            if (onBack && !busy) onBack();
-            else void close();
+            void close();
           }}
           onPointerDownOutside={(e) => {
             if (!dock || panelLayers.get().at(-1) !== node || e.detail.originalEvent.button !== 0) return;

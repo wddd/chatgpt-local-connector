@@ -1,3 +1,4 @@
+import type { ToolPolicy } from "../toolPolicy";
 import type { CoreSnapshot } from "../types";
 export interface Config {
   proxyMode: "system" | "direct" | "custom";
@@ -32,7 +33,7 @@ export type OAuthGrant = { id: string; clientName: string; clientId: string; con
 export interface Ingress {
   sources?: ControlSource[];
   oauth?: { pending: OAuthRequest[]; grants: OAuthGrant[] };
-  toolPolicy?: "all" | { allowlist: string[] };
+  toolPolicy?: ToolPolicy;
   discoveredUrls?: string[];
   id: string;
   name: string;

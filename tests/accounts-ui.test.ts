@@ -213,6 +213,7 @@ test('account source panels use product display names in every locale', async ()
     const page = within(document.body);
     for (const language of ['en', 'zh-CN']) {
       await act(async () => { locale.set(language); root.render(h(TooltipProvider, null, h(Dialog, { title: 'Source', onClose() {} }, h(SourcePanel, { source })))); });
+      await act(async () => { fireEvent.click(page.getByRole('radio', { name: t('accounts.tab.account'), exact: true })); });
       const label = `${name(account.agentProfiles[0])} · ${account.alias}`;
       assert.ok(page.getByRole('button', { name: label, exact: true }));
       assert.equal(page.queryByRole('button', { name: `${account.agentProfiles[0].agent} · ${account.alias}`, exact: true }), null);

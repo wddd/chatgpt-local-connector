@@ -1408,9 +1408,5 @@
   "accounts.mergeConfirm": "合并所选账号",
   "accounts.mergeAlias": "账号名称",
   "accounts.mergeQuota": "共享额度来源",
-  "accounts.mergeNativeQuota": "原生账号额度",
-  "object.dispatchPolicy": "派发策略",
-  "object.defaultModel": "默认模型",
-  "object.defaultEffort": "默认推理强度",
-  "object.nativeDefault": "原生默认值"
+  "accounts.mergeNativeQuota": "原生账号额度"
 }

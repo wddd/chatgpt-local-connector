@@ -1,22 +1,26 @@
 import { useState } from 'react';
+import { Link } from 'lucide-react';
 import type { ProviderAccount as Account } from '../types';
 import { accountsApi } from '../api';
 import { t } from '../i18n';
 import { copyText } from '../platform';
 import { sourceDate } from '../sourcePresentation';
 import { boundNotificationSessions, refreshAccounts } from '../state/accounts';
-import { Button, Dialog, Field, Notice, Status } from './ui';
+import { Button, Dialog, Field, Icon, Notice, Status } from './ui';
 import { Sensitive, SensitiveInput, useSensitiveText } from './Sensitive';
 import AgentQuota from './AgentQuota';
 import { accountQuotaProvider } from '../subscriptions/accountQuota';
-export function AccountQuota({ account, agent }: { account: Account; agent: string }) {
+export function AccountSharedNotice() {
+  return <div className="account-shared-notice" role="note"><Icon icon={Link} /><span>{t('accounts.sharedQuota')}</span></div>;
+}
+export function AccountQuota({ account }: { account: Account }) {
   const [refreshing, setRefreshing] = useState(false);
-  const provider = accountQuotaProvider(agent, account.quota);
+  const provider = accountQuotaProvider(account.agentProfiles[0]?.agent ?? account.provider, account.quota);
   async function refresh() {
     setRefreshing(true);
     try { await refreshAccounts(); } finally { setRefreshing(false); }
   }
-  return <>{account.quota.error && <Notice action={<Button busy={refreshing} onClick={() => void refresh()}>{t("usageRefresh")}</Button>}>{typeof account.quota.error === "string" ? account.quota.error : t("usageUnavailable")}</Notice>}<AgentQuota provider={provider} refreshing={refreshing} onRefresh={() => void refresh()} /></>;
+  return <AgentQuota provider={provider} refreshing={refreshing} onRefresh={() => void refresh()} />;
 }
 export function AccountNotifications({ account }: { account: Account }) {
   const [manual, setManual] = useState(false), [target, setTarget] = useState(''), [error, setError] = useState(''), [fieldError, setFieldError] = useState('');

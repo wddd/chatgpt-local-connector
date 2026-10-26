@@ -77,16 +77,6 @@ fn check_known(value: Option<&str>, allow: &[String], deny: &[String], field: &s
         Ok(())
     }
 }
-pub(crate) fn summary() -> Result<Value> {
-    let policies = read()?;
-    let mut agents = serde_json::Map::new();
-    agents.insert("codex".into(), json!({"model":policies.codex.model,"effort":policies.codex.effort,"criteria":policies.codex.criteria}));
-    for (agent, policy) in policies.agents {
-        agents.insert(agent, json!({"model":policy.model,"effort":policy.options.get("effort"),"criteria":policy.criteria}));
-    }
-    Ok(json!({"criteria":policies.criteria,"agents":agents}))
-}
-
 fn read() -> Result<Policies> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = LOCK.lock().map_err(|e| e.to_string())?;

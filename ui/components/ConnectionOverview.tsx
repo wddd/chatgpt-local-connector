@@ -6,7 +6,7 @@ import { accountViews } from '../topology/accountViews';
 import { accountOwns } from '../accountPresentation';
 import { useTopologyAccounts, topologyMode, topologyAccountOrder } from '../topology/accountState';
 import { scenarioName } from "../scenarioMode";
-import { agentPanel, selectAgentPanel, srcPanel, selectSourcePanel } from "../state/overviewPanels";
+import { agentPanel, selectAgentPanel, ingressPanel, selectIngressPanel } from "../state/overviewPanels";
 import { PhaseTile, PhaseLabel } from "./activity";
 import { resetActivityCore, useActivityTracking } from "../state/activity";
 import { orderActivity, visibleActivity, effectiveBubbleDensity, bubbleWidths, bubbleHeights } from "../state/activityModel";
@@ -62,7 +62,7 @@ function wireState(state: string): WireState {
 }
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
   const tuning = topologyTuningEnabled.use();
-  const { tracked, markRead } = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use(), sourceSelection = srcPanel.use();
+  const { tracked, markRead } = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use(), sourceSelection = ingressPanel.use();
   const flow = onboarding.use(), newConnection = connectionSetup.use();
   const newSourceId = addedSource.use();
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const detailOpen = !!selection || !!sourceSelection, panelOpen = detailOpen || !!flow || !!newConnection;
   const [panelExpanded, setPanelExpanded] = useState(false);
   const panelKey = selection && !selection.closing ? `agent:${selection.agent}:${selection.accountId ?? ""}`
-    : sourceSelection && !sourceSelection.closing ? `source:${sourceSelection.sourceId ?? `platform:${sourceSelection.platform}`}` : undefined;
+    : sourceSelection && !sourceSelection.closing ? `source:${sourceSelection.client?.id ?? sourceSelection.ingress.id}` : undefined;
   appEnvironment.use();
   const [panelLayout, setPanelLayout] = useState<PanelLayout>({ width: PANEL_MIN_WIDTH, expanded: false });
   const updatePanelLayout = useCallback((next: PanelLayout) => {
@@ -226,8 +226,9 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   }
   const sourceViews: NodeView[] = controlSources.flatMap(source => {
     const ingress = sources.find(i => i.id === source.ingressId);
-    const state = source.state === "disconnected" || !ingress ? "disconnected" : sourceState(ingress);
-    const selected = !sourceSelection?.closing && sourceSelection?.sourceId === source.id;
+    if (!ingress) return [];
+    const state = source.state === "disconnected" ? "disconnected" : sourceState(ingress);
+    const selected = !sourceSelection?.closing && sourceSelection?.client?.id === source.id;
     const platformLabel = controlSource(source.product)?.displayName ?? source.product;
     const nodeLabel = accounts.some(account => account.sources.includes(source.id)) ? platformLabel : source.label;
     return [{
@@ -235,7 +236,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       icon: <SourceIcon platform={source.product} panelVisual />, sourceIds: [source.id], state: wireState(state), attention: false, selected, tasks: [], reorderable: !panelOpen,
       content: <GraphNode label={`${nodeLabel}: ${t(state)}`} state={wireState(state)} highlighted={selected} newlyAdded={source.id === newSourceId && !flow}
         onMove={panelOpen ? undefined : by => moveSource(source.id, by)}
-        onOpen={() => selectSourcePanel(source.product, { toggle: true })}>
+        onOpen={() => selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } })}>
         <SourceIcon platform={source.product} panelVisual /><span className="graph-node-name">{nodeLabel}</span>
       </GraphNode>,
     }];
@@ -297,11 +298,11 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     if (side === 1) {
       selectAgentPanel({ type: 'toggle', agent: platform, accountId });
     } else {
-      selectSourcePanel(platform, { toggle: true, ...(accountId ? { sourceId } : {}) });
+      const source = controlSources.find(s => s.id === sourceId), ingress = source && sources.find(i => i.id === source.ingressId);
+      if (source && ingress) selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } });
     }
   };
-  const topologyLeft = accountViews(sourceViews, -1, accounts, mode, accountOrders, { open: openAccountNode }).map(node =>
-    sourceSelection && !sourceSelection.closing && !sourceSelection.sourceId && node.platform === sourceSelection.platform ? { ...node, selected: true } : node);
+  const topologyLeft = accountViews(sourceViews, -1, accounts, mode, accountOrders, { open: openAccountNode });
   const topologyRight = accountViews(agentViews, 1, accounts, mode, accountOrders, { open: openAccountNode });
   const flatten = (nodes: NodeView[]): NodeView[] => nodes.flatMap(n => [n, ...flatten(n.children ?? [])]);
   const reorderNodes = (side: -1 | 1, ids: string[]) => {

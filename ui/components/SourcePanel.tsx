@@ -1,60 +1,60 @@
 import { useState, type ReactNode } from 'react';
-import { ArrowLeft, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { api } from '../api';
 import { t } from '../i18n';
 import { controlSource } from '../controlSources';
 import { isLocalSource } from '../sourcePresentation';
 import { name as agentName } from '../state/agents';
 import { connector, refreshConnector } from '../state/connector';
-import { useAccounts } from '../state/accounts';
+import { useAccounts, isUnidentified } from '../state/accounts';
 import { navigation } from '../state/navigation';
-import { srcPanel, selectAgentPanel, selectSourcePanel } from '../state/overviewPanels';
+import { ingressPanel, selectAgentPanel, selectIngressPanel } from '../state/overviewPanels';
 import type { ControlSource } from '../state/types';
 import { Button, DialogClose, IconButton, Notice, SingleChoice, Status, Switch, Tag } from './ui';
 import { PrivacyToggle } from './Privacy';
-import { AccountNotifications } from './AccountCards';
-import AccountMaintenance from './AccountMaintenance';
-import OAuthGrants from './OAuthGrants';
+import { Sensitive, SensitiveIdentity } from './Sensitive';
+import { AccountNotifications, AccountSharedNotice } from './AccountCards';
+import OAuthGrants from "./OAuthGrants";
 import SourceConnection from './SourceConnection';
 import SourceDispatches from './SourceDispatches';
 import SourceIcon from './SourceIcon';
 export function openSourceWorkspace(id: string) {
-  const source = connector.get().sources.find(source => source.id === id);
-  if (!source || isLocalSource(source)) return;
-  selectSourcePanel(source.product, { sourceId: source.id });
+  const { sources, status } = connector.get();
+  const source = sources.find(s => s.id === id);
+  const ingress = status?.ingresses.find(i => i.id === source?.ingressId);
+  if (!source) return;
+  selectIngressPanel(ingress ?? { id: source.ingressId, name: source.connectionName ?? source.label } as import('../state/types').Ingress, { client: { id: source.id, name: source.label, source: source.product } });
   navigation.set(old => ({ ...old, page: 'overview', remoteSourceId: undefined, remoteConnectionId: undefined }));
 }
-export default function SourcePanel({ source, widthControl, onBack }: { source: ControlSource; widthControl?: ReactNode; onBack?: () => void }) {
+export default function SourcePanel({ source, widthControl }: { source: ControlSource; widthControl?: ReactNode }) {
   const { status, sources } = connector.use(), state = useAccounts();
-  const account = state.items.find(account => account.sources.includes(source.id));
-  const ingress = status?.ingresses.find(ingress => ingress.id === source.ingressId);
-  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const account = state.items.find(a => a.sources.includes(source.id));
+  const ingress = status?.ingresses.find(i => i.id === source.ingressId);
+  const [tab, setTab] = useState('activity'), [busy, setBusy] = useState(false), [error, setError] = useState('');
   if (isLocalSource(source)) return null;
-  const shared = sources.filter(item => item.ingressId === source.ingressId && item.state !== 'revoked').length > 1;
-  const memberships = sources.filter(item => account?.sources.includes(item.id) && item.product === source.product);
-  const back = onBack ?? (() => selectSourcePanel(source.product, { platformOnly: true }));
-  const platform = controlSource(source.product)?.displayName ?? source.product;
-  const details = <>
-    {account?.agentProfiles.map(profile => <Button key={profile.profileId} variant="link" onClick={() => { selectAgentPanel({ type: 'agent', agent: profile.agent, accountId: account.id }); navigation.set(old => ({ ...old, page: 'overview' })); }}>{agentName(profile)} · {account.alias}</Button>)}
-    {memberships.length > 1 && <SingleChoice label={t('source.connections')} value={source.id} onChange={openSourceWorkspace} options={memberships.map(item => ({ value: item.id, label: `${item.label} · ${status?.ingresses.find(ingress => ingress.id === item.ingressId)?.name ?? item.connectionName ?? t('source.connectionRemoved')}` }))} />}
-    <SourceConnection source={source} onConnection={id => { srcPanel.set(undefined); navigation.set(old => ({ ...old, page: 'connections', remoteSourceId: undefined, remoteConnectionId: id })); }} />
-    {source.credential.type === 'oauth-grant' && <OAuthGrants sourceId={source.id} ingressId={source.ingressId} onBusy={setBusy} />}
-    {account && <AccountNotifications account={account} />}
-    <section className="account-card"><h3>{t('accounts.tab.activity')}</h3><SourceDispatches sourceId={source.id} summary /></section>
-  </>;
+  const shared = sources.filter(s => s.ingressId === source.ingressId && s.state !== 'revoked').length > 1;
+  const platform = controlSource(source.product)?.displayName ?? agentName({ agent: source.product });
   return <>
-    <header className="dialog-header source-account-header"><div className="actions"><IconButton icon={ArrowLeft} label={t('back')} onClick={back} /><SourceIcon platform={source.product} /></div>
-      <div className="source-account-heading"><h2>{platform} · {account?.alias ?? source.label}</h2></div>
+    <header className="dialog-header source-account-header"><div className="source-account-brand"><SourceIcon platform={source.product} /><span className="source-account-badge">{(account?.alias ?? t('accounts.identityUnavailable')).slice(0, 1)}</span></div>
+      <div className="source-account-heading"><h2>{platform} · {account?.alias ?? t('accounts.identityUnavailable')}</h2><Sensitive>{account?.email}</Sensitive></div>
       <div className="actions"><Switch label={t('sourcePanel.enabled')} checked={!!ingress?.enabled} disabled={!ingress || busy} onChange={enabled => {
         if (!ingress) return;
         setBusy(true); setError(''); void api(`ingress/${ingress.id}`, 'PUT', { enabled }).then(refreshConnector).catch(e => setError(String(e))).finally(() => setBusy(false));
       }} /><PrivacyToggle />{widthControl}<DialogClose asChild><IconButton icon={X} label={t('close')} disabled={busy} /></DialogClose></div>
     </header>
     <div className="side-panel-scroll source-panel-content">
-      <div className="account-chips"><Status tone={source.state === 'connected' ? 'success' : 'neutral'}>{t(`source.state.${source.state}`)}</Status><Tag>{ingress?.name ?? source.connectionName ?? t('source.connectionRemoved')}</Tag></div>
+      <div className="account-chips"><Status tone={source.state === 'connected' ? 'success' : 'neutral'}>{t(`source.state.${source.state}`)}</Status><Tag>{ingress?.name ?? source.connectionName ?? t('source.connectionRemoved')}</Tag>{account && <Status tone={account.notifications.state === 'not-bound' ? 'warning' : 'neutral'}>{t(`accounts.notifications.${account.notifications.state}`)}</Status>}</div>
       {shared && <p className="muted small">{t('accounts.sharedConnection')}</p>}
-      {(error || state.error) && <Notice>{error || state.error}</Notice>}
-      {account ? <AccountMaintenance account={account} onRemoved={back}>{details}</AccountMaintenance> : <><p role="status" className="muted">{t(state.loading ? 'loading' : 'accounts.identityUnavailable')}</p>{details}</>}
+      {error && <Notice>{error}</Notice>}
+      <SingleChoice label={t('accounts.sourceTabs')} value={tab} onChange={setTab} options={['activity', 'account', 'connection'].map(value => ({ value, label: t(`accounts.tab.${value}`) }))} />
+      {tab === 'activity' && <SourceDispatches sourceId={source.id} summary />}
+      {tab === 'account' && <>{state.error && <Notice>{state.error}</Notice>}{account ? <>
+        <section className="account-card"><div className="source-section-heading"><h3>{account.alias}</h3>{account.plan && <Tag>{account.plan}</Tag>}</div><SensitiveIdentity email={account.email} orgName={account.orgName} wrap /><div><Sensitive wrap>{account.identityKey}</Sensitive></div><p className="muted">{t(isUnidentified(account) ? 'accounts.unidentified' : 'accounts.whoami')}</p>
+</section>
+        {!!account.agentProfiles.length && <section className="account-card"><AccountSharedNotice />{account.agentProfiles.map(profile => <Button key={profile.profileId} variant="link" onClick={() => { selectAgentPanel({ type: 'agent', agent: profile.agent, accountId: account.id }); navigation.set(old => ({ ...old, page: 'overview', remoteSourceId: undefined })); }}>{agentName(profile)} · {account.alias}</Button>)}</section>}
+        <AccountNotifications account={account} />
+      </> : <p role="status" className="muted">{t(state.loading ? 'loading' : 'accounts.identityUnavailable')}</p>}</>}
+      {tab === 'connection' && <>{source.credential.type === 'oauth-grant' && <OAuthGrants sourceId={source.id} ingressId={source.ingressId} running={!!ingress?.running} onBusy={setBusy} />}<SourceConnection source={source} onConnection={id => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: 'connections', remoteSourceId: undefined, remoteConnectionId: id })); }} /></>}
     </div>
   </>;
 }

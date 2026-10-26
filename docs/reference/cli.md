@@ -371,7 +371,7 @@ printf '%s\n' '{"name":"Claude","controlSource":"claude","transport":"https","au
 "$ARC_APP" cli onboarding
 ```
 
-add accepts optional id and name. id is immutable; update takes it as a command argument, not in stdin. Updates partially merge settings and restart only that running ingress. Fields include controlSource, transport (`openai-tunnel` / `https`), auth (`openai` / `none` / `bearer` / `oauth`), enabled, toolPolicy (compatibility input, normalized to `all`), and config.
+add accepts optional id and name. id is immutable; update takes it as a command argument, not in stdin. Updates partially merge settings and restart only that running ingress. Fields include controlSource, transport (`openai-tunnel` / `https`), auth (`openai` / `none` / `bearer` / `oauth`), enabled, toolPolicy (`all` or `{allowlist:[…]}`), and config.
 
 config fields include httpsProvider, cloudflareMode, cloudflareAuth (token by default, or login), cloudflareTunnelId, httpsUrl, httpsHost, httpsPort, cloudflareToken, ngrokAuthtoken, pinggyMode, pinggyToken, localxposeMode, localxposeAccessToken, localxposeRegion, tunnelId, apiKey, and tunnelBinary. Use `cli help` for current modes and requirements. A Bearer token is at least 32 printable ASCII characters. Secret input uses stdin or a protected file; status/list do not reveal it.
 
@@ -453,7 +453,7 @@ Other servers are preserved; a conflicting same-name entry is rejected.
 The installed command is `arc cli local-mcp <ingressId>` with the instance's `ARC_STATE_DIR`.
 It leases the local Core and forwards the existing `guide`, `query`, `act` and `notification`
 contracts through authenticated loopback IPC. A local ingress has `transport: "local"`,
-`auth: "none"`; it exposes no public listener. Its enabled state still applies; tool access is full.
+`auth: "none"`; it exposes no public listener. Its enabled state and tool policy still apply.
 
 
 ## Control-call statistics

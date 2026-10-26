@@ -95,6 +95,7 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
     assert.equal(fireEvent.copy(page.getByText(account.email, { exact: true }), { clipboardData: clipboard }), true);
     await act(async () => setPrivacy(true));
     await render(h(Dialog, { title: 'Source', onClose() {} }, h(SourcePanel, { source })));
+    await act(async () => { fireEvent.click(page.getByRole('radio', { name: t('accounts.tab.account'), exact: true })); });
     assertPrivate();
     await act(async () => setPrivacy(false));
     assert.ok(page.getByText(sourceAccount.identityKey, { exact: true }));
