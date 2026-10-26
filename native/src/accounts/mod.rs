@@ -1048,6 +1048,8 @@ mod notification_projection_tests {
 
 /// Current source-account owners, excluding merged and removed tombstones.
 pub(crate) fn source_rows() -> Result<Vec<Value>> {
+    // Reconcile every current source before projecting account inventory.
+    crate::sources::list()?;
     Ok(read()?
         .into_iter()
         .filter(|a| live(a) && a["sources"].as_array().is_some_and(|s| !s.is_empty()))

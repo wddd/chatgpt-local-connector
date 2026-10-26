@@ -1008,7 +1008,7 @@ impl Executor for Cli {
         }
         let account = crate::accounts::profile_account(profile)?;
         Ok(
-            json!({"kind":"claude-session-handshake","profileId":profile,"accountId":account["id"],"identityKey":account["identityKey"]}),
+            json!({"kind":"claude-session-handshake","profileId":profile,"accountId":account["id"],"identityKey":account["identityKey"],"orgId":facts["orgId"]}),
         )
     }
 

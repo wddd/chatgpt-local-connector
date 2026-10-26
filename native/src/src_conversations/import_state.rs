@@ -6,10 +6,12 @@ pub const KEYCHAIN_WAIT_SECONDS: u64 = 180;
 pub const KEYCHAIN_HINT: &str = "Enter the macOS login password in the Chrome Safe Storage prompt and choose Always Allow. Then explicitly retry the import if it is blocked.";
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportState {
     pub status: &'static str,
     pub reason: Option<&'static str>,
     pub hint: Option<&'static str>,
+    pub detected_account_id: Option<String>,
 }
 impl ImportState {
     pub fn importing() -> Self {
@@ -17,6 +19,7 @@ impl ImportState {
             status: "importing",
             reason: None,
             hint: Some(KEYCHAIN_HINT),
+            detected_account_id: None,
         }
     }
     pub fn finished(result: Result<bool, &str>) -> Self {
@@ -29,6 +32,7 @@ impl ImportState {
                 },
                 reason: None,
                 hint: None,
+                detected_account_id: None,
             },
             Err(error) => Self::blocked(error),
         }
@@ -51,7 +55,14 @@ impl ImportState {
             status: "import-blocked",
             reason: Some(reason),
             hint: Some(hint),
+            detected_account_id: None,
         }
+    }
+    pub fn mismatch(account: String) -> Self {
+        Self {status:"import-mismatch",reason:Some("org-mismatch"),hint:Some("Import this Chrome profile into detectedAccountId instead, or select a profile signed in to the intended ARC account."),detected_account_id:Some(account)}
+    }
+    pub fn unverified() -> Self {
+        Self {status:"import-unverified",reason:Some("org-unverified"),hint:Some("The imported login could not be matched to this ARC account's confirmed organization. Select a known matching Chrome profile, or explicitly retry with allowUnverified:true if you intend to use this unverified login."),detected_account_id:None}
     }
     pub fn response(&self, account: &str) -> Value {
         let mut result = json!(self);

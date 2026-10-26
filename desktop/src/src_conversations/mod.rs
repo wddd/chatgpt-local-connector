@@ -2,7 +2,11 @@
 mod import;
 mod jobs;
 mod native;
-use arc_core::src_conversations::refs;
+use arc_core::src_conversations::{
+    identity::{import_guard, OrgAccount},
+    import_state::ImportState,
+    refs,
+};
 use serde_json::{json, Value};
 use std::{
     cell::RefCell,
@@ -28,6 +32,7 @@ struct Container {
 }
 thread_local! {
     static VIEWS: RefCell<BTreeMap<String,Container>> = const { RefCell::new(BTreeMap::new()) };
+    static CLEARING: RefCell<BTreeMap<String,native::Removal>> = const { RefCell::new(BTreeMap::new()) };
     // Retain barriers even if the user closes the window or the caller disconnects.
     static IMPORTS: RefCell<BTreeMap<String,Arc<AtomicUsize>>> = const { RefCell::new(BTreeMap::new()) };
 }
@@ -49,6 +54,9 @@ async fn main_thread<T: Send + 'static>(
         .map_err(|_| "SRC_MAIN_THREAD_UNAVAILABLE")?
 }
 fn check_barrier(store: &str) -> Result<(), String> {
+    if CLEARING.with(|slot| slot.borrow().contains_key(store)) {
+        return Err("SRC_STORE_CLEAR_PENDING: Retry src_login_clear to confirm data store removal before opening or importing".into());
+    }
     IMPORTS.with(|slot| {
         let mut pending = slot.borrow_mut();
         pending.retain(|_, count| count.load(Ordering::SeqCst) != 0);
@@ -212,8 +220,59 @@ pub async fn request(app: &tauri::AppHandle, route: &str, args: Value) -> Result
             json!({"profiles":import::profiles().map_err(|e| format!("SRC_IMPORT_BLOCKED: {e}"))?}),
         );
     }
+    // A clear cannot race another window mutation or a newly admitted import.
+    static MUTATIONS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _mutation=MUTATIONS.try_lock().map_err(|_|"SRC_CONTAINER_BUSY: Another window mutation is in progress; read src_conversations before retrying")?;
     let account = arc_core::string(&args, "accountId").to_owned();
     let store = arc_core::string(&args, "storeId").to_owned();
+    if route == "src-containers/clear" {
+        if jobs::jobs().in_flight(&account).is_some() {
+            return Err("SRC_CONTAINER_BUSY: Wait for the in-flight import to finish before clearing its data store".into());
+        }
+        let id = account.clone();
+        let store_id = store.clone();
+        let removed = main_thread(app, move |_| {
+            if let Some(removal) = CLEARING.with(|slot| slot.borrow().get(&store).cloned()) {
+                if !removal
+                    .lock()
+                    .unwrap()
+                    .is_some_and(|result| result.is_err())
+                {
+                    return Ok(removal);
+                }
+                CLEARING.with(|slot| slot.borrow_mut().remove(&store));
+            }
+            check_barrier(&store)?;
+            VIEWS.with(|slot| {
+                if let Some(container) = slot.borrow_mut().remove(&id) {
+                    drop(container.view);
+                    container
+                        .window
+                        .destroy()
+                        .map_err(|_| "SRC_WINDOW_CLOSE_FAILED")?;
+                }
+                Ok::<(), String>(())
+            })?;
+            let removal = native::remove_store(&store).map_err(str::to_owned)?;
+            CLEARING.with(|slot| slot.borrow_mut().insert(store, removal.clone()));
+            Ok(removal)
+        })
+        .await?;
+        tokio::time::timeout(Duration::from_secs(30),async {
+            loop {
+                if let Some(result)=*removed.lock().unwrap() {return result;}
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }).await.map_err(|_|"SRC_STORE_CLEAR_TIMEOUT: Native website data removal is unconfirmed; retry clear before importing")?
+            .map_err(str::to_owned)?;
+        main_thread(app, move |_| {
+            CLEARING.with(|slot| slot.borrow_mut().remove(&store_id));
+            Ok(())
+        })
+        .await?;
+        jobs::jobs().forget(&account);
+        return Ok(json!({"accountId":account,"status":"not-imported"}));
+    }
     let url = refs::open_url(arc_core::string(&args, "url")).ok_or("SRC_URL_INVALID")?;
     if let Some(in_flight) = jobs::jobs().in_flight(&account) {
         return Ok(in_flight);
@@ -238,7 +297,7 @@ pub async fn request(app: &tauri::AppHandle, route: &str, args: Value) -> Result
     })
     .await
 }
-async fn perform_import(app: &tauri::AppHandle, args: Value) -> Result<bool, String> {
+async fn perform_import(app: &tauri::AppHandle, args: Value) -> Result<ImportState, String> {
     let store = arc_core::string(&args, "storeId").to_owned();
     main_thread(app, move |_| check_barrier(&store)).await?;
     let profile = arc_core::string(&args, "profile").to_owned();
@@ -251,6 +310,16 @@ async fn perform_import(app: &tauri::AppHandle, args: Value) -> Result<bool, Str
     .await
     .map_err(|_| "import-worker-failed")?
     .map_err(str::to_owned)?;
+    let known: Vec<OrgAccount> = serde_json::from_value(args["knownAccounts"].clone())
+        .map_err(|_| "SRC_IMPORT_IDENTITY_INVALID")?;
+    if let Some(state) = import_guard(
+        arc_core::string(&args, "accountId"),
+        imported.last_active_org(),
+        &known,
+        args["allowUnverified"] == true,
+    ) {
+        return Ok(state);
+    }
     let installed = !imported.cookies.is_empty();
     let account = arc_core::string(&args, "accountId").to_owned();
     let url = arc_core::string(&args, "url").to_owned();
@@ -278,7 +347,7 @@ async fn perform_import(app: &tauri::AppHandle, args: Value) -> Result<bool, Str
     .await
     .map_err(|_| "cookie-write-timeout")?;
     main_thread(app, move |_| navigate(&account, &url)).await?;
-    Ok(installed)
+    Ok(ImportState::finished(Ok(installed)))
 }
 
 fn disable_core_dump() -> bool {

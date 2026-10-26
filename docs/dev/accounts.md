@@ -78,7 +78,11 @@ enter the account JSON store. The `src_*` operations and Desktop bridge are defi
 in [Embedded control sources](embedded-control-sources.md#phase-1) and
 [Source conversations](../reference/tools.md#source-conversations). Identity merges
 do not silently transfer website sessions. Source login status remains separate
-from Agent profile authentication and notification verification.
+from Agent profile authentication and notification verification. Handshake evidence
+retains the native org ID for in-process website import ownership checks.
+`src_conversations` reconciles and lists every SRC account independently of the
+write-operation ownership boundary. `src_login_clear` removes only website login
+data and the store UUID mapping, preserving conversations and task bindings.
 
 ## UI
 

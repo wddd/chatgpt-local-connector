@@ -34,7 +34,7 @@ test('Source conversation ops isolate accounts and persist bindings through rest
     const [a,b]=owners;
     const chat=randomUUID(), second=randomUUID();
     const chatUrl=`https://claude.ai/chat/${chat}`, secondUrl=`https://claude.ai/chat/${second}`;
-    for (const op of ['src_conversations','src_chrome_profiles','src_conversation_open','src_login_import','src_conversation_bind']) {
+    for (const op of ['src_conversations','src_chrome_profiles','src_conversation_open','src_login_import','src_login_clear','src_conversation_bind']) {
       const guide=await fixture.call('guide',{op});
       assert.equal(guide.op,op);
       assert.equal(guide.retry.mode,op==='src_conversations'||op==='src_chrome_profiles'?'read-only':'read-back');
@@ -55,10 +55,14 @@ test('Source conversation ops isolate accounts and persist bindings through rest
     assert.equal(read.srcConversation.id,chat);
     assert.equal(read.srcConversation.basis,'correlated');
     let registry=await fixture.sourceCall(a.ingressId,'src_conversations',{},'query');
-    assert.equal(registry.accounts.length,1);
-    const store=registry.accounts[0].storeId;
+    assert.ok(owners.every(owner=>registry.accounts.some((row:any)=>row.accountId===owner.accountId)));
+    const untouched=registry.accounts.find((row:any)=>row.accountId===b.accountId);
+    assert.equal(untouched.status,'not-imported');
+    assert.equal(untouched.storeId,null);
+    const selected=registry.accounts.find((row:any)=>row.accountId===a.accountId);
+    let store=selected.storeId;
     assert.ok(store);
-    assert.equal(registry.accounts[0].conversations[0].taskRefs[0].id,task);
+    assert.equal(selected.conversations[0].taskRefs[0].id,task);
     await fixture.sourceCall(a.ingressId,'src_conversation_open',{accountId:a.accountId,url:secondUrl});
     // The authenticated Desktop channel publishes URL metadata; no native window is involved.
     await fixture.api('src-conversations/observe',{containers:[{accountId:a.accountId,storeId:store,status:'signed-in',active:true,url:secondUrl}]});
@@ -82,6 +86,16 @@ test('Source conversation ops isolate accounts and persist bindings through rest
     assert.equal(registry.accounts[0].open,false);
     assert.equal(registry.accounts[0].currentConversation,null);
     assert.equal(registry.accounts[0].conversations.find((r:any)=>r.id===second).taskRefs[0].basis,'manual');
+    const cleared=await fixture.call('src_login_clear',{accountId:a.accountId});
+    assert.equal(cleared.status,'not-imported');
+    const kept=(await fixture.call('src_conversations',{accountId:a.accountId})).accounts[0];
+    assert.equal(kept.storeId,null);
+    assert.equal(kept.open,false);
+    assert.equal(kept.conversations.find((r:any)=>r.id===second).taskRefs[0].basis,'manual');
+    await fixture.sourceCall(a.ingressId,'src_conversation_open',{accountId:a.accountId});
+    const reopened=(await fixture.call('src_conversations',{accountId:a.accountId})).accounts[0];
+    assert.notEqual(reopened.storeId,store);
+    store=reopened.storeId;
     const unbound=await fixture.call('src_conversation_bind',{accountId:a.accountId,agent:'codex',taskId:task,conversationId:null});
     assert.equal(unbound.conversation,null);
     const after=await fixture.call('src_conversations',{accountId:a.accountId});
@@ -100,5 +114,39 @@ test('Source conversation ops isolate accounts and persist bindings through rest
     assert.ok(blocked.accounts[0].hint.includes('macOS login password'));
     assert.ok(blocked.accounts[0].hint.includes('Always Allow'));
     assert.equal(blocked.accounts[0].open,false);
+    await fixture.api('src-conversations/observe',{containers:[{accountId:a.accountId,storeId:store,status:'import-mismatch',detectedAccountId:b.accountId,open:false}]});
+    const mismatch=(await fixture.call('src_conversations',{accountId:a.accountId})).accounts[0];
+    assert.equal(mismatch.status,'import-mismatch');
+    assert.equal(mismatch.detectedAccountId,b.accountId);
+    await fixture.api('src-conversations/observe',{containers:[{accountId:a.accountId,storeId:store,status:'import-unverified',open:false}]});
+    const unverified=(await fixture.call('src_conversations',{accountId:a.accountId})).accounts[0];
+    assert.equal(unverified.status,'import-unverified');
+    assert.equal(unverified.detectedAccountId,null);
+  } finally {await fixture.close();}
+});
+
+
+test('Source inventory includes other Claude accounts before a website container exists', {skip:process.platform !== 'darwin'}, async () => {
+  // Regression: src_conversations reused mutation ownership filtering and hid another known Claude SRC account.
+  const fixture=await nativeControl(server,{ARC_FIXTURE_SNAPSHOT:'src-conversations'});
+  try {
+    const owners:Array<{source:string;account:string}>=[];
+    for (const id of ['inventory-one','inventory-two']) {
+      await fixture.api('ingress',{id,name:id,controlSource:'claude',transport:'https',auth:'bearer',bearerToken:'synthetic-inventory'.padEnd(40,'x'),toolPolicy:'all',config:{httpsProvider:'custom',httpsUrl:'https://fixture.example.com/mcp'}});
+      await fixture.api(`ingress/${id}/start`,{});
+      const who=await fixture.sourceCall(id,'whoami',{},'query');
+      owners.push({source:id,account:who.id});
+    }
+    const listed=await fixture.sourceCall(owners[0].source,'src_conversations',{},'query');
+    for (const owner of owners) {
+      const row=listed.accounts.find((a:any)=>a.accountId===owner.account);
+      assert.ok(row);
+      assert.equal(row.status,'not-imported');
+      assert.equal(row.storeId,null);
+    }
+    const peer=await fixture.sourceCall(owners[0].source,'src_conversations',{accountId:owners[1].account},'query');
+    assert.equal(peer.accounts[0].accountId,owners[1].account);
+    const denied=await fixture.sourceCall(owners[0].source,'src_login_clear',{accountId:owners[1].account});
+    assert.equal(denied.error.code,'SRC_ACCOUNT_SCOPE');
   } finally {await fixture.close();}
 });

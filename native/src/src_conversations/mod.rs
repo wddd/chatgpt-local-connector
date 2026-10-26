@@ -5,6 +5,7 @@ use std::{
     collections::BTreeMap,
     sync::{Mutex, OnceLock},
 };
+pub mod identity;
 pub mod import_state;
 pub mod refs;
 /// Stable SRC errors remain machine-readable through MCP and local management.
@@ -32,6 +33,8 @@ struct Container {
     reason: Option<String>,
     #[serde(default)]
     hint: Option<String>,
+    #[serde(default)]
+    detected_account_id: Option<String>,
 }
 #[derive(Clone, Default)]
 struct Observation {
@@ -93,7 +96,7 @@ fn change<T>(
     state.live = live;
     Ok(value)
 }
-fn account(reference: &str) -> Result<Value> {
+fn read_account(reference: &str) -> Result<Value> {
     let a = crate::accounts::resolve(reference)?;
     if !a["removedAt"].is_null() {
         return Err("SRC_ACCOUNT_REMOVED: Select an active source account".into());
@@ -101,6 +104,10 @@ fn account(reference: &str) -> Result<Value> {
     if a["sources"].as_array().is_none_or(|s| s.is_empty()) {
         return Err("SRC_ACCOUNT_REQUIRED: Select a source account".into());
     }
+    Ok(a)
+}
+fn account(reference: &str) -> Result<Value> {
+    let a = read_account(reference)?;
     let origin = crate::kernel::origin::current_origin();
     if !origin.is_null() && origin["authType"] != "local" {
         let owner = crate::accounts::resolve(string(&origin, "accountId"))?;
@@ -138,6 +145,7 @@ fn ensure(store: &mut Store, id: &str) -> Container {
             status: "not-imported".into(),
             reason: None,
             hint: None,
+            detected_account_id: None,
         })
         .clone()
 }
@@ -177,12 +185,24 @@ fn apply_status(container: &mut Container, row: &Value) {
                 | "importing"
                 | "signed-in-pending"
                 | "import-blocked"
+                | "import-mismatch"
+                | "import-unverified"
         )
     }) else {
         return;
     };
     container.status = status.into();
-    if status == "import-blocked" {
+    container.detected_account_id = None;
+    if status == "import-mismatch" {
+        let mismatch = import_state::ImportState::mismatch(string(row, "detectedAccountId").into());
+        container.reason = mismatch.reason.map(str::to_owned);
+        container.hint = mismatch.hint.map(str::to_owned);
+        container.detected_account_id = mismatch.detected_account_id;
+    } else if status == "import-unverified" {
+        let unverified = import_state::ImportState::unverified();
+        container.reason = unverified.reason.map(str::to_owned);
+        container.hint = unverified.hint.map(str::to_owned);
+    } else if status == "import-blocked" {
         let blocked = import_state::ImportState::blocked(string(row, "reason"));
         container.reason = blocked.reason.map(str::to_owned);
         container.hint = blocked.hint.map(str::to_owned);
@@ -427,7 +447,7 @@ fn snapshot(a: &Value, store: &Store, live: &BTreeMap<String, Observation>) -> V
             r
         })
         .collect();
-    json!({"accountId":id,"storeId":c.map(|c|&c.store_id),"status":if supported(a){c.map(|c|c.status.as_str()).unwrap_or("not-imported")}else{"unsupported"},"reason":c.and_then(|c|c.reason.as_ref()),"hint":c.and_then(|c|c.hint.as_ref()),"safariUserAgent":c.is_some_and(|c|c.safari_user_agent),"open":obs.is_some_and(|o|o.open),"currentConversation":obs.and_then(|o|o.current.clone()),"conversations":conversations})
+    json!({"accountId":id,"storeId":c.map(|c|&c.store_id),"status":if supported(a){c.map(|c|c.status.as_str()).unwrap_or("not-imported")}else{"unsupported"},"reason":c.and_then(|c|c.reason.as_ref()),"hint":c.and_then(|c|c.hint.as_ref()),"detectedAccountId":c.and_then(|c|c.detected_account_id.as_ref()),"safariUserAgent":c.is_some_and(|c|c.safari_user_agent),"open":obs.is_some_and(|o|o.open),"currentConversation":obs.and_then(|o|o.current.clone()),"conversations":conversations})
 }
 pub async fn op(name: &str, mut args: Value) -> Result<Value> {
     args.as_object_mut().map(|a| a.remove("requestId"));
@@ -447,12 +467,9 @@ pub async fn op(name: &str, mut args: Value) -> Result<Value> {
     }
     if name == "src_conversations" {
         let rows = if let Some(id) = args["accountId"].as_str() {
-            vec![account(id)?]
+            vec![read_account(id)?]
         } else {
             crate::accounts::source_rows()?
-                .into_iter()
-                .filter(|a| account(string(a, "id")).is_ok())
-                .collect()
         };
         let mut targets = Vec::new();
         for a in &rows {
@@ -480,6 +497,9 @@ pub async fn op(name: &str, mut args: Value) -> Result<Value> {
             true,
         );
     }
+    // Keep persistent UUID removal atomic with respect to the next mutation.
+    static MUTATIONS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _mutation = MUTATIONS.lock().await;
     let a = account(string(&args, "accountId"))?;
     let id = string(&a, "id");
     if name == "src_conversation_bind" {
@@ -516,6 +536,26 @@ pub async fn op(name: &str, mut args: Value) -> Result<Value> {
     if !supported(&a) {
         return Ok(json!({"accountId":id,"status":"unsupported"}));
     }
+    if name == "src_login_clear" {
+        let container = change(|s, _| Ok(s.containers.get(id).cloned()), false)?;
+        if let Some(container) = container {
+            crate::transport::forward_request(
+                "src-containers/clear",
+                "POST",
+                json!({"accountId":id,"storeId":container.store_id}),
+            )
+            .await?;
+            change(
+                |s, l| {
+                    s.containers.remove(id);
+                    l.remove(id);
+                    Ok(())
+                },
+                true,
+            )?;
+        }
+        return Ok(json!({"accountId":id,"status":"not-imported"}));
+    }
     let url = if let Some(raw) = args["url"].as_str() {
         refs::open_url(raw).ok_or("SRC_URL_INVALID: Use https://claude.ai/new or a conversation URL without query or fragment")?
     } else if let Some(cid) = args["conversationId"].as_str() {
@@ -542,7 +582,15 @@ pub async fn op(name: &str, mut args: Value) -> Result<Value> {
         },
         true,
     )?;
-    let body = json!({"accountId":id,"storeId":c.store_id,"safariUserAgent":c.safari_user_agent,"title":format!("Claude · {}",string(&a,"alias")),"url":url,"profile":args["profile"]});
+    let known = if name == "src_login_import" {
+        identity::org_accounts(
+            &crate::accounts::source_rows()?,
+            &crate::accounts::claude::observations()?,
+        )
+    } else {
+        vec![]
+    };
+    let body = json!({"accountId":id,"storeId":c.store_id,"safariUserAgent":c.safari_user_agent,"title":format!("Claude · {}",string(&a,"alias")),"url":url,"profile":args["profile"],"allowUnverified":args["allowUnverified"]==true,"knownAccounts":known});
     let route = if name == "src_login_import" {
         "src-containers/import"
     } else {

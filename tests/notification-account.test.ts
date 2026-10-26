@@ -95,7 +95,7 @@ const args=process.argv.slice(2),config=process.env.CLAUDE_CONFIG_DIR,id=path.ba
 if(args[0]==='auth' && args[1]==='login') {
   writeFileSync(path.join(config,'.credentials.json'),JSON.stringify({claudeAiOauth:{accessToken:'fixture-secret-'+id}}));
 } else if(args[0]==='auth' && args[1]==='status') {
-  console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',email:id+'@example.com',orgName:'Fixture',subscriptionType:'pro',accessToken:'fixture-secret'}));
+  console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai',email:id+'@example.com',orgName:'Fixture',orgId:'550e8400-e29b-41d4-a716-446655440000',subscriptionType:'pro',accessToken:'fixture-secret'}));
 } else if(args[0]==='-p') {
   appendFileSync(${JSON.stringify(deliveries)},JSON.stringify({accountId:id,target:args[3],message:args[1]})+'\\n');
   console.log(JSON.stringify({ok:true,session_id:args[3]}));
@@ -156,6 +156,7 @@ for await(const line of createInterface({input:process.stdin})) {const {id}=JSON
     assert.equal(acknowledged.identityResolution.state,'resolved');
     assert.equal(acknowledged.identityResolution.accountId,profiles[1]);
     assert.equal(acknowledged.identityResolution.evidence.kind,'claude-session-handshake');
+    assert.equal(acknowledged.identityResolution.evidence.orgId,'550e8400-e29b-41d4-a716-446655440000');
     assert.equal(acknowledged.identityResolution.evidence.target,target);
     assert.ok(acknowledged.identityResolution.evidence.confirmedAt);
     const linked=await call('whoami');

@@ -30,7 +30,7 @@ impl Jobs {
         self: &Arc<Self>,
         account: String,
         store_id: String,
-        worker: impl Future<Output = Result<bool, String>> + Send + 'static,
+        worker: impl Future<Output = Result<ImportState, String>> + Send + 'static,
     ) -> Value {
         let mut jobs = self.0.lock().unwrap();
         if let Some(job) = jobs.get(&account).filter(|j| j.state.status == "importing") {
@@ -43,15 +43,13 @@ impl Jobs {
         tauri::async_runtime::spawn(async move {
             let result = worker.await;
             if let Some(job) = owner.0.lock().unwrap().get_mut(&account) {
-                job.state = ImportState::finished(
-                    result
-                        .as_ref()
-                        .map(|installed| *installed)
-                        .map_err(String::as_str),
-                );
+                job.state = result.unwrap_or_else(|error| ImportState::blocked(&error));
             }
         });
         response
+    }
+    pub fn forget(&self, account: &str) {
+        self.0.lock().unwrap().remove(account);
     }
     pub fn metadata(&self, views: Vec<Value>) -> Value {
         let mut jobs = self.0.lock().unwrap();
@@ -73,7 +71,11 @@ impl Jobs {
             row["status"] = json!(job.state.status);
             row["reason"] = json!(job.state.reason);
             row["hint"] = json!(job.state.hint);
-            if matches!(job.state.status, "importing" | "import-blocked") {
+            row["detectedAccountId"] = json!(job.state.detected_account_id);
+            if matches!(
+                job.state.status,
+                "importing" | "import-blocked" | "import-mismatch" | "import-unverified"
+            ) {
                 row["url"] = Value::Null;
                 row["active"] = json!(false);
             }
@@ -128,7 +130,7 @@ mod tests {
                 .await
                 .unwrap()
                 .map_err(str::to_owned)?;
-                Ok(installed)
+                Ok(ImportState::finished(Ok(installed)))
             });
             assert_eq!(initial["status"], "importing");
             assert_eq!(initial["next"]["op"], "src_conversations");
@@ -174,7 +176,7 @@ mod tests {
                 .await
                 .unwrap()
                 .map_err(str::to_owned)?;
-                Ok(true)
+                Ok(ImportState::finished(Ok(true)))
             });
             let blocked = terminal(&jobs, "account").await;
             assert_eq!(blocked["status"], "import-blocked");

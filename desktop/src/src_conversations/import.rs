@@ -27,6 +27,26 @@ pub struct Imported {
     pub cookies: Vec<(String, Cookie<'static>)>,
 }
 
+impl Imported {
+    /// Read only the selected organization UUID; never serialize cookie material.
+    pub fn last_active_org(&self) -> Option<uuid::Uuid> {
+        let mut org = None;
+        for (host, cookie) in &self.cookies {
+            if cookie.name() != "lastActiveOrg"
+                || !matches!(host.as_str(), "claude.ai" | ".claude.ai")
+            {
+                continue;
+            }
+            let candidate = uuid::Uuid::parse_str(cookie.value()).ok()?;
+            if org.is_some_and(|org| org != candidate) {
+                return None;
+            }
+            org = Some(candidate);
+        }
+        org
+    }
+}
+
 fn stamp(path: &Path) -> Option<(u64, std::time::SystemTime)> {
     fs::metadata(path)
         .ok()
@@ -304,10 +324,26 @@ mod tests {
                 )
                 .unwrap();
             }
+            let org = "550e8400-e29b-41d4-a716-446655440000";
+            let mut org_plain = Vec::new();
+            if version >= 24 {
+                org_plain.extend_from_slice(&Sha256::digest(b".claude.ai"));
+            }
+            org_plain.extend_from_slice(org.as_bytes());
+            let encrypted_org =
+                cbc::Encryptor::<aes::Aes128>::new((&key).into(), (&[b' '; 16]).into())
+                    .encrypt_padded_vec_mut::<Pkcs7>(&org_plain);
+            let org_bytes = [b"v10".as_slice(), &encrypted_org].concat();
+            db.execute(
+                "INSERT INTO cookies VALUES ('.claude.ai','lastActiveOrg','/','',?1,0,0,1,0,1,'')",
+                rusqlite::params![org_bytes],
+            )
+            .unwrap();
             drop(db);
             let (db_version, rows) = snapshot(&source).unwrap();
             let result = decode_rows(db_version, rows, &key, 1_700_000_000).unwrap();
-            assert!(result.cookies.len() == 1);
+            assert!(result.cookies.len() == 2);
+            assert!(result.last_active_org() == uuid::Uuid::parse_str(org).ok());
             assert!(result.cookies[0].1.value() == "synthetic-value");
             assert!(result.cookies[0].1.secure() == Some(true));
             assert!(result.cookies[0].1.http_only() == Some(true));

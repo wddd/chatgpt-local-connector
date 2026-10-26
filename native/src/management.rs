@@ -230,6 +230,7 @@ pub fn desktop_route(route: &str) -> bool {
             | "src-containers/profiles"
             | "src-containers/open"
             | "src-containers/import"
+            | "src-containers/clear"
             | "permissions/desktop"
             | "permissions/notify"
             | "appearance"

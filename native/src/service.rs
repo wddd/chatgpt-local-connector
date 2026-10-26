@@ -664,6 +664,7 @@ impl Service {
                 ("GET", "profiles") => "src_chrome_profiles",
                 ("POST", "open") => "src_conversation_open",
                 ("POST", "import") => "src_login_import",
+                ("POST", "clear") => "src_login_clear",
                 ("POST", "bind") => "src_conversation_bind",
                 _ => return Err("UNKNOWN_ROUTE".into()),
             };

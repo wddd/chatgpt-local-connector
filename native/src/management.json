@@ -3790,6 +3790,10 @@
           "profile": {
             "type": "string",
             "minLength": 1
+          },
+          "allowUnverified": {
+            "type": "boolean",
+            "description": "Explicitly permit installation only when the imported organization is missing or unknown. Never overrides a known different-account mismatch."
           }
         },
         "required": [
@@ -3798,7 +3802,7 @@
         ],
         "additionalProperties": false
       },
-      "description": "Start a background Chrome login import for this source account and return immediately with {accountId,status:\"importing\",next:{via:\"query\",op:\"src_conversations\",args:{accountId}}}. Concurrent imports for the same account return the in-flight status. Poll src_conversations: importing -> signed-in-pending when cookies are installed, not-imported when none are imported, or import-blocked with reason and a human-action hint. URL observation later yields signed-in or expired. Keychain waits up to 180 seconds; timeout/denial become keychain-timeout/keychain-denied. Enter the macOS login password in the Chrome Safe Storage prompt and choose Always Allow; never work around a denial. Native cookie writes must complete before navigation (30-second write timeout). No cookies, keys, decrypted bytes or page content are returned. No automatic retry after completion or failure.",
+      "description": "Start a background Chrome login import for this source account and return immediately with {accountId,status:\"importing\",next:{via:\"query\",op:\"src_conversations\",args:{accountId}}}. Concurrent imports for the same account return the in-flight status. Poll src_conversations: importing -> signed-in-pending when cookies are installed, not-imported when none are imported, or import-blocked with reason and a human-action hint. URL observation later yields signed-in or expired. Keychain waits up to 180 seconds; timeout/denial become keychain-timeout/keychain-denied. Enter the macOS login password in the Chrome Safe Storage prompt and choose Always Allow; never work around a denial. Native cookie writes must complete before navigation (30-second write timeout). No cookies, keys, decrypted bytes or page content are returned. No automatic retry after completion or failure. Before native installation, compare the imported lastActiveOrg in-process with confirmed SRC organization identities. A different known SRC yields import-mismatch with detectedAccountId and no installation. Unknown/missing identity yields import-unverified and no installation unless allowUnverified:true. No cookie or organization UUID is returned.",
       "localOnly": true
     },
     {
@@ -3833,6 +3837,25 @@
         "additionalProperties": false
       },
       "description": "Manually bind a dispatched task to a registered conversation on its origin account. conversationId:null unbinds. Cross-account binding is rejected. The next dispatch/send re-evaluates automatic binding. Task reads expose srcConversation including accountId, kind, id, url and basis.",
+      "localOnly": true
+    },
+    {
+      "name": "src.conversations.clear",
+      "method": "POST",
+      "route": "src-conversations/clear",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Clear only the selected account website login container. Close its window, wait for WKWebsiteDataStore removal, then remove the persisted store UUID mapping. Return {accountId,status:\"not-imported\"}. Keep conversations and task bindings. An in-flight import or pending cookie write must finish before clearing. Failed or unconfirmed removal retains the mapping and blocks reopening until clear is confirmed. This action destroys this account website data; it does not sign out Chrome. macOS 14+ only. Read back src_conversations before retrying.",
       "localOnly": true
     }
   ]

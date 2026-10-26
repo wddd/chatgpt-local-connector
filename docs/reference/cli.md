@@ -676,11 +676,11 @@ revision with `arc cli control ax_list --stdin`, then run
 
 Use `cli schema src.conversations.query` for the account-window registry and
 `cli schema src.conversations.profiles` for Chrome directory/display-name discovery.
-`src.conversations.open`, `src.conversations.import` and `src.conversations.bind`
+`src.conversations.open`, `src.conversations.import`, `src.conversations.clear` and `src.conversations.bind`
 mirror the source conversation ops through local management. Pass the operation's
 JSON arguments to `cli call <operation> --stdin`. The frozen control equivalents
 are `src_conversations`, `src_chrome_profiles`, `src_conversation_open`,
-`src_login_import` and `src_conversation_bind`.
+`src_login_import`, `src_login_clear` and `src_conversation_bind`.
 
 Native containers require macOS 14+. Import returns `importing` immediately
 with a `next` call to poll `src_conversations`; duplicate same-account requests
@@ -690,3 +690,9 @@ with a safe reason and human-action hint. For a Keychain prompt, enter the macOS
 login password and choose Always Allow. Never retry automatically or work around
 a denial. See [Source conversations](tools.md#source-conversations) for arguments,
 URL restrictions, binding provenance and the URL-only status limitation.
+
+Import ownership is checked using the imported organization and ARC's confirmed
+source identity. `import-mismatch` identifies `detectedAccountId` without installing
+cookies. `import-unverified` requires explicit `allowUnverified:true` before installation.
+The flag cannot bypass a known mismatch. `src.conversations.clear` removes only
+the account website store and UUID mapping; conversations and task bindings remain.

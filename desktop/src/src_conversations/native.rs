@@ -85,3 +85,28 @@ pub fn verify_no_scripts(view: &WebView) -> Result<(), &'static str> {
     }
     Ok(())
 }
+
+/// Caller must release the WebView first. Only the completion outcome crosses the bridge.
+pub type Removal = Arc<std::sync::Mutex<Option<Result<(), &'static str>>>>;
+pub fn remove_store(store: &str) -> Result<Removal, &'static str> {
+    use objc2::{AllocAnyThread, MainThreadMarker};
+    let uuid = NSUUID::initWithUUIDString(NSUUID::alloc(), &NSString::from_str(store))
+        .ok_or("SRC_STORE_ID_INVALID")?;
+    let mtm = MainThreadMarker::new().ok_or("SRC_MAIN_THREAD_UNAVAILABLE")?;
+    let removal = Arc::new(std::sync::Mutex::new(None));
+    let completed = removal.clone();
+    unsafe {
+        objc2_web_kit::WKWebsiteDataStore::removeDataStoreForIdentifier_completionHandler(
+            &uuid,
+            &block2::RcBlock::new(move |error: *mut NSError| {
+                *completed.lock().unwrap() = Some(if error.is_null() {
+                    Ok(())
+                } else {
+                    Err("SRC_STORE_CLEAR_FAILED: Native website data removal failed; retry clear before importing")
+                });
+            }),
+            mtm,
+        );
+    }
+    Ok(removal)
+}

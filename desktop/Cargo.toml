@@ -63,4 +63,6 @@ zeroize = "1.9"
 rusqlite = { version = "0.37", features = ["bundled"] }
 security-framework = "3.7"
 tempfile = "3"
-objc2-foundation = { version = "0.3.2", features = ["NSHTTPCookie", "NSDictionary", "NSString", "NSDate", "NSProcessInfo"] }
+objc2-foundation = { version = "0.3.2", features = ["NSHTTPCookie", "NSDictionary", "NSString", "NSDate", "NSProcessInfo", "NSUUID"] }
+
+objc2-web-kit = { version = "0.3.2", default-features = false, features = ["WKWebsiteDataStore", "block2"] }
