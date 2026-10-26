@@ -1239,12 +1239,11 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 }
 .source-dispatch-list { display: grid; gap: 8px; }
 .source-dispatch-more { height: 1px; }
-.entity-row.button.source-dispatch-row { gap: 8px; min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); text-align: left; color: var(--text); }
+.entity-row.source-dispatch-row { gap: 8px; min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); text-align: left; color: var(--text); }
 .source-dispatch-row:disabled { opacity: 1; cursor: default; }
 .source-dispatch-row > span:not(.phase-tile) { flex: 1; min-width: 0; }
 .source-dispatch-row strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
 .source-dispatch-meta { font-size: 12px; color: var(--text-secondary); }
-.source-dispatch-row[data-state="pending"] { border-color: var(--warning); }
 .source-dispatch-row[data-state="failed"] .phase-tile { color: var(--danger); }
 
 /* Source and connection setup use centered dialogs and shared controls. */
@@ -1531,7 +1530,6 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .remote-entity-row .entity-row-copy { grid-template-columns: minmax(80px, 1fr) auto; align-items: center; }
 .remote-entity-row .entity-row-secondary { max-width: 180px; }
 .entity-card.hosted-relay-card { padding: 0; gap: 0; overflow: hidden; border-radius: var(--radius-row); }
-.entity-row.button.agent-conversation-row { display: grid; text-align: start; }
 .entity-row.permission-entity-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); padding: var(--space-3) 0; }
 .entity-row.permission-entity-row h3 { font-size: var(--text-sm); }
 @media (max-width: 600px) {

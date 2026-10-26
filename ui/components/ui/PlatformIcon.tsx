@@ -14,7 +14,8 @@ function asset(platform: string, role: Role) {
     return { vector: Object.hasOwn(sourceVectors, key) ? sourceVectors[key] : undefined, image: Object.hasOwn(sourceImages, key) ? sourceImages[key] : undefined };
   }
   if (role === 'agent') return { vector: Object.hasOwn(agentIcons, platform) ? agentIcons[platform] : undefined };
-  return { image: platform === 'codex' ? openai : providerImages[`../../assets/brand-reserve/agents/${platform}/mono.svg`] ?? providerImages[`../../assets/brand-reserve/agents/${platform}/color.svg`] };
+  const monochrome = platform === 'codex' ? openai : providerImages[`../../assets/brand-reserve/agents/${platform}/mono.svg`];
+  return { image: monochrome ?? providerImages[`../../assets/brand-reserve/agents/${platform}/color.svg`], monochrome: !!monochrome };
 }
 
 /** Decorative branding only. A quota slot owns its own accessible name. */
@@ -22,11 +23,11 @@ export function PlatformIcon({ platform, role, size, quotaRing, fallback, add = 
   platform: string; role: Role; size?: number; quotaRing?: ReactNode; fallback?: LucideIcon;
   add?: boolean; panelVisual?: boolean; className?: string; monochrome?: boolean;
 }) {
-  const { vector, image } = asset(platform, role);
+  const { vector, image, monochrome: monochromeAsset } = asset(platform, role);
   return <span className={`platform-icon ${role === 'source' ? 'source-icon' : role === 'agent' ? 'agent-logo' : ''} ${className}`}
     style={size === undefined ? undefined : { width: size, height: size }} data-panel-visual={panelVisual || undefined} data-sized={size !== undefined || undefined} aria-hidden={quotaRing ? undefined : true}>
       {add ? <Icon icon={Plus} size={20} /> : vector ? <span aria-hidden="true" dangerouslySetInnerHTML={{ __html: vector }} />
-        : image ? monochrome ? <span className="platform-mask" aria-hidden="true" style={{ maskImage: `url(${JSON.stringify(image)})` } as CSSProperties} />
+        : image ? monochrome || monochromeAsset ? <span className="platform-mask" aria-hidden="true" style={{ maskImage: `url(${JSON.stringify(image)})` } as CSSProperties} />
           : <img src={image} alt="" draggable={false} /> : <Icon icon={fallback ?? (role === 'source' ? Plug : Bot)} size={20} />}
     {quotaRing}
   </span>;

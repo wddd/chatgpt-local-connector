@@ -9,7 +9,7 @@ Requires [Arc.Root](Root.md). Non-string props use template holes.
 | Prop | Type / allowed values | Default | Meaning |
 | --- | --- | --- | --- |
 | `children` | `string` | `required` | Status label. |
-| `tone` | `"neutral" &#124; "success" &#124; "warning" &#124; "danger"` | `"neutral"` | Semantic tone; no domain inference. |
+| `tone` | `"neutral" &#124; "accent" &#124; "success" &#124; "warning" &#124; "danger"` | `"neutral"` | Semantic tone; no domain inference. |
 
 ## States
 

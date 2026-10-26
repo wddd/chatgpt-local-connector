@@ -209,7 +209,7 @@ export function Status({
   tone = "neutral",
 }: {
   children: ReactNode;
-  tone?: "neutral" | "success" | "warning" | "danger";
+  tone?: "neutral" | "accent" | "success" | "warning" | "danger";
 }) {
   return (
     <span className={`status ${tone}`}>

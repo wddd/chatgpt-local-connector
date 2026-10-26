@@ -5,7 +5,7 @@ import { t } from '../../i18n';
 import { Button, Icon, IconButton, Status } from './index';
 import './Shells.css';
 
-export type StatePresentation = { tone: 'neutral' | 'success' | 'warning' | 'danger'; labelKey: string; icon: LucideIcon };
+export type StatePresentation = { tone: 'neutral' | 'accent' | 'success' | 'warning' | 'danger'; labelKey: string; icon: LucideIcon };
 export function StateBadge({ presentation, label, variant = 'badge', className = '' }: {
   presentation: StatePresentation; label?: string; variant?: 'badge' | 'dot' | 'compact' | 'text'; className?: string;
 }) {
@@ -29,25 +29,25 @@ export function SectionHeader({ title, level, count, leading, actions, back, clo
   </header>;
 }
 
-export function EntityRow({ leading, title, secondary, state, actions, chevron, selected, onClick, href, children, className = '', ...props }: Omit<HTMLAttributes<HTMLElement>, 'title'> & {
+export function EntityRow({ leading, title, secondary, state, actions, chevron, selected, attention, onClick, href, children, className = '', ...props }: Omit<HTMLAttributes<HTMLElement>, 'title'> & {
   leading?: ReactNode; title?: ReactNode; secondary?: ReactNode; state?: ReactNode; actions?: ReactNode;
-  chevron?: boolean; selected?: boolean; href?: string; disabled?: boolean;
+  chevron?: boolean; selected?: boolean; attention?: boolean; href?: string; disabled?: boolean;
 }) {
   const Copy = onClick || href ? "span" : "div";
   const content = <>{leading}{children ?? <Copy className="entity-row-copy"><Copy className="entity-row-title">{title}</Copy>{secondary != null && <Copy className="entity-row-secondary">{secondary}</Copy>}</Copy>}{state}{chevron && <Icon icon={ChevronRight} />}</>;
   const classes = `entity-row ${className}`;
   // The navigation target and independent actions are siblings, never nested buttons.
-  const target = href ? <a {...props} className={classes} href={props.disabled ? undefined : href} onClick={event => { if (props.disabled) event.preventDefault(); else onClick?.(event); }} aria-disabled={props.disabled || undefined} aria-current={selected ? 'true' : undefined}>{content}</a>
-    : onClick ? <Button {...props} variant="ghost" className={classes} aria-current={selected ? 'true' : undefined} onClick={onClick}>{content}</Button>
-    : <div {...props} className={classes} aria-current={selected ? 'true' : undefined}>{content}</div>;
+  const target = href ? <a {...props} className={classes} data-attention={attention || undefined} href={props.disabled ? undefined : href} onClick={event => { if (props.disabled) event.preventDefault(); else onClick?.(event); }} aria-disabled={props.disabled || undefined} aria-current={selected ? 'true' : undefined}>{content}</a>
+    : onClick ? <Button {...props} variant="ghost" className={classes} data-attention={attention || undefined} aria-current={selected ? 'true' : undefined} onClick={onClick}>{content}</Button>
+    : <div {...props} className={classes} data-attention={attention || undefined} aria-current={selected ? 'true' : undefined}>{content}</div>;
   return actions ? <div className={`entity-row-actions ${className}`}>{target}<div className="actions">{actions}</div></div> : target;
 }
 
-export function EntityCard({ icon, title, level = 3, headerActions, footer, danger, children, className = '', asChild = false, ...props }: Omit<HTMLAttributes<HTMLElement>, 'title'> & {
-  asChild?: boolean; icon?: ReactNode; title?: ReactNode; level?: 1 | 2 | 3 | 4; headerActions?: ReactNode; footer?: ReactNode; danger?: ReactNode;
+export function EntityCard({ icon, title, level = 3, headerActions, footer, danger, children, className = '', variant = 'surface', asChild = false, ...props }: Omit<HTMLAttributes<HTMLElement>, 'title'> & {
+  asChild?: boolean; variant?: 'surface' | 'outline'; icon?: ReactNode; title?: ReactNode; level?: 1 | 2 | 3 | 4; headerActions?: ReactNode; footer?: ReactNode; danger?: ReactNode;
 }) {
-  if (asChild) return <Slot.Root {...props} className={`entity-card ${className}`}>{children}</Slot.Root>;
-  return <section {...props} className={`entity-card ${className}`}>
+  if (asChild) return <Slot.Root {...props} className={`entity-card ${className}`} data-variant={variant}>{children}</Slot.Root>;
+  return <section {...props} className={`entity-card ${className}`} data-variant={variant}>
     {title != null && <SectionHeader title={title} level={level} leading={icon} actions={headerActions} />}
     {children}{footer && <footer>{footer}</footer>}{danger && <div className="entity-card-danger">{danger}</div>}
   </section>;

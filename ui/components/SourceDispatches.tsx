@@ -66,7 +66,7 @@ export default function SourceDispatches({ sourceId, summary = false }: { source
       const title = record.task.title || live?.title || runtime?.title || record.task.prompt.split("\n")[0] || t("taskRequest");
       const phase = state === "pending" ? "interaction" : state === "running" ? live?.phase ?? "thinking" : "idle";
       const canOpen = !!id && (state === "running" || state === "pending") && (live || runtime && !runtime.stale);
-      return <EntityRow key={record.requestId} className="source-dispatch-row" disabled={!canOpen} data-state={state} onClick={() => {
+      return <EntityRow key={record.requestId} className="source-dispatch-row" disabled={!canOpen} attention={state === "pending"} data-state={state} onClick={() => {
         if (!id || !canOpen) return;
         selectAgentPanel({ type: "task", agent: "codex", session: live ? { ...live, orderAt: Date.parse(record.createdAt) } : {
           id, source: "codex-thread", title, phase, headline: title, phaseSince: null, timeline: true,

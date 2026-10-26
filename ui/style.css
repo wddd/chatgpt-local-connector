@@ -249,6 +249,9 @@ pre {
 .status.success {
   color: var(--success);
 }
+.status.accent {
+  color: var(--accent);
+}
 .status.danger {
   color: var(--danger);
 }

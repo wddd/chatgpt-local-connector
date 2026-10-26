@@ -21,7 +21,7 @@ IconName is `RefreshCw`, `Plus`, `Check`, `X`, `Info`, `Plug` or `Bot`; componen
 
 ## States
 
-Known source, Agent or provider brand; unknown key fallback; add; monochrome image. The icon is aria-hidden without quotaRing. Give the owning action an accessible name.
+Monochrome provider assets automatically use the current text color in both themes. Known source, Agent or provider brand; unknown key fallback; add; monochrome image. The icon is aria-hidden without quotaRing. Give the owning action an accessible name.
 
 ## Canvas example
 

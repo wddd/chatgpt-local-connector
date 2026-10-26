@@ -75,7 +75,7 @@ export default function RemoteLinkPage() {
         <HoverScope>{affected.map(source => <EntityRow key={source.id} className="remote-entity-row" onClick={() => navigation.set(old => ({ ...old, remoteSourceId: source.id, remoteConnectionId: undefined }))} leading={<><PlatformIcon role="source" platform={source.product} /></>} title={<>{source.label}</>} state={<><StateBadge presentation={statePresentation("source", source?.pendingSwitch ? "pending-switch" : source?.state)} /></>} chevron />)}</HoverScope>
         {!affected.length && <p className="muted">{t("source.unused")}</p>}
       </section>
-      <EntityCard><FactList missing={{ placeholder: '—' }} items={[
+      <EntityCard variant="outline"><FactList missing={{ placeholder: '—' }} items={[
         { label: t("source.provider"), value: connection.transport === "relay" ? "Cloudflare Workers" : connectionProvider(connection) },
         { label: t("connectionMethod"), value: t(`source.kind.${connectionKind(connection)}`) },
         ...(selectedRelay ? [{ label: t("setup.workerVersion"), value: selectedRelay.workerVersion }] : []),
