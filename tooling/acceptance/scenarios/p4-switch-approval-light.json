@@ -8,7 +8,7 @@
   "remoteLink": {
     "switching": true
   },
-  "page": "overview",
+  "page": "remote",
   "remoteSourceId": "source-personal",
   "switchFlow": {
     "sourceId": "source-personal",

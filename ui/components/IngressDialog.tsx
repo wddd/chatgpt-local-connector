@@ -20,6 +20,7 @@ import { validDomain } from "../formRules";
 import { connectionForm, type ConnectionForm } from "../state/connectionForm";
 import { connector, refreshConnector } from "../state/connector";
 import type { Ingress } from "../state/types";
+import type { ToolPolicy } from "../toolPolicy";
 import {
   Button,
   Dialog,
@@ -32,6 +33,7 @@ import {
 } from "./ui";
 import { SensitiveInput, useSensitiveText } from "./Sensitive";
 import SourceIcon from "./SourceIcon";
+import ToolPolicyField from "./ToolPolicyField";
 export default function IngressDialog({
   ingress: initialIngress,
   initialProduct,
@@ -89,6 +91,9 @@ export default function IngressDialog({
         : ingress?.auth === "bearer"
           ? "bearer"
           : initialProduct ? controlSource(initialProduct)?.httpsAuth ?? "oauth" : "none",
+    ),
+    [toolPolicy, setToolPolicy] = useState<ToolPolicy | undefined>(
+      ingress?.toolPolicy,
     );
   const protect = useSensitiveText([form.domain, form.tunnelId, ...secretFields.map(field => String(form[field.key]))]);
   const [working, setWorking] = useState(false),
@@ -111,6 +116,7 @@ export default function IngressDialog({
       setSelected(controlSource(ingress.controlSource)?.curated ? ingress.controlSource : "custom");
     }
     if (!dirty.current.has("auth")) setAuth(ingress.auth === "oauth" ? "oauth" : ingress.auth === "bearer" ? "bearer" : "none");
+    if (!dirty.current.has("toolPolicy")) setToolPolicy(ingress.toolPolicy);
     setErrors(old => Object.fromEntries(Object.entries(old).filter(([key]) => dirty.current.has(key))));
   }, [ingress]);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -220,6 +226,7 @@ export default function IngressDialog({
       for (const { key } of secretFields) if (!config[key]) delete config[key];
       const bearer = https && auth === "bearer";
       const metadata = {
+        ...(!ingress ? { toolPolicy } : {}),
         name: name.trim(),
         controlSource: selected === "custom" ? source : selected,
         auth: https ? auth : "openai",
@@ -514,10 +521,16 @@ export default function IngressDialog({
                   ]}
                 />
               </Field>
+              {!ingress && <ToolPolicyField value={toolPolicy} onChange={setToolPolicy} disabled={working} />}
               </details>
             </>
           )}
           {!https && setupFormId && nameField}
+          {!ingress && !https && <ToolPolicyField
+            value={toolPolicy}
+            onChange={value => { dirty.current.add("toolPolicy"); setToolPolicy(value); }}
+            disabled={working}
+          />}
           {error && <Notice>{protect(displayMessage(error))}</Notice>}
         </form>
       )}

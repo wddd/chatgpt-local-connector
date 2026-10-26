@@ -135,8 +135,24 @@ fn normalize(mut entry: Value) -> Result<Value> {
     } else if !["none", "bearer", "oauth"].contains(&string(&entry, "auth")) {
         return Err("HTTPS auth must be none, bearer or oauth".into());
     }
-    // Retained for stored and management-contract compatibility. Connections grant full access.
-    entry["toolPolicy"] = json!("all");
+    if entry.get("toolPolicy").is_none() {
+        entry["toolPolicy"] = crate::kernel::policy::default_policy();
+    }
+    if entry["toolPolicy"] != "all" {
+        let allowed = entry["toolPolicy"]["allowlist"]
+            .as_array()
+            .ok_or("toolPolicy must be all or {allowlist:[op names]}")?;
+        for name in allowed {
+            if !catalog()["ops"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["name"] == *name)
+            {
+                return Err("unknown op in allowlist".into());
+            }
+        }
+    }
     let mut config = defaults();
     if let Ok(prefs) = load(&root().join("app/preferences.json")) {
         for key in ["proxyMode", "proxyUrl"] {
@@ -212,8 +228,24 @@ impl Service {
         let mut ingresses = BTreeMap::new();
         for id in load(&index)?.as_array().ok_or("invalid ingress index")? {
             let mut entry = read_entry(id.as_str().ok_or("invalid ingress id")?)?;
-            let changed = entry["toolPolicy"] != "all";
-            entry["toolPolicy"] = json!("all");
+            // Removed registry entries cannot prevent the remaining tools or management UI starting.
+            let mut changed = false;
+            if let Some(allowed) = entry
+                .get_mut("toolPolicy")
+                .and_then(Value::as_object_mut)
+                .and_then(|p| p.get_mut("allowlist"))
+                .and_then(Value::as_array_mut)
+            {
+                let before = allowed.len();
+                allowed.retain(|name| {
+                    catalog()["ops"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|t| t["name"] == *name)
+                });
+                changed = before != allowed.len();
+            }
             let entry = normalize(entry)?;
             if changed {
                 store_entry(&entry)?;
@@ -898,11 +930,9 @@ impl Service {
                 config["httpsUrl"] = json!("");
             }
             drop(listener);
-            let mut entry = normalize(
+            let entry = normalize(
                 json!({"id":format!("draft-{}",id()),"name":"Pending connection","controlSource":"custom","transport":"https","enabled":true,"auth":"bearer","bearerToken":id()+&id(),"toolPolicy":{"allowlist":[]},"config":config}),
             )?;
-            // An unpublished setup draft must not execute operations before URL validation.
-            entry["toolPolicy"] = json!({"allowlist":[]});
             let draft = Ingress::new(entry, self.execution.clone(), self.token.clone())?;
             let draft_id = draft.id.clone();
             draft

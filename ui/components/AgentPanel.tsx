@@ -7,7 +7,6 @@ import { api } from "../api";
 import { t } from "../i18n";
 import { useAccounts, refreshAccounts } from "../state/accounts";
 import { accountQuotaProvider } from "../subscriptions/accountQuota";
-import AgentBehavior from "./AgentBehavior";
 import AgentQuota from "./AgentQuota";
 import { agentActivity } from "../state/activity";
 import { refreshSubscription, subscriptions } from "../state/subscriptions";
@@ -67,7 +66,6 @@ function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWi
       {providerError && <Notice action={<IconButton icon={RefreshCw} size={16} label={t("usageRefresh")}
         busy={refreshing || provider?.refreshing} onClick={() => void refresh()} />}>{providerError}</Notice>}
       {provider ? <AgentQuota provider={provider} onRefresh={() => void refresh()} refreshing={refreshing} /> : <p className="timeline-meta agent-no-quota">{t("agentPanel.noQuota")}</p>}
-      {!accountId && <AgentBehavior agent={agent.agent} />}
       <AgentConversations key={`${agent.agent}:${accountId ?? ""}`} agent={agent.agent} account={account} accountId={accountId} active={active} />
     </div>
   </section>;

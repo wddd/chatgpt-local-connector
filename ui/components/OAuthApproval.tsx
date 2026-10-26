@@ -42,7 +42,7 @@ export function ApprovalCard({ request, ingress, inline = false, product, onDeci
         <Input id={`approval-label-${request.id}`} value={label} disabled={busy} aria-invalid={!!labelError} aria-describedby={labelError ? `approval-label-${request.id}-error` : undefined} onChange={e => { setLabel(e.target.value); setLabelError(""); }} />
       </Field>}
       <p className="pairing-fact">{t("connect.client", { name: request.clientName })}</p>
-      <p className="pairing-fact">{t("connect.scope", { scope: t("connect.allPermissions") })}</p>
+      <p className="pairing-fact">{t("connect.scope", { scope: ingress.toolPolicy === "all" ? t("connect.allPermissions") : t("connect.selectedPermissions") })}</p>
       {!inline && <div className="actions"><Button disabled={busy} onClick={() => void decide(false)}>{t("oauthDeny")}</Button><Button variant="primary" busy={busy} disabled={!request.switchSourceId && sourceId !== "new" && !candidates.some(s => s.id === sourceId)} onClick={() => void decide(true)}>{t("oauthAllow")}</Button></div>}
     </> : <p>{t(request.status === "approved" ? "connect.returning" : request.status === "denied" ? "oauthDenied" : "oauthFinished")}</p>}
     {error && <Notice tone="danger">{error}</Notice>}
@@ -62,7 +62,7 @@ export default function OAuthApproval({ requested, onClose, inlineEnabled }: { r
     connectionSetup.set(undefined);
     if (target.request.switchSourceId) {
       onboarding.set(undefined);
-      navigation.set(old => ({ ...old, page: "overview", remoteSourceId: target.request.switchSourceId, remoteConnectionId: undefined }));
+      navigation.set(old => ({ ...old, page: "remote", remoteSourceId: target.request.switchSourceId, remoteConnectionId: undefined }));
       connectionSwitch.set({ sourceId: target.request.switchSourceId, ingressId: target.ingress.id, requestId: target.request.id, step: "approval" });
       onClose(); return;
     }

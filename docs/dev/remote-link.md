@@ -1,10 +1,18 @@
-# Sources, connections, and relay hosting
+# Remote link: sources, connections, and relay hosting
 
 [UI](ui.md) · [Architecture](architecture.md) · [OAuth](../reference/oauth.md)
 
 MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.
 
-[Object model](object-model.md) owns management placement, panel layers, and navigation. This document defines transport identity, source authorization, and the existing add/change dialogs.
+This document defines the target model for how control sources reach ARC and how the Remote link, onboarding, and relay-hosting surfaces present it. Phases at the end define the implementation order.
+
+## Problem
+
+ARC has one first-class object, the ingress. A tunnel ingress was historically treated as one control source. A relay ingress carries many OAuth grants, so the UI treats each relay grant as a source while treating each tunnel ingress as one source. Two identity rules coexist for the same concept.
+
+Task provenance stops at the ingress. `origin` is `{ingressId, controlSource, authType}`. Two accounts of the same product on one ingress share notification bindings, governance buckets, respond-token isolation, dispatch-queue isolation, and dispatch records. `controlSource` is ingress configuration, so a relay ingress reports `shared-relay` instead of the calling product.
+
+The Remote link workspace flattens three unrelated concerns: relay deployment and sharing, per-ingress addresses, and a cross-ingress list of OAuth grants without ownership. Adding a source has four entry paths with different behavior.
 
 ## Model
 
@@ -70,9 +78,16 @@ Local management adds `source list`, `source update` (label, product), `source d
 
 ## UI
 
-### Management placement
+### Remote link workspace
 
-SRC accounts are managed in homepage panels. Connections owns the TUNNEL list and details, including the only entry to connection editing, start/stop, relay settings and carried-source links. Pending reauthorization notices remain on Connections until claimed. See [Object model](object-model.md).
+The workspace subject is control sources and how each one connects.
+
+- The primary list shows one row per source: product icon, label, connection chip, and state. A persisted toggle groups rows by platform.
+- Selecting a source opens its detail: label edit, product correction, connection, connected time, last seen, address copy, and Disconnect.
+- A Connections section lists one row per connection: kind, address, health, and the number of sources it carries. Selecting a connection opens its detail: address copy, provider, edit for dedicated tunnels, retry or update for relay links, and Leave for joined relays.
+- Pending reauthorizations appear on the affected source row until claimed or dismissed.
+- Grants without a source cannot exist after migration. The separate Approved list is removed.
+- Relay deployment, sharing, and member devices do not appear in this workspace.
 
 ### Placement rule
 
@@ -90,7 +105,7 @@ Run `npm run accept:ui -- --setup-only --no-screenshots` for setup layout accept
 
 ### Add a control source
 
-The left center dot, SRC platform › Add account, Welcome, and Connection detail › Add a source for it open the same dialog. Steps: Platform, Connection, Configure, Approve.
+The left center dot, Remote link › Sources › Add, Welcome, and Connection detail › Add a source for it open the same dialog. Steps: Platform, Connection, Configure, Approve.
 
 1. Platform: a three-column grid of 48–58px tiles with brand icon and name, in two groups. The title is "Add control source" until selection, then "Add <platform>". "Phone and web" lists Claude, ChatGPT, Gemini, Grok, Grok Bot, Copilot. "This computer" lists Claude Code, Claude Desktop, and Other MCP client (dashed). Selection uses a 1.5px text-color border. Opening from Connection detail preselects that connection and skips step 2.
 2. Connection: "Which connection should <platform> use to reach this computer?", then one radio row per existing connection with name, kind, the sources it already carries, and online state. Incompatible connections stay visible, disabled, with the reason ("ChatGPT only"). A row whose OAuth connection already carries a source of the same product shows a separate warning-colored line that approval will offer New account or Reauthorize. A full-width dashed New connection row has a left-aligned title and description and stacks Add connection. With no compatible connection, the step shows "No connection yet" with Create my relay (recommended, emphasized) and Join a shared relay / Use your own address rows, each opening Add connection directly at that method's configuration. Local products show only their local connection, and a missing one is installed by Add connection's local method.
@@ -102,7 +117,7 @@ Non-OAuth sources skip Approve and complete on an observed client connection, as
 
 ### Add a connection
 
-Connections › Add connection opens it standalone. Add control source step 2, Change connection step 1, and Welcome (through Add control source) open it stacked. Steps: Method, Configure, Ready.
+Remote link › Connections › Add connection opens it standalone. Add control source step 2, Change connection step 1, and Welcome (through Add control source) open it stacked. Steps: Method, Configure, Ready.
 
 1. Method: radio rows for Create my relay (recommended), Join a shared relay, Use your own address, OpenAI Secure Tunnel, and the local Claude Code/Desktop method. When opened for a product, incompatible methods stay visible and disabled with the reason. Create my relay's primary action reads "Sign in to Cloudflare and deploy" with an external-link icon.
 2. Configure: Create runs the existing RelayProgress (sign in, deploy, connect this computer) with account change, copy-login-link fallback and cancel; it advances automatically. Join asks for the invite link and this computer's device name, and says the host only sees the name and online times. Own address shows provider pills (Cloudflare Tunnel, ngrok, Pinggy, LocalXpose, other reverse proxy), domain without scheme or path, connection name, and a collapsed Advanced section for authentication; it reuses IngressDialog's form logic and native validation. Local installs the client configuration.
@@ -118,7 +133,7 @@ Source detail's connection card has Change connection. Steps: Connection, Update
 
 ### Connection detail
 
-Selecting a connection row opens Connection detail inside the Connections page: kind icon, name, provider line, state pill, MCP address with Copy, "Sources using it" list linking to Source detail, "Add a source for it", provider facts, and for relays this computer hosts a link to Settings › Extras › Relay hosting. A bottom card removes the connection after a confirmation that names the affected sources and states that their names and history remain. Joined relays show Leave relay instead. Deleting a hosted relay itself stays in Relay hosting.
+Selecting a connection row opens Connection detail inside the Remote link workspace: kind icon, name, provider line, state pill, MCP address with Copy, "Sources using it" list linking to Source detail, "Add a source for it", provider facts, and for relays this computer hosts a link to Settings › Extras › Relay hosting. A bottom card removes the connection after a confirmation that names the affected sources and states that their names and history remain. Joined relays show Leave relay instead. Deleting a hosted relay itself stays in Relay hosting.
 
 ### Homepage
 
@@ -133,6 +148,14 @@ Welcome is a full-window page: ARC mark, "Where do you command Codex from?", the
 Settings shows one entry row for Extras. Extras opens a nested view inside the Settings workspace, with a Settings / Extras header and back navigation. A 200px sub-navigation selects Relay hosting or Experimental topology controls and stacks above the content below 640px.
 
 Relay hosting lists only relays this computer deployed. Cards show the hostname, state, Worker version with Update when outdated, and an invite footer with Copy and Reset. Full tokenized URLs are never rendered. Reset invalidates the old invitation without disconnecting existing devices. Member tables show device names, compact joined and last-seen times, and Remove with confirmation. This computer uses status.deviceName, is marked This computer, and has no Remove action. Create and join register the device name. Delete is a separate bottom danger zone with confirmation that every connected device loses its relay connection. Deploy new relay reuses the deployment progress flow.
+
+## Phases
+
+- P0: source store, principal-returning authentication, `origin.sourceId`, keying changes, reauthorization claim at consent, migration, management API, and CLI. Accept through CLI and a real remote OAuth call on two sources sharing one ingress.
+- P1: Remote link workspace, shared Add flow, source and connection details, and one homepage node per source.
+- P2: Settings Extras with Relay hosting and Experimental controls, trimmed Welcome, and synchronized user documentation.
+- P3: dialog redesign per the placement rule: shared dialog shell and stacking, Add control source and Add connection rebuilt to the new steps, new Welcome page, Connection detail, and homepage grow-in highlight. Accept through UI scenarios for every dialog step in light and dark.
+- P4: Change connection: cross-connection claim in Core, management API and CLI (`cli source switch`), the dialog, and connection removal keeping disconnected sources. Accept with a real remote OAuth switch between two connections.
 
 ## Limits
 

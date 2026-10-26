@@ -11,6 +11,6 @@
     "ingressId": "relay-main",
     "fixedConnection": true
   },
-  "page": "connections",
+  "page": "remote",
   "remoteConnectionId": "relay-main"
 }

@@ -10,5 +10,9 @@ pub fn allows(policy: &Value, name: &str) -> bool {
 }
 
 pub fn default_policy() -> Value {
-    json!("all")
+    let exposure = &crate::catalog()["toolExposure"]["tools"];
+    json!({"allowlist":crate::catalog()["ops"].as_array().unwrap().iter().filter_map(|t| {
+        let name = string(t,"name");
+        exposure[name]["presets"].as_array().is_some_and(|p| p.iter().any(|v|v=="common")).then_some(name)
+    }).collect::<Vec<_>>()})
 }

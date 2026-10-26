@@ -29,7 +29,10 @@ export function permissionsReady(ingresses: Ingress[]) {
   const { data, error } = permissions.get();
   if (!data || error) return false;
   const enabled = ingresses.filter(ingress => ingress.enabled);
-  const permits = (_tool: string) => enabled.length > 0;
+  const permits = (tool: string) => enabled.some(ingress =>
+    ingress.toolPolicy === "all" || (typeof ingress.toolPolicy === "object"
+      ? ingress.toolPolicy.allowlist.includes(tool)
+      : ["read", "tree", "search", "overview"].includes(tool)));
   const relevant = data.items.filter(item =>
     (["accessibility", "screen-recording"].includes(item.id) && permits("screen")) ||
     (item.id === "full-disk-access" && ["read", "tree", "search", "edit", "write"].some(permits)) ||

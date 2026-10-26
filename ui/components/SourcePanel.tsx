@@ -8,23 +8,18 @@ import { name as agentName } from '../state/agents';
 import { connector, refreshConnector } from '../state/connector';
 import { useAccounts, isUnidentified } from '../state/accounts';
 import { navigation } from '../state/navigation';
-import { ingressPanel, selectAgentPanel, selectIngressPanel } from '../state/overviewPanels';
+import { ingressPanel, selectAgentPanel } from '../state/overviewPanels';
 import type { ControlSource } from '../state/types';
 import { Button, DialogClose, IconButton, Notice, SingleChoice, Status, Switch, Tag } from './ui';
 import { PrivacyToggle } from './Privacy';
 import { Sensitive, SensitiveIdentity } from './Sensitive';
-import { AccountNotifications, AccountSharedNotice } from './AccountCards';
-import OAuthGrants from "./OAuthGrants";
+import { AccountNotifications, AccountQuota, AccountSharedNotice } from './AccountCards';
 import SourceConnection from './SourceConnection';
 import SourceDispatches from './SourceDispatches';
 import SourceIcon from './SourceIcon';
 export function openSourceWorkspace(id: string) {
-  const { sources, status } = connector.get();
-  const source = sources.find(s => s.id === id);
-  const ingress = status?.ingresses.find(i => i.id === source?.ingressId);
-  if (!source) return;
-  selectIngressPanel(ingress ?? { id: source.ingressId, name: source.connectionName ?? source.label } as import('../state/types').Ingress, { client: { id: source.id, name: source.label, source: source.product } });
-  navigation.set(old => ({ ...old, page: 'overview', remoteSourceId: undefined, remoteConnectionId: undefined }));
+  ingressPanel.set(undefined);
+  navigation.set(old => ({ ...old, page: 'remote', remoteSourceId: id, remoteConnectionId: undefined }));
 }
 export default function SourcePanel({ source, widthControl }: { source: ControlSource; widthControl?: ReactNode }) {
   const { status, sources } = connector.use(), state = useAccounts();
@@ -50,11 +45,11 @@ export default function SourcePanel({ source, widthControl }: { source: ControlS
       {tab === 'activity' && <SourceDispatches sourceId={source.id} summary />}
       {tab === 'account' && <>{state.error && <Notice>{state.error}</Notice>}{account ? <>
         <section className="account-card"><div className="source-section-heading"><h3>{account.alias}</h3>{account.plan && <Tag>{account.plan}</Tag>}</div><SensitiveIdentity email={account.email} orgName={account.orgName} wrap /><div><Sensitive wrap>{account.identityKey}</Sensitive></div><p className="muted">{t(isUnidentified(account) ? 'accounts.unidentified' : 'accounts.whoami')}</p>
-</section>
+          <Button variant="link" onClick={() => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: 'accounts', accountId: account.id, remoteSourceId: undefined })); }}>{t('accounts.openAccount')}</Button></section>
         {!!account.agentProfiles.length && <section className="account-card"><AccountSharedNotice />{account.agentProfiles.map(profile => <Button key={profile.profileId} variant="link" onClick={() => { selectAgentPanel({ type: 'agent', agent: profile.agent, accountId: account.id }); navigation.set(old => ({ ...old, page: 'overview', remoteSourceId: undefined })); }}>{agentName(profile)} · {account.alias}</Button>)}</section>}
-        <AccountNotifications account={account} />
+        <AccountQuota account={account} /><AccountNotifications account={account} />
       </> : <p role="status" className="muted">{t(state.loading ? 'loading' : 'accounts.identityUnavailable')}</p>}</>}
-      {tab === 'connection' && <>{source.credential.type === 'oauth-grant' && <OAuthGrants sourceId={source.id} ingressId={source.ingressId} running={!!ingress?.running} onBusy={setBusy} />}<SourceConnection source={source} onConnection={id => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: 'connections', remoteSourceId: undefined, remoteConnectionId: id })); }} /></>}
+      {tab === 'connection' && <SourceConnection source={source} onConnection={id => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: 'remote', remoteSourceId: undefined, remoteConnectionId: id })); }} />}
     </div>
   </>;
 }

@@ -6,13 +6,11 @@ import { Button, Empty, Notice } from "./ui";
 import type { ControlSource } from "../state/types";
 export default function OAuthGrants({
   ingressId,
-  sourceId,
   running,
   disabled,
   onBusy,
 }: {
   ingressId: string;
-  sourceId: string;
   running: boolean;
   disabled?: boolean;
   onBusy: (value: boolean) => void;
@@ -42,7 +40,7 @@ export default function OAuthGrants({
         `source`,
       );
       if (alive.current && version === revision.current) {
-        setGrants(result.sources.filter(s => s.ingressId === ingressId && s.id === sourceId && s.credential.type === "oauth-grant"));
+        setGrants(result.sources.filter(s => s.ingressId === ingressId));
         setError("");
       }
     } catch (e) {

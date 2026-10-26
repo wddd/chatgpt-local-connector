@@ -102,6 +102,57 @@ test('account UI uses native routes, login evidence and notification targets', a
   });
 });
 
+test('account details save or cancel inline aliases and expose Agent sign-in for unresolved sources', async () => {
+  // Regression: account headers were permanent inputs without cancellation and unresolved accounts hid the only Add Agent action.
+  await withAccountUI(async ({ server, root }) => {
+    const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
+    const { refreshAccounts } = await server.ssrLoadModule('/ui/state/accounts.ts');
+    const { navigation } = await server.ssrLoadModule('/ui/state/navigation.ts');
+    const { default: AccountsPage } = await server.ssrLoadModule('/ui/components/AccountsPage.tsx');
+    const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
+    const { t } = await server.ssrLoadModule('/ui/i18n.ts');
+    await refreshAccounts();
+    const account = await accountsApi.get('account-claude');
+    navigation.set((old: any) => ({ ...old, accountId: account.id }));
+    const page = within(document.body);
+    await act(async () => root.render(h(TooltipProvider, null, h(AccountsPage))));
+    const edit = async (alias: string, draft: string) => {
+      await act(async () => { fireEvent.click(page.getByRole('button', { name: t('accounts.editAlias', { alias }), exact: true })); });
+      const input = page.getByRole('textbox', { name: t('accounts.alias'), exact: true });
+      assert.ok(input.matches(':focus'));
+      await act(async () => { fireEvent.change(input, { target: { value: draft } }); });
+      return input;
+    };
+    let input = await edit(account.alias, 'Cancelled alias');
+    await act(async () => { fireEvent.keyDown(input, { key: 'Escape' }); fireEvent.blur(input); });
+    assert.equal((await accountsApi.get(account.id)).alias, account.alias);
+    assert.ok(page.getByRole('button', { name: t('accounts.editAlias', { alias: account.alias }), exact: true }).matches(':focus'));
+    input = await edit(account.alias, '  Renamed account  ');
+    await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }); });
+    assert.equal((await accountsApi.get(account.id)).alias, 'Renamed account');
+    assert.ok(page.getByRole('button', { name: t('accounts.editAlias', { alias: 'Renamed account' }), exact: true }).matches(':focus'));
+    input = await edit('Renamed account', 'Blur saved');
+    await act(async () => { page.getByRole('button', { name: t('remove'), exact: true }).focus(); });
+    assert.equal((await accountsApi.get(account.id)).alias, 'Blur saved');
+    assert.ok(page.getByRole('button', { name: t('remove'), exact: true }).matches(':focus'));
+    input = await edit('Blur saved', '   ');
+    await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }); });
+    assert.equal(input.getAttribute('aria-invalid'), 'true');
+    assert.equal((await accountsApi.get(account.id)).alias, 'Blur saved');
+    await act(async () => { fireEvent.keyDown(input, { key: 'Escape' }); });
+
+    await act(async () => navigation.set((old: any) => ({ ...old, accountId: 'account-source' })));
+    await act(async () => { fireEvent.click(page.getByRole('button', { name: t('accounts.addAgent'), exact: true })); });
+    assert.ok(page.getByRole('dialog', { name: t('accounts.addAgentFor', { alias: (await accountsApi.get('account-source')).alias }), exact: true }));
+    await act(async () => { fireEvent.click(page.getByRole('button', { name: t('accounts.signin'), exact: true })); });
+    const login = (await accountsApi.list()).login;
+    assert.equal(login.kind, 'claude');
+    assert.equal(login.state, 'waiting');
+    await act(async () => root.render(null));
+    await accountsApi.login({ loginId: login.loginId, action: 'cancel' });
+  });
+});
+
 test('notification sessions retain individual reachability and send tests to the selected destination', async () => {
   // Regression: account notifications lacked per-session reachability and card actions could not be checked against a selected destination.
   await withAccountUI(async ({ server, root }) => {
@@ -231,7 +282,8 @@ test('built-in local authority is absent from control sources, accounts and disc
     const { accounts, refreshAccounts } = await server.ssrLoadModule('/ui/state/accounts.ts');
     const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
     const { navigation } = await server.ssrLoadModule('/ui/state/navigation.ts');
-    const { default: ConnectionsPage } = await server.ssrLoadModule('/ui/components/ConnectionsPage.tsx');
+    const { default: AccountsPage } = await server.ssrLoadModule('/ui/components/AccountsPage.tsx');
+    const { default: RemoteLinkPage } = await server.ssrLoadModule('/ui/components/RemoteLinkPage.tsx');
     const { default: SourcePanel } = await server.ssrLoadModule('/ui/components/SourcePanel.tsx');
     const { default: SourceConnection } = await server.ssrLoadModule('/ui/components/SourceConnection.tsx');
     const { default: SourceProductChoice } = await server.ssrLoadModule('/ui/components/SourceProductChoice.tsx');
@@ -252,9 +304,13 @@ test('built-in local authority is absent from control sources, accounts and disc
       await refreshAccounts();
       assert.ok(!accounts.get().items.some((account: any) => account.id === legacy.id));
       assert.ok(accounts.get().items.some((account: any) => account.sources.includes(external.id)));
+      await render(h(AccountsPage));
+      assert.equal(page.queryByRole('button', { name: name => name.includes(legacy.alias) }), null);
+      await render(null);
       navigation.set((old: any) => ({ ...old, remoteSourceId: local.id, remoteConnectionId: undefined }));
-      await render(h(ConnectionsPage));
+      await render(h(RemoteLinkPage));
       assert.equal(page.queryByRole('button', { name: name => name.includes(local.label) }), null);
+      assert.ok(page.getByRole('button', { name: name => name.startsWith(external.label) && name.endsWith(t('source.state.connected')) }));
       assert.equal(page.queryByRole('button', { name: t('source.disconnect'), exact: true }), null);
       for (const component of [SourcePanel, SourceConnection]) {
         await render(h(component, { source: local, onConnection() {} }));

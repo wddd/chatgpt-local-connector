@@ -14,7 +14,11 @@ import {
   X,
   Maximize2,
   Minimize2,
+  ShieldAlert,
+  ShieldCheck,
+  RefreshCw,
   Network,
+  Users,
 } from "lucide-react";
 import { animate } from "motion";
 import { reducedMotion } from "./motion/surface";
@@ -33,7 +37,7 @@ import {
   updateVisible,
 } from "./state/updates";
 import { onboarding } from "./state/onboarding";
-import { navigation, canonicalPage, type Page } from "./state/navigation";
+import { navigation, type Page } from "./state/navigation";
 import { panelLayers, panelAnchorAt } from "./state/panels";
 import {
   capturePanelOrigin,
@@ -44,12 +48,14 @@ import ConnectionOverview from "./components/ConnectionOverview";
 import TasksPage from "./components/TasksPage";
 import RecordsPage from "./components/RecordsPage";
 import SettingsPage from "./components/SettingsPage";
-import ConnectionsPage from "./components/ConnectionsPage";
+import RemoteLinkPage from "./components/RemoteLinkPage";
+import AccountsPage, { AccountsActions } from "./components/AccountsPage";
 import { usePrivacy } from "./state/privacy";
 import { UpdateDock, UpdateOutcome } from "./components/AppUpdate";
 import { Button, Icon, IconButton, Notice, HoverScope } from "./components/ui";
 import { api } from "./api";
-import { refreshPermissions, startPermissions } from "./state/permissions";
+import PermissionsPage from "./components/PermissionsPage";
+import { permissions, permissionsReady, refreshPermissions, startPermissions } from "./state/permissions";
 export default function App() {
   locale.use();
   const privateMode = usePrivacy();
@@ -59,14 +65,15 @@ export default function App() {
   const { feedback, status } = connector.use(),
     taskState = tasks.use();
   updates.use();
+  const permissionState = permissions.use();
+  const ready = !!status && permissionsReady(status.ingresses);
   useEffect(() => {
     void refreshPermissions().catch(() => {});
-  }, [JSON.stringify(status?.ingresses?.map(ingress => ingress.enabled))]);
+  }, [JSON.stringify(status?.ingresses?.map(ingress => [ingress.enabled, ingress.toolPolicy]))]);
 
   const [page, setPage] = useState<Page>(() => {
     const saved = localStorage.getItem("arc-page");
-    if (saved === "permissions") navigation.set(old => ({ ...old, settingsPermissions: true }));
-    return canonicalPage(saved);
+    return ["overview", "settings", "logs", "tasks", "remote", "accounts", "permissions"].includes(saved ?? "") ? saved as Page : "overview";
   });
   const [sheetWide, setSheetWide] = useState(false);
   const sheet = useRef<HTMLElement>(null),
@@ -119,9 +126,7 @@ export default function App() {
     navigation.set(old => ({ ...old, page: undefined }));
   }, [nav.page]);
 
-  function navigate(target: string) {
-    const next = canonicalPage(target);
-    if (target === "permissions") navigation.set(old => ({ ...old, settingsPermissions: true, settingsExtras: undefined, settingsUpdates: undefined }));
+  function navigate(next: Page) {
     if (next !== "overview") {
       lastPage.current = next;
       setSheetWide(false);
@@ -151,7 +156,7 @@ export default function App() {
         listen<string>("oauth:open", (e) => setOauthRequest({ id: e.payload })),
         listen<{ id: string; field: string }>("ingress:edit", (e) => {
           navigation.set((old) => ({ ...old, ingressEdit: e.payload }));
-          navigate("connections");
+          navigate("overview");
         }),
         listen("permissions:open", () => navigate("permissions")),
         listen("codex:login", () => { void api("codex/login", "POST").catch((e: Error) => notify(e.message, true)); }),
@@ -160,7 +165,7 @@ export default function App() {
           void checkUpdate();
         }),
         listen<string>("navigate", (e) => {
-          if (["overview", "settings", "logs", "tasks", "connections", "remote", "accounts", "permissions"].includes(e.payload))
+          if (["overview", "settings", "logs", "tasks", "remote", "accounts", "permissions"].includes(e.payload))
             navigate(e.payload as Page);
         }),
         listen<string>("subscriptions:open", (e) => {
@@ -186,10 +191,9 @@ export default function App() {
       const url = new URL((event as CustomEvent<string>).detail);
       if (url.hostname === "ingress") {
         navigation.set(old => ({ ...old, ingressEdit: { id: url.searchParams.get("id") ?? "", field: url.searchParams.get("field") ?? "" } }));
-        navigate("connections");
+        navigate("overview");
       } else if (url.hostname === "oauth") setOauthRequest({ id: url.searchParams.get("request") ?? "" });
       else if (url.hostname === "permissions") navigate("permissions");
-      else if (url.hostname === "connections") navigate("connections");
       else if (url.hostname === "remote") navigate("remote");
       else if (url.hostname === "accounts") navigate("accounts");
       else if (url.hostname === "settings") navigate("settings");
@@ -209,7 +213,9 @@ export default function App() {
   const pages = [
     { id: "tasks" as const, label: t("tasks"), icon: LayoutDashboard },
     { id: "logs" as const, label: t("records"), icon: Logs },
-    { id: "connections" as const, label: t("source.connections"), icon: Network },
+    { id: "remote" as const, label: t("connect.remoteLink"), icon: Network },
+    { id: "accounts" as const, label: t("accounts.title"), icon: Users },
+    { id: "permissions" as const, label: t("permissionsTitle"), icon: ready ? ShieldCheck : ShieldAlert },
     { id: "settings" as const, label: t("settings"), icon: Settings },
   ];
   return (
@@ -224,7 +230,7 @@ export default function App() {
           !layers.length
         ) {
           e.preventDefault();
-          if (page === "connections" && nav.remoteConnectionId) {
+          if (page === "remote" && nav.remoteConnectionId) {
             navigation.set(old => ({ ...old, remoteConnectionId: undefined }));
           } else if (page === "settings" && (nav.settingsExtras || nav.settingsUpdates)) {
             navigation.set(old => ({ ...old, settingsExtras: undefined, settingsUpdates: undefined }));
@@ -292,9 +298,9 @@ export default function App() {
           <div className="page-sheet-content">
             <header className="sheet-header">
               {page === "settings" && (nav.settingsExtras || nav.settingsUpdates) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsExtras: undefined, settingsUpdates: undefined }))} />}
-              {page === "connections" && nav.remoteConnectionId && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: undefined }))} />}
+              {page === "remote" && nav.remoteConnectionId && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: undefined }))} />}
               <h1 className="capsule-title" tabIndex={-1}>
-                {page === "connections" ? status?.ingresses.find(i => i.id === nav.remoteConnectionId)?.name ?? t("source.connections") : pages.find((item) => item.id === page)?.label}
+                {page === "remote" ? status?.ingresses.find(i => i.id === nav.remoteConnectionId)?.name ?? t("source.title") : pages.find((item) => item.id === page)?.label}
                 {page === "settings" && (nav.settingsExtras || nav.settingsUpdates) && <><span className="settings-breadcrumb-divider" aria-hidden="true"> / </span><span>{t(nav.settingsUpdates ? "appUpdates" : "extras.title")}</span></>}
                 {page === "logs" && (
                   <span className="muted small records-count">
@@ -302,6 +308,13 @@ export default function App() {
                   </span>
                 )}
               </h1>
+              {page === "accounts" && <AccountsActions />}
+              {page === "permissions" && <IconButton
+                icon={RefreshCw}
+                label={t("permissionsRefresh")}
+                busy={permissionState.loading}
+                onClick={() => void refreshPermissions().catch(error => notify(String(error), true))}
+              />}
               <IconButton
                 className="panel-width-toggle"
                 icon={sheetWide ? Minimize2 : Maximize2}
@@ -317,14 +330,18 @@ export default function App() {
               />
             </header>
             <main
-              className={`workspace ${page === "logs" ? "records-workspace" : ""}`}
+              className={`workspace ${page === "logs" ? "records-workspace" : page === "accounts" ? "accounts-workspace-container" : ""}`}
             >
               {page === "tasks" ? (
                 <TasksPage />
               ) : page === "logs" ? (
                 <RecordsPage />
-              ) : page === "connections" ? (
-                <ConnectionsPage />
+              ) : page === "permissions" ? (
+                <PermissionsPage />
+              ) : page === "accounts" ? (
+                <AccountsPage />
+              ) : page === "remote" ? (
+                <RemoteLinkPage />
               ) : (
                 <SettingsPage />
               )}

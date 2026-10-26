@@ -11,12 +11,11 @@ import { connector, run, notify, refreshConnector } from "../state/connector";
 import { useInterval } from "../state/hooks";
 import type { Service } from "../state/types";
 import { Button, Group, Row, Switch, SingleChoice, Input, Field } from "./ui";
-import PermissionsSection from "./PermissionsSection";
 import SettingsExtras from "./SettingsExtras";
 import { AppUpdate, UpdatesSettings } from "./AppUpdate";
 export default function SettingsPage() {
   const { status, busy } = connector.use();
-  const { settingsExtras, settingsUpdates, settingsPermissions } = navigation.use();
+  const { settingsExtras, settingsUpdates } = navigation.use();
   const previousSettings = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
     if (settingsExtras || settingsUpdates) {
@@ -27,13 +26,6 @@ export default function SettingsPage() {
     }
     previousSettings.current = settingsUpdates ? "settings-updates-entry" : settingsExtras ? "settings-extras-entry" : undefined;
   }, [settingsExtras, settingsUpdates]);
-  useEffect(() => {
-    if (settingsPermissions) {
-      document.getElementById("settings-permissions")?.scrollIntoView();
-      document.getElementById("settings-permissions")?.focus({ preventScroll: true });
-      navigation.set(old => ({ ...old, settingsPermissions: undefined }));
-    }
-  }, [settingsPermissions]);
   const currentTheme = theme.use(),
     color = themeColor.use(),
     currentLanguage = language.use();
@@ -124,6 +116,17 @@ export default function SettingsPage() {
         <Row title={t("controlSourceNotifications")} description={t("controlSourceNotificationsDescription")}>
           <Switch label={t("controlSourceNotifications")} checked={status?.notificationsEnabled !== false}
             disabled={!!busy || !status} onChange={(value) => void saveTask({ notificationsEnabled: value })} />
+        </Row>
+        <Row
+          title={t("automaticallyOpenCodexTasks")}
+          description={t("whenDisabledNewTasksRunInTheBackground")}
+        >
+          <Switch
+            label={t("automaticallyOpenCodexTasks")}
+            checked={status?.autoOpenCodex !== false}
+            disabled={!!busy || !status}
+            onChange={(value) => void saveTask({ autoOpenCodex: value })}
+          />
         </Row>
         <Row
           title={t("taskApprovalMode")}
@@ -278,7 +281,6 @@ export default function SettingsPage() {
           </Field>
         )}
       </Group>
-      <section id="settings-permissions" tabIndex={-1} aria-label={t("permissionsTitle")}><h2>{t("permissionsTitle")}</h2><PermissionsSection /></section>
       <Group title={t("extras.title")}>
         <Row id="settings-extras-entry" highlight={false} title={t("extras.entryTitle")} description={t("extras.entryDescription")}
           onNavigate={() => navigation.set(old => ({ ...old, settingsExtras: true }))} />
