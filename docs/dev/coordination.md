@@ -400,7 +400,9 @@ already handed to the upstream CLI cannot be recalled. Unsupported sources,
 including ordinary Chat and Work private conversations without direct addressing,
 remain pull-only. Work resource callbacks are not a private conversation API.
 
-The first message waits 30 seconds. All pending mail for that target coalesces into
+Only SRC peer messages from `message_send` enter the proactive outbox. ARC-generated recovery and negotiation-escalation notices remain pull-only.
+
+The first peer message waits 30 seconds. All pending peer mail for that target coalesces into
 one count and `messages` pointer, with at most one attempt per target per 60 seconds.
 Push starts with `⟢ ARC receipt — automated` and labels the envelope automated data,
 not user instructions. Peer summaries and conditions are excluded from push bodies.
@@ -461,18 +463,6 @@ cursor for the remainder. Other sources cannot retrieve those pages. The shared
 board reports selection counts and coverage only. Local-authority `board({id})`
 also returns `localRecoverySelection`, including unresolved evidence for mediation.
 
-The outbox uses the coordination delivery adapter exclusively. Proactive delivery
-requires the original verified session binding generation; otherwise the message
-stays pull-only. The adapter pushes an automated count/query pointer, never peer
-text as an instruction. Successor completion is checked again before delivery and
-on message reads; obsolete advice is suppressed. Message creation, suppression and
-delivery emit existing coordination message events. Pending owner projections keep
-clearance selection retryable after a crash. Projection delayed beyond the 24-hour
-mail lifetime does not recreate an old wake.
+Recovery mail remains pull-only in the existing message store, including when the original session has a verified route. Successor completion is checked again on message reads; obsolete advice is suppressed. Message creation and suppression emit existing coordination message events. Pending owner projections keep clearance selection retryable after a crash. Replacement outcomes remain inbox-only and do not reserve a shared wake with recovery mail. Existing replacement continuation requests remain the sole replacement-specific actions. This does not introduce another resume or change the model, prompt or request ID.
 
-Replacement outcome summaries and recovery mail share a durable wake reservation
-for the exact replacement ID and destination. If recovery mail reserves it first,
-the replacement summary remains inbox-only; if the summary reserves it first,
-recovery mail remains pull-only. Existing replacement continuation requests remain
-the sole replacement-specific actions. This does not introduce another resume or
-change the model, prompt or request ID.
+Proactive conversation wakeups are limited to four classes: task completion; task failure, including an interruption that ARC did not automatically resume; pending execution questions and approval requests; and SRC peer messages delivered by message_send. The push-binding verification code remains a separate channel handshake. Automatically resumed interruptions MUST NOT wake the conversation. Update and restart lifecycle notices, merged post-recovery resume notices, ordinary restart recovery, ownership handoffs, progress, stalls and all other lifecycle kinds MUST remain inbox/event-center only. A question or approval blocking update settling wakes once through the ordinary interaction path, with no separate update notice. Query update_status, board, messages or the owning task for recorded lifecycle state. Existing verification, source scope, subscription filters, buckets, breakers and mute rules apply. Delivery does not prove client reconnection.
