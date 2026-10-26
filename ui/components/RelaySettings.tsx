@@ -5,7 +5,7 @@ import { connector, refreshConnector } from "../state/connector";
 import { openConnectionSetup } from "../state/onboarding";
 import { navigation } from "../state/navigation";
 import { useRelayProgress, type Relay } from "../state/relay";
-import RelayProgress from "./RelayProgress";
+import { DeploymentProgressCard } from "./objects/deployment-progress";
 import { Button, Notice } from "./ui";
 export function RelaySettings({ relay, version, refresh }: { relay: Relay; version: string; refresh: () => Promise<unknown> }) {
   const { status } = connector.use();
@@ -38,7 +38,7 @@ export function RelaySettings({ relay, version, refresh }: { relay: Relay; versi
     {relay.owner && relay.workerVersion !== version && !operation && <Notice action={<Button disabled={!!busy} onClick={() => void action("redeploy")}>{t("connect.updateRelay")}</Button>}>{t("connect.updateAvailable")}</Notice>}
     {operation && <>
       {progressError && <Notice>{t("connect.readFailed")}</Notice>}
-      <RelayProgress progress={progress} busy={!!busy} account={account} setAccount={setAccount} onCancel={() => void action("cancel").then(ok => { if (ok) setOperation(""); })} onRetry={() => {
+      <DeploymentProgressCard progress={progress} busy={!!busy} account={account} setAccount={setAccount} onCancel={() => void action("cancel").then(ok => { if (ok) setOperation(""); })} onRetry={() => {
         if (operation === "join") { navigation.set(old => ({ ...old, page: "overview" })); openConnectionSetup({ method: "join" }); }
         else void action(operation === "create" ? "redeploy" : operation, account ? { accountId: account } : {});
       }} />

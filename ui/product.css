@@ -911,7 +911,6 @@ button.activity-bubble:active, .activity-bubble-shell:active { transform: scale(
   button.activity-bubble:hover, button.activity-bubble:active, .activity-bubble-shell:hover, .activity-bubble-shell:active { transform: none; }
 }
 .activity-session-summary { overflow-wrap: anywhere; }
-.activity-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: var(--text-xs); margin-top: 12px; }
 .activity-note { display: block; font-size: var(--text-xs); line-height: 22px; color: var(--text-secondary); }
 .activity-error { color: var(--danger); }
 .activity-edge-fade { position: fixed; inset: 0 0 0 auto; width: 32px; background: linear-gradient(to right, transparent, var(--canvas)); pointer-events: none; z-index: 4; }
@@ -940,8 +939,6 @@ button.activity-bubble:active, .activity-bubble-shell:active { transform: scale(
 .activity-task-list { display: flex; flex-direction: column; gap: 0; }
 .activity-task-row { width: 100%; height: auto; min-height: 54px; border-radius: 0; box-shadow: none; background: transparent; border-bottom: 1px solid var(--border); }
 .activity-task-row:last-child { border-bottom: 0; }
-.activity-once { flex: 1; color: var(--text-secondary); }
-.activity-actions .button { flex: none; }
 @keyframes activity-flow { to { stroke-dashoffset: 18; } }
 @keyframes activity-breathe { 50% { opacity: 0.35; } }
 :root[data-reduced-motion="true"] {
@@ -1200,15 +1197,6 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .source-dispatch-row[data-state="failed"] .phase-tile { color: var(--danger); }
 
 /* Source and connection setup use centered dialogs and shared controls. */
-.remote-steps { list-style:none; display:grid; gap:28px; margin:0 0 24px; padding:0; }
-.remote-steps li { display:flex; align-items:flex-start; gap:14px; }
-.remote-steps li > div { display:grid; gap:6px; }
-.remote-steps small { color:var(--text-secondary); }
-.remote-steps [aria-current="step"] { color:var(--action); }
-.remote-progress { display:grid; gap:16px; }
-.pairing-card h3, .pairing-card p { margin:0; }
-.pairing-code { font:600 42px ui-monospace,monospace; letter-spacing:.18em; text-align:center; padding:12px 0; }
-.pairing-card details { font-size:12px; overflow-wrap:anywhere; }
 .remote-link-page { min-width: 0; }
 .relay-settings { padding-block:16px; border-bottom:1px solid var(--border); }
 .relay-settings .actions { flex-wrap:wrap; margin-block:12px; }
@@ -1233,16 +1221,8 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .relay-hosting, .hosted-relay { display: grid; gap: var(--space-6); }
 .relay-hosting h2, .relay-hosting h3 { margin: 0; font-size: var(--text-md); font-weight: 600; }
 .relay-hosting .section-header p { margin: var(--space-1) 0 0; }
-.hosted-relay-table { border: 1px solid var(--border); border-radius: var(--radius-row); overflow: hidden; }
 .hosted-relay-icon { display: grid; place-items: center; flex-shrink: 0; width: var(--control-md); height: var(--control-md); border-radius: var(--radius-control); background: var(--surface-subtle); color: var(--text-secondary); }
 .hosted-relay-devices { display: grid; gap: var(--space-3); }
-.hosted-relay-table thead { background: var(--surface-subtle); }
-.hosted-relay-table tbody tr:last-child td { box-shadow: none; }
-.hosted-relay-table time { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.hosted-relay-device { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.hosted-relay-device > .status { flex-shrink: 0; gap: 0; }
-.hosted-relay-device-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.hosted-relay-self { flex-shrink: 0; border-radius: var(--radius-control); padding: 0 var(--space-1); background: var(--surface-subtle); color: var(--text-secondary); font-size: var(--text-xs); white-space: nowrap; }
 .hosted-relay + .hosted-relay { border-top: 1px solid var(--border); padding-top: var(--space-6); }
 @container (max-width: 640px) {
   .extras-layout { grid-template-columns: minmax(0, 1fr); }
@@ -1303,9 +1283,6 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .setup-instructions strong { font-size: var(--text-md); }
 .setup-instructions p { font-size: var(--text-sm); color: var(--text-secondary); }
 .setup-instructions .button { align-self: start; }
-.pairing-card.pairing-inline { border: 0; border-radius: 0; padding: 0; }
-.pairing-code-panel { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border-radius: var(--radius-card); background: var(--surface-subtle); font-size: var(--text-sm); }
-.pairing-code-panel .pairing-code { font: 600 28px var(--font-mono); letter-spacing: .18em; padding: 0; white-space: nowrap; }
 .setup-success { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; min-height: 245px; }
 .setup-success-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--success-soft); color: var(--success); }
 .setup-success h3 { font-size: 18px; margin-top: 8px; }
@@ -1352,9 +1329,6 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .navigation-capsule[hidden] { display: none; }
 .navigation-surface[hidden] { display: none; }
 
-.pairing-claim .task-tag { padding: 6px 12px; border-radius: var(--radius-pill); font-size: var(--text-md); white-space: normal; overflow-wrap: anywhere; }
-.pairing-card .pairing-fact { font-size: var(--text-xs); color: var(--text-secondary); }
-.pairing-card .pairing-summary { font-size: var(--text-sm); }
 
 .topology-node.sources { --account-color: var(--topology-source); }
 .topology-node.agents { --account-color: var(--topology-agent); }

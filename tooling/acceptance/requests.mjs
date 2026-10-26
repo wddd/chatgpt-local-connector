@@ -1,0 +1,46 @@
+export async function acceptRequests(page) {
+  // Regression: request controls were duplicated across task/update and setup/switch hosts.
+  const state = page.getByRole('radiogroup', { name: 'Submission state', exact: true });
+  const request = page.getByRole('main');
+  await request.getByRole('heading', { name: 'Requests and relay', exact: true }).waitFor();
+  if (await page.getByText('secret-must-not-render', { exact: true }).count()) throw new Error('Secret receipt leaked');
+  if ((await request.innerText()).includes('/sample/private/project')) throw new Error('Private path leaked');
+  const secret = request.locator('input[type=password]');
+  await secret.fill('local-secret-answer');
+  await request.getByRole('checkbox', { name: 'Quick', exact: true }).press('Space');
+  await request.getByRole('group', { name: 'Verification plan', exact: true }).press('2');
+  if (!await request.getByRole('checkbox', { name: 'Complete', exact: true }).isChecked()) throw new Error('Numeric option selection failed');
+  await request.getByRole('button', { name: 'Send answer', exact: true }).click();
+  await page.getByText('Responded: answer', { exact: true }).waitFor();
+  await request.getByRole('button', { name: 'Next request', exact: true }).press('Enter');
+  await request.getByRole('heading', { name: 'Run verification', exact: true }).waitFor();
+  if ((await request.innerText()).includes('/sample/private/project')) throw new Error('Private permission context leaked');
+  await request.getByRole('switch', { name: 'Privacy', exact: true }).click();
+  await request.getByText('/sample/private/project', { exact: true }).waitFor();
+  await request.getByRole('switch', { name: 'Privacy', exact: true }).click();
+  await request.getByRole('button', { name: 'Previous request', exact: true }).press('Enter');
+  if (await secret.inputValue() !== 'local-secret-answer') throw new Error('Pager lost request draft');
+  await state.getByRole('radio', { name: 'unconfirmed', exact: true }).click();
+  if (!await request.getByRole('button', { name: 'Send answer', exact: true }).isDisabled()) throw new Error('Unconfirmed response can be resubmitted');
+  await state.getByRole('radio', { name: 'failed', exact: true }).click();
+  await page.getByText('Sample authorization failure', { exact: true }).waitFor();
+  await state.getByRole('radio', { name: 'pending', exact: true }).click();
+  const trigger = request.getByRole('button', { name: 'Open request sheet', exact: true });
+  await trigger.press('Enter');
+  const dialog = page.getByRole('dialog', { name: 'Request sheet', exact: true });
+  await dialog.waitFor();
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'hidden' });
+  if (!await trigger.evaluate(element => element === document.activeElement)) throw new Error('Request sheet did not restore focus');
+  await request.getByRole('button', { name: 'Allow connection', exact: true }).click();
+  await page.getByText('Authorization allowed', { exact: true }).waitFor();
+  const retry = request.getByRole('button', { name: 'Retry', exact: true });
+  if (!await retry.isDisabled()) throw new Error('Deployment retried without selecting an account');
+  await request.getByRole('radiogroup', { name: 'Choose a Cloudflare account', exact: true }).getByRole('radio').first().click();
+  await retry.click();
+  await page.getByText('Retry deployment', { exact: true }).waitFor();
+  await request.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByText('Cancel deployment', { exact: true }).waitFor();
+  if (await request.getByRole('button', { name: 'Remove', exact: true }).count() !== 1) throw new Error('Self member exposed removal');
+  if (await request.evaluate(element => element.scrollWidth > element.clientWidth)) throw new Error('Request fixture overflows horizontally');
+}

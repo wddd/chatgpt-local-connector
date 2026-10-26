@@ -1413,6 +1413,7 @@
   "accounts.health.invalid": "Invalid",
   "activity.submitting": "Submitting",
   "activity.submissionFailed": "Submission failed",
+  "authorization.expires": "Expires {time}",
   "authorization.pending": "Awaiting authorization",
   "authorization.approved": "Approved",
   "authorization.denied": "Denied",

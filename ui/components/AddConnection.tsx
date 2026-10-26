@@ -13,7 +13,7 @@ import { connectionKind, isPendingSource } from "../sourcePresentation";
 import { useRelayProgress, type RelayProgress as Progress } from "../state/relay";
 import { SensitiveInput, useSensitiveText } from "./Sensitive";
 import IngressDialog from "./IngressDialog";
-import RelayProgress from "./RelayProgress";
+import { DeploymentProgressCard } from "./objects/deployment-progress";
 import SetupDialog from "./SetupDialog";
 
 type LocalAccess = { codeAvailable: boolean; desktopAvailable: boolean };
@@ -108,7 +108,7 @@ export default function AddConnection({ options, onClose, onAdded, returnFocus }
         }} /></div>}
       {step === "address" && !editing && (operation ? <>
         {progressError && <Notice>{t("connect.readFailed")}</Notice>}
-        <RelayProgress progress={progress} busy={busy} account={account} setAccount={setAccount} onRetry={() => void startRelay(true)} onCancel={() => void perform(async () => { await api("relay/cancel", "POST"); setOperation(undefined); })} />
+        <DeploymentProgressCard progress={progress} busy={busy} account={account} setAccount={setAccount} onRetry={() => void startRelay(true)} onCancel={() => void perform(async () => { await api("relay/cancel", "POST"); setOperation(undefined); })} />
       </> : <form className="setup-form" id={formId} onSubmit={e => { e.preventDefault(); void configure(); }}>
         {method === "join" && <>
           <Field id={`${formId}-link`} label={t("connect.sharedLink")}><SensitiveInput id={`${formId}-link`} required type="url" value={link} onChange={e => setLink(e.target.value)} /></Field>

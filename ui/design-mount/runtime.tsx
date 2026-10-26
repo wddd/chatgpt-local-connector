@@ -1,3 +1,14 @@
+import { RequestCard } from '../components/composites/RequestCard';
+import { InteractionRequestCard } from '../components/objects/interaction-request/Card';
+import { InteractionRequestChip } from '../components/objects/interaction-request/Chip';
+import { InteractionRequestRow } from '../components/objects/interaction-request/Row';
+import { AuthorizationRequestCard } from '../components/objects/authorization-request/Card';
+import { AuthorizationRequestChip } from '../components/objects/authorization-request/Chip';
+import { AuthorizationRequestRow } from '../components/objects/authorization-request/Row';
+import { DeploymentProgressCard } from '../components/objects/deployment-progress/Card';
+import { DeploymentProgressChip } from '../components/objects/deployment-progress/Chip';
+import { RelayMemberRow } from '../components/objects/relay-member/Row';
+import { RelayMemberCard } from '../components/objects/relay-member/Card';
 import { DispatchSpec } from '../components/composites/DispatchSpec';
 import { createElement, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -13,7 +24,7 @@ import { environment, type Environment } from './environment';
 import { setActionTarget } from './data';
 import { PortalHost } from './radix';
 
-const components = { Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
+const components = { RequestCard, InteractionRequestCard, InteractionRequestChip, InteractionRequestRow, AuthorizationRequestCard, AuthorizationRequestChip, AuthorizationRequestRow, DeploymentProgressCard, DeploymentProgressChip, RelayMemberRow, RelayMemberCard,  Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
   AgentQuotaIcon, AgentQuota, QuotaBubble, GraphNode, ActivityBubble,
   ViewStack, MeterSegment, PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, ChoiceControl, SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone, DispatchSpec };
 const icons = { RefreshCw, Plus, Check, X, Info, Plug, Bot };

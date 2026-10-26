@@ -38,7 +38,7 @@ test("task execution questions retain executable agent operation arguments", asy
   };
   try {
     const { default: TaskOutcome } = await server.ssrLoadModule("/ui/components/TaskOutcome.tsx");
-    const { default: TaskQuestion } = await server.ssrLoadModule("/ui/components/TaskQuestion.tsx");
+    const { LiveInteractionRequestCard } = await server.ssrLoadModule("/ui/components/objects/interaction-request/adapter.tsx");
     const { default: TaskQueuedMessages } = await server.ssrLoadModule("/ui/components/TaskQueuedMessages.tsx");
     const { useTaskQueue } = await server.ssrLoadModule("/ui/state/taskQueue.ts");
     const { activityApprovals } = await server.ssrLoadModule("/ui/state/activity.ts");
@@ -57,7 +57,7 @@ test("task execution questions retain executable agent operation arguments", asy
     for (const skip of [false, true]) {
       await act(() => activityApprovals.set({}));
       const interaction = { kind: "question", method: "item/tool/requestUserInput", summary: "Choice", questions: [{ id: "q", question: "Choose", options: [{ label: "A" }] }], respond: { op: "codex_respond", args: { id: "1", backendSession: id } } };
-      await render(h(TaskQuestion, { agent: "codex", session: { ...session, interaction }, answers: { q: ["A"] }, onAnswersChange() {} }));
+      await render(h(LiveInteractionRequestCard, { agent: "codex", session: { ...session, interaction }, answers: { q: ["A"] }, onAnswersChange() {} }));
       await click(t(skip ? "detail.skip" : "detail.sendAnswer"));
       assert.equal(calls.at(-1)?.op, "codex_respond"); assert.deepEqual(calls.at(-1)?.args.result.answers.q.answers, skip ? [] : ["A"]);
     }

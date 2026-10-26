@@ -1,3 +1,14 @@
+import type { RequestCard as RequestCardComponent } from '../components/composites/RequestCard';
+import type { InteractionRequestCard as InteractionRequestCardComponent } from '../components/objects/interaction-request/Card';
+import type { InteractionRequestChip as InteractionRequestChipComponent } from '../components/objects/interaction-request/Chip';
+import type { InteractionRequestRow as InteractionRequestRowComponent } from '../components/objects/interaction-request/Row';
+import type { AuthorizationRequestCard as AuthorizationRequestCardComponent } from '../components/objects/authorization-request/Card';
+import type { AuthorizationRequestChip as AuthorizationRequestChipComponent } from '../components/objects/authorization-request/Chip';
+import type { AuthorizationRequestRow as AuthorizationRequestRowComponent } from '../components/objects/authorization-request/Row';
+import type { DeploymentProgressCard as DeploymentProgressCardComponent } from '../components/objects/deployment-progress/Card';
+import type { DeploymentProgressChip as DeploymentProgressChipComponent } from '../components/objects/deployment-progress/Chip';
+import type { RelayMemberRow as RelayMemberRowComponent } from '../components/objects/relay-member/Row';
+import type { RelayMemberCard as RelayMemberCardComponent } from '../components/objects/relay-member/Card';
 import { createContext, createElement, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { createRuntime } from 'virtual:arc-runtime';
 import type { DispatchSpec as DispatchSpecComponent } from '../components/composites/DispatchSpec';
@@ -37,6 +48,7 @@ type TextProps<P> = Omit<P, 'children' | 'ref' | 'action' | 'icon' | 'dangerousl
   (P extends { children: unknown } ? { children: string } : { children?: string });
 type TextSlots<P, K extends keyof P> = Omit<{ [Key in keyof P]: Key extends K ? string : P[Key] }, 'ref' | 'dangerouslySetInnerHTML'>;
 const textSlots: Record<string, readonly string[]> = {
+  RequestCard: ['title', 'context', 'leading', 'state', 'footer'],
   SettingsSection: ['title', 'description'], SettingRow: ['label', 'description'],
   FormField: ['label', 'help'], FormSection: ['title', 'description'],
   Disclosure: ['title'], DangerZone: ['consequence'],
@@ -142,3 +154,25 @@ export const ChoiceControl = island<Omit<ComponentProps<typeof UI.ChoiceControl>
 
 export const ViewStack = island<Omit<TextProps<ComponentProps<typeof UI.ViewStack>>, 'asChild'> & { asChild?: false }>('ViewStack');
 export const MeterSegment = island<TextProps<ComponentProps<typeof UI.MeterSegment>>>('MeterSegment');
+
+export const RequestCard = island<TextSlots<ComponentProps<typeof RequestCardComponent>, 'children' | 'context' | 'leading' | 'state' | 'footer'>>('RequestCard');
+
+export const InteractionRequestCard = island<ComponentProps<typeof InteractionRequestCardComponent>>('InteractionRequestCard');
+
+export const InteractionRequestChip = island<ComponentProps<typeof InteractionRequestChipComponent>>('InteractionRequestChip');
+
+export const InteractionRequestRow = island<ComponentProps<typeof InteractionRequestRowComponent>>('InteractionRequestRow');
+
+export const AuthorizationRequestCard = island<ComponentProps<typeof AuthorizationRequestCardComponent>>('AuthorizationRequestCard');
+
+export const AuthorizationRequestChip = island<ComponentProps<typeof AuthorizationRequestChipComponent>>('AuthorizationRequestChip');
+
+export const AuthorizationRequestRow = island<ComponentProps<typeof AuthorizationRequestRowComponent>>('AuthorizationRequestRow');
+
+export const DeploymentProgressCard = island<ComponentProps<typeof DeploymentProgressCardComponent>>('DeploymentProgressCard');
+
+export const DeploymentProgressChip = island<ComponentProps<typeof DeploymentProgressChipComponent>>('DeploymentProgressChip');
+
+export const RelayMemberRow = island<ComponentProps<typeof RelayMemberRowComponent>>('RelayMemberRow');
+
+export const RelayMemberCard = island<ComponentProps<typeof RelayMemberCardComponent>>('RelayMemberCard');

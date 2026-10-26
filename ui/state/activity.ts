@@ -5,7 +5,7 @@ import { createStore } from "./store";
 import { api } from "../api";
 import { isDesktop } from "../platform";
 import type { AgentActivitySession, AgentActivitySnapshot } from "../types";
-import { trackActivity, activityLayout, beginApproval, finishApproval, interactionKey, mergeActivity, permissionResponse, type ApprovalDecision, type ApprovalSubmission } from "./activityModel";
+import { trackActivity, activityLayout, beginApproval, finishApproval, interactionKey, mergeActivity, type ApprovalDecision, type ApprovalSubmission } from "./activityModel";
 
 export const agentActivity = createStore<{ snapshot?: AgentActivitySnapshot; error: string }>({ error: "" });
 
@@ -81,12 +81,6 @@ export function startAgentActivity() {
     off?.(); stream?.close(); clearInterval(timer);
     document.removeEventListener("visibilitychange", resume);
   };
-}
-export async function submitActivityApproval(agent: string, session: AgentActivitySession, decision: "allow" | "deny") {
-  if (!session.interaction) return;
-  const payload = permissionResponse(session.interaction, decision);
-  if (!payload) return;
-  return submitActivityResponse(agent, session, decision, payload);
 }
 export async function submitActivityResponse(agent: string, session: AgentActivitySession, decision: ApprovalDecision,
   payload: import("./activityModel").ApprovalPayload) {

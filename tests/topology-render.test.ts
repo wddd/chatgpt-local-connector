@@ -348,8 +348,8 @@ test("timeline turn disclosures preserve choices through incremental work and re
     }
     await act(() => activityApprovals.set({}));
     await render([{ ...pending, status: "completed" }]);
-    assert.ok(page.getByText(interaction.summary));
-    assert.ok(page.getByText(t("detail.resolvedElsewhere")));
+    assert.ok(page.getByText(interaction.summary, { exact: false }));
+    assert.ok(page.getByText(t("detail.resolvedElsewhere"), { exact: false }));
 
   } finally {
     await act(() => root.unmount()); await server.close(); window.happyDOM.abort(); mount.remove();

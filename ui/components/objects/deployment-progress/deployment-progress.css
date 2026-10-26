@@ -1,0 +1,6 @@
+.remote-steps { list-style:none; display:grid; gap:28px; margin:0 0 24px; padding:0; }
+.remote-steps li { display:flex; align-items:flex-start; gap:14px; }
+.remote-steps li > div { display:grid; gap:6px; }
+.remote-steps small { color:var(--text-secondary); }
+.remote-steps [aria-current="step"] { color:var(--action); }
+.remote-progress { display:grid; gap:16px; }

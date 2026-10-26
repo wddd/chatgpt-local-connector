@@ -1,4 +1,4 @@
-import { SettingRow, DangerZone, ActionGroup, Freshness, EntityCard, StateBadge, SectionHeader, Button, DataTable, Dialog, Icon, IconButton, Loading, Notice } from "./ui";
+import { SettingRow, DangerZone, ActionGroup, EntityCard, StateBadge, SectionHeader, Button, Dialog, Icon, IconButton, Loading, Notice } from "./ui";
 import { ingressState } from "../state/connector";
 import { statePresentation } from "./objects/statePresentation";
 import { Sensitive } from "./Sensitive";
@@ -10,9 +10,9 @@ import { copyText } from "../platform";
 import { connector, notify, refreshConnector } from "../state/connector";
 import { appNow, useAppNow } from "../state/appEnvironment";
 import { useRelays, useRelayProgress, type Relay, type RelayProgress as Progress } from "../state/relay";
-import RelayProgress from "./RelayProgress";
+import { DeploymentProgressCard } from "./objects/deployment-progress";
 
-type Member = { id: string; name: string; isSelf: boolean; joinedAt: string; lastOnline: string | null; online: boolean };
+import { RelayMemberCard, RelayMemberRow, type Member } from "./objects/relay-member";
 type Job = { action: "create" | "redeploy" | "delete"; id?: string };
 type Confirmation = "reset-token" | "delete" | Member;
 
@@ -20,14 +20,6 @@ function hostname(relay: Relay) {
   try { return new URL(relay.url).hostname; }
   catch { return t("hosting.notDeployed"); }
 }
-function compactDate(value: string | null, recent = false) {
-  if (!value) return t("connect.neverOnline");
-  const date = new Date(value), age = appNow() - date.getTime();
-  if (!Number.isFinite(date.getTime())) return t("connect.neverOnline");
-  if (recent && age >= 0 && age < 120_000) return t("hosting.justNow");
-  return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
-
 function HostedRelay({ relay, version, startJob, disabled }: {
   relay: Relay; version: string; startJob: (job: Job) => Promise<boolean>; disabled: boolean;
 }) {
@@ -45,6 +37,7 @@ function HostedRelay({ relay, version, startJob, disabled }: {
   }, [relay.id, relay.url]);
   useEffect(() => { void readMembers(); }, [readMembers]);
   async function action(name: "share" | "reset-token" | "remove" | "delete", member?: Member) {
+    if (name === "remove" && (!member || member.isSelf || !members.some(value => value.id === member.id))) return;
     setBusy(name); setError("");
     try {
       if (name === "delete") {
@@ -60,7 +53,6 @@ function HostedRelay({ relay, version, startJob, disabled }: {
     finally { setBusy(""); }
   }
   const blocked = disabled || !!busy;
-  const name = (member: Member) => member.isSelf ? status?.deviceName || t("connect.thisComputer") : member.name;
   const outdated = !!version && relay.workerVersion !== version;
   return <article className="hosted-relay" aria-label={t("hosting.title")}>
     <EntityCard>
@@ -80,13 +72,9 @@ function HostedRelay({ relay, version, startJob, disabled }: {
     <section className="hosted-relay-devices">
       <SectionHeader level={3} title={<>{t("hosting.devices")}</>} secondary={<><p className="muted small">{t("hosting.devicesDescription")}</p></>} actions={<><IconButton icon={RefreshCw} label={t("hosting.refreshDevices")} busy={loading} disabled={blocked || !relay.url} onClick={() => void readMembers()} /></>} />
       {membersError && <Notice tone="danger">{membersError}</Notice>}
-      <div className="hosted-relay-table" aria-busy={loading}>
-        <DataTable rows={members} empty={loading ? <Loading /> : membersError ? t("connect.membersFailed") : t("hosting.noDevices")} columns={[
-          { key: "device", title: t("hosting.device"), width: 180, render: member => <div className="hosted-relay-device"><StateBadge variant="dot" presentation={statePresentation("member", member.online ? "online" : "offline")} /><span className="hosted-relay-device-name" title={name(member)}>{name(member)}</span>{member.isSelf && <span className="hosted-relay-self">{t("hosting.self")}</span>}</div> },
-          { key: "joined", title: t("hosting.joined"), width: 100, render: member => <time dateTime={member.joinedAt}>{compactDate(member.joinedAt)}</time> },
-          { key: "seen", title: t("hosting.lastSeen"), width: 100, render: member => <Freshness observedAt={member.lastOnline} age={member.lastOnline ? compactDate(member.lastOnline, true) : undefined} unknown={t("connect.neverOnline")} /> },
-          { key: "actions", title: <span className="sr-only">{t("hosting.actions")}</span>, width: 80, align: "right", render: member => !member.isSelf && <Button variant="ghost" disabled={blocked} onClick={() => { setError(""); setConfirm(member); }}>{t("hosting.remove")}</Button> },
-        ]} />
+      <div aria-busy={loading}>
+        {!members.length && (loading ? <Loading /> : <p>{t(membersError ? 'connect.membersFailed' : 'hosting.noDevices')}</p>)}
+        {members.map(member => <RelayMemberRow key={member.id} member={member} deviceName={status?.deviceName} now={appNow()} disabled={blocked} onRemove={() => { setError(''); setConfirm(member); }} />)}
       </div>
     </section>
     <DangerZone consequence={t("hosting.deleteDescription")}>
@@ -95,9 +83,10 @@ function HostedRelay({ relay, version, startJob, disabled }: {
     {error && !confirm && <Notice tone="danger">{error}</Notice>}
     {confirm && <Dialog title={t(confirm === "reset-token" ? "hosting.resetTitle" : confirm === "delete" ? "hosting.deleteTitle" : "connect.confirm.remove")} width={440} onClose={() => setConfirm(undefined)} busy={!!busy} footer={<>
       <Button disabled={!!busy} onClick={() => setConfirm(undefined)}>{t("cancel")}</Button>
-      <Button variant={confirm === "reset-token" ? "primary" : "danger"} busy={!!busy} onClick={() => void action(typeof confirm === "string" ? confirm : "remove", typeof confirm === "object" ? confirm : undefined)}>{t(confirm === "reset-token" ? "hosting.reset" : confirm === "delete" ? "delete" : "hosting.remove")}</Button>
+      <Button variant={confirm === "reset-token" ? "primary" : "danger"} busy={!!busy} disabled={typeof confirm === "object" && (confirm.isSelf || !members.some(member => member.id === confirm.id))} onClick={() => void action(typeof confirm === "string" ? confirm : "remove", typeof confirm === "object" ? confirm : undefined)}>{t(confirm === "reset-token" ? "hosting.reset" : confirm === "delete" ? "delete" : "hosting.remove")}</Button>
     </>}>
-      <p>{t(confirm === "reset-token" ? "hosting.resetDescription" : confirm === "delete" ? "hosting.deleteDescription" : "hosting.removeDescription", { name: typeof confirm === "object" ? name(confirm) : "" })}</p>
+      {typeof confirm === "object" && <RelayMemberCard member={confirm} deviceName={status?.deviceName} now={appNow()} />}
+      {typeof confirm === "string" && <p>{t(confirm === "reset-token" ? "hosting.resetDescription" : "hosting.deleteDescription")}</p>}
       {error && <Notice tone="danger">{error}</Notice>}
     </Dialog>}
   </article>;
@@ -146,7 +135,7 @@ export default function RelayHosting() {
     {(deploy || job) && <Dialog title={t(job?.action === "delete" ? "hosting.deleteTitle" : job?.action === "redeploy" ? "connect.updateRelay" : "hosting.deploy")} width={440} busy={busy || !!job && progress.phase !== "failed"} onClose={() => { setDeploy(false); setJob(undefined); setError(""); }}>
       {error && <Notice tone="danger">{error}</Notice>}
       {progressError && job && <Notice tone="danger">{t("connect.readFailed")}</Notice>}
-      {job ? <RelayProgress progress={progress} busy={busy} account={account} setAccount={setAccount} onCancel={() => void cancel()} onRetry={() => void startJob({ action: job.action === "create" && progress.relayId ? "redeploy" : job.action, id: progress.relayId ?? job.id })} /> : <form onSubmit={event => { event.preventDefault(); void startJob({ action: "create" }); }}>
+      {job ? <DeploymentProgressCard progress={progress} busy={busy} account={account} setAccount={setAccount} onCancel={() => void cancel()} onRetry={() => void startJob({ action: job.action === "create" && progress.relayId ? "redeploy" : job.action, id: progress.relayId ?? job.id })} /> : <form onSubmit={event => { event.preventDefault(); void startJob({ action: "create" }); }}>
         <p className="muted">{t("connect.freeAccount")}</p>
         <ActionGroup><Button type="submit" variant="primary" busy={busy}>{t("hosting.deploy")}</Button></ActionGroup>
       </form>}

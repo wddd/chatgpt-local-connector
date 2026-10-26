@@ -10,8 +10,7 @@ import { agentActivity } from "../state/activity";
 import { useInterval } from "../state/hooks";
 import { updates, available, updateVisible, checkUpdate, showUpdate, dismissUpdate, installUpdate, scheduleUpdate, skipUpdate, cancelDownload, dismissOutcome, retryUpdate, submitLocal, openReleaseNotes, updateAutomatic, acceptLocal, resumeInterrupted, controlScheduling } from "../state/updates";
 import { updateActive, updateCountdown, updateStep, type UpdateSnapshot, type UpdateTiming, type UpdateWork } from "../state/updateModel";
-import TaskQuestion from "./TaskQuestion";
-import ActivityInteraction from "./ActivityInteraction";
+import { LiveInteractionRequestCard } from "./objects/interaction-request";
 import "./AppUpdate.css";
 
 const action = (promise: Promise<unknown>) => void promise.catch(error => notify(String(error), true));
@@ -29,9 +28,8 @@ function WorkItem({ item, answerable }: { item: UpdateWork; answerable: boolean 
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   return <li>
     <div className="update-work-title"><span>{item.title || session?.title || item.taskId || t(`updates.work.${item.kind}`)}</span>{item.count !== undefined && <span>{item.count}</span>}</div>
-    {answerable && session?.interaction && (session.interaction.kind === "question"
-      ? <TaskQuestion key={JSON.stringify(session.interaction.respond)} agent={item.agent!} session={session} answers={answers} onAnswersChange={setAnswers} />
-      : <ActivityInteraction agent={item.agent!} session={session} />)}
+    {answerable && session?.interaction && <LiveInteractionRequestCard key={JSON.stringify(session.interaction.respond)} agent={item.agent!} session={session} answers={answers} onAnswersChange={setAnswers} />}
+
   </li>;
 }
 function WorkGroups({ job }: { job: UpdateSnapshot }) {

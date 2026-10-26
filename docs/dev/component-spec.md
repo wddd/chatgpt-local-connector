@@ -2,7 +2,7 @@
 
 MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.
 
-The shell layer and domain state presentation map are implemented in the current hosts. Object components and cross-object composites below remain target contracts for later convergence and design-tool mounting. [Component inventory](component-inventory.md) records current renderers; [Object model](object-model.md) supplies the draft management placement. Component reuse does not itself authorize that draft's page removals or backend changes.
+The shell layer and domain state presentation map are implemented in the current hosts. Interaction request, authorization request, relay member and deployment progress objects, together with RequestCard, are implemented. Other object contracts below describe their respective convergence state. [Component inventory](component-inventory.md) records current renderers; [Object model](object-model.md) supplies the draft management placement. Component reuse does not itself authorize that draft's page removals or backend changes.
 
 ## Boundaries and composition
 
@@ -173,7 +173,7 @@ Each variant's **Render** cell is an allowlist. Other fields of its input types 
 | Chip | TASK attention summaries → request reference | `kind`, `title` or `summary`; submission `status` when present | Pending/unsupported/respond-disabled/submitting/failed/unconfirmed/resolved; opens/focuses request in task detail, never answers it. Replaces inline needs-attention summary fragments. |
 | Node | N/A | No fields | Attention stays on TASK Node. No standalone interaction node or actions. |
 | Row | InteractionAnchor and receipt history → request history/compact anchor | `kind`, `summary`/`title`; question option labels; entry `response.result.answer`/`answers`/`decision`, `response.skipped`, `response.origin.sourceLabel`/`controlSource`. Admission adapter uses TaskRecord `task.title`, `approval.decision`/`source`. | Pending/resolved elsewhere/answered/skipped/approved/rejected, selected/error; opens/focuses associated request or turn. No inline response by row click. Replaces InteractionAnchor/receipt framing without merging their record types. |
-| Card | TaskNeedsYou/TaskQuestion + update inline controls → RequestCard composition | `summary`, `title`, `command`, `path`, `cwd`, `preview`, `reason`; `questions[].question`, `options[].label`/`description`, `isOther`, `isSecret`, `multiSelect`; supported normalized legacy `options`; submission `status`/`error`; routing `state`/`deferUntil` countdown | Multiple requests/pager, secret/custom/multiple answers, invalid input, unsupported/locked/readOnly, submitting/pending/submitted/failed/unconfirmed, narrow sheet/privacy for paths. Header: request pager/close as hosted. Body/footer: allow-once/reject or answer/skip, routing pause/resume/handoff. Reuses TaskQuestion and ActivityInteraction; replaces duplicated request framing, including update context when a live request resolves. |
+| Card | TaskNeedsYou/TaskQuestion + update inline controls → RequestCard composition | `summary`, `title`, `command`, `path`, `cwd`, `preview`, `reason`; `questions[].question`, `options[].label`/`description`, `isOther`, `isSecret`, `multiSelect`; supported normalized legacy `options`; submission `status`/`error`; routing `state`/`deferUntil` countdown | Multiple requests/pager, secret/custom/multiple answers, invalid input, unsupported/locked/readOnly, submitting/pending/submitted/failed/unconfirmed, narrow sheet/privacy for paths. Header: request pager/close as hosted. Body/footer: allow-once/reject or answer/skip, routing pause/resume/handoff. QuestionField and the execution adapter replace TaskQuestion and ActivityInteraction; shared RequestCard replaces duplicated request framing, including update context when a live request resolves. |
 
 **Omit:** raw `respond.via`/`op`/`args`/`hint`, `method`, question IDs, submission payload and routing `pausedBy`/`reason`. They still control supported responses and keys. `canRespond` disables action rather than printing a boolean. Do not imply a persistent permission from allow-once; preserve unsupported bypass behavior. Errors use existing task error presentation. Secret answers remain masked in history. Admission approval keeps its existing approve/reject semantics and does not acquire OAuth pairing controls.
 
@@ -205,7 +205,7 @@ The object name and four slots are reserved; implementation and design-tool moun
 
 ### Relay member
 
-**Type:** local `Member` in `ui/components/RelayHosting.tsx`: `id`, `name`, `isSelf`, `joinedAt`, `lastOnline`, `online`. It must be exported or moved by the later implementation before a real independent design mount is possible. Related Relay supplies ownership/action scope; device-name fallback comes from Status, not Member.
+**Type:** exported `Member` in `ui/components/objects/relay-member/model.ts`: `id`, `name`, `isSelf`, `joinedAt`, `lastOnline`, `online`. HostedRelay and independent design mounts share this type. Related Relay supplies ownership/action scope; device-name fallback comes from Status, not Member.
 
 | Variant | Purpose / today → target | Render | States; click / header actions; replaces |
 | --- | --- | --- | --- |
@@ -246,7 +246,17 @@ Reuse existing AgentQuota, AgentQuotaIcon and QuotaBubble behavior and visual de
 
 ### RequestCard
 
-RequestCard composes EntityCard + SectionHeader + context/body + state/error + response footer. It shares layout, busy/disabled handling, pager placement and focus restoration between interaction and authorization objects. It MUST NOT share a generic approval action: execution allow/deny/answer and OAuth Allow/Deny have separate typed adapters and consequences. Review context remains above actions. Closing a sheet does not approve, deny or submit. Narrow and wide mounts render the same request data. Header controls are navigation/pager/close; decision buttons remain in the footer. No notification-binding composition is added.
+`ui/components/composites/RequestCard.tsx` composes EntityCard, SectionHeader, review context/body, state/error and response footer. It owns the pager placement, form boundary, busy footer disabling and optional request focus target. Dialog continues to own layered Escape and trigger focus restoration. TaskNeedsYou keeps per-request drafts, routing and sheet state; navigation never submits a response. Narrow and wide mounts receive the same request data.
+
+`objects/interaction-request/Card.tsx` receives AgentInteraction, ApprovalSubmission, answer drafts and an execution-response callback. Its live adapter retains interactionKey and submitActivityResponse. TaskNeedsYou and AppUpdate use that adapter, including the full permission preview in update contexts. QuestionField retains single/multiple/custom choices, numeric keyboard selection and password inputs. Row receives timeline evidence and masks secret response history; its live adapter looks up local receipts. AdmissionRequestRow remains a separate TaskRecord adapter.
+
+`objects/authorization-request/Card.tsx` receives OAuthRequest, Ingress, candidate/claimed sources and controlled form/action props. ApprovalCard in its adapter retains source claim, naming, capability-profile selection, decision API and refresh behavior. OAuthApproval re-exports that adapter for setup, switch and RemoteLinkPage callers; there is one renderer, not a compatibility implementation. Inline setup/switch buttons continue to submit the identified form from their owning dialog footer. Execution allow/deny/answer and OAuth Allow/Deny never share a generic approval action.
+
+`SourceAuthorizationChip` projects only the active switch request or source-bound OAuth credential. It never enumerates grant history. Its source-panel attachment belongs to the SRC/TUNNEL host owner. Authorization Row opens review and never authorizes by selection.
+
+DeploymentProgressCard replaces RelayProgress in AddConnection, RelaySettings and RelayHosting. The state hook and each host retain job identity checks, polling, cancellation and retries. The Card composes DeploymentProgressChip, phase steps, classified failure, explicit account choice, protected login address and terminal URL. RelayMemberRow and RelayMemberCard replace HostedRelay's member table cells and removal summary. The host retains confirmation, self protection, current-member validation and owner/busy gating.
+
+`requests-light`, `requests-dark` and `requests-narrow` mount these real objects with synthetic records and local callbacks. They include secret and multiple answers, paging with retained drafts, unconfirmed/failed/submitting states, privacy, authorization errors, account selection, member self protection and sheet keyboard/focus behavior. `ui/design-mount` exports the composite and every applicable Chip/Row/Card with `requestFixtures`. Peer messages and notification binding remain deferred.
 
 ### DispatchSpec Chip
 
@@ -293,7 +303,7 @@ Recommended order:
 5. Interaction and authorization requests: extract RequestCard, retaining separate data/action adapters; cover both task/update and setup/switch contexts. Then relay deployment's three hosts and member list/confirmation.
 6. Peer message only after its data contract and placement are decided. Notification binding remains deferred.
 
-`debt-*` light/dark fixtures mount Tasks, Records, Permissions, AgentsSettings, AgentDisplaySettings, AddAccount, MergeAccounts, RelayHosting and OAuthGrants. `settings-light/dark` and `updates-settings` cover the main Settings hosts. Future browser coverage must include remaining SettingsExtras states, both empty homepage wings, account-store disagreement recovery, unknown icons/states, dsh recorded spec, multi-request/secret/unconfirmed responses and quota failure families. Layout/state acceptance uses browser fixtures; this document does not require a native app run or claim any visual acceptance.
+`debt-*` light/dark fixtures mount Tasks, Records, Permissions, AgentsSettings, AgentDisplaySettings, AddAccount, MergeAccounts, RelayHosting and OAuthGrants. `settings-light/dark` and `updates-settings` cover the main Settings hosts. Future browser coverage must include remaining SettingsExtras states, both empty homepage wings, account-store disagreement recovery, unknown icons/states, dsh recorded spec, quota failure families. Layout/state acceptance uses browser fixtures; this document does not require a native app run or claim any visual acceptance.
 
 ## Decisions (user, 2026-10-26)
 

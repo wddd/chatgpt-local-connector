@@ -1,3 +1,4 @@
+import { LiveInteractionRequestRow } from './objects/interaction-request';
 import { SectionHeader, Button, Icon, IconButton, PlatformIcon } from "./ui";
 import { TaskReceiptHistory } from "./TaskNeedsYou";
 import { ChangedFiles } from "./TaskChanges";
@@ -9,11 +10,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { locale, t } from "../i18n";
 import { useMedia } from "../state/hooks";
 import type { AgentActivitySession, AgentTimelineEntry, DispatchSummary, TurnTiming } from "../types";
-import { activityApprovals } from "../state/activity";
-import { filePathParts, interactionKey } from "../state/activityModel";
+import { filePathParts } from "../state/activityModel";
 import { timelineGroups, turnDuration } from "../state/timelineGroups";
 import { dispatchSourceLabel } from "./activity";
-import { answerLabel, interactionSummary } from "../state/taskInteractions";
 import { copyText } from "../platform";
 import { processOpen, projectTurn, taskState, toolCounts, type ProcessRow } from "../state/taskProjection";
 import { taskErrorText } from "../state/taskErrors";
@@ -96,29 +95,10 @@ function CopyReply({ text }: { text: string }) {
   const [error, setError] = useState("");
   return <><IconButton icon={Copy} label={t("detail.copyReply")} onClick={() => void copyText(text).catch(() => setError(t("copyFailedSelectAndCopyTheTextManually")))} />{error && <span role="alert">{error}</span>}</>;
 }
-function InteractionAnchor({ entry, agent, session }: { entry: AgentTimelineEntry; agent: string; session: AgentActivitySession }) {
-  const submissions = activityApprovals.use();
-  const receipt = submissions[interactionKey(agent, { ...session, phaseSince: entry.startedAt, interaction: entry.interaction })];
-  const saved = entry.response;
-  const own = !!saved || receipt?.status === "submitted";
-  const resolved = own || entry.status === "completed";
-  const answer = saved ? answerLabel({ op: "codex_respond", args: { result: saved.result } }) : receipt?.status === "submitted" ? answerLabel(receipt.payload) : "";
-  const decision = saved?.result?.decision;
-  const verdict = !own ? "timeline.resolved" : saved
-    ? saved.skipped ? "detail.skipped" : decision ? ["decline", "cancel", "denied"].includes(decision) ? "detail.verdict.reject" : "detail.verdict.approved"
-      : answer ? "timeline.answered" : "detail.skipped"
-    : receipt?.decision === "deny" ? "detail.verdict.reject" : receipt?.decision === "allow" ? "detail.verdict.approved" : receipt?.decision === "cancel" ? "detail.skipped" : "timeline.answered";
-  return <div className="task-interaction-anchor" data-pending={!resolved || undefined}>
-    <Icon icon={resolved ? Check : ShieldAlert} /><div><strong>{resolved ? t(verdict) : t("detail.needsYou")}</strong>
-      <span>{interactionSummary(entry.interaction)}</span>{answer && <span>{answer}</span>}
-      {resolved && <small>{saved ? saved.origin.controlSource === "ARC" ? t("detail.byARC") : saved.origin.sourceLabel || saved.origin.controlSource || t("detail.sourceUnknown") : own ? t("detail.byARC") : t("detail.resolvedElsewhere")}</small>}
-    </div>
-  </div>;
-}
 function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; agent: string; session: AgentActivitySession }) {
   if (entry.type === "text") return <article className="task-phase"><span className="task-agent-mark" aria-label={agent}><PlatformIcon role="agent" platform={agent} size={16} /></span><TimelineMarkdown text={entry.text ?? ""} /></article>;
   if (entry.type === "user") return <div className="task-prompt">{entry.controlSource && <small>{t("detail.via", { source: dispatchSourceLabel(entry.controlSource) })}{entry.startedAt && ` · ${new Date(entry.startedAt).toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit" })}`}</small>}<TimelineMarkdown text={entry.text ?? ""} /></div>;
-  if (entry.type === "interaction") return <InteractionAnchor entry={entry} agent={agent} session={session} />;
+  if (entry.type === "interaction") return <LiveInteractionRequestRow entry={entry} agent={agent} session={session} />;
   if (entry.type === "plan") return <section className="task-plan" aria-label={t("timeline.plan")}><strong>{t("timeline.plan")}</strong><ul>{entry.plan?.map((step, index) => <li key={index} data-state={step.status}>
     <Icon icon={step.status === "completed" ? Check : Circle} /><span>{step.content.text}</span>
   </li>)}</ul></section>;
@@ -170,7 +150,7 @@ export default function TimelineEntries({ entries, agent, session, now, running 
       {!latest && <Button variant="ghost" className="task-previous-turn" aria-expanded={turnOpen} onClick={() => change(group.id)(!turnOpen)}>
         <span>{t("detail.previousTurn", { count: index + 1, actions: projection.actions })}{duration !== undefined && ` · ${durationText(duration)}`}<span>{final?.text?.trim().split("\n")[0] || t("detail.noFinalReply")}</span></span><Icon icon={ChevronRight} className="timeline-chevron" />
       </Button>}
-      {projection.answeredInteractions.map(entry => <InteractionAnchor key={entry.id} entry={entry} agent={agent} session={session} />)}
+      {projection.answeredInteractions.map(entry => <LiveInteractionRequestRow key={entry.id} entry={entry} agent={agent} session={session} />)}
       {turnOpen && <div className="task-turn-content">
         {prompt && <div className="task-prompt">{source && <small>{t("detail.via", { source: dispatchSourceLabel(source) })}{prompt.startedAt && ` · ${new Date(prompt.startedAt).toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit" })}`}</small>}
           <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[prompt.id] ?? false} onChange={change(prompt.id)} /></div>}

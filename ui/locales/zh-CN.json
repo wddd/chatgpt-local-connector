@@ -1413,6 +1413,7 @@
   "accounts.health.invalid": "无效",
   "activity.submitting": "提交中",
   "activity.submissionFailed": "提交失败",
+  "authorization.expires": "到期时间：{time}",
   "authorization.pending": "等待授权",
   "authorization.approved": "已允许",
   "authorization.denied": "已拒绝",
