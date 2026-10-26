@@ -29,6 +29,9 @@ MUST means a requirement. SHOULD means the default unless a concrete task-specif
 
 ## UI components
 
+- UI changes MUST compose shared components from `ui/components/ui`, `ui/components/composites` and `ui/components/objects` according to [Component specification](docs/dev/component-spec.md).
+- If a needed pattern is missing, MUST add or extend a shared component first, with a browser fixture and design-mount export, instead of hand-building it in a page.
+- MUST NOT add lint suppressions or expand UI debt baselines for new code. [UI debt](docs/dev/ui-debt.md) and its baselines MUST only shrink. Run `npm run check:ui` for enforcement.
 - Use `SingleChoice` for every single-choice control. Use pill tabs with at most five options when width permits. Otherwise use a dropdown. Do not add standalone Select, native `select`, or duplicate single-choice styling in business pages. Configure themes centrally. Preserve keyboard navigation, disabled states, and validation.
 - Use React for rendering. Reuse `ui/components/ui/index.tsx` for shared controls and Radix for complex interactions. Do not reimplement equivalent controls in business pages.
 - Define semantic tokens in `ui/tokens.css`. Manage light/dark state in `ui/theme.ts`, following the system by default. Use the shared `Icon` wrapper with Lucide at 16/20px and 1.75px strokes. Retain brand-specific assets.
