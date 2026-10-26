@@ -61,9 +61,14 @@ test('topology account source keeps its platform name in both modes', async () =
     const status = { ingresses: [ingress], core: { backendSession: 'fixture', appServer: { state: 'ready' } }, platform: 'darwin', logs: [] };
     connector.set({ status, sources: [source, local], sourcesLoaded: true, loading: false, busy: '', error: '', feedback: { text: '', error: false } });
     agents.set({ items: [], loading: false, error: '' });
-    globalThis.fetch = async input => new Response(JSON.stringify(String(input).endsWith('/accounts')
-      ? { accounts: [{ id: 'account-one', alias: 'Personal', sources: [source.id], agentProfiles: [] }] }
-      : { hasState: false, complete: true, steps: [], progress: { done: 0, total: 0 } }));
+    const account = { id: 'account-one', alias: 'Personal', provider: 'openai', identityKey: 'openai:fixture', sources: [source.id], agentProfiles: [],
+      notifications: { state: 'mcp-events', sessions: [] }, quota: { state: 'unavailable', windows: [] } };
+    globalThis.fetch = async input => {
+      const path = String(input);
+      return new Response(JSON.stringify(path.endsWith('/accounts') ? { accounts: [account], login: null }
+        : path.endsWith(`/accounts/${account.id}`) ? account
+        : { hasState: false, complete: true, steps: [], progress: { done: 0, total: 0 } }));
+    };
     await act(() => root.render(h(UiProvider, null, h(Overview))));
     const label = `${controlSource(source.product).displayName}: ${t('connected')}`;
     for (const mode of ['tree', 'flat']) {
