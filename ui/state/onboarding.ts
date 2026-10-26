@@ -2,7 +2,7 @@ import { createStore } from "./store";
 import { agentPanel, ingressPanel } from "./overviewPanels";
 import { navigation } from "./navigation";
 export type OnboardingStep = "welcome" | "product" | "connection" | "address" | "approval" | "success";
-export type SourceSetup = { step: OnboardingStep; source?: string; localTarget?: "code" | "desktop"; ingressId?: string; requestId?: string; sourceId?: string; baseline?: string[]; focusGroup?: "local" | "remote"; fixedConnection?: boolean };
+export type SourceSetup = { profile?: import("../controlSources").RemoteProfile; step: OnboardingStep; source?: string; localTarget?: "code" | "desktop"; ingressId?: string; requestId?: string; sourceId?: string; baseline?: string[]; focusGroup?: "local" | "remote"; fixedConnection?: boolean };
 export const onboarding = createStore<SourceSetup | undefined>(undefined);
 export const addedSource = createStore<string | undefined>(undefined);
 export type ConnectionMethod = "create" | "join" | "https" | "openai-tunnel" | "local-code" | "local-desktop";

@@ -124,7 +124,7 @@ export async function installScenario(name: string) {
     const base = status.ingresses[0];
     const remote = fixture.remoteLink;
     const source = { ...base.sources![0], id: 'source-personal', ingressId: 'relay-main', credential: { type: 'oauth-grant' as const, grantId: 'grant-personal' }, label: 'Claude · Personal' };
-    const pendingSource = { ...source, id: 'source-new', label: 'Claude', credential: { type: 'oauth-grant' as const, grantId: 'request-new' }, connectedAt: remote.connected ? 1 : null, lastSeenAt: remote.connected ? 1 : null };
+    const pendingSource = { ...source, id: 'source-new', label: 'Claude', capabilityProfileOffer: { recommended: { hostAccess: 'none' as const, waitMode: 'push' as const }, choices: ['legacy', 'remote-push', 'remote-polling'] }, credential: { type: 'oauth-grant' as const, grantId: 'request-new' }, connectedAt: remote.connected ? 1 : null, lastSeenAt: remote.connected ? 1 : null };
     status.ingresses = remote.empty ? [] : [
       { ...base, id: 'relay-main', transport: 'relay', auth: 'oauth', name: 'My relay', url: 'https://relay.example.com/mcp', sources: [source, ...(remote.pending || remote.connected ? [pendingSource] : [])],
         oauth: { grants: [{ id: 'grant-personal', clientName: 'Claude', clientId: 'client-personal', connectedAt: 1, registeredAt: 1 }], pending: remote.pending ? [{ id: 'request-new', sourceId: 'source-new', product: 'claude', clientName: 'Claude', redirectUri: 'https://claude.ai/api/mcp/auth_callback', resource: 'https://relay.example.com/mcp', pairingCode: '4F7K', status: 'pending' }] : [] } },

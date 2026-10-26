@@ -1433,5 +1433,9 @@
   "dispatchSpec.effort.max": "Max",
   "dispatchSpec.effort.ultra": "Ultra",
   "source.disconnectConsequence": "This source will lose access; its dispatch history will remain.",
-  "setup.removeConsequence": "Removing this connection disconnects its sources; their history remains."
+  "setup.removeConsequence": "Removing this connection disconnects its sources; their history remains.",
+  "source.profile": "Capability profile",
+  "source.profile.legacy": "Legacy",
+  "source.profile.remote-push": "Remote push",
+  "source.profile.remote-polling": "Remote polling"
 }

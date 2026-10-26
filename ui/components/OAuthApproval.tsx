@@ -2,7 +2,7 @@ import { StateBadge } from "./ui";
 import { statePresentation } from "./objects/statePresentation";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { nextSourceName } from "../controlSources";
+import { remoteProfiles, remoteProfileSetting, recommendedRemoteProfile, type RemoteProfile, nextSourceName } from "../controlSources";
 import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
 import { onboarding, connectionSetup, connectionSwitch } from "../state/onboarding";
@@ -14,6 +14,7 @@ import { Button, EntityCard, Dialog, Field, Input, Notice, SingleChoice, Tag } f
 export function ApprovalCard({ request, ingress, inline = false, product, onDecided, onBusy }: { request: OAuthRequest; ingress: Ingress; inline?: boolean; product?: string; onDecided?: (allow: boolean) => void; onBusy?: (busy: boolean) => void }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [sourceId, setSourceId] = useState(request.switchSourceId || "new"), [label, setLabel] = useState(() => nextSourceName(product ?? request.product ?? "custom", connector.get().sources.filter(s => s.id !== request.sourceId).map(s => s.label))), [labelError, setLabelError] = useState("");
+  const [profile, setProfile] = useState<RemoteProfile>(() => recommendedRemoteProfile(product ?? request.product ?? "custom"));
   const { status, sources } = connector.use();
   const fixed = sources.find(s => s.id === request.switchSourceId);
   const oldConnection = status?.ingresses.find(i => i.id === fixed?.ingressId);
@@ -28,7 +29,7 @@ export function ApprovalCard({ request, ingress, inline = false, product, onDeci
     setBusy(true); setError("");
     try {
       if (allow && request.sourceId) {
-        if (!request.switchSourceId && (product || sourceId === "new" && label.trim())) await api(`source/${request.sourceId}`, "PUT", { ...(product ? { product } : {}), ...(sourceId === "new" && label.trim() ? { label: label.trim() } : {}) });
+        if (!request.switchSourceId && (product || sourceId === "new" && label.trim())) await api(`source/${request.sourceId}`, "PUT", { ...(product ? { product } : {}), ...(sourceId === "new" ? { label: label.trim(), capabilityProfile: remoteProfileSetting(profile) } : {}) });
         await api(`source/${request.sourceId}/claim`, "POST", { sourceId });
       } else await api(`ingress/${ingress.id}/oauth/decision`, "POST", { id: request.id, allow, sourceId });
       await refreshConnector(); onDecided?.(allow);
@@ -43,6 +44,7 @@ export function ApprovalCard({ request, ingress, inline = false, product, onDeci
       {!request.switchSourceId && sourceId === "new" && <Field id={`approval-label-${request.id}`} label={t("setup.accountName")} error={labelError}>
         <Input id={`approval-label-${request.id}`} value={label} disabled={busy} aria-invalid={!!labelError} aria-describedby={labelError ? `approval-label-${request.id}-error` : undefined} onChange={e => { setLabel(e.target.value); setLabelError(""); }} />
       </Field>}
+      {!request.switchSourceId && sourceId === "new" && <Field label={t("source.profile")}><SingleChoice label={t("source.profile")} value={profile} onChange={value => setProfile(value as RemoteProfile)} disabled={busy} options={remoteProfiles.map(value => ({ value, label: t(`source.profile.${value}`) }))} /></Field>}
       <p className="pairing-fact">{t("connect.client", { name: request.clientName })}</p>
       <p className="pairing-fact">{t("connect.scope", { scope: ingress.toolPolicy === "all" ? t("connect.allPermissions") : t("connect.selectedPermissions") })}</p>
       {!inline && <div className="actions"><Button disabled={busy} onClick={() => void decide(false)}>{t("oauthDeny")}</Button><Button variant="primary" busy={busy} disabled={!request.switchSourceId && sourceId !== "new" && !candidates.some(s => s.id === sourceId)} onClick={() => void decide(true)}>{t("oauthAllow")}</Button></div>}

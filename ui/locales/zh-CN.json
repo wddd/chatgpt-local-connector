@@ -1433,5 +1433,9 @@
   "dispatchSpec.effort.max": "最高",
   "dispatchSpec.effort.ultra": "超高",
   "source.disconnectConsequence": "此来源将失去访问权限，派发历史将保留。",
-  "setup.removeConsequence": "移除此连接将断开其控制源，历史记录将保留。"
+  "setup.removeConsequence": "移除此连接将断开其控制源，历史记录将保留。",
+  "source.profile": "能力配置",
+  "source.profile.legacy": "保持原有行为",
+  "source.profile.remote-push": "远程推送",
+  "source.profile.remote-polling": "远程轮询"
 }

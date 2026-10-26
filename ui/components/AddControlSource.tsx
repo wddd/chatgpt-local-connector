@@ -2,7 +2,7 @@ import Address from "./Address";
 import { useEffect, useState } from "react";
 import { Check, ExternalLink, Plus } from "lucide-react";
 import { api } from "../api";
-import { controlSource, nextSourceName } from "../controlSources";
+import { remoteProfiles, remoteProfileSetting, recommendedRemoteProfile, type RemoteProfile, controlSource, nextSourceName } from "../controlSources";
 import { locale, t } from "../i18n";
 import { openUrl } from "../platform";
 import { connector, refreshConnector } from "../state/connector";
@@ -73,6 +73,18 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
     onboarding.set(old => old && { ...old, step: "address", requestId: undefined, baseline: (current?.oauth?.pending ?? []).map(p => p.id) });
   }
   const added = sources.find(s => s.id === flow.sourceId);
+  const offeredProfile = added?.capabilityProfileOffer && current?.auth !== "oauth";
+  const profile = flow.profile ?? recommendedRemoteProfile(product);
+  async function finish(addAnother = false) {
+    await perform(async () => {
+      if (offeredProfile && added) await api(`source/${added.id}`, "PUT", { capabilityProfile: remoteProfileSetting(profile) });
+      await refreshConnector();
+      if (addAnother) {
+        if (flow.sourceId) addedSource.set(flow.sourceId);
+        onboarding.set({ step: "product" });
+      } else finishSourceSetup();
+    });
+  }
   const selectedProduct = flow.localTarget ? `local-${flow.localTarget}` : flow.source ?? "";
   function chooseProduct(value: string) {
     onboarding.set(old => old && { ...old, source: value.startsWith("local-") ? "claude" : value,
@@ -88,7 +100,7 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
     {flow.step === "product" && <><span className="spacer" /><Button variant="primary" busy={busy} disabled={!flow.source || !!(flow.fixedConnection && current && connectionDisabledReason(current, product, sources, flow.localTarget))} onClick={() => flow.fixedConnection && flow.ingressId ? void selectConnection(flow.ingressId) : step("connection")}>{t("source.next")}</Button></>}
     {flow.step === "connection" && <Button variant="primary" busy={busy} disabled={!existing.some(i => i.id === route)} onClick={() => void selectConnection(route)}>{t("source.next")}</Button>}
     {flow.step === "address" && <Loading label={t(current?.auth === "oauth" ? "connect.waitClient" : "source.waitConnection", { name })} />}
-    {flow.step === "success" && <><Button variant="ghost" onClick={() => { if (flow.sourceId) addedSource.set(flow.sourceId); onboarding.set({ step: "product" }); }}>{t("setup.addAnother")}</Button><Button variant="primary" onClick={finishSourceSetup}>{t("source.done")}</Button></>}
+    {flow.step === "success" && <><Button variant="ghost" disabled={busy} onClick={() => void finish(true)}>{t("setup.addAnother")}</Button><Button variant="primary" busy={busy} onClick={() => void finish()}>{t("source.done")}</Button></>}
   </>;
   return <SetupDialog title={title} steps={steps.slice(0, 4).map((value, index) => ({ label: t(`source.step.${value}`), value: index === 0 ? productName(selectedProduct || "custom") : index === 1 ? current?.name : undefined }))}
     active={steps.indexOf(flow.step)} done={flow.step === "success"} busy={busy} onClose={finishSourceSetup}
@@ -97,6 +109,7 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
     footer={footer}>
     <div className="setup-content">
     {error && <Notice>{error}</Notice>}
+    {flow.step === "success" && offeredProfile && <Field label={t("source.profile")}><SingleChoice label={t("source.profile")} value={profile} disabled={busy} onChange={value => onboarding.set(old => old && { ...old, profile: value as RemoteProfile })} options={remoteProfiles.map(value => ({ value, label: t(`source.profile.${value}`) }))} /></Field>}
     {flow.step === "product" && <>
       {(["remote", "local"] as const).map(group => <section className="platform-group" key={group}>
         <h3 id={`platform-${group}`} tabIndex={-1}>{t(`setup.group.${group}`)}</h3>

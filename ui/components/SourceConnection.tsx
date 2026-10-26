@@ -1,4 +1,4 @@
-import { Freshness, EntityCard, StateBadge, SectionHeader, FactList, ActionGroup, Disclosure, FormSection, DangerZone, Button, Dialog, FormField, Input, Notice } from "./ui";
+import { Freshness, EntityCard, StateBadge, SectionHeader, FactList, ActionGroup, Disclosure, FormSection, DangerZone, Button, Dialog, FormField, Input, Notice, SingleChoice } from "./ui";
 import { statePresentation } from "./objects/statePresentation";
 import Address from "./Address";
 import { useEffect, useRef, useState } from "react";
@@ -8,6 +8,7 @@ import { connector, refreshConnector } from "../state/connector";
 import { connectionSwitch } from "../state/onboarding";
 import type { ControlSource } from "../state/types";
 import { connectionKind, isLocalSource, isPendingSource, sourceDate } from "../sourcePresentation";
+import { remoteProfiles, remoteProfileName, remoteProfileSetting, type CapabilityProfile, type RemoteProfile } from "../controlSources";
 import SourceProductChoice from "./SourceProductChoice";
 
 export default function SourceConnection({ source, onConnection }: { source: ControlSource; onConnection: (id: string) => void }) {
@@ -17,7 +18,7 @@ export default function SourceConnection({ source, onConnection }: { source: Con
   const [labelError, setLabelError] = useState(""), [confirm, setConfirm] = useState(false);
   const saving = useRef(false);
   useEffect(() => setLabel(source.label), [source.label]);
-  async function update(patch: { label?: string; product?: string }) {
+  async function update(patch: { label?: string; product?: string; capabilityProfile?: CapabilityProfile | null }) {
     if (saving.current) return;
     if (patch.label !== undefined) {
       const invalid = !patch.label ? t("fieldRequired") : new TextEncoder().encode(patch.label).length > 120 ? t("sourceNameTooLong") : "";
@@ -64,6 +65,7 @@ export default function SourceConnection({ source, onConnection }: { source: Con
       </FormField>
     </form>
     <FormField label={t("source.product")}><SourceProductChoice value={source.product} disabled={busy} onChange={product => void update({ product })} /></FormField>
+    <FormField label={t("source.profile")}><SingleChoice label={t("source.profile")} value={remoteProfileName(source.capabilityProfile)} disabled={busy} onChange={value => void update({ capabilityProfile: remoteProfileSetting(value as RemoteProfile) })} options={remoteProfiles.map(value => ({ value, label: t(`source.profile.${value}`) }))} /></FormField>
     </FormSection></Disclosure>
     <DangerZone consequence={t("source.disconnectConsequence")}><Button variant="danger-outline" disabled={busy || source.state === "revoked"} onClick={() => setConfirm(true)}>{t("source.disconnect")}</Button></DangerZone>
     {confirm && <Dialog title={t("source.disconnectTitle", { name: source.label })} onClose={() => setConfirm(false)} busy={busy}
