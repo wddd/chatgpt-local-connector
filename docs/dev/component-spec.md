@@ -85,8 +85,8 @@ Each variant's **Render** cell is an allowlist. Other fields of its input types 
 | --- | --- | --- | --- |
 | Chip | Source provenance/tags → account reference | Account `alias` when resolved, otherwise source `label`; source `product` icon and `state`/`pendingSwitch` projection | Unidentified/unavailable, pending switch/revoked, selected/disabled; opens L2 if current, historical provenance remains text when unresolved. Replaces source/account links and source portion of task provenance. |
 | Node | accountViews/sourceViews → SRC L2 topology | Account `alias` or source `label`, `product` icon; flat-mode platform label; source connection state | Repeated unidentified aliases, shared identity, selected/attention, added, collapsed/tree/flat. Opens L2; reorder where supported. Replaces account GraphNode composition. |
-| Row | Remote lists, account-role entries, OAuthGrants → L1 account/source rows | Account `alias` or source `label`, `product`, `state`/pending switch; one secondary line chosen by context: Ingress.`name`/source `connectionName`, masked account `email`, or source `connectedAt` for grant management | Disconnected/revoked/missing ingress, selected/attention; opens L2. Grant context trailing Revoke targets the actual ControlSource. Replaces source-list-row, connection-source-row, AccountDetail source entries and OAuthGrants rows; OAuthGrants currently consumes ControlSource[], not OAuthGrant[]. |
-| Card | SourcePanel/AccountDetail/SourceConnection → canonical L2 | Account `alias`, sensitive `email`/`orgName`, `plan`; source `label`, `state`, `connectedAt`, `lastSeenAt`; connection `name`/`transport` link; source grants and dispatch Rows, linked Agent profiles by `agent` | Identity loading/unidentified/conflict/unavailable, pending switch, revoked, removed connection, busy/error/privacy. Header: alias edit, Change connection, back/close. Body: connection link, grant revoke, cross-role link; danger: disconnect/merge/remove. Replaces identity/fact portions of the three existing views. No connection edit form or start/stop switch in L2. |
+| Row | Remote lists, account-role entries → L1 account/source rows | Account `alias` or source `label`, `product`, `state`/pending switch; secondary line: masked account `email` and the connection rendered as a TUNNEL Chip, never as free text | Disconnected/revoked/missing ingress, selected/attention. Row click opens L2. The TUNNEL Chip is a separate target that opens that connection's detail; it sits outside the row's navigation element, so no nested interactive markup. Replaces source-list-row, connection-source-row and AccountDetail source entries. OAuthGrants rows are not an SRC account Row (see Card). |
+| Card | SourcePanel/AccountDetail/SourceConnection → canonical L2 | Account `alias`, sensitive `email`/`orgName`, `plan`; source `label`, `state`, `connectedAt`, `lastSeenAt`; connection as a TUNNEL Chip; the latest authorization state only, as an Authorization request Chip (no grant history list; authorization details belong to that object); dispatch Rows; linked Agent profiles by `agent` | Identity loading/unidentified/conflict/unavailable, pending switch, revoked, removed connection, busy/error/privacy. Header: alias edit, Change connection, back/close. Body: connection Chip, cross-role link (kept by user decision); danger: disconnect/merge/remove. Replaces identity/fact portions of the three existing views. No connection edit form or start/stop switch in L2. |
 
 **Omit:** account `identityKey`, `createdAt`, `observedAt`, `displayName`, raw identity evidence/ancestry/IDs, notification fields and quota; quota belongs to AGENT L2. Source `createdAt`, credential IDs/type, retired ingress IDs, switch IDs and pending-switch request/expiry raw values are not facts. Identity resolution gates an explicit unresolved/conflict notice without printing evidence. Removal/merge associations still route correctly. Account maintenance actions require an actual ProviderAccount.
 
@@ -265,7 +265,17 @@ Recommended order:
 
 Future browser coverage must include Tasks/Records/Permissions and ordinary Settings states (updates-settings already exists), AgentsSettings/AgentDisplaySettings, merge/login, RelayHosting/OAuthGrants, both empty homepage wings, account-store disagreement recovery, unknown icons/states, dsh recorded spec, multi-request/secret/unconfirmed responses and quota failure families. Layout/state acceptance uses browser fixtures; this document does not require a native app run or claim any visual acceptance.
 
-## Open questions
+## Decisions (user, 2026-10-26)
+
+- Cross-role links between SRC L2 and AGENT L2 stay; consistent object Chips are expected to remove the earlier confusion.
+- SRC L2 shows no authorization history. It shows the latest authorization state through the Authorization request Chip; OAuthGrants-style history is not a separate SRC surface.
+- An SRC account Row may show its connection, but only as a clickable TUNNEL Chip that opens that connection's detail.
+- Peer messages: deferred; designed together with the planned read-only AX visualizations (board, event center). The four slots stay reserved.
+- Several sources or same-Agent profiles under one account: accept the proposed default below (one account inspector, explicit per-source/per-profile rows for mutations, never the first record silently).
+- Dispatch policy summary and readable model labels: read from existing native data, not UI mappings. The `dispatch_policy` op already returns defaults, models and criteria; ACP agents expose readable model names in their session config options (e.g. dsh: `DeepSeek V4.1 Flash · OpenCode Go`). Expose these to the UI.
+- Draft placement: converge components in current hosts first; object-model panel moves are a separate, later change.
+
+## Open questions (original wording; resolved above)
 
 | Decision needed | Concrete boundary / proposed default |
 | --- | --- |
