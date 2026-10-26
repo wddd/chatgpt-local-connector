@@ -16,7 +16,7 @@ pub(crate) fn validate(source: &Value, profile: &Value) -> Result<()> {
                 && matches!(profile["waitMode"].as_str(), Some("push" | "poll"))
         };
     if !valid {
-        return Err("INVALID_ARGUMENTS: capabilityProfile must be null (Legacy), {hostAccess:host,waitMode:background-cli} for built-in Local CLI, or {hostAccess:none|unknown,waitMode:push|poll} for MCP sources. Use cli source update <id> --stdin.".into());
+        return Err("INVALID_ARGUMENT: capabilityProfile must be null (Legacy), {hostAccess:host,waitMode:background-cli} for built-in Local CLI, or {hostAccess:none|unknown,waitMode:push|poll} for MCP sources. Use cli source update <id> --stdin.".into());
     }
     Ok(())
 }
