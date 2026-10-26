@@ -23,6 +23,12 @@ Load in this order. The canvas already supplies `window.React` and `window.React
 
 Token JSON retains CSS expressions such as `var()` and `color-mix()`. The `colors` maps select the appropriate branch of literal `light-dark()` colors. The `themes` maps preserve source expressions. Root uses the default ARC accent palette.
 
+## Publishing to Claude Design
+
+Run `npm run design:bundle`, then `npm run design:claude`. The Node packager writes the gitignored `design-system/claude/project/` with literal color tokens, the shared bundle, and a README and preview for every current component export. It reports omitted CSS color expressions and fails on missing component documentation or previews and unsafe inline bundle delimiters.
+
+Stage `design-system/claude/project/*` in the Claude session, preserving its directory layout. Publish to the account's **Design System**, with `design-system.json` last. The generated `README.md` contains the brand book and publishing steps. Generated files do not belong in Git.
+
 ## Provider rule
 
 Wrap every mounted component in `Arc.Root`. Use a separate Root for each independently configured artboard. It supplies `mode`, `locale`, `privacy` and a fixed `now` in epoch milliseconds. It sets attributes on its own element, never on the host document. Native service calls and preferences are replaced with memory-only design adapters. Reduced motion is enabled for deterministic mounts.

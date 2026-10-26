@@ -9,6 +9,7 @@
   },
   "scripts": {
     "design:bundle": "node design-system/build.mjs",
+    "design:claude": "node design-system/claude/build.mjs",
     "wt": "node tooling/worktree.mjs",
     "brand": "node tooling/brand.mjs",
     "check": "tsc --noEmit -p ui/tsconfig.json",
