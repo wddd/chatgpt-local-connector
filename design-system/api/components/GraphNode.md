@@ -1,0 +1,29 @@
+# Arc.GraphNode
+
+The existing topology node button. This first island API allows plain text content only.
+
+Requires [Arc.Root](Root.md). Non-string props use template holes.
+
+## Props
+
+| Prop | Type / allowed values | Default | Meaning |
+| --- | --- | --- | --- |
+| `label` | `string` | `required` | Accessible name. |
+| `state` | `"normal" &#124; "connecting" &#124; "error" &#124; "inactive"` | `required` | Existing WireState. |
+| `onOpen` | `() => void` | `required` | Activation callback. |
+| `onMove` | `(by: number) => void` | `optional` | ArrowUp sends -1; ArrowDown sends 1. |
+| `highlighted` | `boolean` | `false` | Selected/highlighted presentation. |
+| `newlyAdded` | `boolean` | `false` | New-source presentation. |
+| `children` | `string` | `required` | Plain text node content. Nested x-import/React elements are not supported inside this island. |
+
+## States
+
+Normal, connecting, error, inactive, highlighted, newly added, keyboard focus and reorder. Surrounding topology geometry and panels remain owned by the artboard.
+
+## Canvas example
+
+```js
+html`<x-import component-from-global-scope="Arc.GraphNode"
+  label=${Arc.fixtures.sources[0].label} state="normal" on-open=${() => {}}
+  on-move=${by => {}}>C</x-import>`
+```

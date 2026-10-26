@@ -1,0 +1,29 @@
+# Arc.SingleChoice
+
+The existing responsive single-choice control. Width and option count select pills or dropdown.
+
+Requires [Arc.Root](Root.md). Non-string props use template holes.
+
+## Props
+
+| Prop | Type / allowed values | Default | Meaning |
+| --- | --- | --- | --- |
+| `value` | `string` | `required` | Selected option value. |
+| `onChange` | `(value: string) => void` | `required` | Owner must update value. |
+| `options` | `readonly Choice[]` | `required` | Choice fields below. |
+| `label` | `string` | `required` | Accessible group/dropdown name. |
+| `disabled` | `boolean` | `false` | Disables selection. |
+| `swatches / compact / cards / navigation / tiles` | `boolean` | `false` | Existing renderer layout flags; use one presentation family at a time. |
+
+`Choice` is `{ value: string; label: string; icon?: IconName; graphic?: string; color?: string; description?: string; warning?: string; disabled?: boolean }`. IconName is `RefreshCw`, `Plus`, `Check`, `X` or `Info`. Rich React graphics are not accepted across versions.
+
+## States
+
+Selected/unselected, disabled options, disabled control, keyboard focus, narrow dropdown and wide pills. More than five options uses a dropdown unless an explicit layout flag selects another presentation.
+
+## Canvas example
+
+```js
+html`<x-import component-from-global-scope="Arc.SingleChoice" label="Agent"
+  value="claude" options=${Arc.fixtures.choices} on-change=${value => {}}></x-import>`
+```
