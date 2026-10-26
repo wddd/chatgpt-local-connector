@@ -1,3 +1,6 @@
+import { StateBadge } from "./ui";
+import { statePresentation } from "./objects/statePresentation";
+import { SectionHeader, EntityRow, Button, Empty, IconButton, Loading, Notice, Dialog } from "./ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Copy } from "lucide-react";
 import { t } from "../i18n";
@@ -13,7 +16,6 @@ import {
   type TaskRuntime,
 } from "../state/tasks";
 import { useInterval } from "../state/hooks";
-import { Button, Empty, IconButton, Loading, Notice, Dialog } from "./ui";
 import TaskOwnership from "./TaskOwnership";
 import { Markdown, plainMarkdown } from "./ui/Markdown";
 const idOf = (r: TaskRecord) => r.taskId || r.threadId || r.task.threadId;
@@ -139,7 +141,7 @@ export default function TasksPage() {
           >
             {projectName(selected.first)}
           </span>
-          {["running", "runtimeError"].includes(stateOf(selected)) && <span className="task-document-state">{t(stateOf(selected))}</span>}
+          {["running", "runtimeError"].includes(stateOf(selected)) && <StateBadge variant="text" presentation={statePresentation("dispatch", stateOf(selected) === "runtimeError" ? "failed" : "running")} label={t(stateOf(selected))} />}
           {selected.first.open && !runtime(selected.first)?.archived && (
             <IconButton
               icon={ExternalLink}
@@ -169,8 +171,7 @@ export default function TasksPage() {
         <TaskOwnership ownership={runtime(selected.first)?.ownership} />
         {[...selected.records].reverse().map((r) => (
           <section className="task-entry" key={r.requestId}>
-            <header>
-              <strong>
+            <SectionHeader  level={3} title={<>
                 {t(
                   {
                     create: "createTask",
@@ -179,9 +180,7 @@ export default function TasksPage() {
                     native: "manageTask",
                   }[r.task.kind] || "manageTask",
                 )}
-              </strong>
-              <time>{time(r.createdAt)}</time>
-              {r.task.prompt && (
+              </>} actions={<><time>{time(r.createdAt)}</time>{r.task.prompt && (
                 <IconButton
                   icon={Copy}
                   label={t("copyPrompt")}
@@ -195,8 +194,7 @@ export default function TasksPage() {
                       )
                   }
                 />
-              )}
-            </header>
+              )}</>} />
             <Markdown>{r.task.prompt}</Markdown>
             <p className="muted small">
               {t(
@@ -260,17 +258,10 @@ export default function TasksPage() {
         <div className="task-grid">
           {visible.map((g) => (
             <div className="task-cell" key={g.id}>
-              <button
-                type="button"
-                className="task-document"
-                data-task-id={g.id}
-                aria-label={titleOf(g.first)}
-                aria-haspopup="dialog"
-                onClick={() => {
+              <EntityRow className="task-document" data-task-id={g.id} aria-label={titleOf(g.first)} aria-haspopup="dialog" onClick={() => {
                   setSelectedId(g.id);
                   setActionError("");
-                }}
-              >
+                }}>
                 <span className="task-document-heading">
                   <strong className="task-document-title">
                     {titleOf(g.first)}
@@ -278,7 +269,7 @@ export default function TasksPage() {
                 </span>
                 <span className="task-document-meta">
                   {projectName(g.first) && <span className="task-tag task-document-project" title={projectOf(g.first)}>{projectName(g.first)}</span>}
-                  {stateOf(g) === "running" && <span className="task-document-state">{t("running")}</span>}
+                  {stateOf(g) === "running" && <StateBadge variant="text" presentation={statePresentation("dispatch", "running")} label={t("running")} />}
                   <time dateTime={g.first.createdAt}>
                     {time(g.first.createdAt)}
                   </time>
@@ -288,7 +279,7 @@ export default function TasksPage() {
                     {plainMarkdown(g.first.task.prompt)}
                   </span>
                 )}
-              </button>
+              </EntityRow>
             </div>
           ))}
         </div>

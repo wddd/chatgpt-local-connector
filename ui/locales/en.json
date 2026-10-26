@@ -3,7 +3,6 @@
   "topology.layout.auto": "Auto",
   "topology.layout.landscape": "Landscape",
   "topology.layout.portrait": "Portrait",
-
   "localCli": "Local CLI",
   "trayConnectionStatus": "Connection status",
   "trayOptions": "Options",
@@ -1408,5 +1407,16 @@
   "accounts.mergeConfirm": "Merge selected accounts",
   "accounts.mergeAlias": "Account name",
   "accounts.mergeQuota": "Shared quota source",
-  "accounts.mergeNativeQuota": "Native account quota"
+  "accounts.mergeNativeQuota": "Native account quota",
+  "accounts.health.ready": "Ready",
+  "accounts.health.removed": "Removed",
+  "accounts.health.invalid": "Invalid",
+  "activity.submitting": "Submitting",
+  "activity.submissionFailed": "Submission failed",
+  "authorization.pending": "Awaiting authorization",
+  "authorization.approved": "Approved",
+  "authorization.denied": "Denied",
+  "authorization.expired": "Expired",
+  "connect.phase.idle": "Idle",
+  "connect.phase.ready": "Ready"
 }

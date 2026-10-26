@@ -1,3 +1,4 @@
+import { SectionHeader, Button, Icon, IconButton, PlatformIcon } from "./ui";
 import { TaskReceiptHistory } from "./TaskNeedsYou";
 import { ChangedFiles } from "./TaskChanges";
 import TaskOutcome from "./TaskOutcome";
@@ -11,9 +12,7 @@ import type { AgentActivitySession, AgentTimelineEntry, DispatchSummary, TurnTim
 import { activityApprovals } from "../state/activity";
 import { filePathParts, interactionKey } from "../state/activityModel";
 import { timelineGroups, turnDuration } from "../state/timelineGroups";
-import { Button, Icon, IconButton } from "./ui";
 import { dispatchSourceLabel } from "./activity";
-import { icons } from "../state/agents";
 import { answerLabel, interactionSummary } from "../state/taskInteractions";
 import { copyText } from "../platform";
 import { processOpen, projectTurn, taskState, toolCounts, type ProcessRow } from "../state/taskProjection";
@@ -117,7 +116,7 @@ function InteractionAnchor({ entry, agent, session }: { entry: AgentTimelineEntr
   </div>;
 }
 function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; agent: string; session: AgentActivitySession }) {
-  if (entry.type === "text") return <article className="task-phase"><span className="task-agent-mark" aria-label={agent}>{icons[agent] ? <span dangerouslySetInnerHTML={{ __html: icons[agent] }} /> : <Icon icon={MessageSquare} />}</span><TimelineMarkdown text={entry.text ?? ""} /></article>;
+  if (entry.type === "text") return <article className="task-phase"><span className="task-agent-mark" aria-label={agent}><PlatformIcon role="agent" platform={agent} size={16} /></span><TimelineMarkdown text={entry.text ?? ""} /></article>;
   if (entry.type === "user") return <div className="task-prompt">{entry.controlSource && <small>{t("detail.via", { source: dispatchSourceLabel(entry.controlSource) })}{entry.startedAt && ` · ${new Date(entry.startedAt).toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit" })}`}</small>}<TimelineMarkdown text={entry.text ?? ""} /></div>;
   if (entry.type === "interaction") return <InteractionAnchor entry={entry} agent={agent} session={session} />;
   if (entry.type === "plan") return <section className="task-plan" aria-label={t("timeline.plan")}><strong>{t("timeline.plan")}</strong><ul>{entry.plan?.map((step, index) => <li key={index} data-state={step.status}>
@@ -179,7 +178,7 @@ export default function TimelineEntries({ entries, agent, session, now, running 
         {(state === "failed" || state === "interrupted") && <TaskOutcome state={state} entries={group.entries} project={session.project} onResume={latest && current ? onResume : undefined} onRetry={latest && current ? onRetry : undefined} continuing={continuing} />}
         <TaskReceiptHistory agent={agent} id={session.id} turnId={group.turnId} latest={latest} />
         {projection.thinking && <div className="task-thinking" role="status">{projection.thinking.text}</div>}
-        {final && state !== "failed" && state !== "interrupted" && <article className="task-final"><header><Icon icon={Check} /><strong>{t("detail.finalReply")}</strong><CopyReply text={final.text ?? ""} /></header><TimelineMarkdown text={final.text ?? ""} />{final.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}<ChangedFiles entries={group.entries} project={session.project} /></article>}
+        {final && state !== "failed" && state !== "interrupted" && <article className="task-final"><SectionHeader  level={3} title={<><Icon icon={Check} /></>} actions={<><strong>{t("detail.finalReply")}</strong><CopyReply text={final.text ?? ""} /></>} /><TimelineMarkdown text={final.text ?? ""} />{final.truncated && <span className="timeline-meta">{t("timeline.truncated")}</span>}<ChangedFiles entries={group.entries} project={session.project} /></article>}
       </div>}
     </section>;
   })}</TimelineResources>;

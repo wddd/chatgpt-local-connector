@@ -1,3 +1,4 @@
+import { SectionHeader, Dialog, IconButton, Notice } from "./ui";
 import { useReducedMotion } from "../state/appEnvironment";
 import { agentPanel, selectAgentPanel } from "../state/overviewPanels";
 import { useId, useLayoutEffect, useRef, useState } from "react";
@@ -14,7 +15,6 @@ import { compactAgentVersion, name, type Agent } from "../state/agents";
 import { connector } from "../state/connector";
 import { AgentQuotaIcon } from "../subscriptions/QuotaRing";
 import { errorLabels } from "../subscriptions/presentation";
-import { Dialog, IconButton, Notice } from "./ui";
 import AgentConversations from "./AgentConversations";
 import ActivityTimeline from "./ActivityTimeline";
 import type { SurfaceRect } from "../motion/surface";
@@ -44,23 +44,13 @@ function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWi
     finally { setRefreshing(false); }
   }
   return <section className="agent-panel-layer agent-overview-layer">
-    <header className="dialog-header agent-panel-header">
-      <AgentQuotaIcon agent={agent.agent} quota={accountId ? account?.quota ?? null : undefined} dual />
-      <div className="agent-panel-heading">
-        <div className="agent-panel-title-row">
-          <h2 className="activity-panel-title" tabIndex={-1} title={title}>{title}</h2>
-          {agent.installed && status?.platform && status.platform !== "linux" && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
+    <SectionHeader className="dialog-header agent-panel-header" level={2} leading={<><AgentQuotaIcon agent={agent.agent} quota={accountId ? account?.quota ?? null : undefined} dual /></>} title={<>{title}</>} titleProps={{ className: 'activity-panel-title', tabIndex: -1, title }} titleActions={<>{agent.installed && status?.platform && status.platform !== "linux" && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
             setError(""); void api("agents/open", "POST", { agent: agent.agent }).catch(error => setError(String(error)));
-          }} />}
-        </div>
-        <span className="activity-panel-meta" title={agent.version || undefined}>{[compactAgentVersion(agent.version), t("agentPanel.inProgress", { count: sessions.length })].filter(Boolean).join(" · ")}</span>
-      </div>
-      <div className="actions">
+          }} />}</>} secondary={<><span className="activity-panel-meta" title={agent.version || undefined}>{[compactAgentVersion(agent.version), t("agentPanel.inProgress", { count: sessions.length })].filter(Boolean).join(" · ")}</span></>} actions={<>
         <IconButton icon={Settings} label={t("agentDisplaySettings")} onClick={onSettings} />
         {resizable && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
           aria-pressed={expanded} onClick={onToggleWidth} />}
-      </div>
-    </header>
+      </>} />
     <div className="agent-view-scroll">
       {error && <p className="timeline-error" role="alert">{error}</p>}
       {providerError && <Notice action={<IconButton icon={RefreshCw} size={16} label={t("usageRefresh")}

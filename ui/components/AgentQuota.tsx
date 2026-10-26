@@ -1,4 +1,3 @@
-import { RefreshCw } from "lucide-react";
 import { locale, t } from "../i18n";
 import { useNow } from "../state/hooks";
 import { agentQuotaWindows } from "../subscriptions/QuotaRing";
@@ -8,7 +7,7 @@ import { quotaPeriod } from "../subscriptions/quotaTiming";
 import { compactAge, compactReset, preciseTime, quotaColor } from "../subscriptions/presentation";
 import { quotaPace } from "../subscriptions/pace";
 import type { ProviderSnapshot } from "../subscriptions/types";
-import { Button, IconButton } from "./ui";
+import { Button, Freshness } from "./ui";
 import UsageHistory from "../subscriptions/UsageHistory";
 import ResetCreditDetails from "../subscriptions/ResetCreditDetails";
 
@@ -20,7 +19,6 @@ export default function AgentQuota({ provider, onRefresh, refreshing }: { provid
   const selected = [short, weekly].filter(window => window !== undefined);
   const windows = selected.length ? selected : provider.windows.filter(window => Number.isFinite(window.usedPercent)).slice(0, 2);
   const pace = windows.map(window => quotaPace(window, provider, now));
-  const observed = Date.parse(provider.observedAt ?? "");
   const age = compactAge(provider.observedAt, now);
   const summaryWindow = weekly ?? windows[0];
   if (!windows.length) return <p className="timeline-meta agent-no-quota">{t("agentPanel.noQuota")}</p>;
@@ -39,13 +37,10 @@ export default function AgentQuota({ provider, onRefresh, refreshing }: { provid
             <time dateTime={Number.isFinite(resetAt) ? window.resetsAt : undefined}
               title={Number.isFinite(resetAt) ? t("quotaResetAt", { time: preciseTime(window.resetsAt) }) : t("quotaResetUnknown")}
               aria-label={t(reset === "time" ? "quotaResetAt" : "quotaResetIn", { time: resetText })}>{resetText}</time>
-            {window === summaryWindow && <span className="agent-quota-refresh">
-              <time dateTime={Number.isFinite(observed) ? provider.observedAt : undefined}
-                title={Number.isFinite(observed) ? preciseTime(provider.observedAt) : undefined}
-                aria-label={t("agentPanel.updated", { time: age })}>{age}</time>
-              <IconButton icon={RefreshCw} size={16} label={t("usageRefresh")} busy={refreshing || provider.refreshing}
-                disabled={!provider.eligible} onClick={onRefresh} />
-            </span>}
+            {window === summaryWindow && <Freshness className="agent-quota-refresh" observedAt={provider.observedAt} age={age}
+              timestampLabel={preciseTime(provider.observedAt)} label={t("agentPanel.updated", { time: age })}
+              stale={provider.state === "stale"} onRefresh={onRefresh} refreshLabel={t("usageRefresh")}
+              busy={refreshing || provider.refreshing} disabled={!provider.eligible} />}
           </div>
           <div className="agent-quota-balance">
             <strong className="agent-quota-percent" aria-label={`${label} · ${quotaLabel()} ${quotaPercent(window)}`}>{quotaPercent(window)}</strong>

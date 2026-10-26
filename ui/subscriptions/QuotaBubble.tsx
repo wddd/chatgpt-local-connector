@@ -1,11 +1,11 @@
 import { useSensitiveText } from "../components/Sensitive";
 import { useState } from "react";
-import { RefreshCw, TriangleAlert, CircleAlert, Flame } from "lucide-react";
+import { TriangleAlert, CircleAlert, Flame } from "lucide-react";
 import { t, locale } from "../i18n";
 import { openUrl } from "../platform";
 import { useNow } from "../state/hooks";
 import { refreshSubscription } from "../state/subscriptions";
-import { Button, IconButton, Icon, HoverScope } from "../components/ui";
+import { Button, Icon, HoverScope, PlatformIcon, Freshness, SectionHeader } from "../components/ui";
 import {
   quotaDisplay,
   resetDisplay,
@@ -15,7 +15,6 @@ import {
 } from "./displayPreferences";
 import { windowLabel, subscriptionLabel } from "./labels";
 import {
-  brandIcon,
   quotaColor,
   compactAge,
   compactReset,
@@ -121,15 +120,7 @@ export default function QuotaBubble({
       >
         {({ register, hover, focus, expanded, displayed, highlighted }) => (
           <>
-            <header>
-              <span
-                className="provider-logo"
-                style={{
-                  maskImage: `url(${JSON.stringify(brandIcon(provider.agentId))})`,
-                }}
-                aria-hidden="true"
-              />
-              <span className="subscription-heading">
+            <SectionHeader level={3} leading={<PlatformIcon role="provider" platform={provider.agentId} size={16} monochrome />} title={<span className="subscription-heading">
                 {usageUrl ? (
                   <a
                     className="subscription-link"
@@ -164,22 +155,9 @@ export default function QuotaBubble({
                     <Icon icon={hasError ? CircleAlert : TriangleAlert} />
                   </span>
                 )}
-              </span>
-              <time
-                className="refresh-age"
-                title={preciseTime(provider.observedAt)}
-              >
-                {ageText}
-              </time>
-              <IconButton
-                icon={RefreshCw}
-                size={16}
-                label={t("usageRefresh")}
-                busy={requesting || provider.refreshing}
-                disabled={!provider.eligible}
-                onClick={() => void refresh()}
-              />
-            </header>
+              </span>} actions={<Freshness className="refresh-age" observedAt={provider.observedAt} age={ageText}
+                timestampLabel={preciseTime(provider.observedAt)} stale={provider.state === "stale"}
+                onRefresh={() => void refresh()} refreshLabel={t("usageRefresh")} busy={requesting || provider.refreshing} disabled={!provider.eligible} />} />
             {readings.map(({ w, pace }) => {
               const key = "reading:" + w.id;
               return (

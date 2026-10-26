@@ -1,3 +1,4 @@
+import { SectionHeader, Button, Dialog, DialogClose, Field, Input, IconButton, Notice, SingleChoice, PlatformIcon } from "./ui";
 import { useState, useRef, useEffect, type ReactNode, type ComponentProps } from "react";
 import { ChevronLeft, X } from "lucide-react";
 import { api } from "../api";
@@ -21,18 +22,7 @@ import { connectionForm, type ConnectionForm } from "../state/connectionForm";
 import { connector, refreshConnector } from "../state/connector";
 import type { Ingress } from "../state/types";
 import type { ToolPolicy } from "../toolPolicy";
-import {
-  Button,
-  Dialog,
-  DialogClose,
-  Field,
-  Input,
-  IconButton,
-  Notice,
-  SingleChoice,
-} from "./ui";
 import { SensitiveInput, useSensitiveText } from "./Sensitive";
-import SourceIcon from "./SourceIcon";
 import ToolPolicyField from "./ToolPolicyField";
 export default function IngressDialog({
   ingress: initialIngress,
@@ -369,7 +359,7 @@ export default function IngressDialog({
               variant="ghost"
               onClick={() => choose(option.value)}
             >
-              <SourceIcon
+              <PlatformIcon role="source"
                 platform={option.value}
                 add={option.value === "custom"}
               />
@@ -548,8 +538,7 @@ function IngressEditLayer({ title, children, footer, onClose, initialFocus, busy
     return () => cancelAnimationFrame(frame);
   }, [initialFocus]);
   return <section className="ingress-edit-layer side-panel-layer" ref={root}>
-    <header className="dialog-header" data-leading={leading === null ? "false" : "true"}>{leading === undefined ? <IconButton icon={ChevronLeft} label={t("back")} disabled={busy} onClick={onClose} /> : leading}
-      <h2 className="activity-panel-title" tabIndex={-1}>{title}</h2>{actions && <div className="actions">{actions}</div>}</header>
+    <SectionHeader className="dialog-header" data-leading={leading === null ? 'false' : 'true'} level={2} leading={<>{leading === undefined ? <IconButton icon={ChevronLeft} label={t("back")} disabled={busy} onClick={onClose} /> : leading}</>} title={title} titleProps={{ className: 'activity-panel-title', tabIndex: -1 }} actions={actions} />
     <div className="side-panel-scroll">{children}</div><footer className="dialog-footer">{footer}</footer>
   </section>;
 }

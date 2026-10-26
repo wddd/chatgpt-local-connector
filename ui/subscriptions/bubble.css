@@ -15,15 +15,6 @@
   line-height: 19px;
   font-size: 14px;
 }
-.provider-logo {
-  flex: none;
-  background: currentColor;
-  mask-size: contain;
-  mask-repeat: no-repeat;
-  mask-position: center;
-  width: 16px;
-  height: 16px;
-}
 .subscription-heading {
   display: flex;
   align-items: center;
@@ -274,3 +265,5 @@
 }
 .product-usage-bar .product-usage-remaining { background: var(--border); }
 .product-usage-segment:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.quota-bubble .section-header-title > h3 { font-weight: inherit; }

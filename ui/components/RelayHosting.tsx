@@ -1,3 +1,6 @@
+import { Freshness, EntityCard, StateBadge, SectionHeader, Button, DataTable, Dialog, Icon, IconButton, Loading, Notice } from "./ui";
+import { ingressState } from "../state/connector";
+import { statePresentation } from "./objects/statePresentation";
 import { Sensitive } from "./Sensitive";
 import { useCallback, useEffect, useState } from "react";
 import { Cloud, RefreshCw } from "lucide-react";
@@ -8,7 +11,6 @@ import { connector, notify, refreshConnector } from "../state/connector";
 import { appNow, useAppNow } from "../state/appEnvironment";
 import { useRelays, useRelayProgress, type Relay, type RelayProgress as Progress } from "../state/relay";
 import RelayProgress from "./RelayProgress";
-import { Button, DataTable, Dialog, Icon, IconButton, Loading, Notice, Status } from "./ui";
 
 type Member = { id: string; name: string; isSelf: boolean; joinedAt: string; lastOnline: string | null; online: boolean };
 type Job = { action: "create" | "redeploy" | "delete"; id?: string };
@@ -61,7 +63,7 @@ function HostedRelay({ relay, version, startJob, disabled }: {
   const name = (member: Member) => member.isSelf ? status?.deviceName || t("connect.thisComputer") : member.name;
   const outdated = !!version && relay.workerVersion !== version;
   return <article className="hosted-relay" aria-label={t("hosting.title")}>
-    <div className="hosted-relay-card">
+    <EntityCard className="hosted-relay-card">
       <div className="hosted-relay-summary">
         <div className="hosted-relay-icon"><Icon icon={Cloud} /></div>
         <div className="hosted-relay-identity">
@@ -70,7 +72,7 @@ function HostedRelay({ relay, version, startJob, disabled }: {
             {outdated || !relay.url ? <Button variant="ghost" disabled={blocked} onClick={() => void startJob({ action: "redeploy", id: relay.id })}>{t(outdated && relay.url ? "hosting.update" : "retry")}</Button> : <span>{t("hosting.upToDate")}</span>}
           </div>
         </div>
-        <span className={`hosted-relay-state ${ingress?.state === "ready" ? "running" : ""}`}><Status tone={ingress?.state === "ready" ? "success" : "neutral"}>{t(ingress?.state === "ready" ? "hosting.running" : "connect.offline")}</Status></span>
+        <span className={`hosted-relay-state ${ingress?.state === "ready" ? "running" : ""}`}><StateBadge presentation={statePresentation("connection", ingress ? ingressState(ingress) : "unknown")} /></span>
       </div>
       <div className="hosted-relay-invite">
         <p>{t("hosting.invite")}<span className="muted"> · {t("hosting.inviteDescription")}</span></p>
@@ -79,18 +81,15 @@ function HostedRelay({ relay, version, startJob, disabled }: {
           <Button disabled={blocked || !relay.url} onClick={() => { setError(""); setConfirm("reset-token"); }}>{t("hosting.reset")}</Button>
         </div>
       </div>
-    </div>
+    </EntityCard>
     <section className="hosted-relay-devices">
-      <div className="hosting-section-heading">
-        <div><h3>{t("hosting.devices")}</h3><p className="muted small">{t("hosting.devicesDescription")}</p></div>
-        <IconButton icon={RefreshCw} label={t("hosting.refreshDevices")} busy={loading} disabled={blocked || !relay.url} onClick={() => void readMembers()} />
-      </div>
+      <SectionHeader level={3} title={<>{t("hosting.devices")}</>} secondary={<><p className="muted small">{t("hosting.devicesDescription")}</p></>} actions={<><IconButton icon={RefreshCw} label={t("hosting.refreshDevices")} busy={loading} disabled={blocked || !relay.url} onClick={() => void readMembers()} /></>} />
       {membersError && <Notice tone="danger">{membersError}</Notice>}
       <div className="hosted-relay-table" aria-busy={loading}>
         <DataTable rows={members} empty={loading ? <Loading /> : membersError ? t("connect.membersFailed") : t("hosting.noDevices")} columns={[
-          { key: "device", title: t("hosting.device"), width: 180, render: member => <div className="hosted-relay-device"><Status tone={member.online ? "success" : "neutral"}><span className="sr-only">{t(member.online ? "connect.online" : "connect.offline")}</span></Status><span className="hosted-relay-device-name" title={name(member)}>{name(member)}</span>{member.isSelf && <span className="hosted-relay-self">{t("hosting.self")}</span>}</div> },
+          { key: "device", title: t("hosting.device"), width: 180, render: member => <div className="hosted-relay-device"><StateBadge variant="dot" presentation={statePresentation("member", member.online ? "online" : "offline")} /><span className="hosted-relay-device-name" title={name(member)}>{name(member)}</span>{member.isSelf && <span className="hosted-relay-self">{t("hosting.self")}</span>}</div> },
           { key: "joined", title: t("hosting.joined"), width: 100, render: member => <time dateTime={member.joinedAt}>{compactDate(member.joinedAt)}</time> },
-          { key: "seen", title: t("hosting.lastSeen"), width: 100, render: member => member.lastOnline ? <time dateTime={member.lastOnline}>{compactDate(member.lastOnline, true)}</time> : t("connect.neverOnline") },
+          { key: "seen", title: t("hosting.lastSeen"), width: 100, render: member => <Freshness observedAt={member.lastOnline} age={member.lastOnline ? compactDate(member.lastOnline, true) : undefined} unknown={t("connect.neverOnline")} /> },
           { key: "actions", title: <span className="sr-only">{t("hosting.actions")}</span>, width: 80, align: "right", render: member => !member.isSelf && <Button variant="ghost" disabled={blocked} onClick={() => { setError(""); setConfirm(member); }}>{t("hosting.remove")}</Button> },
         ]} />
       </div>
@@ -145,7 +144,7 @@ export default function RelayHosting() {
   }
   const owners = relays.relays.filter(relay => relay.owner);
   return <div className="relay-hosting">
-    <div className="hosting-section-heading"><h2>{t("hosting.title")}</h2><Button disabled={busy || !!job} onClick={() => { setError(""); setAccount(""); setDeploy(true); }}>{t("hosting.deploy")}</Button></div>
+    <SectionHeader level={2} title={<>{t("hosting.title")}</>} actions={<><Button disabled={busy || !!job} onClick={() => { setError(""); setAccount(""); setDeploy(true); }}>{t("hosting.deploy")}</Button></>} />
     {!relays.loaded ? <Loading /> : !owners.length && !relays.error && <p className="muted">{t("hosting.empty")}</p>}
     {relays.error && <Notice tone="danger" action={<Button onClick={() => void relays.refresh().catch(() => {})}>{t("retry")}</Button>}>{t("connect.readFailed")}</Notice>}
     {error && !deploy && !job && <Notice tone="danger">{error}</Notice>}

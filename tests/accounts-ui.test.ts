@@ -310,7 +310,8 @@ test('built-in local authority is absent from control sources, accounts and disc
       navigation.set((old: any) => ({ ...old, remoteSourceId: local.id, remoteConnectionId: undefined }));
       await render(h(RemoteLinkPage));
       assert.equal(page.queryByRole('button', { name: name => name.includes(local.label) }), null);
-      assert.ok(page.getByRole('button', { name: name => name.startsWith(external.label) && name.endsWith(t('source.state.connected')) }));
+      const connectionName = connector.get().status.ingresses.find((entry: any) => entry.id === external.ingressId)?.name ?? external.connectionName ?? t('source.connectionRemoved');
+      assert.ok(page.getByRole('button', { name: `${external.label} ${connectionName} ${t('source.state.connected')}`, exact: true }));
       assert.equal(page.queryByRole('button', { name: t('source.disconnect'), exact: true }), null);
       for (const component of [SourcePanel, SourceConnection]) {
         await render(h(component, { source: local, onConnection() {} }));

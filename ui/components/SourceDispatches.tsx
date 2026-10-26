@@ -1,3 +1,5 @@
+import { EntityRow, StateBadge, Icon, Notice, Tag } from "./ui";
+import { statePresentation } from "./objects/statePresentation";
 import { useAppNow } from "../state/appEnvironment";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
@@ -9,7 +11,6 @@ import { selectAgentPanel } from "../state/overviewPanels";
 import { navigation } from "../state/navigation";
 import { sourceDispatches, dispatchState, isLatestDispatch } from "../state/sourceDispatch";
 import { PhaseTile } from "./activity";
-import { Icon, Notice, Tag } from "./ui";
 
 export default function SourceDispatches({ sourceId, summary = false }: { sourceId: string; summary?: boolean }) {
   const now = useAppNow(60_000);
@@ -65,7 +66,7 @@ export default function SourceDispatches({ sourceId, summary = false }: { source
       const title = record.task.title || live?.title || runtime?.title || record.task.prompt.split("\n")[0] || t("taskRequest");
       const phase = state === "pending" ? "interaction" : state === "running" ? live?.phase ?? "thinking" : "idle";
       const canOpen = !!id && (state === "running" || state === "pending") && (live || runtime && !runtime.stale);
-      return <button key={record.requestId} className="source-dispatch-row" disabled={!canOpen} data-state={state} onClick={() => {
+      return <EntityRow key={record.requestId} className="source-dispatch-row" disabled={!canOpen} data-state={state} onClick={() => {
         if (!id || !canOpen) return;
         selectAgentPanel({ type: "task", agent: "codex", session: live ? { ...live, orderAt: Date.parse(record.createdAt) } : {
           id, source: "codex-thread", title, phase, headline: title, phaseSince: null, timeline: true,
@@ -74,9 +75,9 @@ export default function SourceDispatches({ sourceId, summary = false }: { source
         navigation.set(old => ({ ...old, page: "overview" }));
       }}>
         <PhaseTile phase={phase} completed={state === "completed"} animated={false} />
-        <span><strong>{title}</strong><span className="source-dispatch-meta">{record.agent ?? "Codex"} · <span>{t(`sourcePanel.${state}`)}</span></span></span>
+        <span><strong>{title}</strong><span className="source-dispatch-meta">{record.agent ?? "Codex"} · <StateBadge variant="text" presentation={statePresentation("dispatch", state)} /></span></span>
         {canOpen && <Icon icon={ChevronRight} />}
-      </button>;
+      </EntityRow>;
     })}
     {!rows.length && <p className="timeline-meta">{t("sourcePanel.noRecords")}</p>}
     {visible < dispatches.length && <div ref={more} className="source-dispatch-more" aria-hidden="true" />}

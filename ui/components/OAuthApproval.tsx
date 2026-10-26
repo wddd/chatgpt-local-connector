@@ -1,3 +1,5 @@
+import { StateBadge } from "./ui";
+import { statePresentation } from "./objects/statePresentation";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { nextSourceName } from "../controlSources";
@@ -7,7 +9,7 @@ import { onboarding, connectionSetup, connectionSwitch } from "../state/onboardi
 import { navigation } from "../state/navigation";
 import { sourceCandidates } from "../sourcePresentation";
 import type { Ingress, OAuthRequest } from "../state/types";
-import { Button, Dialog, Field, Input, Notice, SingleChoice, Tag } from "./ui";
+import { Button, EntityCard, Dialog, Field, Input, Notice, SingleChoice, Tag } from "./ui";
 
 export function ApprovalCard({ request, ingress, inline = false, product, onDecided, onBusy }: { request: OAuthRequest; ingress: Ingress; inline?: boolean; product?: string; onDecided?: (allow: boolean) => void; onBusy?: (busy: boolean) => void }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -33,7 +35,7 @@ export function ApprovalCard({ request, ingress, inline = false, product, onDeci
     } catch (e) { setError(`${t("connect.approvalFailed")} ${String(e)}`); }
     finally { setBusy(false); }
   }
-  return <form id={`approval-${request.id}`} className={`pairing-card ${inline ? "pairing-inline" : ""}`} aria-live="polite" onSubmit={e => { e.preventDefault(); void decide((e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") !== "deny"); }}>
+  return <EntityCard asChild><form id={`approval-${request.id}`} className={`pairing-card ${inline ? "pairing-inline" : ""}`} aria-live="polite" onSubmit={e => { e.preventDefault(); void decide((e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") !== "deny"); }}>
     {request.status === "pending" ? <>
       <div className="pairing-code-panel"><span>{t("connect.compareCode")}</span><strong className="pairing-code">{request.pairingCode ?? "—"}</strong></div>
       {request.switchSourceId && <><div className="pairing-claim"><Tag>{t("switch.claim", { name: fixed?.label ?? request.switchSourceId })}</Tag></div><p className="pairing-summary">{t(fixed?.connectionRemoved ? "switch.detached" : "switch.remaining", { connection: oldConnection?.name ?? fixed?.connectionName ?? t("source.connectionRemoved"), names: remaining.map(s => s.label).join(", ") || t("switch.none") })}</p></>}
@@ -44,9 +46,9 @@ export function ApprovalCard({ request, ingress, inline = false, product, onDeci
       <p className="pairing-fact">{t("connect.client", { name: request.clientName })}</p>
       <p className="pairing-fact">{t("connect.scope", { scope: ingress.toolPolicy === "all" ? t("connect.allPermissions") : t("connect.selectedPermissions") })}</p>
       {!inline && <div className="actions"><Button disabled={busy} onClick={() => void decide(false)}>{t("oauthDeny")}</Button><Button variant="primary" busy={busy} disabled={!request.switchSourceId && sourceId !== "new" && !candidates.some(s => s.id === sourceId)} onClick={() => void decide(true)}>{t("oauthAllow")}</Button></div>}
-    </> : <p>{t(request.status === "approved" ? "connect.returning" : request.status === "denied" ? "oauthDenied" : "oauthFinished")}</p>}
+    </> : <p><StateBadge variant="text" presentation={statePresentation("authorization", request.status)} label={request.status === "approved" ? t("connect.returning") : request.status === "denied" ? t("oauthDenied") : undefined} /></p>}
     {error && <Notice tone="danger">{error}</Notice>}
-  </form>;
+  </form></EntityCard>;
 }
 export default function OAuthApproval({ requested, onClose, inlineEnabled }: { requested?: { id: string }; onClose: () => void; inlineEnabled: boolean }) {
   const { status } = connector.use(), savedFlow = onboarding.use(), switching = connectionSwitch.use();

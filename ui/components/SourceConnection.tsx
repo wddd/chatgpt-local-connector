@@ -1,3 +1,6 @@
+import { Freshness, EntityCard, StateBadge, SectionHeader, FactList, Button, Dialog, Field, Input, Notice } from "./ui";
+import { statePresentation } from "./objects/statePresentation";
+import Address from "./Address";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
@@ -6,7 +9,6 @@ import { connectionSwitch } from "../state/onboarding";
 import type { ControlSource } from "../state/types";
 import { connectionKind, isLocalSource, isPendingSource, sourceDate } from "../sourcePresentation";
 import SourceProductChoice from "./SourceProductChoice";
-import { Button, CopyField, Dialog, Field, Input, Notice, Status } from "./ui";
 
 export default function SourceConnection({ source, onConnection }: { source: ControlSource; onConnection: (id: string) => void }) {
   const { status, sources } = connector.use();
@@ -39,21 +41,21 @@ export default function SourceConnection({ source, onConnection }: { source: Con
   const client = ingress?.oauth?.grants.find(g => g.id === source.credential.grantId)?.clientName;
   return <div className="source-detail">
     {error && !confirm && <Notice>{error}</Notice>}
-    <section className="source-connection-card">
-      <div className="source-section-heading"><span className="muted">{t("source.connections")}</span><Button data-change-connection disabled={source.state === "revoked" || busy} onClick={() => connectionSwitch.set({ sourceId: source.id, step: source.pendingSwitch ? source.pendingSwitch.requestId ? "approval" : "address" : "connection", ingressId: source.pendingSwitch?.ingressId, requestId: source.pendingSwitch?.requestId })}>{t("switch.title")}</Button></div>
-      {source.pendingSwitch && <Status tone="warning">{t("switch.pending")}</Status>}
+    <EntityCard className="source-connection-card">
+      <SectionHeader level={3} title={<><span className="muted">{t("source.connections")}</span></>} actions={<><Button data-change-connection disabled={source.state === "revoked" || busy} onClick={() => connectionSwitch.set({ sourceId: source.id, step: source.pendingSwitch ? source.pendingSwitch.requestId ? "approval" : "address" : "connection", ingressId: source.pendingSwitch?.ingressId, requestId: source.pendingSwitch?.requestId })}>{t("switch.title")}</Button></>} />
+      {source.pendingSwitch && <StateBadge presentation={statePresentation("source", "pending-switch")} />}
       {ingress ? <>
-      <div className="source-section-heading"><Button variant="ghost" data-source-connection onClick={() => onConnection(ingress.id)}>{ingress.name}</Button><span className="muted">{t(`source.kind.${connectionKind(ingress)}`)}</span></div>
+      <SectionHeader level={3} title={<><Button variant="ghost" data-source-connection onClick={() => onConnection(ingress.id)}>{ingress.name}</Button></>} actions={<><span className="muted">{t(`source.kind.${connectionKind(ingress)}`)}</span></>} />
       {others.length > 0 && <p className="muted">{t("source.alsoCarries", { names: others.map(s => s.label).join(", ") })}</p>}
-      {ingress.url && <CopyField value={ingress.url} label={t("source.copyAddress")} />}
+      {ingress.url && <Address value={ingress.url} label={t("source.copyAddress")} />}
       </> : <Notice tone="warning">{source.connectionName ? `${source.connectionName} · ` : ""}{t("source.connectionRemoved")}</Notice>}
-    </section>
-    <dl className="source-facts">
-      <div><dt>{t("source.authorizedAt")}</dt><dd>{sourceDate(source.connectedAt)}</dd></div>
-      <div><dt>{t("source.lastSeen")}</dt><dd>{sourceDate(source.lastSeenAt)}</dd></div>
-      <div><dt>{t("source.clientName")}</dt><dd>{client || "—"}</dd></div>
-      <div><dt>{t("accounts.tools")}</dt><dd>guide · query · act</dd></div>
-    </dl>
+    </EntityCard>
+    <FactList missing={{ placeholder: '—' }} items={[
+      { label: t("source.authorizedAt"), value: sourceDate(source.connectedAt) },
+      { label: t("source.lastSeen"), value: <Freshness observedAt={source.lastSeenAt ? new Date(source.lastSeenAt * 1000).toISOString() : undefined} age={sourceDate(source.lastSeenAt)} /> },
+      { label: t("source.clientName"), value: client },
+      { label: t("accounts.tools"), value: 'guide · query · act' },
+    ]} />
     <details className="account-advanced"><summary>{t("accounts.advanced")}</summary>
       <form onSubmit={e => { e.preventDefault(); void update({ label: label.trim() }); }}>
       <Field id="source-label" label={t("source.label")} error={labelError}>

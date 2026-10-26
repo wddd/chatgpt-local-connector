@@ -1,3 +1,5 @@
+import { StateBadge, Button, Icon, Notice } from "./ui";
+import { statePresentation } from "./objects/statePresentation";
 import { useEffect, useState } from "react";
 import { Monitor, Smartphone } from "lucide-react";
 import { api } from "../api";
@@ -9,7 +11,6 @@ import { navigation } from "../state/navigation";
 import { isPendingSource } from "../sourcePresentation";
 import type { Login } from "../state/types";
 import AddControlSource from "./AddControlSource";
-import { Button, Icon, Notice, Status } from "./ui";
 
 export default function Onboarding({ returnFocus }: { returnFocus?: string }) {
   const flow = onboarding.use()!, { status, sources, sourcesLoaded } = connector.use(); permissions.use();
@@ -39,8 +40,8 @@ export default function Onboarding({ returnFocus }: { returnFocus?: string }) {
       <strong>{t(`setup.welcome.${group}`)}</strong><span>{t(`setup.welcome.${group}Products`)}</span>
       <small>{t(`setup.welcome.${group}Time`)}</small>
     </Button>)}</div>
-    <footer className="welcome-readiness"><Button variant="ghost" disabled={busy} onClick={() => login === "authenticated" ? (onboarding.set(undefined), navigation.set(old => ({ ...old, page: "settings" }))) : void signIn()}><Status tone={login === "authenticated" ? "success" : "warning"}>{t(login === "authenticated" ? "connect.codexReady" : "connect.codexFix")}</Status></Button>
-      <Button variant="ghost" onClick={() => { onboarding.set(undefined); navigation.set(old => ({ ...old, page: "permissions" })); }}><Status tone={permissionsReady(status?.ingresses ?? []) ? "success" : "warning"}>{t(permissionsReady(status?.ingresses ?? []) ? "connect.permissionsReady" : "connect.permissionsFix")}</Status></Button>
+    <footer className="welcome-readiness"><Button variant="ghost" disabled={busy} onClick={() => login === "authenticated" ? (onboarding.set(undefined), navigation.set(old => ({ ...old, page: "settings" }))) : void signIn()}><StateBadge presentation={statePresentation("profile", login === "authenticated" ? "signed-in" : "signed-out")} label={t(login === "authenticated" ? "connect.codexReady" : "connect.codexFix")} /></Button>
+      <Button variant="ghost" onClick={() => { onboarding.set(undefined); navigation.set(old => ({ ...old, page: "permissions" })); }}><StateBadge presentation={statePresentation("permission", permissionsReady(status?.ingresses ?? []) ? "granted" : "missing")} label={t(permissionsReady(status?.ingresses ?? []) ? "connect.permissionsReady" : "connect.permissionsFix")} /></Button>
       <Button variant="ghost" onClick={() => openConnectionSetup({ method: "join" })}>{t("setup.invite")}</Button>
     </footer>
   </section>;

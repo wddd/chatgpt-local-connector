@@ -4,8 +4,7 @@ import type { AgentPhase, DispatchSummary } from "../../types";
 import { shortModelLabel } from "../../state/activityModel";
 import { controlSource } from "../../controlSources";
 import { t } from "../../i18n";
-import SourceIcon from "../SourceIcon";
-import { Icon } from "../ui";
+import { PlatformIcon, Icon } from "../ui";
 import "./activity.css";
 
 export function PhaseTile({ phase, running = false, completed = false, paused = false, animated = true, source }: {
@@ -31,7 +30,7 @@ export function dispatchSourceLabel(source?: DispatchSummary["controlSource"]) {
 }
 export function SourceBadge({ source }: { source: NonNullable<DispatchSummary["controlSource"]> }) {
   return <span className="activity-source-badge" title={dispatchSourceLabel(source)}>
-    {source.kind === "local-cli" ? <Icon icon={Terminal} /> : <SourceIcon platform={source.kind ?? ""} />}
+    {source.kind === "local-cli" ? <Icon icon={Terminal} /> : <PlatformIcon role="source" platform={source.kind ?? ""} />}
   </span>;
 }
 export function SpecPill({ summary }: { summary?: DispatchSummary }) {

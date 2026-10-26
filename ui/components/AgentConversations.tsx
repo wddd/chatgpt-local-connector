@@ -1,3 +1,4 @@
+import { SectionHeader, EntityRow, Button, Empty, Loading, Notice } from "./ui";
 import { useAppNow } from "../state/appEnvironment";
 import { MessagesSquare } from "lucide-react";
 import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -10,19 +11,13 @@ import { trackedActivity } from "../state/activityBubbles";
 import { selectAgentPanel } from "../state/overviewPanels";
 import type { TrackedActivity } from "../state/activityModel";
 import { ActivityBubbleContent } from "./ActivityBubbles";
-import { Button, Empty, Loading, Notice } from "./ui";
 
 const ConversationRow = memo(function ConversationRow({ agent, session, live, now, index }: {
   agent: string; session: TrackedActivity; live: boolean; now: number; index: number;
 }) {
-  return <button type="button" className={`activity-bubble agent-conversation-row ${session.interaction ? "needs-attention" : ""}`}
-    data-density="standard" data-external={session.source === "transcript" || undefined} data-timeline-anchor
-    style={{ "--row-delay": `${Math.min(index, 5) * 24}ms` } as CSSProperties}
-    data-activity-session={JSON.stringify([agent, session.id])}
-    aria-label={`${session.title || t("timeline.title")} · ${t("timeline.open")}`}
-    onClick={() => selectAgentPanel({ type: "task", agent, session })}>
+  return <EntityRow className={`activity-bubble agent-conversation-row ${session.interaction ? "needs-attention" : ""}`} data-density="standard" data-external={session.source === "transcript" || undefined} data-timeline-anchor style={{ "--row-delay": `${Math.min(index, 5) * 24}ms` } as CSSProperties} data-activity-session={JSON.stringify([agent, session.id])} aria-label={`${session.title || t("timeline.title")} · ${t("timeline.open")}`} onClick={() => selectAgentPanel({ type: "task", agent, session })}>
     <ActivityBubbleContent session={session} now={now} density="standard" historical={!live} conversationRow />
-  </button>;
+  </EntityRow>;
 });
 
 export default function AgentConversations({ agent, account, accountId, active }: { agent: string; account?: ProviderAccount; accountId?: string; active: boolean }) {
@@ -121,9 +116,7 @@ export default function AgentConversations({ agent, account, accountId, active }
   const empty = !loading && !error && !visibleSessions.length && !next;
   return <div className="activity-task-list agent-conversations" data-empty={empty || undefined}>
     {sections.map(({ id, label, entries }) => entries.length > 0 && <section className="agent-task-section" key={id} aria-label={label}>
-      <h3 className="agent-task-section-heading" data-attention={id === "attention" || undefined}>
-        {label}<span className="agent-section-count">{entries.length}</span>
-      </h3>
+      <SectionHeader className="agent-task-section-heading" data-attention={id === "attention" || undefined} level={3} title={label} count={entries.length} />
       <div className="agent-task-section-rows">{entries.map((session, index) => <ConversationRow key={session.id} agent={agent}
         session={session} live={live.has(session.id)} now={now} index={index} />)}</div>
     </section>)}

@@ -1,13 +1,13 @@
+import { EntityRow, StateBadge, Button, Group, Icon, Tooltip, PlatformIcon } from "./ui";
+import { statePresentation } from "./objects/statePresentation";
 import { useEffect, useState } from "react";
-import { Accessibility, Bell, Check, Circle, HardDrive, LogIn, Monitor, Terminal, type LucideIcon } from "lucide-react";
+import { Accessibility, Bell, HardDrive, LogIn, Monitor, Terminal, type LucideIcon } from "lucide-react";
 import { api } from "../api";
 import { locale, t } from "../i18n";
 import { isDesktop, openUrl } from "../platform";
-import { Button, Group, Icon, Tooltip } from "./ui";
 import { connector, notify } from "../state/connector";
 import { permissions, refreshPermissions, type PermissionItem } from "../state/permissions";
 import type { Ingress } from "../state/types";
-import SourceIcon from "./SourceIcon";
 import IngressDetailsDialog from "./IngressDetailsDialog";
 import IngressDialog from "./IngressDialog";
 
@@ -54,26 +54,15 @@ export default function PermissionsPage() {
   }
   function badge(state: string, system: boolean, connection = false) {
     const ready = state === "granted";
-    const key = state === "unknown" ? "permissionState.unknown" : connection ? (ready ? "permissionsVerified" : "permissionsUnverified") : ready ? (system ? "permissionsGranted" : "permissionState.granted") : system ? "permissionsNotGranted" : "permissionState.missing";
-    return <span className="permission-badge" data-state={state}><Icon icon={ready ? Check : Circle} /><span>{t(key)}</span></span>;
+    const key = !["granted", "missing"].includes(state) ? "permissionState.unknown" : connection ? (ready ? "permissionsVerified" : "permissionsUnverified") : ready ? (system ? "permissionsGranted" : "permissionState.granted") : system ? "permissionsNotGranted" : "permissionState.missing";
+    return <StateBadge presentation={statePresentation("permission", state)} label={t(key)} variant="compact" />;
   }
   function row(item: {id: string; state: string}) {
     const system = systemIds.includes(item.id);
     const authorization = system && item.id !== "login-start";
-    return <div className="permission-row" key={item.id}>
-      <Tooltip text={t("permissionTools." + item.id)}><span className="permission-symbol" tabIndex={0}><Icon icon={icons[item.id]} size={20} /></span></Tooltip>
-      <div className="permission-copy">
-        <h3>{t("permission." + item.id)}</h3>
-        <p>{t("permissionUse." + item.id)}</p>
-        {item.id === "full-disk-access" && disk && commandDisk && disk.state !== commandDisk.state && <p className="permission-hint">{t("permissionsDiskMismatch")}</p>}
-      </div>
-      <div className="permission-actions">
-        {badge(item.state, authorization)}
-        {item.state !== "granted" && <Button disabled={busy || (system && !isDesktop)} onClick={() => void act(item.id).catch(e => notify(String(e), true))}>
+    return <EntityRow className="permission-entity-row" key={item.id} leading={<><Tooltip text={t("permissionTools." + item.id)}><span className="permission-symbol" tabIndex={0}><Icon icon={icons[item.id]} size={20} /></span></Tooltip></>} title={<><h3>{t("permission." + item.id)}</h3></>} secondary={<><p>{t("permissionUse." + item.id)}</p>{item.id === "full-disk-access" && disk && commandDisk && disk.state !== commandDisk.state && <p className="permission-hint">{t("permissionsDiskMismatch")}</p>}</>} actions={<>{badge(item.state, authorization)}{item.state !== "granted" && <Button disabled={busy || (system && !isDesktop)} onClick={() => void act(item.id).catch(e => notify(String(e), true))}>
           {t(system ? item.id === "login-start" ? "permissionsEnable" : "permissionsGrant" : "permissionsInstructions")}
-        </Button>}
-      </div>
-    </div>;
+        </Button>}</>} />;
   }
   return <div className="permissions-page">
     {data && <>
@@ -81,11 +70,7 @@ export default function PermissionsPage() {
       <Group title={t("permissionsEnvironment")}>{visible.filter(item => !systemIds.includes(item.id)).map(row)}</Group>
       <Group title={t("permissionsConnections")}>
         {connections.length === 0 && <p className="permission-hint">{t("permissionsNoConnections")}</p>}
-        {connections.map(({entry, state}) => <div className="permission-row" key={entry.id}>
-          <span className="permission-symbol"><SourceIcon platform={entry.controlSource} /></span>
-          <div className="permission-copy"><h3>{entry.name}</h3></div>
-          <div className="permission-actions">{badge(state, false, true)}{state !== "granted" && <Button onClick={() => setDetails(entry)}>{t("permissionsViewConnection")}</Button>}</div>
-        </div>)}
+        {connections.map(({entry, state}) => <EntityRow className="permission-entity-row" key={entry.id} leading={<><span className="permission-symbol"><PlatformIcon role="source" platform={entry.controlSource} /></span></>} title={<><h3>{entry.name}</h3></>} actions={<>{badge(state, false, true)}{state !== "granted" && <Button onClick={() => setDetails(entry)}>{t("permissionsViewConnection")}</Button>}</>} />)}
       </Group>
     </>}
     {details && <IngressDetailsDialog ingress={details} onClose={() => setDetails(undefined)} onEdit={entry => { setDetails(undefined); setEditing(entry); }} />}

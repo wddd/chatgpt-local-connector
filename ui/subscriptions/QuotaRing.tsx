@@ -1,6 +1,5 @@
-import { Bot } from "lucide-react";
 import { t } from "../i18n";
-import { icons } from "../state/agents";
+import { PlatformIcon } from "../components/ui";
 import { subscriptions } from "../state/subscriptions";
 import { agentActivity } from "../state/activity";
 import { useNow } from "../state/hooks";
@@ -10,7 +9,7 @@ import {
   quotaValue,
   quotaPercent,
 } from "./displayPreferences";
-import { readingStatus, brandIcon, quotaColor } from "./presentation";
+import { readingStatus, quotaColor } from "./presentation";
 import { isFiveHour, isWeekly, windowLabel } from "./labels";
 import { quotaPace } from "./pace";
 import { quotaPeriod } from "./quotaTiming";
@@ -109,15 +108,7 @@ export function AgentQuotaIcon({ agent, dual = false, quota }: { agent: string; 
           </g>)}
         </svg>
       )}
-      {icons[agent] ? (
-        <span
-          className="agent-logo"
-          dangerouslySetInnerHTML={{ __html: icons[agent] }}
-          aria-hidden="true"
-        />
-      ) : (
-        <Bot className="agent-logo" aria-hidden="true" />
-      )}
+      <PlatformIcon role="agent" platform={agent} />
     </span>
   );
 }
@@ -166,7 +157,7 @@ export default function QuotaRing({
           />
         </svg>
         {running && <ActivityArc attention={attention} />}
-        <img src={brandIcon(provider.agentId)} alt="" />
+        <PlatformIcon role="provider" platform={provider.agentId} className="quota-brand" />
       </span>
       {showPercentage && (
         <span

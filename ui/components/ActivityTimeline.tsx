@@ -1,3 +1,5 @@
+import { SectionHeader, StateBadge, Button, Icon, IconButton, LoadingIndicator, Menu } from "./ui";
+import { statePresentation } from "./objects/statePresentation";
 import { useAppNow } from "../state/appEnvironment";
 import { pendingSessions } from "../state/taskInteractions";
 import { useTaskPresence } from "../state/requestRouting";
@@ -14,7 +16,6 @@ import { t } from "../i18n";
 import type { AgentTimeline } from "../types";
 import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
 import { followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
-import { Button, Icon, IconButton, LoadingIndicator, Menu } from "./ui";
 import TimelineEntries, { durationText } from "./TimelineEntries";
 import { dispatchSourceLabel, SourceBadge } from "./activity";
 import { taskState } from "../state/taskProjection";
@@ -23,7 +24,6 @@ import TaskNeedsYou from "./TaskNeedsYou";
 import TaskOwnership from "./TaskOwnership";
 import { activityHeadline, shortModelLabel, type TrackedActivity } from "../state/activityModel";
 import type { TaskRuntime } from "../state/tasks";
-
 import { name, orderedAgents } from "../state/agents";
 
 export default function ActivityTimeline({ agent, session, expanded, onToggleWidth, onBack, titleId, resizable = true }: {
@@ -215,25 +215,21 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   // Activity snapshots can derive their title from the dispatch prompt.
   const title = (agent === "codex" && taskTitle?.id === session.id && taskTitle.title) || t("timeline.title");
   return <section ref={detail} className="agent-panel-layer task-detail-layer" data-narrow={narrow || undefined}>
-    <header className="dialog-header task-detail-header">
-      <div className="task-detail-navigation"><Button variant="ghost" aria-label={t("back")} title={`${agentName}${project ? ` · ${project}` : ""}`} onClick={onBack}><Icon icon={ArrowLeft} /><span>{agentName}{project && ` · ${project}`}</span></Button>
+    <SectionHeader className="dialog-header task-detail-header" level={2} back={<><div className="task-detail-navigation"><Button variant="ghost" aria-label={t("back")} title={`${agentName}${project ? ` · ${project}` : ""}`} onClick={onBack}><Icon icon={ArrowLeft} /><span>{agentName}{project && ` · ${project}`}</span></Button>
         {!narrow && <div className="actions">{nativeSession.open && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); }} />}
           {resizable && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} />}</div>}
         {narrow && (nativeSession.open || resizable) && <div className="task-narrow-menu"><Menu label={t("detail.taskActions")} trigger={<IconButton icon={MoreHorizontal} label={t("detail.taskActions")} />} items={[
           ...(nativeSession.open ? [{ label: t("activity.open"), action: () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } }] : []),
           ...(resizable ? [{ label: t(expanded ? "restorePanelWidth" : "expandPanelWidth"), action: onToggleWidth }] : []),
         ]} /></div>}
-      </div>
-      <h2 id={titleId} className="activity-panel-title">{title}</h2>
-      <div className="task-detail-chips"><span className="task-state" data-state={state}>{t(`detail.state.${state}`)}</span>
+      </div></>} title={title} titleProps={{ id: titleId, className: 'activity-panel-title' }}><div className="task-detail-chips"><StateBadge presentation={statePresentation("task", state)} />
         {latestSummary?.model?.trim() && <span className="task-spec-chip" title={latestSummary.model}>{shortModelLabel(latestSummary.model)}</span>}
         {latestSummary?.effort?.trim() && <span className="task-spec-chip">{latestSummary.effort}</span>}
         {latestSummary?.serviceTier === "priority" && <span className="task-spec-chip"><Icon icon={Zap} />{t("activity.fast")}</span>}
         {source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span></span>}
         <TaskOwnership ownership={timeline?.ownership} />
         {duration !== undefined && <time className="timeline-meta task-duration">{durationText(duration)}</time>}
-      </div>
-      {!!groups.length && <div className="task-turn-progress">{groups.map((group, index) => {
+      </div>{!!groups.length && <div className="task-turn-progress">{groups.map((group, index) => {
         const current = index === groups.length - 1 && (!nativeSession.turnId || nativeSession.turnId === group.turnId);
         const turnState = taskState((group.turnId && timeline?.turnStatuses?.[group.turnId]) || (current ? timeline?.status : undefined), current && running, current && hasPending);
         const plan = [...group.entries].reverse().find(entry => entry.type === "plan")?.plan;
@@ -243,8 +239,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           aria-valuetext={plan?.length ? t("detail.planProgress", { completed, total: plan.length }) : t(`detail.state.${turnState}`)} data-state={turnState} data-indeterminate={value === undefined || undefined}>
           <span style={value === undefined ? undefined : { width: `${value}%` }} />
         </div>;
-      })}</div>}
-    </header>
+      })}</div>}</SectionHeader>
     <div className="task-timeline" aria-busy={loading}>
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => {

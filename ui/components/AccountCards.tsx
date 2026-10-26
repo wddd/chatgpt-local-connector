@@ -1,3 +1,4 @@
+import { EntityCard, SectionHeader, Button, Dialog, Field, Icon, Notice, Status } from "./ui";
 import { useState } from 'react';
 import { Link } from 'lucide-react';
 import type { ProviderAccount as Account } from '../types';
@@ -6,7 +7,6 @@ import { t } from '../i18n';
 import { copyText } from '../platform';
 import { sourceDate } from '../sourcePresentation';
 import { boundNotificationSessions, refreshAccounts } from '../state/accounts';
-import { Button, Dialog, Field, Icon, Notice, Status } from './ui';
 import { Sensitive, SensitiveInput, useSensitiveText } from './Sensitive';
 import AgentQuota from './AgentQuota';
 import { accountQuotaProvider } from '../subscriptions/accountQuota';
@@ -31,15 +31,15 @@ export function AccountNotifications({ account }: { account: Account }) {
     setBusy(true); setError(''); try { await work(); await refreshAccounts(); } catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
   const canNotify = account.agentProfiles.some(profile => profile.agent === 'claude') && !account.removedAt;
-  return <section className="account-card">
-    <div className="source-section-heading"><h3>{t('accounts.notifications')}</h3><Status tone={account.notifications.state === 'verified' ? 'success' : account.notifications.state === 'not-bound' ? 'warning' : 'neutral'}>{t(`accounts.notifications.${account.notifications.state}`)}</Status></div>
+  return <EntityCard>
+    <SectionHeader level={3} title={<>{t('accounts.notifications')}</>} actions={<><Status tone={account.notifications.state === 'verified' ? 'success' : account.notifications.state === 'not-bound' ? 'warning' : 'neutral'}>{t(`accounts.notifications.${account.notifications.state}`)}</Status></>} />
     {account.notifications.state === 'mcp-events' && <p role="status">{t(account.notifications.reachable ? 'accounts.reachable' : 'accounts.unreachable')}</p>}
     {sessions.length > 0 && <ul className="account-sessions" aria-label={t('accounts.sessions')}>{sessions.map((session, index) => {
       const state = session.verified ? 'verified' : session.state;
       const reachable = state === 'verified' || state === 'reachable';
       const known = ['verified', 'reachable', 'unavailable', 'failed', 'not-bound'].includes(state);
       return <li className="account-session" key={`${session.sourceId ?? ''}:${session.target}:${index}`}>
-        <div className="source-section-heading"><Sensitive>{session.target}</Sensitive><Status tone={reachable ? 'success' : 'warning'}>{t(`accounts.session.${known ? state : 'unverified'}`)}</Status></div>
+        <SectionHeader level={3} title={<><Sensitive>{session.target}</Sensitive></>} actions={<><Status tone={reachable ? 'success' : 'warning'}>{t(`accounts.session.${known ? state : 'unverified'}`)}</Status></>} />
         <span className="muted small">{t('accounts.lastDelivery', { time: sourceDate(session.lastDelivery?.at) })}{session.lastDelivery && ` · ${session.lastDelivery.status}`}</span>
         {canNotify && session.channel !== 'mcp-events' && <Button variant="link" disabled={busy} onClick={() => void action(async () => { setSent(''); await accountsApi.notify(account.id, 'test', { target: session.target }); setSent(session.target); })}>{t('accounts.sendTest')}</Button>}
       </li>;
@@ -56,5 +56,5 @@ export function AccountNotifications({ account }: { account: Account }) {
         {error && <Notice>{protect(error)}</Notice>}
       </form>
     </Dialog>}
-  </section>;
+  </EntityCard>;
 }

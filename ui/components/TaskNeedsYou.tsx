@@ -1,3 +1,4 @@
+import { SectionHeader, Button, Dialog, IconButton } from "./ui";
 import RequestRouting from "./RequestRouting";
 import { useRequestRouting } from "../state/requestRouting";
 import { useEffect, useRef, useState } from "react";
@@ -10,7 +11,6 @@ import { pendingSessions } from "../state/taskInteractions";
 import { tasks, type TaskRecord } from "../state/tasks";
 import ActivityInteraction from "./ActivityInteraction";
 import TaskQuestion from "./TaskQuestion";
-import { Button, Dialog, IconButton } from "./ui";
 
 export function taskReceipts(records: TaskRecord[], agent: string, id: string) {
   return records.filter(record => (record.agent || "codex") === agent && (record.taskId || record.threadId || record.task.threadId) === id);
@@ -39,7 +39,7 @@ export default function TaskNeedsYou({ agent, session, entries, source, narrow }
   if (!count) return null;
   const interaction = pending?.interaction;
   const dock = <section ref={focus} tabIndex={-1} className="task-needs-you" onFocusCapture={pauseOnInteraction} onPointerDownCapture={pauseOnInteraction} onClickCapture={pauseOnInteraction} onKeyDownCapture={pauseOnInteraction} onChangeCapture={pauseOnInteraction} aria-label={t("detail.needsYou")}>
-    {count > 1 && <header><strong>{t("detail.needsYou")}</strong><div className="actions"><IconButton icon={ChevronLeft} label={t("detail.previousRequest")} disabled={index === 0} onClick={() => setPage(index - 1)} /><span>{t("detail.pager", { current: index + 1, total: count })}</span><IconButton icon={ChevronRight} label={t("detail.nextRequest")} disabled={index === count - 1} onClick={() => setPage(index + 1)} /></div></header>}
+    {count > 1 && <SectionHeader  level={3} title={<>{t("detail.needsYou")}</>} actions={<><div className="actions"><IconButton icon={ChevronLeft} label={t("detail.previousRequest")} disabled={index === 0} onClick={() => setPage(index - 1)} /><span>{t("detail.pager", { current: index + 1, total: count })}</span><IconButton icon={ChevronRight} label={t("detail.nextRequest")} disabled={index === count - 1} onClick={() => setPage(index + 1)} /></div></>} />}
     {pending && interaction && <>
       {interaction.kind === "question" ? <TaskQuestion key={identity} agent={agent} session={pending} answers={drafts[identity!] ?? {}} onAnswersChange={answers => setDrafts(old => ({ ...old, [identity!]: answers }))} /> : <>
         <div className="task-request-preview"><strong>{interaction.title || interaction.summary}</strong>

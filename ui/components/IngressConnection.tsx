@@ -1,3 +1,4 @@
+import Address from "./Address";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
@@ -6,7 +7,6 @@ import { connector, refreshConnector } from "../state/connector";
 import type { Ingress } from "../state/types";
 import {
   Button,
-  CopyField,
   Field,
   Notice,
 } from "./ui";
@@ -161,7 +161,7 @@ export default function IngressConnection({
             )
           }
         >
-          <CopyField
+          <Address
             value={refreshingUrl ? "" : endpoint || ""}
             label={https ? "MCP URL" : "Tunnel ID"}
             loading={https && (refreshingUrl || (!endpoint && connecting))}
@@ -183,7 +183,7 @@ export default function IngressConnection({
               </Button>
             }
           >
-            <CopyField
+            <Address
               value={credentials.bearerToken || ""}
               label="Bearer token"
               password
@@ -193,7 +193,7 @@ export default function IngressConnection({
         )}
         {entry.auth === "openai" && (
           <Field label="Runtime API Key">
-            <CopyField
+            <Address
               value={credentials.apiKey || ""}
               label="Runtime API Key"
               password

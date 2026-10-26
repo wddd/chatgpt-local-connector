@@ -35,7 +35,7 @@ import {
   type Agent,
 } from "../state/agents";
 import type { Ingress } from "../state/types";
-import SourceIcon from "./SourceIcon";
+import { PlatformIcon, Button, Icon, Notice } from "./ui";
 import { isPendingSource } from "../sourcePresentation";
 import GraphNode from "./GraphNode";
 import { ActivityBubble } from "./ActivityBubbles";
@@ -51,7 +51,6 @@ import { onboarding, openOnboarding, connectionSetup, connectionSwitch, addedSou
 import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
 import AgentDisplaySettings from "./AgentDisplaySettings";
-import { Button, Icon, Notice } from "./ui";
 import AgentPanel from "./AgentPanel";
 import Hub from "../topology/Hub";
 function wireState(state: string): WireState {
@@ -239,11 +238,11 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     const nodeLabel = accounts.some(account => account.sources.includes(source.id)) ? platformLabel : source.label;
     return [{
       id: source.id, platform: source.product, platformLabel, label: nodeLabel,
-      icon: <SourceIcon platform={source.product} panelVisual />, sourceIds: [source.id], state: wireState(state), attention: false, selected, tasks: [], reorderable: !panelOpen,
+      icon: <PlatformIcon role="source" platform={source.product} panelVisual />, sourceIds: [source.id], state: wireState(state), attention: false, selected, tasks: [], reorderable: !panelOpen,
       content: <GraphNode label={`${nodeLabel}: ${t(state)}`} state={wireState(state)} highlighted={selected} newlyAdded={source.id === newSourceId && !flow}
         onMove={panelOpen ? undefined : by => moveSource(source.id, by)}
         onOpen={() => selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } })}>
-        <SourceIcon platform={source.product} panelVisual /><span className="graph-node-name">{nodeLabel}</span>
+        <PlatformIcon role="source" platform={source.product} panelVisual /><span className="graph-node-name">{nodeLabel}</span>
       </GraphNode>,
     }];
   });

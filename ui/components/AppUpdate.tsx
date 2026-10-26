@@ -1,3 +1,4 @@
+import { SectionHeader, Button, Group, Row, Notice, Progress, Icon, IconButton, SingleChoice, Switch } from "./ui";
 import { useState } from "react";
 import { Popover } from "radix-ui";
 import { ArrowUp, Check, LoaderCircle, X } from "lucide-react";
@@ -9,7 +10,6 @@ import { agentActivity } from "../state/activity";
 import { useInterval } from "../state/hooks";
 import { updates, available, updateVisible, checkUpdate, showUpdate, dismissUpdate, installUpdate, scheduleUpdate, skipUpdate, cancelDownload, dismissOutcome, retryUpdate, submitLocal, openReleaseNotes, updateAutomatic, acceptLocal, resumeInterrupted, controlScheduling } from "../state/updates";
 import { updateActive, updateCountdown, updateStep, type UpdateSnapshot, type UpdateTiming, type UpdateWork } from "../state/updateModel";
-import { Button, Group, Row, Notice, Progress, Icon, IconButton, SingleChoice, Switch } from "./ui";
 import TaskQuestion from "./TaskQuestion";
 import ActivityInteraction from "./ActivityInteraction";
 import "./AppUpdate.css";
@@ -64,7 +64,7 @@ function PanelContents() {
   const downloading = job.state === "downloading";
   const primary = () => available() ? installUpdate(timing) : scheduleUpdate(timing === "now" ? "now" : "defer", timing === "settled" ? 1 : undefined);
   return <>
-    <header className="update-panel-header"><div><Identity job={job} /></div><IconButton icon={X} label={t("close")} onClick={dismissUpdate} /></header>
+    <SectionHeader className="update-panel-header" level={3} title={<><div><Identity job={job} /></div></>} actions={<><IconButton icon={X} label={t("close")} onClick={dismissUpdate} /></>} />
     <div className="update-panel-body">
     {advancing ? <div className="update-countdown" role="status" aria-live="polite">
       <h2>{seconds === undefined ? t(`updates.state.${job.state}`) : t("replacementCountdown", { seconds })}</h2>
@@ -113,7 +113,7 @@ export function UpdateOutcome() {
   const failedRestore = job.state === "failed" && job.backupMoved;
   const title = failedRestore ? "updates.restoreFailed" : job.state === "succeeded" && job.source?.kind === "local" ? "updates.localReplaced" : `updates.state.${job.state}`;
   return <aside className="update-outcome" role="status" aria-live="polite">
-    <header><strong>{t(title)}</strong><IconButton icon={X} label={t("dismissMessage")} onClick={dismissOutcome} /></header>
+    <SectionHeader  level={3} title={<>{t(title)}</>} actions={<><IconButton icon={X} label={t("dismissMessage")} onClick={dismissOutcome} /></>} />
     {job.error && <p>{job.error}</p>}
     {failedRestore && <code>{job.backup}</code>}
     <div className="actions">

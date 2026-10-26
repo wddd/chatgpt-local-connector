@@ -1,3 +1,4 @@
+import { EntityCard, SectionHeader, Dialog, IconButton, Switch, Notice, Loading } from "./ui";
 import { useReducedMotion } from "../state/appEnvironment";
 import { useState, type ReactNode } from "react";
 import { motion, Reorder, useDragControls } from "motion/react";
@@ -22,7 +23,6 @@ import UsageOverview from "../subscriptions/UsageOverview";
 import QuotaBubble from "../subscriptions/QuotaBubble";
 import AgentDisplaySettings from "./AgentDisplaySettings";
 import { springTransition } from "../motion/geometry";
-import { Dialog, IconButton, Switch, Notice, Loading } from "./ui";
 
 const canReorder = (agent: Agent) =>
   agent.installed === true && agent.enabled === true;
@@ -36,12 +36,12 @@ function AgentCard({ agent, onMove, children }: {
   const reduced = useReducedMotion();
   const transition = reduced ? { duration: 0 } : springTransition(0.3, 0.9);
   if (!canReorder(agent)) {
-    return <motion.article className="agent-card" layout="position" transition={transition}>
+    return <EntityCard asChild><motion.article className="agent-card" layout="position" transition={transition}>
       {children}
-    </motion.article>;
+    </motion.article></EntityCard>;
   }
   return (
-    <Reorder.Item
+    <EntityCard asChild><Reorder.Item
       as="article"
       value={agent.agent}
       className="agent-card"
@@ -71,7 +71,7 @@ function AgentCard({ agent, onMove, children }: {
       }}
     >
       {children}
-    </Reorder.Item>
+    </Reorder.Item></EntityCard>
   );
 }
 
@@ -94,13 +94,7 @@ export function AgentDetails({
     : undefined;
   return (
     <Dialog title={name(agent)} onClose={onClose} headerless width={440}>
-      <div className="agent-summary">
-        <AgentQuotaIcon agent={agent.agent} />
-        <div>
-          <strong>{name(agent)}</strong>
-          {agent.installed !== undefined && <p title={agent.version || undefined}>{agent.installed ? compactAgentVersion(agent.version) : t("agentNotInstalled")}</p>}
-        </div>
-      </div>
+      <SectionHeader className="agent-summary" level={2} leading={<><AgentQuotaIcon agent={agent.agent} /></>} title={<>{name(agent)}</>} secondary={<>{agent.installed !== undefined && <p title={agent.version || undefined}>{agent.installed ? compactAgentVersion(agent.version) : t("agentNotInstalled")}</p>}</>} />
       {showOfficialLink && agentLinks[agent.agent] && <a href={agentLinks[agent.agent]} onClick={e => { e.preventDefault(); void openUrl(agentLinks[agent.agent]!); }}>{t("officialSetup")}</a>}
       {agent.installed !== undefined && agent.discoveryError && agent.discoveryError !== "AGENT_NOT_INSTALLED" &&
         <Notice>{agent.discoveryError}</Notice>}

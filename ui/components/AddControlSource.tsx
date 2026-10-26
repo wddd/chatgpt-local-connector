@@ -1,3 +1,4 @@
+import Address from "./Address";
 import { useEffect, useState } from "react";
 import { Check, ExternalLink, Plus } from "lucide-react";
 import { api } from "../api";
@@ -8,9 +9,8 @@ import { connector, refreshConnector } from "../state/connector";
 import { onboarding, openConnectionSetup, finishSourceSetup, addedSource, type OnboardingStep, type ConnectionMethod } from "../state/onboarding";
 import { connectionDisabledReason, connectionKind, isPendingSource } from "../sourcePresentation";
 import SetupDialog from "./SetupDialog";
-import SourceIcon from "./SourceIcon";
+import { PlatformIcon, Button, Field, Icon, Loading, Notice, SingleChoice } from "./ui";
 import { ApprovalCard } from "./OAuthApproval";
-import { Button, CopyField, Field, Icon, Loading, Notice, SingleChoice } from "./ui";
 
 const steps: OnboardingStep[] = ["product", "connection", "address", "approval", "success"];
 const products = ["claude", "chatgpt", "gemini", "grok", "grok-bot", "microsoft-copilot", "local-code", "local-desktop", "custom"];
@@ -104,7 +104,7 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
           options={products.filter(id => (id.startsWith("local-") || id === "custom") === (group === "local")).map(id => {
             const localTarget = id.startsWith("local-") ? id.slice(6) as "code" | "desktop" : undefined;
             const reason = flow.fixedConnection && current ? connectionDisabledReason(current, localTarget ? "claude" : id, sources, localTarget) : "";
-            return { value: id, label: productName(id), disabled: !!reason, description: reason, graphic: <SourceIcon platform={id.startsWith("local-") ? "claude" : id} /> };
+            return { value: id, label: productName(id), disabled: !!reason, description: reason, graphic: <PlatformIcon role="source" platform={id.startsWith("local-") ? "claude" : id} /> };
           })} />
       </section>)}
       {flow.fixedConnection && current && <p className="muted">{t("setup.via", { name: current.name })}</p>}
@@ -129,8 +129,8 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
     </>}
     {flow.step === "address" && (current ? <>
       {current.transport === "local" ? <p>{t("connect.restartClaude")}</p> : <ol className="setup-instructions">
-        <li><div><strong>{t("source.copyAddress")}</strong><CopyField value={current.url || current.config.tunnelId} label={t("source.copyAddress")} />
-          {credentials?.ingressId === current.id && <Field label={t("source.bearerHeader")}><CopyField password value={`Bearer ${credentials.bearerToken}`} label={t("source.bearerHeader")} /></Field>}</div></li>
+        <li><div><strong>{t("source.copyAddress")}</strong><Address value={current.url || current.config.tunnelId} label={t("source.copyAddress")} />
+          {credentials?.ingressId === current.id && <Field label={t("source.bearerHeader")}><Address password value={`Bearer ${credentials.bearerToken}`} label={t("source.bearerHeader")} /></Field>}</div></li>
         <li><div><strong>{t("setup.configureProduct", { name })}</strong><p>{info?.setup?.path[locale.get()] ?? t("connect.customPath")}</p>
           {info?.setup?.url && <Button onClick={() => void perform(() => openUrl(info.setup!.url))}>{t("connect.openSettings", { name })}<Icon icon={ExternalLink} /></Button>}</div></li>
         <li><div><strong>{t("setup.clickConnect", { name })}</strong><p>{t(current.auth === "oauth" ? "setup.browserCode" : "source.noOAuthApproval")}</p></div></li>
@@ -146,7 +146,7 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
     </>}
     {flow.step === "success" && <div className="setup-success"><span className="setup-success-mark"><Icon icon={Check} size={20} /></span>
       <h3>{t("source.added", { name: added?.label ?? name })}</h3><p>{t("setup.via", { name: current?.name ?? t("source.connectionRemoved") })}</p>
-      <Field label={t("setup.tryPrompt", { name })}><CopyField value={t("setup.firstPrompt")} label={t("copy")} /></Field>
+      <Field label={t("setup.tryPrompt", { name })}><Address value={t("setup.firstPrompt")} label={t("copy")} /></Field>
     </div>}
     </div>
   </SetupDialog>;

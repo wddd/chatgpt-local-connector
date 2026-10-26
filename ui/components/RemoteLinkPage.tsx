@@ -1,3 +1,7 @@
+import { FactList, EntityCard, EntityRow, StateBadge, SectionHeader, PlatformIcon, Button, Dialog, Empty, HoverScope, Icon, Notice, SingleChoice, Tag } from "./ui";
+import { ingressState } from "../state/connector";
+import { statePresentation } from "./objects/statePresentation";
+import Address from "./Address";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { api } from "../api";
@@ -15,10 +19,8 @@ import AddConnection from "./AddConnection";
 import Onboarding from "./Onboarding";
 import SourcePanel from "./SourcePanel";
 import { Sensitive } from "./Sensitive";
-import SourceIcon from "./SourceIcon";
 import { ApprovalCard } from "./OAuthApproval";
 import { RelaySettings } from "./RelaySettings";
-import { Button, CopyField, Dialog, Empty, HoverScope, Icon, Notice, SingleChoice, Status, Tag } from "./ui";
 
 const grouping = preference<"all" | "platform">("arc.source-grouping", "all");
 export default function RemoteLinkPage() {
@@ -67,39 +69,37 @@ export default function RemoteLinkPage() {
   return <div className="remote-link-page">
     {readError && <Notice>{readError}</Notice>}
     {connection ? <div className="connection-detail">
-      <div className="connection-detail-heading"><span className="connection-detail-icon"><Icon icon={connectionIcon(connection)} size={20} /></span><div><h2>{connection.name}</h2><p>{connectionProvider(connection)}{selectedRelay?.owner ? ` · ${t("setup.hostedHere")}` : ""}</p></div><Status tone={connection.state === "ready" ? "success" : "neutral"}>{t(connection.state === "ready" ? "connect.online" : "connect.offline")}</Status></div>
-      {connection.url && <CopyField value={connection.url} label={t("source.copyAddress")} />}
-      <section className="connection-sources"><div className="source-section-heading"><h3>{t("setup.sourcesUsing", { count: affected.length })}</h3><Button data-add-source onClick={() => openOnboarding("product", { ingressId: connection.id, fixedConnection: true })}>{t("setup.addSourceForConnection")}</Button></div>
-        <HoverScope>{affected.map(source => <Button key={source.id} variant="ghost" className="connection-source-row" onClick={() => navigation.set(old => ({ ...old, remoteSourceId: source.id, remoteConnectionId: undefined }))}><SourceIcon platform={source.product} /><strong>{source.label}</strong><Status tone={source.state === "connected" ? "success" : "neutral"}>{t(`source.state.${source.state}`)}</Status><Icon icon={ChevronRight} /></Button>)}</HoverScope>
+      <SectionHeader className="connection-detail-heading" level={2} leading={<><span className="connection-detail-icon"><Icon icon={connectionIcon(connection)} size={20} /></span></>} title={<>{connection.name}</>} secondary={<><p>{connectionProvider(connection)}{selectedRelay?.owner ? ` · ${t("setup.hostedHere")}` : ""}</p></>} actions={<><StateBadge presentation={statePresentation("connection", ingressState(connection))} /></>} />
+      {connection.url && <Address value={connection.url} label={t("source.copyAddress")} />}
+      <section className="connection-sources"><SectionHeader level={3} title={<>{t("setup.sourcesUsing", { count: affected.length })}</>} actions={<><Button data-add-source onClick={() => openOnboarding("product", { ingressId: connection.id, fixedConnection: true })}>{t("setup.addSourceForConnection")}</Button></>} />
+        <HoverScope>{affected.map(source => <EntityRow key={source.id} className="remote-entity-row" onClick={() => navigation.set(old => ({ ...old, remoteSourceId: source.id, remoteConnectionId: undefined }))} leading={<><PlatformIcon role="source" platform={source.product} /></>} title={<>{source.label}</>} state={<><StateBadge presentation={statePresentation("source", source?.pendingSwitch ? "pending-switch" : source?.state)} /></>} chevron />)}</HoverScope>
         {!affected.length && <p className="muted">{t("source.unused")}</p>}
       </section>
-      <dl className="source-facts connection-provider-facts"><div><dt>{t("source.provider")}</dt><dd>{connection.transport === "relay" ? "Cloudflare Workers" : connectionProvider(connection)}</dd></div><div><dt>{t("connectionMethod")}</dt><dd>{t(`source.kind.${connectionKind(connection)}`)}</dd></div>{selectedRelay && <div><dt>{t("setup.workerVersion")}</dt><dd>{selectedRelay.workerVersion ?? "—"}</dd></div>}</dl>
+      <EntityCard><FactList missing={{ placeholder: '—' }} items={[
+        { label: t("source.provider"), value: connection.transport === "relay" ? "Cloudflare Workers" : connectionProvider(connection) },
+        { label: t("connectionMethod"), value: t(`source.kind.${connectionKind(connection)}`) },
+        ...(selectedRelay ? [{ label: t("setup.workerVersion"), value: selectedRelay.workerVersion }] : []),
+      ]} /></EntityCard>
       {connection.error && <Notice>{connection.error}</Notice>}
       {selectedRelay && <RelaySettings relay={selectedRelay} version={relays.version} refresh={relays.refresh} />}
       {!["local", "relay"].includes(connection.transport) && <Button onClick={() => setEditing(connection)}>{t("edit")}</Button>}
       {selectedRelay?.owner && <Button className="connection-hosting-link" variant="ghost" onClick={() => navigation.set(old => ({ ...old, page: "settings", settingsExtras: true }))}>{t("setup.hostingLink")}<Icon icon={ChevronRight} /></Button>}
       <div className="connection-remove"><div><strong>{t(joined ? "connect.leave" : "setup.removeConnection")}</strong><p>{t("setup.removeAffected", { names: affected.map(s => s.label).join(", ") || t("source.unused") })}</p></div><Button variant="danger-outline" onClick={() => { setError(""); setRemoving(true); }}>{t(joined ? "connect.leave" : "remove")}</Button></div>
     </div> : <>
-      <div className="source-section-heading"><SingleChoice compact label={t("source.grouping")} value={group} onChange={value => grouping.set(value as "all" | "platform")} options={[{ value: "all", label: t("all") }, { value: "platform", label: t("source.byPlatform") }]} /><Button data-add-source variant="primary" onClick={() => add()}>{t("addControlSource")}</Button></div>
+      <SectionHeader level={3} titleAsChild title={<><SingleChoice compact label={t("source.grouping")} value={group} onChange={value => grouping.set(value as "all" | "platform")} options={[{ value: "all", label: t("all") }, { value: "platform", label: t("source.byPlatform") }]} /></>} actions={<><Button data-add-source variant="primary" onClick={() => add()}>{t("addControlSource")}</Button></>} />
       {requests.filter(({ ingress, request }) => request.switchSourceId || sourceCandidates(sources, entries, ingress.id, request.product ?? "custom", request.sourceId).length > 0).map(({ ingress, request }) => <Notice key={request.id} tone="warning" action={<Button onClick={() => setClaim(request.id)}>{t("source.review")}</Button>}>{t("source.pendingReauthorization", { name: request.clientName, connection: ingress.name })}</Notice>)}
       <HoverScope>{groups.map(platform => <section key={platform} className="source-list">
         {platform && <h3>{t(`source.platform.${platform}`) === `source.platform.${platform}` ? platform : t(`source.platform.${platform}`)}</h3>}
         {visible.filter(s => !platform || s.platform === platform).map(source => {
           const ingress = entries.find(i => i.id === source.ingressId);
-          return <Button key={source.id} variant="ghost" className="source-list-row" data-hover-target={source.id} data-remote-row={source.id} onClick={() => navigation.set(old => ({ ...old, remoteSourceId: source.id }))}>
-            <SourceIcon platform={source.product} /><strong>{source.label}</strong><Tag>{ingress?.name ?? source.connectionName ?? t("source.connectionRemoved")}</Tag>
-            <Status tone={source.pendingSwitch ? "warning" : source.state === "connected" ? "success" : "neutral"}>{t(source.pendingSwitch ? "switch.pending" : `source.state.${source.state}`)}</Status><Icon icon={ChevronRight} />
-          </Button>;
+          return <EntityRow key={source.id} className="remote-entity-row" data-hover-target={source.id} data-remote-row={source.id} onClick={() => navigation.set(old => ({ ...old, remoteSourceId: source.id }))} leading={<><PlatformIcon role="source" platform={source.product} /></>} title={<>{source.label}</>} secondary={<><Tag>{ingress?.name ?? source.connectionName ?? t("source.connectionRemoved")}</Tag></>} state={<><StateBadge presentation={statePresentation("source", source.pendingSwitch ? "pending-switch" : source.state)} /></>} chevron />;
         })}
       </section>)}</HoverScope>
       {!visible.length && <Empty>{t("source.empty")}</Empty>}
-      <section className="connection-list"><div className="source-section-heading"><h3>{t("source.connections")}</h3><Button data-new-connection onClick={() => add(true)}>{t("source.newConnection")}</Button></div>
+      <section className="connection-list"><SectionHeader level={3} title={<>{t("source.connections")}</>} actions={<><Button data-new-connection onClick={() => add(true)}>{t("source.newConnection")}</Button></>} />
         <HoverScope>{entries.map(ingress => {
           const count = visible.filter(s => s.ingressId === ingress.id).length;
-          return <Button key={ingress.id} variant="ghost" className="source-list-row connection-list-row" data-hover-target={ingress.id} data-remote-row={ingress.id} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: ingress.id }))}>
-            <Icon icon={connectionIcon(ingress)} size={20} /><span className="connection-list-copy"><strong>{ingress.name}</strong>{ingress.url ? <Sensitive>{ingress.url}</Sensitive> : connectionProvider(ingress)}</span>
-            <span className="muted">{t(count ? "source.count" : "source.unused", { count })}</span><Status tone={ingress.state === "ready" ? "success" : "neutral"}>{t(ingress.state === "ready" ? "connect.online" : "connect.offline")}</Status><Icon icon={ChevronRight} />
-          </Button>;
+          return <EntityRow key={ingress.id} className="remote-entity-row remote-connection-row" data-hover-target={ingress.id} data-remote-row={ingress.id} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: ingress.id }))} leading={<><Icon icon={connectionIcon(ingress)} size={20} /></>} title={<>{ingress.name}</>} secondary={<>{ingress.url ? <Sensitive>{ingress.url}</Sensitive> : connectionProvider(ingress)}</>} state={<><span className="muted">{t(count ? "source.count" : "source.unused", { count })}</span><StateBadge presentation={statePresentation("connection", ingressState(ingress))} /></>} chevron />;
         })}</HoverScope>
       </section>
     </>}

@@ -1,3 +1,4 @@
+import Address from "./Address";
 import { useEffect, useState } from "react";
 import { ExternalLink, Plus } from "lucide-react";
 import { api } from "../api";
@@ -10,7 +11,7 @@ import { connectionDisabledReason, connectionKind, isPendingSource } from "../so
 import type { Ingress } from "../state/types";
 import SetupDialog from "./SetupDialog";
 import { ApprovalCard } from "./OAuthApproval";
-import { Button, CopyField, Field, Icon, Loading, Notice, SingleChoice } from "./ui";
+import { Button,  Field, Icon, Loading, Notice, SingleChoice } from "./ui";
 
 const steps = ["connection", "address", "approval"] as const;
 export default function ChangeConnection() {
@@ -77,8 +78,8 @@ export default function ChangeConnection() {
         <Notice tone="warning">{addressInstruction} {t("switch.warning")}</Notice>
       </> : <>
         {target ? <>
-          <CopyField value={target.url || target.config.tunnelId} label={t("source.copyAddress")} />
-          {credentials?.ingressId === target.id && <Field label={t("source.bearerHeader")}><CopyField password value={`Bearer ${credentials.bearerToken}`} label={t("source.bearerHeader")} /></Field>}
+          <Address value={target.url || target.config.tunnelId} label={t("source.copyAddress")} />
+          {credentials?.ingressId === target.id && <Field label={t("source.bearerHeader")}><Address password value={`Bearer ${credentials.bearerToken}`} label={t("source.bearerHeader")} /></Field>}
           {flow.step === "address" && <><p>{addressInstruction}</p><h3>{t("setup.configureProduct", { name: productName })}</h3><p>{info?.setup?.path[locale.get()] ?? t("connect.customPath")}</p>
             {info?.setup?.url && <Button onClick={() => void perform(() => openUrl(info.setup!.url))}>{t("connect.openSettings", { name: productName })}<Icon icon={ExternalLink} /></Button>}
             <p>{t(target.auth === "oauth" ? "setup.browserCode" : "source.noOAuthApproval")}</p>

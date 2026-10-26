@@ -832,7 +832,7 @@ pre {
 .quota-dial .value {
   stroke-linecap: round;
 }
-.quota-dial img {
+.quota-dial .quota-brand {
   position: absolute;
   inset: 10px;
   width: 16px;
@@ -890,16 +890,14 @@ pre {
   gap: 12px;
   margin-bottom: 16px;
 }
-.agent-card {
+.entity-card.agent-card {
   position: relative;
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) auto;
   gap: 8px 12px;
   align-items: center;
   padding: 12px;
-  border: 1px solid var(--border);
   border-radius: var(--radius-row);
-  background: var(--surface);
 }
 .agent-card[data-reorderable] {
   cursor: grab;

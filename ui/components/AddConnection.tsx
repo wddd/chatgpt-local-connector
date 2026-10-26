@@ -1,3 +1,7 @@
+import { EntityCard, StateBadge, Button, Field, Icon, Input, Loading, Notice, SingleChoice } from "./ui";
+import { ingressState } from "../state/connector";
+import { statePresentation } from "./objects/statePresentation";
+import Address from "./Address";
 import { useEffect, useId, useState } from "react";
 import { Check, ExternalLink } from "lucide-react";
 import { api } from "../api";
@@ -11,7 +15,6 @@ import { SensitiveInput, useSensitiveText } from "./Sensitive";
 import IngressDialog from "./IngressDialog";
 import RelayProgress from "./RelayProgress";
 import SetupDialog from "./SetupDialog";
-import { Button, CopyField, Field, Icon, Input, Loading, Notice, SingleChoice, Status } from "./ui";
 
 type LocalAccess = { codeAvailable: boolean; desktopAvailable: boolean };
 const steps = ["method", "address", "success"] as const;
@@ -121,9 +124,9 @@ export default function AddConnection({ options, onClose, onAdded, returnFocus }
         </>}
       </form>)}
       {step === "success" && <div className="setup-success"><span className="setup-success-mark"><Icon icon={Check} size={20} /></span><h3>{t("connection.added")}</h3>
-        {created && <div className="setup-connection-card"><strong>{created.name}</strong><span>{t(`source.kind.${connectionKind(created)}`)}</span>
-          {created.url && <CopyField value={created.url} label={t("source.copyAddress")} />}<Status tone={created.state === "ready" ? "success" : "neutral"}>{t(created.state === "ready" ? "connect.online" : "connect.offline")}</Status>
-          <span className="muted">{t("source.count", { count: sources.filter(s => s.ingressId === created.id && s.state !== "revoked" && !isPendingSource(s, status?.ingresses ?? [])).length })}</span></div>}
+        {created && <EntityCard className="setup-connection-card"><strong>{created.name}</strong><span>{t(`source.kind.${connectionKind(created)}`)}</span>
+          {created.url && <Address value={created.url} label={t("source.copyAddress")} />}<StateBadge presentation={statePresentation("connection", ingressState(created))} />
+          <span className="muted">{t("source.count", { count: sources.filter(s => s.ingressId === created.id && s.state !== "revoked" && !isPendingSource(s, status?.ingresses ?? [])).length })}</span></EntityCard>}
         {target && <p>{t("connect.restartClaude")}</p>}
         {created?.error && <Notice>{created.error}</Notice>}
         {!created && <Button busy={busy} onClick={() => void perform(refreshConnector)}>{t("retry")}</Button>}

@@ -1,7 +1,5 @@
-import { Sensitive, useSensitiveText } from "../Sensitive";
-import { maskSensitive } from "../../privacyMask";
+import { useSensitiveText } from "../Sensitive";
 import {
-  useEffect,
   useId,
   useLayoutEffect,
   useRef,
@@ -31,17 +29,13 @@ import {
   ChevronRight,
   ChevronUp,
   LoaderCircle,
-  Copy,
-  Eye,
-  EyeOff,
   type LucideIcon,
 } from "lucide-react";
 import { t } from "../../i18n";
-import { copyText } from "../../platform";
 import { HoverScope } from "./HoverScope";
 export { HoverScope };
 export { HoverPreviewGroup } from "./HoverPreviewGroup";
-export { ErrorCallout, LoadingIndicator } from "./Feedback";
+export { LoadingIndicator } from "./Feedback";
 export { DataTable, Pagination } from "./DataTable";
 export function Tag({ children, title, tone }: { children: ReactNode; title?: string; tone?: "source" | "agent" }) {
   return <span className="task-tag" title={title} data-tone={tone}>{children}</span>;
@@ -603,74 +597,7 @@ export function Progress({
     </R.Root>
   );
 }
-export function CopyField({
-  value,
-  label,
-  password = false,
-  loading = false,
-  placeholder = "",
-}: {
-  value: string;
-  label: string;
-  password?: boolean;
-  loading?: boolean;
-  placeholder?: string;
-}) {
-  const [visible, setVisible] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 2000);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  return (
-    <div>
-      <div className="copy-field">
-        <div className="input copy-value" role="textbox" aria-readonly="true" aria-label={label} aria-busy={loading} tabIndex={0}
-          onCopy={event => { event.preventDefault(); event.clipboardData.setData('text/plain', value); }}>
-          {value ? <Sensitive>{password && !visible ? maskSensitive(value, true) : value}</Sensitive> : placeholder}
-        </div>
-        {loading ? (
-          <Icon icon={LoaderCircle} className="spin" />
-        ) : (
-          <>
-            {password && (
-              <IconButton
-                icon={visible ? EyeOff : Eye}
-                label={t(visible ? "hideSecret" : "showSecret")}
-                onClick={() => setVisible(!visible)}
-              />
-            )}
-            <IconButton
-              icon={copied ? Check : Copy}
-              label={t(copied ? "copied" : "copy")}
-              disabled={!value}
-              onClick={() => {
-                setError("");
-                void copyText(value)
-                  .then(() => setCopied(true))
-                  .catch(() =>
-                    setError(t("copyFailedSelectAndCopyTheTextManually")),
-                  );
-              }}
-            />
-          </>
-        )}
-      </div>
-      {error && (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      )}
-      {copied && (
-        <span className="sr-only" role="status">
-          {t("copied")}
-        </span>
-      )}
-    </div>
-  );
-}
-
-
 import "./DetailDialog.css";
+
+export { PlatformIcon } from "./PlatformIcon";
+export { StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField } from "./Shells";
