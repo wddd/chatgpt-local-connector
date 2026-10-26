@@ -2966,6 +2966,36 @@
               "minimalText": {
                 "type": "boolean",
                 "description": "Opt in to minimal MCP text while retaining structuredContent. Omitted source settings default to false."
+              },
+              "capabilityProfile": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "hostAccess": {
+                    "type": "string",
+                    "enum": [
+                      "host",
+                      "none",
+                      "unknown"
+                    ]
+                  },
+                  "waitMode": {
+                    "type": "string",
+                    "enum": [
+                      "background-cli",
+                      "push",
+                      "poll"
+                    ]
+                  }
+                },
+                "required": [
+                  "hostAccess",
+                  "waitMode"
+                ],
+                "additionalProperties": false,
+                "description": "null restores Legacy. Built-in local authority accepts host/background-cli only; MCP sources accept none or unknown with push or poll. Changes discovery, never execution policy."
               }
             },
             "additionalProperties": false
@@ -2977,7 +3007,7 @@
           "body"
         ]
       },
-      "description": "Update a source label, registry product, or minimalText response setting.",
+      "description": "Update source label, product, minimalText, or capabilityProfile through local management. Local Code requires built-in local CLI authority.",
       "localOnly": true
     },
     {

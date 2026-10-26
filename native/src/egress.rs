@@ -729,6 +729,14 @@ pub(crate) fn unknown_op(name: &str, ops: &[Value]) -> String {
 pub(crate) fn guide(origin: &Value, args: &Value, locale: &str, ops: &[Value]) -> Value {
     let mut result = guide_content(origin, args, locale, ops);
     result["cliPath"] = json!(crate::cli_shim::executable().ok());
+    if origin["controlTransport"] == "cli" {
+        result["sourceId"] = origin["sourceId"].clone();
+    }
+    if result["profile"]["name"] == "local-code" && args["view"] != "full" && !args["op"].is_string() && args["topic"].as_str().unwrap_or("loop") == "loop" {
+        while result.to_string().chars().count() + 112 > 2500 {
+            if result["ops"].as_array_mut().is_none_or(|ops| ops.pop().is_none()) { break; }
+        }
+    }
     let digest = hash(result.to_string());
     if args["knownGuideHash"] == digest {
         return json!({"guideHash":digest,"unchanged":true,"cliPath":result["cliPath"]});
@@ -803,6 +811,9 @@ fn guide_content(origin: &Value, args: &Value, _locale: &str, ops: &[Value]) -> 
         let spec = source_spec(spec, origin);
         let spec = &spec;
         return json!({"op":name,"via":via(spec),"description":spec["description"],"inputSchema":spec["inputSchema"],"signature":signature(spec),"example":example(spec),"retry":retry_contract(spec)});
+    }
+    if let Some(result) = crate::control_profiles::guide(origin, args, &ops) {
+        return result;
     }
     let maintainer = crate::preferences::maintainer_mode();
     let topic = args["topic"].as_str().unwrap_or("loop");

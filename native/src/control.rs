@@ -2313,6 +2313,22 @@ impl Control {
                         .await?["thread"]
                         .clone();
                 }
+                if args["view"] == "summary" || (args["statusOnly"] == true && args["turnId"].is_string()) {
+                    let page = crate::review::turn_page(self, &args).await?;
+                    let mut turns = page["data"].as_array().cloned().unwrap_or_default();
+                    turns.reverse();
+                    let mut native = t.clone();
+                    native["turns"] = json!(turns);
+                    let pending = self.events.lock().await.pending.values().cloned().collect::<Vec<_>>();
+                    let mut status = crate::waiter::classify(&json!({"thread":native,"pending":pending}),
+                        &mut args["turnId"].as_str().map(str::to_owned));
+                    if args["view"] == "summary" {
+                        status["files"] = turns.iter().find(|turn|turn["id"]==status["turnId"])
+                            .map(|turn|crate::review::native_files(turn["items"].as_array().map(Vec::as_slice).unwrap_or(&[])))
+                            .unwrap_or(Value::Null);
+                    }
+                    return Ok(status);
+                }
                 if args["statusOnly"] == true {
                     let mut progress = crate::review::progress(self, id, &t).await;
                     if t["status"]["activeFlags"].as_array().is_some_and(|flags| {
@@ -2336,7 +2352,7 @@ impl Control {
                     return Ok(status);
                 }
                 if args["view"] == "review" {
-                    let page = self.request("thread/turns/list",json!({"threadId":id,"cursor":args["cursor"],"limit":num(&args,"limit",1),"sortDirection":"desc","itemsView":"full"}),60000).await?;
+                    let page = crate::review::turn_page(self, &args).await?;
                     let mut turns = Vec::new();
                     for turn in page["data"].as_array().into_iter().flatten() {
                         turns.push(crate::review::turn(self, id, turn).await);
@@ -2361,7 +2377,7 @@ impl Control {
                     result["activeFlags"] = t["status"]["activeFlags"].clone();
                 }
                 if args["statusOnly"] != true {
-                    let page=self.request("thread/turns/list",json!({"threadId":id,"cursor":args["cursor"],"limit":num(&args,"limit",if full {2} else {1}),"sortDirection":"desc","itemsView":"full"}),60000).await?;
+                    let page=crate::review::turn_page(self, &{ let mut read = args.clone(); if read["limit"].is_null() { read["limit"]=json!(if full {2}else{1}); } read }).await?;
                     result["nextCursor"] = page["nextCursor"].clone();
                     let mut turns = page["data"].as_array().cloned().unwrap_or_default();
                     turns.reverse();

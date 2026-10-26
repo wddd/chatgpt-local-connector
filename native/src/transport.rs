@@ -539,7 +539,7 @@ async fn local_control(s: &Arc<Service>, body: Value) -> Result<Value> {
     } else {
         None
     };
-    let origin = if let Some(context) = &replacement {
+    let mut origin = if let Some(context) = &replacement {
         if name == "codex_send" {
             if args.get("notify").is_none() {
                 args["notify"] = context["notify"].clone();
@@ -551,6 +551,7 @@ async fn local_control(s: &Arc<Service>, body: Value) -> Result<Value> {
     } else {
         crate::sources::local_origin().await?
     };
+    origin["controlTransport"] = json!("cli");
     if matches!(
         name,
         "codex_create" | "codex_send" | "agent_create" | "agent_send"
@@ -606,6 +607,7 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
     } else {
         envelope["args"].clone()
     };
+    let summary = crate::task_summary::requested(name, &args);
     let mut wait_limit = None;
     let result = async {
         if !s.connected() {
@@ -689,7 +691,7 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
             if let Some(reason) = &outcome {
                 value["error"] = reason.clone();
             }
-            let mut paged = if matches!(name, "guide" | "control_output") {
+            let mut paged = if summary || matches!(name, "guide" | "control_output") {
                 value.clone()
             } else {
                 crate::kernel::results::page_output(
@@ -750,9 +752,11 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
     }
     if error {
         crate::egress::next(&mut value, name, &args, false);
+        if summary { value = crate::task_summary::project(name, &args, &value); }
         return Ok(crate::egress::tool(value, true));
     }
-    let inbox = if name == "inbox_wait" {
+    if summary { value = crate::task_summary::project(name, &args, &value); }
+    let inbox = if summary || (name == "guide" && value["profile"]["name"] == "local-code") || name == "inbox_wait" {
         Value::Null
     } else {
         match crate::claude_notify::inbox(

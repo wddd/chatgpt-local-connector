@@ -634,6 +634,12 @@ test('real HTTP ingresses isolate discovery and direct execution; policy PUT pre
     for (const name of config.tools.filter(tool => !b.toolPolicy.allowlist.includes(tool.name) && !['notification_ack', 'notify_status', 'inbox_wait'].includes(tool.name)).map(tool => tool.name)) {
       assert.equal((await ingressRpc(b, 'tools/call', { name, arguments: { action: 'approve', requestId: randomUUID() } })).result.structuredContent.result.error.code, 'OP_UNAVAILABLE', name);
     }
+    const source=(await management('source')).sources.find((source:any)=>source.ingressId===b.id);
+    assert.ok(source.capabilityProfileOffer.choices.includes('remote-polling'));
+    assert.equal(source.capabilityProfile,undefined);
+    await management(`source/${source.id}`,'PUT',{capabilityProfile:{hostAccess:'none',waitMode:'poll'}});
+    assert.deepEqual((await management(`ingress/${b.id}`)).toolPolicy,b.toolPolicy);
+    assert.ok(!((await ingressRpc(b,'tools/call',{name:'query',arguments:{op:'guide',args:{}}})).result.structuredContent.result.ops).some((row:any)=>row.op==='command'));
     const args = { requestId: randomUUID(), method: 'fixture/counts', params: {} };
     const blocked = await ingressRpc(b, 'tools/call', { name: 'codex_call', arguments: args });
     assert.equal(blocked.result.isError, true);
@@ -1250,6 +1256,22 @@ test('inbox_wait filters unread events before limiting, isolates ingress and coo
   }
   const backlog = await inbox({timeoutMs:100,threadIds:unrelated});
   assert.equal(backlog.unread, unrelated.length);
+  const summaryTask=await dispatchFixture('fixture-dispatch-completed');
+  const finalText='🧪'.repeat(900);
+  const changes=Array.from({length:60},(_,i)=>({path:`src/summary-${i}.rs`,diff:'@@ -1 +1 @@\n-old\n+new'}));
+  await completed('codex_call',{method:'fixture/update-turn',params:{threadId:summaryTask.threadId,turnId:summaryTask.turnId,patch:{items:[{id:'summary-final',type:'agentMessage',phase:'final_answer',status:'completed',text:finalText},{id:'summary-files',type:'fileChange',status:'completed',changes}]}},requestId:randomUUID()});
+  for(const op of ['codex_wait','codex_read']) {
+    const summary=(await call(op,{threadId:summaryTask.threadId,turnId:summaryTask.turnId,view:'summary',...(op==='codex_wait'?{timeoutMs:1000}:{})})).result;
+    assert.equal(summary.state,'completed');assert.equal(summary.arcInbox,undefined);assert.equal(summary.externalUserInputs,undefined);assert.equal(summary.srcConversation,undefined);
+    assert.equal([...summary.finalResponse].length,800);assert.equal(summary.finalResponseTruncated,true);
+    assert.equal(summary.files.length,50);assert.equal(summary.filesTruncated,true);assert.equal(summary.diffstat.files,60);assert.equal(summary.diffstat.added,60);
+    assert.equal(summary.completeEvidence.args.turnId,summaryTask.turnId);
+    const evidence=(await call(summary.completeEvidence.op,summary.completeEvidence.args)).result;
+    assert.equal(evidence.turns[0].finalResponse,finalText);assert.equal(evidence.turns[0].files.length,60);
+    assert.ok(!unrelated.some(id=>JSON.stringify(summary).includes(id)));
+  }
+  assert.equal((await inbox({timeoutMs:100,threadIds:unrelated})).unread,unrelated.length);
+
   assert.ok(backlog.events.length < backlog.unread, 'unrelated unread events exceed the response limit');
   const wanted = await dispatchFixture('fixture-dispatch-completed');
   const args = {timeoutMs:100,threadIds:[wanted.threadId],eventTypes:['completed']};
@@ -1648,6 +1670,10 @@ test('ACP task tracking keeps approvals active and projects context, SSE and inc
   assert.ok(agentInbox.events.every((event:any) => event.taskId === taskId && event.kind === 'needs-input'));
   const wait=(await call('agent_wait',{agent:'tracking-example',taskId,timeoutMs:10000})).result;
   assert.equal(wait.state,'interaction-required',JSON.stringify(wait));
+  const compactWait=(await call('agent_wait',{agent:'tracking-example',taskId,timeoutMs:1000,view:'summary'})).result;
+  assert.equal(compactWait.state,'interaction-required');assert.equal(compactWait.next.op,'agent_pending');
+  assert.equal(compactWait.arcInbox,undefined);assert.equal(compactWait.files,null);assert.equal(compactWait.diffstat,null);
+
 
   const activity=await management('agents/activity');
   assert.ok(activity.activeAgents.includes('tracking-example'));
@@ -1677,6 +1703,10 @@ test('ACP task tracking keeps approvals active and projects context, SSE and inc
   assert.equal(responded.state,'completed',JSON.stringify(responded));
   const settled=(await call('agent_wait',{agent:'tracking-example',taskId,timeoutMs:10000})).result;
   assert.equal(settled.state,'completed');
+  const compactAgent=(await call('agent_read',{agent:'tracking-example',taskId,view:'summary'})).result;
+  assert.equal(compactAgent.state,'completed');assert.equal(compactAgent.finalResponse,'All done');
+  assert.equal(compactAgent.arcInbox,undefined);assert.equal(compactAgent.dispatches,undefined);assert.equal(compactAgent.reviews,undefined);
+
   const repeatedWait=(await call('agent_wait',{agent:'tracking-example',taskId,timeoutMs:300000,expectedHash:settled.snapshotHash,until:'terminal'})).result;
   assert.equal(repeatedWait.changed,false);assert.equal(repeatedWait.finalResponse,settled.finalResponse);
   assert.equal(repeatedWait.finalResponseUnchanged,undefined);
@@ -1801,6 +1831,44 @@ test('guide progressively discloses every enabled op and caches projected conten
     assert.ok(detail.inputSchema.properties[canonical]);assert.equal(detail.inputSchema.properties[legacy],undefined);
     assert.equal((await readGuide({op,knownGuideHash:detail.guideHash})).unchanged,true);
   }
+  for(const [topic,expected] of [['coordination','coordination_session'],['src','src_conversations'],['context','context_resolve']]) {
+    const detail=await readGuide({topic});
+    assert.ok(detail.ops.some((row:any)=>row.op===expected));
+    assert.ok(!detail.ops.some((row:any)=>row.op==='command'));
+  }
+  const sources=(await management('source')).sources;
+  const remote=sources.find((source:any)=>source.ingressId==='default');
+  const local=(args:Record<string,unknown>={})=>JSON.parse(execFileSync(fixtureCommand,['cli','control','guide','--stdin'],{env:fixtureEnv,encoding:'utf8',input:JSON.stringify(args)})).result;
+  const legacy=local();
+  assert.equal(legacy.profile,undefined);
+  const localId=legacy.sourceId;assert.ok(localId);
+  try {
+    await management(`source/${localId}`,'PUT',{capabilityProfile:{hostAccess:'host',waitMode:'background-cli'}});
+    const code=local();
+    assert.equal(code.profile.name,'local-code');assert.equal(code.profile.transport,'cli');
+    const characters=[...JSON.stringify(code)].length;
+    console.log('LOCAL_CODE_LAYER1_CHARACTERS '+characters);assert.ok(characters<=2500);
+    assert.ok(!code.ops.some((row:any)=>['command','notify_control','coordination_session','src_conversations'].includes(row.op)));
+    assert.equal(code.arcInbox,undefined);
+    assert.equal(local({knownGuideHash:code.guideHash}).unchanged,true);
+    assert.deepEqual(local({view:'full'}).ops.map((row:any)=>row.op),full.ops.map((row:any)=>row.op));
+    assert.ok(local({op:'command'}).inputSchema);
+    await management(`source/${remote.id}`,'PUT',{product:'claude',capabilityProfile:{hostAccess:'none',waitMode:'poll'}});
+    const polling=await readGuide({});
+    assert.equal(polling.profile.name,'remote-polling');assert.equal(polling.profile.transport,'mcp');
+    assert.ok(polling.ops.some((row:any)=>row.op==='command'));assert.ok(!polling.ops.some((row:any)=>row.op==='notify_control'));
+    assert.equal((await readGuide({knownGuideHash:compact.guideHash})).unchanged,undefined);
+    assert.equal((await call('codex_capabilities')).response.isError,false);
+    await management(`source/${remote.id}`,'PUT',{capabilityProfile:{hostAccess:'none',waitMode:'push'}});
+    assert.ok((await readGuide({})).ops.some((row:any)=>row.op==='notify_control'));
+    await assert.rejects(management(`source/${remote.id}`,'PUT',{capabilityProfile:{hostAccess:'host',waitMode:'background-cli'}}),/capabilityProfile/);
+    assert.equal((await readGuide({})).profile.name,'remote-push');
+    await management(`source/${remote.id}`,'PUT',{capabilityProfile:null,product:remote.product});
+    assert.equal((await readGuide({})).guideHash,compact.guideHash);
+  } finally {
+    await management(`source/${localId}`,'PUT',{capabilityProfile:null});
+    await management(`source/${remote.id}`,'PUT',{capabilityProfile:null,product:remote.product});
+  }
 });
 
 
@@ -1825,6 +1893,12 @@ test('control stats report byte baselines and waste candidates without call cont
   assert.ok(r.wasteCandidates.lookupThenAct>0);assert.ok(r.wasteCandidates.uncachedUnchangedReads>0);assert.ok(r.wasteCandidates.argumentErrorRetries>0);
   const task=r.tasks.find((t:any)=>t.taskId===created.threadId);
   assert.equal(task.reviewed,true);assert.ok(task.calls>=3);assert.ok(task.responseBytes>0);
+  assert.equal(r.profileSequences.sessionProxy,true);
+  const cohorts=r.profileSequences.cohorts;
+  assert.ok(cohorts.some((c:any)=>c.profile==='local-code'&&c.transport==='cli'&&c.guideResponseBytes.median>0));
+  const remoteSequence=r.profileSequences.sequences.find((s:any)=>s.sourceId===created.origin?.sourceId) ?? r.profileSequences.sequences.find((s:any)=>s.profile==='legacy'&&s.transport==='mcp'&&s.callsBeforeFirstDispatch!==null);
+  assert.ok(remoteSequence);assert.equal(typeof remoteSequence.callsBeforeFirstDispatch,'number');
+  assert.ok(cohorts.some((c:any)=>c.invalidArguments>0&&c.argumentErrorRetries>0));
   assert.ok(!JSON.stringify(stats).includes('private-metric-payload'));
   console.log('CONTROL_BASELINE '+JSON.stringify(r.totals));
 });
@@ -1961,6 +2035,11 @@ test('historical review file counts stop at the next clean turn baseline',async(
   const previous=(await call('codex_read',{threadId:created.threadId,view:'review',cursor:latest.nextCursor})).result;
   assert.equal(previous.turns[0].turnId,created.turnId);
   assert.deepEqual(previous.turns[0].files,[{path:'first.txt',added:1,removed:1}]);
+  const pinned=(await call('codex_read',{threadId:created.threadId,turnId:created.turnId,view:'review'})).result;
+  assert.equal(pinned.turns[0].turnId,created.turnId);assert.deepEqual(pinned.turns[0].files,previous.turns[0].files);
+  const summary=(await call('codex_read',{threadId:created.threadId,turnId:created.turnId,view:'summary'})).result;
+  assert.equal(summary.turnId,created.turnId);assert.equal(summary.files,null);assert.equal(summary.diffstat,null);
+
 });
 
 test('AX binary transfers verify bytes and reject duplicate append offsets', async () => {

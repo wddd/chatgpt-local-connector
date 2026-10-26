@@ -50,8 +50,12 @@ impl Execution {
             )),
             _ => None,
         };
-        let mut result = self.call_inner(name, args, policy).await?;
-        if let Some((agent, task)) = read_task {
+        let summary = crate::task_summary::requested(name, &args);
+        let mut result = self.call_inner(name, args.clone(), policy).await?;
+        if summary {
+            crate::task_summary::evidence(&self.control, name, &args, &mut result).await;
+        }
+        if let Some((agent, task)) = read_task.filter(|_| !summary) {
             result["srcConversation"] = crate::src_conversations::task_ref(&agent, &task)?;
         }
         Ok(result)
@@ -249,9 +253,6 @@ impl Execution {
             };
         }
         if name == "receipt" {
-            if let Some(receipt) = crate::update_queue::receipt(&args).await? {
-                return Ok(receipt);
-            }
             let spec = crate::catalog()["ops"]
                 .as_array()
                 .unwrap()
@@ -259,6 +260,9 @@ impl Execution {
                 .find(|t| t["name"] == name)
                 .unwrap();
             crate::egress::validate_op(spec, &args)?;
+            if let Some(receipt) = crate::update_queue::receipt(&args).await? {
+                return Ok(receipt);
+            }
             if let Some(receipt) = self.agents.receipt(args.clone()).await? {
                 return Ok(receipt);
             }
