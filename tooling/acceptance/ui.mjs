@@ -102,6 +102,50 @@ try {
           await summary.waitFor({ state: 'visible' });
           await taskButton(fixture.tasks[1]).waitFor({ state: 'hidden' });
         }
+        if (name.startsWith('debt-add-account-')) {
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          const disclosure = page.getByRole('button', { name: messages['claudeAccounts.enterCode'], exact: true });
+          await disclosure.press('Enter');
+          const code = page.getByRole('textbox', { name: messages['claudeAccounts.code'], exact: true });
+          await code.waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: messages.submit ?? 'submit', exact: true }).click();
+          if (!await code.evaluate(element => element === document.activeElement && element.getAttribute('aria-invalid') === 'true')) throw new Error('Authorization-code validation did not focus its field');
+          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-validation.png`), animations: 'disabled' });
+          await code.fill('fixture-code');
+          await page.getByRole('button', { name: messages.submit ?? 'submit', exact: true }).click();
+          const alias = page.getByRole('textbox', { name: messages['accounts.alias'], exact: true });
+          await alias.waitFor({ state: 'visible' });
+          await alias.fill('');
+          await page.getByRole('button', { name: messages['accounts.confirm'], exact: true }).click();
+          if (!await alias.evaluate(element => element === document.activeElement && element.getAttribute('aria-invalid') === 'true')) throw new Error('Account alias validation did not focus its field');
+          await alias.fill('Fixture account');
+        }
+        if (name.startsWith('debt-quota-segments-')) {
+          const segment = page.getByRole('button', { name: 'Code · 40%', exact: true });
+          await segment.focus();
+          if (await segment.getAttribute('aria-expanded') !== 'true') await page.waitForFunction(() => document.activeElement?.getAttribute('aria-expanded') === 'true');
+          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-segment.png`), animations: 'disabled' });
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          const remaining = page.getByRole('button', { name: `${messages.usageRemaining} · 35%`, exact: true });
+          await remaining.focus();
+          await page.waitForFunction(() => document.activeElement?.getAttribute('aria-expanded') === 'true');
+        }
+        if (name.startsWith('debt-merge-accounts-')) {
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          const confirm = page.getByRole('button', { name: messages['accounts.mergeConfirm'], exact: true });
+          if (await confirm.isEnabled()) throw new Error('Merge requires a selected account');
+          await page.getByRole('checkbox').first().check();
+          if (!await confirm.isEnabled()) throw new Error('Selected merge member did not enable confirmation');
+        }
+        if (name.startsWith('debt-records-')) {
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          const disclosure = page.getByRole('button', { name: messages.details, exact: true }).first();
+          await disclosure.press('Enter');
+          if (await disclosure.getAttribute('aria-expanded') !== 'true') throw new Error('Record details did not expand from the keyboard');
+          await disclosure.press('Space');
+          if (await disclosure.getAttribute('aria-expanded') !== 'false') throw new Error('Record details did not collapse from the keyboard');
+          await disclosure.press('Enter');
+        }
         let taskDetail;
         if (fixture.detailTask !== undefined) {
           const task = fixture.tasks[fixture.detailTask];
@@ -191,6 +235,11 @@ try {
         }
         if (name.startsWith('forms-')) {
           // Regression: settings forms had touching actions, decorative selectors and unlabelled advanced fields.
+          await page.getByRole('button', { name: 'Custom surface action', exact: true }).click();
+          await page.getByText('Surface activated', { exact: true }).waitFor();
+          await page.getByRole('button', { name: 'Used 75 percent', exact: true }).click();
+          await page.getByText('Used segment', { exact: true }).waitFor();
+          if (await page.getByText('Retained hidden view', { exact: true }).isVisible()) throw new Error('Hidden panel view remains visible');
           const nav = page.getByRole('button', { name: 'Current version Agent Remote Control v1.0.0', exact: true });
           await nav.click();
           await page.getByText('Navigate to updates', { exact: true }).waitFor();
@@ -266,7 +315,7 @@ try {
             }
           }
         }
-        if (width >= 1280 && !fixture.panel && fixture.tasks.some(task => task.completed)) {
+        if (width >= 1280 && !fixture.page && !fixture.panel && fixture.tasks.some(task => task.completed)) {
           // Regression: dragging a completed card left a click guard that swallowed its mark-read action.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           for (const task of fixture.tasks.filter((task, index) => task.completed && model.topology.tasks.some(row => row.taskId === `fixture-task-${index}`))) {

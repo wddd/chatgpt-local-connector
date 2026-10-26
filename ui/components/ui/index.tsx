@@ -26,7 +26,6 @@ import {
   X,
   Check,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
   LoaderCircle,
   type LucideIcon,
@@ -216,56 +215,6 @@ export function Status({
       <span aria-hidden="true" className="status-dot" />
       {children}
     </span>
-  );
-}
-export function Group({
-  title,
-  children,
-}: {
-  title: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className="settings-group">
-      <h2>{title}</h2>
-      <div>{children}</div>
-    </section>
-  );
-}
-export function Row({
-  title,
-  description,
-  children,
-  controlId,
-  id,
-  onNavigate,
-  highlight = true,
-}: {
-  title: ReactNode;
-  description?: ReactNode;
-  children?: ReactNode;
-  controlId?: string;
-  id?: string;
-  onNavigate?: () => void;
-  highlight?: boolean;
-}) {
-  if (onNavigate) return <HoverScope className="settings-row-hover" activeKey={highlight ? undefined : ""}>
-    <Button id={id} variant="ghost" className="settings-row settings-row-navigation" data-hover-target="navigation" onClick={onNavigate}>
-      <span className="row-copy">
-        <span className="row-title">{title}</span>
-        {description && <span className="row-description">{description}</span>}
-      </span>
-      <Icon icon={ChevronRight} />
-    </Button>
-  </HoverScope>;
-  return (
-    <div className="settings-row">
-      <div className="row-copy">
-        <label htmlFor={controlId}>{title}</label>
-        {description && <p>{description}</p>}
-      </div>
-      <div className="row-control">{children}</div>
-    </div>
   );
 }
 export function Switch({

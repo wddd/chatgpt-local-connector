@@ -44,6 +44,8 @@ Use `dev:ui ?scenario=shells-light`, `shells-dark`, or `shells-narrow` to mount 
 
 SectionHeader keeps trailing actions at their intrinsic width and aligned to the end. PlatformIcon renders monochrome provider assets as current-color masks in both themes. The shared row baseline uses the account list's 12px padding and gap. Cards use the account card's 16px padding, 12px gap and radius; host-specific catalog, setup and relay dimensions remain explicit CSS overrides. Source rows keep an inline connection label on wide layouts, while connection rows retain their second address line. Task state uses the shared Status dot and mapped tones instead of an independent animated pill. Source headers use brand artwork without alias initials. Provider quota masks and Agent artwork preserve their separate existing assets under one resolver.
 
+`ViewStack` retains inactive panel state with semantic hidden visibility; its `asChild` slot preserves motion roots. `MeterSegment` owns proportional flex weights while quota callers retain their visuals and interaction data. Button's `surface` variant supplies shared native behavior for geometry-owned topology and dock targets without imposing rectangular control styling. All three are exported through design mounts and exercised in the forms fixtures.
+
 `forms-light`, `forms-dark`, and `forms-narrow` mount settings/form shells and DispatchSpec states. They include navigation-only hover, disabled navigation, zero/one/unlisted choices, wrapping buttons, help/error associations, validation focus, controlled inputs, disclosure keyboard behavior, danger consequences, and historical/missing/unresolved dispatch records. Design islands export the same components with plain-text slots; real control composition remains in browser fixtures.
 
 ### One domain state map
@@ -291,7 +293,7 @@ Recommended order:
 5. Interaction and authorization requests: extract RequestCard, retaining separate data/action adapters; cover both task/update and setup/switch contexts. Then relay deployment's three hosts and member list/confirmation.
 6. Peer message only after its data contract and placement are decided. Notification binding remains deferred.
 
-Future browser coverage must include Tasks/Records/Permissions and remaining SettingsExtras and AgentsSettings/AgentDisplaySettings states (settings-light/dark and updates-settings cover the main settings hosts), merge/login, RelayHosting/OAuthGrants, both empty homepage wings, account-store disagreement recovery, unknown icons/states, dsh recorded spec, multi-request/secret/unconfirmed responses and quota failure families. Layout/state acceptance uses browser fixtures; this document does not require a native app run or claim any visual acceptance.
+`debt-*` light/dark fixtures mount Tasks, Records, Permissions, AgentsSettings, AgentDisplaySettings, AddAccount, MergeAccounts, RelayHosting and OAuthGrants. `settings-light/dark` and `updates-settings` cover the main Settings hosts. Future browser coverage must include remaining SettingsExtras states, both empty homepage wings, account-store disagreement recovery, unknown icons/states, dsh recorded spec, multi-request/secret/unconfirmed responses and quota failure families. Layout/state acceptance uses browser fixtures; this document does not require a native app run or claim any visual acceptance.
 
 ## Decisions (user, 2026-10-26)
 

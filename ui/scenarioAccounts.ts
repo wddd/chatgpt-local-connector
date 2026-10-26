@@ -1,7 +1,7 @@
 import type { ProviderAccount, AccountLogin, AccountsResult } from './types';
 import type { Status, ControlSource } from './state/types';
 // In-memory implementation of the native management routes in docs/reference/tools.md.
-export function accountScenario(status: Status, sources: ControlSource[]) {
+export function accountScenario(status: Status, sources: ControlSource[], manualLogin = false) {
   const now = new Date().toISOString();
   const primary = status.ingresses[0];
   primary.url = 'https://arc.example.com/mcp';
@@ -34,7 +34,7 @@ export function accountScenario(status: Status, sources: ControlSource[]) {
     account.health.state = 'ready'; login = { ...login, state: 'completed', loginUrl: null, accountId: account.id };
   }
   function list(agent?: string): AccountsResult {
-    if (login?.state === 'waiting' && ++polls >= 4) completeLogin();
+    if (login?.state === 'waiting' && !manualLogin && ++polls >= 4) completeLogin();
     return { accounts: accounts.filter(a => !a.removedAt && (!agent || a.agentProfiles.some(p => p.agent === agent))).map(({ email, orgName, ...account }) => account), login };
   }
   return (path: string, method: string, raw?: unknown): unknown => {
@@ -89,7 +89,7 @@ export function accountScenario(status: Status, sources: ControlSource[]) {
       if (login.kind === 'codex') throw new Error('ACCOUNT_LOGIN_CODE_UNSUPPORTED');
       if (login.kind !== 'claude') throw new Error('ACCOUNT_NATIVE_LOGIN_REQUIRED');
       if (!body.code?.trim()) throw new Error('LOGIN_CODE_REQUIRED');
-      polls = 3; return { submitted: true };
+      if (manualLogin) completeLogin(); else polls = 3; return { submitted: true };
     }
     if (['accounts/update', 'accounts/remove'].includes(route) && method === 'POST') {
       const account = requireAccount(body.id);

@@ -1,4 +1,4 @@
-import { Freshness, EntityCard, StateBadge, SectionHeader, Button, DataTable, Dialog, Icon, IconButton, Loading, Notice } from "./ui";
+import { SettingRow, DangerZone, ActionGroup, Freshness, EntityCard, StateBadge, SectionHeader, Button, DataTable, Dialog, Icon, IconButton, Loading, Notice } from "./ui";
 import { ingressState } from "../state/connector";
 import { statePresentation } from "./objects/statePresentation";
 import { Sensitive } from "./Sensitive";
@@ -63,24 +63,19 @@ function HostedRelay({ relay, version, startJob, disabled }: {
   const name = (member: Member) => member.isSelf ? status?.deviceName || t("connect.thisComputer") : member.name;
   const outdated = !!version && relay.workerVersion !== version;
   return <article className="hosted-relay" aria-label={t("hosting.title")}>
-    <EntityCard className="hosted-relay-card">
-      <div className="hosted-relay-summary">
-        <div className="hosted-relay-icon"><Icon icon={Cloud} /></div>
-        <div className="hosted-relay-identity">
-          <h3><Sensitive>{hostname(relay)}</Sensitive></h3>
-          <div className="hosted-relay-provider"><span>Cloudflare Workers</span><span aria-hidden="true"> · </span>
+    <EntityCard>
+      <SectionHeader level={3} leading={<div className="hosted-relay-icon"><Icon icon={Cloud} /></div>}
+        title={<Sensitive>{hostname(relay)}</Sensitive>}
+        secondary={<ActionGroup align="leading"><span>Cloudflare Workers</span>
             {outdated || !relay.url ? <Button variant="ghost" disabled={blocked} onClick={() => void startJob({ action: "redeploy", id: relay.id })}>{t(outdated && relay.url ? "hosting.update" : "retry")}</Button> : <span>{t("hosting.upToDate")}</span>}
-          </div>
-        </div>
-        <span className={`hosted-relay-state ${ingress?.state === "ready" ? "running" : ""}`}><StateBadge presentation={statePresentation("connection", ingress ? ingressState(ingress) : "unknown")} /></span>
-      </div>
-      <div className="hosted-relay-invite">
-        <p>{t("hosting.invite")}<span className="muted"> · {t("hosting.inviteDescription")}</span></p>
-        <div className="actions">
+        </ActionGroup>}
+        actions={<StateBadge presentation={statePresentation("connection", ingress ? ingressState(ingress) : "unknown")} />} />
+      <SettingRow label={t("hosting.invite")} description={t("hosting.inviteDescription")}>
+        <ActionGroup>
           <Button variant="primary" busy={busy === "share"} disabled={blocked || !relay.url} onClick={() => void action("share")}>{t("hosting.copyInvite")}</Button>
           <Button disabled={blocked || !relay.url} onClick={() => { setError(""); setConfirm("reset-token"); }}>{t("hosting.reset")}</Button>
-        </div>
-      </div>
+        </ActionGroup>
+      </SettingRow>
     </EntityCard>
     <section className="hosted-relay-devices">
       <SectionHeader level={3} title={<>{t("hosting.devices")}</>} secondary={<><p className="muted small">{t("hosting.devicesDescription")}</p></>} actions={<><IconButton icon={RefreshCw} label={t("hosting.refreshDevices")} busy={loading} disabled={blocked || !relay.url} onClick={() => void readMembers()} /></>} />
@@ -94,10 +89,9 @@ function HostedRelay({ relay, version, startJob, disabled }: {
         ]} />
       </div>
     </section>
-    <div className="hosted-relay-danger">
-      <div><h3>{t("hosting.deleteTitle")}</h3><p className="muted small">{t("hosting.deleteDescription")}</p></div>
+    <DangerZone consequence={t("hosting.deleteDescription")}>
       <Button variant="danger-outline" disabled={blocked} onClick={() => { setError(""); setConfirm("delete"); }}>{t("hosting.delete")}</Button>
-    </div>
+    </DangerZone>
     {error && !confirm && <Notice tone="danger">{error}</Notice>}
     {confirm && <Dialog title={t(confirm === "reset-token" ? "hosting.resetTitle" : confirm === "delete" ? "hosting.deleteTitle" : "connect.confirm.remove")} width={440} onClose={() => setConfirm(undefined)} busy={!!busy} footer={<>
       <Button disabled={!!busy} onClick={() => setConfirm(undefined)}>{t("cancel")}</Button>
@@ -154,7 +148,7 @@ export default function RelayHosting() {
       {progressError && job && <Notice tone="danger">{t("connect.readFailed")}</Notice>}
       {job ? <RelayProgress progress={progress} busy={busy} account={account} setAccount={setAccount} onCancel={() => void cancel()} onRetry={() => void startJob({ action: job.action === "create" && progress.relayId ? "redeploy" : job.action, id: progress.relayId ?? job.id })} /> : <form onSubmit={event => { event.preventDefault(); void startJob({ action: "create" }); }}>
         <p className="muted">{t("connect.freeAccount")}</p>
-        <div className="actions"><Button type="submit" variant="primary" busy={busy}>{t("hosting.deploy")}</Button></div>
+        <ActionGroup><Button type="submit" variant="primary" busy={busy}>{t("hosting.deploy")}</Button></ActionGroup>
       </form>}
     </Dialog>}
   </div>;

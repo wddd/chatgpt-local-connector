@@ -5,7 +5,7 @@ import { t } from '../i18n';
 import { copyText } from '../platform';
 import { isUnidentified, refreshAccounts } from '../state/accounts';
 import { name as agentName } from '../state/agents';
-import { Button, Checkbox, Dialog, Field, Input, Notice, SingleChoice } from './ui';
+import { Disclosure, Button, Checkbox, Dialog, FormSection, FormField, Input, Notice, SingleChoice } from './ui';
 import { SensitiveIdentity } from './Sensitive';
 
 type Browser = Awaited<ReturnType<typeof accountsApi.browsers>>['browsers'][number];
@@ -80,21 +80,21 @@ export default function AddAccount({ onClose, initialLogin, forAccount }: { onCl
       {step === 0 ? <Button variant="primary" onClick={() => setStep(1)}>{t('accounts.next')}</Button> : step === 2 ? identity && <Button variant="primary" type="submit" form="account-confirm" busy={busy}>{t('accounts.confirm')}</Button>
         : login?.state === 'unfinished' ? <Button busy={busy} onClick={() => start('detect')}>{t('accounts.kind.detect')}</Button>
         : !waiting && login?.state !== 'completed' ? <Button variant="primary" busy={busy} onClick={() => start()}>{t(login ? 'retry' : 'accounts.signin')}</Button> : null}</>}>
-    <div className="account-form">
+    <FormSection>
       {forAccount && step === 1 && <><SensitiveIdentity email={forAccount.email} orgName={forAccount.orgName} /><p className="muted">{t(isUnidentified(forAccount) ? 'accounts.agentIdentityUnresolved' : 'accounts.agentIdentitySignin')}</p></>}
       {step === 0 && <SingleChoice label={t('accounts.type')} value={kind} onChange={value => setKind(value as AccountLogin['kind'])} options={['claude', 'codex', 'api-key', 'detect'].map(value => ({ value, label: t(`accounts.kind.${value}`) }))} />}
       {step === 1 && <>
         {['claude', 'codex'].includes(loginKind) && <SingleChoice label={t('claudeAccounts.browser')} value={browser} disabled={waiting || busy} onChange={setBrowser} options={[{ value: 'default', label: t('claudeAccounts.defaultBrowser') }, ...browsers.map(b => ({ value: b.id, label: b.name }))]} />}
         {login && <p role="status">{t(`accounts.login.${login.state}`)}</p>}
         {login?.loginUrl && waiting && <Button onClick={() => void action(async () => copyText(login.loginUrl!))}>{t('claudeAccounts.copyLink')}</Button>}
-        {waiting && login?.kind === 'claude' && <details><summary>{t('claudeAccounts.enterCode')}</summary><form className="account-form" onSubmit={e => { e.preventDefault(); if (!code.trim()) { setFieldError(t('fieldRequired')); document.getElementById('account-code')?.focus(); return; } void action(async () => {
+        {waiting && login?.kind === 'claude' && <Disclosure title={t('claudeAccounts.enterCode')}><form onSubmit={e => { e.preventDefault(); if (!code.trim()) { setFieldError(t('fieldRequired')); document.getElementById('account-code')?.focus(); return; } void action(async () => {
           const result = await accountsApi.login({ loginId: login.loginId, action: 'code', code: code.trim() });
           if ('loginId' in result) setLogin(result); // A submitted receipt is not login completion; keep polling.
           setCode('');
-        }); }}>
-          <Field id="account-code" label={t('claudeAccounts.code')} error={fieldError}><Input id="account-code" value={code} autoComplete="off" disabled={busy} aria-invalid={!!fieldError} aria-describedby={fieldError ? 'account-code-error' : undefined} onChange={e => { setCode(e.target.value); setFieldError(''); }} /></Field>
+        }); }}><FormSection>
+          <FormField id="account-code" label={t('claudeAccounts.code')} error={fieldError}><Input id="account-code" value={code} autoComplete="off" disabled={busy} aria-invalid={!!fieldError} aria-describedby={fieldError ? 'account-code-error' : undefined} onChange={e => { setCode(e.target.value); setFieldError(''); }} /></FormField>
           <Button type="submit" busy={busy}>{t('submit')}</Button>
-        </form></details>}
+        </FormSection></form></Disclosure>}
         <p className="muted">{t('accounts.agentFlow')}</p>
       </>}
       {login?.browserError && <Notice tone="warning">{login.browserError}</Notice>}
@@ -102,14 +102,14 @@ export default function AddAccount({ onClose, initialLogin, forAccount }: { onCl
       {login?.error && <Notice>{login.error}</Notice>}
       {login?.errors?.map((message, index) => <Notice key={index}>{message}</Notice>)}
       {step === 2 && !login?.accountId && <>{detected.length ? <SingleChoice label={t('accounts.detected')} value={detectedId} onChange={value => { setIdentity(undefined); setDetectedId(value); }} options={detected.map(account => ({ value: account.id, label: account.alias }))} /> : <p role="status">{t('accounts.noneDetected')}</p>}</>}
-      {step === 2 && identity && <form id="account-confirm" className="account-form" onSubmit={e => { e.preventDefault(); void confirm(); }}>
+      {step === 2 && identity && <form id="account-confirm" onSubmit={e => { e.preventDefault(); void confirm(); }}><FormSection>
         <SensitiveIdentity email={identity.email} orgName={identity.orgName} />
         {!!identity.sources.length && !!identity.agentProfiles.length && <Notice tone="success">{t('accounts.matched')}</Notice>}
         {forAccount && !roleMatched && <Notice tone="warning">{t(isUnidentified(forAccount) ? 'accounts.agentIdentityUnresolved' : 'accounts.agentIdentityMismatch', { alias: forAccount.alias })}</Notice>}
-        <Field id="account-alias" label={t('accounts.alias')} error={fieldError}><Input id="account-alias" autoFocus value={alias} disabled={busy} aria-invalid={!!fieldError} aria-describedby={fieldError ? 'account-alias-error' : undefined} onChange={e => { setAlias(e.target.value); setFieldError(''); }} /></Field>
-        {identity.agentProfiles.length > 0 && <fieldset><legend>{t('accounts.useFor')}</legend>{identity.agentProfiles.map(profile => <Checkbox key={profile.profileId} checked={defaults.includes(profile.agent)} disabled={profile.default || busy || profile.state !== 'signed-in'} onChange={value => setDefaults(old => value ? [...old, profile.agent] : old.filter(agent => agent !== profile.agent))}>{agentName(profile)} · {t(`accounts.profile.${profile.state}`)}</Checkbox>)}</fieldset>}
-      </form>}
+        <FormField id="account-alias" label={t('accounts.alias')} error={fieldError}><Input id="account-alias" autoFocus value={alias} disabled={busy} aria-invalid={!!fieldError} aria-describedby={fieldError ? 'account-alias-error' : undefined} onChange={e => { setAlias(e.target.value); setFieldError(''); }} /></FormField>
+        {identity.agentProfiles.length > 0 && <FormSection title={t('accounts.useFor')}>{identity.agentProfiles.map(profile => <Checkbox key={profile.profileId} checked={defaults.includes(profile.agent)} disabled={profile.default || busy || profile.state !== 'signed-in'} onChange={value => setDefaults(old => value ? [...old, profile.agent] : old.filter(agent => agent !== profile.agent))}>{agentName(profile)} · {t(`accounts.profile.${profile.state}`)}</Checkbox>)}</FormSection>}
+      </FormSection></form>}
       {error && <Notice action={login?.state === 'completed' ? <Button onClick={() => setIdentityRetry(value => value + 1)}>{t('retry')}</Button> : undefined}>{error}</Notice>}
-    </div>
+    </FormSection>
   </Dialog>;
 }

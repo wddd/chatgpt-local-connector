@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { locale, t } from "../i18n";
 import { useInterval } from "../state/hooks";
-import { Button, Empty, Notice } from "./ui";
+import { EntityRow, SettingsSection, Button, Empty, Notice } from "./ui";
 import type { ControlSource } from "../state/types";
 export default function OAuthGrants({
   ingressId,
@@ -68,34 +68,29 @@ export default function OAuthGrants({
     }
   }
   return (
-    <section className="oauth-grants">
-      <h3>OAuth</h3>
+    <SettingsSection title="OAuth">
       {grants.map((grant) => {
         const timestamp = grant.connectedAt;
         const date = timestamp == null ? null : new Date(timestamp * 1000);
         return (
-          <div className="oauth-grant-row" key={grant.id}>
-            <strong className="oauth-grant-name" title={grant.label}>{grant.label}</strong>
-            <span className="muted small oauth-grant-time" title={t(grant.connectedAt == null ? "oauthRegisteredAt" : "oauthConnectedAt")}>
+          <EntityRow key={grant.id} title={grant.label} secondary={<span title={t(grant.connectedAt == null ? "oauthRegisteredAt" : "oauthConnectedAt")}>
               {date ? (
                 <time dateTime={date.toISOString()}>
                   {date.toLocaleString(locale.get(), { hour12: false })}
                 </time>
               ) : t("oauthTimeUnknown")}
-            </span>
-            <Button
+            </span>} actions={<Button
               disabled={busy || disabled || !running || grant.state === "revoked"}
               onClick={() => void action(grant.id)}
             >
               {t("oauthRevoke")}
-            </Button>
-          </div>
+            </Button>} />
         );
       })}
       {!grants.length && !error && (
         <Empty>{t("oauthNoGrants")}</Empty>
       )}
       {error && <Notice>{error}</Notice>}
-    </section>
+    </SettingsSection>
   );
 }

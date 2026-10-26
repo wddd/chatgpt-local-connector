@@ -1,7 +1,7 @@
 import "../../ui/style.css";
 import { createRoot } from "react-dom/client";
 import ActivityTimeline from "../../ui/components/ActivityTimeline";
-import { Dialog, TooltipProvider } from "../../ui/components/ui";
+import { ViewStack, Dialog, TooltipProvider } from "../../ui/components/ui";
 import { agentActivity } from "../../ui/state/activity";
 import { locale } from "../../ui/i18n";
 import type { AgentTimeline, AgentInteraction } from "../../ui/types";
@@ -38,6 +38,6 @@ let revision = 0;
   ] };
   agentActivity.set({ error: "", snapshot: { observedAt: "", activeAgents: ["codex"], agents: { codex: { sessions: [session] } } } });
   root.render(<TooltipProvider><Dialog key={++revision} width={width} dock="right" headerless title="Task layout fixture" onClose={() => {}}>
-    <div className="agent-panel-view"><ActivityTimeline agent="codex" session={session} expanded={false} onToggleWidth={() => {}} onBack={() => {}} /></div>
+    <ViewStack><ActivityTimeline agent="codex" session={session} expanded={false} onToggleWidth={() => {}} onBack={() => {}} /></ViewStack>
   </Dialog></TooltipProvider>);
 };

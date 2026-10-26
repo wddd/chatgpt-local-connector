@@ -89,7 +89,7 @@ export function ActivityBubble({ agent, session, now, onMove, onRead, density = 
     if (start?.id === event.pointerId && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) start.moved = true;
   };
   const hint = t("timeline.open");
-  return <div className="activity-bubble-shell"><button type="button" className={`activity-bubble ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
+  return <div className="activity-bubble-shell"><Button variant="surface" type="button" className={`activity-bubble ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
       data-update-blocking={blocking || undefined}
       data-density={density} data-external={session.source === "transcript" || undefined}
       data-timeline-anchor
@@ -104,7 +104,7 @@ export function ActivityBubble({ agent, session, now, onMove, onRead, density = 
       }}>
       <ActivityBubbleContent agent={agent} session={session} now={now} density={density} showSourceBadge={!unread} />
       {blocking && <span className="update-blocking-tag">{t("updates.waitingReply")}</span>}
-    </button>
+    </Button>
     {unread && <Button variant="ghost" className="activity-mark-read" data-topology-control aria-label={t("activity.markRead")} title={t("activity.markRead")}
       onPointerDown={event => {
         event.stopPropagation();

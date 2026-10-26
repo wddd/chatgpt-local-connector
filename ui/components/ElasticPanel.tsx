@@ -9,6 +9,7 @@ import {
 } from "react";
 import { animate, type AnimationPlaybackControlsWithThen } from "motion";
 import { surfaceMotion, reducedMotion as reduced, type Surface, type SurfaceRect } from "../motion/surface";
+import { IconButton } from "./ui";
 import { Dialog as D } from "radix-ui";
 import { X } from "lucide-react";
 import { t } from "../i18n";
@@ -435,15 +436,11 @@ export default function ElasticPanel({
                 <D.Title>{title}</D.Title>
                 <div className="actions">
                   {actions}
-                  <button
-                    type="button"
-                    className="button ghost icon-button"
-                    aria-label={t("close")}
+                  <IconButton icon={X} size={20}
+                    label={t("close")}
                     disabled={busy}
                     onClick={() => void close(undefined, true)}
-                  >
-                    <X size={20} strokeWidth={1.75} />
-                  </button>
+                  />
                 </div>
                 {headerDetail}
               </header>

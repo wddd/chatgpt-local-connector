@@ -1,0 +1,11 @@
+{
+  "theme": "dark",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "shells": true,
+  "pageFixture": "quota-segments",
+  "quota": true
+}

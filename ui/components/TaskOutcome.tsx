@@ -4,7 +4,7 @@ import { locale, t } from "../i18n";
 import { copyText } from "../platform";
 import { changedFiles } from "../state/taskProjection";
 import { taskErrorText } from "../state/taskErrors";
-import { Button } from "./ui";
+import { ActionGroup, EntityCard, Button } from "./ui";
 import { ChangedFiles } from "./TaskChanges";
 
 export default function TaskOutcome({ state, entries, project, onResume, onRetry, continuing }: { state: "failed" | "interrupted"; entries: AgentTimelineEntry[]; project?: string | null; onResume?: () => void; onRetry?: () => void; continuing?: boolean }) {
@@ -16,18 +16,18 @@ export default function TaskOutcome({ state, entries, project, onResume, onRetry
   const ended = [...entries].reverse().find(entry => entry.endedAt)?.endedAt;
   return <>
     {state === "interrupted" && <div className="task-stop-divider">{t("detail.stoppedUnknown")}{ended && ` · ${new Date(ended).toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit" })}`}</div>}
-    <article className="task-outcome" data-state={state} aria-label={t(state === "failed" ? "detail.turnFailed" : "detail.leftAsIs")}>
+    <EntityCard asChild><article className="task-outcome" data-state={state} aria-label={t(state === "failed" ? "detail.turnFailed" : "detail.leftAsIs")}>
       <strong>{t(state === "failed" ? "detail.turnFailed" : "detail.leftAsIs")}</strong>
       {state === "failed" && <><p>{taskErrorText(failure?.text || failure?.output?.text, "detail.failureUnknown")}</p>{(failure?.command || failure?.cwd || failure?.path) && <pre>{[failure.command, failure.cwd, failure.path].filter(Boolean).join("\n")}</pre>}</>}
       <p>{t(changes.length ? "detail.recordedChanges" : "detail.changesUnknown")}</p>
       <ChangedFiles entries={entries} project={project} />
-      <div className="actions">
+      <ActionGroup>
       {state === "interrupted" && onResume && <Button variant="secondary" disabled={continuing} busy={continuing} onClick={onResume}>{t("detail.resumeInterrupted")}</Button>}
       {state === "failed" && onRetry && <Button variant="secondary" disabled={continuing} busy={continuing} onClick={onRetry}>{t("detail.retry")}</Button>}
       {state === "failed" ? <Button variant="ghost" disabled={!log} onClick={() => void copyText(log).catch(() => setError(t("copyFailedSelectAndCopyTheTextManually")))}>{t("detail.copyLog")}</Button>
-        : <Button variant="secondary" disabled={!diffs.length} aria-expanded={diff} onClick={() => setDiff(!diff)}>{t("detail.viewDiff")}</Button>}</div>
+        : <Button variant="secondary" disabled={!diffs.length} aria-expanded={diff} onClick={() => setDiff(!diff)}>{t("detail.viewDiff")}</Button>}</ActionGroup>
       {diff && diffs.map((change, index) => <section key={index}><strong>{change.path}</strong><pre>{change.diff?.text}</pre>{change.diff?.truncated && <small>{t("timeline.truncated")}</small>}</section>)}
       {error && <p role="alert">{error}</p>}
-    </article>
+    </article></EntityCard>
   </>;
 }

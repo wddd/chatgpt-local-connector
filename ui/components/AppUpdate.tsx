@@ -99,9 +99,9 @@ export function UpdateDock() {
   if (!updateVisible() && !s.panelOpen) return null;
   const settling = updateActive(s.snapshot);
   return <><span className="update-dock-divider" aria-hidden="true" /><Popover.Root modal={false} open={s.panelOpen} onOpenChange={open => open ? showUpdate() : dismissUpdate()}>
-    <Popover.Trigger asChild><button type="button" className="update-dock-entry" data-hover-target="updates" aria-label={t("viewUpdate")}>
+    <Popover.Trigger asChild><Button variant="surface" type="button" className="update-dock-entry" data-hover-target="updates" aria-label={t("viewUpdate")}>
       <Icon icon={settling ? LoaderCircle : ArrowUp} size={20} className={settling ? "update-ring" : undefined} />{available() && <span className="update-available-dot" />}
-    </button></Popover.Trigger>
+    </Button></Popover.Trigger>
     <Popover.Portal><Popover.Content className="update-panel" side="top" align="end" sideOffset={12} collisionPadding={16} aria-label={t("appUpdates")} onOpenAutoFocus={event => event.preventDefault()} onEscapeKeyDown={event => event.stopPropagation()}>
       <PanelContents key={s.snapshot.id ?? s.snapshot.source?.version ?? "offer"} />
     </Popover.Content></Popover.Portal>

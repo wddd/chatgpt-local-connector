@@ -1,4 +1,4 @@
-import { SectionHeader, Dialog, IconButton, Notice } from "./ui";
+import { ViewStack, SectionHeader, Dialog, IconButton, Notice } from "./ui";
 import { useReducedMotion } from "../state/appEnvironment";
 import { agentPanel, selectAgentPanel } from "../state/overviewPanels";
 import { useId, useLayoutEffect, useRef, useState } from "react";
@@ -88,15 +88,15 @@ export default function AgentPanel({ agent, onSettings, onPanelFrame, width, exp
     onClose={() => { const current = agentPanel.get(); if (current?.agent === agent.agent && current.accountId === selected.accountId && current.closing) selectAgentPanel({ type: "closed" }); }}
     returnFocus={`[data-agent-node="${CSS.escape(agent.agent)}"]${selected.accountId ? `[data-account-id="${CSS.escape(account?.id ?? selected.accountId)}"]` : ""} button`} onPanelFrame={onPanelFrame}>
     {error && <span className="sr-only" role="status">{t("activity.disconnected")}</span>}
-    <div ref={content} className="agent-panel-view">
-      <motion.div className="agent-panel-view" key={`${agent.agent}:${selected.accountId ?? ""}`} style={{ display: session ? "none" : "flex" }}
+    <ViewStack ref={content}>
+      <ViewStack asChild hidden={!!session}><motion.div key={`${agent.agent}:${selected.accountId ?? ""}`}
         initial={{ opacity: reduced ? 1 : 0, x: 0 }} animate={{ opacity: session ? 0 : 1, x: reduced || !session ? 0 : -12 }} transition={{ duration: reduced ? 0 : 0.16 }}>
         <AgentView resizable={!dockRect} agent={agent} account={account} accountId={selected.accountId} active={!session} onSettings={onSettings} expanded={expanded} onToggleWidth={onToggleWidth} />
-      </motion.div>
-      {session && <motion.div className="agent-panel-view" key={`${agent.agent}:${session.id}`}
+      </motion.div></ViewStack>
+      {session && <ViewStack asChild><motion.div key={`${agent.agent}:${session.id}`}
         initial={{ opacity: reduced ? 1 : 0, x: reduced ? 0 : 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>
         <ActivityTimeline resizable={!dockRect} titleId={taskTitleId} agent={agent.agent} session={session} expanded={expanded} onToggleWidth={onToggleWidth} onBack={() => selectAgentPanel({ type: "back" })} />
-      </motion.div>}
-    </div>
+      </motion.div></ViewStack>}
+    </ViewStack>
   </Dialog>;
 }

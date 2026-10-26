@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type InputHTMLAttributes } from 'react';
+import { Input } from "./ui";
 import { t } from '../i18n';
 import { maskSensitive, sensitiveParts } from '../privacyMask';
 import { usePrivacy } from '../state/privacy';
@@ -43,7 +44,7 @@ export function SensitiveIdentity({ email, orgName, wrap = false }: { email?: st
 // Editable sensitive fields are read-only while hidden. Values remain in React state.
 export function SensitiveInput({ value = '', onChange, readOnly, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value'> & { value?: string }) {
   const hidden = usePrivacy();
-  return <input {...props} className={`input ${props.className ?? ''}`} value={hidden ? maskSensitive(value, true) : value}
+  return <Input {...props} value={hidden ? maskSensitive(value, true) : value}
     readOnly={hidden || readOnly} onChange={hidden ? undefined : onChange} aria-description={hidden ? t('accounts.hidden') : props['aria-description']}
     onCopy={hidden ? event => { event.preventDefault(); event.clipboardData.setData('text/plain', value); } : props.onCopy} />;
 }

@@ -5,7 +5,7 @@ import { accounts, refreshAccounts } from '../state/accounts';
 import { subscriptions } from '../state/subscriptions';
 import { navigation } from '../state/navigation';
 import { t } from '../i18n';
-import { Button, Checkbox, Dialog, Field, Input, Notice, SingleChoice } from './ui';
+import { Button, Checkbox, Dialog, FormSection, FormField, Input, Notice, SingleChoice } from './ui';
 
 export default function MergeAccounts({ account, onClose }: { account: ProviderAccount; onClose: () => void }) {
   const { items } = accounts.use(), { snapshot } = subscriptions.use();
@@ -28,14 +28,14 @@ export default function MergeAccounts({ account, onClose }: { account: ProviderA
   }
   return <Dialog centered title={t('accounts.mergeTitle', { alias: account.alias })} busy={busy} onClose={onClose}
     footer={<><Button disabled={busy} onClick={onClose}>{t('cancel')}</Button><Button variant="primary" type="submit" form={formId} disabled={!ids.length || !alias.trim()} busy={busy}>{t('accounts.mergeConfirm')}</Button></>}>
-    <form id={formId} className="account-form" onSubmit={event => { event.preventDefault(); void merge(); }}>
+    <form id={formId} onSubmit={event => { event.preventDefault(); void merge(); }}><FormSection>
     <p>{t('accounts.mergeConsequence')}</p>
-    <div className="account-merge-members">{items.filter(item => item.id !== account.id).map(item => <Checkbox key={item.id} checked={ids.includes(item.id)} disabled={busy}
-      onChange={checked => setIds(old => checked ? [...old, item.id] : old.filter(id => id !== item.id))}>{item.alias} · {[item.sources.length ? 'SRC' : '', item.agentProfiles.length ? 'AGENT' : ''].filter(Boolean).join(' / ')}</Checkbox>)}</div>
-    <Field id={aliasId} label={t('accounts.mergeAlias')}><Input id={aliasId} required maxLength={120} value={alias} disabled={busy} onChange={event => setAlias(event.target.value)} /></Field>
+    <FormSection>{items.filter(item => item.id !== account.id).map(item => <Checkbox key={item.id} checked={ids.includes(item.id)} disabled={busy}
+      onChange={checked => setIds(old => checked ? [...old, item.id] : old.filter(id => id !== item.id))}>{item.alias} · {[item.sources.length ? 'SRC' : '', item.agentProfiles.length ? 'AGENT' : ''].filter(Boolean).join(' / ')}</Checkbox>)}</FormSection>
+    <FormField id={aliasId} label={t('accounts.mergeAlias')}><Input id={aliasId} required maxLength={120} value={alias} disabled={busy} onChange={event => setAlias(event.target.value)} /></FormField>
     <SingleChoice label={t('accounts.mergeQuota')} value={quotaProviderId} disabled={busy}
       options={[{ value: 'native', label: t('accounts.mergeNativeQuota') }, ...providers.map(provider => ({ value: provider.providerId, label: provider.name }))]} onChange={setQuotaId} />
     {error && <Notice>{error}</Notice>}
-    </form>
+    </FormSection></form>
   </Dialog>;
 }

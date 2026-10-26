@@ -1,0 +1,12 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex",
+    "claude"
+  ],
+  "tasks": [],
+  "shells": true,
+  "pageFixture": "agent-display-settings",
+  "quota": true
+}

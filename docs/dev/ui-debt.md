@@ -25,22 +25,10 @@ Counts are outstanding violations per file and rule, sorted by count.
 <!-- ui-debt:start -->
 | File | Rule | Count |
 | --- | --- | ---: |
-| ui/product.css | shared-layout-css | 523 |
-| ui/style.css | shared-layout-css | 152 |
-| ui/components/TaskDetail.css | shared-layout-css | 116 |
+| ui/product.css | shared-layout-css | 486 |
+| ui/style.css | shared-layout-css | 113 |
+| ui/components/TaskDetail.css | shared-layout-css | 111 |
 | ui/components/AppUpdate.css | shared-layout-css | 39 |
 | ui/subscriptions/bubble.css | shared-layout-css | 29 |
 | ui/components/activity/activity.css | shared-layout-css | 5 |
-| ui/components/AddAccount.tsx | arc-ui/shared-controls | 2 |
-| ui/components/ConnectionOverview.tsx | arc-ui/shared-controls | 2 |
-| ui/components/RecordsPage.tsx | arc-ui/shared-controls | 2 |
-| ui/subscriptions/QuotaBubble.tsx | arc-ui/shared-layout | 2 |
-| ui/App.tsx | arc-ui/shared-controls | 1 |
-| ui/components/ActivityBubbles.tsx | arc-ui/shared-controls | 1 |
-| ui/components/AgentPanel.tsx | arc-ui/shared-layout | 1 |
-| ui/components/AgentsSettings.tsx | arc-ui/shared-controls | 1 |
-| ui/components/AppUpdate.tsx | arc-ui/shared-controls | 1 |
-| ui/components/ElasticPanel.tsx | arc-ui/shared-controls | 1 |
-| ui/components/GraphNode.tsx | arc-ui/shared-controls | 1 |
-| ui/components/Sensitive.tsx | arc-ui/shared-controls | 1 |
 <!-- ui-debt:end -->

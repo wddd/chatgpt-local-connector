@@ -1,4 +1,4 @@
-import { EntityRow, StateBadge, Button, Group, Icon, Tooltip, PlatformIcon } from "./ui";
+import { EntityRow, StateBadge, Button, SettingsSection, Icon, Tooltip, PlatformIcon } from "./ui";
 import { statePresentation } from "./objects/statePresentation";
 import { useEffect, useState } from "react";
 import { Accessibility, Bell, HardDrive, LogIn, Monitor, Terminal, type LucideIcon } from "lucide-react";
@@ -66,12 +66,12 @@ export default function PermissionsPage() {
   }
   return <div className="permissions-page">
     {data && <>
-      {mac && <Group title={t("permissionsSystem")}><p className="permission-hint">{t("permissionsAppHint", {app: appName})}</p>{visible.filter(item => systemIds.includes(item.id)).map(row)}</Group>}
-      <Group title={t("permissionsEnvironment")}>{visible.filter(item => !systemIds.includes(item.id)).map(row)}</Group>
-      <Group title={t("permissionsConnections")}>
+      {mac && <SettingsSection title={t("permissionsSystem")}><p className="permission-hint">{t("permissionsAppHint", {app: appName})}</p>{visible.filter(item => systemIds.includes(item.id)).map(row)}</SettingsSection>}
+      <SettingsSection title={t("permissionsEnvironment")}>{visible.filter(item => !systemIds.includes(item.id)).map(row)}</SettingsSection>
+      <SettingsSection title={t("permissionsConnections")}>
         {connections.length === 0 && <p className="permission-hint">{t("permissionsNoConnections")}</p>}
         {connections.map(({entry, state}) => <EntityRow className="permission-entity-row" key={entry.id} leading={<><span className="permission-symbol"><PlatformIcon role="source" platform={entry.controlSource} /></span></>} title={<><h3>{entry.name}</h3></>} actions={<>{badge(state, false, true)}{state !== "granted" && <Button onClick={() => setDetails(entry)}>{t("permissionsViewConnection")}</Button>}</>} />)}
-      </Group>
+      </SettingsSection>
     </>}
     {details && <IngressDetailsDialog ingress={details} onClose={() => setDetails(undefined)} onEdit={entry => { setDetails(undefined); setEditing(entry); }} />}
     {editing && <IngressDialog ingress={editing} onClose={() => setEditing(undefined)} onRemoved={() => { setEditing(undefined); void refreshPermissions().catch(error => notify(String(error), true)); }} onSaved={entry => { setEditing(undefined); setDetails(entry); void refreshPermissions().catch(error => notify(String(error), true)); }} />}

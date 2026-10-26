@@ -1,0 +1,24 @@
+{
+  "theme": "dark",
+  "language": "en",
+  "agents": [
+    "codex",
+    "claude"
+  ],
+  "tasks": [
+    {
+      "agent": "codex",
+      "phase": "thinking",
+      "title": "Review the example configuration",
+      "headline": "Inspecting fixture files"
+    },
+    {
+      "agent": "claude",
+      "phase": "text",
+      "title": "Summarize the example changes",
+      "headline": "Summary ready",
+      "completed": true
+    }
+  ],
+  "page": "tasks"
+}

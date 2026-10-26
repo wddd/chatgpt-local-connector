@@ -1,5 +1,5 @@
 import { DispatchSpec } from "./composites/DispatchSpec";
-import { StateBadge } from "./ui";
+import { ActionGroup, StateBadge } from "./ui";
 import { statePresentation } from "./objects/statePresentation";
 import { SectionHeader, EntityRow, Button, Empty, IconButton, Loading, Notice, Dialog } from "./ui";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -207,7 +207,7 @@ export default function TasksPage() {
               <Notice>{displayMessage(r.error.message)}</Notice>
             )}
             {r.state === "awaiting-approval" && (
-              <div className="actions">
+              <ActionGroup>
                 {["approve", "reject"].map((action) => (
                   <Button
                     key={action}
@@ -226,7 +226,7 @@ export default function TasksPage() {
                     {t(action === "approve" ? "approveAndSubmit" : "reject")}
                   </Button>
                 ))}
-              </div>
+              </ActionGroup>
             )}
           </section>
         ))}

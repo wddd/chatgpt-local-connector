@@ -364,7 +364,7 @@ export default function App() {
           aria-hidden={page !== "overview"}
         >
           {pages.map((item) => (
-            <button
+            <Button variant="surface"
               key={item.id}
               data-panel-anchor
               data-page={item.id}
@@ -376,7 +376,7 @@ export default function App() {
               {item.id === "tasks" && pending > 0 && (
                 <span className="task-count">{pending}</span>
               )}
-            </button>
+            </Button>
           ))}
           <UpdateDock />
         </HoverScope>

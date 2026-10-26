@@ -5,7 +5,7 @@ import { t, locale } from "../i18n";
 import { openUrl } from "../platform";
 import { useNow } from "../state/hooks";
 import { refreshSubscription } from "../state/subscriptions";
-import { Button, Icon, HoverScope, PlatformIcon, Freshness, SectionHeader } from "../components/ui";
+import { MeterSegment, Button, Icon, HoverScope, PlatformIcon, Freshness, SectionHeader } from "../components/ui";
 import {
   quotaDisplay,
   resetDisplay,
@@ -263,11 +263,12 @@ export default function QuotaBubble({
                   <div className="product-usage-bar">
                     {productRows.map((row, index) => {
                       const key = `product:${index}`;
-                      return <Button
+                      return <MeterSegment
+                        weight={row.percent}
                         key={row.label}
                         variant="ghost"
                         className="product-usage-segment"
-                        style={{flexGrow: row.percent, background: `var(--chart-${index % 8 + 1})`}}
+                        style={{background: `var(--chart-${index % 8 + 1})`}}
                         aria-label={`${row.label} · ${row.percent}%`}
                         ref={node => register(key, node)}
                         onPointerEnter={event => event.pointerType !== "touch" && hover(key)}
@@ -277,9 +278,8 @@ export default function QuotaBubble({
                         aria-expanded={expanded && displayed === key}
                       />;
                     })}
-                    {productRemainder > 0 && <Button
+                    {productRemainder > 0 && <MeterSegment weight={productRemainder}
                       variant="ghost" className="product-usage-segment product-usage-remaining"
-                      style={{flexGrow:productRemainder}}
                       aria-label={`${t("usageRemaining")} · ${productRemainder}%`}
                       ref={node => register("productRemaining", node)}
                       onPointerEnter={event => event.pointerType !== "touch" && hover("productRemaining")}

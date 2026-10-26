@@ -97,11 +97,10 @@
 .task-needs-you .activity-actions { flex-wrap: wrap; margin-top: 0; }
 .task-needs-you .activity-once { flex-basis: 100%; }
 @keyframes task-dock-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.task-outcome { border: 1px solid var(--border-strong); background: var(--surface-subtle); padding: 14px; border-radius: 18px; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
+.task-outcome { border: 1px solid var(--border-strong); background: var(--surface-subtle); font-size: 14px; line-height: 1.6; }
 .task-outcome[data-state=failed] { border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); background: var(--danger-soft); }
 .task-outcome[data-state=failed] > strong { color: var(--danger); }
 .task-outcome pre { font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; }
-.task-outcome .actions { flex-wrap: wrap; margin-top: 10px; }
 .task-stop-divider { display: flex; align-items: center; gap: 10px; color: var(--text-tertiary); font-size: 11px; }
 .task-stop-divider::before, .task-stop-divider::after { content: ""; height: 1px; background: var(--border); flex: 1; }
 .task-receipt-anchor { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 11px; }
@@ -134,7 +133,6 @@
   .task-detail-navigation > .button > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .task-detail-header .activity-panel-title { font-size: 14.5px; }
   .task-detail-chips { gap: 6px; }
-  .task-state { flex: none; font-size: 11.5px; padding: 3px 8px; }
   .task-detail-chips > .task-source-chip, .task-ownership-chip.button { font-size: 11.5px; padding-inline: 8px; }
   .task-duration { font-size: 11.5px; }
   .task-detail-layer .timeline-entries { padding: 12px; gap: 12px; }
@@ -167,10 +165,5 @@
 :root[data-reduced-motion="true"] {
   .task-ownership-history { animation: none !important; transition: none !important; }
 }
-
-.request-routing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
-.request-routing > span { overflow-wrap: anywhere; }
-.request-routing .actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
-.request-routing button { white-space: normal; overflow-wrap: anywhere; }
 
 .task-detail-header > .section-header-copy { flex: none; width: 100%; }

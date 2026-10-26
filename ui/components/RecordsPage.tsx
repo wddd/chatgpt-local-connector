@@ -4,7 +4,7 @@ import { useState } from "react";
 import { t, locale, type MessageKey } from "../i18n";
 import { displayMessage } from "../messages";
 import { connector } from "../state/connector";
-import { Empty, Input, SingleChoice, Status } from "./ui";
+import { Disclosure, Empty, Input, SingleChoice, Status } from "./ui";
 export default function RecordsPage() {
   const { status } = connector.use();
   const { recordsSource } = navigation.use();
@@ -174,10 +174,9 @@ export default function RecordsPage() {
                 <td className="record-operation">
                   <span title={row.operation}>{row.operation}{row.count > 1 ? ` ×${row.count}` : ""}</span>
                   {row.detail && (
-                    <details>
-                      <summary>{t("details")}</summary>
+                    <Disclosure title={t("details")}>
                       <pre>{row.detail}</pre>
-                    </details>
+                    </Disclosure>
                   )}
                 </td>
                 {hasResult && <td>{row.result ? <Status tone={row.result === "recordFailure" ? "danger" : "neutral"}>{t(row.result)}</Status> : "—"}</td>}

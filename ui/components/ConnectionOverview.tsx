@@ -285,7 +285,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         ...shownGroups.flatMap(group => group.hidden ? [{ id: JSON.stringify(accountIds.length > 1 ? [agent.agent, null, accountGroup(group.group[0]?.agentAccountId)] : [agent.agent, null]), activityQueue: queueKey(group.group),
           members: group.group.filter(s => !group.sessions.includes(s)).map(s => ({ origin: origin(s), agentAccountId: accountGroup(s.agentAccountId) ?? s.agentAccountId, pending: !!s.interaction })),
           agentAccountId: accountIds.length > 1 ? accountGroup(group.group[0]?.agentAccountId) : undefined, count: group.hidden, pending: group.group.some(s => !!s.interaction && !group.sessions.includes(s)), width, height: bubbleHeights.compact, state: "summary" as const, selected: false,
-          content: <button type="button" className="activity-bubble activity-summary" aria-expanded={false} onClick={event => {
+          content: <Button variant="surface" type="button" className="activity-bubble activity-summary" aria-expanded={false} onClick={event => {
             setExpandedQueue(queueKey(group.group));
             if (event.detail === 0) {
               const next = group.group.find(session => !group.sessions.includes(session));
@@ -294,7 +294,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             }
           }}>
             <PhaseTile phase="tool" animated={false} /><span className="activity-copy"><span className="activity-phase"><PhaseLabel phase="tool">{t("activity.more", { count: group.hidden })}</PhaseLabel></span><span className="activity-headline">{t("activity.viewAll")}</span></span>
-          </button>,
+          </Button>,
         }] : []),
       ],
     };
@@ -321,7 +321,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     <>
       <section ref={core} inert={flow?.step === "welcome"} aria-hidden={flow?.step === "welcome" || undefined} className={`connection-core brand-mode ${panelOpen ? "side-panel-open" : ""}`} aria-label={t("connectionStatus")}>
         <div className="core-toggle">
-          <button
+          <Button variant="surface"
             className={`connection-action ${switchOn ? "is-on" : ""} ${progressing ? "is-busy" : ""}`}
             disabled={progressing || loading || !status || !!error}
             aria-busy={progressing}
@@ -335,7 +335,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
                 <Icon icon={progressing ? LoaderCircle : Power} />
               </span>
             </span>
-          </button>
+          </Button>
         </div>
         <Topology ref={topology} boundary={core} accountsEnabled={accounts.length > 0} left={topologyLeft} right={topologyRight} panelKey={panelKey} panelExpanded={selection && envOverrides().taskPanelWidth != null ? false : panelExpanded} onPanelLayout={updatePanelLayout}
           onReorderNodes={reorderNodes}

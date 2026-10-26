@@ -476,11 +476,12 @@ test("timeline UI and agent navigation restore follow mode and focus", { timeout
   let revision = 1;
   globalThis.fetch = async () => { return new Response(JSON.stringify({ sessionId: 'follow', status: 'running', cursor: revision, coverage: { state: 'complete' }, entries: [{ id: 'answer', type: 'text', status: 'running', startedAt: null, updatedAt: '', turnId: 'turn', position: 1, cursor: revision, text: 'Increment '+revision }] })); };
   try {
+    const { TooltipProvider } = await server.ssrLoadModule("/ui/components/ui/index.tsx");
     const { default: ActivityTimeline } = await server.ssrLoadModule('/ui/components/ActivityTimeline.tsx');
     const { agentActivity } = await server.ssrLoadModule('/ui/state/activity.ts');
     const session = { id: 'follow', turnId: 'turn', source: 'arc-task', phase: 'text', headline: 'Response', phaseSince: null, timeline: true, orderAt: 0 };
     agentActivity.set({ error: '', snapshot: { observedAt: '', activeAgents: ['claude'], agents: { claude: { sessions: [session] } } } });
-    await act(async () => { root.render(h(ActivityTimeline, { agent: 'claude', session, expanded: false, onToggleWidth() {}, onBack() {} })); });
+    await act(async () => { root.render(h(TooltipProvider, null, h(ActivityTimeline, { agent: 'claude', session, expanded: false, onToggleWidth() {}, onBack() {} }))); });
     const page = within(mount);
     const { t } = await server.ssrLoadModule("/ui/i18n.ts"); latestLabel = t("timeline.latest");
     const viewport = page.getByLabelText(t("timeline.title"));

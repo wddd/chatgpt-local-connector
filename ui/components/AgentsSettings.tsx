@@ -1,4 +1,4 @@
-import { ActionGroup, SettingsSection, SettingRow, EntityCard, SectionHeader, Dialog, IconButton, Switch, Notice, Loading } from "./ui";
+import { Button, ActionGroup, SettingsSection, SettingRow, EntityCard, SectionHeader, Dialog, IconButton, Switch, Notice, Loading } from "./ui";
 import { useReducedMotion } from "../state/appEnvironment";
 import { useState, type ReactNode } from "react";
 import { motion, Reorder, useDragControls } from "motion/react";
@@ -153,7 +153,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
               agent={agent}
               onMove={by => move(agent.agent, by)}
             >
-              <button
+              <Button variant="surface"
                 type="button"
                 className="agent-detail-trigger"
                 aria-label={name(agent)}
@@ -161,7 +161,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
                 onClick={() => setDetail(agent)}
               >
                 <AgentQuotaIcon agent={agent.agent} />
-              </button>
+              </Button>
               <SettingRow label={<>
                 {agentLinks[agent.agent] ? (
                   <a
