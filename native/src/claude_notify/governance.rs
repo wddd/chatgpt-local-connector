@@ -784,6 +784,18 @@ async fn ensure_account_route(source_id: &str, args: &Value) -> Result<Value> {
     let selected = if owners.len() == 1 && !candidates.iter().any(|p| p["visibility"] == "unknown")
     {
         visible.first().map(|p| string(p, "accountId").to_owned())
+    } else if visible.is_empty() {
+        // Source identity can select a route, but only the challenge ack verifies it.
+        let origin = crate::kernel::origin::current_origin();
+        origin["accountId"].as_str().and_then(|account_id| {
+            candidates
+                .iter()
+                .find(|p| {
+                    crate::accounts::profile_account(string(p, "accountId"))
+                        .is_ok_and(|a| a["id"] == account_id)
+                })
+                .map(|p| string(p, "accountId").to_owned())
+        })
     } else {
         None
     };
