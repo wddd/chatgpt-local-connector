@@ -28,8 +28,8 @@ Task branches form complete rounded routes from the node through the bus column.
 
 Agent/account panels dock inside the right rail over the bubbles, from a 16px left margin to 40px before the selected node's stubs. Their vertical range starts below the lower earmuff and ends above the dock. A selected-node stub reaches the panel's right edge; bubbles and their stubs fade using existing panel state.
 
-Source panels open to the right of the visible source nodes and account labels, inside the viewport and above the dock. They overlay the scene without reserving a vertical gap or moving the hub and Agent section. The shared panel scroll area contains long content. The selected source connects directly from the icon's right edge to the panel's left edge, clear of the labels below account nodes. Opening the panel keeps the selected node visible.
+Source panels open to the right of the visible source nodes and account labels, inside the viewport and above the dock. They overlay the scene without reserving a vertical gap or moving the hub and Agent section. The shared panel scroll area contains long content. The selected source connects directly from the icon's right edge to the panel's left edge, clear of the labels below account nodes. Opening the panel keeps the selected node visible when the rail has enough space.
 
-Portrait panels use the available rail area and omit the landscape width-expansion control. An explicit `app_env.taskPanelWidth` may narrow the Agent panel within that area.
+Portrait panels use the available rail area with a minimum width of 400px, capped at the viewport width minus 32px. When the rail is narrower, both SRC and AGENT panels cover the topology to retain that width. They omit the landscape width-expansion control. An explicit `app_env.taskPanelWidth` may narrow the Agent panel within that area.
 
 Both modes reuse the existing nonmodal shell, open/close timing, outside-click, Escape and focus restoration. Header controls and the bottom-left dock retain their positions.

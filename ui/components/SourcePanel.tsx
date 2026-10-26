@@ -1,16 +1,15 @@
 import { useState, type ReactNode } from 'react';
 import { ArrowLeft, X } from 'lucide-react';
-import { api } from '../api';
 import { t } from '../i18n';
 import { controlSource } from '../controlSources';
 import { isLocalSource } from '../sourcePresentation';
 import { name as agentName } from '../state/agents';
-import { connector, refreshConnector } from '../state/connector';
+import { connector } from '../state/connector';
 import { useAccounts } from '../state/accounts';
 import { navigation } from '../state/navigation';
 import { srcPanel, selectAgentPanel, selectSourcePanel } from '../state/overviewPanels';
 import type { ControlSource } from '../state/types';
-import { Button, DialogClose, IconButton, Notice, SingleChoice, Status, Switch, Tag } from './ui';
+import { Button, DialogClose, IconButton, Notice, SingleChoice, Status, Tag } from './ui';
 import { PrivacyToggle } from './Privacy';
 import { AccountNotifications } from './AccountCards';
 import AccountMaintenance from './AccountMaintenance';
@@ -28,9 +27,8 @@ export default function SourcePanel({ source, widthControl, onBack }: { source: 
   const { status, sources } = connector.use(), state = useAccounts();
   const account = state.items.find(account => account.sources.includes(source.id));
   const ingress = status?.ingresses.find(ingress => ingress.id === source.ingressId);
-  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   if (isLocalSource(source)) return null;
-  const shared = sources.filter(item => item.ingressId === source.ingressId && item.state !== 'revoked').length > 1;
   const memberships = sources.filter(item => account?.sources.includes(item.id) && item.product === source.product);
   const back = onBack ?? (() => selectSourcePanel(source.product, { platformOnly: true }));
   const platform = controlSource(source.product)?.displayName ?? source.product;
@@ -45,15 +43,11 @@ export default function SourcePanel({ source, widthControl, onBack }: { source: 
   return <>
     <header className="dialog-header source-account-header"><div className="actions"><IconButton icon={ArrowLeft} label={t('back')} onClick={back} /><SourceIcon platform={source.product} /></div>
       <div className="source-account-heading"><h2>{platform} · {account?.alias ?? source.label}</h2></div>
-      <div className="actions"><Switch label={t('sourcePanel.enabled')} checked={!!ingress?.enabled} disabled={!ingress || busy} onChange={enabled => {
-        if (!ingress) return;
-        setBusy(true); setError(''); void api(`ingress/${ingress.id}`, 'PUT', { enabled }).then(refreshConnector).catch(e => setError(String(e))).finally(() => setBusy(false));
-      }} /><PrivacyToggle />{widthControl}<DialogClose asChild><IconButton icon={X} label={t('close')} disabled={busy} /></DialogClose></div>
+      <div className="actions"><PrivacyToggle />{widthControl}<DialogClose asChild><IconButton icon={X} label={t('close')} disabled={busy} /></DialogClose></div>
     </header>
     <div className="side-panel-scroll source-panel-content">
       <div className="account-chips"><Status tone={source.state === 'connected' ? 'success' : 'neutral'}>{t(`source.state.${source.state}`)}</Status><Tag>{ingress?.name ?? source.connectionName ?? t('source.connectionRemoved')}</Tag></div>
-      {shared && <p className="muted small">{t('accounts.sharedConnection')}</p>}
-      {(error || state.error) && <Notice>{error || state.error}</Notice>}
+      {state.error && <Notice>{state.error}</Notice>}
       {account ? <AccountMaintenance account={account} onRemoved={back}>{details}</AccountMaintenance> : <><p role="status" className="muted">{t(state.loading ? 'loading' : 'accounts.identityUnavailable')}</p>{details}</>}
     </div>
   </>;
