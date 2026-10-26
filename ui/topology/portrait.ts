@@ -1,4 +1,4 @@
-import { ACCOUNT_NODE_SIZE, DEFAULTS, NODE_R, PANEL_MIN_WIDTH, PANEL_MARGIN, type Drag, type Entity, type Layout, type NodeGeometry, type Params, type Scene, type Side, type TaskGeometry, type Wing } from './solve.ts';
+import { ACCOUNT_NODE_SIZE, DEFAULTS, NODE_R, type Drag, type Entity, type Layout, type NodeGeometry, type Params, type Scene, type Side, type TaskGeometry, type Wing } from './solve.ts';
 import { bubbleWidths } from '../state/activityModel.ts';
 
 export interface PortraitGeometry {
@@ -121,17 +121,14 @@ export function portraitSourcePanelRoute(node: Pick<NodeGeometry, 'x' | 'y' | 's
 // vertical scrolling never feeds a panel's animated dimensions back into solve.
 export function portraitPanelRect(layout: Layout, selected: NodeGeometry, scrollTop = 0): PortraitPanelRect {
   const p = layout.portrait!;
-  const available = Math.max(1, layout.vw - 2 * PANEL_MARGIN);
-  const minimum = Math.min(PANEL_MIN_WIDTH, available);
-  // Keep the inward placement when it fits; otherwise cover the topology.
   if (selected.side === -1) {
     const sources = layout.wings[0].nodes.filter(node => node.opacity > 0);
     const edge = Math.max(...sources.map(node => node.x + Math.max(node.size * node.scale / 2,
       node.parent ? p.sourceAccountLabelWidth / 2 : 0)));
-    const x = Math.max(PANEL_MARGIN, Math.min(layout.vw - PANEL_MARGIN - minimum, edge + 24));
+    const x = Math.min(layout.vw - 17, edge + 24);
     return { x, y: 16, width: Math.max(1, layout.vw - 16 - x), height: Math.max(1, layout.vh - 112) };
   }
   const y = Math.max(16, layout.hub.y + p.earOffset + 16 - scrollTop);
   const right = selected.x - selected.size * selected.scale / 2 - 40;
-  return { x: 16, y, width: Math.min(available, Math.max(minimum, right - PANEL_MARGIN)), height: Math.max(1, layout.vh - 96 - y) };
+  return { x: 16, y, width: Math.max(1, right - 16), height: Math.max(1, layout.vh - 96 - y) };
 }

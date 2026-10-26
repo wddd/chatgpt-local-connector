@@ -51,7 +51,7 @@ SRC panels dock left; AGENT panels dock right. A side panel is a drill-down stac
 ### SRC L2 — source account
 
 - Identity: alias (editable), email/org (sensitive), plan.
-- State and last seen. Connection start/stop belongs to Connections detail; SRC L2 has no enabled switch.
+- Enabled switch, state, last seen.
 - Connection: the TUNNEL name and kind; it links to that connection on the Connections page. Change connection opens the Change connection dialog. Disconnect stays here.
 - OAuth grants for this source (moved from Permissions › connection details).
 - Notification binding for this account (bind, test, last delivery).
@@ -63,7 +63,7 @@ SRC panels dock left; AGENT panels dock right. A side panel is a drill-down stac
 ### AGENT L1 — agent platform
 
 - Header: quota icon, name, version, open-app action, in-progress count.
-- Platform behavior settings moved from Settings (for Codex: auto-open Codex tasks).
+- Platform behavior settings moved from Settings (for Codex: auto-open Codex tasks / Desktop dispatch).
 - Dispatch policy summary, read-only: default model/effort and criteria text.
 - Account list; a row opens the L2 layer. Add account opens the existing account login flow for this agent.
 - Aggregate task list across accounts (current behavior when no account is selected).
