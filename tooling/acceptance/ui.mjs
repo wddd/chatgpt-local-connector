@@ -155,6 +155,42 @@ try {
           // Semantic snapshots exclude aria-hidden Radix form inputs and visual announcement mirrors.
           row.taskAccessibility = await taskDetail.ariaSnapshot();
         }
+        if (name === 'task-turn-failed' || name === 'task-turn-interrupted') {
+          // Regression: 087a88e moved outcome actions beneath the floating Back to latest control.
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          const action = taskDetail.getByRole('button', { name: messages[name === 'task-turn-failed' ? 'detail.retry' : 'detail.resumeInterrupted'], exact: true });
+          const latest = taskDetail.getByRole('button', { name: messages['timeline.latest'], exact: true });
+          const viewport = taskDetail.getByLabel(messages['timeline.title'], { exact: true });
+          const assertActionExposed = async () => {
+            const actionBox = await action.boundingBox(), viewportBox = await viewport.boundingBox();
+            const latestBox = await latest.isVisible() ? await latest.boundingBox() : null;
+            if (!actionBox || !viewportBox) throw new Error('The outcome action or timeline is missing');
+            const visibleTop = Math.max(actionBox.y, viewportBox.y);
+            const visibleBottom = Math.min(actionBox.y + actionBox.height, viewportBox.y + viewportBox.height);
+            if (latestBox && visibleBottom > visibleTop && actionBox.x < latestBox.x + latestBox.width && actionBox.x + actionBox.width > latestBox.x && visibleTop < latestBox.y + latestBox.height && visibleBottom > latestBox.y) throw new Error('Back to latest overlaps the outcome action');
+            if (actionBox.y + actionBox.height / 2 >= viewportBox.y && actionBox.y + actionBox.height / 2 < viewportBox.y + viewportBox.height) {
+              const hitsAction = await action.evaluate(element => {
+                const box = element.getBoundingClientRect();
+                return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+              });
+              if (!hitsAction) throw new Error('The outcome action center is covered');
+            }
+          };
+          await assertActionExposed();
+          if (await viewport.evaluate(element => element.scrollHeight > element.clientHeight)) {
+            await viewport.evaluate(element => { element.scrollTop = 0; });
+            await latest.waitFor({ state: 'visible' });
+            await action.evaluate(element => element.scrollIntoView({ block: 'end' }));
+            await assertActionExposed();
+            await action.click({ trial: true });
+            if (screenshots) await page.screenshot({ path: path.join(out, `${key}-latest-control.png`), animations: 'disabled' });
+            await latest.click();
+            await latest.waitFor({ state: 'hidden' });
+          }
+          await assertActionExposed();
+          // Trial click checks the real center target without dispatching a native turn.
+          await action.click({ trial: true });
+        }
         if (name === 'task-dispatch-dsh' || name === 'tasks-dispatch-dsh') {
           // Regression: dsh task rows omitted the recorded model and effort chip.
           const scope = name === 'tasks-dispatch-dsh'
