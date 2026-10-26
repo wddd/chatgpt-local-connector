@@ -2,7 +2,9 @@
 // Only Root accepts React elements; all island slots and children stay text-only.
 export const previews = {
   Root: ['Foundation', 120, "Row(h(A.Status,{tone:'success'},F.labels.status),h(A.Button,{variant:'primary'},F.labels.button))"],
-  Button: ['Primitives', 140, "Row(...['primary','secondary','ghost','link','danger-outline','danger'].map(variant=>h(A.Button,{key:variant,variant},variant)),h(A.Button,{busy:true},'Saving'),h(A.Button,{disabled:true},'Disabled'))"],
+  ViewStack: ['Shells', 100, "h(A.ViewStack,{},'Retained panel content')"],
+  MeterSegment: ['Primitives', 100, "Row(h(A.MeterSegment,{weight:3},'Used'),h(A.MeterSegment,{weight:1},'Remaining'))"],
+  Button: ['Primitives', 140, "Row(...['primary','secondary','ghost','link','danger-outline','danger','surface'].map(variant=>h(A.Button,{key:variant,variant},variant)),h(A.Button,{busy:true},'Saving'),h(A.Button,{disabled:true},'Disabled'))"],
   IconButton: ['Primitives', 80, "Row(...['RefreshCw','Plus','Check','X'].map(icon=>h(A.IconButton,{key:icon,icon,label:icon})),h(A.IconButton,{icon:'RefreshCw',label:'Refreshing',busy:true}),h(A.IconButton,{icon:'Plus',label:'Disabled',disabled:true}))"],
   Switch: ['Primitives', 110, 'h(SwitchDemo)'],
   SingleChoice: ['Primitives', 110, 'h(ChoiceDemo)'],

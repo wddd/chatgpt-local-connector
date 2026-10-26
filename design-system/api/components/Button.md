@@ -9,7 +9,7 @@ Requires [Arc.Root](Root.md). Non-string props use template holes.
 | Prop | Type / allowed values | Default | Meaning |
 | --- | --- | --- | --- |
 | `children` | `string` | `required` | Plain text label. |
-| `variant` | `"primary" &#124; "secondary" &#124; "ghost" &#124; "link" &#124; "danger" &#124; "danger-outline"` | `"secondary"` | Visual action variant. |
+| `variant` | `"primary" &#124; "secondary" &#124; "ghost" &#124; "link" &#124; "danger" &#124; "danger-outline" &#124; "surface"` | `"secondary"` | Visual action variant. |
 | `busy` | `boolean` | `false` | Shows spinner and disables the action. |
 | `disabled` | `boolean` | `false` | Disables the action. |
 | `onClick` | `(event: React.MouseEvent<HTMLButtonElement>) => void` | `optional` | Receives the island event. |
@@ -17,7 +17,7 @@ Requires [Arc.Root](Root.md). Non-string props use template holes.
 
 ## States
 
-Default, hover, focus, pressed, busy and disabled. A busy action cannot be clicked.
+Default, hover, focus, pressed, busy and disabled. A busy action cannot be clicked. The surface variant retains native button behavior without rectangular control styling for geometry-owned topology, bubble and dock targets. Feature forms use the standard variants.
 
 ## Canvas example
 

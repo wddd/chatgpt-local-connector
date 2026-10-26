@@ -139,3 +139,6 @@ export const DangerZone = island<TextSlots<ComponentProps<typeof UI.DangerZone>,
 export const DispatchSpec = island<ComponentProps<typeof DispatchSpecComponent>>('DispatchSpec');
 
 export const ChoiceControl = island<Omit<ComponentProps<typeof UI.ChoiceControl>, 'options'> & { options: readonly Choice[] }>('ChoiceControl');
+
+export const ViewStack = island<Omit<TextProps<ComponentProps<typeof UI.ViewStack>>, 'asChild'> & { asChild?: false }>('ViewStack');
+export const MeterSegment = island<TextProps<ComponentProps<typeof UI.MeterSegment>>>('MeterSegment');

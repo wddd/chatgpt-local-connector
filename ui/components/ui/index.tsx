@@ -66,7 +66,7 @@ export function Button({
   disabled,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost" | "link" | "danger" | "danger-outline";
+  variant?: "primary" | "secondary" | "ghost" | "link" | "danger" | "danger-outline" | "surface";
   busy?: boolean;
   ref?: Ref<HTMLButtonElement>;
 }) {
@@ -76,7 +76,7 @@ export function Button({
       {...props}
       disabled={disabled || busy}
       aria-busy={busy || props["aria-busy"]}
-      className={`button ${variant} ${className}`}
+      className={`${variant === "surface" ? "surface-button" : `button ${variant}`} ${className}`}
     >
       {busy && <Icon icon={LoaderCircle} className="spin" />}
       {children}
@@ -603,3 +603,4 @@ export { PlatformIcon } from "./PlatformIcon";
 export { StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField } from "./Shells";
 
 export { SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone, ChoiceControl } from "./Forms";
+export { ViewStack, MeterSegment } from './Layout';

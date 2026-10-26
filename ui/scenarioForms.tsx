@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActionGroup, Button, DangerZone, Disclosure, FormField, FormSection, Input, SectionHeader, SettingRow, SettingsSection, ChoiceControl, Switch } from './components/ui';
+import { MeterSegment, ViewStack, ActionGroup, Button, DangerZone, Disclosure, FormField, FormSection, Input, SectionHeader, SettingRow, SettingsSection, ChoiceControl, Switch } from './components/ui';
 import { DispatchSpec } from './components/composites/DispatchSpec';
 import { dispatchSpecFixtures } from './scenarioDispatchSpec';
 import './scenarioShells.css';
@@ -10,6 +10,14 @@ export default function FormsFixture() {
   const [action, setAction] = useState('');
   return <main className="shell-fixture forms-fixture" style={scenarioName === "forms-narrow" ? { maxWidth: 360 } : undefined}>
     <SectionHeader level={1} title="Settings and forms" />
+    <div style={{ height: 80 }}><ViewStack>
+      <Button variant="surface" onClick={() => setAction('Surface activated')}>Custom surface action</Button>
+      <ViewStack hidden>Retained hidden view</ViewStack>
+      <ActionGroup align="leading">
+        <MeterSegment weight={3} aria-label="Used 75 percent" onClick={() => setAction('Used segment')}>Used</MeterSegment>
+        <MeterSegment weight={1} aria-label="Remaining 25 percent" onClick={() => setAction('Remaining segment')}>Remaining</MeterSegment>
+      </ActionGroup>
+    </ViewStack></div>
     <SettingsSection title="App updates">
       <SettingRow label="Current version" description="Agent Remote Control v1.0.0" onNavigate={() => setAction('Navigate to updates')} />
       <SettingRow label="Unavailable destination" disabled onNavigate={() => setAction('Unexpected navigation')} />

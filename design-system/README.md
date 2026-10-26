@@ -65,6 +65,8 @@ DispatchSpec accepts recorded task/turn data and native-shaped label snapshots. 
 | [SettingRow](api/components/SettingRow.md) | Aligned control or content-sized navigation row |
 | [FormField](api/components/FormField.md) | Label, control, help and error |
 | [FormSection](api/components/FormSection.md) | Semantic field grouping |
+| [ViewStack](api/components/ViewStack.md) | Retained full-height panel views |
+| [MeterSegment](api/components/MeterSegment.md) | Interactive weighted meter segment |
 | [ActionGroup](api/components/ActionGroup.md) | Wrapping button layout |
 | [Disclosure](api/components/Disclosure.md) | Accessible collapsible section |
 | [DangerZone](api/components/DangerZone.md) | Destructive actions and consequence |

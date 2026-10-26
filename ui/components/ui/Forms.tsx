@@ -1,4 +1,4 @@
-import { isValidElement, useId, type ComponentProps, type ReactNode } from 'react';
+import { isValidElement, useId, type ComponentProps, type HTMLAttributes, type ReactNode } from 'react';
 import { Collapsible, Slot } from 'radix-ui';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button, Icon, SingleChoice } from './index';
@@ -44,8 +44,8 @@ export function FormField({ id, label, help, error, children }: { id?: string; l
 export function FormSection({ title, description, children }: { title?: ReactNode; description?: ReactNode; children: ReactNode }) {
   return <fieldset className="form-section">{title && <legend>{title}</legend>}{description && <p className="form-field-help">{description}</p>}{children}</fieldset>;
 }
-export function ActionGroup({ align = 'trailing', children }: { align?: 'leading' | 'trailing'; children: ReactNode }) {
-  return <div className="action-group" data-align={align}>{children}</div>;
+export function ActionGroup({ align = 'trailing', children, className = '', ...props }: HTMLAttributes<HTMLDivElement> & { align?: 'leading' | 'trailing' }) {
+  return <div {...props} className={`action-group ${className}`} data-align={align}>{children}</div>;
 }
 export function Disclosure({ title, children, open, defaultOpen, onOpenChange, disabled }: {
   title: ReactNode; children: ReactNode; open?: boolean; defaultOpen?: boolean; onOpenChange?: (open: boolean) => void; disabled?: boolean;
