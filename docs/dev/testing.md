@@ -6,7 +6,7 @@ Every case carries exactly one English tag comment inside its body or immediatel
 - `// Regression: <fixing commit or observed failure>` identifies the defect being prevented.
 - `// Property: <invariant>` states an invariant of pure computation.
 
-Assert public behavior through MCP, CLI, management operations, exported pure functions or accessible roles/names. Do not assert classes, DOM structure, styles, pixel constants, exact UI copy, internal state files or mock invocation counts. Rewrite or delete tests broken by intended changes; never align implementation snapshots. Delete tests that obstruct reasonable refactors and report the removal. Use `npm run accept:ui` for visual/layout acceptance.
+Assert public behavior through MCP, CLI, management operations, exported pure functions or accessible roles/names. Do not assert classes, DOM structure, styles, pixel constants, exact UI copy, internal state files or mock invocation counts. Rewrite or delete tests broken by intended changes; never align implementation snapshots. Delete tests that obstruct reasonable refactors and report the removal. Use `npm run dev:ui` with the running app's real data for visual and interaction acceptance.
 
 ## Enforcement
 
@@ -18,17 +18,7 @@ Only `tooling/test-policy-allowlist.json` grants exceptions, scoped to an exact 
 
 The control source owns `tests/contract/` and the allowlist. The checker rejects working-tree changes there unless an explicitly authorized dispatch sets `ARC_TEST_POLICY_OWNER=1`. CI should set `ARC_TEST_POLICY_BASE` to the PR base to check committed changes too. An implementation turn cannot grant itself this capability. Lint suppression comments are disabled.
 
-## Monthly value audit
-
-Run these manually, outside `npm test`. Review surviving mutants and high-churn cases for weak assertions or removable change detectors; a score alone does not justify more tests.
-
-```sh
-npm run mutation:ui -- --mutate ui/topology/parameters.ts
-npm run mutation:ui -- --mutate ui/state/timelineModel.ts
-npm run test:churn -- --since='90 days ago' --limit=20
-```
-
-[Stryker](https://stryker-mutator.io/docs/stryker-js/configuration/) runs the existing pure UI suites with one worker, incremental results and a command runner. The configured scope includes pure topology, activity and timeline modules; DOM rendering is excluded. A bounded wiring smoke run can target `ui/topology/parameters.ts:5:0-8:0`. Reports stay in ignored `output/mutation/`; sandboxes use the existing `target` cache volume. Remove the incremental file or pass `--force` when a fresh full run is needed.
+## Optional native mutation checks
 
 For native core modules, install [cargo-mutants](https://mutants.rs/controlling.html) with `cargo install --locked cargo-mutants` when the disk budget permits, then select modules explicitly:
 

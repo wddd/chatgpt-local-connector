@@ -18,15 +18,6 @@ export default defineConfig({
   plugins: [tailwindcss(), react(), {
     name: 'connector-native-preview',
     configureServer(server) {
-      if (server.config.mode === 'acceptance-fixture') {
-        // Fixture acceptance has no native owner, including when run in a coding lane.
-        server.middlewares.use((request, response, next) => {
-          if (!request.url?.startsWith('/api/')) return next();
-          response.statusCode = 403;
-          response.end('Live management requests are unavailable in fixture acceptance.');
-        });
-        return;
-      }
       let checking: { owner: string; promise: Promise<Endpoint> } | undefined;
       function ownerIdentity() {
         try { return readFileSync(path.join(stateRoot, 'app/native.json'), 'utf8'); }
@@ -57,7 +48,8 @@ export default defineConfig({
         }
       }
       server.middlewares.use((request, response, next) => {
-        if (request.url === '/__arc_dev' && request.method === 'GET' && request.headers.host === '127.0.0.1:5187') {
+        const localHost = `127.0.0.1:${server.config.server.port}`;
+        if (request.url === '/__arc_dev' && request.method === 'GET' && request.headers.host === localHost) {
           response.setHeader('Cache-Control', 'no-store');
           response.setHeader('Content-Type', 'application/json');
           response.end(JSON.stringify({ project: fileURLToPath(new URL('.', import.meta.url)), stateDirectory: stateRoot }));
@@ -65,8 +57,8 @@ export default defineConfig({
         }
         if (!request.url?.startsWith('/api/')) return next();
         response.setHeader('Cache-Control', 'no-store');
-        if (request.headers.host !== '127.0.0.1:5187'
-          || (request.headers.origin && request.headers.origin !== 'http://127.0.0.1:5187')
+        if (request.headers.host !== localHost
+          || (request.headers.origin && request.headers.origin !== `http://${localHost}`)
           || request.headers['sec-fetch-site'] === 'cross-site'
           || ((request.method !== 'GET' || request.url === '/api/config/credentials') && request.headers['x-arc-request'] !== '1')) {
           response.writeHead(403, { 'Content-Type': 'application/json' });

@@ -1,10 +1,9 @@
 import { solve } from '../topology/solve';
 import { solvePortrait } from '../topology/portrait';
 import type { PaintNode } from '../topology/render';
-import { dispatchSpecFixtures } from '../scenarioDispatchSpec';
-import scenario from '../../tooling/acceptance/scenarios/homepage-accounts-light.json';
+import { dispatchSpecFixtures } from './dispatchFixtures';
 import configSchema from '../../native/src/ingress/config.json';
-import { installTopologyAccounts } from '../topology/scenarioAccounts';
+import { installTopologyAccounts } from './topologyAccounts';
 import { accountQuotaProvider } from '../subscriptions/accountQuota';
 import type { Config, ControlSource, Ingress, Status } from '../state/types';
 import type { Agent } from '../state/agents';
@@ -12,6 +11,16 @@ import type { AgentActivitySnapshot, AgentPhase } from '../types';
 import type { TrackedActivity } from '../state/activityModel';
 import type { ProviderSnapshot } from '../subscriptions/types';
 
+const scene = {
+  agents: ['claude', 'codex', 'dsh', 'opencode'],
+  tasks: [
+    { agent: 'claude', phase: 'thinking', title: 'Review navigation', headline: 'Checking the account routes' },
+    { agent: 'claude', phase: 'command', title: 'Validate workspace', headline: 'Waiting for permission', approval: true },
+    { agent: 'claude', phase: 'text', title: 'Update documentation', headline: 'Documentation updated', completed: true },
+    { agent: 'codex', phase: 'command', title: 'Check configuration', headline: 'Running the configuration check' },
+    { agent: 'dsh', phase: 'thinking', title: 'Review changes', headline: 'Reading the project changes' },
+  ],
+};
 const now = Date.UTC(2026, 9, 26, 12);
 const observedAt = new Date(now).toISOString();
 const defaults = configSchema.fields;
@@ -29,8 +38,8 @@ const source: ControlSource = { id: 'fixture-source', ingressId: 'fixture-connec
 const ingresses: Ingress[] = [{ id: source.ingressId, name: 'Design connection', controlSource: 'claude', transport: 'local',
   state: 'ready', running: true, error: '', enabled: true, auth: 'local', toolPolicy: 'all', config,
   url: 'https://arc.example.com/mcp', sources: [source], oauth: { pending: [], grants: [] } }];
-const agents: Agent[] = scenario.agents.map(agent => ({ agent, installed: true, available: true, enabled: true, status: 'ready', version: 'fixture' }));
-const activitySessions: (TrackedActivity & { agent: string })[] = scenario.tasks.map((task, index) => ({
+const agents: Agent[] = scene.agents.map(agent => ({ agent, installed: true, available: true, enabled: true, status: 'ready', version: 'fixture' }));
+const activitySessions: (TrackedActivity & { agent: string })[] = scene.tasks.map((task, index) => ({
   agent: task.agent, id: `fixture-task-${index}`, source: task.agent === 'codex' ? 'codex-thread' : 'arc-task',
   title: task.title, headline: task.headline, phase: task.phase as AgentPhase, phaseSince: observedAt,
   orderAt: now - index * 1000, startedAt: observedAt, turnStartedAt: new Date(now - 83000).toISOString(),
@@ -40,9 +49,9 @@ const activitySessions: (TrackedActivity & { agent: string })[] = scenario.tasks
   ...(task.completed ? { endedAt: now, status: 'completed' } : {}),
   ...(task.approval ? { interaction: { kind: 'permission' as const, summary: 'Read README.md', command: 'cat README.md', canRespond: false, respond: { hint: 'Synthetic design record; no native response.' } } } : {}),
 }));
-const activity: AgentActivitySnapshot = { observedAt, activeAgents: scenario.agents,
-  agents: Object.fromEntries(scenario.agents.map(agent => [agent, { sessions: activitySessions.filter(session => session.agent === agent) }])) };
-// This existing pure scenario installer only reads/mutates status.ingresses.
+const activity: AgentActivitySnapshot = { observedAt, activeAgents: scene.agents,
+  agents: Object.fromEntries(scene.agents.map(agent => [agent, { sessions: activitySessions.filter(session => session.agent === agent) }])) };
+// Populate design-only account records and their source/activity associations.
 const accounts = installTopologyAccounts({ ingresses } as Status, activity);
 accounts[0].email = 'alex@example.com';
 for (const ingress of ingresses) for (const source of ingress.sources ?? []) {

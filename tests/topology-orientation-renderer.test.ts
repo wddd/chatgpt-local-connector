@@ -32,7 +32,7 @@ test('environment dimensions drive the mounted topology after settling and defer
     const { default: Topology } = await server.ssrLoadModule('/ui/topology/Topology.tsx');
     const { appEnvironment } = await server.ssrLoadModule('/ui/state/appEnvironment.ts');
     const { topologyLayout } = await server.ssrLoadModule('/ui/subscriptions/displayPreferences.ts');
-    const { viewModel } = await server.ssrLoadModule('/ui/acceptance.ts');
+    const { viewModel } = await server.ssrLoadModule('/ui/runtimeSnapshot.ts');
     const source = { id: 'source', label: 'Example source', state: 'normal', attention: false, selected: false, reorderable: true, tasks: [], content: h('button', null, 'Example source') };
     function Harness() {
       const boundary = useRef<HTMLElement>(null), handle = useRef(null);

@@ -10,9 +10,9 @@ impl Timeline {
     pub fn prompt_headline(&self) -> String {
         self.entries
             .iter()
-            .rev()
-            .find(|row| row["type"] == "user")
-            .map(entry_headline)
+            .filter(|row| row["type"] == "user")
+            .map(|row| transcript_title_text(string(row, "text")))
+            .find(|text| !text.is_empty())
             .unwrap_or_default()
     }
     fn transcript_metadata(&mut self, record: &Value) {
@@ -170,13 +170,7 @@ impl Timeline {
         if !info.is_object() {
             info = json!({});
         }
-        info["title"] = json!(self
-            .entries
-            .iter()
-            .rev()
-            .find(|r| r["type"] == "user")
-            .map(entry_headline)
-            .unwrap_or_default());
+        info["title"] = json!(self.prompt_headline());
         let mut row = self.session(id, &info, "transcript", None);
         // A transcript's user prompt represents thinking while native work starts.
         if row["phase"] == "idle" {
@@ -250,6 +244,17 @@ impl Timeline {
                 self.status.clear();
                 self.start_turn(at);
             }
+            if role == "assistant" && record["message"]["model"] != "<synthetic>" {
+                if let Some(summary) = crate::egress::dispatch_summary(&json!({
+                    "model": record["message"]["model"],
+                    "effort": record.get("perTurnEffort").filter(|value| value.as_str().is_some_and(|s| !s.is_empty())).unwrap_or(&record["effort"])
+                })) {
+                    if !self.turn.is_empty() {
+                        self.turn_dispatch_summaries
+                            .insert(self.turn.clone(), summary);
+                    }
+                }
+            }
             self.transcript_activity = Some((
                 at.into(),
                 if role == "assistant" && record["message"]["stop_reason"] == "tool_use" {
@@ -301,5 +306,92 @@ impl Timeline {
                 self.finish("completed", at);
             }
         }
+    }
+}
+
+fn transcript_title_text(text: &str) -> String {
+    use std::sync::LazyLock;
+    static NOISE: LazyLock<Vec<regex::Regex>> = LazyLock::new(|| {
+        [
+        r"(?is)<(?:attached-file|image|file)\b[^>]*?/>",
+        r"(?is)<(?:task-notification|local-command-caveat|local-command-stdout|local-command-stderr|command-name|command-message|command-args|caveat|attached-file|file|image)(?:\s[^>]*)?>.*?(?:</(?:task-notification|local-command-caveat|local-command-stdout|local-command-stderr|command-name|command-message|command-args|caveat|attached-file|file|image)>|\z)",
+        r"(?i)\[(?:image(?:\s*#?\d+)?|attached[ -]?(?:file|image)(?:[^\]\n]*)|file:[^\]\n]*|image:[^\]\n]*)\]",
+    ].into_iter().map(|pattern| regex::Regex::new(pattern).unwrap()).collect()
+    });
+    let mut text = crate::task_tracking::transcript_text(text);
+    for pattern in NOISE.iter() {
+        text = pattern.replace_all(&text, " ").into_owned();
+    }
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(80)
+        .collect()
+}
+
+/// Native naming is independent of recent activity and timeline tail windows.
+#[derive(Default)]
+pub(crate) struct TranscriptTitle {
+    custom: Option<String>,
+    prompt: Option<String>,
+    summary: Option<String>,
+}
+impl TranscriptTitle {
+    pub(crate) fn observe(&mut self, record: &Value) {
+        if record["isSidechain"] == true {
+            return;
+        }
+        let explicit = match string(record, "type") {
+            "custom-title" => record["customTitle"].as_str(),
+            "session_info" => record["name"].as_str(),
+            _ => None,
+        };
+        if let Some(text) = explicit.filter(|text| !text.trim().is_empty()) {
+            self.custom = Some(
+                text.split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .chars()
+                    .take(80)
+                    .collect(),
+            );
+        }
+        if record["type"] == "summary" {
+            if let Some(text) = record["summary"]
+                .as_str()
+                .filter(|text| !text.trim().is_empty())
+            {
+                self.summary = Some(transcript_title_text(text));
+            }
+        }
+        if self.prompt.is_none()
+            && record["isMeta"] != true
+            && record["isCompactSummary"] != true
+            && (record["message"]["role"] == "user" || record["type"] == "user")
+        {
+            let raw = &record["message"]["content"];
+            let text = if let Some(text) = raw.as_str() {
+                text.to_owned()
+            } else {
+                raw.as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|b| b["type"] == "text")
+                    .filter_map(|b| b["text"].as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            };
+            let cleaned = transcript_title_text(&text);
+            if !cleaned.is_empty() {
+                self.prompt = Some(cleaned);
+            }
+        }
+    }
+    pub(crate) fn value(&self) -> Option<&str> {
+        self.custom
+            .as_deref()
+            .or(self.prompt.as_deref())
+            .or(self.summary.as_deref())
     }
 }

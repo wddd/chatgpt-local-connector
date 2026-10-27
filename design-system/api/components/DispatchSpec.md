@@ -21,7 +21,7 @@ One read-only chip for a recorded task/turn spec. No dispatch configuration is c
 
 ## Labels and states
 
-Labels use `displayName` unchanged. Add `provider.name` only when it disambiguates equal native names. IDs match by exact string equality. When no displayName is supplied, display the complete opaque ID unchanged, including during loading or failure. Never decode JSON IDs, strip brands or split labels. Refreshes retain resolved metadata. Only absence from an authoritative catalog marks a selection Unresolved; snapshots and partial lists cannot establish that. Missing specs show Spec not recorded.
+Labels use `displayName` unchanged. Add `provider.name` only when it disambiguates equal native names. IDs match by exact string equality. Never decode JSON IDs, strip brands or split labels. Refreshes retain resolved metadata. Missing specs show Spec not recorded.
 
 Recorded efforts use matching model/session native labels when available, otherwise localized effort vocabulary. Only `priority` renders Fast. Default and absent tiers are omitted. Separators join present fields only. An empty inline spec is hidden. Narrow chips ellipsize the model label without rewriting it. Hover, keyboard focus and accessible names expose the complete label.
 

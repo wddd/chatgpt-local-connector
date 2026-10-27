@@ -3,7 +3,6 @@ import { appEnvironment, refreshAppEnvironment } from "./state/appEnvironment";
 import { environmentModel } from "./state/appEnvModel";
 import { activityBubbleSnapshot, controlActivityBubble, type ActivityBubbleRequest } from "./state/activityBubbles";
 import { protectSnapshot } from "./state/privacy";
-import { scenarioReadiness } from "./state/scenarioReadiness";
 // On-demand observation of the real renderer. No alternate layout or state model.
 import { taskPanelSnapshot, controlTaskPanel, type TaskPanelRequest } from "./state/taskPanel";
 import { agentPanel, ingressPanel, selectAgentPanel, selectSourcePanel } from './state/overviewPanels';
@@ -30,7 +29,6 @@ export function viewModel(layoutSettled = false) {
       windowWidth: innerWidth, windowHeight: innerHeight, taskPanelWidth: (detail?.width as number | undefined) ?? null,
       presence: !!detail && document.visibilityState === "visible" && document.hasFocus(),
     }),
-    scenario: scenarioReadiness(detail),
     updates: updates.get(),
     schemaVersion: 1, layoutSettled, capturedAt: new Date().toISOString(),
     window: { width: innerWidth, height: innerHeight, devicePixelRatio },
@@ -84,5 +82,3 @@ export async function captureRequest(request: { id: string; panel?: PanelRequest
     await invoke('snapshot_ready', { id: request.id, model, error: null });
   } catch (error) { await invoke('snapshot_ready', { id: request.id, model: null, error: String(error) }); }
 }
-// Read-only accessor also used by browser acceptance screenshots.
-Object.assign(window, { __ARC_VIEW_MODEL__: viewModel });

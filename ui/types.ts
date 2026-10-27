@@ -112,11 +112,12 @@ export interface AgentActivitySnapshot {
   agents: Record<string, { sessions: AgentActivitySession[] }>;
 }
 export interface AgentConversation {
+  agentAccountId?: string | null;
   dispatchSummary?: DispatchSummary | null;
   turnCount?: number | null;
   projectName?: string | null;
   id: string;
-  source: "arc-task" | "codex-thread";
+  source: "arc-task" | "codex-thread" | "native";
   status?: string | null;
   title?: string | null;
   project?: string | null;

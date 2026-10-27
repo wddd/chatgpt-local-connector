@@ -6,6 +6,7 @@ use std::collections::HashMap;
 #[cfg(test)]
 mod projection_tests;
 mod transcripts;
+pub(crate) use transcripts::TranscriptTitle;
 
 const MAX_ENTRIES: usize = 2000;
 const MAX_BYTES: usize = 8 * 1024 * 1024;

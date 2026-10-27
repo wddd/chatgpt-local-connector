@@ -1,5 +1,5 @@
-import type { CatalogState, DispatchCatalog } from './state/dispatchCatalog';
-import type { DispatchSpecRecord } from './components/composites/DispatchSpec';
+import type { CatalogState, DispatchCatalog } from '../state/dispatchCatalog';
+import type { DispatchSpecRecord } from '../components/composites/DispatchSpec';
 
 export const longDispatchModel = { model: 'fixture-independent-model', name: 'Independent Research Model With An Intentionally Long Native Display Name', displayName: 'Independent Research Model With An Intentionally Long Native Display Name' };
 export const longDispatchEffort = 'experimental-reasoning-effort-with-an-unbroken-recorded-value';

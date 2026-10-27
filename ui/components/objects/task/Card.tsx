@@ -49,7 +49,7 @@ export function TaskCard({ task, agent, agentName = agent, titleId, children, on
     title={title} titleProps={{ id: titleId, className: 'block min-w-0 truncate text-base font-semibold' }}>
     <div className="task-detail-chips flex min-w-0 flex-wrap items-center gap-1.5"><StateBadge presentation={presentation} label={task.kind === 'receipt' ? t(state) : undefined} />
       <DispatchSpec agent={agent} record={task.kind === 'receipt' ? { kind: 'task', value: task.record }
-        : timeline ? { kind: 'timeline', value: timeline, taskId: task.session.id, turnId: task.turnId, source: task.session.source }
+        : timeline ? { kind: 'timeline', value: timeline, taskId: task.session.id, turnId: task.turnId, source: task.session.source, session: task.session }
         : { kind: 'session', value: task.session }} />
       {task.kind === 'timeline' && task.source && <SrcAccountChip provenance={task.source} />}
       <TaskOwnership ownership={task.kind === 'receipt' ? task.runtime?.ownership : timeline?.ownership} />
@@ -63,8 +63,8 @@ export function TaskCard({ task, agent, agentName = agent, titleId, children, on
       const value = plan?.length ? completed / plan.length * 100 : turnState === 'done' ? 100 : undefined;
       return <Progress key={group.id} value={value ?? null} className={`h-1 min-w-0 flex-1 bg-muted [&>[data-slot=progress-indicator]]:bg-current ${turnState === 'done' ? 'text-success' : turnState === 'running' ? 'text-brand-accent' : turnState === 'failed' ? 'text-destructive' : 'text-muted-foreground'} ${value === undefined ? '[&>[data-slot=progress-indicator]]:transform-none! [&>[data-slot=progress-indicator]]:opacity-40' : ''} ${value === undefined && turnState === 'running' ? 'motion-safe:animate-pulse [[data-reduced-motion=true]_&]:animate-none' : ''}`}
         aria-label={t('detail.turnProgress', { count: index + 1, state: t(`detail.state.${turnState}`) })}
-        aria-valuetext={plan?.length ? t('detail.planProgress', { completed, total: plan.length }) : t(`detail.state.${turnState}`)}
-        getValueLabel={() => plan?.length ? t('detail.planProgress', { completed, total: plan.length }) : t(`detail.state.${turnState}`)} />;
+        aria-valuetext={plan?.length ? t('detail.planProgress', { completed, count: plan.length }) : t(`detail.state.${turnState}`)}
+        getValueLabel={() => plan?.length ? t('detail.planProgress', { completed, count: plan.length }) : t(`detail.state.${turnState}`)} />;
     })}</div>}
   </SectionHeader>;
   return <EntityCard asChild className={`task-object-card flex min-w-0 flex-col gap-0 rounded-none border-0 bg-transparent p-0 ${className}`}><section ref={rootRef} data-narrow={narrow || undefined}>

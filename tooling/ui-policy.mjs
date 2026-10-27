@@ -6,8 +6,6 @@ export const uiFiles = ['ui/**/*.{ts,tsx,js,jsx,mjs}'];
 export const uiIgnores = [
   'ui/components/ui/**', 'ui/components/composites/**', 'ui/components/objects/**',
   'ui/design-mount/**',
-  'ui/**/scenario*.{ts,tsx,js,jsx,mjs,css}', 'ui/**/fixture*.{ts,tsx,js,jsx,mjs,css}',
-  'ui/**/{scenarios,fixtures}/**', 'ui/**/*.{scenario,fixture}.{ts,tsx,js,jsx,mjs,css}',
   'ui/topology/{geometry,solve,render,portraitRender,animate,orientation,portrait,order,parameters,Topology,Hub,CollapseSymbol,accountViews}.{ts,tsx}',
 ];
 export function isFeatureFile(file) {
@@ -85,7 +83,7 @@ export function createUiPlugin(baseline) {
     };
   }
   return { rules: {
-    'shared-controls': rule('shared-controls', 'Use {{component}} from the shared UI components instead of raw <{{tag}}>. Add a missing pattern to the shared layer with a fixture and design-mount export first.', report => ({
+    'shared-controls': rule('shared-controls', 'Use {{component}} from the shared UI components instead of raw <{{tag}}>. Add a missing pattern to the shared layer when a screen needs it.', report => ({
       JSXOpeningElement(node) {
         if (node.name.type === 'JSXIdentifier' && replacements[node.name.name]) report(node, { tag: node.name.name, component: replacements[node.name.name] });
       },
@@ -131,9 +129,6 @@ export const brandStylesheets = new Map([
   ['ui/brand/quota.css', /\.(?:agent-quota-icon|quota-[\w-]+|activity-arc|dual-quota)\b/],
   ['ui/components/composites/AgentQuotaIcon.css', /\.(?:agent-quota-icon|dual-quota|topology-node)\b/],
 ]);
-export function isFixtureCss(file) {
-  return /(?:^|\/)(?:scenario|fixture)[^/]*\.css$|\/(?:scenarios|fixtures)\/|\.(?:scenario|fixture)\.css$/.test(file);
-}
 export function isBrandSelector(file, selector) {
   return !!brandStylesheets.get(file)?.test(selector) && !/\.(?:topology-(?:tuner|parameter|section|import|custom)|dialog|activity-panel|workspace|settings)[\w-]*(?![\w-])/.test(selector);
 }

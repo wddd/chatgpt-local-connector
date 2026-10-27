@@ -129,8 +129,6 @@ Omitting both navigation arguments opens `https://claude.ai/new`. Explicit URLs 
 
 Local management mirrors these operations at `POST src-conversations/{query,open,import,clear,bind}` and `GET src-conversations/profiles`. CLI names are `src.conversations.{query,profiles,open,import,clear,bind}`. The internal Desktop metadata channel reports URL-derived state only. It is not exposed as a remote MCP operation.
 
-`ui/scenarioSrcConversations.ts` supplies signed-in, expired, not-imported, unsupported, importing, signed-in-pending, import-blocked, import-mismatch and import-unverified states, Chat/Cowork refs, linked tasks and manual binding transitions through the same API routes in browser fixtures. It does not simulate Keychain, native WebKit, or authentication. Panel buttons, L3 cards and task links are deferred to the UI segment; native login, isolation and lifecycle acceptance require a separately authorized main-checkout run.
-
 ### Clear a login container
 
 `src_login_clear({accountId})` closes the account window, releases its WKWebView, and calls `WKWebsiteDataStore.removeDataStoreForIdentifier`. ARC waits for the native completion before removing the persisted store UUID mapping and live observation. The result is `{accountId,status:"not-imported"}`; the next open/import creates a fresh random UUID. Conversations and task bindings are retained. Chrome is not modified or signed out.

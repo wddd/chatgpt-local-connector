@@ -111,36 +111,5 @@ test("task detail projects native titles, compact ownership and pending input wi
       assert.ok(page.getByRole("heading", { name: t("timeline.title") }));
       nativeTitle = "Native thread title";
     }
-    const { installScenario, scenarioResponse } = await server.ssrLoadModule("/ui/scenarios.ts");
-    const { setPrivacy } = await server.ssrLoadModule("/ui/state/privacy.ts");
-    globalThis.fetch = async (input, init) => new Response(JSON.stringify(scenarioResponse(String(input).replace("/api/", ""), init?.method ?? "GET", init?.body ? JSON.parse(String(init.body)) : undefined)));
-    for (const [scenario, key] of [["task-detail-turn-failed", "detail.retry"], ["task-detail-turn-interrupted", "detail.resumeInterrupted"]]) {
-      await act(async () => { await installScenario(scenario); setPrivacy(false); });
-      const records = scenarioResponse("tasks", "GET").records;
-      const id = records[0].threadId;
-      const payload = scenarioResponse(`agents/timeline/${id}`, "GET");
-      assert.equal(scenarioResponse("agents/activity", "GET").agents.codex.sessions.length, 0);
-      await act(async () => root.render(h(TooltipProvider, null, h(ActivityTimeline, { key: ++revision, agent: "codex",
-        session: { id, title: records[0].task.title, source: "codex-thread", phase: "idle", phaseSince: null, headline: "", timeline: true, orderAt: 0, endedAt: Date.now() },
-        expanded: false, onToggleWidth() {}, onBack() {} }))));
-      assert.ok(page.getByRole("button", { name: t(key), exact: true }));
-      assert.equal(page.queryByRole("textbox"), null);
-      assert.equal(page.queryByRole("region", { name: t("detail.needsYou") }), null);
-      for (const action of ["detail.send", "detail.stop", "detail.pass", "detail.rework"]) assert.equal(page.queryByRole("button", { name: t(action), exact: true }), null);
-      assert.equal(payload.entries.some((row: {phase?:string}) => row.phase === "final_answer"), false);
-    }
-    const { default: AgentPanel } = await server.ssrLoadModule("/ui/components/AgentPanel.tsx");
-    const { selectAgentPanel } = await server.ssrLoadModule("/ui/state/overviewPanels.ts");
-    for (const scenario of ["task-detail-owner-desktop", "task-detail-turn-interrupted"]) {
-      await act(async () => { await installScenario(scenario); setPrivacy(false); });
-      const record = scenarioResponse("tasks", "GET").records[0];
-      await act(async () => {
-        selectAgentPanel({ type: "task", agent: "codex", session: { id: record.threadId, source: "codex-thread", phase: "idle", phaseSince: null, headline: "", timeline: true, orderAt: 0 } });
-        root.render(h(TooltipProvider, null, h(AgentPanel, { key: scenario, agent: {agent:"codex"}, expanded:false, onSettings(){}, onPanelFrame(){}, onToggleWidth(){} })));
-      });
-      assert.ok(page.getByRole("dialog", { name: record.task.title, exact: true }));
-      await act(() => selectAgentPanel({ type: "back" }));
-      assert.ok(page.getByRole("dialog", { name: "Codex", exact: true }));
-    }
   } finally { await act(() => root.unmount()); globalThis.fetch = originalFetch; await server.close(); await window.happyDOM.close(); }
 });

@@ -10,7 +10,6 @@ import { accountViews } from '../topology/accountViews';
 import { accountOwns } from '../accountPresentation';
 import { topologyMode, topologyAccountOrder } from '../topology/accountState';
 import { useAccounts } from '../state/accounts';
-import { scenarioName } from "../scenarioMode";
 import { agentPanel, selectAgentPanel, ingressPanel, selectSourcePanel } from "../state/overviewPanels";
 import { PhaseTile, PhaseLabel } from "./activity";
 import { resetActivityCore, useActivityTracking } from "../state/activity";
@@ -113,7 +112,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const [agentsOpen, setAgentsOpen] = useState(false);
   const initialSetupShown = useRef(false);
   useEffect(() => {
-    if (scenarioName || !visible || initialSetupShown.current || !status || !sourcesLoaded || loading || error) return;
+    if (!visible || initialSetupShown.current || !status || !sourcesLoaded || loading || error) return;
     initialSetupShown.current = true;
     if (!flow && !detailOpen && !sourceRecords.some(s => s.state !== "revoked" && !isPendingSource(s, status.ingresses))) openOnboarding("welcome");
   }, [visible, status, sourceRecords, sourcesLoaded, loading, error, flow, detailOpen]);

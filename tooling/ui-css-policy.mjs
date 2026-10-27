@@ -24,7 +24,7 @@ export function checkCssSelectors(source, file, baseline) {
   for (const { selector, line } of cssLayoutSelectors(source, file)) {
     const count = (seen.get(selector) ?? 0) + 1;
     seen.set(selector, count);
-    if (count > (baseline[selector] ?? 0)) failures.push(`${file}:${line} [shared-layout-css] New feature layout selector ${JSON.stringify(selector)}. Compose or extend shared shells in ui/components/ui, composites or objects (with a fixture and design-mount export); do not expand the baseline.`);
+    if (count > (baseline[selector] ?? 0)) failures.push(`${file}:${line} [shared-layout-css] New feature layout selector ${JSON.stringify(selector)}. Compose or extend shared shells in ui/components/ui, composites or objects; do not expand the baseline.`);
   }
   for (const [selector, count] of Object.entries(baseline)) {
     if ((seen.get(selector) ?? 0) < count) failures.push(`${file} [shared-layout-css] Remove stale baseline selector ${JSON.stringify(selector)} and update docs/dev/ui-debt.md.`);

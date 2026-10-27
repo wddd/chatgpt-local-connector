@@ -16,6 +16,7 @@ import type { AgentTimeline } from "../types";
 import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
 import { followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
 import TimelineEntries, { durationText } from "./TimelineEntries";
+import { presentActivity, presentTimelineEntries } from "../state/claudePresentation";
 import { isTaskId, taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import TaskNeedsYou from "./TaskNeedsYou";
@@ -58,8 +59,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const running = validId && (!!live || session.endedAt === undefined && !external && !timeline?.readOnly && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? ""));
 
   const now = useAppNow(running ? 1000 : null);
-  const followAllowed = useRef(true);
-  followAllowed.current = running;
+  const userScroll = useRef(false);
   useEffect(() => {
     const node = viewport.current;
     if (!node) return;
@@ -110,7 +110,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           }
           manualDisclosure.current = false;
         }
-        current = next; setTimeline(next); setError("");
+        current = next; setTimeline({ ...next, entries: presentTimelineEntries(agent, next.entries) }); setError("");
       } catch (error) { if (!stopped) setError(String(error)); }
       if (!stopped) timer = setTimeout(read, external || current?.readOnly ? 5000 : 1000);
     }
@@ -122,37 +122,41 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     if (!node || !timeline || manualDisclosure.current) return;
     const target = timelineScrollTarget(following.current, running || previousRunning.current, initial.current, node.scrollHeight);
     if (target !== undefined) { node.scrollTop = target; previousTop.current = node.scrollTop; }
+    if (target !== undefined) setAtLatest(true);
     initial.current = false; previousRunning.current = running;
   }, [timeline, running]);
   useEffect(() => {
     const observer = new ResizeObserver(() => {
       const node = viewport.current;
       // Disclosure resizing is local navigation, including its animation frames.
-      if (node && !manualDisclosure.current && following.current && followAllowed.current) { node.scrollTop = node.scrollHeight; previousTop.current = node.scrollTop; }
+      if (node && !manualDisclosure.current && following.current) { node.scrollTop = node.scrollHeight; previousTop.current = node.scrollTop; }
     });
     if (content.current) observer.observe(content.current);
     return () => observer.disconnect();
   }, []);
   const groups = timelineGroups(timeline?.entries ?? []);
-  const nativeSession = live ?? { ...session, turnId: groups.at(-1)?.turnId || session.turnId, interaction: undefined };
+  const historyTurn = groups.at(-1)?.turnId || session.turnId;
+  const nativeSession = live ?? { ...session, turnId: historyTurn, interaction: undefined,
+    dispatchSummary: historyTurn === session.turnId ? session.dispatchSummary : undefined };
   const agentName = name(orderedAgents().find(a => a.agent === agent) ?? { agent });
   const duration = timelineDuration(timeline?.entries ?? [], now, running, nativeSession.turnId, timeline?.turnTimings, nativeSession.turnStartedAt);
   const latestSummary = live ? live.dispatchSummary : timeline?.dispatchSummary ?? nativeSession.dispatchSummary;
-  const source = latestSummary?.controlSource;
+  const sessionSource = latestSummary?.controlSource;
   const hasPending = !external && !timeline?.readOnly && running && pendingSessions(agent, nativeSession, timeline?.entries ?? [], submissions).length > 0;
   const state = taskState(timeline?.status, running, hasPending);
   const turnId = nativeSession.turnId || groups.at(-1)?.turnId;
   const turnSource = timeline
     ? (turnId && timeline.turnDispatchSummaries?.[turnId]?.controlSource) || timeline.dispatchSummary?.controlSource
       || groups.find(group => group.turnId === turnId)?.entries.find(entry => entry.type === "user")?.controlSource
-    : source;
+    : sessionSource;
+  const source = turnSource ?? sessionSource ?? (nativeSession.source === "transcript" ? { kind: "local-cli" } : undefined);
   const fromControlSource = !!turnSource && turnSource.kind !== "ARC";
   const { review, reviewError } = useTaskReview(session.id, turnId, !external && !timeline?.readOnly && fromControlSource);
   const queue = useTaskQueue(external || timeline?.readOnly ? "" : agent, session.id);
   const latest = () => {
     const node = viewport.current;
     if (!node) return;
-    manualDisclosure.current = false; following.current = true;
+    manualDisclosure.current = false; following.current = true; userScroll.current = false;
     node.scrollTop = node.scrollHeight; previousTop.current = node.scrollTop;
     setAtLatest(true); node.focus({ preventScroll: true });
   };
@@ -207,21 +211,27 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       if (receipt.state !== "completed") throw new Error(receipt.error?.message || receipt.state);
     })().catch(error => setOpenError(String(error))).finally(() => { continuationBusy.current = false; setContinuing(false); });
   };
-  // Activity snapshots can derive their title from the dispatch prompt.
-  const title = (agent === "codex" && taskTitle?.id === session.id && taskTitle.title) || t("timeline.title");
+  // Use recorded conversation identity even when the native timeline has no title field.
+  const title = (agent === "codex" && taskTitle?.id === session.id && taskTitle.title) || (agent !== "codex" && (presentActivity(agent, session).title
+    || timeline?.entries.find(entry => entry.type === "user")?.text?.trim().split("\n")[0])) || t("timeline.title");
   return <TaskCard rootRef={detail} className="agent-panel-layer flex h-full min-h-0 w-full flex-col [&>.dialog-header]:shrink-0 [&>.task-timeline]:flex-1 [&>.task-timeline]:h-auto [&>.task-timeline]:px-4 [&>.task-timeline]:pb-4 [&>.dialog-footer]:max-h-1/2 task-detail-layer @container min-w-0" agent={agent} agentName={agentName}
     titleId={titleId} narrow={narrow} expanded={expanded} onBack={onBack} onToggleWidth={resizable ? onToggleWidth : undefined}
     onOpen={validId && nativeSession.open ? () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } : undefined}
     task={{ kind: "timeline", session: nativeSession, fallbackSession: session, timeline, title, running, hasPending, turnId, source, duration: duration === undefined ? undefined : durationText(duration) }}>
     <div className="task-timeline relative flex min-h-0 min-w-0 flex-1 flex-col gap-2" aria-busy={loading}>
-      <div className="timeline-scroll min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [overflow-anchor:none]" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
+      <div className="timeline-scroll outline-none min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [overflow-anchor:none]" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => {
           const node = event.currentTarget;
           if (manualDisclosure.current) following.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 24;
           manualDisclosure.current = false;
+          userScroll.current = true;
           if (event.deltaY < 0) following.current = false;
         }}
+        onPointerDown={event => { if (event.target === event.currentTarget) userScroll.current = true; }}
+        onTouchMove={() => { userScroll.current = true; }}
+        onKeyDown={event => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) userScroll.current = true; }}
         onScroll={event => {
+          if (!userScroll.current) return;
           const node = event.currentTarget;
           following.current = followsTimeline(node.scrollTop, node.clientHeight, node.scrollHeight, previousTop.current);
           if (!following.current) manualDisclosure.current = false;

@@ -87,7 +87,7 @@ test('topology account labels survive reordering and animation frames settle aft
     const { server, root, mount, page, advance, settle, frames } = fixture;
     const { accountViews } = await server.ssrLoadModule('/ui/topology/accountViews.tsx');
     const { default: Topology } = await server.ssrLoadModule('/ui/topology/Topology.tsx');
-    const { viewModel } = await server.ssrLoadModule('/ui/acceptance.ts');
+    const { viewModel } = await server.ssrLoadModule('/ui/runtimeSnapshot.ts');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
     const accounts = ['b', 'a'].map(id => ({ id, alias: 'Unidentified', sources: [], agentProfiles: [{ agent: 'codex' }] }));
     const platform = { id: 'codex', platform: 'codex', platformLabel: 'Codex', label: 'Codex', state: 'normal', selected: false, attention: false,
@@ -189,7 +189,7 @@ test('collapse controls remain reachable between node, arc and toggle and reveal
   try {
     const { server, root, mount, page, settle } = fixture;
     const { default: Topology } = await server.ssrLoadModule('/ui/topology/Topology.tsx');
-    const { viewModel } = await server.ssrLoadModule('/ui/acceptance.ts');
+    const { viewModel } = await server.ssrLoadModule('/ui/runtimeSnapshot.ts');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
     const { nodeKey } = await server.ssrLoadModule('/ui/topology/animate.ts');
     const node = { id: 'platform', label: 'Platform', state: 'normal', attention: false, selected: false,
@@ -247,7 +247,7 @@ test('account tentacles use the task bubble taper and tangents', async () => {
   try {
     const { server, root, mount, settle } = fixture;
     const { default: Topology } = await server.ssrLoadModule('/ui/topology/Topology.tsx');
-    const { viewModel } = await server.ssrLoadModule('/ui/acceptance.ts');
+    const { viewModel } = await server.ssrLoadModule('/ui/runtimeSnapshot.ts');
     const { grownWire } = await import('../ui/topology/geometry.ts');
     const { DEFAULTS, deg } = await import('../ui/topology/solve.ts');
     const node = (id: string) => ({ id, label: id, state: 'normal', attention: false, selected: false, content: h('button', null, id), tasks: [] });

@@ -29,6 +29,7 @@ pub(super) struct TurnClock {
     thread_tier: Value,
     turn_tier: Value,
     title: String,
+    native_title: crate::task_tracking::TranscriptTitle,
     project: Option<String>,
     created_at: Value,
 }
@@ -371,8 +372,12 @@ fn read_clock(mut file: File, agent: &str, clock: &mut TurnClock) -> Result<Valu
                 clock.project = Some(project.into());
             }
             let mut projection = Timeline::default();
+            projection.turn = clock.turn_id.clone();
             projection.backfill_transcript(agent, std::slice::from_ref(&record));
-            if clock.title.is_empty() {
+            if agent == "claude" {
+                clock.native_title.observe(&record);
+                clock.title = clock.native_title.value().unwrap_or_default().into();
+            } else if clock.title.is_empty() {
                 clock.title = projection.prompt_headline();
             }
             if agent == "codex"
@@ -390,22 +395,11 @@ fn read_clock(mut file: File, agent: &str, clock: &mut TurnClock) -> Result<Valu
                 clock.turn_id = turn.into();
                 clock.turns.insert(turn.into());
             }
-            if agent == "claude" && record["type"] == "assistant" && record["isSidechain"] != true {
-                // These are execution records, not current CLI settings or dispatch defaults.
-                // Synthetic assistant errors carry no executed model.
-                if record["message"]["model"] != "<synthetic>" {
-                    clock.dispatch_summary = crate::egress::dispatch_summary(&json!({
-                        "model": record["message"]["model"],
-                        "effort": record.get("perTurnEffort").filter(|value| value.as_str().is_some_and(|s| !s.is_empty())).unwrap_or(&record["effort"])
-                    }));
-                    if !clock.turn_id.is_empty() {
-                        if let Some(summary) = &clock.dispatch_summary {
-                            clock
-                                .turn_dispatch_summaries
-                                .insert(clock.turn_id.clone(), summary.clone());
-                        }
-                    }
-                }
+            if let Some(summary) = projection.turn_dispatch_summaries.get(&clock.turn_id) {
+                clock.dispatch_summary = Some(summary.clone());
+                clock
+                    .turn_dispatch_summaries
+                    .insert(clock.turn_id.clone(), summary.clone());
             }
             if agent == "codex" && record["type"] == "turn_context" {
                 if let Some(turn) = record["payload"]["turn_id"].as_str() {
@@ -609,6 +603,81 @@ mod tests {
             assert_eq!(row["turnCount"], 3);
             assert_eq!(row["turnId"], "third");
         }
+    }
+
+    #[test]
+    fn claude_titles_use_first_prompt_and_native_names_across_compaction() {
+        // Regression: multiline first prompts used their last line, and activity ignored custom titles and index cleaning.
+        let (directory, path, now, at) = fixture();
+        append(
+            &path,
+            &[
+                json!({"type":"summary","summary":"Resumed summary","leafUuid":"prior"}),
+                json!({"type":"user","uuid":"meta","timestamp":at,"isMeta":true,"message":{"role":"user","content":"Injected context"}}),
+                json!({"type":"user","uuid":"command","timestamp":at,"message":{"role":"user","content":"<command-name>/clear</command-name>"}}),
+                json!({"type":"user","uuid":"compact","timestamp":at,"isCompactSummary":true,"message":{"role":"user","content":"Compacted context"}}),
+            ],
+        );
+        append(&path, &prompt("claude", "first", "<system-reminder>Context</system-reminder>Plan the service merger\n\nChoose the implementation", &at));
+        append(&path, &large_tool_output("claude", "large", &at));
+        append(&path, &prompt("claude", "later", "Later request", &at));
+        let mut cache = ScanCache::default();
+        assert_eq!(
+            snapshot(&directory, "claude", now, &mut cache)["title"],
+            "Plan the service merger Choose the implementation"
+        );
+        append(
+            &path,
+            &[json!({"type":"custom-title","customTitle":"Named conversation"})],
+        );
+        assert_eq!(
+            snapshot(&directory, "claude", now, &mut cache)["title"],
+            "Named conversation"
+        );
+        append(
+            &path,
+            &[json!({"type":"summary","summary":"Later compaction","leafUuid":"later"})],
+        );
+        assert_eq!(
+            snapshot(&directory, "claude", now, &mut cache)["title"],
+            "Named conversation"
+        );
+    }
+
+    #[test]
+    fn claude_history_retains_the_activity_dispatch_spec_for_each_turn() {
+        // Regression: external Claude detail lost the activity model after the timeline response loaded.
+        let (directory, path, now, at) = fixture();
+        for (turn, model, effort) in [
+            ("first", "model-one", "high"),
+            ("second", "model-two", "low"),
+        ] {
+            append(&path, &prompt("claude", turn, "Inspect project", &at));
+            append(
+                &path,
+                &[
+                    json!({"type":"assistant","uuid":format!("reply-{turn}"),"timestamp":at,"perTurnEffort":effort,"message":{"role":"assistant","model":model,"content":[{"type":"thinking","thinking":"Inspecting"}]}}),
+                ],
+            );
+        }
+        let activity = snapshot(&directory, "claude", now, &mut ScanCache::default());
+        let history = claude_timeline(&path, "external-fixture").unwrap();
+        assert_eq!(history["dispatchSummary"], activity["dispatchSummary"]);
+        assert_eq!(
+            history["turnDispatchSummaries"]["first"]["model"],
+            "model-one"
+        );
+        assert_eq!(history["turnDispatchSummaries"]["second"]["effort"], "low");
+        append(
+            &path,
+            &[
+                json!({"type":"assistant","uuid":"error","timestamp":at,"message":{"role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"Interrupted"}]}}),
+            ],
+        );
+        assert_eq!(
+            claude_timeline(&path, "external-fixture").unwrap()["dispatchSummary"],
+            history["dispatchSummary"]
+        );
     }
 
     #[test]

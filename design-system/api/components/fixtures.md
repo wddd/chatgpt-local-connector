@@ -1,6 +1,6 @@
 # Arc.fixtures
 
-Typed synthetic records, not a component. Pass records through template holes. The data reuses `tooling/acceptance/scenarios/homepage-accounts-light.json` and the real `installTopologyAccounts` scenario generator. The clock is fixed, without changing Date or the host clock. No native login, accounts or live task content are read.
+Typed synthetic records, not a component. Pass records through template holes. The data is owned by `ui/design-mount/baseFixtures.ts` and `ui/design-mount/topologyAccounts.ts`. The clock is fixed, without changing Date or the host clock. No native login, accounts or live task content are read.
 
 ## Fields
 

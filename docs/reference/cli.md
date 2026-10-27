@@ -686,9 +686,7 @@ Each `npm run dev:isolated` launch generates an `ARC Acceptance <instance>` app 
 
 For an ordinary native page, wait for layout readiness: `echo '{"body":{"modelOnly":true}}' | arc cli wait --op app.snapshot --stdin --until '/model/layoutSettled == true' --timeout 20`. This confirms settled layout; use the fresh model to identify the intended panel before acting.
 
-Only when a development scenario is loaded in the surface being read, wait for its intended detail: `echo '{"body":{"modelOnly":true}}' | arc cli wait --op app.snapshot --stdin --until '/model/scenario/ready == true' --timeout 20`. `model.scenario` exposes `name`, `state`, `ready`, `expectedTaskId`, and `error`; ordinary native pages return null. Loading a browser fixture does not load it in the native app. Browser agents MUST wait on `window.__ARC_VIEW_MODEL__().scenario.ready` in that browser page. Scenario readiness includes the expected task's loaded timeline, not just the initial list render.
-
-Both CLI waits accept the read-only `modelOnly:true` snapshot form; resize, navigation, and file-output arguments are not allowed in a repeated snapshot wait.
+Repeated CLI snapshot waits accept the read-only `modelOnly:true` form; resize, navigation, and file-output arguments are not allowed in a repeated snapshot wait.
 
 ### Pending request routing
 

@@ -1,12 +1,34 @@
 import { DispatchSpec } from "../../composites/DispatchSpec";
 import { useReducedMotion } from "../../../state/appEnvironment";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { locale, t } from "../../../i18n";
 import { PhaseTile, PhaseLabel, StepTrail, dispatchSourceLabel } from "../../activity";
 import { activityHeadline, type TrackedActivity, type BubbleDensity } from "../../../state/activityModel";
 import { useInterval } from "../../../state/hooks";
 import FilePath from "../../FilePath";
+
+/** Keep a project readable, or give its space to the task metadata. */
+function ProjectChip({ name, path }: { name: string; path?: string | null }) {
+  const ref = useRef<HTMLSpanElement>(null), [fits, setFits] = useState(true);
+  useLayoutEffect(() => {
+    const chip = ref.current, row = chip?.parentElement;
+    if (!chip || !row) return;
+    const measure = () => {
+      const siblings = Array.from(row.children).filter(node => node !== chip) as HTMLElement[];
+      const widths = siblings.map(node => node.getBoundingClientRect().width);
+      const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+      setFits(chip.getBoundingClientRect().width + widths.reduce((sum, width) => sum + width, 0) + gap * widths.length <= row.clientWidth);
+    };
+    const resize = new ResizeObserver(measure);
+    resize.observe(row); resize.observe(chip);
+    const changes = new MutationObserver(measure);
+    changes.observe(row, { childList: true, subtree: true, characterData: true });
+    measure();
+    return () => { resize.disconnect(); changes.disconnect(); };
+  }, [name]);
+  return <span ref={ref} aria-hidden={!fits || undefined} className={`activity-project w-max shrink-0 whitespace-nowrap rounded-full border px-1.5 text-xs text-muted-foreground ${fits ? '' : 'pointer-events-none absolute invisible'}`} title={path ?? undefined}>{name}</span>;
+}
 
 export function elapsed(since: string | null | undefined, now: number) {
   const seconds = since ? Math.max(0, Math.floor((now - Date.parse(since)) / 1000)) : NaN;
@@ -38,7 +60,7 @@ export function ActivityBubbleContent({ agent, session, now, density = "standard
   const phase = session.interaction ? "interaction" : session.phase;
   const phaseLabel = completed ? "activity.completed" : session.interaction ? "activity.waitingConfirm" : `activity.phase.${phase}`;
   const source = session.dispatchSummary?.controlSource;
-  const project = session.projectName || session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+  const project = (session.projectName || session.project)?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
   const previous = session.recentContent?.filter(text => text !== activityHeadline(session).text).at(-1);
   const duration = elapsed(session.turnStartedAt, session.endedAt ?? now);
   const detail = session.interaction ? t("activity.pendingHint") : completed ? duration === "—" ? undefined : t("activity.totalDuration", { duration }) : previous;
@@ -63,11 +85,11 @@ export function ActivityBubbleContent({ agent, session, now, density = "standard
         </>}
       </span>}
       {density === "detailed" && <span className="activity-detail-line truncate text-xs leading-4 text-muted-foreground" title={detail}>{detail || "\u00a0"}</span>}
-      {density !== "compact" && <span className={`activity-spec-row flex min-w-0 items-center gap-1 text-xs [&>.step-trail]:ml-auto ${conversation ? "activity-conversation-meta flex-wrap" : "flex-nowrap"}`}>
-        {conversation && project && <span className="activity-project inline-block min-w-0 max-w-1/3 shrink truncate rounded-full border px-1.5 text-xs text-muted-foreground" title={session.project!}>{project}</span>}
+      {density !== "compact" && <span className={`activity-spec-row relative flex min-w-0 items-center gap-1 text-xs [&>.step-trail]:ml-auto ${conversation ? "activity-conversation-meta" : ""}`}>
+        {conversation && project && <ProjectChip name={project} path={session.project} />}
         <DispatchSpec agent={agent} record={{ kind: "session", value: session }} variant="inline" />
         {conversation && !!session.turnCount && <span className="activity-spec inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-1.5 text-xs text-muted-foreground">{t("timeline.turnCount", { count: session.turnCount })}</span>}
-        {!conversation && project && <span className="activity-project inline-block min-w-0 max-w-1/3 shrink truncate rounded-full border px-1.5 text-xs text-muted-foreground" title={session.project!}>{project}</span>}
+        {!conversation && project && <ProjectChip name={project} path={session.project} />}
         {density === "detailed" && source && <span className="activity-source-name min-w-0 max-w-1/4 truncate text-muted-foreground" title={dispatchSourceLabel(source)}>{dispatchSourceLabel(source)}</span>}
         {conversation ? createdTime : <StepTrail steps={session.recentSteps} running={running} />}
       </span>}

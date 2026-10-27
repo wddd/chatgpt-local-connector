@@ -92,11 +92,11 @@ SRC and AGENT accounts are inspected from the homepage topology. There is no Acc
 
 ### Add account
 
-AGENT L1 starts the existing native login for its selected Agent, then opens the centered sign-in and confirmation dialog. Standalone login fixtures also expose Account type (Claude, ChatGPT / Codex, API key, Detect on this computer) → Sign in (waiting state, browser choice as pills inside this step, Copy login link, Paste a code instead, one line noting that `account_add` lets Agents run the flow) → Confirm (detected identity, alias field, an identity-match notice when it matches an existing source).
+AGENT L1 starts the existing native login for its selected Agent, then opens the centered sign-in and confirmation dialog. The login dialog also exposes Account type (Claude, ChatGPT / Codex, API key, Detect on this computer) → Sign in (waiting state, browser choice as pills inside this step, Copy login link, Paste a code instead, one line noting that `account_add` lets Agents run the flow) → Confirm (detected identity, alias field, an identity-match notice when it matches an existing source).
 
 ### Privacy mode
 
-One persisted preference, toggled from the source panel header. It blurs emails, organizations, identity keys, session names and connection addresses everywhere they render. `cli app snapshot` and UI scenario screenshots default to privacy on. The topology shows aliases only, so it needs no blurring.
+One persisted preference, toggled from the source panel header. It blurs emails, organizations, identity keys, session names and connection addresses everywhere they render. `cli app snapshot` defaults to privacy on. The topology shows aliases only, so it needs no blurring.
 
 ### Homepage panels
 
@@ -125,6 +125,4 @@ The hub-right Agent settings dialog owns discovery, enable/disable, order and of
 
 ## Fixtures
 
-Fixtures, scenarios and docs use invented identities on `example.com` and placeholder organizations. No real emails, organization names or session IDs.
-
-The `src-*`, `agent-*` and `task-detail-*` browser scenarios cover platform lists, account details, single-account shortcuts, empty collections, multiple connections for one SRC account, task detail and Agent settings. Theme pairs cover account detail and quota. Design mounts expose `InlineName`, `ObjectMenu`, `CopyValue`, `ContextSettings`, `SrcConversationRow` and `fixtures.panels` alongside the platform/account cards.
+Tests, design examples and docs use invented identities on `example.com` and placeholder organizations. No real emails, organization names or session IDs.

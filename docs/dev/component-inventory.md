@@ -4,7 +4,7 @@
 
 MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.
 
-This inventory describes current presentation owners. The object model defines the panel and connection-flow boundaries. A browser fixture establishes synthetic rendering coverage, not native authentication, connectivity or delivery.
+This inventory describes current presentation owners. The object model defines the panel and connection-flow boundaries. UI acceptance uses `npm run dev:ui` against real app data; native authentication, connectivity and delivery require runtime checks.
 
 ## Identity and shared state
 
@@ -31,7 +31,7 @@ The built-in local authority is excluded from user-managed SRC accounts. Connect
 | Platform Chip / Node / Row / Card | `objects/src-platform/` | Provenance, topology, Add SRC product choice and shared platform framing. Platform identity is distinct from vendor grouping. |
 | Account Chip / Node | `objects/src-account/` | Cross-role references, task provenance and topology. Historical references do not invent live state. |
 | Account Row | SrcAccountRow | SRC L1 account list and platform cards; homepage rows show one alias with its observed source states. |
-| Account Card | SrcAccountCard | Object fixtures for identity, state, timestamps and current authorization evidence. Homepage L2 composes account state, last seen and conversation rows. No grant history. |
+| Account Card | SrcAccountCard | Identity, state, timestamps and current authorization evidence. Homepage L2 composes account state, last seen and conversation rows. No grant history. |
 
 SourcePanel owns SRC L1/L2. Add account preselects the product. L2 reads account conversations; task references open AGENT L3. InlineName edits aliases in the L2 header; ObjectMenu confirms removal in an anchored Popover. SourceDispatches remains in Logs for source-attributed receipts. The old source connection inspector and cross-role panel links are removed.
 
@@ -54,7 +54,7 @@ AddAccount retains native login and confirmation. AgentPanel L1 lists accounts w
 | --- | --- | --- |
 | Chip | TunnelChip | Source rows/cards; navigates to Connections when a live target exists. |
 | Node | TunnelNode | Existing TopologyPainter and PortraitPainter boundary. No vertex or click target is added. |
-| Row | TunnelRow | Read-only additional Connections rows with kind, address and state. LocalConnectionRow shows Local state only. Both rows have ready, error and stopped browser fixtures. |
+| Row | TunnelRow | Read-only additional Connections rows with kind, address and state. LocalConnectionRow shows Local state only.  |
 | Card | TunnelCard | Public-link state, masked MCP address and start/stop. |
 
 AddControlSource offers Product, Configure, Approval and observed success for remote products; local products show a setup command. PublicLinkDeployment owns inline deployment in Add SRC and Connections, preserving progress, cancellation and retry. No connection selector, nested setup dialog, provider editor, Secure Tunnel setup, joined-relay management, hosted-relay administration, invitation or member-device component/export remains.
@@ -87,7 +87,3 @@ SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, Setting
 - `homepage-*`, `task-bubbles-*` and `task-detail-*` cover topology and L3, including portrait/narrow layout at the shared 640-wide viewport.
 - `src-*` and `agent-*` cover L1/L2, single-account shortcuts, empty collections, multi-connection source identity, quota and Agent settings/login.
 - `add-src-*`, `connections-*`, `settings-*`, `update-*` and `logs-*` cover the surviving creation and workspace surfaces. `navigation-redirects` covers all four removed page targets through the App navigator.
-- Every scenario runs at 640×800, 1280×800 and 1920×1080. Theme pairs are limited to visually distinct surfaces. See [Acceptance](acceptance.md#ui-scenarios) for the state families.
-- Removed pages, connection editors, switch flows, merge dialogs, grant lists and relay-member surfaces have no dedicated scenario or design export. Shared component permutations use design previews instead of migration-only browser fixtures.
-
-`ui/design-mount` exports the same retained object components and fixtures. `design-system/claude/previews.mjs` covers those exports. Browser acceptance is main-checkout-only; lane checks do not establish rendered layout or real-client success.

@@ -8,4 +8,4 @@ A gear opens a Popover containing SingleChoice. Only task bubble width and side-
 
 ## Mounts
 
-Exported through `ui/design-mount.ts`. The `context-actions-light` and `context-actions-dark` browser fixtures force revealed actions. Secondary icons also reveal on focus-within and coarse pointers. Icon controls expose a name and tooltip.
+Exported through `ui/design-mount.ts`. Secondary icons also reveal on focus-within and coarse pointers. Icon controls expose a name and tooltip.

@@ -5,7 +5,7 @@ lanes through `npm run wt`; do not improvise a runnable environment in a lane.
 A lane belongs to its assigned task. Never check out, commit from, clean or remove
 another task's lane. After every lane commit, run `git show --stat HEAD` and confirm
 it lists only your own files. While lanes are active, do all coding in assigned
-lanes. Reserve the main checkout for `wt land` and acceptance.
+lanes. Use `dev:ui` in the assigned lane against the running app. Reserve the main checkout for `wt land` and native runtime acceptance.
 
 From the main checkout, run `npm run wt -- create <name>`. This creates `wt/<name>`
 from main HEAD at `<repository-parent>/<repository-name>.wt/<name>`.
@@ -39,9 +39,9 @@ changes to Git's merge checks. Landing rebases the lane on main, then merges wit
 resolve the listed files in the lane and run `git rebase --continue`, or abort with
 `git rebase --abort`. Retry landing after resolving. Land one lane at a time.
 
-Run the app, `dev`, `dev:isolated`, installs, desktop packaging, releases and all
+Run the app, `dev`, `dev:isolated`, installs, desktop packaging, releases and native runtime
 acceptance serially in main after landing. The shared tooling guard makes npm dev,
-packaging, release, acceptance and Vite dev entry points refuse in a lane and name
+packaging, release and native acceptance entry points refuse in a lane and name
 main. Installed products and the published installer contain no lane guard.
 The marker belongs only to the lane checkout; keep it until the lane is removed.
 
@@ -56,17 +56,3 @@ After acceptance, run `npm run wt -- remove <name>` from main to delete the work
 its private target and branch. Unmerged branches and dirty worktrees are retained
 unless `--force` is supplied. A failed create leaves its lane registered for repair
 or removal with the same command. Do not manually delete the worktree or its target.
-
-
-Successful create, land and remove commands report lifecycle metadata to an already
-running Core through bounded local management and verify the stored transition.
-The parent must be a registered project. A missing Core or failed/partial command
-prints `coordination-observation` with `coverage:missing`; the original command result
-is unchanged. A bounded outbox under the main Git directory retains completed
-reports for later reconciliation with the same transition IDs. Ref movement alone
-never implies that a land command ran. See [Coordination](coordination.md).
-
-Land preflight prints `coordination-conflicts` from the shared board when the running
-Core can map the registered parent. Lifecycle readback also returns current advisory
-conflicts and activity ages. Unknown coverage is explicit. Warnings never bypass the
-main-only guard or block an otherwise authorized action; pull `board` before landing.

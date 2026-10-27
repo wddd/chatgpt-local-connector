@@ -1,6 +1,6 @@
 import type { AgentActivitySnapshot, ProviderAccount } from '../types';
 import type { Status } from '../state/types';
-import type { TopologyAccount } from './accounts';
+import type { TopologyAccount } from '../topology/accounts';
 
 export function installTopologyAccounts(status: Status, activity: AgentActivitySnapshot): ProviderAccount[] {
   const base = status.ingresses[0].sources![0];

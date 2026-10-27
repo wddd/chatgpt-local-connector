@@ -64,7 +64,7 @@ DispatchSpec accepts recorded task/turn data and native-shaped label snapshots. 
 
 All synthetic records use the single `Arc.fixtures` entry. `requests` contains permission, question, authorization, deployment and member records; `tasks` contains activity, dispatch receipt and timeline records; `agentObjects` contains platform, account, source and connection records. The existing top-level fixture fields remain available. Set Root and explicit time props to `Arc.fixtures.requests.now` or `Arc.fixtures.tasks.now` for those families. See [fixtures](api/components/fixtures.md).
 
-`npm run check` runs the Claude Design missing-preview check directly from `ui/design-mount.ts`, using the same enumeration as `npm run design:claude` without requiring a bundle. Add a recipe in `design-system/claude/previews.mjs`, a component card below and an export-table row whenever adding a component export.
+Design exports are optional and are not part of `npm run check`. Run `node design-system/claude/build.mjs --check` explicitly to verify previews for the current design exports.
 
 ## Exports
 
@@ -166,4 +166,4 @@ Open `http://127.0.0.1:5198/preview.html`. This standalone fixture page loads Re
 
 Source types are in `ui/design-mount/host.tsx`; `ui/design-mount/fixtures.ts` collects the typed fixture families. Rebuild against the current shared components whenever their props or styles change. No generated output belongs in Git.
 
-AGENT platform and account objects export Chip, Node, Row and Card from `ui/design-mount`, with typed `Arc.fixtures.agentObjects` records. Card content/action slots are plain text in individual islands; browser `agent-*` fixtures demonstrate live panel composition, account selection and quota; Claude Design previews retain standalone object variants. SRC Cards compose current authorization Chips and pending authorization Rows from supplied connections. No grant history is mounted.
+AGENT platform and account objects export Chip, Node, Row and Card from `ui/design-mount`, with typed `Arc.fixtures.agentObjects` records. Card content/action slots are plain text in individual islands; Claude Design previews retain standalone object variants. SRC Cards compose current authorization Chips and pending authorization Rows from supplied connections. No grant history is mounted.

@@ -1,7 +1,6 @@
 import { preference, createStore } from './store';
-import { scenarioName } from '../scenarioMode';
 export const privacy = preference('arc.privacy', true);
-const capturePrivacy = createStore(!!scenarioName);
+const capturePrivacy = createStore(false);
 export function protectSnapshot() { capturePrivacy.set(true); }
 export function usePrivacy() {
   const preferenceValue = privacy.use(), captureValue = capturePrivacy.use();

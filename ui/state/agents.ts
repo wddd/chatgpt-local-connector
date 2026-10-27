@@ -65,13 +65,11 @@ order.subscribe(() => patch({}));
 export function orderedAgents() {
   return [...agents.get().items].sort((a, b) => {
     const priority =
-      Number(b.installed && b.enabled === true) -
-        Number(a.installed && a.enabled === true) ||
       Number(!!b.installed) - Number(!!a.installed);
     if (priority) return priority;
     const ai = order.get().indexOf(a.agent),
       bi = order.get().indexOf(b.agent);
-    if (a.installed && a.enabled && b.installed && b.enabled && (ai >= 0 || bi >= 0))
+    if (a.installed && b.installed && (ai >= 0 || bi >= 0))
       return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi);
     return (
       Number(b.agent === "codex") - Number(a.agent === "codex") ||
@@ -81,7 +79,7 @@ export function orderedAgents() {
 }
 export function moveAgent(from: string, to: string) {
   const ids = orderedAgents()
-      .filter((a) => a.installed && a.enabled)
+      .filter((a) => a.installed)
       .map((a) => a.agent),
     start = ids.indexOf(from),
     end = ids.indexOf(to);
@@ -91,12 +89,12 @@ export function moveAgent(from: string, to: string) {
   reorderAgents(ids);
 }
 export function reorderAgents(ids: string[]) {
-  const enabled = orderedAgents()
-    .filter((agent) => agent.installed && agent.enabled)
+  const installed = orderedAgents()
+    .filter((agent) => agent.installed)
     .map((agent) => agent.agent);
-  const next = ids.filter((id) => enabled.includes(id));
-  next.push(...enabled.filter((id) => !next.includes(id)));
-  if (next.every((id, index) => id === enabled[index])) return;
+  const next = ids.filter((id) => installed.includes(id));
+  next.push(...installed.filter((id) => !next.includes(id)));
+  if (next.every((id, index) => id === installed[index])) return;
   order.set(next);
 }
 function persist() {
@@ -140,20 +138,7 @@ export function refreshAgents(manual = false): Promise<void> {
   pending = api<{ agents: Agent[] }>("agents", manual ? "POST" : "GET")
     .then((result) => {
       if (version !== revision) return;
-      const retained = orderedAgents()
-        .filter(
-          (a) =>
-          a.installed && a.enabled &&
-            result.agents.some((n) => n.agent === a.agent && n.enabled),
-        )
-        .map((a) => a.agent);
       patch({ items: result.agents, loaded: true, error: "" });
-      order.set([
-        ...retained,
-        ...orderedAgents()
-          .filter((a) => a.installed && a.enabled && !retained.includes(a.agent))
-          .map((a) => a.agent),
-      ]);
       persist();
       clearTimeout(preparationPoll);
       if (result.agents.some((a) => a.adapter?.state === "preparing"))
@@ -178,9 +163,6 @@ export async function toggleAgent(agent: Agent, enabled: boolean) {
       "PUT",
       { agent: agent.agent, enabled },
     );
-    const retained = orderedAgents()
-      .filter((a) => a.installed && a.enabled && a.agent !== agent.agent)
-      .map((a) => a.agent);
     patch({
       items: agents
         .get()
@@ -196,7 +178,6 @@ export async function toggleAgent(agent: Agent, enabled: boolean) {
             : a,
         ),
     });
-    order.set(result.enabled ? [...retained, agent.agent] : retained);
     persist();
   } catch (e) {
     patch({ error: String(e) });

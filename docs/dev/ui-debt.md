@@ -2,17 +2,17 @@
 
 MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.
 
-Compose feature UI from the shared primitives, shells, forms, composites and objects described in [Component specification](component-spec.md). Add missing shared patterns with a browser fixture and design-mount export before using them in feature pages.
+Compose feature UI from the shared primitives, shells, forms, composites and objects described in [Component specification](component-spec.md). Add shared patterns when real screens need them.
 
 Run `npm run check:ui` (also part of `npm run check`) to enforce shared controls, DispatchSpec rendering, inline layout ownership and feature CSS selector ownership. Tailwind utilities are the supported replacement for legacy layout selectors.
 
 ## Scope
 
-Feature code includes all UI source except `ui/components/ui/**`, `ui/components/composites/**`, `ui/components/objects/**`, `ui/design-mount/**`, scenario/fixture files, and the topology geometry/painters enumerated in `tooling/ui-policy.mjs`. The topology tuning panel remains feature code. Fixture names use a scenario/fixture prefix, a matching directory, or a `.scenario`/`.fixture` suffix.
+Feature code includes all UI source except `ui/components/ui/**`, `ui/components/composites/**`, `ui/components/objects/**`, `ui/design-mount/**`, and the topology geometry/painters enumerated in `tooling/ui-policy.mjs`. The topology tuning panel remains feature code.
 
 Raw button, input, select, textarea, label, details, summary and definition-list elements require shared components. Direct model/effort/service-tier reads from `dispatchSummary` or `task` inside JSX require DispatchSpec. Event handlers and data processing outside JSX remain allowed; this syntactic rule does not perform alias/data-flow analysis. Inline margin, padding, gap, display, flex/grid and alignment properties require shared shells. Existing dynamic geometry properties such as top, left, width, height and transform remain allowed. New feature controls use SingleChoice/ChoiceControl rather than importing Select, ToggleGroup or RadioGroup directly. Arbitrary Tailwind color, spacing, radius and typography values are forbidden, including conditional and cn/cva string literals.
 
-Dedicated CSS is restricted to `ui/tokens.css`, synthetic fixture styles, and these brand-owned files. `tooling/ui-policy.mjs` enumerates both file paths and selector families. Shared primitives, composites and objects do not receive a CSS exemption. The token entry accepts only global foundation selectors, so feature rules cannot move there. New non-brand files and non-brand selectors in brand files fail `check:ui`.
+Dedicated CSS is restricted to `ui/tokens.css` and these brand-owned files. `tooling/ui-policy.mjs` enumerates both file paths and selector families. Shared primitives, composites and objects do not receive a CSS exemption. The token entry accepts only global foundation selectors, so feature rules cannot move there. New non-brand files and non-brand selectors in brand files fail `check:ui`.
 
 | Brand owner | Stylesheet | Boundary |
 | --- | --- | --- |

@@ -13,7 +13,7 @@ This system is generated from the `agent-remote-control` repository. Nothing her
 | Components, styles, tokens | `ui/` (the app itself) |
 | Claude Design packaging | `design-system/claude/build.mjs`, `npm run design:claude` → `design-system/claude/project/` |
 | Bundle build | `design-system/build.mjs`, `npm run design:bundle` → `design-system/dist/` |
-| Synthetic data | `ui/design-mount/fixtures.ts` (reuses acceptance scenarios) |
+| Synthetic data | `ui/design-mount/fixtures.ts` (design-only records) |
 | Target component architecture | `docs/dev/component-spec.md` |
 | Object model and placement | `docs/dev/object-model.md` (draft) |
 
@@ -86,6 +86,6 @@ Built-in navigation, refresh, URL and clipboard actions do not contact ARC. They
 
 ## Publishing
 
-1. Run `npm run check` to verify every component export has a preview. Run `npm run design:bundle`, then `npm run design:claude` in the repository root.
+1. Optionally run `node design-system/claude/build.mjs --check` to verify design previews. Run `npm run design:bundle`, then `npm run design:claude` in the repository root.
 2. Stage `design-system/claude/project/*` in the Claude session, preserving the directory layout. This means session file staging, not Git staging; the generated project is gitignored.
 3. Publish the staged files to the account's **Design System**, with `design-system.json` last. Another account publishes its own copy. Set the published system as the default when needed.
