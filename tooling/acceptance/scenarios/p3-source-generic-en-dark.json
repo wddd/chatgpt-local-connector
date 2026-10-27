@@ -5,6 +5,9 @@
     "codex"
   ],
   "tasks": [],
-  "page": "settings",
-  "settingsExtras": true
+  "remoteLink": {},
+  "sourceSetup": {
+    "step": "address",
+    "source": "custom"
+  }
 }

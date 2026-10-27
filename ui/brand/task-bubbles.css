@@ -33,9 +33,8 @@ button.activity-bubble:active, .activity-bubble-shell:active { transform: scale(
 .activity-source-badge { position: absolute; right: -4px; bottom: -4px; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--text-secondary); box-shadow: 0 0 0 1px var(--border); }
 .activity-source-badge > .icon, .activity-source-badge .source-icon, .activity-source-badge .source-icon svg { width: 12px; height: 12px; }
 .activity-source-badge .source-icon > span { display: flex; }
-.activity-preview .activity-bubble { transition: width 180ms cubic-bezier(.34,1.56,.64,1), height 180ms cubic-bezier(.34,1.56,.64,1); }
 :root[data-reduced-motion="true"] {
-  button.activity-bubble, .activity-bubble-shell, .activity-preview .activity-bubble { transition: none; }
+  button.activity-bubble, .activity-bubble-shell { transition: none; }
 }
 :root[data-reduced-motion="true"] {
   button.activity-bubble:hover, button.activity-bubble:active, .activity-bubble-shell:hover, .activity-bubble-shell:active { transform: none; }

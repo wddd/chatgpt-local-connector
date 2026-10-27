@@ -83,8 +83,8 @@ Public query errors carry actionable `next`; normal transport adds `arcVersion`.
 
 ## AX owner store
 
-Maintainer mode defaults OFF. Settings > Experimental and `cli config set --stdin`
-with `{"maintainerMode":true}` update the same device-owned ARC preference. The
+Maintainer mode defaults OFF. `cli config set --stdin` with `{"maintainerMode":true}`
+updates the device-owned ARC preference; there is no Settings entry. The
 Core stores `maintainer-mode` as `on`/`off` in its existing preference store. Guide
 reads use its current value and include it in `guideHash`; no restart is needed.
 OFF guides omit AX workflow and common-index AX ops. They suggest a user-reviewed

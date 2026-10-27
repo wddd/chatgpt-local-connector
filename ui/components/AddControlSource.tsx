@@ -21,7 +21,7 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
   const [deploying, setDeploying] = useState(!!flow.deploying);
   const selectedProduct = flow.source ?? "";
   const info = controlSource(selectedProduct), product = info?.sourceProduct ?? flow.source ?? "custom";
-  const local = info?.recommendedTransport === "local", name = info?.shortName ?? t("connect.other");
+  const local = info?.recommendedTransport === "local", name = product === "custom" ? t("setup.yourMcpClient") : info?.shortName ?? t("setup.yourMcpClient");
   const localPayload = JSON.stringify({ body: { target: info?.localTarget } });
   const localCommand = `${status?.platform === "win32" ? "" : "printf '%s' "}'${localPayload}' | arc cli call local-access.install --stdin`;
   const steps: OnboardingStep[] = local ? ["product", "address"] : ["product", "address", "approval", "success"];

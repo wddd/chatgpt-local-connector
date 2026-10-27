@@ -6,7 +6,6 @@ export function resolvePage(value: string | null | undefined): Page {
   return value === "logs" || value === "connections" || value === "settings" ? value : "overview";
 }
 export const navigation = createStore<{
-  settingsExtras?: boolean;
   settingsUpdates?: boolean;
   settingsPermissions?: boolean;
   page?: Page;

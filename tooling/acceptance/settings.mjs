@@ -1,12 +1,17 @@
 export async function acceptSettings(page, fixture, messages, captureEntry = async () => {}) {
   if (fixture.page !== 'settings') return;
-  if (fixture.settingsExtras) {
-    await page.getByRole('switch', { name: messages['topology.tuning'], exact: true }).waitFor({ state: 'visible' });
-    await page.getByRole('switch', { name: messages['extras.maintainerMode'], exact: true }).waitFor({ state: 'visible' });
-    return;
-  }
   if (fixture.settingsPermissions) { await page.getByRole('button', { name: messages.permissionsRefresh, exact: true }).waitFor(); return; }
   if (!fixture.settingsUpdates) {
+    // Regression: advanced network and routing controls crowded the basic Settings path.
+    if (await page.getByRole('spinbutton').count() || await page.getByRole('textbox').count()) throw new Error('Advanced configuration input remains in Settings');
+    for (const key of ['controlSourceNotifications', 'automaticallyOpenCodexTasks', 'taskApprovalMode', 'connectAtSystemSignIn']) {
+      await page.getByRole('switch', { name: messages[key], exact: true }).waitFor();
+    }
+    const permissions = page.getByRole('button', { name: messages.permissionsSystem, exact: true });
+    await permissions.click();
+    await page.getByRole('button', { name: messages.permissionsRefresh, exact: true }).waitFor();
+    await page.getByRole('button', { name: messages.back, exact: true }).click();
+    if (!await permissions.evaluate(element => document.activeElement === element)) throw new Error('Settings lost permission-entry focus');
     // Regression: the App updates entry repeated its title and failed to navigate.
     const section = page.getByRole('region', { name: messages.appUpdates, exact: true });
     await section.waitFor({ state: 'visible' });
@@ -18,7 +23,9 @@ export async function acceptSettings(page, fixture, messages, captureEntry = asy
     await entry.click();
   }
   await page.getByRole('heading', { name: messages['updates.currentVersion'], exact: true }).waitFor({ state: 'visible' });
-  const channel = messages['updates.releaseChannel'];
-  if (await page.getByRole('combobox', { name: channel, exact: true }).count()
-    || await page.getByRole('radiogroup', { name: channel, exact: true }).count()) throw new Error('Single release channel remains interactive');
+  // Regression: technical update policy switches appeared beside everyday update actions.
+  if (await page.getByRole('switch').count()) throw new Error('Advanced update policy switch remains in Settings');
+  const choices = page.getByRole('combobox').or(page.getByRole('radiogroup'));
+  if (await choices.count() !== 1) throw new Error('Updates should expose only installation timing');
+  if (await choices.getAttribute('aria-label') !== messages['updates.installTiming']) throw new Error('Unexpected update setting');
 }

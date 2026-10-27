@@ -46,8 +46,6 @@ import { agentState as projectAgentState } from './objects/agent-platform/presen
 import { ActivityBubble } from "./ActivityBubbles";
 import Topology, { type TopologyHandle, type NodeView, type PanelLayout } from "../topology/Topology";
 import { PANEL_MIN_WIDTH } from "../topology/solve";
-import TuningPanel from "../topology/TuningPanel";
-import { topologyTuningEnabled } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
 import type { WireState } from "../topology/render";
 import Onboarding from "./Onboarding";
@@ -63,7 +61,6 @@ function wireState(state: string): WireState {
   return "inactive";
 }
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
-  const tuning = topologyTuningEnabled.use();
   const { tracked, markRead } = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use(), sourceSelection = ingressPanel.use();
   const flow = onboarding.use();
   const newSourceId = addedSource.use();
@@ -332,7 +329,6 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
           </div>
         )}
       </section>
-      {visible && tuning && <TuningPanel />}
       {flow && visible && <Onboarding />}
       {agentsOpen && <AgentsSettings onClose={() => setAgentsOpen(false)} />}
     </>

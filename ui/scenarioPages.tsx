@@ -5,7 +5,6 @@ import { subscriptions } from './state/subscriptions';
 import { accounts } from './state/accounts';
 import { Button } from './components/ui';
 import AgentsSettings from './components/AgentsSettings';
-import AgentDisplaySettings from './components/AgentDisplaySettings';
 import AddAccount from './components/AddAccount';
 import './scenarioShells.css';
 import ManagementTableFixture from './scenarioManagement';
@@ -19,7 +18,6 @@ export default function PagesFixture() {
     {open && <>
       {pageFixture === 'management-table' && <ManagementTableFixture />}
       {pageFixture === 'agents-settings' && <AgentsSettings onClose={close} />}
-      {pageFixture === 'agent-display-settings' && <AgentDisplaySettings onClose={close} />}
       {pageFixture === 'add-account' && <AddAccount onClose={close} initialLogin={state.login ?? undefined} />}
       {pageFixture === 'quota-segments' && quota && <QuotaBubble provider={quota} />}
     </>}

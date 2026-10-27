@@ -36,7 +36,7 @@ With **Automatically open Codex tasks** enabled, new Codex tasks execute in Code
 
 The control source handles ARC-side decisions. If you are watching an open task
 in the focused ARC window, its request dock waits 15 seconds before handing a new
-request to the source. Change the delay in Settings (0–300 seconds). You can answer
+request to the source. Ask your Agent to change the delay through [CLI/AX settings](guides/settings.md#routing-delay) (0–300 seconds). You can answer
 on the spot; focusing an input, choosing an option or typing pauses the countdown.
 Use Resume or Hand off now when ready. Leaving the task ends a running countdown.
 

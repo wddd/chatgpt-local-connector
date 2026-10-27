@@ -1,0 +1,13 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "remoteLink": {},
+  "sourceSetup": {
+    "step": "address",
+    "source": "custom"
+  }
+}

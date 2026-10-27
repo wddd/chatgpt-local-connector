@@ -22,6 +22,10 @@ Manage sources in the homepage SRC panels. **Connections** shows the public link
 
 Your own Agent configures custom addresses, dedicated tunnels, OpenAI Secure Tunnel, shared-relay joining, relay hosting, invites and source connection switching through CLI/AX. See [Connections](guides/connections.md) for exact commands. These features have no configuration UI.
 
+### Configure settings
+
+Use Settings for everyday task behavior, appearance, system permissions and updates. Ask your own Agent to apply routing delay, proxy, quota policy or display tuning through [CLI/AX settings](guides/settings.md).
+
 ### Dispatch and receive a notification
 
 Open a Claude Code cloud session on claude.ai and send this prompt. Claude can read its own session ID from its environment, for example the `cse_…` value in `CLAUDE_CODE_REMOTE_SDK_URL`:

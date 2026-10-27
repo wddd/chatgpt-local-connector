@@ -11,7 +11,7 @@ await server.listen();
 const address = server.httpServer.address();
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const report = [];
-const scenarios = ['settings-light', 'settings-extras-light', 'agent-panel', 'agent-panel-empty', 'source-panel', 'topology-accounts', 'timeline-pending', 'foundation-light', 'shells-light', 'p3-welcome-light', 'connections-basic-dark', 'forms-light'];
+const scenarios = ['settings-light', 'agent-panel', 'agent-panel-empty', 'source-panel', 'topology-accounts', 'timeline-pending', 'foundation-light', 'shells-light', 'p3-welcome-light', 'connections-basic-dark', 'forms-light'];
 const motion = process.argv.includes('--motion');
 const filter = process.argv.find(arg => arg.startsWith('--scenario='))?.slice(11);
 try {

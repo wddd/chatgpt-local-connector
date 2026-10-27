@@ -96,7 +96,7 @@ fn failure(message: String, op: &str, args: &Value) -> Value {
             json!({"via":"query","op":"ax_list","args":reset,"hint":"Restart pagination; the AX snapshot or authority changed"})
         }
         "MAINTAINER_MODE_REQUIRED" => {
-            json!({"op":null,"hint":"Ask the user to enable Maintainer mode under Settings > Experimental, or locally run cli config set --stdin with {\"maintainerMode\":true}. Authenticated local authority may also triage/import without enabling the mode."})
+            json!({"op":null,"hint":"Locally run cli config set --stdin with {\"maintainerMode\":true}. Authenticated local authority may also triage/import without enabling the mode."})
         }
         "INVALID_ARGUMENT" => {
             json!({"via":"query","op":"guide","args":{"op":op},"hint":"Use the current AX schema; include metadata only"})

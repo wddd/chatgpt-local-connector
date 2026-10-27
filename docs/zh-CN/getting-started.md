@@ -22,6 +22,10 @@ Claude Code 和 Claude Desktop 直接显示本地配置命令。在这台电脑�
 
 自定义地址、专用隧道、OpenAI Secure Tunnel、加入共享中继、托管中继、邀请及更换来源连接由你自己的 Agent 通过 CLI/AX 配置。精确命令见[连接指南](guides/connections.md)，这些功能没有 UI 配置入口。
 
+### 配置设置
+
+在设置中管理日常任务行为、外观、系统权限和更新。请求转交延迟、代理、额度策略和显示微调交给你自己的 Agent，通过 [CLI/AX 设置](guides/settings.md)完成。
+
 ### 派任务并接收通知
 
 在 claude.ai 打开 Claude Code 云端会话，发送下面的提示词。Claude 可以从自身环境读取会话 ID，例如 `CLAUDE_CODE_REMOTE_SDK_URL` 中的 `cse_…`：

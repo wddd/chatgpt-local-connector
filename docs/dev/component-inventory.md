@@ -19,7 +19,7 @@ The built-in local authority is excluded from user-managed SRC accounts. Connect
 | Homepage | ConnectionOverview, Topology, IngressPanel, AgentPanel | SRC and AGENT inspectors; task bubbles and detail; Add SRC and Agent settings hub actions. |
 | Logs | RecordsPage | Time, available source, operation and result; filtering and expandable evidence. |
 | Connections | ConnectionsPage | Public link and Local state, address copy and start/stop; other connections are read-only rows. |
-| Settings | SettingsPage | General, appearance, network and updates; one System permissions entry; Extras contains experimental features only. |
+| Settings | SettingsPage | Task behavior, startup, notifications, language, appearance and updates; one System permissions entry. Specialized settings use CLI/AX. |
 | System permissions | SystemPermissions | Existing OS checks and grant requests, including split app/command disk-access evidence. No OAuth grant or tool-policy list. |
 
 `App` owns the dock in Logs, Connections, Settings order. `resolvePage` normalizes saved page state and external navigation. Removed `tasks` and `accounts` targets return to the homepage; `remote` opens Connections; `permissions` opens Settings. Desktop deep-link and tray adapters apply the same mapping.
@@ -46,7 +46,7 @@ There is no Accounts page, notification binding/test card, merge dialog, product
 | Account Row / Profile Row | AgentAccountRow, AgentProfileRow | Account lists and profile evidence; native reauthentication uses explicit profile IDs. Default state is read-only. |
 | Account Card | AgentAccountCard | AgentPanel identity, profile state, quota and account-filtered conversations/tasks. |
 
-AddAccount retains native login and confirmation. AgentPanel L1 lists accounts with state/quota icons and starts the Agent login flow. L2 owns account quota, attributed tasks and rename/remove. Back traverses L3 to L2 to L1, including the single-account shortcut. Display settings moved to Settings; Agent settings has no quota overview or detail inspector.
+AddAccount retains native login and confirmation. AgentPanel L1 lists accounts with state/quota icons and starts the Agent login flow. L2 owns account quota, attributed tasks and rename/remove. Back traverses L3 to L2 to L1, including the single-account shortcut. Display preferences use CLI/AX; Agent settings has no quota overview or detail inspector.
 
 ## TUNNEL and Add SRC
 

@@ -1,10 +1,9 @@
 {
   "theme": "light",
-  "language": "en",
+  "language": "zh-CN",
   "agents": [
     "codex"
   ],
   "tasks": [],
-  "page": "settings",
-  "settingsExtras": true
+  "page": "settings"
 }

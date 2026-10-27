@@ -406,6 +406,113 @@ For OAuth, read the pending request before deciding. [OAuth](oauth.md#local-mana
 Read subscriptions get first. subscriptions set replaces enabled and refreshMinutes (1/3/5/10; defaults to 3). Providers participate automatically with their Agent; home rings use weekly quota windows. refresh starts an online refresh; inspect observedAt/state/error for its result. open activates Agent details.
 
 
+## Advanced settings through CLI/AX
+
+Settings exposes everyday task behavior, startup, notifications, language, appearance, macOS app placement, system permissions, and updates. Request routing delay, network proxy, display tuning, quota policy, maintainer mode, and technical update policies are CLI/AX capabilities. Your own Agent can apply the commands below to the selected instance. They use existing management ops; no UI navigation is required.
+
+Read before changing, submit only the requested fields, and read back afterwards. `cli call` takes management arguments with a `body` wrapper; the `network`, `subscriptions set`, and `config set` shortcuts take the body directly. Prefix commands with `arc cli --state-dir <absolute-directory>` instead of `arc cli` when targeting another instance.
+
+### Request routing delay
+
+```sh
+arc cli call tasks.settings.get
+printf '%s' '{"body":{"requestRoutingDelaySeconds":30}}' | arc cli call tasks.settings.set --stdin
+arc cli call tasks.settings.get
+```
+
+The delay is an integer from 0 to 300 seconds, default 15. It controls the delay before forwarding pending requests to their control source; it does not approve a request.
+
+### Network proxy
+
+```sh
+arc cli call network.get
+printf '%s' '{"proxyMode":"custom","proxyUrl":"http://127.0.0.1:7890"}' | arc cli network --stdin
+arc cli call network.get
+```
+
+Use a reachable HTTP or HTTPS proxy URL. `proxyMode` also accepts `system` (default) and `direct`; send `proxyUrl:""` for either mode:
+
+```sh
+printf '%s' '{"proxyMode":"system","proxyUrl":""}' | arc cli network --stdin
+```
+
+New outbound requests use the saved proxy. Reconnect an existing connection to apply it to that connection's running tunnel process.
+
+### Quota policy
+
+```sh
+arc cli subscriptions get
+printf '%s' '{"enabled":true,"refreshMinutes":5}' | arc cli subscriptions set --stdin
+arc cli subscriptions get
+```
+
+This example enables quota collection and sets a five-minute automatic refresh. Preserve the current `enabled` value when changing only the interval, and preserve `refreshMinutes` when changing only enablement. Valid intervals are 1, 3, 5, and 10 minutes; the default is 3. This interval does not change the shared account poll or native quota cache. Manual refresh remains available in Agent details.
+
+### Display preferences
+
+```sh
+arc cli call preferences.get
+arc cli call preferences.set --stdin <<'JSON'
+{"body":{"values":{"theme-color":"blue","task-bubble-density":"compact"}}}
+JSON
+arc cli call preferences.get
+```
+
+The example changes only accent color and bubble density. `body.values` merges string values into instance preferences. The renderer follows them on the next connector status refresh. Send only the keys you want to change from this table:
+
+| Setting | Preference key | String values (default first) |
+| --- | --- | --- |
+| Accent color | `theme-color` | `arc`, `blue`, `purple`, `orange`, `green` |
+| Account topology | `arc.topology-mode` | `"tree"`, `"flat"` (JSON-encoded strings) |
+| Bubble density | `task-bubble-density` | `standard`, `compact`, `detailed` |
+| Bubble width | `task-bubble-width` | `medium`, `narrow`, `wide` |
+| Compact bubbles when space is limited | `task-bubble-auto-compact` | `on`, `off` |
+| Topology orientation | `topology-layout` | `auto`, `landscape`, `portrait` |
+| Maximum visible Agents | `agents-max-visible` | `4`, `6`, `8`, `10` |
+| Quota percentage | `quota-display` | `remaining`, `used` |
+| Quota reset presentation | `quota-reset-display` | `countdown`, `time` |
+
+For example, change the topology and quota presentation together:
+
+```sh
+arc cli call preferences.set --stdin <<'JSON'
+{"body":{"values":{"arc.topology-mode":"\"flat\"","topology-layout":"auto","agents-max-visible":"6","task-bubble-width":"wide","task-bubble-auto-compact":"on","quota-display":"used","quota-reset-display":"time"}}}
+JSON
+```
+
+### Maintainer and topology diagnostics
+
+```sh
+arc cli config get
+printf '%s' '{"maintainerMode":true}' | arc cli config set --stdin
+arc cli config get
+```
+
+Maintainer mode is off by default. It enables development AX capabilities; set `maintainerMode:false` to disable it. [Maintainer mode](#maintainer-mode) describes their boundaries.
+
+Topology overrides and diagnostic overlays are also preferences, with no floating settings panel:
+
+```sh
+arc cli call preferences.set --stdin <<'JSON'
+{"body":{"values":{"arc.topology-parameters":"{\"schemaVersion\":1,\"overrides\":{\"taskGap\":12}}","arc.topology-debug":"{\"guides\":true,\"slow\":false}"}}}
+JSON
+arc cli call preferences.get
+```
+
+`arc.topology-parameters` is a JSON-encoded document. Its numeric `overrides` replace the previous override set; merge the current document before changing one parameter. Omitted keys use current defaults. The renderer validates keys and numbers, clamps finite out-of-range numbers, and falls back to defaults for malformed documents. `taskGap` accepts 0–30 pixels; the full parameter metadata is in `ui/topology/solve.ts`. Use `{"schemaVersion":1,"overrides":{}}` to restore default geometry. `arc.topology-debug` accepts boolean `guides` and `slow`, both false by default. Slow motion scales geometry and flow to one quarter speed; reduced motion still takes precedence.
+
+### Technical update policies
+
+```sh
+arc cli call preferences.get
+arc cli call preferences.set --stdin <<'JSON'
+{"body":{"values":{"update-accept-local":"off","update-resume":"on","update-control-scheduling":"on"}}}
+JSON
+arc cli call preferences.get
+```
+
+Send only the policies you want to change. Each accepts `on` or `off`, with `on` as the default. `update-accept-local` permits local build replacement, `update-resume` resumes interrupted tasks after replacement, and `update-control-scheduling` permits control sources to schedule updates. Disabling local builds also prevents restoring a local backup through that replacement path. Release updates use the stable channel; there is no alternate release-channel setting. Automatic versus ask-first installation remains in Settings.
+
 ## State and environment
 
 | Platform / purpose | Location or variable |
@@ -640,8 +747,8 @@ See [app replacement](app-replacement.md) for acknowledgment, validation, rollba
 
 `cli config get` returns `{"maintainerMode":false}` on normal installs.
 To enable the mode on this device, send `{"maintainerMode":true}` to
-`cli config set --stdin`. Send `false` to disable it. This is the same persistent
-ARC setting as Settings > Experimental > Maintainer mode. It takes effect on the
+`cli config set --stdin`. Send `false` to disable it. This persistent
+ARC setting is CLI/AX-only. It takes effect on the
 next guide read without disconnecting or restarting. Mode changes do not publish,
 import, migrate or remove AX records. Authenticated local triage/import remains
 available with the mode OFF; remote triage requires the mode and entry ownership.

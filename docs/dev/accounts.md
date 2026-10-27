@@ -108,7 +108,7 @@ AGENT L1 shows name, version, Add account and compact content-height account row
 
 Both L2 panels provide Rename and Remove through the shared AccountActions dialogs. Removal uses `account_remove` with `running:finish`; the confirmation states the effect on running tasks and retained history. Rename uses `account_update` and refreshes the shared account store. There are no connection tabs, source disconnect controls, cross-role account links, profile reauthentication shortcuts, default selectors or merge controls in these panels. CLI/AX retains those capabilities.
 
-The hub-right Agent settings dialog owns discovery, enable/disable, order and official installation links. It has no account, task, quota overview or display-settings inspector. Display settings are opened from Settings. Quota overview remains available through its existing tray surface.
+The hub-right Agent settings dialog owns discovery, enable/disable, order and official installation links. It has no account, task, quota overview or display-settings inspector. Display preferences are configured through CLI/AX. Quota overview remains available through its existing tray surface.
 
 ### Topology
 

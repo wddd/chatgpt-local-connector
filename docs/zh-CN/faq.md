@@ -2,6 +2,10 @@
 
 [English](../faq.md) | **简体中文**
 
+## 代理、请求转交延迟和额度刷新设置在哪里？
+
+这些专用设置保留为 CLI/AX 能力。让你自己的 Agent 按[高级设置](guides/settings.md)中的准确命令读取当前值，只修改你指定的项目。显示微调、维护者模式和更新技术策略也通过同样的方式配置。
+
 ## macOS 提示应用已损坏
 
 核对发布校验和，把应用移入 Applications，再按[安装说明](installation.md#macos)处理 Gatekeeper。隔离命令只作用于下载的这个应用。

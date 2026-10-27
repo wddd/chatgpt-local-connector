@@ -4,6 +4,8 @@
 
 Open **Connections** for the public link's address, state and Start/Stop. If no public link exists, choose **Deploy public link** and sign in to your Cloudflare account. Deployment shows progress, cancellation, account selection when needed and retry. Local shows its state. Connections configured through CLI/AX appear as read-only rows with kind, address and state.
 
+For an outbound proxy or other specialized app settings, ask your Agent to follow [CLI/AX settings](settings.md).
+
 ## Add a control source
 
 Open the homepage hub's left half, or **Add account** in a SRC platform panel. The latter preselects the platform.

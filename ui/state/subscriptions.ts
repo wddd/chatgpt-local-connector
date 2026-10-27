@@ -2,7 +2,7 @@ import { createStore } from "./store";
 import { api } from "../api";
 import { isDesktop } from "../platform";
 import { presentSubscription } from "../subscriptions/response";
-import type { Snapshot, Settings } from "../subscriptions/types";
+import type { Snapshot } from "../subscriptions/types";
 export const subscriptions = createStore<{
   snapshot?: Snapshot;
   error: string;
@@ -45,16 +45,6 @@ export async function readSubscriptions() {
 export async function refreshSubscription(providerId: string) {
   await api("subscriptions/refresh", "POST", { providerId });
   acceptSubscriptions(await api<Snapshot>("subscriptions"));
-}
-export async function saveSubscriptions(patch: Partial<Settings>) {
-  const snapshot = subscriptions.get().snapshot;
-  if (!snapshot) throw new Error("Subscription settings unavailable");
-  acceptSubscriptions(
-    await api<Snapshot>("subscriptions/settings", "PUT", {
-      ...snapshot.settings,
-      ...patch,
-    }),
-  );
 }
 export function startSubscriptions() {
   let stopped = false,

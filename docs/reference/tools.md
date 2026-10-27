@@ -769,8 +769,7 @@ alone never proves a tooling command, and isolated start never proves readiness.
 ## AX reports and triage
 
 AX records stay in the selected instance and do not reach ARC's maintainers.
-Maintainer mode defaults OFF. Enable it locally under Settings > Experimental or
-with `cli config set --stdin` and `{"maintainerMode":true}`. Guide content and hash
+Maintainer mode defaults OFF. Enable it locally through `cli config set --stdin` and `{"maintainerMode":true}`. Guide content and hash
 change on the next read without restarting. ON includes AX reporting, candidate
 review, triage cadence and release gating in the common guide and index. OFF omits
 those workflows and common-index AX ops; coordination guidance remains in both.

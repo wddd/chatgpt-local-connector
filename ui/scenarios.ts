@@ -27,9 +27,9 @@ import { taskScenario } from './scenarioTasks';
 import type { RequestRouting } from './state/requestRouting';
 import { taskPanelSnapshot } from './state/taskPanel';
 
-export type PageFixture = 'agents-settings' | 'agent-display-settings' | 'add-account' | 'quota-segments' | 'management-table';
+export type PageFixture = 'agents-settings' | 'add-account' | 'quota-segments' | 'management-table';
 export let pageFixture: PageFixture | undefined;
-type Fixture = { agentInventory?: Agent[]; panelAccounts?: boolean; multipleAccounts?: boolean; multipleSources?: boolean; pageFixture?: PageFixture; shells?: boolean; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsExtras?: boolean; settingsPermissions?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; agentAccountId?: string | null; phase: AgentActivitySession['phase']; title: string; headline: string; dispatchSummary?: DispatchSummary; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { all?: boolean; empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean }; sourceSetup?: SourceSetup; page?: Page; relayProgress?: RelayProgress };
+type Fixture = { agentInventory?: Agent[]; panelAccounts?: boolean; multipleAccounts?: boolean; multipleSources?: boolean; pageFixture?: PageFixture; shells?: boolean; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsPermissions?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; agentAccountId?: string | null; phase: AgentActivitySession['phase']; title: string; headline: string; dispatchSummary?: DispatchSummary; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { all?: boolean; empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean }; sourceSetup?: SourceSetup; page?: Page; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 let conversations: Record<string, AgentConversation[]> = {};
@@ -333,7 +333,6 @@ export async function installScenario(name: string) {
       acceptUpdateSnapshot(snapshot);
       updates.set(old => ({ ...old, panelOpen: fixture.updatePanel !== false }));
     }
-    if (fixture.settingsExtras) navigation.set(old => ({ ...old, page: 'settings', settingsExtras: true }));
     if (fixture.settingsPermissions) navigation.set(old => ({ ...old, page: 'settings', settingsPermissions: true }));
     if (fixture.settingsUpdates) navigation.set(old => ({ ...old, page: 'settings', settingsUpdates: true }));
     if (!fixture.shells) await settledViewModel();

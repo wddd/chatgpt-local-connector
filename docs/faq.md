@@ -2,6 +2,10 @@
 
 **English** | [简体中文](zh-CN/faq.md)
 
+## Where are proxy, routing delay and quota refresh settings?
+
+These specialized settings are CLI/AX capabilities. Ask your own Agent to read and update only the requested values using the exact commands in [Advanced settings](guides/settings.md). Display tuning, maintainer mode and technical update policies use the same workflow.
+
 ## macOS says the app is damaged
 
 Verify the release checksum, move the app into Applications, and use the Gatekeeper steps in [Installation](installation.md#macos). Run the quarantine command only for that downloaded app.

@@ -78,7 +78,7 @@ Connections exposes the public relay link with state, address copy and start/sto
 
 The public link identity is stored in the instance preference `arc.public-relay-id`. Deployment records its relay ID before advancing. An empty preference adopts a unique owned relay. Multiple unmarked owned relays, or a stored ID that no longer matches an owned relay, remain read-only; CLI `preferences.set` can select an owned relay explicitly. The UI never picks the first candidate or moves source bindings. A newly deployed link replaces a stale preference only when no owned relay remains. Preference persistence failures are visible and retryable.
 
-Add connection, Change connection, provider forms, Secure Tunnel setup, joined-relay management, invite links and member devices have no UI entries. Relay hosting remains a Core, CLI and AX capability. Settings Extras contains experimental features only.
+Add connection, Change connection, provider forms, Secure Tunnel setup, joined-relay management, invite links and member devices have no UI entries. Relay hosting remains a Core, CLI and AX capability. Maintainer and topology diagnostics are also CLI/AX-only; Settings has no Extras entry.
 
 ### Placement rule
 

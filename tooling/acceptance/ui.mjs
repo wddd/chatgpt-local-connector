@@ -60,6 +60,15 @@ try {
         await page.waitForFunction(name => document.documentElement.dataset.scenarioError || document.documentElement.dataset.scenarioReady === name, name, { timeout: 15000 });
         const model = await page.evaluate(() => window.__ARC_VIEW_MODEL__());
         if (!model.scenario?.ready) throw new Error(model.scenario?.error || 'Fixture task detail is not ready');
+        if (fixture.sourceSetup?.source === 'custom' && fixture.sourceSetup.step === 'address') {
+          // Regression: f290eca exposed the registry name Custom in generic MCP instructions.
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          const dialog = page.getByRole('dialog');
+          for (const key of ['setup.configureProduct', 'setup.clickConnect', 'connect.waitClient']) {
+            await dialog.getByText(messages[key].replace('{name}', messages['setup.yourMcpClient']), { exact: true }).waitFor();
+          }
+          if (/\bCustom\b/.test(await dialog.innerText())) throw new Error('Generic MCP guide exposes an internal registry name');
+        }
         if (homepage && !model.topology) throw new Error('No rendered topology exported');
         if (model.topology && homepage) row.wires = await acceptTopologyWires(page);
         const actualAgents = (model.topology?.nodes ?? []).filter(n => n.side === 1).map(n => n.id);

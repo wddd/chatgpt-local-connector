@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { chooseSingleChoice } from './single-choice.mjs';
 
 const out = new URL('../../output/playwright/mig-settings/', import.meta.url);
 await mkdir(out, { recursive: true });
@@ -13,7 +12,7 @@ const address = server.httpServer.address();
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const report = [];
 const filter = process.argv.find(arg => arg.startsWith('--scenario='))?.slice('--scenario='.length);
-const scenarios = ['settings-light', 'settings-extras-light', 'debt-agents-settings-light', 'debt-agent-display-settings-light', 'settings-permissions-light', 'debt-records-light', 'management-table-light', 'updates-settings', 'updates-long-notes', 'updates-downloading', 'updates-countdown', 'updates-restore-failed', 'updates-settling'].filter(name => !filter || name.includes(filter));
+const scenarios = ['settings-light', 'debt-agents-settings-light', 'settings-permissions-light', 'debt-records-light', 'management-table-light', 'updates-settings', 'updates-long-notes', 'updates-downloading', 'updates-countdown', 'updates-restore-failed', 'updates-settling'].filter(name => !filter || name.includes(filter));
 async function geometry(page) {
   return page.evaluate(() => {
     const visible = el => el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0;
@@ -56,21 +55,10 @@ try {
       }
       if (width === 360) await page.screenshot({ path: new URL(`${key}.png`, out).pathname, animations: 'disabled' });
       if (name === 'settings-light') {
-        await page.getByRole('radio', { name: 'Custom', exact: true }).click();
-        await page.getByRole('textbox', { name: 'Proxy URL', exact: true }).fill('invalid proxy');
-        await page.getByRole('button', { name: 'Save', exact: true }).click();
-        const field = page.getByRole('textbox', { name: 'Proxy URL', exact: true });
-        assert.equal(await field.getAttribute('aria-invalid'), 'true');
-        assert.equal(await field.evaluate(el => document.activeElement === el), true);
-        assert.ok(await field.getAttribute('aria-describedby'));
-        await page.getByRole('button', { name: /Relay hosting & experimental/ }).click();
+        const permissions = page.getByRole('button', { name: 'System permissions', exact: true });
+        await permissions.click();
         await page.getByRole('button', { name: 'Back', exact: true }).click();
-        assert.equal(await page.getByRole('button', { name: /Relay hosting & experimental/ }).evaluate(el => document.activeElement === el), true);
-      }
-      if (name === 'settings-extras-light') {
-        await chooseSingleChoice(page, 'Extras', 'Experimental');
-        await page.getByRole('switch', { name: 'Home topology tuning', exact: true }).waitFor();
-        assert.deepEqual((await geometry(page)).overflow, []);
+        assert.equal(await permissions.evaluate(el => document.activeElement === el), true);
       }
       if (name === 'debt-agents-settings-light') {
         const cards = page.getByRole('article', { name: /^Reorder / });

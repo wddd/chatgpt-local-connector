@@ -1,4 +1,4 @@
-import { ActionGroup, SectionHeader, Button, SettingsSection, SettingRow, Notice, Progress, Icon, IconButton, ChoiceControl, Switch } from "./ui";
+import { ActionGroup, SectionHeader, Button, SettingsSection, SettingRow, Notice, Progress, Icon, IconButton, ChoiceControl } from "./ui";
 import { useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
 import { Separator } from "./ui/separator";
@@ -10,7 +10,7 @@ import { connector, notify } from "../state/connector";
 import { navigation } from "../state/navigation";
 import { agentActivity } from "../state/activity";
 import { useInterval } from "../state/hooks";
-import { updates, available, updateVisible, checkUpdate, showUpdate, dismissUpdate, installUpdate, scheduleUpdate, skipUpdate, cancelDownload, dismissOutcome, retryUpdate, submitLocal, openReleaseNotes, updateAutomatic, acceptLocal, resumeInterrupted, controlScheduling } from "../state/updates";
+import { updates, available, updateVisible, checkUpdate, showUpdate, dismissUpdate, installUpdate, scheduleUpdate, skipUpdate, cancelDownload, dismissOutcome, retryUpdate, submitLocal, openReleaseNotes, updateAutomatic } from "../state/updates";
 import { updateActive, updateCountdown, updateStep, type UpdateSnapshot, type UpdateTiming, type UpdateWork } from "../state/updateModel";
 import { LiveInteractionRequestCard } from "./objects/interaction-request";
 import { TaskRow } from "./objects/task";
@@ -134,7 +134,7 @@ export function AppUpdate() {
 }
 export function UpdatesSettings() {
   const s = updates.use(), { status } = connector.use();
-  const automatic = updateAutomatic.use(), local = acceptLocal.use(), resume = resumeInterrupted.use(), scheduling = controlScheduling.use();
+  const automatic = updateAutomatic.use();
   const [notes, setNotes] = useState(false);
   return <div className="settings-page mx-auto w-full min-w-0 max-w-3xl">
     <SettingsSection title={t("updates.currentVersion")}><SettingRow label={`Agent Remote Control v${status?.version ?? "—"}`}>
@@ -142,11 +142,8 @@ export function UpdatesSettings() {
     </SettingRow>{updateActive(s.snapshot) && <SettingRow label={t(`updates.state.${s.snapshot.state}`)}><Button onClick={() => { navigation.set(old => ({ ...old, page: "overview" })); showUpdate(); }}>{t("viewUpdate")}</Button></SettingRow>}{available() && <SettingRow label={t("newVersionValue", { version: s.snapshot.source?.version })}><ActionGroup><Button onClick={() => setNotes(!notes)}>{t("updates.notes")}</Button><Button onClick={() => action(installUpdate())}>{t("updates.action.settled")}</Button></ActionGroup></SettingRow>}{notes && <pre className="my-4 font-sans text-sm leading-relaxed whitespace-pre-wrap wrap-anywhere">{s.snapshot.notes}</pre>}
       {s.error && <Notice>{s.error}</Notice>}{s.message && <p role="status">{s.message}</p>}
     </SettingsSection>
-    <SettingsSection title={t("updates.sources")}><SettingRow label={t("updates.releaseChannel")}><ChoiceControl value="stable" label={t("updates.releaseChannel")} onChange={() => {}} options={[{ value: "stable", label: t("updates.stable") }]} /></SettingRow>
-      <SettingRow label={t("updates.acceptLocal")}><Switch label={t("updates.acceptLocal")} checked={local === "on"} onChange={value => acceptLocal.set(value ? "on" : "off")} /></SettingRow></SettingsSection>
     <SettingsSection title={t("updates.timing")}><SettingRow label={t("updates.installTiming")}><ChoiceControl value={automatic} label={t("updates.installTiming")} onChange={updateAutomatic.set} options={[{ value: "automatic", label: t("updates.automatic") }, { value: "ask", label: t("updates.ask") }]} /></SettingRow>
-      <SettingRow label={t("updates.resumeInterrupted")}><Switch label={t("updates.resumeInterrupted")} checked={resume === "on"} onChange={value => resumeInterrupted.set(value ? "on" : "off")} /></SettingRow>
-      <SettingRow label={t("updates.controlScheduling")}><Switch label={t("updates.controlScheduling")} checked={scheduling === "on"} onChange={value => controlScheduling.set(value ? "on" : "off")} /></SettingRow></SettingsSection>
+    </SettingsSection>
     <SettingsSection title={t("updates.recent")}>
       {!s.snapshot.recent?.length && <p>{t("updates.noHistory")}</p>}
       {s.snapshot.recent?.map(job => <SettingRow key={job.id} label={<span className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 wrap-anywhere"><Identity job={job} /><span>{job.instance} · {t(`updates.state.${job.state}`)}</span></span>}>

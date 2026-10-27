@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { matchesGlob, relative } from 'node:path';
 
 export const uiFiles = ['ui/**/*.{ts,tsx,js,jsx,mjs}'];
-// Keep ordinary feature controls (including TuningPanel) inside enforcement.
+// Keep ordinary feature controls inside enforcement.
 export const uiIgnores = [
   'ui/components/ui/**', 'ui/components/composites/**', 'ui/components/objects/**',
   'ui/design-mount/**',

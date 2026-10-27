@@ -1,7 +1,7 @@
 import { arcPath, grownWire } from "../ui/topology/geometry.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULTS, PARAMETERS, PARAMETER_GROUPS, distribute, extentOf, solve, LABEL_W, NODE_R, PANEL_ARC_GAP, type Scene } from "../ui/topology/solve.ts";
+import { DEFAULTS, PARAMETERS, distribute, extentOf, solve, LABEL_W, NODE_R, PANEL_ARC_GAP, type Scene } from "../ui/topology/solve.ts";
 import { clampParameter, emptyParameters, importParameters, loadParameters, parameterDiff } from "../ui/topology/parameters.ts";
 
 const entities = (prefix: string, counts: number[]) => counts.map((count, i) => ({ id: `${prefix}${i}`,
@@ -134,9 +134,6 @@ test("topology parameters persist only deviations and round-trip through JSON", 
   assert.equal(new Set(PARAMETERS.map(p => p.key)).size, PARAMETERS.length);
   for (const spec of PARAMETERS) {
     assert.ok(spec.default >= spec.min && spec.default <= spec.max);
-    assert.ok(spec.step > 0);
-    assert.ok(PARAMETER_GROUPS[spec.group].en);
-    assert.ok("labelKey" in spec ? spec.labelKey : spec.label.en && spec.label["zh-CN"]);
     assert.equal(DEFAULTS[spec.key], spec.default);
   }
   assert.deepEqual(parameterDiff(DEFAULTS), emptyParameters());

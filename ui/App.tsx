@@ -200,8 +200,8 @@ export default function App() {
           !layers.length
         ) {
           e.preventDefault();
-          if (page === "settings" && (nav.settingsExtras || nav.settingsUpdates || nav.settingsPermissions)) {
-            navigation.set(old => ({ ...old, settingsExtras: undefined, settingsUpdates: undefined, settingsPermissions: undefined }));
+          if (page === "settings" && (nav.settingsUpdates || nav.settingsPermissions)) {
+            navigation.set(old => ({ ...old, settingsUpdates: undefined, settingsPermissions: undefined }));
           } else void closeSheet();
         }
         if (e.key === "Tab" && page !== "overview" && !layers.length) {
@@ -268,10 +268,10 @@ export default function App() {
         >
           <div style={{ width: sheetWide ? "calc(100vw - 2 * var(--sheet-inset) - 2px)" : "min(958px, calc(100vw - 2 * var(--sheet-inset) - 2px))", height: "calc(100dvh - var(--sheet-top) - var(--sheet-inset) - 2px)" }} className="page-sheet-content relative flex min-h-0 flex-none flex-col self-center">
             <header className="sheet-header flex shrink-0 items-center gap-3 border-b px-3 py-2 pl-6.625 min-h-13 max-[600px]:pl-4">
-              {page === "settings" && (nav.settingsExtras || nav.settingsUpdates || nav.settingsPermissions) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsExtras: undefined, settingsUpdates: undefined, settingsPermissions: undefined }))} />}
+              {page === "settings" && (nav.settingsUpdates || nav.settingsPermissions) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsUpdates: undefined, settingsPermissions: undefined }))} />}
               <h1 className="capsule-title m-0 min-w-0 flex-1 text-lg font-semibold outline-none" tabIndex={-1}>
                 {pages.find((item) => item.id === page)?.label}
-                {page === "settings" && (nav.settingsExtras || nav.settingsUpdates || nav.settingsPermissions) && <><span className="settings-breadcrumb-divider mx-2 font-normal text-muted-foreground" aria-hidden="true"> / </span><span>{t(nav.settingsUpdates ? "appUpdates" : nav.settingsPermissions ? "permissionsSystem" : "extras.title")}</span></>}
+                {page === "settings" && (nav.settingsUpdates || nav.settingsPermissions) && <><span className="settings-breadcrumb-divider mx-2 font-normal text-muted-foreground" aria-hidden="true"> / </span><span>{t(nav.settingsUpdates ? "appUpdates" : "permissionsSystem")}</span></>}
                 {page === "logs" && (
                   <span className="muted text-muted-foreground small text-xs records-count ml-3 whitespace-nowrap font-normal">
                     {t("recentRecords", { count: status?.logs.length ?? 0 })}
