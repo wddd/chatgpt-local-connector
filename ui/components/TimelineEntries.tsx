@@ -8,12 +8,11 @@ import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { AlertCircle, Brain, Check, ChevronRight, Circle, FileText, ListChecks, MessageSquare, ShieldAlert, Info, Terminal, UserRound, Wrench } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./ui/collapsible";
 import { AnimatePresence, motion } from "motion/react";
-import { locale, t } from "../i18n";
+import { t } from "../i18n";
 import { useReducedMotion } from "../state/appEnvironment";
 import type { AgentActivitySession, AgentTimelineEntry, DispatchSummary, TurnTiming } from "../types";
 import { filePathParts } from "../state/activityModel";
 import { timelineGroups, turnDuration } from "../state/timelineGroups";
-import { dispatchSourceLabel } from "./activity";
 import { CopyValue } from './composites/CopyValue';
 import { processOpen, projectTurn, taskState, toolCounts, type ProcessRow } from "../state/taskProjection";
 import { taskErrorText } from "../state/taskErrors";
@@ -111,7 +110,7 @@ function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; ag
     </section></Card>;
   }
   if (entry.type === "text") return <article className="task-phase group/context relative flex min-w-0 gap-2 rounded-md p-2 pr-10 text-sm leading-relaxed text-foreground"><span className="task-agent-mark hidden size-6 shrink-0 place-items-center rounded-md bg-task-live-soft text-brand-accent @sm:grid" aria-label={agent}><PlatformIcon role="agent" platform={agent} size={16} /></span><TimelineMarkdown text={entry.text ?? ""} /><CopyValue floating value={entry.text ?? ""}>{null}</CopyValue></article>;
-  if (entry.type === "user") return <div className="task-prompt m-0 flex min-w-0 flex-col items-end gap-1 [&>small]:text-xs [&>small]:text-muted-foreground">{entry.controlSource && <small>{t("detail.via", { source: dispatchSourceLabel(entry.controlSource) })}{entry.startedAt && ` · ${new Date(entry.startedAt).toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit" })}`}</small>}<TimelineMarkdown text={entry.text ?? ""} /></div>;
+  if (entry.type === "user") return <div className="task-prompt m-0 flex min-w-0 flex-col items-end gap-1"><TimelineMarkdown text={entry.text ?? ""} /></div>;
   if (entry.type === "interaction") return <LiveInteractionRequestRow entry={entry} agent={agent} session={session} />;
   if (entry.type === "plan") return <Card asChild className="gap-0 p-3"><section className="task-plan text-sm" aria-label={t("timeline.plan")}>
     <strong className="text-xs text-muted-foreground">{t("timeline.plan")}</strong>
@@ -161,7 +160,6 @@ export default function TimelineEntries({ entries, agent, session, now, running 
     const projection = projectTurn(group.entries, state);
     const { prompt, final, rows } = projection;
     const duration = turnDuration(group.entries, now, live, latest && current ? session.turnStartedAt : undefined, group.turnId ? turnTimings?.[group.turnId] : undefined);
-    const source = prompt?.controlSource;
     const workId = `process:${group.id}:${state}`, turnOpen = latest || pending || (expanded[group.id] ?? false);
     const renderRow = (row: ProcessRow) => row.kind === "tools" ? <ToolRun key={row.id} entries={row.entries} live={live} /> : <ProcessEntry key={row.id} entry={row.entry} agent={agent} session={session} />;
     const process = <div className="task-process-rows flex min-w-0 flex-col gap-3 py-2">{rows.map(renderRow)}</div>;
@@ -171,7 +169,7 @@ export default function TimelineEntries({ entries, agent, session, now, running 
       </Button>}
       {projection.answeredInteractions.map(entry => <LiveInteractionRequestRow key={entry.id} entry={entry} agent={agent} session={session} />)}
       {turnOpen && <div className="task-turn-content flex min-w-0 flex-col gap-3">
-        {prompt && <div className="task-prompt m-0 flex min-w-0 flex-col items-end gap-1 [&>small]:text-xs [&>small]:text-muted-foreground">{source && <small>{t("detail.via", { source: dispatchSourceLabel(source) })}{prompt.startedAt && ` · ${new Date(prompt.startedAt).toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit" })}`}</small>}
+        {prompt && <div className="task-prompt m-0 flex min-w-0 flex-col items-end gap-1">
           <UserMessage text={prompt.text ?? ""} truncated={prompt.truncated} open={expanded[prompt.id] ?? false} onChange={change(prompt.id)} /></div>}
         {!!rows.length && (live ? process : <Fold className="task-process [&>.timeline-summary]:rounded-lg [&>.timeline-summary]:border [&>.timeline-summary]:border-dashed [&>.timeline-summary]:px-3 [&>.timeline-summary]:py-2 [&>.timeline-summary]:text-xs [&>.timeline-summary]:text-muted-foreground" open={processOpen(state, expanded[workId])} onChange={change(workId)} summary={<span>{t("detail.process", { updates: t("detail.process.updates", { count: projection.updates }), answers: t("detail.process.answers", { count: projection.answers }), actions: t("detail.process.actions", { count: projection.actions }) })}{duration !== undefined && <> · <Duration value={duration} /></>}</span>}>{process}</Fold>)}
         {(state === "failed" || state === "interrupted") && <TaskOutcome state={state} entries={group.entries} project={session.project} onResume={latest && current ? onResume : undefined} onRetry={latest && current ? onRetry : undefined} continuing={continuing} />}

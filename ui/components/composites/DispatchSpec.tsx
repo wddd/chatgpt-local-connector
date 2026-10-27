@@ -27,9 +27,13 @@ export function DispatchSpec({ agent, record, resolver, variant = 'panel' }: { a
   const taskId = owner === 'codex' ? undefined : record.kind === 'timeline' ? (record.source === 'transcript' ? undefined : record.taskId)
     : record.kind === 'task' ? record.value.taskId : record.value.source === 'arc-task' ? record.value.id : undefined;
   const native = useDispatchCatalog(owner, taskId, !resolver && !!summary?.model);
-  const label = dispatchSpecLabel(summary, (resolver ?? native)?.catalog, t);
+  const catalog = (resolver ?? native)?.catalog;
+  const models = Array.isArray(catalog?.models) ? catalog.models : [];
+  const model = models.find(row => row.model === summary?.model);
+  if (!model?.displayName && !model?.name) return null;
+  const label = dispatchSpecLabel(summary, catalog, t);
   if (!label) return null;
-  return <Tooltip text={label}><span className="dispatch-spec inline-block min-w-0 max-w-full rounded-full bg-secondary px-2 py-1 text-xs leading-snug whitespace-normal align-middle text-muted-foreground data-[variant=inline]:border data-[variant=inline]:bg-transparent data-[variant=inline]:px-1.5 data-[variant=inline]:py-0 data-[variant=inline]:text-xs data-[variant=inline]:leading-4" data-variant={variant} tabIndex={0} aria-label={label}>
+  return <Tooltip text={label}><span className="dispatch-spec inline-block min-w-0 max-w-full rounded-full bg-secondary px-2 py-1 text-xs leading-snug whitespace-normal align-middle text-muted-foreground data-[variant=inline]:shrink-0 data-[variant=inline]:border data-[variant=inline]:bg-transparent data-[variant=inline]:px-1.5 data-[variant=inline]:py-0 data-[variant=inline]:text-xs data-[variant=inline]:leading-4" data-variant={variant} tabIndex={0} aria-label={label}>
     {label}
   </span></Tooltip>;
 }

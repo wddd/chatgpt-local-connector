@@ -59,7 +59,7 @@ test('external task detail keeps matching-turn dispatch evidence after history l
   await renderer(async (server, render) => {
     const { TaskCard } = await server.ssrLoadModule('/ui/components/objects/task/Card.tsx');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
-    globalThis.fetch = async () => new Response(JSON.stringify({ models: [{ model: 'executed-model', displayName: 'Executed model' }] }));
+    globalThis.fetch = async () => new Response(JSON.stringify({ models: [{ model: 'executed-model', displayName: 'Executed model' }, { model: 'recorded-model', displayName: 'Recorded model' }] }));
     const session = { id: 'external', source: 'transcript', turnId: 'current', dispatchSummary: { model: 'executed-model', effort: 'high' } };
     const task = { kind: 'timeline', session, turnId: 'current', running: true, hasPending: false };
     const timeline = { sessionId: session.id, entries: [], coverage: { state: 'complete' } };
@@ -70,8 +70,8 @@ test('external task detail keeps matching-turn dispatch evidence after history l
     assert.ok(page.getByLabelText(label => label.includes('Executed model')));
     assert.equal(page.queryByLabelText(t('dispatchSpec.missing')), null);
     await render(h(TaskCard, { agent: 'claude', task: { ...task, turnId: 'older', timeline } }));
-    assert.ok(page.getByLabelText(t('dispatchSpec.missing')));
+    assert.equal(page.queryByLabelText(label => label.includes('Executed model')), null);
     await render(h(TaskCard, { agent: 'claude', task: { ...task, timeline: { ...timeline, turnDispatchSummaries: { current: { model: 'recorded-model', effort: 'low' } } } } }));
-    assert.ok(page.getByLabelText(label => label.includes('recorded-model')));
+    assert.ok(page.getByLabelText(label => label.includes('Recorded model')));
   });
 });

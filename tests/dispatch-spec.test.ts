@@ -7,8 +7,8 @@ import { within } from '@testing-library/dom';
 import { modelLabel } from '../ui/components/composites/dispatchSpecLabel.ts';
 import type { CatalogState } from '../ui/state/dispatchCatalog';
 
-test('recorded dispatch chips retain models and tiers across record kinds', async () => {
-  // Regression: unknown recorded models and recorded service tiers disappeared from task chips.
+test('recorded dispatch chips hide unresolved models and retain known model tiers', async () => {
+  // Regression: unresolved models produced meaningless effort-only chips or opaque model IDs on live tasks.
   const window = new Window({ url: 'http://localhost' });
   class Observer { observe() {} unobserve() {} disconnect() {} }
   Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
@@ -34,8 +34,7 @@ test('recorded dispatch chips retain models and tiers across record kinds', asyn
     for (const record of records) {
       for (const resolver of [{ status: 'loading' }, { status: 'error' }, { status: 'ready', catalog: { authoritative: true, models: [] } }] as CatalogState[]) {
         await act(() => root.render(h(TooltipProvider, null, h(DispatchSpec, { agent: 'codex', record, resolver }))));
-        assert.ok(mount.textContent?.trim());
-        assert.ok(within(mount).getByLabelText(label => label.includes(summary.model) && label.includes(t('activity.fast'))));
+        assert.equal(mount.textContent, '');
       }
       for (const metadata of [{ displayName: 'Native model' }, { name: 'Native model' }]) {
         await act(() => root.render(h(TooltipProvider, null, h(DispatchSpec, { agent: 'codex', record,
@@ -48,7 +47,7 @@ test('recorded dispatch chips retain models and tiers across record kinds', asyn
     }
     await act(() => root.render(h(TooltipProvider, null, h(DispatchSpec, { agent: 'codex',
       record: { kind: 'session', value: { id: 'task', dispatchSummary: { model: summary.model } } }, resolver: { status: 'error' } }))));
-    assert.ok(within(mount).getByLabelText(summary.model));
+    assert.equal(mount.textContent, '');
   } finally {
     await act(() => root.unmount()); await server.close(); await window.happyDOM.close();
   }

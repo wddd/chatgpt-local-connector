@@ -77,10 +77,10 @@ export default function AddAccount({ onClose, initialLogin, initialKind, forAcco
   const roleMatched = forAccount && identity && (identity.id === forAccount.id || forAccount.sources.some(id => identity.sources.includes(id)));
   return <Dialog centered title={forAccount ? t('accounts.addAgentFor', { alias: forAccount.alias }) : t('accounts.add')} width={560} busy={busy} onClose={close}
     stepBar={<ol className="mx-5 flex list-none flex-wrap gap-3 p-0 text-sm text-muted-foreground sm:mx-7">{['type', 'signin', 'confirm'].map((name, index) => <li className="aria-[current=step]:font-semibold aria-[current=step]:text-brand-accent" key={name} aria-current={step === index ? 'step' : undefined}>{index + 1} · {t(`accounts.${name}`)}</li>)}</ol>}
-    footer={<><Button disabled={busy} onClick={close}>{t(waiting ? 'cancel' : 'close')}</Button>{step === 1 && !login && !forAccount && <Button onClick={() => setStep(0)}>{t('back')}</Button>}
+    footer={<div className="ml-auto flex items-center justify-end gap-2">{step === 1 && !login && !forAccount && <Button onClick={() => setStep(0)}>{t('back')}</Button>}
       {step === 0 ? <Button variant="primary" onClick={() => setStep(1)}>{t('accounts.next')}</Button> : step === 2 ? identity && <Button variant="primary" type="submit" form="account-confirm" busy={busy}>{t('accounts.confirm')}</Button>
         : login?.state === 'unfinished' ? <Button busy={busy} onClick={() => start('detect')}>{t('accounts.kind.detect')}</Button>
-        : !waiting && login?.state !== 'completed' ? <Button variant="primary" busy={busy} onClick={() => start()}>{t(login ? 'retry' : 'accounts.signin')}</Button> : null}</>}>
+        : !waiting && login?.state !== 'completed' ? <Button variant="primary" busy={busy} onClick={() => start()}>{t(login ? 'retry' : 'accounts.signin')}</Button> : null}</div>}>
     <FormSection>
       {forAccount && step === 1 && <><SensitiveIdentity email={forAccount.email} orgName={forAccount.orgName} /><p className="text-muted-foreground">{t(isUnidentified(forAccount) ? 'accounts.agentIdentityUnresolved' : 'accounts.agentIdentitySignin')}</p></>}
       {step === 0 && <SingleChoice label={t('accounts.type')} value={kind} onChange={value => setKind(value as AccountLogin['kind'])} options={['claude', 'codex', 'api-key', 'detect'].map(value => ({ value, label: t(`accounts.kind.${value}`) }))} />}

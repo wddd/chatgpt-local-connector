@@ -309,7 +309,7 @@ test("timeline turn disclosures preserve choices through incremental work and re
     assertNodeIdentity(page.queryByText(first.output.text), null);
     await click(group());
     await render([{ ...first, status: "failed", exitCode: 1 }, second]);
-    const process = () => page.getByRole("button", { name: name => name.startsWith(t("detail.process", { updates: 0, answers: 0, actions: 2 })) });
+    const process = () => page.getByRole("button", { name: name => name.includes(t("detail.process.actions", { count: 2 })) });
     assert.equal(process().getAttribute("aria-expanded"), "true");
     assert.ok(page.getAllByText(first.output.text).length > 0);
     await click(process());
