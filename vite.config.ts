@@ -7,7 +7,6 @@ import { readFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import path from 'node:path';
 import { stateDir } from './tooling/dev-state.mjs';
-import { requireMainCheckout } from './tooling/coding-lane.mjs';
 
 const stateRoot = stateDir;
 const packageVersion = buildVersion();
@@ -28,7 +27,6 @@ export default defineConfig({
         });
         return;
       }
-      requireMainCheckout();
       let checking: { owner: string; promise: Promise<Endpoint> } | undefined;
       function ownerIdentity() {
         try { return readFileSync(path.join(stateRoot, 'app/native.json'), 'utf8'); }
