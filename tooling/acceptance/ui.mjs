@@ -39,7 +39,8 @@ try {
     if (setupOnly && !setup) continue;
     const name = file.slice(0, -5);
     const longRequest = name === 'task-long-question' || name === 'task-long-approval';
-    const viewports = longRequest || ['idle', 'light', 'dark'].includes(name) || name.startsWith('topology-accounts') ? [{ width: 360, height: 800 }, ...report.viewports] : report.viewports;
+    const outcome = name === 'task-turn-failed' || name === 'task-turn-interrupted';
+    const viewports = longRequest || outcome || ['idle', 'light', 'dark'].includes(name) || name.startsWith('topology-accounts') ? [{ width: 360, height: 800 }, ...report.viewports] : report.viewports;
     for (const { width, height } of viewports) {
       const key = `${name}-${width}x${height}`;
       const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'reduce', locale: 'en-US' });
@@ -198,8 +199,9 @@ try {
           row.taskAccessibility = await taskDetail.ariaSnapshot();
           if (longRequest) row.requestBody = await acceptLongRequest(page, taskDetail, messages);
         }
-        if (name === 'task-turn-failed' || name === 'task-turn-interrupted') {
-          // Regression: 087a88e moved outcome actions beneath the floating Back to latest control.
+        if (outcome) {
+          // Regression: dc01e93 replaced the 95d397e viewport reservation with scroll padding, covering outcome actions.
+          await page.evaluate(() => document.fonts.ready);
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           const action = taskDetail.getByRole('button', { name: messages[name === 'task-turn-failed' ? 'detail.retry' : 'detail.resumeInterrupted'], exact: true });
           const latest = taskDetail.getByRole('button', { name: messages['timeline.latest'], exact: true });
@@ -211,12 +213,12 @@ try {
             const visibleTop = Math.max(actionBox.y, viewportBox.y);
             const visibleBottom = Math.min(actionBox.y + actionBox.height, viewportBox.y + viewportBox.height);
             if (latestBox && visibleBottom > visibleTop && actionBox.x < latestBox.x + latestBox.width && actionBox.x + actionBox.width > latestBox.x && visibleTop < latestBox.y + latestBox.height && visibleBottom > latestBox.y) throw new Error('Back to latest overlaps the outcome action');
-            if (actionBox.y + actionBox.height / 2 >= viewportBox.y && actionBox.y + actionBox.height / 2 < viewportBox.y + viewportBox.height) {
-              const hitsAction = await action.evaluate(element => {
-                const box = element.getBoundingClientRect();
-                return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
-              });
-              if (!hitsAction) throw new Error('The outcome action center is covered');
+            for (const [control, box] of [[action, { ...actionBox, y: visibleTop, height: visibleBottom - visibleTop }], [latest, latestBox]]) {
+              if (!box || box.height <= 0) continue;
+              const exposed = await control.evaluate((element, box) =>
+                [[.5, .5], [.15, .15], [.85, .15], [.15, .85], [.85, .85]].every(([x, y]) =>
+                  element.contains(document.elementFromPoint(box.x + box.width * x, box.y + box.height * y))), box);
+              if (!exposed) throw new Error('A visible outcome or Back to latest action is covered');
             }
           };
           await assertActionExposed();
@@ -229,6 +231,7 @@ try {
             if (screenshots) await page.screenshot({ path: path.join(out, `${key}-latest-control.png`), animations: 'disabled' });
             await latest.click();
             await latest.waitFor({ state: 'hidden' });
+            if (!await viewport.evaluate(element => element === document.activeElement)) throw new Error('Back to latest did not restore timeline focus');
           }
           await assertActionExposed();
           // Trial click checks the real center target without dispatching a native turn.

@@ -213,7 +213,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     onOpen={nativeSession.open ? () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } : undefined}
     task={{ kind: "timeline", session: nativeSession, fallbackSession: session, timeline, title, running, hasPending, turnId, source, duration: duration === undefined ? undefined : durationText(duration) }}>
     <div className="task-timeline relative flex min-h-0 min-w-0 flex-1 flex-col gap-2" aria-busy={loading}>
-      <div className={`timeline-scroll ${!atLatest ? "pb-14" : ""} min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [overflow-anchor:none]`} ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
+      <div className="timeline-scroll min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [overflow-anchor:none]" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => {
           const node = event.currentTarget;
           if (manualDisclosure.current) following.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 24;
@@ -246,7 +246,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           </>}
         </div>
       </div>
-      {!atLatest && <Button variant="secondary" className="timeline-latest absolute bottom-3 left-1/2 z-2 -translate-x-1/2 rounded-full shadow-md" onClick={latest}>{t("timeline.latest")}</Button>}
+      {/* Reserve the control's actual height outside the viewport, including wrapped labels. */}
+      {!atLatest && <Button variant="secondary" className="timeline-latest max-w-full shrink-0 self-center rounded-full shadow-md" onClick={latest}>{t("timeline.latest")}</Button>}
     </div>
     {hasPending && <TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={dispatchSourceLabel(source)} narrow={narrow} />}
   </TaskCard>;
