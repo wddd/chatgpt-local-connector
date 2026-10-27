@@ -56,9 +56,10 @@ test("nested timeline content sends vertical wheel deltas to the timeline and ke
     const { agentActivity } = await server.ssrLoadModule("/ui/state/activity.ts");
     const { t } = await server.ssrLoadModule("/ui/i18n.ts");
     let revision = 0;
+    const { TooltipProvider } = await server.ssrLoadModule("/ui/components/ui/index.tsx");
     const render = async (live: boolean) => act(async () => {
       agentActivity.set({ error: "", snapshot: { observedAt: "", activeAgents: live ? ["codex"] : [], agents: { codex: { sessions: live ? [session] : [] } } } });
-      root.render(h(ActivityTimeline, { key: ++revision, agent: "codex", session, expanded: false, onToggleWidth() {}, onBack() {} }));
+      root.render(h(TooltipProvider, null, h(ActivityTimeline, { key: ++revision, agent: "codex", session, expanded: false, onToggleWidth() {}, onBack() {} })));
     });
     const page = within(mount);
     const wheel = async (target: Element, init: WheelEventInit) => {
@@ -115,7 +116,9 @@ test("nested timeline content sends vertical wheel deltas to the timeline and ke
     timeline = { ...timeline, status: "interrupted", entries: timeline.entries.map(item => ({ ...item, status: "completed" })) };
     await render(false);
     viewport = page.getByLabelText(t("timeline.title"));
-    await act(() => fireEvent.click(page.getByRole("button", { name: t("detail.viewDiff") })));
+    const outcome = within(page.getByRole("article", { name: t("detail.leftAsIs"), exact: true }));
+    await act(() => fireEvent.keyDown(outcome.getByRole("button", { name: t("detail.taskActions"), exact: true }), { key: 'Enter' }));
+    await act(() => fireEvent.click(within(document.body).getByRole("menuitem", { name: t("detail.viewDiff"), exact: true })));
     await verifyAxes(page.getByText(diff));
   } finally { await act(() => root.unmount()); globalThis.fetch = originalFetch; await server.close(); await window.happyDOM.close(); }
 });
