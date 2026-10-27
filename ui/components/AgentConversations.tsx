@@ -104,7 +104,7 @@ export default function AgentConversations({ agent, account, accountId, active }
   const empty = !loading && !error && !visibleSessions.length && !next;
   return <div className="activity-task-list agent-conversations flex min-w-0 grow flex-col gap-3 data-[empty]:justify-center" data-empty={empty || undefined}>
     {sections.map(({ id, label, entries }) => entries.length > 0 && <section className="agent-task-section min-w-0" key={id} aria-label={label}>
-      <SectionHeader className="agent-task-section-heading sticky top-0 z-2 m-0 bg-card py-2 text-xs font-semibold text-muted-foreground data-[attention]:text-warning [&_.section-header-count]:rounded-full [&_.section-header-count]:bg-muted [&_.section-header-count]:px-1.5" data-attention={id === "attention" || undefined} level={3} title={label} count={entries.length} />
+      <SectionHeader className="agent-task-section-heading sticky top-0 z-2 m-0 bg-background px-3 py-2 text-xs font-semibold text-muted-foreground data-[attention]:text-warning [&_.section-header-count]:rounded-full [&_.section-header-count]:bg-muted [&_.section-header-count]:px-1.5" data-attention={id === "attention" || undefined} level={3} title={label} count={entries.length} />
       <div className="agent-task-section-rows flex flex-col gap-2">{entries.map((session) => <TaskRow kind="activity" key={session.id} agent={agent} onOpen={() => selectAgentPanel({ type: "task", agent, session })}
         session={session} live={live.has(session.id)} now={now} />)}</div>
     </section>)}

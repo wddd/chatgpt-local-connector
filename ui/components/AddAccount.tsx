@@ -11,9 +11,9 @@ import { Disclosure, Button, Dialog, FormSection, FormField, Input, Notice, Sing
 import { SensitiveIdentity } from './Sensitive';
 
 type Browser = Awaited<ReturnType<typeof accountsApi.browsers>>['browsers'][number];
-export default function AddAccount({ onClose, initialLogin, forAccount }: { onClose: () => void; initialLogin?: AccountLogin; forAccount?: ProviderAccount }) {
+export default function AddAccount({ onClose, initialLogin, initialKind, forAccount }: { onClose: () => void; initialLogin?: AccountLogin; initialKind?: AccountLogin['kind']; forAccount?: ProviderAccount }) {
   const accountKind = forAccount?.provider === 'openai' ? 'codex' : forAccount?.provider === 'anthropic' ? 'claude' : 'api-key';
-  const [step, setStep] = useState(initialLogin || forAccount ? 1 : 0), [kind, setKind] = useState<AccountLogin['kind']>(initialLogin?.kind ?? (forAccount ? accountKind : 'claude'));
+  const [step, setStep] = useState(initialLogin || initialKind || forAccount ? 1 : 0), [kind, setKind] = useState<AccountLogin['kind']>(initialLogin?.kind ?? initialKind ?? (forAccount ? accountKind : 'claude'));
   const [login, setLogin] = useState(initialLogin), [identity, setIdentity] = useState<ProviderAccount>();
   const [detected, setDetected] = useState<ProviderAccount[]>([]), [detectedId, setDetectedId] = useState('');
   const [browsers, setBrowsers] = useState<Browser[]>([]), [browser, setBrowser] = useState(initialLogin?.browserId ?? 'default');

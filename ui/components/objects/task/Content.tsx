@@ -63,7 +63,7 @@ export function ActivityBubbleContent({ agent, session, now, density = "standard
         </>}
       </span>}
       {density === "detailed" && <span className="activity-detail-line truncate text-xs leading-4 text-muted-foreground" title={detail}>{detail || "\u00a0"}</span>}
-      {density !== "compact" && <span className={`activity-spec-row flex min-w-0 items-center gap-1 text-xs [&>.step-trail]:ml-auto ${conversation ? "activity-conversation-meta flex-wrap" : "flex-nowrap"}`}>
+      {density !== "compact" && <span className={`activity-spec-row flex min-w-0 items-center gap-1 text-xs [&>.step-trail]:ml-auto ${conversation ? "activity-conversation-meta flex-wrap" : "flex-wrap"}`}>
         {conversation && project && <span className="activity-project inline-block min-w-0 max-w-1/3 shrink truncate rounded-full border px-1.5 text-xs text-muted-foreground" title={session.project!}>{project}</span>}
         <DispatchSpec agent={agent} record={{ kind: "session", value: session }} variant="inline" />
         {conversation && !!session.turnCount && <span className="activity-spec inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-1.5 text-xs text-muted-foreground">{t("timeline.turnCount", { count: session.turnCount })}</span>}

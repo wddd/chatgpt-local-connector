@@ -1,17 +1,15 @@
 import { AgentPlatformCard } from './objects/agent-platform';
 import { AgentAccountCard, AgentAccountRow } from './objects/agent-account';
 import { InlineName } from './composites/InlineName';
-import { ObjectMenu } from './composites/ObjectMenu';
 import { ContextIcon } from './composites/ContextIcon';
 import { ContextSettings } from './composites/ContextSettings';
-import { statePresentation } from './objects/statePresentation';
 import AddAccount from './AddAccount';
-import { ViewStack, Dialog, DialogClose, IconButton, Notice, Button, Empty, StateBadge, Loading, SectionHeader } from './ui';
+import { ViewStack, Dialog, DialogClose, IconButton, Notice, Button, Empty, Loading } from './ui';
 import { useReducedMotion } from '../state/appEnvironment';
 import { agentPanel, selectAgentPanel } from '../state/overviewPanels';
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, X, Plus, RefreshCw } from 'lucide-react';
+import { ArrowLeft, X, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { accountsApi } from '../api';
 import { t } from '../i18n';
 import { useAccounts, refreshAccounts } from '../state/accounts';
@@ -19,11 +17,10 @@ import { accountQuotaProvider } from '../subscriptions/accountQuota';
 import AgentQuota from './AgentQuota';
 import { agentActivity } from '../state/activity';
 import { compactAgentVersion, name, type Agent } from '../state/agents';
-import { errorLabels } from '../subscriptions/presentation';
 import AgentConversations from './AgentConversations';
 import ActivityTimeline from './ActivityTimeline';
 import type { SurfaceRect } from '../motion/surface';
-import type { AccountLogin, ProviderAccount } from '../types';
+import type { ProviderAccount } from '../types';
 import { accountOwns } from '../accountPresentation';
 
 function AgentView({ agent, account, accountId, accounts, loading, accountError, expanded, onToggleWidth, active, resizable = true }: {
@@ -31,23 +28,24 @@ function AgentView({ agent, account, accountId, accounts, loading, accountError,
   expanded: boolean; onToggleWidth: () => void;
 }) {
   const [error, setError] = useState(''), [refreshing, setRefreshing] = useState(false);
-  const [login, setLogin] = useState<AccountLogin>(), [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false), [removing, setRemoving] = useState(false), [busy, setBusy] = useState(false);
   const provider = account ? accountQuotaProvider(agent.agent, account.quota) : undefined;
-  const providerError = provider?.error && !['no-subscription', 'no-limits-reported', 'unsupported-platform'].includes(provider.error.code)
-    ? provider.error.message || t(errorLabels[provider.error.code] || 'usageUnavailable') : undefined;
+  const providerError = provider?.windows.some(window => Number.isFinite(window.usedPercent)) ? provider.error?.message : undefined;
   async function refresh() {
     setRefreshing(true);
     try { await refreshAccounts(); } finally { setRefreshing(false); }
   }
-  async function add() {
+  async function remove() {
+    if (!account || busy) return;
     setBusy(true); setError('');
-    try { setLogin(await accountsApi.add({ kind: agent.agent === 'claude' || agent.agent === 'codex' ? agent.agent : 'api-key' })); }
+    try { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); agentPanel.set({ agent: agent.agent }); }
     catch (error) { setError(String(error)); }
     finally { setBusy(false); }
   }
   const visibleAccounts = accounts.filter(item => !item.removedAt && item.agentProfiles.some(profile => profile.agent === agent.agent));
   const headerActions = <>
-    {account && <ObjectMenu label={t('context.accountActions')} items={[{ label: t('remove'), consequence: t('accounts.removeConsequence'), onSelect: async () => { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); agentPanel.set({ agent: agent.agent }); } }]} />}
+    {account ? <ContextIcon icon={Trash2} label={t('remove')} onClick={() => setRemoving(true)} />
+      : !accountId && <ContextIcon icon={Plus} label={t('accounts.add')} onClick={() => setAdding(true)} />}
     {resizable && <ContextSettings label={t('context.panelWidth')} value={expanded ? 'wide' : 'normal'} options={[{ value: 'normal', label: t('context.normal') }, { value: 'wide', label: t('context.wide') }]} onChange={value => { if ((value === 'wide') !== expanded) onToggleWidth(); }} />}
     <DialogClose asChild><IconButton icon={X} label={t('close')} /></DialogClose>
   </>;
@@ -55,24 +53,25 @@ function AgentView({ agent, account, accountId, accounts, loading, accountError,
   return <section className="agent-overview-layer flex h-full min-h-0 w-full flex-col">
     {account ? <AgentAccountCard account={account} agent={agent} frame="panel" icon={back} showProfiles={false}
       title={<h2 aria-label={account.alias} tabIndex={-1}><InlineName value={account.alias} revealed onSave={async alias => { await accountsApi.update({ id: account.id, alias }); await refreshAccounts(); }} /></h2>}
-      secondary={<StateBadge presentation={statePresentation('account', account.health.state)} />} headerActions={headerActions}>
-      {[...new Set(account.agentProfiles.filter(profile => profile.agent === agent.agent).map(profile => profile.state))].map(state => <StateBadge key={state} presentation={statePresentation('profile', state)} />)}
+      headerActions={headerActions}>
       {providerError && <Notice action={<IconButton icon={RefreshCw} label={t('usageRefresh')} busy={refreshing} onClick={() => void refresh()} />}>{providerError}</Notice>}
-      {provider ? <AgentQuota provider={provider} onRefresh={() => void refresh()} refreshing={refreshing} /> : <p className="text-xs text-muted-foreground">{t('agentPanel.noQuota')}</p>}
+      {provider && <AgentQuota provider={provider} onRefresh={() => void refresh()} refreshing={refreshing} />}
       <AgentConversations key={`${agent.agent}:${account.id}`} agent={agent.agent} account={account} accountId={account.id} active={active} />
     </AgentAccountCard> : <AgentPlatformCard agent={agent} frame="panel" quota={null}
       titleActions={accountId ? back : undefined} secondary={<span title={agent.version ?? undefined}>{compactAgentVersion(agent.version)}</span>} headerActions={headerActions}>
       {loading && <Loading />}
       {accountError && <Notice>{accountError}</Notice>}
       {accountId ? <Notice>{t('accounts.identityUnavailable')}</Notice> : <>
-        <SectionHeader level={3} title={t('accounts.title')} actions={!!visibleAccounts.length && <ContextIcon icon={Plus} label={t('accounts.add')} busy={busy} onClick={() => void add()} />} />
-        {!loading && !visibleAccounts.length && <Button variant="link" busy={busy} onClick={() => void add()}>{t('accounts.add')}</Button>}
         {visibleAccounts.map(item => <AgentAccountRow key={item.id} account={item} agent={agent.agent} onOpen={() => selectAgentPanel({ type: 'agent', agent: agent.agent, accountId: item.id })} />)}
         {!loading && !visibleAccounts.length && <Empty>{t('panels.noAccounts')}</Empty>}
       </>}
     </AgentPlatformCard>}
     {error && <Notice>{error}</Notice>}
-    {login && <AddAccount initialLogin={login} onClose={() => setLogin(undefined)} />}
+    {adding && <AddAccount initialKind={agent.agent === 'claude' || agent.agent === 'codex' ? agent.agent : 'api-key'} onClose={() => setAdding(false)} />}
+    {removing && <Dialog centered title={`${t('remove')} · ${account?.alias}`} busy={busy} onClose={() => { if (!busy) setRemoving(false); }}
+      footer={<><Button disabled={busy} onClick={() => setRemoving(false)}>{t('cancel')}</Button><Button variant="danger" busy={busy} onClick={() => void remove()}>{t('remove')}</Button></>}>
+      <p>{t('accounts.removeConsequence')}</p>{error && <Notice>{error}</Notice>}
+    </Dialog>}
   </section>;
 }
 

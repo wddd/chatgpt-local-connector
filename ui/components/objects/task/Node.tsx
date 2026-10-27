@@ -18,7 +18,7 @@ export function TaskNode({ agent, session, now, onMove, onRead, density = "stand
     if (start?.id === event.pointerId && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) start.moved = true;
   };
   const hint = t("timeline.open");
-  return <div className="activity-bubble-shell group/context relative"><Button variant="surface" type="button" className={`activity-bubble [&_.activity-title-row]:pr-7 ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
+  return <div className="activity-bubble-shell group/context relative"><Button variant="surface" type="button" className={`activity-bubble ${session.interaction ? "needs-attention" : ""} ${completed ? "completed" : ""}`}
       disabled={disabled} aria-current={selected ? "true" : undefined}
       data-update-blocking={blocking || undefined}
       data-density={density} data-external={session.source === "transcript" || undefined}
@@ -35,8 +35,8 @@ export function TaskNode({ agent, session, now, onMove, onRead, density = "stand
       <ActivityBubbleContent agent={agent} session={session} now={now} density={density} showSourceBadge={!unread} />
       {blocking && <span className="update-blocking-tag">{t("updates.waitingReply")}</span>}
     </Button>
-    <span className="absolute right-1 top-1" data-topology-control onPointerDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key !== 'Escape') event.stopPropagation(); }}>
-      <ContextSettings label={t('context.bubbleWidth')} value={width} options={(['narrow', 'medium', 'wide'] as const).map(value => ({ value, label: t(`context.${value}`) }))} onChange={bubbleWidth.set} />
+    <span className="absolute right-0 top-0 z-10 -translate-y-1/2 translate-x-1/2 rounded-full border bg-card shadow-sm opacity-0 group-hover/context:opacity-100 group-focus-within/context:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100 pointer-coarse:opacity-100" data-topology-control onPointerDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key !== 'Escape') event.stopPropagation(); }}>
+      <ContextSettings revealed label={t('context.bubbleWidth')} value={width} options={(['narrow', 'medium', 'wide'] as const).map(value => ({ value, label: t(`context.${value}`) }))} onChange={bubbleWidth.set} />
     </span>
     {unread && <Button variant="ghost" className="activity-mark-read" disabled={disabled} data-topology-control aria-label={t("activity.markRead")} title={t("activity.markRead")}
       onPointerDown={event => {

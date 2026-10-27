@@ -34,9 +34,9 @@ function Fold({ open, onChange, summary, children, className = "", expandable = 
   open: boolean; onChange: (open: boolean) => void; summary: ReactNode; children: ReactNode; className?: string; expandable?: boolean;
 }) {
   const reduced = useReducedMotion();
-  if (!expandable) return <div className={`timeline-fold min-w-0 ${className}`}><div className="timeline-summary flex h-auto min-h-8 w-full min-w-0 items-center justify-start gap-2 rounded-md px-1 py-1.5 text-start text-inherit [&[data-state=open]>.timeline-chevron]:rotate-90">{summary}</div></div>;
+  if (!expandable) return <div className={`timeline-fold min-w-0 ${className}`}><div className="timeline-summary flex h-auto min-h-8 w-full min-w-0 items-center justify-start gap-2 rounded-md px-2 py-1.5 text-start text-inherit [&[data-state=open]>.timeline-chevron]:rotate-90">{summary}</div></div>;
   return <Collapsible open={open} onOpenChange={onChange} className={`timeline-fold min-w-0 ${className}`}>
-    <CollapsibleTrigger asChild><Button variant="ghost" className="timeline-summary flex h-auto min-h-8 w-full min-w-0 items-center justify-start gap-2 rounded-md px-1 py-1.5 text-start text-inherit [&[data-state=open]>.timeline-chevron]:rotate-90" type="button">
+    <CollapsibleTrigger asChild><Button variant="ghost" className="timeline-summary flex h-auto min-h-8 w-full min-w-0 items-center justify-start gap-2 rounded-md px-2 py-1.5 text-start text-inherit [&[data-state=open]>.timeline-chevron]:rotate-90" type="button">
       {summary}<Icon icon={ChevronRight} className="timeline-chevron shrink-0 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none [[data-reduced-motion=true]_&]:transition-none" />
     </Button></CollapsibleTrigger>
     {reduced ? open && <CollapsibleContent className="timeline-fold-content overflow-hidden">{children}</CollapsibleContent> : <AnimatePresence initial={false}>
@@ -63,7 +63,8 @@ function UserMessage({ text, truncated, open, onChange }: { text: string; trunca
     observer.observe(node);
     return () => observer.disconnect();
   }, [text]);
-  return <article className="timeline-text min-w-0 text-sm wrap-anywhere timeline-user ml-auto w-fit max-w-9/10 self-end rounded-xl rounded-br-sm bg-primary px-3 py-2 text-primary-foreground @sm:max-w-5/6" aria-label={t("timeline.user")}>
+  return <article className="timeline-text min-w-0 text-sm wrap-anywhere timeline-user group/context relative ml-auto w-fit max-w-9/10 self-end rounded-xl rounded-br-sm bg-primary px-3 py-2 pr-10 text-primary-foreground @sm:max-w-5/6" aria-label={t("timeline.user")}>
+    <CopyValue floating value={text} label={t("copy")}>{null}</CopyValue>
     <div id={id} className="timeline-user-content relative">
       <div ref={content} className="timeline-user-preview line-clamp-2 leading-relaxed wrap-anywhere data-[expanded]:invisible data-[expanded]:absolute data-[expanded]:inset-x-0 data-[expanded]:top-0 data-[expanded]:pointer-events-none" data-expanded={open || undefined} aria-hidden={open || undefined}>{text}</div>
       {open && <TimelineMarkdown text={text} />}
@@ -109,7 +110,7 @@ function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; ag
       {entry.summary?.text && <TimelineMarkdown text={entry.summary.text} />}
     </section></Card>;
   }
-  if (entry.type === "text") return <article className="task-phase flex min-w-0 gap-2 text-sm leading-relaxed text-foreground"><span className="task-agent-mark hidden size-6 shrink-0 place-items-center rounded-md bg-task-live-soft text-brand-accent @sm:grid" aria-label={agent}><PlatformIcon role="agent" platform={agent} size={16} /></span><TimelineMarkdown text={entry.text ?? ""} /></article>;
+  if (entry.type === "text") return <article className="task-phase group/context relative flex min-w-0 gap-2 rounded-md p-2 pr-10 text-sm leading-relaxed text-foreground"><span className="task-agent-mark hidden size-6 shrink-0 place-items-center rounded-md bg-task-live-soft text-brand-accent @sm:grid" aria-label={agent}><PlatformIcon role="agent" platform={agent} size={16} /></span><TimelineMarkdown text={entry.text ?? ""} /><CopyValue floating value={entry.text ?? ""}>{null}</CopyValue></article>;
   if (entry.type === "user") return <div className="task-prompt m-0 flex min-w-0 flex-col items-end gap-1 [&>small]:text-xs [&>small]:text-muted-foreground">{entry.controlSource && <small>{t("detail.via", { source: dispatchSourceLabel(entry.controlSource) })}{entry.startedAt && ` · ${new Date(entry.startedAt).toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit" })}`}</small>}<TimelineMarkdown text={entry.text ?? ""} /></div>;
   if (entry.type === "interaction") return <LiveInteractionRequestRow entry={entry} agent={agent} session={session} />;
   if (entry.type === "plan") return <Card asChild className="gap-0 p-3"><section className="task-plan text-sm" aria-label={t("timeline.plan")}>
@@ -127,7 +128,7 @@ function ToolEntry({ entry, live }: { entry: AgentTimelineEntry; live: boolean }
   const streaming = entry.type === "command" && live && entry.status === "running";
   const hasDetails = !!(entry.output?.text || entry.input?.text || entry.text || entry.cwd || entry.path || entry.changes?.length || entry.paths?.length || entry.edits?.length || entry.truncated || entry.input?.truncated || entry.output?.truncated);
   return <div className="task-tool-row min-w-0 font-mono text-xs leading-relaxed wrap-anywhere data-[failed]:text-destructive" data-failed={entry.status === "failed" || undefined}>
-    <Fold className="task-tool-entry [&>.timeline-summary]:gap-1.5 [&>.timeline-summary]:px-0 [&>.timeline-summary]:py-1 [&>.timeline-summary>span:last-of-type]:shrink-0" open={open} onChange={setOpen} expandable={hasDetails}
+    <Fold className="task-tool-entry [&>.timeline-summary]:gap-1.5 [&>.timeline-summary]:px-2 [&>.timeline-summary]:py-1 [&>.timeline-summary>span:last-of-type]:shrink-0" open={open} onChange={setOpen} expandable={hasDetails}
       summary={<><Icon icon={stepIcons[entry.type]} /><ToolTitle entry={entry} /><span>{entry.exitCode !== undefined && t("timeline.exitCode", { code: entry.exitCode })}</span></>}>
       {!!entry.changes?.length && <ChangedFiles entries={[entry]} />}
       <ToolDetails entry={entry} />
@@ -176,7 +177,7 @@ export default function TimelineEntries({ entries, agent, session, now, running 
         {(state === "failed" || state === "interrupted") && <TaskOutcome state={state} entries={group.entries} project={session.project} onResume={latest && current ? onResume : undefined} onRetry={latest && current ? onRetry : undefined} continuing={continuing} />}
         <TaskReceiptHistory agent={agent} id={session.id} turnId={group.turnId} latest={latest} />
         {projection.thinking && <div className="task-thinking truncate text-sm text-muted-foreground motion-safe:animate-pulse [[data-reduced-motion=true]_&]:animate-none" role="status">{projection.thinking.text}</div>}
-        {final && state !== "failed" && state !== "interrupted" && <Card asChild className="gap-0 p-3"><article className="task-final min-w-0 rounded-xl border bg-card p-3 text-sm leading-relaxed wrap-anywhere [&>header]:mb-2 [&>header]:text-xs [&>header]:text-success"><SectionHeader  level={3} title={<><Icon icon={Check} /></>} actions={<><strong>{t("detail.finalReply")}</strong></>} /><TimelineMarkdown text={final.text ?? ""} /><CopyValue value={final.text ?? ""} label={t("detail.copyReply")}>{null}</CopyValue>{final.truncated && <span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.truncated")}</span>}<ChangedFiles entries={group.entries} project={session.project} /></article></Card>}
+        {final && state !== "failed" && state !== "interrupted" && <Card asChild className="gap-0 p-3"><article className="task-final group/context relative min-w-0 rounded-xl border bg-card p-3 text-sm leading-relaxed wrap-anywhere [&>header]:mb-2 [&>header]:text-xs [&>header]:text-success"><SectionHeader className="pr-7" level={3} title={<><Icon icon={Check} /></>} actions={<><strong>{t("detail.finalReply")}</strong></>} /><TimelineMarkdown text={final.text ?? ""} /><CopyValue floating value={final.text ?? ""} label={t("detail.copyReply")}>{null}</CopyValue>{final.truncated && <span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.truncated")}</span>}<ChangedFiles entries={group.entries} project={session.project} /></article></Card>}
       </div>}
     </section>;
   })}</TimelineResources>;

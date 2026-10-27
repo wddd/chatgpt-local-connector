@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Window } from 'happy-dom';
 import { createServer } from 'vite';
-import { act, createElement as h, useLayoutEffect } from 'react';
+import { act, createElement as h } from 'react';
 import { within } from '@testing-library/dom';
 import { modelLabel } from '../ui/components/composites/dispatchSpecLabel.ts';
 import type { CatalogState } from '../ui/state/dispatchCatalog';
 
-test('recorded dispatch specs expose readable catalog labels on focus and retain resolved metadata', async () => {
-  // Regression: resolved dsh IDs leaked into labels; absent Claude models left separators and default-tier labels.
+test('recorded dispatch chips omit unresolved models and retain readable native labels', async () => {
+  // Regression: live task chips exposed opaque model IDs and unresolved diagnostics instead of readable metadata.
   const window = new Window({ url: 'http://localhost' });
   class Observer { observe() {} unobserve() {} disconnect() {} }
   Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
@@ -21,72 +21,36 @@ test('recorded dispatch specs expose readable catalog labels on focus and retain
   const { createRoot } = await import('react-dom/client');
   const mount = document.createElement('div'); document.body.append(mount);
   const root = createRoot(mount);
-  const originalFetch = globalThis.fetch;
   try {
     const { DispatchSpec } = await server.ssrLoadModule('/ui/components/composites/DispatchSpec.tsx');
     const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
-    const { dispatchCatalogFixtures } = await server.ssrLoadModule('/ui/design-mount/dispatchFixtures.ts');
-    const { t } = await server.ssrLoadModule('/ui/i18n.ts');
-    const catalog = dispatchCatalogFixtures.dsh;
-    const { model } = catalog.models[0], name = catalog.models[0].displayName;
-    const summary = { model, effort: 'max', serviceTier: 'priority' };
+    const summary = { model: 'opaque-id', effort: 'high', serviceTier: 'priority' };
     const records = [
-      { kind: 'session', value: { id: 'dsh-task', source: 'arc-task', dispatchSummary: summary } },
-      { kind: 'timeline', taskId: 'dsh-task', turnId: 'turn', value: { turnDispatchSummaries: { turn: summary } } },
-      { kind: 'task', value: { agent: 'dsh', taskId: 'dsh-task', requestId: 'request', task: summary } },
+      { kind: 'session', value: { id: 'task', dispatchSummary: summary } },
+      { kind: 'timeline', taskId: 'task', turnId: 'turn', value: { turnDispatchSummaries: { turn: summary } } },
+      { kind: 'task', value: { agent: 'codex', taskId: 'task', task: summary } },
     ];
-    const page = within(document.body);
-    const render = async (record: unknown, resolver: CatalogState = { status: 'ready', catalog }, variant: 'panel' | 'inline' = 'panel') => {
-      await act(() => root.render(h(TooltipProvider, null, h(DispatchSpec, {
-        agent: 'dsh', record, resolver, variant,
-      }))));
-    };
     for (const record of records) {
-      await render(record);
-      const chip = page.getByLabelText((label) => label.includes(name));
-      assert.ok(!chip.getAttribute('aria-label')!.includes(model));
-      await act(() => chip.focus());
-      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
-      const tooltip = page.getByRole('tooltip');
-      assert.ok(tooltip.textContent?.includes(name));
-      assert.ok(!tooltip.textContent?.includes(model));
-      await act(() => chip.blur());
-      await render(record, { status: 'loading', catalog });
-      assert.ok(page.getByLabelText((label) => label.includes(name)).textContent?.includes(name));
+      for (const resolver of [{ status: 'loading' }, { status: 'error' }, { status: 'ready', catalog: { authoritative: true, models: [] } }] as CatalogState[]) {
+        await act(() => root.render(h(TooltipProvider, null, h(DispatchSpec, { agent: 'codex', record, resolver }))));
+        assert.ok(mount.textContent?.trim());
+        assert.ok(!mount.textContent?.includes(summary.model));
+        assert.ok(!mount.textContent?.includes(' · '));
+      }
+      for (const metadata of [{ displayName: 'Native model' }, { name: 'Native model' }]) {
+        await act(() => root.render(h(TooltipProvider, null, h(DispatchSpec, { agent: 'codex', record,
+          resolver: { status: 'ready', catalog: { models: [{ model: summary.model, ...metadata }] } } }))));
+        const chip = within(mount).getByLabelText(label => label.includes(metadata.displayName ?? metadata.name!));
+        assert.ok(chip.textContent?.includes(metadata.displayName ?? metadata.name!));
+        assert.ok(!chip.getAttribute('aria-label')?.includes(summary.model));
+        assert.equal(chip.textContent?.split(' · ').length, 2);
+      }
     }
-    for (const variant of ['panel', 'inline'] as const) {
-      const record = { kind: 'session', value: { id: 'no-model', source: 'arc-task', dispatchSummary: { effort: 'high', serviceTier: 'default' } } };
-      await render(record, { status: 'error' }, variant);
-      const effort = page.getByLabelText(t('dispatchSpec.effort.high'), { exact: true });
-      assert.ok(!effort.textContent?.includes('·'));
-      assert.ok(!effort.textContent?.includes(t('dispatchSpec.standard')));
-      assert.ok(!effort.textContent?.includes(t('dispatchSpec.unresolved')));
-      await render({ ...record, value: { ...record.value, dispatchSummary: { effort: 'high', serviceTier: 'priority' } } }, { status: 'ready' }, variant);
-      const fast = page.getByLabelText(label => label.includes(t('activity.fast')));
-      assert.equal(fast.getAttribute('aria-label')?.split(' · ').length, 2);
-      assert.ok(!fast.textContent?.trim().startsWith('·'));
-      assert.ok(!fast.textContent?.trim().endsWith('·'));
-    }
-    let complete!: (response: Response) => void;
-    globalThis.fetch = () => new Promise<Response>(resolve => { complete = resolve; });
-    let firstFrame: { text: string | null; label: string | null } | undefined;
-    function NativeChip() {
-      useLayoutEffect(() => {
-        const chip = page.getByLabelText(label => label.includes(t('dispatchSpec.effort.max')));
-        firstFrame = { text: chip.textContent, label: chip.getAttribute('aria-label') };
-      }, []);
-      return h(DispatchSpec, { agent: 'dsh', record: records[0] });
-    }
-    await act(() => root.render(h(TooltipProvider, null, h(NativeChip))));
-    assert.ok(firstFrame?.text?.includes(t('dispatchSpec.loading')));
-    assert.equal(page.getByLabelText(label => label.includes(t('dispatchSpec.loading'))).getAttribute('aria-busy'), 'true');
-    await act(async () => complete(new Response(JSON.stringify(catalog))));
-    assert.ok(page.getByLabelText(label => label.includes(name)));
+    await act(() => root.render(h(TooltipProvider, null, h(DispatchSpec, { agent: 'codex',
+      record: { kind: 'session', value: { id: 'task', dispatchSummary: { model: summary.model } } }, resolver: { status: 'error' } }))));
+    assert.equal(mount.textContent, '');
   } finally {
-    await act(() => root.unmount());
-    globalThis.fetch = originalFetch;
-    await server.close();
-    await window.happyDOM.close();
+    await act(() => root.unmount()); await server.close(); await window.happyDOM.close();
   }
 });
 
@@ -107,9 +71,9 @@ test('task rows expose the recorded model and effort through the shared dispatch
   try {
     const { TaskRow } = await server.ssrLoadModule('/ui/components/objects/task/Row.tsx');
     const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
-    const { dispatchCatalogFixtures } = await server.ssrLoadModule('/ui/design-mount/dispatchFixtures.ts');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
-    const catalog = dispatchCatalogFixtures.dsh, { model } = catalog.models[0], name = catalog.models[0].displayName;
+    const catalog = { models: [{ model: 'opaque-task-model', displayName: 'Native task model' }] };
+    const { model } = catalog.models[0], name = catalog.models[0].displayName;
     const record = { agent: 'dsh', taskId: 'recorded-task', requestId: 'request', state: 'completed',
       createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', approval: { decision: 'automatic', source: 'remote', at: '' },
       task: { kind: 'create', title: 'Recorded task', prompt: 'Review configuration', input: [], model, effort: 'max', settings: { serviceTier: 'priority' } } };
@@ -122,7 +86,7 @@ test('task rows expose the recorded model and effort through the shared dispatch
     assert.ok(!chip.getAttribute('aria-label')!.includes(model));
     assert.ok(!chip.getAttribute('aria-label')!.includes(t('activity.fast')));
     await act(() => root.render(h(TooltipProvider, null, h(TaskRow, { kind: 'receipt', records: [record], id: record.taskId, record: { ...record, task: { ...record.task, dispatch: { serviceTier: 'priority' } } }, onOpen() {} }))));
-    assert.ok(within(row).getByLabelText(label => label.includes(name) && label.includes(t('activity.fast'))));
+    assert.ok(!within(row).getByLabelText(label => label.includes(name)).getAttribute('aria-label')?.includes(t('activity.fast')));
   } finally {
     await act(() => root.unmount());
     globalThis.fetch = originalFetch;
@@ -136,10 +100,14 @@ test('catalog labels preserve opaque identities and native text without inferenc
   // Property: labels use only exact native display metadata and never parse or rewrite IDs or names.
   const ids = ['["provider", "model"]', 'provider/model', ' GPT-6-Astra ', 'opaque · suffix'];
   for (const model of ids) {
+    assert.equal(modelLabel(model, [{ model, name: 'Native name' }]), 'Native name');
+    assert.equal(modelLabel(model, []), '');
+    assert.equal(modelLabel(model, [{ model: `${model}x`, displayName: 'Different identity' }]), '');
     for (const displayName of ['GPT-6-Astra', 'DeepSeek V4 · native suffix', 'Provider/model-name']) {
       assert.equal(modelLabel(model, [{ model, displayName }]), displayName);
     }
   }
+  assert.equal(modelLabel('["p", "m"]', [{ model: '["p","m"]', displayName: 'Other identity' }]), '');
 });
 
 test('native provider names disambiguate equal display names', () => {

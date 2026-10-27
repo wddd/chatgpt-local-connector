@@ -57,8 +57,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const running = !!live || session.endedAt === undefined && !external && !timeline?.readOnly && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? "");
 
   const now = useAppNow(running ? 1000 : null);
-  const followAllowed = useRef(true);
-  followAllowed.current = running;
+  const userScroll = useRef(false);
   useEffect(() => {
     const node = viewport.current;
     if (!node) return;
@@ -121,13 +120,14 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     if (!node || !timeline || manualDisclosure.current) return;
     const target = timelineScrollTarget(following.current, running || previousRunning.current, initial.current, node.scrollHeight);
     if (target !== undefined) { node.scrollTop = target; previousTop.current = node.scrollTop; }
+    if (target !== undefined) setAtLatest(true);
     initial.current = false; previousRunning.current = running;
   }, [timeline, running]);
   useEffect(() => {
     const observer = new ResizeObserver(() => {
       const node = viewport.current;
       // Disclosure resizing is local navigation, including its animation frames.
-      if (node && !manualDisclosure.current && following.current && followAllowed.current) { node.scrollTop = node.scrollHeight; previousTop.current = node.scrollTop; }
+      if (node && !manualDisclosure.current && following.current) { node.scrollTop = node.scrollHeight; previousTop.current = node.scrollTop; }
     });
     if (content.current) observer.observe(content.current);
     return () => observer.disconnect();
@@ -151,7 +151,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const latest = () => {
     const node = viewport.current;
     if (!node) return;
-    manualDisclosure.current = false; following.current = true;
+    manualDisclosure.current = false; following.current = true; userScroll.current = false;
     node.scrollTop = node.scrollHeight; previousTop.current = node.scrollTop;
     setAtLatest(true); node.focus({ preventScroll: true });
   };
@@ -218,9 +218,14 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           const node = event.currentTarget;
           if (manualDisclosure.current) following.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 24;
           manualDisclosure.current = false;
+          userScroll.current = true;
           if (event.deltaY < 0) following.current = false;
         }}
+        onPointerDown={event => { if (event.target === event.currentTarget) userScroll.current = true; }}
+        onTouchMove={() => { userScroll.current = true; }}
+        onKeyDown={event => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) userScroll.current = true; }}
         onScroll={event => {
+          if (!userScroll.current) return;
           const node = event.currentTarget;
           following.current = followsTimeline(node.scrollTop, node.clientHeight, node.scrollHeight, previousTop.current);
           if (!following.current) manualDisclosure.current = false;

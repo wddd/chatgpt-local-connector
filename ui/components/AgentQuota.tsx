@@ -22,7 +22,7 @@ export default function AgentQuota({ provider, onRefresh, refreshing }: { provid
   const pace = windows.map(window => quotaPace(window, provider, now));
   const age = compactAge(provider.observedAt, now);
   const summaryWindow = weekly ?? windows[0];
-  if (!windows.length) return <p className="m-0 text-xs text-muted-foreground">{t("agentPanel.noQuota")}</p>;
+  if (!windows.length) return null;
   return <section className="agent-quota-block @container flex shrink-0 flex-col gap-1" aria-label={t("agentQuotaGroup")}>
     <div className="grid grid-cols-1 gap-2 @sm:grid-cols-2">
       {windows.map((window, index) => {

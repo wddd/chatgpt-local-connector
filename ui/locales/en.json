@@ -618,6 +618,8 @@
   "topology.expand": "Expand",
   "topology.collapse": "Collapse",
   "agentPanel.noConversations": "No unarchived conversations.",
+  "agentPanel.invalidSignin": "Agent sign-in is invalid. Sign in again.",
+  "agentPanel.signedOut": "Signed out of the Agent. Sign in again.",
   "agentPanel.noQuota": "No quota source is available for this Agent.",
   "agentPanel.inProgress": "{count} tasks in progress",
   "agentPanel.inProgress.one": "{count} task in progress",
