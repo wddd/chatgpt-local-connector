@@ -1,9 +1,8 @@
 import { DispatchSpec } from "./composites/DispatchSpec";
-import { ActionGroup, StateBadge } from "./ui";
-import { statePresentation } from "./objects/statePresentation";
-import { SectionHeader, EntityRow, Button, Empty, IconButton, Loading, Notice, Dialog } from "./ui";
+import { ActionGroup } from "./ui";
+import { SectionHeader, Button, Empty, IconButton, Loading, Notice, Dialog } from "./ui";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, Copy } from "lucide-react";
+import { Copy } from "lucide-react";
 import { t } from "../i18n";
 import { openAgentTask } from "../state/activity";
 import { api } from "../api";
@@ -17,9 +16,10 @@ import {
   type TaskRuntime,
 } from "../state/tasks";
 import { useInterval } from "../state/hooks";
-import TaskOwnership from "./TaskOwnership";
-import { Markdown, plainMarkdown } from "./ui/Markdown";
-const idOf = (r: TaskRecord) => r.taskId || r.threadId || r.task.threadId;
+import { Markdown } from "./ui/Markdown";
+import { TaskRow, TaskCard } from "./objects/task";
+import { taskId as idOf, taskIdentity } from "./objects/task/projection";
+import { taskTime as time } from "./objects/task/Row";
 export default function TasksPage() {
   const { records, error, loading } = tasks.use(),
     { busy } = connector.use();
@@ -42,32 +42,7 @@ export default function TasksPage() {
       .sort((a, b) => b.first.createdAt.localeCompare(a.first.createdAt));
   }, [records]);
   const runtime = (r: TaskRecord) => runtimes[idOf(r) || ""] || r.runtime;
-  const titleOf = (r: TaskRecord) =>
-    r.task.title ||
-    runtime(r)?.title ||
-    r.task.prompt.split("\n")[0]?.slice(0, 90) ||
-    t("taskRequest");
-  const projectOf = (r: TaskRecord) =>
-    r.task.project || r.task.directory || runtime(r)?.project || "";
-  const projectName = (r: TaskRecord) =>
-    projectOf(r).trim()
-      .replace(/[\\/]+$/, "")
-      .split(/[\\/]/)
-      .pop() || "";
-  const stateOf = (group: (typeof groups)[number]) =>
-    group.records.some((r) => r.error) ? "runtimeError" :
-    group.records.some((r) => r.state === "awaiting-approval")
-      ? "awaitingConfirmation"
-      : runtime(group.first)?.archived
-        ? "archived"
-        : !runtime(group.first) || runtime(group.first)?.stale
-          ? "unknown"
-          : {
-              waiting: "awaitingInteraction",
-              active: "running",
-              idle: "idle",
-              systemError: "runtimeError",
-            }[runtime(group.first)!.runtimeStatus] || "unknown";
+  const titleOf = (r: TaskRecord) => taskIdentity({ kind: "receipt", record: r, runtime: runtime(r) }).title;
   const visible = groups;
   const selected = groups.find((g) => g.id === selectedId);
   const reading = useRef(false);
@@ -123,46 +98,22 @@ export default function TasksPage() {
         ?.focus(),
     );
   }
-  const time = (value: string) => {
-    const date = new Date(value);
-    const pad = (part: number) => String(part).padStart(2, "0");
-    return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-  };
   const detail = selected && (
     <Dialog
       title={titleOf(selected.first)}
       width={720}
       busy={!!busy || opening}
       onClose={closeDetail}
-      footer={
-        <div className="task-focus-footer">
-          <span
-            className="task-document-project"
-            title={projectOf(selected.first)}
-          >
-            {projectName(selected.first)}
-          </span>
-          {["running", "runtimeError"].includes(stateOf(selected)) && <StateBadge variant="text" presentation={statePresentation("dispatch", stateOf(selected) === "runtimeError" ? "failed" : "running")} label={t(stateOf(selected))} />}
-          {selected.first.open && !runtime(selected.first)?.archived && (
-            <IconButton
-              icon={ExternalLink}
-              label={t("activity.open")}
-              busy={opening}
-              onClick={() => {
-                setOpening(true);
-                setActionError("");
-                void openAgentTask(selected.first.agent || "codex", selected.first.open!.taskId)
-                  .catch(error => setActionError(String(error)))
-                  .finally(() => setOpening(false));
-              }}
-            />
-          )}
-        </div>
-      }
+      headerless
     >
-      <DispatchSpec agent={selected.first.agent || "codex"} record={{ kind: "task", value: selected.first }} />
+      <TaskCard task={{ kind: "receipt", record: selected.first, runtime: runtime(selected.first), records: selected.records }}
+        agent={selected.first.agent || "codex"} onClose={closeDetail} busy={!!busy || opening}
+        onOpen={selected.first.open && !runtime(selected.first)?.archived ? () => {
+          setOpening(true); setActionError("");
+          void openAgentTask(selected.first.agent || "codex", selected.first.open!.taskId)
+            .catch(error => setActionError(String(error))).finally(() => setOpening(false));
+        } : undefined}>
       <div className="task-focus-content">
-        <TaskOwnership ownership={runtime(selected.first)?.ownership} />
         {[...selected.records].reverse().map((r) => (
           <section className="task-entry" key={r.requestId}>
             <SectionHeader  level={3} title={<>
@@ -232,6 +183,7 @@ export default function TasksPage() {
         ))}
         {actionError && <Notice>{actionError}</Notice>}
       </div>
+      </TaskCard>
     </Dialog>
   );
   return (
@@ -251,29 +203,8 @@ export default function TasksPage() {
         <div className="task-grid">
           {visible.map((g) => (
             <div className="task-cell" key={g.id}>
-              <EntityRow className="task-document" data-task-id={g.id} aria-label={titleOf(g.first)} aria-haspopup="dialog" onClick={() => {
-                  setSelectedId(g.id);
-                  setActionError("");
-                }}>
-                <span className="task-document-heading">
-                  <strong className="task-document-title">
-                    {titleOf(g.first)}
-                  </strong>
-                  <DispatchSpec agent={g.first.agent || "codex"} record={{ kind: "task", value: g.first }} />
-                </span>
-                <span className="task-document-meta">
-                  {projectName(g.first) && <span className="task-tag task-document-project" title={projectOf(g.first)}>{projectName(g.first)}</span>}
-                  {stateOf(g) === "running" && <StateBadge variant="text" presentation={statePresentation("dispatch", "running")} label={t("running")} />}
-                  <time dateTime={g.first.createdAt}>
-                    {time(g.first.createdAt)}
-                  </time>
-                </span>
-                {g.first.task.prompt && (
-                  <span className="task-document-preview">
-                    {plainMarkdown(g.first.task.prompt)}
-                  </span>
-                )}
-              </EntityRow>
+              <TaskRow kind="receipt" record={g.first} runtime={runtime(g.first)} records={g.records} id={g.id} selected={g.id === selectedId}
+                onOpen={() => { setSelectedId(g.id); setActionError(""); }} />
             </div>
           ))}
         </div>

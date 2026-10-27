@@ -1,8 +1,6 @@
-import { EntityRow, StateBadge, Icon, Notice, Tag } from "./ui";
-import { statePresentation } from "./objects/statePresentation";
+import { Notice, Tag } from "./ui";
 import { useAppNow } from "../state/appEnvironment";
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import { tasks, type TaskRuntime } from "../state/tasks";
@@ -10,7 +8,7 @@ import { agentActivity } from "../state/activity";
 import { selectAgentPanel } from "../state/overviewPanels";
 import { navigation } from "../state/navigation";
 import { sourceDispatches, dispatchState, isLatestDispatch } from "../state/sourceDispatch";
-import { PhaseTile } from "./activity";
+import { TaskRow } from "./objects/task";
 
 export default function SourceDispatches({ sourceId, summary = false }: { sourceId: string; summary?: boolean }) {
   const now = useAppNow(60_000);
@@ -62,22 +60,10 @@ export default function SourceDispatches({ sourceId, summary = false }: { source
       const latest = isLatestDispatch(record, records);
       const live = latest ? snapshot?.agents.codex?.sessions.find(s => s.id === id) : undefined;
       const runtime = latest && id ? runtimes[id] ?? record.runtime : undefined;
-      const state = dispatchState(record, runtime, live);
-      const title = record.task.title || live?.title || runtime?.title || record.task.prompt.split("\n")[0] || t("taskRequest");
-      const phase = state === "pending" ? "interaction" : state === "running" ? live?.phase ?? "thinking" : "idle";
-      const canOpen = !!id && (state === "running" || state === "pending") && (live || runtime && !runtime.stale);
-      return <EntityRow key={record.requestId} className="source-dispatch-row" disabled={!canOpen} attention={state === "pending"} data-state={state} onClick={() => {
-        if (!id || !canOpen) return;
-        selectAgentPanel({ type: "task", agent: "codex", session: live ? { ...live, orderAt: Date.parse(record.createdAt) } : {
-          id, source: "codex-thread", title, phase, headline: title, phaseSince: null, timeline: true,
-          project: record.task.project || record.task.directory, startedAt: record.createdAt, orderAt: Date.parse(record.createdAt),
-        } });
+      return <TaskRow kind="dispatch" key={record.requestId} record={record} runtime={runtime} live={live} onOpen={session => {
+        selectAgentPanel({ type: "task", agent: "codex", session });
         navigation.set(old => ({ ...old, page: "overview" }));
-      }}>
-        <PhaseTile phase={phase} completed={state === "completed"} animated={false} />
-        <span><strong>{title}</strong><span className="source-dispatch-meta">{record.agent ?? "Codex"} · <StateBadge variant="text" presentation={statePresentation("dispatch", state)} /></span></span>
-        {canOpen && <Icon icon={ChevronRight} />}
-      </EntityRow>;
+      }} />;
     })}
     {!rows.length && <p className="timeline-meta">{t("sourcePanel.noRecords")}</p>}
     {visible < dispatches.length && <div ref={more} className="source-dispatch-more" aria-hidden="true" />}

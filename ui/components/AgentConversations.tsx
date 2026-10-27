@@ -1,7 +1,7 @@
-import { SectionHeader, EntityRow, Button, Empty, Loading, Notice } from "./ui";
+import { SectionHeader, Button, Empty, Loading, Notice } from "./ui";
 import { useAppNow } from "../state/appEnvironment";
 import { MessagesSquare } from "lucide-react";
-import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { locale, t } from "../i18n";
 import type { AgentActivitySession, AgentConversation, AgentConversationPage, ProviderAccount } from "../types";
@@ -10,15 +10,8 @@ import { agentActivity } from "../state/activity";
 import { trackedActivity } from "../state/activityBubbles";
 import { selectAgentPanel } from "../state/overviewPanels";
 import type { TrackedActivity } from "../state/activityModel";
-import { ActivityBubbleContent } from "./ActivityBubbles";
-
-const ConversationRow = memo(function ConversationRow({ agent, session, live, now, index }: {
-  agent: string; session: TrackedActivity; live: boolean; now: number; index: number;
-}) {
-  return <EntityRow className={`activity-bubble agent-conversation-row ${session.interaction ? "needs-attention" : ""}`} data-density="standard" data-external={session.source === "transcript" || undefined} data-timeline-anchor style={{ "--row-delay": `${Math.min(index, 5) * 24}ms` } as CSSProperties} data-activity-session={JSON.stringify([agent, session.id])} aria-label={`${session.title || t("timeline.title")} · ${t("timeline.open")}`} onClick={() => selectAgentPanel({ type: "task", agent, session })}>
-    <ActivityBubbleContent agent={agent} session={session} now={now} density="standard" historical={!live} conversationRow />
-  </EntityRow>;
-});
+import { TaskRow } from "./objects/task";
+import { conversationActivity } from "./objects/task/projection";
 
 export default function AgentConversations({ agent, account, accountId, active }: { agent: string; account?: ProviderAccount; accountId?: string; active: boolean }) {
   const language = locale.use();
@@ -71,14 +64,7 @@ export default function AgentConversations({ agent, account, accountId, active }
     observer.observe(node);
     return () => observer.disconnect();
   }, [active, next, loading, error]);
-  const sessions = new Map<string, TrackedActivity>(rows.map(conversation => [conversation.id, {
-    id: conversation.id, source: conversation.source, status: conversation.status, title: conversation.title || undefined, phase: "idle", phaseSince: null,
-    headline: "", startedAt: conversation.createdAt, project: conversation.project, projectName: conversation.projectName,
-    dispatchSummary: conversation.dispatchSummary ?? undefined, turnCount: conversation.turnCount ?? undefined,
-    agentAccountId: conversation.dispatchSummary?.agentAccountId,
-    nativeSessionId: conversation.nativeSessionId ?? undefined, open: conversation.open,
-    timeline: true, orderAt: Date.parse(conversation.createdAt ?? "") || 0, conversation: true,
-  }]));
+  const sessions = new Map<string, TrackedActivity>(rows.map(conversation => [conversation.id, conversationActivity(conversation)]));
   for (const remembered of [...Object.values(observed), ...retained, ...live.values()]) {
     const current = live.get(remembered.id), history = sessions.get(remembered.id);
     const session = current ?? { ...remembered, phase: "idle" as const, phaseSince: null, interaction: undefined, turnStartedAt: undefined };
@@ -117,7 +103,7 @@ export default function AgentConversations({ agent, account, accountId, active }
   return <div className="activity-task-list agent-conversations" data-empty={empty || undefined}>
     {sections.map(({ id, label, entries }) => entries.length > 0 && <section className="agent-task-section" key={id} aria-label={label}>
       <SectionHeader className="agent-task-section-heading" data-attention={id === "attention" || undefined} level={3} title={label} count={entries.length} />
-      <div className="agent-task-section-rows">{entries.map((session, index) => <ConversationRow key={session.id} agent={agent}
+      <div className="agent-task-section-rows">{entries.map((session, index) => <TaskRow kind="activity" key={session.id} agent={agent} onOpen={() => selectAgentPanel({ type: "task", agent, session })}
         session={session} live={live.has(session.id)} now={now} index={index} />)}</div>
     </section>)}
     {loading && <Loading label={t("timeline.loading")} />}

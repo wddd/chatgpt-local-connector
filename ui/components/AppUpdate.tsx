@@ -12,6 +12,9 @@ import { updates, available, updateVisible, checkUpdate, showUpdate, dismissUpda
 import { updateActive, updateCountdown, updateStep, type UpdateSnapshot, type UpdateTiming, type UpdateWork } from "../state/updateModel";
 import { LiveInteractionRequestCard } from "./objects/interaction-request";
 import "./AppUpdate.css";
+import { TaskRow } from "./objects/task";
+import { useAppNow } from "../state/appEnvironment";
+import { selectAgentPanel } from "../state/overviewPanels";
 
 const action = (promise: Promise<unknown>) => void promise.catch(error => notify(String(error), true));
 async function reveal(path: string) {
@@ -24,10 +27,12 @@ function Identity({ job }: { job: UpdateSnapshot }) {
 }
 function WorkItem({ item, answerable }: { item: UpdateWork; answerable: boolean }) {
   const activity = agentActivity.use().snapshot;
+  const now = useAppNow(1000);
   const session = item.agent ? activity?.agents[item.agent]?.sessions.find(session => session.id === item.taskId) : undefined;
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   return <li>
-    <div className="update-work-title"><span>{item.title || session?.title || item.taskId || t(`updates.work.${item.kind}`)}</span>{item.count !== undefined && <span>{item.count}</span>}</div>
+    {session && item.agent ? <TaskRow kind="activity" agent={item.agent} session={{ ...session, orderAt: Date.parse(session.startedAt ?? '') || 0 }} live now={now}
+      onOpen={() => { dismissUpdate(); selectAgentPanel({ type: 'task', agent: item.agent!, session: { ...session, orderAt: Date.parse(session.startedAt ?? '') || 0 } }); }} /> : <div className="update-work-title"><span>{item.title || session?.title || item.taskId || t(`updates.work.${item.kind}`)}</span>{item.count !== undefined && <span>{item.count}</span>}</div>}
     {answerable && session?.interaction && <LiveInteractionRequestCard key={JSON.stringify(session.interaction.respond)} agent={item.agent!} session={session} answers={answers} onAnswersChange={setAnswers} />}
 
   </li>;

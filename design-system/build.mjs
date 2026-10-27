@@ -129,7 +129,7 @@ styles.append(postcss.parse(`
 .arc-island[data-arc-component="Tag"], .arc-island[data-arc-component="AgentQuotaIcon"],
 .arc-island[data-arc-component="PlatformIcon"], .arc-island[data-arc-component="StateBadge"],
 .arc-island[data-arc-component="Freshness"], .arc-island[data-arc-component="GraphNode"] { display: inline-block; vertical-align: middle; }
-.arc-island[data-arc-component="ActivityBubble"] { width: var(--bubble-width, 264px); }
+.arc-island[data-arc-component="ActivityBubble"], .arc-island[data-arc-component="TaskNode"] { width: var(--bubble-width, 264px); }
 `));
 const css = transform({ filename: 'arc.css', code: Buffer.from(styles.toString()), minify: true }).code;
 await writeFile(path.join(out, 'arc.css'), css);

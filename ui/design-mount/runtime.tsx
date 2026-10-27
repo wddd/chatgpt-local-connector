@@ -1,3 +1,4 @@
+import { TaskChip, TaskNode, TaskRow, TaskCard } from '../components/objects/task';
 import { RequestCard } from '../components/composites/RequestCard';
 import { InteractionRequestCard } from '../components/objects/interaction-request/Card';
 import { InteractionRequestChip } from '../components/objects/interaction-request/Chip';
@@ -27,7 +28,7 @@ import { environment, type Environment } from './environment';
 import { setActionTarget } from './data';
 import { PortalHost } from './radix';
 
-const components = { SrcPlatformChip, SrcPlatformNode, SrcPlatformRow, SrcPlatformCard, SrcAccountChip, SrcAccountNode, SrcAccountRow, SrcAccountCard, TunnelChip, TunnelNode, TunnelRow, TunnelCard, RequestCard, InteractionRequestCard, InteractionRequestChip, InteractionRequestRow, AuthorizationRequestCard, AuthorizationRequestChip, AuthorizationRequestRow, DeploymentProgressCard, DeploymentProgressChip, RelayMemberRow, RelayMemberCard,  Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
+const components = { TaskChip, TaskNode, TaskRow, TaskCard, SrcPlatformChip, SrcPlatformNode, SrcPlatformRow, SrcPlatformCard, SrcAccountChip, SrcAccountNode, SrcAccountRow, SrcAccountCard, TunnelChip, TunnelNode, TunnelRow, TunnelCard, RequestCard, InteractionRequestCard, InteractionRequestChip, InteractionRequestRow, AuthorizationRequestCard, AuthorizationRequestChip, AuthorizationRequestRow, DeploymentProgressCard, DeploymentProgressChip, RelayMemberRow, RelayMemberCard,  Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
   AgentQuotaIcon, AgentQuota, QuotaBubble, GraphNode, ActivityBubble,
   ViewStack, MeterSegment, PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, ChoiceControl, SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone, DispatchSpec };
 const icons = { RefreshCw, Plus, Check, X, Info, Plug, Bot };
@@ -48,7 +49,7 @@ export function mount(node: HTMLElement, name: keyof typeof components) {
       }
       if (Array.isArray(props.options)) props.options = props.options.map(option => ({ ...option,
         ...(typeof option.icon === 'string' ? { icon: icons[option.icon as keyof typeof icons] } : {}) }));
-      if (name === 'ActivityBubble') props.now ??= environment.get().now;
+      if (name === 'ActivityBubble' || name === 'TaskNode' || name === 'TaskRow') props.now ??= environment.get().now;
       root.render(createElement(PortalHost.Provider, { value: node },
         createElement(TooltipProvider, null, createElement(components[name] as ComponentType<Record<string, unknown>>, props))));
     },

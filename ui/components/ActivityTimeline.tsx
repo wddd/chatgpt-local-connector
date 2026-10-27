@@ -1,8 +1,6 @@
 import { dispatchSourceLabel } from "./activity";
-import { SrcAccountChip } from "./objects/src-account";
-import { DispatchSpec } from "./composites/DispatchSpec";
-import { SectionHeader, StateBadge, Button, Icon, IconButton, LoadingIndicator, Menu } from "./ui";
-import { statePresentation } from "./objects/statePresentation";
+import { TaskCard } from "./objects/task";
+import { Button, LoadingIndicator } from "./ui";
 import { useAppNow } from "../state/appEnvironment";
 import { pendingSessions } from "../state/taskInteractions";
 import { useTaskPresence } from "../state/requestRouting";
@@ -13,7 +11,6 @@ import { useTaskReview } from "../state/taskReview";
 import { taskErrorText } from "../state/taskErrors";
 import "./TaskDetail.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2, MoreHorizontal } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import type { AgentTimeline } from "../types";
@@ -23,7 +20,6 @@ import TimelineEntries, { durationText } from "./TimelineEntries";
 import { taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import TaskNeedsYou from "./TaskNeedsYou";
-import TaskOwnership from "./TaskOwnership";
 import { activityHeadline, type TrackedActivity } from "../state/activityModel";
 import type { TaskRuntime } from "../state/tasks";
 import { name, orderedAgents } from "../state/agents";
@@ -141,8 +137,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const nativeSession = live ?? { ...session, turnId: groups.at(-1)?.turnId || session.turnId, interaction: undefined };
   const agentName = name(orderedAgents().find(a => a.agent === agent) ?? { agent });
   const duration = timelineDuration(timeline?.entries ?? [], now, running, nativeSession.turnId, timeline?.turnTimings, nativeSession.turnStartedAt);
-  const project = timeline?.projectName || nativeSession.projectName || session.projectName
-    || session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
   const latestSummary = live ? live.dispatchSummary : timeline?.dispatchSummary ?? nativeSession.dispatchSummary;
   const source = latestSummary?.controlSource;
   const hasPending = !external && !timeline?.readOnly && running && pendingSessions(agent, nativeSession, timeline?.entries ?? [], submissions).length > 0;
@@ -215,30 +209,10 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   };
   // Activity snapshots can derive their title from the dispatch prompt.
   const title = (agent === "codex" && taskTitle?.id === session.id && taskTitle.title) || t("timeline.title");
-  return <section ref={detail} className="agent-panel-layer task-detail-layer" data-narrow={narrow || undefined}>
-    <SectionHeader className="dialog-header task-detail-header" level={2} back={<><div className="task-detail-navigation"><Button variant="ghost" aria-label={t("back")} title={`${agentName}${project ? ` · ${project}` : ""}`} onClick={onBack}><Icon icon={ArrowLeft} /><span>{agentName}{project && ` · ${project}`}</span></Button>
-        {!narrow && <div className="actions">{nativeSession.open && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); }} />}
-          {resizable && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} />}</div>}
-        {narrow && (nativeSession.open || resizable) && <div className="task-narrow-menu"><Menu label={t("detail.taskActions")} trigger={<IconButton icon={MoreHorizontal} label={t("detail.taskActions")} />} items={[
-          ...(nativeSession.open ? [{ label: t("activity.open"), action: () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } }] : []),
-          ...(resizable ? [{ label: t(expanded ? "restorePanelWidth" : "expandPanelWidth"), action: onToggleWidth }] : []),
-        ]} /></div>}
-      </div></>} title={title} titleProps={{ id: titleId, className: 'activity-panel-title' }}><div className="task-detail-chips"><StateBadge presentation={statePresentation("task", state)} />
-        <DispatchSpec agent={agent} record={timeline ? { kind: "timeline", value: timeline, taskId: session.id, turnId, source: nativeSession.source } : { kind: "session", value: nativeSession }} />
-        {source && <SrcAccountChip provenance={source} />}
-        <TaskOwnership ownership={timeline?.ownership} />
-        {duration !== undefined && <time className="timeline-meta task-duration">{durationText(duration)}</time>}
-      </div>{!!groups.length && <div className="task-turn-progress">{groups.map((group, index) => {
-        const current = index === groups.length - 1 && (!nativeSession.turnId || nativeSession.turnId === group.turnId);
-        const turnState = taskState((group.turnId && timeline?.turnStatuses?.[group.turnId]) || (current ? timeline?.status : undefined), current && running, current && hasPending);
-        const plan = [...group.entries].reverse().find(entry => entry.type === "plan")?.plan;
-        const completed = plan?.filter(step => step.status === "completed").length ?? 0;
-        const value = plan?.length ? completed / plan.length * 100 : turnState === "done" ? 100 : undefined;
-        return <div key={group.id} role="progressbar" aria-label={t("detail.turnProgress", { count: index + 1, state: t(`detail.state.${turnState}`) })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}
-          aria-valuetext={plan?.length ? t("detail.planProgress", { completed, total: plan.length }) : t(`detail.state.${turnState}`)} data-state={turnState} data-indeterminate={value === undefined || undefined}>
-          <span style={value === undefined ? undefined : { width: `${value}%` }} />
-        </div>;
-      })}</div>}</SectionHeader>
+  return <TaskCard rootRef={detail} className="agent-panel-layer task-detail-layer" agent={agent} agentName={agentName}
+    titleId={titleId} narrow={narrow} expanded={expanded} onBack={onBack} onToggleWidth={resizable ? onToggleWidth : undefined}
+    onOpen={nativeSession.open ? () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } : undefined}
+    task={{ kind: "timeline", session: nativeSession, fallbackSession: session, timeline, title, running, hasPending, turnId, source, duration: duration === undefined ? undefined : durationText(duration) }}>
     <div className="task-timeline" aria-busy={loading}>
       <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => {
@@ -276,5 +250,5 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       {!atLatest && <Button variant="secondary" className="timeline-latest" onClick={latest}>{t("timeline.latest")}</Button>}
     </div>
     {hasPending && <TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={dispatchSourceLabel(source)} narrow={narrow} />}
-  </section>;
+  </TaskCard>;
 }

@@ -1,23 +1,8 @@
 .task-detail-layer { container-type: inline-size; }
-.task-detail-layer > .task-detail-header.dialog-header { display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 16px 12px; background: var(--surface); }
-.task-detail-navigation { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
-.task-detail-navigation > .button { min-width: 0; overflow: hidden; text-overflow: ellipsis; justify-content: flex-start; color: var(--text-secondary); }
-.task-detail-header .activity-panel-title { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 17px; line-height: 1.35; margin: 0; }
-.task-detail-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .task-ownership-chip.button { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 3px 9px; border: 0; border-radius: 999px; background: var(--surface-subtle); color: var(--text-secondary); font-size: 12px; line-height: 18px; }
 .task-ownership-chip > .icon { flex: none; }
 .task-ownership-chip.button { min-height: 28px; height: auto; }
 .task-ownership-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-detail-chips > .task-source-chip { padding: 3px 9px; font-size: 12px; line-height: 18px; }
-.task-duration { margin-left: auto; flex: none; white-space: nowrap; }
-.task-turn-progress { display: flex; gap: 4px; }
-.task-turn-progress > div { flex: 1; height: 3px; min-width: 0; overflow: hidden; border-radius: 4px; background: var(--surface-subtle); color: var(--text-tertiary); }
-.task-turn-progress > [data-state=done] { color: var(--success); }
-.task-turn-progress > [data-state=running] { color: var(--accent); }
-.task-turn-progress > [data-state=failed] { color: var(--danger); }
-.task-turn-progress > div > span { display: block; height: 100%; background: currentColor; border-radius: inherit; }
-.task-turn-progress > [data-indeterminate] > span { width: 100%; opacity: .4; }
-.task-turn-progress > [data-indeterminate][data-state=running] > span { animation: task-shimmer 1.8s infinite; }
 .task-detail-layer .timeline-entries { padding: 14px 16px 18px; gap: 14px; }
 .task-turn, .task-turn-content, .task-process-rows { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .task-previous-turn.button { width: 100%; height: auto; min-height: 44px; text-align: left; justify-content: flex-start; border: 1px solid var(--border); border-radius: 14px; }
@@ -102,12 +87,7 @@
 .task-input-sheet .task-needs-you > header > strong { display: none; }
 .task-input-sheet .task-needs-you > header { justify-content: flex-end; }
 @container (max-width: 360px) {
-  .task-detail-layer > .task-detail-header.dialog-header { gap: 6px; padding: 10px 12px; }
-  .task-detail-navigation > .button > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .task-detail-header .activity-panel-title { font-size: 14.5px; }
-  .task-detail-chips { gap: 6px; }
-  .task-detail-chips > .task-source-chip, .task-ownership-chip.button { font-size: 11.5px; padding-inline: 8px; }
-  .task-duration { font-size: 11.5px; }
+  .task-ownership-chip.button { font-size: 11.5px; padding-inline: 8px; }
   .task-detail-layer .timeline-entries { padding: 12px; gap: 12px; }
   .task-agent-mark { display: none; }
   .task-phase { font-size: 13.5px; }
@@ -138,5 +118,3 @@
 :root[data-reduced-motion="true"] {
   .task-ownership-history { animation: none !important; transition: none !important; }
 }
-
-.task-detail-header > .section-header-copy { flex: none; width: 100%; }

@@ -1,3 +1,4 @@
+import type { TaskChip as TaskChipComponent, TaskNode as TaskNodeComponent, TaskRow as TaskRowComponent, TaskCard as TaskCardComponent } from '../components/objects/task';
 import type { RequestCard as RequestCardComponent } from '../components/composites/RequestCard';
 import type { InteractionRequestCard as InteractionRequestCardComponent } from '../components/objects/interaction-request/Card';
 import type { InteractionRequestChip as InteractionRequestChipComponent } from '../components/objects/interaction-request/Chip';
@@ -51,6 +52,7 @@ type TextProps<P> = Omit<P, 'children' | 'ref' | 'action' | 'icon' | 'dangerousl
   (P extends { children: unknown } ? { children: string } : { children?: string });
 type TextSlots<P, K extends keyof P> = Omit<{ [Key in keyof P]: Key extends K ? string : P[Key] }, 'ref' | 'dangerouslySetInnerHTML'>;
 const textSlots: Record<string, readonly string[]> = {
+  TaskRow: ['actions'], TaskCard: ['children'],
   RequestCard: ['title', 'context', 'leading', 'state', 'footer'],
   SrcAccountRow: ['actions'],
   TunnelRow: ['actions'],
@@ -111,11 +113,11 @@ function island<P extends object>(name: string) {
         if (option.content != null && typeof option.content !== 'string') throw new Error(`Arc.${name} option.content accepts plain text only.`);
         if (option.graphic != null && typeof option.graphic !== 'string') throw new Error(`Arc.${name} option.graphic accepts plain text only.`);
       }
-      mounted.current!.update({ ...raw, ...(name === 'ActivityBubble' ? { now: raw.now ?? environment.now } : {}) });
+      mounted.current!.update({ ...raw, ...((name === 'ActivityBubble' || name === 'TaskNode') ? { now: raw.now ?? environment.now } : {}) });
     });
     const density = (props as { density?: BubbleDensity }).density ?? 'standard';
     return createElement('div', { className: 'arc-island', ref: node, 'data-arc-component': name,
-      style: name === 'ActivityBubble' ? { height: bubbleHeights[density] } : name === 'TunnelNode' ? { position: 'relative', height: (props as ComponentProps<typeof TunnelNodeComponent>).frame?.layout.sceneH ?? 260, overflow: 'hidden' } : undefined });
+      style: (name === 'ActivityBubble' || name === 'TaskNode') ? { height: bubbleHeights[density] } : name === 'TunnelNode' ? { position: 'relative', height: (props as ComponentProps<typeof TunnelNodeComponent>).frame?.layout.sceneH ?? 260, overflow: 'hidden' } : undefined });
   }
   Island.displayName = `Arc.${name}`;
   return Island;
@@ -210,3 +212,9 @@ export const TunnelNode = island<Omit<ComponentProps<typeof TunnelNodeComponent>
 export const TunnelRow = island<TextSlots<ComponentProps<typeof TunnelRowComponent>, 'actions'>>('TunnelRow');
 
 export const TunnelCard = island<TextSlots<ComponentProps<typeof TunnelCardComponent>, 'children' | 'headerActions' | 'address' | 'footer' | 'danger'>>('TunnelCard');
+
+export const TaskChip = island<ComponentProps<typeof TaskChipComponent>>('TaskChip');
+export const TaskNode = island<ComponentProps<typeof TaskNodeComponent>>('TaskNode');
+type TaskRowMountProps<P> = P extends object ? Omit<P, 'actions'> & { actions?: string } : never;
+export const TaskRow = island<TaskRowMountProps<ComponentProps<typeof TaskRowComponent>>>('TaskRow');
+export const TaskCard = island<TextSlots<Omit<ComponentProps<typeof TaskCardComponent>, 'rootRef'>, 'children'>>('TaskCard');

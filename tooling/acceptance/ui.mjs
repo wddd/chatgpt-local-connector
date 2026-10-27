@@ -288,6 +288,34 @@ try {
             if (fixture.update.state === 'countdown') await panel.getByRole('list', { name: messages['updates.progress'] }).waitFor({ state: 'visible' });
           }
         }
+        if (name.startsWith('task-objects-')) {
+          // Regression: TASK convergence must preserve unread/reorder actions and recorded turn boundaries across hosts.
+          const action = page.getByLabel('Task action', { exact: true });
+          const nodes = page.getByRole('region', { name: 'Task nodes', exact: true });
+          const unread = nodes.getByRole('button', { name: /Inspect task presentation.*Unread/i });
+          await unread.focus();
+          await page.keyboard.press('ArrowUp');
+          if (await action.innerText() !== 'Move task -1') throw new Error('Task Node lost keyboard reorder');
+          const markRead = nodes.getByRole('button', { name: 'Mark as read', exact: true });
+          await markRead.focus(); await page.keyboard.press('Enter');
+          if (await action.innerText() !== 'Marked task read' || await markRead.count()) throw new Error('Task Node lost its independent unread action');
+          const rows = page.getByRole('region', { name: 'Task rows', exact: true });
+          await rows.getByRole('button', { name: 'Native open', exact: true }).focus();
+          await page.keyboard.press('Enter');
+          if (await action.innerText() !== 'Native open') throw new Error('Task Row action navigated its parent');
+          if (await rows.getByRole('button', { name: /^Stale dispatch/ }).isEnabled()) throw new Error('Stale dispatch invented a live destination');
+          await page.getByRole('switch', { name: 'Task action error', exact: true }).click();
+          await page.getByText('Synthetic task review failure', { exact: true }).waitFor();
+          await page.getByRole('switch', { name: 'Task busy', exact: true }).click();
+          const main = page.getByRole('main');
+          for (let toggle = 0; toggle < 2; toggle++) {
+            if ((await main.innerText()).includes('secret-must-not-render') || (await main.innerText()).includes('current-must-not-leak')) throw new Error('Task summary leaked secret history or another turn specification');
+            if (await main.locator('[title], [aria-label]').evaluateAll(nodes => nodes.some(node => ['title', 'aria-label'].some(attr => /secret-must-not-render|current-must-not-leak/.test(node.getAttribute(attr) ?? ''))))) throw new Error('Task metadata leaked through an accessible label');
+            await page.getByRole('button', { name: 'Privacy mode', exact: true }).click();
+          }
+          if (await main.evaluate(node => node.scrollWidth > node.clientWidth)) throw new Error('Task objects overflow horizontally');
+          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-tasks.png`), animations: 'disabled' });
+        }
         if (name.startsWith('src-tunnel-')) {
           // Regression: source rows rendered inert connection labels and nested connection targets during object convergence.
           const rows = page.getByRole('region', { name: 'Source rows', exact: true });
