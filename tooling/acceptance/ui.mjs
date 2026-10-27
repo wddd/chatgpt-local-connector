@@ -1,5 +1,5 @@
 import { acceptAgentObjects } from './agent-objects.mjs';
-import { acceptRequests } from './requests.mjs';
+import { acceptLongRequest, acceptRequests } from './requests.mjs';
 import { requireMainCheckout } from '../coding-lane.mjs';
 requireMainCheckout();
 import { chromium, webkit } from 'playwright';
@@ -35,8 +35,11 @@ try {
     const fixture = JSON.parse(await readFile(path.join(root, 'tooling/acceptance/scenarios', file), 'utf8'));
     const setup = !!(fixture.sourceSetup && fixture.sourceSetup.step !== 'welcome' || fixture.connectionSetup || fixture.switchFlow);
     if (setupOnly && !setup) continue;
-    for (const { width, height } of report.viewports) {
-      const name = file.slice(0, -5), key = `${name}-${width}x${height}`;
+    const name = file.slice(0, -5);
+    const longRequest = name === 'task-long-question' || name === 'task-long-approval';
+    const viewports = longRequest ? [{ width: 360, height: 800 }, ...report.viewports] : report.viewports;
+    for (const { width, height } of viewports) {
+      const key = `${name}-${width}x${height}`;
       const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'reduce', locale: 'en-US' });
       const errors = [];
       page.on('pageerror', e => errors.push(e.message));
@@ -196,6 +199,7 @@ try {
           taskDetail = page.getByRole('dialog', { name: title, exact: true });
           // Semantic snapshots exclude aria-hidden Radix form inputs and visual announcement mirrors.
           row.taskAccessibility = await taskDetail.ariaSnapshot();
+          if (longRequest) row.requestBody = await acceptLongRequest(page, taskDetail, messages);
         }
         if (name === 'task-turn-failed' || name === 'task-turn-interrupted') {
           // Regression: 087a88e moved outcome actions beneath the floating Back to latest control.

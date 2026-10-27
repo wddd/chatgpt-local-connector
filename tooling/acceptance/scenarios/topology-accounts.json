@@ -1,7 +1,7 @@
 {
   "theme": "light",
   "language": "en",
-  "agents": ["claude", "codex", "dsh", "opencode", "cursor"],
+  "agents": ["claude", "codex", "dsh", "opencode"],
   "tasks": [
     {"agent": "claude", "phase": "thinking", "title": "Review navigation", "headline": "Checking the account routes", "dispatchSummary": {"model": "claude-opus-5-5", "effort": "medium"}},
     {"agent": "claude", "phase": "command", "title": "Validate workspace", "headline": "Waiting for permission", "approval": true, "dispatchSummary": {}},

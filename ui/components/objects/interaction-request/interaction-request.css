@@ -1,7 +1,7 @@
 .activity-once { flex: 1; color: var(--text-secondary); }
-.task-question-options, .task-request-preview { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.task-question-options, .task-request-preview { min-width: 0; }
 .task-question-options { display: grid; gap: 12px; }
-.task-request-preview { display: flex; flex-direction: column; gap: 10px; flex-basis: 10lh; }
+.task-request-preview { display: flex; flex-direction: column; gap: 10px; }
 .task-request-preview > * { flex-shrink: 0; }
 .task-request-preview > p { margin: 0; }
 .task-request-preview > pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 var(--font-mono); background: var(--surface-subtle); padding: 10px; border-radius: 12px; min-height: calc(6lh + 20px); }

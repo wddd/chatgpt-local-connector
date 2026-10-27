@@ -1,6 +1,14 @@
 export async function acceptRequests(page) {
   // Regression: request controls were duplicated across task/update and setup/switch hosts.
-  const state = page.getByRole('radiogroup', { name: 'Submission state', exact: true });
+  const setSubmission = async name => {
+    const dropdown = page.getByRole('combobox', { name: 'Submission state', exact: true });
+    if (await dropdown.isVisible()) {
+      await dropdown.press('Space');
+      await page.getByRole('option', { name, exact: true }).click();
+    } else {
+      await page.getByRole('radiogroup', { name: 'Submission state', exact: true }).getByRole('radio', { name, exact: true }).press('Space');
+    }
+  };
   const request = page.getByRole('main');
   await request.getByRole('heading', { name: 'Requests and relay', exact: true }).waitFor();
   if (await page.getByText('secret-must-not-render', { exact: true }).count()) throw new Error('Secret receipt leaked');
@@ -20,18 +28,19 @@ export async function acceptRequests(page) {
   await request.getByRole('switch', { name: 'Privacy', exact: true }).click();
   await request.getByRole('button', { name: 'Previous request', exact: true }).press('Enter');
   if (await secret.inputValue() !== 'local-secret-answer') throw new Error('Pager lost request draft');
-  await state.getByRole('radio', { name: 'unconfirmed', exact: true }).click();
+  await setSubmission('unconfirmed');
   if (!await request.getByRole('button', { name: 'Send answer', exact: true }).isDisabled()) throw new Error('Unconfirmed response can be resubmitted');
-  await state.getByRole('radio', { name: 'failed', exact: true }).click();
+  await setSubmission('failed');
   await page.getByText('Sample authorization failure', { exact: true }).waitFor();
-  await state.getByRole('radio', { name: 'pending', exact: true }).click();
+  await setSubmission('pending');
   const trigger = request.getByRole('button', { name: 'Open request sheet', exact: true });
   await trigger.press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Request sheet', exact: true });
   await dialog.waitFor();
   await page.keyboard.press('Escape');
   await dialog.waitFor({ state: 'hidden' });
-  if (!await trigger.evaluate(element => element === document.activeElement)) throw new Error('Request sheet did not restore focus');
+  // Regression: the focus assertion ran before the overlay's restoration frame.
+  await page.waitForFunction(element => element === document.activeElement, await trigger.elementHandle(), { timeout: 2000 });
   await request.getByRole('button', { name: 'Allow connection', exact: true }).click();
   await page.getByText('Authorization allowed', { exact: true }).waitFor();
   const retry = request.getByRole('button', { name: 'Retry', exact: true });
@@ -43,4 +52,31 @@ export async function acceptRequests(page) {
   await page.getByText('Cancel deployment', { exact: true }).waitFor();
   if (await request.getByRole('button', { name: 'Remove', exact: true }).count() !== 1) throw new Error('Self member exposed removal');
   if (await request.evaluate(element => element.scrollWidth > element.clientWidth)) throw new Error('Request fixture overflows horizontally');
+}
+
+export async function acceptLongRequest(page, taskDetail, messages) {
+  // Regression: narrow request sheets collapsed the body to zero height while long content overflowed it.
+  const trigger = taskDetail.getByRole('button', { name: new RegExp(messages['detail.openRequest']) });
+  const sheet = await trigger.isVisible();
+  if (sheet) await trigger.press('Enter');
+  const scope = sheet ? page.getByRole('dialog', { name: messages['detail.needsYou'], exact: true }) : taskDetail;
+  const body = scope.locator('.request-card-body');
+  await body.waitFor({ state: 'visible' });
+  await body.scrollIntoViewIfNeeded();
+  const reading = await body.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    let top = Math.max(0, box.top), bottom = Math.min(innerHeight, box.bottom);
+    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      if (!['auto', 'scroll', 'hidden', 'clip'].includes(getComputedStyle(ancestor).overflowY)) continue;
+      const clip = ancestor.getBoundingClientRect();
+      top = Math.max(top, clip.top);
+      bottom = Math.min(bottom, clip.bottom);
+    }
+    element.scrollTop = element.scrollHeight;
+    return { height: element.clientHeight, visible: bottom - top, scroll: element.scrollTop, overflow: element.scrollHeight - element.clientHeight };
+  });
+  if (reading.height <= 0 || reading.visible <= 0) throw new Error('Request body has no visible reading area');
+  if (reading.overflow > 0 && reading.scroll <= 0) throw new Error('Long request body cannot scroll');
+  await body.evaluate(element => { element.scrollTop = 0; });
+  return reading;
 }

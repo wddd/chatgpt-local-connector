@@ -1,3 +1,5 @@
+.deployment-progress-chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.deployment-progress-chip .state-badge { min-width: 0; max-width: 100%; white-space: normal; }
 .remote-steps { list-style:none; display:grid; gap:28px; margin:0 0 24px; padding:0; }
 .remote-steps li { display:flex; align-items:flex-start; gap:14px; }
 .remote-steps li > div { display:grid; gap:6px; }
