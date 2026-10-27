@@ -273,6 +273,26 @@ Resolve model identity using the dispatch Agent's model catalog/formatter. Omit 
 
 Effort labels prefer matching model-specific or same-model session option names, then localized effort vocabulary. `priority` is Fast; `default` is Standard. Other unknown effort/tier IDs remain marked unresolved. Catalog reads are deduplicated and cached for one minute per Agent/task; later mounts retry. Current settings, account health and quota never supply recorded values. Design mounts use the same record adapter with fixture catalogs. Claude transcript specs read `message.model` and recorded `perTurnEffort`/`effort` from assistant execution records; a new user turn clears the previous spec. Missing values remain absent. The inline variant uses the same outlined pill treatment as adjacent task project tags; the shared composite owns its styling. Click has no action. The chip has missing/loading/unresolved/error states, no independent selected state, and full readable text and original evidence when truncated.
 
+### Contextual actions
+
+An action lives on the object it acts on. Functional pages and panels MUST NOT use full-width button rows, edit dialogs for single fields or a central display-settings panel.
+
+| Action | Composite | Placement and behavior |
+| --- | --- | --- |
+| Rename | `InlineName` | A pencil icon sits next to the name. It is always visible in the account L2 header and revealed on rows. Activating it turns the name into an input in place. Enter or blur saves, Escape cancels and restores focus to the pencil. Empty input shows a field error and keeps the editor open. |
+| Remove and other destructive actions | `ObjectMenu` | A `⋯` icon at the trailing edge of the header or row opens a shadcn `DropdownMenu`. Destructive items confirm in a shadcn `Popover` anchored to the menu trigger, with one sentence stating the consequence. |
+| Add | `SectionHeader` action | A `+` icon button at the trailing edge of the list's section header. An empty list keeps one text button as its only entry. |
+| Copy | `CopyValue` | A copy icon directly after the value. Success shows a transient confirmation on the icon. |
+| Start/stop | `Switch` | A switch at the trailing edge of the object's row. The row's state text reflects the transition. |
+| Retry/refresh | `Notice` action | An icon on the notice that reports the failure. |
+| Display options | `ContextSettings` | A gear icon at the top-right of the affected element opens a shadcn `Popover` with only that element's options. |
+
+- Revealed icons MUST also appear on `focus-within` and on coarse pointers (`@media (pointer: coarse)`).
+- Every icon action has an accessible name and a tooltip.
+- Frequent actions are always visible. Secondary actions are revealed.
+- `ContextSettings` exists only on task bubbles (bubble width) and side panels (panel width, replacing the standalone width button). Other display settings stay CLI/AX only until a UI need is shown.
+- Each composite has a browser fixture with the revealed state forced and a design-mount export.
+
 ## Naming, mounting and convergence
 
 | Location | Responsibility |

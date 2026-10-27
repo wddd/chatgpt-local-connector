@@ -41,6 +41,7 @@ The core keeps every connection kind, multiple connections per computer and per-
 - SRC and AGENT are managed only from the homepage topology. They have no dock page.
 - Each object has exactly one inspect/edit surface.
 - Creating happens in a centered dialog. Existing objects are inspected in side panels or the Connections page.
+- Actions and display options sit on the object they affect, per [Contextual actions](component-spec.md#contextual-actions). There is no central display-settings panel.
 - The hub left half opens Add SRC. The hub right half opens Agent settings.
 
 ## Dock
@@ -60,26 +61,26 @@ SRC panels dock left; AGENT panels dock right. A side panel is a drill-down stac
 
 ### SRC L1 — platform
 
-- Add account: opens Add SRC with the platform preselected.
+- Add account: the `+` action on the account list header opens Add SRC with the platform preselected.
 - Account list: alias and state. A row opens L2.
 
 ### SRC L2 — account
 
 - Account state and last seen.
 - Conversation list for this account. A conversation with an ARC task opens its L3 task detail on the AGENT side.
-- Rename and remove.
+- Rename inline on the alias and remove from the `⋯` menu, per [Contextual actions](component-spec.md#contextual-actions).
 
 ### AGENT L1 — platform
 
 - Header: name and version.
-- Add account: opens the existing login flow for this agent.
+- Add account: the `+` action on the account list header opens the existing login flow for this agent.
 - Account list: alias, state and quota icon. A row opens L2.
 
 ### AGENT L2 — account
 
 - Account state and quota.
 - Task list for this account. A row opens L3.
-- Rename and remove.
+- Rename inline on the alias and remove from the `⋯` menu, per [Contextual actions](component-spec.md#contextual-actions).
 
 ### L3 — task detail
 
@@ -99,7 +100,7 @@ There is no connection choice, change-connection flow or product correction in t
 
 ## Connections page
 
-- Public link: address copy, state, start/stop. When it does not exist, one action deploys it.
+- Public link: address with copy, state, and a start/stop switch. When it does not exist, one action deploys it.
 - Local: state.
 - Read-only rows for connections configured through CLI/AX.
 - One short text line points to the user guide for other connection methods.
