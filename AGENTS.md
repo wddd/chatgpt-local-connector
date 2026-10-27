@@ -40,6 +40,7 @@ MUST means a requirement. SHOULD means the default unless a concrete task-specif
 - Reuse shadcn `Dialog` for editing. Use native `form` with shadcn field components. Default to one column with labels above inputs. Only short, related fields may share a row. Associate validation errors with their fields. Focus the first error after failed submission. Restore trigger focus after closing an overlay.
 - The homepage uses the ARC mark and earcup connections. Preserve topology, spatial transitions for expanded node panels, and simplified tactile toggles. Functional pages use quiet, compact, consistent layouts. Keep workspace-panel title bars at the top. Opening and closing use only fades and slight movement of at most 180ms. Nested views switch content without morphing the whole panel. Related tooltips remain visible while smoothly moving and resizing. Hover highlights use the shared spring-following layer. Preserve reduced motion, keyboard navigation, layered Escape, and focus restoration. shadcn/ui and Radix own common interaction foundations. See [UI](docs/dev/ui.md).
 - Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.
+- Keep the UI minimal and the core open. The UI exposes only the basic path for each task, per [Object model](docs/dev/object-model.md). Advanced configuration and alternate methods live in CLI/AX with text documentation and MUST NOT get UI entries.
 
 ## Documentation layers
 

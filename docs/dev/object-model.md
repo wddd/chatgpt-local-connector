@@ -1,121 +1,134 @@
 # Object model and management surfaces
 
-> Status: draft. The first implementation (100aa8c, 0147fb7, 574048a) was reverted. Redo it against design mockups before implementing; those commits remain a reference for redirects and fixtures.
+> Status: target. Implementation replaces the conflicting UI placement in `ui.md`, `remote-link.md`, `accounts.md` and `component-spec.md`, then folds this document into them.
+
+MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.
 
 This document defines what a user manages in ARC and where each object is managed.
-It supersedes the UI placement in `remote-link.md` (Remote link workspace) and `accounts.md` (Accounts workspace, control source panel) where they conflict.
-The add/change dialogs in `remote-link.md` (Add control source, Add connection, Change connection) remain valid.
+
+## Principle
+
+- The UI exposes only the basic path for each task. The core, CLI and AX stay fully capable.
+- Advanced configuration and alternate methods MUST NOT have UI entries, including disabled, collapsed or "advanced" ones. User documentation describes them as text so the user's own Agent can configure them through CLI or AX.
+- The UI MUST still display the real state that advanced configuration produces, read-only, so the topology and panels never contradict the core.
+- A surface that only restates another surface is removed, not linked.
 
 ## Model
-
-Each user owns three first-class assets. Everything else the user manages derives from them.
 
 | Asset | Code names | Meaning |
 | --- | --- | --- |
 | SRC | control source, `source` | A model-facing client account that sends work to ARC (e.g. one claude.ai account). |
 | AGENT | agent, agent profile | A controlled executor on this computer (Codex, Claude Code, Pi/ACP agents). |
-| TUNNEL | connection, `ingress` | The transport a SRC uses to reach this computer: dedicated tunnel, private relay, shared relay, or local. |
+| TUNNEL | connection, `ingress` | How a SRC reaches this computer. |
 
-- ACCOUNT is the second level of SRC and AGENT, not a standalone asset. One identity MAY appear on both sides (a ChatGPT account as SRC and its Codex login as AGENT).
-- Public relay devices extend TUNNEL. They stay experimental and are out of scope here.
+- ACCOUNT is the second level of SRC and AGENT, not a standalone asset. One identity MAY appear on both sides.
 - On the homepage, the topology lines between SRC, the hub and AGENT represent TUNNEL. TUNNEL has no node of its own.
+
+## TUNNEL in the UI
+
+The UI knows exactly two connections:
+
+- Local: local clients on this computer.
+- Public link: one relay this computer deploys to the user's Cloudflare account with one action. Every remote SRC uses it.
+
+The core keeps every connection kind, multiple connections per computer and per-source connection binding. Custom addresses, dedicated tunnel providers, OpenAI Secure Tunnel, joining a shared relay, relay hosting, invite links and member devices are CLI/AX only.
+
+- When the core has connections beyond Local and the public link, the Connections page lists them as read-only rows with kind, address and state. They have no edit, switch or remove actions in the UI.
+- A SRC never chooses a connection in the UI. Remote SRCs bind to the public link, local clients to Local.
 
 ## Placement rules
 
 - SRC and AGENT are managed only from the homepage topology. They have no dock page.
-- TUNNEL is infrastructure. It is managed only from its dock page.
-- Each object has exactly one canonical inspect/edit surface. Other places link to it; they MUST NOT embed a second copy.
-- Creating something new happens in a centered dialog (unchanged rule). Existing objects are inspected and edited in side panels or the TUNNEL page.
-- The hub left half opens Add control source. The hub right half opens the Agent catalog dialog.
+- Each object has exactly one inspect/edit surface.
+- Creating happens in a centered dialog. Existing objects are inspected in side panels or the Connections page.
+- The hub left half opens Add SRC. The hub right half opens Agent settings.
 
 ## Dock
 
-The dock contains, in order: Tasks, Records, Connections (TUNNEL), Settings.
-The Remote link, Accounts and Permissions pages are removed.
-Deep links, Tauri `navigate` events and tray menu items that targeted removed pages MUST redirect: `remote` → Connections, `accounts` → homepage, `permissions` → Settings › Permissions.
+The dock contains, in order: Logs, Connections, Settings.
+The Tasks, Accounts, Remote link and Permissions pages are removed.
+Deep links, Tauri `navigate` events and tray items that targeted removed pages MUST redirect: `tasks` and `accounts` → homepage, `remote` → Connections, `permissions` → Settings.
 
 ## Homepage panels
 
-SRC panels dock left; AGENT panels dock right. A side panel is a drill-down stack: L1 → L2 → L3 within one panel, with a back control, using the existing agent panel task-detail layering.
+SRC panels dock left; AGENT panels dock right. A side panel is a drill-down stack L1 → L2 → L3 with a back control.
 
-- Clicking an L1 node opens its L1 layer.
-- Clicking an L2 node opens its L2 layer directly; back returns to its L1 layer.
-- If an L1 platform has exactly one account, clicking L1 opens that account's L2 layer directly; back still returns to the L1 layer.
-- Clicking an L3 task bubble opens the task detail layer (unchanged).
+- Clicking an L1 node opens its L1 layer. Clicking an L2 node opens its L2 layer; back returns to L1.
+- An L1 platform with exactly one account opens that account's L2 layer directly; back still returns to L1.
+- Clicking a task bubble opens the L3 task detail layer.
 - Topology lines are not clickable.
 
 ### SRC L1 — platform
 
-- Account list for the platform (alias, state, connection chip); a row opens the L2 layer.
-- Platform notification capability: whether a verified push path exists for this platform.
-- Add account: opens Add control source with the platform preselected.
+- Add account: opens Add SRC with the platform preselected.
+- Account list: alias and state. A row opens L2.
 
-### SRC L2 — source account
+### SRC L2 — account
 
-- Identity: alias (editable), email/org (sensitive), plan.
-- State and last seen. Connection start/stop belongs to Connections detail; SRC L2 has no enabled switch.
-- Connection: the TUNNEL name and kind; it links to that connection on the Connections page. Change connection opens the Change connection dialog. Disconnect stays here.
-- OAuth grants for this source (moved from Permissions › connection details).
-- Notification binding for this account (bind, test, last delivery).
-- Dispatch activity (recent dispatches from this source).
-- Identity link: when the same identity is also an AGENT account, a link opens that AGENT L2 layer.
-- Account maintenance: merge and remove.
-- The panel MUST NOT embed the connection edit form.
+- Account state and last seen.
+- Conversation list for this account. A conversation with an ARC task opens its L3 task detail on the AGENT side.
+- Rename and remove.
 
-### AGENT L1 — agent platform
+### AGENT L1 — platform
 
-- Header: quota icon, name, version, open-app action, in-progress count.
-- Platform behavior settings moved from Settings (for Codex: auto-open Codex tasks).
-- Dispatch policy summary, read-only: default model/effort and criteria text.
-- Account list; a row opens the L2 layer. Add account opens the existing account login flow for this agent.
-- Aggregate task list across accounts (current behavior when no account is selected).
-- Gear: display settings (bubble density, quota display), unchanged.
+- Header: name and version.
+- Add account: opens the existing login flow for this agent.
+- Account list: alias, state and quota icon. A row opens L2.
 
-### AGENT L2 — agent account
+### AGENT L2 — account
 
-- Quota for this account. Quota for a shared identity is shown only here, not on SRC L2.
-- Task list filtered to this account.
-- Default-account switch, reauthenticate.
-- Identity link to the SRC L2 layer when the identity is also a SRC.
-- Account maintenance: alias edit, merge and remove.
+- Account state and quota.
+- Task list for this account. A row opens L3.
+- Rename and remove.
 
-### AGENT L3 — task detail
+### L3 — task detail
 
-Unchanged.
+Unchanged. It replaces the removed Tasks page.
 
-### Agent catalog dialog (hub right)
+### Agent settings (hub right)
 
-Lists installed and not-installed agents with enable/disable, ordering and official setup links. It manages which agents exist, not their accounts or tasks.
+Lists agents discovered on this computer with enable/disable and order. Not-installed agents show their official setup link. It does not manage accounts or tasks.
 
-## Connections page (TUNNEL)
+### Add SRC (hub left)
 
-- List: one row per connection with kind, address, health and the number of sources it carries. New connection opens Add connection.
-- Detail: name, address copy, kind and provider, online state, start/stop, relay settings, edit (the only entry to the connection edit form), remove or leave.
-- Sources carried: rows for each SRC; selecting one returns to the homepage and opens that SRC L2 layer.
-- Add a source for this connection opens Add control source with the connection preselected (unchanged).
-- Pending reauthorization notices remain on this page until claimed.
+1. Choose the product.
+2. Remote products: copy the public link's MCP URL into the client, then approve the pairing request. Without a public link, the first step deploys it.
+3. Local clients: show the local setup command.
+
+There is no connection choice, change-connection flow or product correction in the UI.
+
+## Connections page
+
+- Public link: address copy, state, start/stop. When it does not exist, one action deploys it.
+- Local: state.
+- Read-only rows for connections configured through CLI/AX.
+- One short text line points to the user guide for other connection methods.
 
 ## Settings
 
-- General, appearance, network: unchanged.
-- Permissions: system permissions and environment checks from the former Permissions page. First-run guidance reuses this section.
-- Global behavior: task approval mode, request routing delay, control-source notification switch.
-- Extras: relay hosting and experimental features, unchanged.
+- General, appearance and update items.
+- System permissions: one entry for the OS permissions ARC needs.
+- Extras: experimental features only.
+
+A setting stays in the UI only when most users need it. Others move to CLI/AX.
+
+## Logs
+
+Log rows: time, source name when known, op and result.
 
 ## Removals
 
-- Tool policy: remove the UI. Connections always grant full tool access. Remove the stored field and its enforcement if the change stays contained; otherwise pin it to full and keep the field only for compatibility.
-- Duplicate surfaces: the Remote link copy of the source panel, the Permissions connection list and details dialog, the source panel edit mode that opened the connection form, and every connection-form entry except Connections › detail › Edit.
-- Account quota MUST render through one component.
-
-## Naming
-
-- Rename `IngressPanel` to the SRC panel; it no longer wraps the connection form.
-- UI copy uses "connection" for TUNNEL. `ingress` remains a protocol and storage identifier only.
+- Pages: Tasks, Accounts, Remote link, Permissions.
+- Connection UI: Add connection, Change connection, connection edit forms, provider forms, Secure Tunnel setup, joined relays, relay hosting and member devices.
+- Permission UI: OAuth grant lists and tool policy. Connections always grant full tool access.
+- Account UI: merge, notification binding, default-account switch and dispatch policy summary.
+- Every removed capability remains available through CLI/AX and is documented in the user guides.
 
 ## Phases
 
-1. Information architecture: dock change, page removals and redirects, Permissions into Settings, tool policy removal, connection form single entry, OAuth grants to SRC, Codex behavior settings to AGENT L1.
-2. Panel layering: SRC L1/L2 and AGENT L1/L2 drill-down, single-account shortcut, identity links, account maintenance in L2, read-only dispatch policy summary.
+1. Removal: dock, page deletions, redirects and removed connection and permission UI.
+2. Panels: SRC and AGENT L1/L2 with the single-account shortcut.
+3. Connections and Add SRC: the two-connection model and the simplified add flow, with user guides updated for CLI/AX configuration.
+4. Acceptance: replace the fixture set with one scenario per surface state above.
 
-Each phase is accepted with UI fixtures. Missing states get new fixtures.
+Each phase is accepted with UI fixtures.
