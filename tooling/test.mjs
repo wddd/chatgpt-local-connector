@@ -29,6 +29,7 @@ try {
     'tests/dispatch-spec.test.ts',
     'tests/dom-assert.test.ts',
     'tests/i18n-message.test.ts',
+    'tests/live-ui-projection.test.ts',
     'tests/isolated-selector.test.ts',
     'tests/notification-account.test.ts',
     'tests/panel-state.test.ts',

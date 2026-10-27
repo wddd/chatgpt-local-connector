@@ -15,11 +15,11 @@ export const projectName = (path?: string | null) => path?.trim().replace(/[\\/]
 
 export function conversationActivity(conversation: AgentConversation): TrackedActivity {
   return {
-    id: conversation.id, source: conversation.source, status: conversation.status, title: conversation.title || undefined,
+    id: conversation.id, source: conversation.source === 'native' ? 'transcript' : conversation.source, status: conversation.status, title: conversation.title || undefined,
     phase: 'idle', phaseSince: null, headline: '', startedAt: conversation.createdAt,
     project: conversation.project, projectName: conversation.projectName,
     dispatchSummary: conversation.dispatchSummary ?? undefined, turnCount: conversation.turnCount ?? undefined,
-    agentAccountId: conversation.dispatchSummary?.agentAccountId,
+    agentAccountId: conversation.agentAccountId ?? conversation.dispatchSummary?.agentAccountId,
     nativeSessionId: conversation.nativeSessionId ?? undefined, open: conversation.open,
     timeline: true, orderAt: Date.parse(conversation.createdAt ?? '') || 0, conversation: true,
   };

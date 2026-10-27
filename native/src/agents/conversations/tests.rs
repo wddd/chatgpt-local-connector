@@ -58,13 +58,13 @@ fn native_title_ignores_envelopes_and_tool_results() {
     assert_eq!(row(&[mixed], &[])["title"], prompt);
     assert_eq!(
         row(&[user("<command-name>/clear</command-name>")], &[])["title"],
-        "<command-name>/clear</command-name>"
+        Value::Null
     );
 }
 
 #[test]
 fn native_titles_prefer_explicit_names_and_preserve_unicode_bounds() {
-    // Property: explicit titles outrank summaries and user text, and title truncation preserves Unicode scalar boundaries.
+    // Regression: summaries displaced the first real prompt and activity titles ignored native custom names.
     let custom = "Saved name";
     let summary = "Earlier summary";
     let head = vec![
@@ -78,10 +78,21 @@ fn native_titles_prefer_explicit_names_and_preserve_unicode_bounds() {
     let derived = row(&head, &tail);
     assert_eq!(derived["title"], custom);
     assert_eq!(derived["preview"], "Latest reply");
-    assert_eq!(row(&head, &[])["title"], summary);
+    assert_eq!(row(&head, &[])["title"], "First prompt");
+    assert_eq!(
+        row(&[json!({"type":"summary","summary":summary})], &[])["title"],
+        summary
+    );
     let input = "λ".repeat(100);
-    assert_eq!(native::title_text(&input).chars().count(), 80);
-    assert!(input.starts_with(&native::title_text(&input)));
+    assert_eq!(
+        row(&[user(&input)], &[])["title"]
+            .as_str()
+            .unwrap()
+            .chars()
+            .count(),
+        80
+    );
+    assert!(input.starts_with(row(&[user(&input)], &[])["title"].as_str().unwrap()));
 }
 
 #[test]

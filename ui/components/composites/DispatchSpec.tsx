@@ -7,12 +7,17 @@ import { modelLabel as catalogModelLabel } from './dispatchSpecLabel';
 
 export type DispatchSpecRecord =
   | { kind: 'session'; value: Pick<AgentActivitySession | AgentConversation, 'id' | 'source' | 'dispatchSummary'> }
-  | { kind: 'timeline'; value: Pick<AgentTimeline, 'dispatchSummary' | 'turnDispatchSummaries'>; taskId: string; turnId?: string; source?: AgentActivitySession['source'] }
+  | { kind: 'timeline'; value: Pick<AgentTimeline, 'dispatchSummary' | 'turnDispatchSummaries'>; taskId: string; turnId?: string; source?: AgentActivitySession['source']; session?: Pick<AgentActivitySession, 'id' | 'turnId' | 'dispatchSummary'> }
   | { kind: 'task'; value: Pick<TaskRecord, 'agent' | 'taskId' | 'threadId' | 'requestId' | 'task'> };
 
 /** Explicit turns never inherit task-level or current-default configuration. */
 export function recordedDispatchSpec(record: DispatchSpecRecord): DispatchSummary | undefined {
-  if (record.kind === 'timeline') return record.turnId ? record.value.turnDispatchSummaries?.[record.turnId] : record.value.dispatchSummary;
+  if (record.kind === 'timeline') {
+    const recorded = record.turnId ? record.value.turnDispatchSummaries?.[record.turnId] : record.value.dispatchSummary;
+    // A live projection is evidence for its own turn, never for an older turn.
+    return recorded ?? (record.session?.id === record.taskId && record.turnId === record.session.turnId
+      ? record.session.dispatchSummary ?? undefined : undefined);
+  }
   if (record.kind === 'task') return { model: record.value.task.model, effort: record.value.task.effort, serviceTier: record.value.task.dispatch?.serviceTier ?? undefined };
   return record.value.dispatchSummary ?? undefined;
 }

@@ -1,9 +1,9 @@
 //! On-demand native metadata. Transcript paths never enter the public row.
 use super::*;
 use crate::kernel::file_cache::{Cache as DirectoryCache, Stamp};
-use std::{io::Read, sync::LazyLock, time::SystemTime};
+use std::{io::Read, time::SystemTime};
 
-const DERIVATION_VERSION: u32 = 1;
+const DERIVATION_VERSION: u32 = 2;
 const HEAD_BYTES: u64 = 64 * 1024;
 const TAIL_BYTES: u64 = 128 * 1024;
 
@@ -194,20 +194,6 @@ fn short(text: &str, limit: usize) -> String {
         .take(limit)
         .collect()
 }
-pub(super) fn title_text(text: &str) -> String {
-    static NOISE: LazyLock<Vec<regex::Regex>> = LazyLock::new(|| {
-        [
-        r"(?is)<(?:attached-file|image|file)\b[^>]*?/>",
-        r"(?is)<(?:local-command-caveat|local-command-stdout|local-command-stderr|command-name|command-message|command-args|caveat|attached-file|file|image)(?:\s[^>]*)?>.*?(?:</(?:local-command-caveat|local-command-stdout|local-command-stderr|command-name|command-message|command-args|caveat|attached-file|file|image)>|\z)",
-        r"(?i)\[(?:image(?:\s*#?\d+)?|attached[ -]?(?:file|image)(?:[^\]\n]*)|file:[^\]\n]*|image:[^\]\n]*)\]",
-    ].into_iter().map(|pattern| regex::Regex::new(pattern).unwrap()).collect()
-    });
-    let mut text = crate::task_tracking::transcript_text(text);
-    for pattern in NOISE.iter() {
-        text = pattern.replace_all(&text, " ").into_owned();
-    }
-    short(&text, 80)
-}
 fn normalized_time(value: &Value) -> Option<String> {
     chrono::DateTime::parse_from_rfc3339(value.as_str()?)
         .ok()
@@ -248,10 +234,7 @@ pub(super) fn derive(
             .or_else(|| records.iter().find_map(|r| r["sessionId"].as_str()))?
     };
     uuid::Uuid::parse_str(id).ok()?;
-    let mut custom = None;
-    let mut summary = None;
-    let mut first = None;
-    let mut title = None;
+    let mut title = crate::task_tracking::TranscriptTitle::default();
     let mut preview = String::new();
     let mut messages = 0;
     let mut project = None;
@@ -259,36 +242,13 @@ pub(super) fn derive(
         if let Some(cwd) = record["cwd"].as_str() {
             project = Some(cwd)
         }
-        match string(record, "type") {
-            "custom-title" => {
-                custom = record["customTitle"]
-                    .as_str()
-                    .filter(|s| !s.trim().is_empty())
-            }
-            "summary" if agent == "claude" => {
-                summary = record["summary"].as_str().filter(|s| !s.trim().is_empty())
-            }
-            "session_info" if agent == "pi" => {
-                custom = record["name"].as_str().filter(|s| !s.trim().is_empty())
-            }
-            _ => (),
-        }
+        title.observe(record);
         let role = string(&record["message"], "role");
         if matches!(role, "user" | "assistant" | "toolResult") {
             messages += 1
         }
         let text = text_content(record);
-        if role == "user" {
-            if first.is_none() && !text.trim().is_empty() {
-                first = Some(short(&text, 80))
-            }
-            if title.is_none() && record["isMeta"] != true {
-                let cleaned = title_text(&text);
-                if !cleaned.is_empty() {
-                    title = Some(cleaned)
-                }
-            }
-        } else if role == "assistant" && !text.trim().is_empty() {
+        if role == "assistant" && !text.trim().is_empty() {
             preview = short(&text, 240);
         }
     }
@@ -300,7 +260,7 @@ pub(super) fn derive(
         .unwrap_or_else(|| updated.clone());
     Some(
         json!({"agent":agent,"id":id,"nativeSessionId":id,"source":"native",
-        "title":custom.or(summary).map(|s| short(s, 80)).or(title).or(first),"preview":preview,
+        "title":title.value(),"preview":preview,
         "project":project,"createdAt":created,"updatedAt":updated,"status":null,
         "messageCount":if complete { Some(messages) } else { None },"metadataPartial":!complete}),
     )

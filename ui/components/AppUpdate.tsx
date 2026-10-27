@@ -74,7 +74,7 @@ function PanelContents() {
     <SectionHeader className="update-panel-header shrink-0 border-b p-3 sm:px-5 sm:py-4" level={3} title={<span className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 wrap-anywhere"><Identity job={job} /></span>} actions={<><IconButton icon={X} label={t("close")} onClick={dismissUpdate} /></>} />
     <div className="update-panel-body flex min-h-0 flex-col overflow-y-auto">
     {advancing ? <div className="px-5 py-7" role="status" aria-live="polite">
-      <h2 className="mb-7 text-center text-lg">{seconds === undefined ? t(`updates.state.${job.state}`) : t("replacementCountdown", { seconds })}</h2>
+      <h2 className="mb-7 text-center text-lg">{seconds === undefined ? t(`updates.state.${job.state}`) : t("replacementCountdown", { count: seconds })}</h2>
       <Steps job={job} />
     </div> : <div className="update-columns grid min-h-0 max-h-115 grid-cols-1 grid-rows-2 sm:grid-cols-2 sm:grid-rows-1">
       <section className="update-notes min-h-0 min-w-0 overflow-y-auto overscroll-contain p-4 sm:p-5" tabIndex={0} aria-label={t(job.source?.kind === "local" ? "updates.localNotes" : "updates.notes")}><h3 className="mb-3 text-sm">{t(job.source?.kind === "local" ? "updates.localNotes" : "updates.notes")}</h3><pre className="m-0 font-sans leading-relaxed whitespace-pre-wrap wrap-anywhere">{job.notes || t("updates.noNotes")}</pre>

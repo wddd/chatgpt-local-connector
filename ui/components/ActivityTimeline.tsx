@@ -133,7 +133,9 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     return () => observer.disconnect();
   }, []);
   const groups = timelineGroups(timeline?.entries ?? []);
-  const nativeSession = live ?? { ...session, turnId: groups.at(-1)?.turnId || session.turnId, interaction: undefined };
+  const historyTurn = groups.at(-1)?.turnId || session.turnId;
+  const nativeSession = live ?? { ...session, turnId: historyTurn, interaction: undefined,
+    dispatchSummary: historyTurn === session.turnId ? session.dispatchSummary : undefined };
   const agentName = name(orderedAgents().find(a => a.agent === agent) ?? { agent });
   const duration = timelineDuration(timeline?.entries ?? [], now, running, nativeSession.turnId, timeline?.turnTimings, nativeSession.turnStartedAt);
   const latestSummary = live ? live.dispatchSummary : timeline?.dispatchSummary ?? nativeSession.dispatchSummary;

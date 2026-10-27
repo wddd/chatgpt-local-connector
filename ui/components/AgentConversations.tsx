@@ -75,9 +75,10 @@ export default function AgentConversations({ agent, account, accountId, active }
       title: session.title || history?.title,
       status: current ? undefined : history?.status,
       dispatchSummary: session.dispatchSummary ?? history?.dispatchSummary,
+      agentAccountId: session.agentAccountId ?? history?.agentAccountId,
       turnCount: session.turnCount === undefined ? history?.turnCount : Math.max(session.turnCount, history?.turnCount ?? 0),
       orderAt: history?.orderAt || Date.parse(session.startedAt ?? "") || 0,
-      conversation: session.source !== "transcript",
+      conversation: history?.conversation || session.source !== "transcript",
     });
   }
   const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
