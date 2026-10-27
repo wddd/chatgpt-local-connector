@@ -11,21 +11,27 @@ export function ObjectMenu({ label, items, revealed = false }: { label: string; 
   const trigger = useRef<HTMLButtonElement>(null), id = useId();
   const [menu, setMenu] = useState(false), [selected, setSelected] = useState<Action>();
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const confirming = useRef(false), pending = useRef(false);
+  const nextConfirmation = useRef<Action | undefined>(undefined), pending = useRef(false);
   async function execute(item: Action) {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError('');
-    try { await item.onSelect(); setSelected(undefined); confirming.current = false; }
+    try { await item.onSelect(); setSelected(undefined);  }
     catch (error) { setError(String(error)); }
     finally { pending.current = false; setBusy(false); }
   }
   if (!items.length) return null;
-  return <span className="group/context inline-flex"><Popover open={!!selected} onOpenChange={open => { if (!open && !busy) { setSelected(undefined); confirming.current = false; } }}>
+  return <span className="group/context inline-flex"><Popover open={!!selected} onOpenChange={open => { if (!open && !busy) { setSelected(undefined);  } }}>
     <DropdownMenu open={menu} onOpenChange={setMenu}>
       <PopoverAnchor asChild><DropdownMenuTrigger asChild><ContextIcon ref={trigger} icon={Ellipsis} label={label} revealed={revealed || !!selected} /></DropdownMenuTrigger></PopoverAnchor>
-      <DropdownMenuContent align="end" onCloseAutoFocus={event => { if (confirming.current) event.preventDefault(); }} onEscapeKeyDown={event => event.stopPropagation()}>
+      <DropdownMenuContent align="end" onCloseAutoFocus={event => {
+        if (!nextConfirmation.current) return;
+        event.preventDefault();
+        const item = nextConfirmation.current; nextConfirmation.current = undefined;
+        // Wait until the menu releases its focus scope before mounting the confirmation.
+        requestAnimationFrame(() => setSelected(item));
+      }} onEscapeKeyDown={event => event.stopPropagation()}>
         {items.map(item => <DropdownMenuItem key={item.label} disabled={item.disabled || busy} variant={item.consequence ? 'destructive' : 'default'} onSelect={() => {
-          setError(''); confirming.current = !!item.consequence; if (item.consequence) setSelected(item); else void execute(item);
+          setError(''); if (item.consequence) nextConfirmation.current = item; else void execute(item);
         }}>{item.label}</DropdownMenuItem>)}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -33,7 +39,7 @@ export function ObjectMenu({ label, items, revealed = false }: { label: string; 
       onInteractOutside={event => { if (busy) event.preventDefault(); }} onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }}>
       <p id={id} className="text-sm">{selected?.consequence}</p>
       {error && <Notice>{error}</Notice>}
-      <div className="mt-3 flex justify-end gap-2"><Button disabled={busy} onClick={() => { setSelected(undefined); confirming.current = false; }}>{t('cancel')}</Button>
+      <div className="mt-3 flex justify-end gap-2"><Button disabled={busy} onClick={() => { setSelected(undefined);  }}>{t('cancel')}</Button>
         <Button variant="danger" busy={busy} onClick={() => selected && void execute(selected)}>{selected?.label}</Button></div>
     </PopoverContent>
   </Popover>{error && !selected && <Notice>{error}</Notice>}</span>;
