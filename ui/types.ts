@@ -83,7 +83,6 @@ export interface AgentInteraction {
   questions?: { id: string; question: string; isOther?: boolean; isSecret?: boolean; multiSelect?: boolean; options?: { label: string; description?: string }[] }[];
 }
 export interface AgentActivitySession {
-  metadataPartial?: boolean;
   turnCount?: number;
   projectName?: string | null;
   dispatchSummary?: DispatchSummary;
@@ -113,7 +112,6 @@ export interface AgentActivitySnapshot {
   agents: Record<string, { sessions: AgentActivitySession[] }>;
 }
 export interface AgentConversation {
-  metadataPartial?: boolean;
   dispatchSummary?: DispatchSummary | null;
   turnCount?: number | null;
   projectName?: string | null;

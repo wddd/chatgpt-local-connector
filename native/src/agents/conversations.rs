@@ -264,7 +264,6 @@ impl AgentHost {
                     "createdAt":timestamp(&row["createdAt"]),"source":"codex-thread"});
                 item["dispatchSummary"] = metadata["dispatchSummary"].clone();
                 item["turnCount"] = metadata["turnCount"].clone();
-                item["metadataPartial"] = metadata["metadataPartial"].clone();
                 item["status"] = row["status"].as_str().or_else(|| row["status"]["type"].as_str()).map(|s| json!(s)).unwrap_or(Value::Null);
                 if let Some(open) = self.task_navigation(agent, string(row, "id")) {
                     item["open"] = open;

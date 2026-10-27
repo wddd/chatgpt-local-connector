@@ -21,7 +21,6 @@ pub(super) struct Monitor {
 #[derive(Default)]
 pub(super) struct TurnClock {
     offset: u64,
-    partial: bool,
     started_at: Value,
     turn_id: String,
     turns: HashSet<String>,
@@ -294,12 +293,7 @@ fn scan_roots(
                         session["project"] = json!(clock.project)
                     }
                     session["startedAt"] = clock.created_at.clone();
-                    if clock.partial {
-                        session.as_object_mut().unwrap().remove("turnCount");
-                    } else {
-                        session["turnCount"] = json!(clock.turns.len());
-                    }
-                    session["metadataPartial"] = json!(clock.partial);
+                    session["turnCount"] = json!(clock.turns.len());
                     if !clock.turn_id.is_empty() {
                         session["turnId"] = json!(clock.turn_id)
                     }
@@ -337,9 +331,7 @@ pub(super) fn conversation_metadata(thread: &Value, clock: &mut TurnClock) -> Re
         "codex",
         clock,
     )?;
-    Ok(
-        json!({"dispatchSummary":clock.dispatch_summary,"turnCount":if clock.partial {None} else {Some(clock.turns.len())},"metadataPartial":clock.partial}),
-    )
+    Ok(json!({"dispatchSummary":clock.dispatch_summary,"turnCount":clock.turns.len()}))
 }
 
 fn turn_started_at(path: &Path, agent: &str, clock: &mut TurnClock) -> Result<Value> {
@@ -350,23 +342,12 @@ fn read_clock(mut file: File, agent: &str, clock: &mut TurnClock) -> Result<Valu
     if file.metadata().map_err(|e| e.to_string())?.len() < clock.offset {
         *clock = TurnClock::default();
     }
-    let size = file.metadata().map_err(|e| e.to_string())?.len();
-    let start = clock.offset.max(size.saturating_sub(128 * 1024));
-    let skipped = start > clock.offset;
-    clock.offset = start;
     file.seek(SeekFrom::Start(clock.offset))
         .map_err(|e| e.to_string())?;
-    let mut reader = BufReader::new(file.take(128 * 1024));
+    // The clock is byte-complete, unlike the recent-activity tail. Retain only
+    // one line and its projection, and resume after the last complete record.
+    let mut reader = BufReader::new(file);
     let mut line = Vec::new();
-    if skipped {
-        clock.partial = true;
-        clock.started_at = Value::Null;
-        clock.turn_id.clear();
-        clock.dispatch_summary = None;
-        clock.offset += reader
-            .read_until(b'\n', &mut line)
-            .map_err(|e| e.to_string())? as u64;
-    }
     loop {
         line.clear();
         let count = reader
@@ -380,7 +361,7 @@ fn read_clock(mut file: File, agent: &str, clock: &mut TurnClock) -> Result<Valu
                 clock.offset += count as u64;
                 continue;
             }
-            if !clock.partial && clock.created_at.is_null() && record["timestamp"].is_string() {
+            if clock.created_at.is_null() && record["timestamp"].is_string() {
                 clock.created_at = record["timestamp"].clone();
             }
             if let Some(project) = record["cwd"]
@@ -531,15 +512,159 @@ pub(super) fn insert(agents: &mut serde_json::Map<String, Value>, agent: &str, s
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct Sandbox(PathBuf);
+    impl Drop for Sandbox {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn fixture() -> (Sandbox, PathBuf, SystemTime, String) {
+        let directory =
+            Sandbox(std::env::temp_dir().join(format!("arc-clock-regression-{}", id())));
+        std::fs::create_dir_all(&directory.0).unwrap();
+        let path = directory
+            .0
+            .join("00000000-0000-4000-8000-000000000001.jsonl");
+        let now = SystemTime::now();
+        let timestamp = chrono::DateTime::<chrono::Utc>::from(now).to_rfc3339();
+        (directory, path, now, timestamp)
+    }
+    fn append(path: &Path, records: &[Value]) {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        for record in records {
+            writeln!(file, "{record}").unwrap();
+        }
+    }
+    fn snapshot(directory: &Sandbox, agent: &str, now: SystemTime, cache: &mut ScanCache) -> Value {
+        let rows = scan_roots(
+            &[(agent.into(), directory.0.clone())],
+            &directory.0.join("index.jsonl"),
+            now,
+            cache,
+        );
+        assert_eq!(rows.len(), 1);
+        rows[0].session.clone()
+    }
+    fn prompt(agent: &str, turn: &str, text: &str, at: &str) -> Vec<Value> {
+        if agent == "claude" {
+            vec![
+                json!({"uuid":turn,"timestamp":at,"type":"user","message":{"role":"user","content":text}}),
+            ]
+        } else {
+            vec![
+                json!({"timestamp":at,"type":"event_msg","payload":{"type":"task_started","turn_id":turn}}),
+                json!({"timestamp":at,"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":text}]}}),
+            ]
+        }
+    }
+    fn large_tool_output(agent: &str, call: &str, at: &str) -> Vec<Value> {
+        let output = "x".repeat(192 * 1024);
+        if agent == "claude" {
+            vec![
+                json!({"uuid":format!("result-{call}"),"timestamp":at,"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":call,"content":output}]}}),
+            ]
+        } else {
+            vec![
+                json!({"timestamp":at,"type":"response_item","payload":{"type":"function_call_output","call_id":call,"output":output}}),
+            ]
+        }
+    }
+    fn tool_call(agent: &str, call: &str, at: &str) -> Vec<Value> {
+        if agent == "claude" {
+            vec![
+                json!({"uuid":call,"timestamp":at,"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use","content":[{"type":"tool_use","id":call,"name":"Read","input":{"file_path":"src/example.rs"}}]}}),
+            ]
+        } else {
+            vec![
+                json!({"timestamp":at,"type":"response_item","payload":{"type":"function_call","call_id":call,"name":"exec_command","arguments":"{\"cmd\":\"cat src/example.rs\"}"}}),
+            ]
+        }
+    }
+
+    #[test]
+    fn first_prompt_survives_large_initial_transcripts_and_appends() {
+        // Regression: f10de3bb selected a later prompt as the title after skipping the first 128 KiB of clock input.
+        for agent in ["claude", "codex"] {
+            let (directory, path, now, at) = fixture();
+            append(&path, &prompt(agent, "first", "Original request", &at));
+            append(&path, &tool_call(agent, "read-first", &at));
+            append(&path, &large_tool_output(agent, "read-first", &at));
+            append(&path, &prompt(agent, "second", "Later request", &at));
+            append(&path, &tool_call(agent, "read-second", &at));
+            let mut cache = ScanCache::default();
+            let row = snapshot(&directory, agent, now, &mut cache);
+            assert_eq!(row["title"], "Original request");
+            assert_eq!(row["turnCount"], 2);
+            append(&path, &large_tool_output(agent, "read-second", &at));
+            append(&path, &prompt(agent, "third", "Newest request", &at));
+            append(&path, &tool_call(agent, "read-third", &at));
+            let row = snapshot(&directory, agent, now, &mut cache);
+            assert_eq!(row["title"], "Original request");
+            assert_eq!(row["turnCount"], 3);
+            assert_eq!(row["turnId"], "third");
+        }
+    }
+
+    #[test]
+    fn codex_early_thread_tier_survives_large_rollouts_and_later_turns() {
+        // Regression: f10de3bb skipped early thread_settings_applied and lost Fast tier from long Codex session summaries.
+        let (directory, path, now, at) = fixture();
+        append(
+            &path,
+            &[
+                json!({"timestamp":at,"type":"session_meta","payload":{"id":"00000000-0000-4000-8000-000000000001","instructions":"fixture instructions ".repeat(10000)}}),
+                json!({"timestamp":at,"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"priority"}}}),
+            ],
+        );
+        let mut cache = ScanCache::default();
+        for turn in ["first", "second"] {
+            append(&path, &prompt("codex", turn, "Check files", &at));
+            append(&path, &tool_call("codex", turn, &at));
+            append(&path, &large_tool_output("codex", turn, &at));
+            append(
+                &path,
+                &[
+                    json!({"timestamp":at,"type":"turn_context","payload":{"turn_id":turn,"model":"fixture-model","effort":"high"}}),
+                ],
+            );
+            append(&path, &tool_call("codex", &format!("next-{turn}"), &at));
+            let row = snapshot(&directory, "codex", now, &mut cache);
+            assert_eq!(row["dispatchSummary"]["serviceTier"], "priority");
+            assert_eq!(row["dispatchSummary"]["model"], "fixture-model");
+            assert_eq!(row["turnId"], turn);
+        }
+    }
+
+    #[test]
+    fn single_long_turn_keeps_session_and_turn_start_and_count() {
+        // Regression: f10de3bb cleared turn clocks and omitted turnCount after a single turn grew beyond 128 KiB.
+        for agent in ["claude", "codex"] {
+            let (directory, path, now, at) = fixture();
+            append(&path, &prompt(agent, "only-turn", "Inspect files", &at));
+            let later =
+                chrono::DateTime::<chrono::Utc>::from(now + Duration::from_secs(1)).to_rfc3339();
+            let mut cache = ScanCache::default();
+            for call in ["first-read", "second-read"] {
+                append(&path, &tool_call(agent, call, &later));
+                append(&path, &large_tool_output(agent, call, &later));
+                append(&path, &tool_call(agent, &format!("next-{call}"), &later));
+                let row = snapshot(&directory, agent, now, &mut cache);
+                assert_eq!(row["startedAt"], at);
+                assert_eq!(row["turnStartedAt"], at);
+                assert_eq!(row["turnCount"], 1);
+                assert_eq!(row["turnId"], "only-turn");
+            }
+        }
+    }
     #[test]
     fn activity_polls_skip_unchanged_files_but_discover_changes_and_expire_work() {
         // Regression: the two-second activity poll reopened every recent rollout and the entire title index.
-        struct Sandbox(PathBuf);
-        impl Drop for Sandbox {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_dir_all(&self.0);
-            }
-        }
         let dir = Sandbox(std::env::temp_dir().join(format!("arc-activity-cache-{}", id())));
         let sessions = dir.0.join("sessions");
         std::fs::create_dir_all(sessions.join("day")).unwrap();
