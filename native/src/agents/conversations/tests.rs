@@ -101,13 +101,13 @@ fn sidechains_never_become_top_level_rows() {
         ),
         (
             format!("{SESSION}.jsonl"),
-            vec![json!({"isSidechain":true}), ordinary.clone()],
+            vec![json!({"isSidechain":true,"message":{"role":"user","content":"Child"}})],
             vec![],
         ),
         (
             format!("{SESSION}.jsonl"),
-            vec![ordinary.clone()],
-            vec![json!({"isSidechain":true})],
+            vec![],
+            vec![json!({"isSidechain":true,"message":{"role":"assistant","content":"Child"}})],
         ),
     ] {
         assert!(native::derive(
@@ -120,7 +120,13 @@ fn sidechains_never_become_top_level_rows() {
         )
         .is_none());
     }
-    assert_eq!(row(&[ordinary], &[])["id"], SESSION);
+    assert_eq!(row(&[ordinary.clone()], &[])["id"], SESSION);
+    let mixed = row(
+        &[ordinary],
+        &[json!({"isSidechain":true,"message":{"role":"user","content":"Child task"}})],
+    );
+    assert_eq!(mixed["title"], "Top level");
+    assert_eq!(mixed["id"], SESSION);
 }
 
 #[test]
@@ -211,4 +217,28 @@ fn pi_v3_metadata_and_branch_history_stay_read_only() {
     assert!(!text.contains("Abandoned branch"));
     assert!(timeline["status"].is_null());
     assert!(timeline.get("path").is_none());
+}
+
+#[test]
+fn pi_history_retains_tool_positions_and_compaction_facts() {
+    // Regression: Pi history discarded compaction and reordered tool calls after all text blocks in a message.
+    let records = vec![
+        json!({"type":"message","id":"user","parentId":null,"timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"Edit config"}}),
+        json!({"type":"message","id":"assistant","parentId":"user","timestamp":"2026-01-01T00:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"Starting"},{"type":"toolCall","id":"edit","name":"edit","arguments":{"path":"config.json","oldText":"false","newText":"true"}},{"type":"text","text":"Checking"}]}}),
+        json!({"type":"message","id":"result","parentId":"assistant","timestamp":"2026-01-01T00:00:02Z","message":{"role":"toolResult","toolCallId":"edit","toolName":"edit","content":[{"type":"text","text":"Updated"}]}}),
+        json!({"type":"compaction","id":"compact","parentId":"result","timestamp":"2026-01-01T00:00:03Z","tokensBefore":10000}),
+    ];
+    let timeline = native::pi_timeline(SESSION, &records, false);
+    let entries = timeline["entries"].as_array().unwrap();
+    assert_eq!(
+        entries
+            .iter()
+            .map(|r| string(r, "type"))
+            .collect::<Vec<_>>(),
+        ["user", "text", "file", "text", "notice"]
+    );
+    assert_eq!(entries[2]["edits"][0]["newText"]["text"], "true");
+    assert_eq!(entries[2]["status"], "completed");
+    assert_eq!(entries[4]["notice"]["tokensBefore"], 10000);
+    assert!(timeline["status"].is_null());
 }

@@ -83,6 +83,7 @@ export interface AgentInteraction {
   questions?: { id: string; question: string; isOther?: boolean; isSecret?: boolean; multiSelect?: boolean; options?: { label: string; description?: string }[] }[];
 }
 export interface AgentActivitySession {
+  metadataPartial?: boolean;
   turnCount?: number;
   projectName?: string | null;
   dispatchSummary?: DispatchSummary;
@@ -112,6 +113,7 @@ export interface AgentActivitySnapshot {
   agents: Record<string, { sessions: AgentActivitySession[] }>;
 }
 export interface AgentConversation {
+  metadataPartial?: boolean;
   dispatchSummary?: DispatchSummary | null;
   turnCount?: number | null;
   projectName?: string | null;
@@ -134,7 +136,7 @@ export interface AgentTimelineEntry {
   controlSource?: DispatchSummary["controlSource"];
   phase?: string;
   id: string;
-  type: "user" | "text" | "thinking" | "command" | "file" | "tool" | "plan" | "interaction" | "error";
+  type: "user" | "text" | "thinking" | "command" | "file" | "tool" | "plan" | "interaction" | "error" | "notice";
   status: "pending" | "running" | "completed" | "failed" | "cancelled" | "unknown";
   startedAt: string | null;
   updatedAt: string;
@@ -147,6 +149,11 @@ export interface AgentTimelineEntry {
   title?: string;
   command?: string;
   cwd?: string;
+  paths?: string[];
+  edits?: { oldText?: AgentTrackingExcerpt; newText?: AgentTrackingExcerpt }[];
+  notice?: { kind: "retry" | "compaction" | "warning"; stage: "start" | "end" | "message"; title?: string; message?: string; severity?: string; nativeStatus?: string; attempt?: number; maxAttempts?: number; trigger?: string; tokensBefore?: number; tokensAfter?: number; success?: boolean; aborted?: boolean };
+  summary?: AgentTrackingExcerpt;
+  error?: AgentTrackingExcerpt;
   path?: string | null;
   operation?: "read" | "write" | "edit" | "create" | "delete";
   commandActions?: { type: string; path?: string }[];
@@ -191,7 +198,7 @@ export interface AgentTimeline {
   sessionId: string;
   entries: AgentTimelineEntry[];
   cursor: number;
-  coverage: { state: "complete" | "partial"; truncated: boolean; reason?: string };
+  coverage: { state: "complete" | "partial"; truncated: boolean; reason?: string; omittedSidechainRecords?: number };
   executionEvidence: boolean | "partial";
 }
 

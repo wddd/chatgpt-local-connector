@@ -232,6 +232,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
         }}>
           {loading ? <LoadingIndicator label={t("timeline.loading")} /> : <>
           {(error || openError || reviewError) && <p className="timeline-error rounded-md bg-destructive/10 p-1 text-destructive" role="alert">{taskErrorText(openError || error || reviewError)}</p>}
+          {!!timeline?.coverage.omittedSidechainRecords && <p className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.omittedSidechains", { count: timeline.coverage.omittedSidechainRecords })}</p>}
           {timeline?.coverage.state === "partial" && !timeline.coverage.truncated && <p className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.partial")}</p>}
           {!session.timeline && <section className="activity-session-summary wrap-anywhere">
             <span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t(`activity.phase.${nativeSession.phase}`)}</span>

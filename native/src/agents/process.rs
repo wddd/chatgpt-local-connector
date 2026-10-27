@@ -285,6 +285,9 @@ impl Process {
                         crate::logs::record("WARN", &error, None);
                     }
                 }
+                // Delivery output deliberately retains native, unredacted text.
+                // Timeline is a bounded/redacted display projection and cannot
+                // replace this finalResponse/archive-continuation buffer.
                 if pi {
                     if method == "message_end" && msg["message"]["role"] == "assistant" {
                         state["lastMessage"] = msg["message"].clone();

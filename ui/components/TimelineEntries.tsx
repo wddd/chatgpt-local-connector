@@ -5,7 +5,7 @@ import { TaskReceiptHistory } from "./TaskNeedsYou";
 import { ChangedFiles } from "./TaskChanges";
 import TaskOutcome from "./TaskOutcome";
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { AlertCircle, Brain, Check, ChevronRight, Circle, FileText, ListChecks, MessageSquare, ShieldAlert, Terminal, UserRound, Wrench } from "lucide-react";
+import { AlertCircle, Brain, Check, ChevronRight, Circle, FileText, ListChecks, MessageSquare, ShieldAlert, Info, Terminal, UserRound, Wrench } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./ui/collapsible";
 import { AnimatePresence, motion } from "motion/react";
 import { locale, t } from "../i18n";
@@ -20,7 +20,7 @@ import { taskErrorText } from "../state/taskErrors";
 import FilePath from "./FilePath";
 import TimelineMarkdown, { TimelineResources } from "./TimelineMarkdown";
 
-const stepIcons = { command: Terminal, file: FileText, tool: Wrench, thinking: Brain, text: MessageSquare, user: UserRound, plan: ListChecks, interaction: ShieldAlert, error: AlertCircle };
+const stepIcons = { command: Terminal, file: FileText, tool: Wrench, thinking: Brain, text: MessageSquare, user: UserRound, plan: ListChecks, interaction: ShieldAlert, error: AlertCircle, notice: Info };
 export function durationText(value: number) {
   if (value < 1000) return t("activity.milliseconds", { count: Math.floor(value) });
   const seconds = Math.floor(value / 1000), minutes = Math.floor(seconds / 60), hours = Math.floor(minutes / 60);
@@ -82,17 +82,33 @@ function ToolTitle({ entry, project }: { entry: AgentTimelineEntry; project?: st
 function ToolDetails({ entry, project }: { entry: AgentTimelineEntry; project?: string | null }) {
   return <div className="timeline-output grid min-w-0 gap-2 py-2 pl-6 pr-1.5 text-xs wrap-anywhere [&_section]:min-w-0 [&_pre]:mt-1 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_pre]:font-mono [&_pre]:text-xs [&_pre]:whitespace-pre-wrap [&_pre]:wrap-anywhere">
     {entry.cwd && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.cwd")}</span><div className="mono font-mono">{entry.cwd}</div></section>}
-    {entry.path && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.path")}</span><div className="mono font-mono">{filePathParts(entry.path, project || entry.cwd).fullPath}</div></section>}
+    {entry.path && (entry.paths?.length ?? 0) <= 1 && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.path")}</span><div className="mono font-mono">{filePathParts(entry.path, project || entry.cwd).fullPath}</div></section>}
     {!!entry.changes?.length && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.changes")}</span><ul className="timeline-files m-0 mt-1 grid min-w-0 list-none gap-1 overflow-x-auto p-0">{entry.changes.map((change, index) => <li key={`${change.path}:${index}`}>
       <FilePath path={change.path} project={project || entry.cwd} />
     </li>)}</ul></section>}
-    {entry.input?.text && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.input")}</span><pre>{entry.input.text}</pre></section>}
+    {(entry.paths?.length ?? 0) > 1 && <section aria-label={t("timeline.paths")}><ul className="m-0 grid list-none gap-1 p-0">{entry.paths?.map(path => <li key={path}><FilePath path={path} project={project || entry.cwd} /></li>)}</ul></section>}
+    {entry.edits?.map((edit, index) => <section key={index} aria-label={t("timeline.edit")}>
+      {edit.oldText && <section aria-label={t("timeline.oldText")}><span className="text-muted-foreground">{t("timeline.oldText")}</span><pre>{edit.oldText.text}</pre>{edit.oldText.truncated && <span>{t("timeline.truncated")}</span>}</section>}
+      {edit.newText && <section aria-label={t("timeline.newText")}><span className="text-muted-foreground">{t("timeline.newText")}</span><pre>{edit.newText.text}</pre>{edit.newText.truncated && <span>{t("timeline.truncated")}</span>}</section>}
+    </section>)}
+    {entry.input?.text && !entry.edits?.length && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.input")}</span><pre>{entry.input.text}</pre></section>}
     {(entry.output?.text || entry.text) && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.output")}</span><pre>{entry.output?.text || entry.text}</pre></section>}
     {entry.exitCode !== undefined && <div className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.exitCode", { code: entry.exitCode })}</div>}
     {(entry.truncated || entry.input?.truncated || entry.output?.truncated) && <span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.truncated")}</span>}
   </div>;
 }
 function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; agent: string; session: AgentActivitySession }) {
+  if (entry.type === "notice" && entry.notice) {
+    const notice = entry.notice;
+    const label = notice.title || t(`timeline.notice.${notice.kind}.${notice.stage}`);
+    const outcome = notice.aborted ? t("timeline.notice.cancelled") : notice.success === false || notice.nativeStatus === "failed" ? t("timeline.notice.failed") : notice.nativeStatus === "cancelled" ? t("timeline.notice.cancelled") : undefined;
+    return <Card asChild className="gap-1 border-0 bg-muted/50 px-2 py-1.5 shadow-none"><section aria-label={label} className="text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-1.5"><Icon icon={Info} /><span>{label}</span>{notice.attempt !== undefined && <span>{notice.attempt}{notice.maxAttempts !== undefined && `/${notice.maxAttempts}`}</span>}{outcome && <span>{outcome}</span>}{notice.trigger && <span>{notice.trigger}</span>}{notice.tokensBefore !== undefined && <span>{t("timeline.notice.tokens", { count: notice.tokensBefore })}{notice.tokensAfter !== undefined && ` → ${notice.tokensAfter}`}</span>}</div>
+      {notice.message && <p className="m-0 whitespace-pre-wrap wrap-anywhere">{notice.message}</p>}
+      {entry.error?.text && <p className="m-0 wrap-anywhere">{entry.error.text}</p>}
+      {entry.summary?.text && <TimelineMarkdown text={entry.summary.text} />}
+    </section></Card>;
+  }
   if (entry.type === "text") return <article className="task-phase flex min-w-0 gap-2 text-sm leading-relaxed text-foreground"><span className="task-agent-mark hidden size-6 shrink-0 place-items-center rounded-md bg-task-live-soft text-brand-accent @sm:grid" aria-label={agent}><PlatformIcon role="agent" platform={agent} size={16} /></span><TimelineMarkdown text={entry.text ?? ""} /></article>;
   if (entry.type === "user") return <div className="task-prompt m-0 flex min-w-0 flex-col items-end gap-1 [&>small]:text-xs [&>small]:text-muted-foreground">{entry.controlSource && <small>{t("detail.via", { source: dispatchSourceLabel(entry.controlSource) })}{entry.startedAt && ` · ${new Date(entry.startedAt).toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit" })}`}</small>}<TimelineMarkdown text={entry.text ?? ""} /></div>;
   if (entry.type === "interaction") return <LiveInteractionRequestRow entry={entry} agent={agent} session={session} />;
@@ -109,7 +125,7 @@ function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; ag
 function ToolEntry({ entry, live }: { entry: AgentTimelineEntry; live: boolean }) {
   const [open, setOpen] = useState(false);
   const streaming = entry.type === "command" && live && entry.status === "running";
-  const hasDetails = !!(entry.output?.text || entry.input?.text || entry.text || entry.cwd || entry.path || entry.changes?.length || entry.truncated || entry.input?.truncated || entry.output?.truncated);
+  const hasDetails = !!(entry.output?.text || entry.input?.text || entry.text || entry.cwd || entry.path || entry.changes?.length || entry.paths?.length || entry.edits?.length || entry.truncated || entry.input?.truncated || entry.output?.truncated);
   return <div className="task-tool-row min-w-0 font-mono text-xs leading-relaxed wrap-anywhere data-[failed]:text-destructive" data-failed={entry.status === "failed" || undefined}>
     <Fold className="task-tool-entry [&>.timeline-summary]:gap-1.5 [&>.timeline-summary]:px-0 [&>.timeline-summary]:py-1 [&>.timeline-summary>span:last-of-type]:shrink-0" open={open} onChange={setOpen} expandable={hasDetails}
       summary={<><Icon icon={stepIcons[entry.type]} /><ToolTitle entry={entry} /><span>{entry.exitCode !== undefined && t("timeline.exitCode", { code: entry.exitCode })}</span></>}>

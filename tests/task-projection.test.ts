@@ -3,6 +3,16 @@ import assert from "node:assert/strict";
 import { changedFiles, processRows, processOpen, projectTurn, taskState } from "../ui/state/taskProjection.ts";
 import type { AgentTimelineEntry } from "../ui/types.ts";
 const entry = (id: string, type: AgentTimelineEntry["type"], extra: Partial<AgentTimelineEntry> = {}): AgentTimelineEntry => ({ id, type, status: "completed", turnId: "turn", startedAt: null, updatedAt: "", cursor: 1, ...extra });
+test("lifecycle notices preserve final answers and process ordering", () => {
+  // Regression: a lifecycle notice after the final response hid the unmarked final answer.
+  const answer = entry("answer", "text", { text: "Done" });
+  const notice = entry("compaction", "notice", { notice: { kind: "compaction", stage: "end" } });
+  const projection = projectTurn([entry("command", "command"), answer, notice], "done");
+  assert.equal(projection.final, answer);
+  assert.deepEqual(projection.rows.map(row => row.kind), ["tools", "entry"]);
+  assert.equal(projection.actions, 1);
+  assert.equal(projection.rows.at(-1)?.id, notice.id);
+});
 test("tool runs merge without absorbing narrative or interaction boundaries", () => {
   // Property: grouping preserves tool order and narrative boundaries without duplicating entries.
   const entries = [entry("a", "file"), entry("b", "command"), entry("c", "text"), entry("d", "tool"), entry("e", "interaction"), entry("f", "command")];

@@ -234,6 +234,18 @@ try {
             if ((await chip.innerText()).includes(fixture.tasks[0].dispatchSummary.model)) throw new Error('Resolved dispatch chip exposes a raw model ID');
           }
         }
+        if (fixture.projection) {
+          // Regression: lifecycle notices disappeared and native tool inputs were only shown as raw JSON.
+          for (const name of ['Retrying', 'Compacting context', 'Context compaction finished', 'Notice']) {
+            await page.getByRole('region', { name, exact: true }).waitFor({ state: 'visible' });
+          }
+          const tool = page.getByRole('button', { name: /settings\.ts/ });
+          await tool.click();
+          await page.getByRole('region', { name: 'Before', exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('region', { name: 'After', exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('region', { name: 'Paths', exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: /printf projection-ready/ }).waitFor({ state: 'visible' });
+        }
         if (fixture.update) {
           // Regression: update work groups and restart progress were hidden behind modal dialogs.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));

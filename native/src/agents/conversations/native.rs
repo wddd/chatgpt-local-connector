@@ -225,10 +225,12 @@ pub(super) fn derive(
     complete: bool,
     modified: SystemTime,
 ) -> Option<Value> {
-    let records: Vec<_> = head.iter().chain(tail).collect();
-    if agent == "claude"
-        && (activity::claude_sidechain(path, head) || activity::claude_sidechain(path, tail))
-    {
+    let records: Vec<_> = head
+        .iter()
+        .chain(tail)
+        .filter(|record| agent != "claude" || record["isSidechain"] != true)
+        .collect();
+    if agent == "claude" && activity::claude_sidechain(path, head.iter().chain(tail)) {
         return None;
     }
     let header = head.iter().find(|record| record["type"] == "session");
@@ -338,11 +340,12 @@ pub(super) fn pi_timeline(id: &str, records: &[Value], truncated: bool) -> Value
         next = record["parentId"].as_str();
     }
     for record in branch.into_iter().rev() {
+        if record["type"] == "compaction" {
+            timeline.agent("compaction_end", &json!({"result":{"tokensBefore":record["tokensBefore"]},"reason":record["trigger"]}), string(record, "timestamp"));
+            continue;
+        }
         if record["type"] != "message" {
-            if matches!(
-                string(record, "type"),
-                "compaction" | "branch_summary" | "custom_message"
-            ) {
+            if matches!(string(record, "type"), "branch_summary" | "custom_message") {
                 timeline.partial = true;
             }
             continue;
@@ -353,9 +356,6 @@ pub(super) fn pi_timeline(id: &str, records: &[Value], truncated: bool) -> Value
             "user" => timeline.agent("arc/user", &json!({"turnId":record["id"],"text":text_content(record)}), at),
             "assistant" => {
                 timeline.agent("message_end", &json!({"message":message}), at);
-                for block in message["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "toolCall") {
-                    timeline.agent("tool_execution_start", &json!({"toolCallId":block["id"],"toolName":block["name"],"args":block["arguments"]}), at);
-                }
             }
             "toolResult" => timeline.agent("tool_execution_end", &json!({"toolCallId":message["toolCallId"],"toolName":message["toolName"],"isError":message["isError"],"result":message}), at),
             _ => timeline.partial = true,

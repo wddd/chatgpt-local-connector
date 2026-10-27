@@ -75,6 +75,14 @@ Pi/ACP stdout tolerates non-JSON lines. Task state exposes `stdoutDiagnostics`, 
 
 In-memory state, timeline updates, and live events remain immediate. Pure ACP message/thought chunks and Pi text/thinking/tool-call argument deltas share a checkpoint scheduled within one second of the first unsaved delta; later deltas do not postpone it. Structural events and control operations persist immediately, including turn boundaries, interactions, tools, plans, errors, configuration changes, and process exit. Closing a process drains and joins its stdout reader and flushes the final snapshot. An abrupt Core crash can lose approximately the last second of streaming deltas; disk stalls can extend this window, and persistence failures surface as `storageError`. Clean shutdown retains all observed deltas. Catalog snapshots update on session initialization and actual configuration changes, independently of streaming checkpoints. Late events cannot reopen a terminal turn; a new turn requires an explicit start.
 
+## Conversation projection
+
+`task_tracking::Timeline` owns conversation entries and activity presentation. Live ACP/Pi events, native Claude transcripts, Codex app-server items/history and Codex rollout framing converge on its text/tool/notice converters. `agents/activity` caches bounded transcript projections and discovers external sessions; it does not maintain a second phase/headline parser. The metadata clock uses the same converted prompt/turn evidence within bounded incremental windows. Native Pi history selects one parent-linked branch before conversion. Claude sidechains are omitted with an explicit coverage count.
+
+Tool input normalization supplies common command, paths and edit excerpts without removing native evidence. Non-terminal notices retain retry/compaction/warning facts without changing turn status. Pi attempt errors settle only when the native agent_settled event establishes the outcome. The frozen MCP tools and notification envelope do not change; the existing timeline/activity operation outputs carry these fields. See [Task tracking](task-tracking.md#lifecycle-notices-and-tool-inputs) for fields and bounded coverage.
+
+Final-response delivery is a separate native text buffer: its per-turn replacement/append semantics and ACP 256 KiB tail truncation must not be replaced with redacted, head-truncated Timeline text. The event archive remains authoritative for complete protocol evidence.
+
 ## Receipts, observation, and notifications
 
 Writes reserve an idempotent UUID receipt before dispatch. Repeated IDs with identical arguments read the original operation. Conflicting arguments are rejected. Request timeout returns pending. Connection loss after submission returns unconfirmed. Both retain original identifiers for readback.
