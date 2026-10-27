@@ -115,7 +115,7 @@ Containers retain stores, reads, login progress, navigation and mutations. Nativ
 
 `AddAccount` and `MergeAccounts` retain their existing login/editor and account-wide selection behavior. Notification binding remains unchanged. AgentQuota, QuotaBubble and AgentQuotaIcon remain the quota implementations; their different compact/full presentations are intentional. Account quota errors are narrowed before display.
 
-**Fixtures.** `agent-objects-light/dark/narrow` cover several same-Agent profiles, second-profile default, third-profile reauth, signed-out/disabled/busy states, identity privacy, retained errors, current/pending authorization and quota families. `agentFixtures` supplies the same records to Design exports. Existing `accounts`, `topology-accounts` and `agent-panel*` exercise current host placement.
+**Fixtures.** `agent-objects-light/dark/narrow` cover several same-Agent profiles, second-profile default, third-profile reauth, signed-out/disabled/busy states, identity privacy, retained errors, current/pending authorization and quota families. `Arc.fixtures.agentObjects` supplies the same records to Design exports. Existing `accounts`, `topology-accounts` and `agent-panel*` exercise current host placement.
 
 ## TUNNEL / connection / ingress
 

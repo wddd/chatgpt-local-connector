@@ -39,7 +39,7 @@ ARC's component system has three layers (`docs/dev/component-spec.md`):
 2. **Object components**: one per domain object (SRC platform, SRC account, AGENT platform, AGENT account, TUNNEL, TASK, interaction request, authorization request, relay member, deployment progress), each with four variants: **Chip** (inline reference), **Node** (homepage topology), **Row** (panel list entry), **Card** (panel summary).
 3. **Composites**: Quota (ring, panel, bubble), RequestCard, DispatchSpec chip.
 
-The current exports include all eight shells, the primitives, quota composites, the topology node and the task bubble. Object components are added as the app converges on them. Until a component exists here, lay the area out with plain markup using the tokens, and say so in the design notes.
+The current exports include all eight shells, the primitives, quota composites, the topology node and the task bubble. The exports also include SRC, TUNNEL, TASK, AGENT, request, Relay member and deployment objects. Only their implemented variants appear in the export table. Until a component exists here, lay the area out with plain markup using the tokens, and say so in the design notes.
 
 ## Exports
 
@@ -57,7 +57,7 @@ The current exports include all eight shells, the primitives, quota composites, 
 
 The namespace is **`Arc`**. Load order on an artboard, after `support.js`: `components/bundle.css`, `components/bundle.js`. The canvas supplies React 18; do not add React files.
 
-Wrap artboard content in **`Arc.Root`**. It scopes theme (`mode="light"|"dark"`), `locale` (`en`, `zh-CN`), `privacy` and a fixed clock (`now`) to its own element. Only `Arc.Root` accepts nested markup and other `x-import`s; every other export takes plain-text children only, because each runs in its own React 19 island.
+Wrap artboard content in **`Arc.Root`**. It scopes theme (`mode="light"|"dark"`), `locale` (`en`, `zh-CN`), `privacy` and a fixed clock (`now`) to its own element. Only `Arc.Root` accepts nested markup and other `x-import`s; other component exports take plain-text children only, because each runs in its own React 19 island.
 
 Non-string props come from `renderVals()` holes:
 
@@ -82,10 +82,10 @@ Built-in navigation, refresh, URL and clipboard actions do not contact ARC. They
 <a id="fixtures"></a>
 ### Fixtures
 
-`Arc.fixtures` holds typed synthetic records: `now`, `accounts`, `agents`, `sources`, `ingresses`, `quotaSnapshots`, `quotaStates` (`ready`, `stale`, `refreshing`, `unavailable`, `blocked`, `exhausted`, `unknownReset`, `expiredCredit`, `empty`), `activitySessions`, `activity`, `choices` and `labels`. Copy a record before changing it for a design state.
+`Arc.fixtures` holds typed synthetic records: `now`, `accounts`, `agents`, `sources`, `ingresses`, `quotaSnapshots`, `quotaStates` (`ready`, `stale`, `refreshing`, `unavailable`, `blocked`, `exhausted`, `unknownReset`, `expiredCredit`, `empty`), `activitySessions`, `activity`, `choices` and `labels`. `requests` holds permission, question, authorization, deployment and member records; `tasks` holds activity, dispatch receipt and timeline records; `agentObjects` holds Agent platform, account, source and connection records. `dispatchSpecs` holds recorded spec/label states, and `tunnelFrames` holds landscape/portrait topology frames. These families are data under the single `Arc.fixtures` entry, not components. Use `requests.now` or `tasks.now` for Root and explicit time props with those families; other records use `Arc.fixtures.now`. Copy a record before changing it for a design state.
 
 ## Publishing
 
-1. Run `npm run design:bundle`, then `npm run design:claude` in the repository root.
+1. Run `npm run check` to verify every component export has a preview. Run `npm run design:bundle`, then `npm run design:claude` in the repository root.
 2. Stage `design-system/claude/project/*` in the Claude session, preserving the directory layout. This means session file staging, not Git staging; the generated project is gitignored.
 3. Publish the staged files to the account's **Design System**, with `design-system.json` last. Another account publishes its own copy. Set the published system as the default when needed.

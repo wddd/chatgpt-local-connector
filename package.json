@@ -12,7 +12,7 @@
     "design:claude": "node design-system/claude/build.mjs",
     "wt": "node tooling/worktree.mjs",
     "brand": "node tooling/brand.mjs",
-    "check": "tsc --noEmit -p ui/tsconfig.json && npm run check:ui",
+    "check": "tsc --noEmit -p ui/tsconfig.json && npm run check:ui && node design-system/claude/build.mjs --check",
     "check:ui": "node tooling/check-ui.mjs",
     "build": "vite build --config vite.config.ts && node tooling/build-native.mjs",
     "cache:prune": "node tooling/prune-build-cache.mjs",

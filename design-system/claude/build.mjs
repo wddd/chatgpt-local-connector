@@ -29,6 +29,12 @@ for (const name of exports) {
   if (!Object.hasOwn(previews, name)) throw new Error(`Add a Claude Design preview for Arc.${name} in design-system/claude/previews.mjs.`);
 }
 
+// The ordinary check uses this same enumeration without requiring generated assets.
+if (process.argv.includes('--check')) {
+  console.log(`Claude Design previews cover all ${exports.length} component exports.`);
+  process.exit(0);
+}
+
 let bundle, tokenCss, componentCss, sourceTokens;
 try {
   [bundle, tokenCss, componentCss, sourceTokens] = await Promise.all([

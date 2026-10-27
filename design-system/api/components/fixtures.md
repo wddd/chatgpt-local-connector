@@ -6,6 +6,10 @@ Typed synthetic records, not a component. Pass records through template holes. T
 
 | Field | Type | Contents |
 | --- | --- | --- |
+| `requests` | Synthetic request family | `now`, `question`, `permission`, `secretReceipt`, `authorization`, `ingress`, `deployment`, `member` |
+| `tasks` | Synthetic task family | `now`, `session`, `receipt`, `timeline`; includes partial read-only evidence and secret history |
+| `agentObjects` | Synthetic AGENT family | `agent`, `account`, `source`, `ingress`, `request`, `quotaStates`; includes several profiles and current/pending authorization |
+| `dispatchSpecs` | Recorded spec fixtures | Native label snapshots and resolved, unresolved, missing, loading and failed catalogs |
 | `tunnelFrames` | `{ landscape, portrait }` projected Layout/PaintNode/PaintTask frames | Fixed inputs for the existing TunnelNode painters |
 | `now` | `number` | Fixed epoch milliseconds; Root's default clock |
 | `accounts` | `ProviderAccount[]` | Six account identities, source associations, profiles and account quotas |
@@ -20,6 +24,8 @@ Typed synthetic records, not a component. Pass records through template holes. T
 | `labels` | `Record<"button" \| "notice" \| "empty" \| "loading" \| "status" \| "tag", string>` | Synthetic English example copy |
 
 `QuotaState` is `ready | stale | refreshing | unavailable | blocked | exhausted | unknownReset | expiredCredit | empty`. Missing quota is represented by `null` for AgentQuotaIcon. No API routes are exposed by fixtures. Make a copy before modifying records for a design state.
+
+The fixture families are data under `Arc.fixtures`, never separate component exports. Use `requests.now` or `tasks.now` for Root and explicit time props when mounting those records; other families use `Arc.fixtures.now`.
 
 ## Shared record types
 

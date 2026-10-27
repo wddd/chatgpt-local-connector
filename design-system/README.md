@@ -56,10 +56,37 @@ Controlled inputs still require the owner to update their props from `onChange`.
 
 DispatchSpec accepts recorded task/turn data and native-shaped label snapshots. `Arc.fixtures.dispatchSpecs` covers resolved, unresolved, missing, loading and failed catalogs, including dsh and historical turns.
 
+All synthetic records use the single `Arc.fixtures` entry. `requests` contains permission, question, authorization, deployment and member records; `tasks` contains activity, dispatch receipt and timeline records; `agentObjects` contains platform, account, source and connection records. The existing top-level fixture fields remain available. Set Root and explicit time props to `Arc.fixtures.requests.now` or `Arc.fixtures.tasks.now` for those families. See [fixtures](api/components/fixtures.md).
+
+`npm run check` runs the Claude Design missing-preview check directly from `ui/design-mount.ts`, using the same enumeration as `npm run design:claude` without requiring a bundle. Add a recipe in `design-system/claude/previews.mjs`, a component card below and an export-table row whenever adding a component export.
+
 ## Exports
 
 | Export | Purpose |
 | --- | --- |
+| [RequestCard](api/components/RequestCard.md) | Request presentation and response frame |
+| [InteractionRequestCard](api/components/InteractionRequestCard.md) | Agent permission and question response |
+| [InteractionRequestChip](api/components/InteractionRequestChip.md) | Interaction reference and response status |
+| [InteractionRequestRow](api/components/InteractionRequestRow.md) | Recorded interaction outcome |
+| [AuthorizationRequestCard](api/components/AuthorizationRequestCard.md) | Source authorization decision |
+| [AuthorizationRequestChip](api/components/AuthorizationRequestChip.md) | Authorization reference and status |
+| [AuthorizationRequestRow](api/components/AuthorizationRequestRow.md) | Authorization list and choice presentation |
+| [DeploymentProgressCard](api/components/DeploymentProgressCard.md) | Relay deployment steps and recovery |
+| [DeploymentProgressChip](api/components/DeploymentProgressChip.md) | Relay deployment reference and phase |
+| [RelayMemberRow](api/components/RelayMemberRow.md) | Relay member status and removal action |
+| [RelayMemberCard](api/components/RelayMemberCard.md) | Relay member facts and removal consequence |
+| [TaskChip](api/components/TaskChip.md) | Task reference and recorded state |
+| [TaskNode](api/components/TaskNode.md) | Task topology activity and attention |
+| [TaskRow](api/components/TaskRow.md) | Activity, receipt and dispatch rows |
+| [TaskCard](api/components/TaskCard.md) | Task summary and host-owned detail body |
+| [AgentPlatformChip](api/components/AgentPlatformChip.md) | Agent platform reference |
+| [AgentPlatformNode](api/components/AgentPlatformNode.md) | Agent platform topology adapter |
+| [AgentPlatformRow](api/components/AgentPlatformRow.md) | Agent platform list presentation |
+| [AgentPlatformCard](api/components/AgentPlatformCard.md) | Agent catalog, detail and panel summary |
+| [AgentAccountChip](api/components/AgentAccountChip.md) | Agent account reference and profile states |
+| [AgentAccountNode](api/components/AgentAccountNode.md) | Agent account topology adapter |
+| [AgentAccountRow](api/components/AgentAccountRow.md) | Agent account identity and roles |
+| [AgentAccountCard](api/components/AgentAccountCard.md) | Agent account identity and profile controls |
 | [SrcPlatformChip](api/components/SrcPlatformChip.md) | Source platform reference |
 | [SrcPlatformNode](api/components/SrcPlatformNode.md) | Source platform topology adapter |
 | [SrcPlatformRow](api/components/SrcPlatformRow.md) | Source platform list and choice presentation |
@@ -126,6 +153,6 @@ python3 -m http.server 5198 --bind 127.0.0.1 --directory design-system
 
 Open `http://127.0.0.1:5198/preview.html`. This standalone fixture page loads React/ReactDOM **18.3.1 development UMD from a CDN**, mounts every component in light and dark under StrictMode, and includes all activity densities, platform roles, badge variants, text slots, and extra quota states. Reveal/copy and refresh callbacks remain controlled by the preview owner. The CDN scripts are preview dependencies only. It neither launches nor connects to the desktop app. The page uses ordinary React to exercise the same exported functions; the canvas owns the `x-import` parser.
 
-Source types are in `ui/design-mount/host.tsx` and `ui/design-mount/fixtures.ts`. Rebuild against the current shared components whenever their props or styles change. No generated output belongs in Git.
+Source types are in `ui/design-mount/host.tsx`; `ui/design-mount/fixtures.ts` collects the typed fixture families. Rebuild against the current shared components whenever their props or styles change. No generated output belongs in Git.
 
-AGENT platform and account objects export Chip, Node, Row and Card from `ui/design-mount`, with typed `agentFixtures`. Card content/action slots are plain text in individual islands; browser `agent-objects-*` fixtures demonstrate live composition, profile selection, privacy, errors and unchanged quota composites. SRC Cards compose current authorization Chips and pending authorization Rows from supplied connections. No grant history is mounted.
+AGENT platform and account objects export Chip, Node, Row and Card from `ui/design-mount`, with typed `Arc.fixtures.agentObjects` records. Card content/action slots are plain text in individual islands; browser `agent-objects-*` fixtures demonstrate live composition, profile selection, privacy, errors and unchanged quota composites. SRC Cards compose current authorization Chips and pending authorization Rows from supplied connections. No grant history is mounted.

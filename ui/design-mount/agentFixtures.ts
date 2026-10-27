@@ -1,4 +1,4 @@
-import { fixtures } from './fixtures';
+import { baseFixtures as fixtures } from './baseFixtures';
 import type { Agent } from '../state/agents';
 import type { ProviderAccount } from '../types';
 import type { ControlSource, Ingress, OAuthRequest } from '../state/types';
