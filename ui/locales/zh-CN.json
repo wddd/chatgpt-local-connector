@@ -102,7 +102,6 @@
   "edit": "编辑",
   "generatedWhenConnected": "连接后生成",
   "automaticallyOpenCodexTasks": "自动打开 Codex 任务",
-  "whenDisabledNewTasksRunInTheBackground": "开启后，新任务自动在 Codex 中打开。",
   "taskApprovalMode": "任务审批模式",
   "askForConfirmationByDefaultTheCloudCan": "开启后，任务请求默认需要本机确认；云端仍可明确请求跳过审批。",
   "general": "通用",
@@ -1172,7 +1171,6 @@
   "accounts.kind.codex": "ChatGPT / Codex",
   "accounts.kind.api-key": "API 密钥",
   "accounts.kind.detect": "检测本机账户",
-  "accounts.agentFlow": "Agent 可通过 account_add 完成流程，仅登录需要你操作。",
   "accounts.matched": "此身份与已有账户匹配，连接将共用同一账户。",
   "accounts.useFor": "设为以下 Agent 的默认账户",
   "accounts.alias": "别名",
@@ -1360,6 +1358,7 @@
   "stop": "停止",
   "panels.rename": "重命名",
   "panels.noAccounts": "暂无账户。",
+  "panels.relatedTask": "{agent} 任务 {number}",
   "panels.noConversations": "暂无会话。",
   "connections.publicLink": "公网链接",
   "connections.localCommand": "本地配置命令"

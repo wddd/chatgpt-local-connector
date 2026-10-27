@@ -140,13 +140,13 @@ export function UpdatesSettings() {
     <SettingsSection title={t("updates.currentVersion")}><SettingRow label={`Agent Remote Control v${status?.version ?? "—"}`}>
       <ActionGroup><Button onClick={() => action(openReleaseNotes())}>{t("updates.notes")}</Button><Button disabled={!isDesktop || s.requesting || updateActive(s.snapshot)} busy={s.snapshot.state === "checking"} onClick={() => action(checkUpdate())}>{t("checkForUpdates")}</Button></ActionGroup>
     </SettingRow>{updateActive(s.snapshot) && <SettingRow label={t(`updates.state.${s.snapshot.state}`)}><Button onClick={() => { navigation.set(old => ({ ...old, page: "overview" })); showUpdate(); }}>{t("viewUpdate")}</Button></SettingRow>}{available() && <SettingRow label={t("newVersionValue", { version: s.snapshot.source?.version })}><ActionGroup><Button onClick={() => setNotes(!notes)}>{t("updates.notes")}</Button><Button onClick={() => action(installUpdate())}>{t("updates.action.settled")}</Button></ActionGroup></SettingRow>}{notes && <pre className="my-4 font-sans text-sm leading-relaxed whitespace-pre-wrap wrap-anywhere">{s.snapshot.notes}</pre>}
-      {s.error && <Notice>{s.error}</Notice>}{s.message && <p role="status">{s.message}</p>}
+      {(s.error || s.snapshot.error) && <Notice>{s.error || s.snapshot.error}</Notice>}{s.message && <p role="status">{s.message}</p>}
     </SettingsSection>
     <SettingsSection title={t("updates.timing")}><SettingRow label={t("updates.installTiming")}><ChoiceControl value={automatic} label={t("updates.installTiming")} onChange={updateAutomatic.set} options={[{ value: "automatic", label: t("updates.automatic") }, { value: "ask", label: t("updates.ask") }]} /></SettingRow>
     </SettingsSection>
     <SettingsSection title={t("updates.recent")}>
       {!s.snapshot.recent?.length && <p>{t("updates.noHistory")}</p>}
-      {s.snapshot.recent?.map(job => <SettingRow key={job.id} label={<span className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 wrap-anywhere"><Identity job={job} /><span>{job.instance} · {t(`updates.state.${job.state}`)}</span></span>}>
+      {s.snapshot.recent?.map(job => <SettingRow key={job.id} label={<span className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 wrap-anywhere"><Identity job={job} /><span>{t(`updates.state.${job.state}`)}</span></span>}>
         {job.backupReady && job.backup && <Button disabled={s.requesting || updateActive(s.snapshot)} onClick={() => action(submitLocal(job.backup!))}>{t("updates.restore")}</Button>}
       </SettingRow>)}
     </SettingsSection>

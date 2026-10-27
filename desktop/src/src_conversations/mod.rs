@@ -159,9 +159,11 @@ fn metadata() -> Value {
                 && c.changed.elapsed() >= Duration::from_secs(5) { c.status = "signed-in".into(); }
             // Never forward arbitrary paths, query strings or fragments to Core.
             let url = refs::conversation(&c.current).map(|r| r["url"].clone()).unwrap_or(Value::Null);
+            let title = (!url.is_null() && c.finished.load(Ordering::SeqCst))
+                .then(|| native::title(&c.view)).flatten();
             let active = c.window.is_focused().unwrap_or(false)
                 && c.window.is_visible().unwrap_or(false) && !c.window.is_minimized().unwrap_or(true);
-            json!({"accountId":account,"storeId":c.store_id,"status":c.status,"url":url,"active":active,"open":true})
+            json!({"accountId":account,"storeId":c.store_id,"status":c.status,"url":url,"title":title,"active":active,"open":true})
         }).collect();
         jobs::jobs().metadata(containers)
     })

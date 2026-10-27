@@ -74,7 +74,6 @@ export default function SettingsPage() {
         </SettingRow>
         <SettingRow
           label={t("automaticallyOpenCodexTasks")}
-          description={t("whenDisabledNewTasksRunInTheBackground")}
         >
           <Switch
             label={t("automaticallyOpenCodexTasks")}

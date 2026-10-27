@@ -226,7 +226,7 @@ export default function App() {
         <div className="window-drag-strip absolute inset-x-0 top-0 z-60 flex h-9.5 justify-end" data-tauri-drag-region />
       )}
       <main
-        className="home-workspace h-full overflow-hidden"
+        className="home-workspace h-full overflow-hidden pb-24"
         inert={page !== "overview" || modalOpen}
       >
         <ConnectionOverview visible={page === "overview"} />

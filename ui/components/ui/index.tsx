@@ -183,7 +183,7 @@ export function Empty({
   icon?: LucideIcon;
 }) {
   return (
-    <EmptyRoot className="empty grid justify-items-center gap-4 px-4 py-8 text-center text-muted-foreground md:p-8" role="status">
+    <EmptyRoot className="empty flex-none gap-4 px-4 py-8 text-center text-muted-foreground md:p-8" role="status">
       {icon && <Icon icon={icon} size={20} />}
       <p>{children}</p>
       {action}

@@ -174,6 +174,7 @@ test("control source dock preserves source selection, cross-side dispatch and ba
     agents.set({ items: [{ agent: "codex", installed: true, enabled: true, available: true, status: "ready" }], loading: false, error: "" });
     const sourceAccounts = ['one', 'two'].map(id => ({ id, alias: `Source ${id}`, provider: 'anthropic', identityKey: id,
       sources: [id], agentProfiles: [], health: { state: 'ready' }, notifications: { sessions: [] }, quota: { state: 'unavailable', windows: [] } }));
+    const conversation = { id: 'example-conversation', title: 'Plan the project review', kind: 'chat', lastSeenAt: '2026-01-01', taskRefs: [{ agent: 'codex', id: 'thread', basis: 'correlated' }] };
     const session = { id: "thread", source: "codex-thread", title: "Dispatch fixture", phase: "command", headline: "Fixture", phaseSince: null, timeline: true };
     agentActivity.set({ snapshot: { observedAt: "2026-01-01", activeAgents: ["codex"], agents: { codex: { sessions: [session] } } }, error: "" });
     tasks.set({ records: [{ requestId: "dispatch", origin: { ingressId: "one", sourceId: "one" }, state: "completed", createdAt: "2026-01-01", task: { kind: "create", threadId: "thread", title: "Dispatch fixture", prompt: "Fixture" } }], error: "", loading: false });
@@ -184,7 +185,7 @@ test("control source dock preserves source selection, cross-side dispatch and ba
       else if (path === "status") value = status;
       else if (path === "accounts") value = { accounts: sourceAccounts, login: null };
       else if (path.startsWith('accounts/')) value = sourceAccounts.find(account => account.id === path.slice(9));
-      else if (path === 'src-conversations/query') value = { accounts: [{ accountId: body.accountId, conversations: [{ id: 'example-conversation', kind: 'chat', lastSeenAt: '2026-01-01', taskRefs: [{ agent: 'codex', id: 'thread', basis: 'correlated' }] }] }] };
+      else if (path === 'src-conversations/query') value = { accounts: [{ accountId: body.accountId, conversations: [conversation] }] };
       else if (path === "setup/next") value = { hasState: false, complete: false, goal: null, steps: [], step: null, progress: { done: 0, total: 0 }, cliPath: "arc", stateDir: "fixture" };
       else if (path === "relay/list") value = { relays: [{ id: "public", ingressId: "one", owner: true, url: "https://example.com", name: "Public link", workerVersion: null }], version: "test" };
       else if (path === "relay/progress") value = { phase: "idle" };
@@ -224,7 +225,7 @@ test("control source dock preserves source selection, cross-side dispatch and ba
     await escape(); assert.equal(ingressPanel.get(), undefined);
     assert.ok(second().matches(":focus"));
     await click(first()); await click(first()); assert.equal(ingressPanel.get(), undefined);
-    await click(first()); await click(within(page.getByRole("dialog")).getByRole("button", { name: /example-conversation/ }));
+    await click(first()); await click(within(page.getByRole("dialog")).getByRole("button", { name: new RegExp(conversation.title) }));
     assert.equal(ingressPanel.get(), undefined); assert.equal(agentPanel.get().session.id, "thread");
     await click(first()); assert.equal(agentPanel.get(), undefined); assert.ok(ingressPanel.get());
     await escape(); await escape();

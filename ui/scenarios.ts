@@ -29,7 +29,7 @@ import { taskPanelSnapshot } from './state/taskPanel';
 
 export type PageFixture = 'agents-settings' | 'add-account' | 'quota-segments';
 export let pageFixture: PageFixture | undefined;
-type Fixture = { topologyAccounts?: boolean; emptyTopology?: boolean; logsEmpty?: boolean; agentInventory?: Agent[]; panelAccounts?: boolean; multipleAccounts?: boolean; multipleSources?: boolean; pageFixture?: PageFixture; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsPermissions?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; agentAccountId?: string | null; phase: AgentActivitySession['phase']; title: string; headline: string; dispatchSummary?: DispatchSummary; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { all?: boolean; empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; stopped?: boolean }; sourceSetup?: SourceSetup; page?: Page; relayProgress?: RelayProgress };
+type Fixture = { topologyAccounts?: boolean; emptyTopology?: boolean; logsEmpty?: boolean; logs?: Record<string, unknown>[]; agentInventory?: Agent[]; panelAccounts?: boolean; multipleAccounts?: boolean; multipleSources?: boolean; pageFixture?: PageFixture; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsPermissions?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; agentAccountId?: string | null; phase: AgentActivitySession['phase']; title: string; headline: string; dispatchSummary?: DispatchSummary; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { all?: boolean; empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; stopped?: boolean; localState?: 'error' | 'stopped'; extraState?: 'error' | 'stopped' }; sourceSetup?: SourceSetup; page?: Page; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 let conversations: Record<string, AgentConversation[]> = {};
@@ -149,7 +149,14 @@ export async function installScenario(name: string) {
       status.ingresses.push({ ...base, sources: [] });
     }
     if (remote.all && !remote.empty) status.ingresses.push({ ...base, id: 'cli-custom', name: 'CLI proxy', transport: 'https', auth: 'oauth', url: 'https://proxy.example.com/mcp', sources: [], config: { ...base.config, configured: true, httpsProvider: 'custom' } });
-    if (remote.local) status.ingresses = [{ ...base, id: 'local-claude-code', name: 'Claude Code', sources: [{ ...base.sources![0], id: 'local-source', ingressId: 'local-claude-code', connectedAt: null, lastSeenAt: null }] }];
+    if (remote.local) {
+      const id = fixture.sourceSetup?.ingressId ?? 'local-claude-code';
+      status.ingresses = [{ ...base, id, name: fixture.sourceSetup?.source === 'local-desktop' ? 'Claude Desktop' : 'Claude Code', sources: [{ ...base.sources![0], id: 'local-source', ingressId: id, connectedAt: null, lastSeenAt: null }] }];
+    }
+    for (const entry of status.ingresses) {
+      const state = entry.transport === 'local' ? remote.localState : entry.id === 'cli-custom' ? remote.extraState : undefined;
+      if (state) { entry.state = state; entry.running = false; entry.error = state === 'error' ? 'Fixture connection unavailable' : ''; }
+    }
   }
   if (fixture.emptyTopology) { status.ingresses = []; status.ingressSummary = { running: 0, ready: 0, total: 0 }; }
   if (fixture.remoteLink?.stopped) {
@@ -271,11 +278,7 @@ export async function installScenario(name: string) {
     { id: 'codex-desktop', state: 'granted' }, { id: 'codex-login', state: 'granted' },
     { id: 'claude-code', state: 'missing' }, { id: 'ingress:fixture-source', state: 'granted' },
   ] as PermissionItem[] : []), observedAt: now };
-  if (fixture.page === 'logs' && !fixture.logsEmpty) status.logs = [
-    JSON.stringify({ time: now, level: 'info', msg: 'Request processed: status', ingressId: 'fixture-source' }),
-    JSON.stringify({ time: now, level: 'error', msg: 'Request failed: query', ingressId: 'fixture-source', error: 'Fixture connection unavailable', duration: 120 }),
-    JSON.stringify({ time: now, level: 'warn', msg: 'Connection retry pending', reason: 'Fixture upstream unavailable' }),
-  ];
+  status.logs = (fixture.logs ?? []).map(entry => JSON.stringify({ time: now, ...entry }));
   const subscriptionData: Snapshot = { instanceId: 'fixture', revision: 1, settings: { enabled: !!fixture.quota, refreshMinutes: 30, agentProviders: {} }, providers: fixture.quota ? [{
     ...(fixture.pageFixture === 'quota-segments' ? { productUsage: { basis: 'allowance' as const, shared: true, rows: [{ label: 'Code', percent: 40 }, { label: 'Chat', percent: 25 }] } } : {}),
     providerId: 'codex', agentId: 'codex', agentIds: ['codex'], name: 'ChatGPT', eligible: true, state: 'ready', refreshing: false,

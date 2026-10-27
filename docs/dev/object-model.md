@@ -106,9 +106,9 @@ There is no connection choice, change-connection flow or product correction in t
 
 ## Settings
 
-- General, appearance and update items.
+- General: task behavior, startup, notifications and language.
+- Appearance and app updates.
 - System permissions: one entry for the OS permissions ARC needs.
-- Extras: experimental features only.
 
 A setting stays in the UI only when most users need it. Others move to CLI/AX.
 

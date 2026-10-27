@@ -93,10 +93,9 @@ export default function AddAccount({ onClose, initialLogin, forAccount }: { onCl
           <FormField id="account-code" label={t('claudeAccounts.code')} error={fieldError}><Input id="account-code" value={code} autoComplete="off" disabled={busy} aria-invalid={!!fieldError} aria-describedby={fieldError ? 'account-code-error' : undefined} onChange={e => { setCode(e.target.value); setFieldError(''); }} /></FormField>
           <Button type="submit" busy={busy}>{t('submit')}</Button>
         </FormSection></form></Disclosure>}
-        <p className="text-muted-foreground">{t('accounts.agentFlow')}</p>
       </>}
       {login?.browserError && <Notice tone="warning">{login.browserError}</Notice>}
-      {login?.next?.message && <Notice tone="warning">{login.next.message}</Notice>}
+      {login?.next?.message && <Notice tone="warning">{login.kind === 'api-key' ? t('accounts.nativeAuth') : login.next.message}</Notice>}
       {login?.error && <Notice>{login.error}</Notice>}
       {login?.errors?.map((message, index) => <Notice key={index}>{message}</Notice>)}
       {step === 2 && !login?.accountId && <>{detected.length ? <SingleChoice label={t('accounts.detected')} value={detectedId} onChange={value => { setIdentity(undefined); setDetectedId(value); }} options={detected.map(account => ({ value: account.id, label: account.alias }))} /> : <p role="status">{t('accounts.noneDetected')}</p>}</>}

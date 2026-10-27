@@ -18,7 +18,7 @@ The built-in local authority is excluded from user-managed SRC accounts. Connect
 | --- | --- | --- |
 | Homepage | ConnectionOverview, Topology, IngressPanel, AgentPanel | SRC and AGENT inspectors; task bubbles and detail; Add SRC and Agent settings hub actions. |
 | Logs | RecordsPage | Time, available source, operation and result; filtering and expandable evidence. |
-| Connections | ConnectionsPage | Public link and Local state, address copy and start/stop; other connections are read-only rows. |
+| Connections | ConnectionsPage | Public link and Local state, address copy, deployment and start/stop; other connections are read-only rows. |
 | Settings | SettingsPage | Task behavior, startup, notifications, language, appearance and updates; one System permissions entry. Specialized settings use CLI/AX. |
 | System permissions | SystemPermissions | Existing OS checks and grant requests, including split app/command disk-access evidence. No OAuth grant or tool-policy list. |
 
@@ -54,7 +54,7 @@ AddAccount retains native login and confirmation. AgentPanel L1 lists accounts w
 | --- | --- | --- |
 | Chip | TunnelChip | Source rows/cards; navigates to Connections when a live target exists. |
 | Node | TunnelNode | Existing TopologyPainter and PortraitPainter boundary. No vertex or click target is added. |
-| Row | TunnelRow | Read-only additional Connections rows with kind, address and state. LocalConnectionRow shows Local state only. |
+| Row | TunnelRow | Read-only additional Connections rows with kind, address and state. LocalConnectionRow shows Local state only. Both rows have ready, error and stopped browser fixtures. |
 | Card | TunnelCard | Public-link state, masked MCP address and start/stop. |
 
 AddControlSource offers Product, Configure, Approval and observed success for remote products; local products show a setup command. PublicLinkDeployment owns inline deployment in Add SRC and Connections, preserving progress, cancellation and retry. No connection selector, nested setup dialog, provider editor, Secure Tunnel setup, joined-relay management, hosted-relay administration, invitation or member-device component/export remains.

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { ControlSource, Ingress } from '../../../state/types';
 import type { ProviderAccount } from '../../../types';
-import { controlSource } from '../../../controlSources';
+import { controlSource, sourceProductName } from '../../../controlSources';
 import { t } from '../../../i18n';
 import { Button, Empty, EntityCard, Loading, Notice, PlatformIcon } from '../../ui';
 import { SrcAccountRow } from '../src-account/Row';
@@ -13,7 +13,7 @@ export function SrcPlatformCard({ product, sources, accounts, ingresses, onSourc
 }) {
   const info = controlSource(product), entries = sources.filter(source => source.product === product);
   const count = new Set(entries.map(source => accounts.find(account => account.sources.includes(source.id))?.id ?? source.id)).size;
-  return <EntityCard className="[&>.section-header]:flex-wrap [&>.section-header>.section-header-copy]:basis-30 [&>.section-header>.actions]:max-w-full" title={info?.displayName ?? product} icon={<PlatformIcon role="source" platform={product} size={20} />}
+  return <EntityCard className="[&>.section-header]:flex-wrap [&>.section-header>.section-header-copy]:basis-30 [&>.section-header>.actions]:max-w-full" title={sourceProductName(product)} icon={<PlatformIcon role="source" platform={product} size={20} />}
     headerActions={<>{headerActions}{onAdd && <Button disabled={loading} onClick={onAdd}>{t('accounts.add')}</Button>}</>} aria-busy={loading}>
     {loading && <Loading />}{error && <Notice>{error}</Notice>}
     <span className="text-muted-foreground">{t('accounts.count', { count })}</span>

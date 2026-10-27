@@ -42,7 +42,7 @@ export async function checkUpdate(manual = true) {
   if (!isDesktop) return;
   if (manual) skipped.set("");
   await request(() => api("updates/check", "POST"));
-  if (manual && !updates.get().error && updates.get().snapshot.state === "idle") patch({ message: t("youAreUpToDate") });
+  if (manual && !updates.get().error && !updates.get().snapshot.error && updates.get().snapshot.state === "idle") patch({ message: t("youAreUpToDate") });
 }
 export async function installUpdate(when: UpdateTiming = "settled") {
   const source = updates.get().snapshot.source;

@@ -10,6 +10,7 @@ import { Button, Empty, Loading, Notice } from './ui';
 import { SrcConversationRow } from './objects/src-conversation/Row';
 
 export default function SourceConversations({ accountId }: { accountId: string }) {
+  const activity = agentActivity.use();
   const [rows, setRows] = useState<SrcConversation[]>([]), [loading, setLoading] = useState(true), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   useEffect(() => {
     let stopped = false, reading = false;
@@ -41,7 +42,7 @@ export default function SourceConversations({ accountId }: { accountId: string }
   return <div className="grid gap-2">
     {loading && <Loading />}
     {error && <Notice action={<Button onClick={() => setRetry(value => value + 1)}>{t('retry')}</Button>}>{error}</Notice>}
-    {rows.map(row => <SrcConversationRow key={`${row.kind}:${row.id}`} conversation={row} onTask={open} />)}
+    {rows.map(row => <SrcConversationRow key={`${row.kind}:${row.id}`} conversation={{ ...row, taskRefs: row.taskRefs.map(task => ({ ...task, title: activity.snapshot?.agents[task.agent]?.sessions.find(session => session.id === task.id)?.title || task.title })) }} onTask={open} />)}
     {!loading && !error && !rows.length && <Empty icon={MessagesSquare}>{t('panels.noConversations')}</Empty>}
   </div>;
 }

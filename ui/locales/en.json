@@ -102,7 +102,6 @@
   "edit": "Edit",
   "generatedWhenConnected": "Generated when connected",
   "automaticallyOpenCodexTasks": "Automatically open Codex tasks",
-  "whenDisabledNewTasksRunInTheBackground": "When enabled, new tasks open automatically in Codex.",
   "taskApprovalMode": "Task approval mode",
   "askForConfirmationByDefaultTheCloudCan": "When enabled, task requests require local confirmation by default; the cloud can explicitly request bypass.",
   "general": "General",
@@ -1172,7 +1171,6 @@
   "accounts.kind.codex": "ChatGPT / Codex",
   "accounts.kind.api-key": "API key",
   "accounts.kind.detect": "Detect on this computer",
-  "accounts.agentFlow": "Agents can run this flow through account_add; only sign-in needs you.",
   "accounts.matched": "This identity matches an existing account. Connections share one account.",
   "accounts.useFor": "Use as default for",
   "accounts.alias": "Alias",
@@ -1360,6 +1358,7 @@
   "stop": "Stop",
   "panels.rename": "Rename",
   "panels.noAccounts": "No accounts.",
+  "panels.relatedTask": "{agent} task {number}",
   "panels.noConversations": "No conversations.",
   "connections.publicLink": "Public link",
   "connections.localCommand": "Local setup command"

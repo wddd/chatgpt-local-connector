@@ -79,6 +79,11 @@ pub fn install(view: &WebView, imported: Imported) -> Result<Arc<AtomicUsize>, &
     Ok(pending)
 }
 
+// Page titles are metadata; reading them does not inject scripts into the SRC.
+pub fn title(view: &WebView) -> Option<String> {
+    unsafe { view.webview().title().map(|title| title.to_string()) }
+}
+
 pub fn verify_no_scripts(view: &WebView) -> Result<(), &'static str> {
     if unsafe { view.manager().userScripts().count() } != 0 {
         return Err("unexpected-user-scripts");

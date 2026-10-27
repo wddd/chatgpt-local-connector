@@ -158,11 +158,18 @@ fn upsert(
     at: &str,
     active: bool,
 ) {
+    let title = reference["title"]
+        .as_str()
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
     let canonical = registry::resolve(&store.conversations, account, string(reference, "id"));
     let reference = canonical.as_ref().unwrap_or(reference);
     if let Some(row) = store.conversations.iter_mut().find(|r| {
         r["accountId"] == account && r["kind"] == reference["kind"] && r["id"] == reference["id"]
     }) {
+        if let Some(title) = title {
+            row["title"] = json!(title);
+        }
         row["lastSeenAt"] = json!(at);
         if active {
             row["lastActiveAt"] = json!(at);
@@ -171,6 +178,9 @@ fn upsert(
         let mut row = reference.clone();
         row["accountId"] = json!(account);
         row["firstSeenAt"] = json!(at);
+        if let Some(title) = title {
+            row["title"] = json!(title);
+        }
         row["lastSeenAt"] = json!(at);
         row["lastActiveAt"] = if active { json!(at) } else { Value::Null };
         row["basis"] = json!(basis);
@@ -235,6 +245,16 @@ pub fn observe(body: &Value) -> Result<Value> {
                     continue;
                 }
                 let current = row["url"].as_str().and_then(refs::conversation);
+                let mut reference = current.clone();
+                if let Some(reference) = reference.as_mut() {
+                    if let Some(title) = row["title"]
+                        .as_str()
+                        .map(str::trim)
+                        .filter(|title| !title.is_empty())
+                    {
+                        reference["title"] = json!(title);
+                    }
+                }
                 let old = live.get(id).cloned().unwrap_or_default();
                 let focused = row["active"] == true;
                 let active_at = if focused {
@@ -244,7 +264,7 @@ pub fn observe(body: &Value) -> Result<Value> {
                 } else {
                     0
                 };
-                if let Some(reference) = &current {
+                if let Some(reference) = &reference {
                     upsert(store, id, reference, "observed", &at, focused);
                 }
                 next.insert(

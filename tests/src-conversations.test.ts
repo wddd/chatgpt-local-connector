@@ -262,3 +262,27 @@ test('Source inventory includes other Claude accounts before a website container
     assert.equal(denied.error.code,'SRC_ACCOUNT_SCOPE');
   } finally {await fixture.close();}
 });
+
+
+test('Observed SRC page titles survive metadata refresh and restart', { skip: process.platform !== 'darwin' }, async () => {
+  // Regression: SRC account conversation lists exposed session identifiers because observed page titles were discarded.
+  const fixture = await nativeControl(server, { ARC_FIXTURE_SNAPSHOT: 'src-conversations' });
+  try {
+    const source = 'title-source';
+    await fixture.api('ingress', { id: source, name: source, controlSource: 'claude', transport: 'https', auth: 'bearer', bearerToken: 'synthetic-title'.padEnd(40, 'x'), toolPolicy: 'all', config: { httpsProvider: 'custom', httpsUrl: 'https://fixture.example.com/mcp' } });
+    await fixture.api(`ingress/${source}/start`, {});
+    const accountId = (await fixture.sourceCall(source, 'whoami', {}, 'query')).id;
+    const id = randomUUID(), url = `https://claude.ai/chat/${id}`;
+    await fixture.sourceCall(source, 'src_conversation_open', { accountId, url });
+    const inventory = async () => (await fixture.sourceCall(source, 'src_conversations', { accountId }, 'query')).accounts[0];
+    const { storeId } = await inventory();
+    const observation = { accountId, storeId, url, open: true, active: true, status: 'signed-in' };
+    for (const title of ['Plan the project review', 'Review the implementation']) {
+      await fixture.api('src-conversations/observe', { containers: [{ ...observation, title }], flush: true });
+      assert.equal((await inventory()).conversations.find((row: any) => row.id === id).title, title);
+    }
+    await fixture.api('src-conversations/observe', { containers: [observation], flush: true });
+    await fixture.restart();
+    assert.equal((await inventory()).conversations.find((row: any) => row.id === id).title, 'Review the implementation');
+  } finally { await fixture.close(); }
+});

@@ -4,9 +4,10 @@ export type SrcContainerStatus = 'unsupported' | 'not-imported' | 'signed-in' | 
 export type SrcConversationBasis = 'observed' | 'notify-target' | 'correlated' | 'manual';
 export type SrcConversationRef = { accountId: string; kind: 'chat' | 'cowork'; id: string; url: string; basis: SrcConversationBasis };
 export type SrcConversation = SrcConversationRef & {
+  title?: string;
   aliases: string[];
   firstSeenAt: string; lastSeenAt: string; lastActiveAt: string | null;
-  taskRefs: Array<{ agent: string; id: string; basis: SrcConversationBasis }>;
+  taskRefs: Array<{ agent: string; id: string; title?: string; basis: SrcConversationBasis }>;
 };
 export type SrcContainer = {
   accountId: string; storeId: string | null; status: SrcContainerStatus; reason?: string | null; hint?: string | null; detectedAccountId?: string | null; safariUserAgent: boolean; open: boolean;

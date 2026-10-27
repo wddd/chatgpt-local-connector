@@ -79,6 +79,12 @@ export async function acceptPanels(page, fixture, state, messages, model) {
     await panel.getByRole('button', { name: messages.remove, exact: true }).waitFor();
     if (await add.count()) throw new Error('Account panel unexpectedly exposes the platform Add account action');
     const alias = await returnToAccount(page, panel, messages);
+    if (state.endsWith('l2-empty')) {
+      // Regression: grid tracks spread the empty-state icon and label about 240px apart.
+      const empty = panel.getByRole('status').filter({ hasText: messages[fixture.panel.kind === 'source' ? 'panels.noConversations' : 'agentPanel.noConversations'] });
+      const icon = await empty.locator('svg').boundingBox(), label = await empty.locator('p').boundingBox();
+      if (!icon || !label || label.y - icon.y - icon.height > Math.max(icon.height, label.height)) throw new Error('Empty-state icon and label are not grouped');
+    }
     return { side, bounds, level: 2, returnedToAccount: alias };
   }
   await add.waitFor();

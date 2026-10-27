@@ -8,6 +8,13 @@ export async function acceptSettings(page, fixture, messages, captureEntry = asy
     if (await page.getByRole('textbox').count() || await page.getByRole('combobox').count()) throw new Error('System permissions exposes grant or tool-policy editing');
     return;
   }
+  if (fixture.settingsUpdates) {
+    if (fixture.update?.error) await page.getByText(fixture.update.error, { exact: true }).waitFor();
+    for (const job of fixture.update?.recent ?? []) {
+      if (job.instance && (await page.getByRole('main').innerText()).includes(job.instance)) throw new Error('Update history exposes an internal instance ID');
+      await page.getByText(messages[job.source.kind === 'local' ? 'updates.localVersion' : 'updates.releaseVersion'].replace('{version}', job.source.version), { exact: true }).waitFor();
+    }
+  }
   if (!fixture.settingsUpdates) {
     // Regression: advanced network and routing controls crowded the basic Settings path.
     if (await page.getByRole('spinbutton').count() || await page.getByRole('textbox').count()) throw new Error('Advanced configuration input remains in Settings');

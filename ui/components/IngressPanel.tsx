@@ -1,6 +1,6 @@
 import { Maximize2, Minimize2 } from 'lucide-react';
 import { t } from '../i18n';
-import { controlSource } from '../controlSources';
+import { sourceProductName } from '../controlSources';
 import { ingressPanel, selectSourcePanel } from '../state/overviewPanels';
 import type { SurfaceRect } from '../motion/surface';
 import SourcePanel from './SourcePanel';
@@ -10,7 +10,7 @@ export default function IngressPanel({ onPanelFrame, width, expanded, onToggleWi
   onPanelFrame: (rect: SurfaceRect | null) => void; width?: number; dockRect?: SurfaceRect; expanded: boolean; onToggleWidth: () => void;
 }) {
   const selected = ingressPanel.use()!;
-  return <Dialog width={width} dockRect={dockRect} dock="left" expanded={expanded} headerless title={controlSource(selected.product)?.displayName ?? selected.product}
+  return <Dialog width={width} dockRect={dockRect} dock="left" expanded={expanded} headerless title={sourceProductName(selected.product)}
     onBack={selected.accountId ? () => selectSourcePanel(selected.product, { platformOnly: true }) : undefined}
     originKey={`${selected.product}:${selected.client?.id ?? ""}`} closeRequested={selected.closing}
     onCloseStart={() => ingressPanel.set(old => old ? { ...old, closing: true } : old)}

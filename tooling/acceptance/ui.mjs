@@ -84,6 +84,14 @@ try {
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           row.panel = await acceptPanels(page, fixture, name, messages, model);
         }
+        if (fixture.connectionDeployment) {
+          // Start from the real Connections entry rather than mounting an already-running job.
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          const main = page.getByRole('main');
+          await main.getByRole('button', { name: messages['source.createRelay'], exact: true }).click();
+          await main.getByRole('textbox', { name: messages['connect.copyLogin'], exact: true }).waitFor();
+          await main.getByRole('button', { name: messages.cancel, exact: true }).waitFor();
+        }
         if (name === 'navigation-redirects') {
           // Regression: removed dock targets need to redirect through the live App navigator.
           for (const [target, destination] of [['tasks', 'overview'], ['accounts', 'overview'], ['remote', 'connections'], ['permissions', 'settings']]) {
@@ -151,6 +159,7 @@ try {
           for (const task of fixture.tasks) await taskButton(task).waitFor({ state: 'visible' });
           const expanded = await page.evaluate(() => window.__ARC_VIEW_MODEL__());
           if (expanded.panels.agent || expanded.panels.source || await page.getByRole('dialog').count()) throw new Error('View all opened a detail panel');
+          await acceptLayout(page);
           if (screenshots) await page.screenshot({ path: path.join(out, `${key}-expanded.png`), animations: 'disabled' });
           await page.keyboard.press('Escape');
           await summary.waitFor({ state: 'visible' });
