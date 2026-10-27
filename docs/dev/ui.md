@@ -29,7 +29,8 @@ The copied primitives include button, input, textarea, label, switch, select, to
 | `primary` / `primary-foreground` | Existing neutral action / on-action | `bg-primary text-primary-foreground` |
 | `secondary`, `muted`, `muted-foreground` | Subtle surface and secondary text | `bg-muted text-muted-foreground` |
 | `accent` / `accent-foreground` | Existing neutral hover fill and foreground | `hover:bg-accent` |
-| `brand-accent`, `ring` | Selected ARC accent; default #5b5ff5 / #7a7dff | `text-brand-accent focus-visible:ring-ring` |
+| `brand-accent`, `ring` | Selected ARC paint; default #5b5ff5 / #7a7dff | `bg-brand-accent focus-visible:ring-ring` |
+| `brand-foreground` | Contrast-adjusted selected accent for small text on neutral and tone surfaces | `text-brand-accent` (text-color namespace), `text-brand-foreground` |
 | `destructive`, `border`, `input` | Existing danger, hairline and strong border | `text-destructive border-border border-input` |
 | `radius` | 10px control base; sm 8px, lg 12px, panel/xl 20px | `rounded-md rounded-lg rounded-xl` |
 | `role-source`, `role-agent`, `phase-*`, `brand-orange` | Existing ARC role, task phase and brand colors | `text-role-source text-phase-thinking` |
@@ -37,6 +38,8 @@ The copied primitives include button, input, textarea, label, switch, select, to
 | `chart-1` through `chart-8`, `sidebar-*` | Existing chart palette; sidebar derives from semantic surfaces | `bg-chart-1 bg-sidebar` |
 
 `@theme` exposes these values to Tailwind. Body stays 14px, controls 13px, metadata 12px; spacing uses Tailwind's 4px base. Legacy `canvas`, `surface`, `text`, `action` and related names derive from the semantic variables while their feature consumers remain. Remove each legacy name when its final consumer migrates. `brand-accent` replaces the old overloaded purple `accent`; palette changes, topology and quota use that explicit brand token. These aliases remain only for brand painters and geometry consumers; functional layouts use semantic utilities.
+
+Text and decorative paint have separate contrast needs. `--brand-foreground` derives a darker light-theme or lighter dark-theme color from the selected accent. Tailwind's `--text-color-brand-accent` mapping applies it to existing status, step, link and recommendation text without changing brand fills, borders, quota or topology paint. Brighter blue/orange/green light palettes use their own mixing weights. Success and phase foregrounds cover neutral, hover and soft tone surfaces; muted text uses the same surface matrix. Completed-task text is also checked after compositing the card at `--task-completed-opacity` over its surrounding surface. `tests/token-contrast.test.mjs`, included in `npm test`, computes unrounded sRGB contrast for every supported palette and theme, requiring at least 4.5:1 even for semantic colors also used by large text or icons. Host-provided MCP colors remain owned by the host. `node tooling/acceptance/contrast.mjs` checks the rendered fixture pairs at 1280×800 and writes measurements under `output/playwright/contrast/`; it does not launch a native instance.
 
 `ui/theme.ts` follows system appearance by default, sets `data-theme` and the `.dark` class, and keeps native/MCP theme handling. The Tailwind dark variant reads `data-theme` so scoped design roots work without changing the host document. Reduced-motion media and environment overrides disable transitions. Common controls use Radix focus, keyboard and dismissal semantics; topology workspace geometry remains with ElasticPanel, using the shared shadcn Dialog surface.
 
