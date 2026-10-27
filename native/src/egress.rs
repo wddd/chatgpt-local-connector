@@ -231,6 +231,27 @@ pub fn receipt(value: Value) -> Value {
         }
         out["origin"] = origin;
     }
+    let operation = string(&value, "operation");
+    let args = &value["arguments"];
+    if matches!(operation, "create" | "agent_create")
+        && args.is_object()
+        && string(args, "title").trim().is_empty()
+    {
+        out["titleHint"] = json!({
+            "code": "TITLE_FROM_PROMPT",
+            "message": "No non-blank title was supplied. The task title falls back to the first non-empty prompt line, truncated to 120 characters. Pass title next time: a short human-readable task title shown in task lists and notifications."
+        });
+        if operation == "create" {
+            out["titleHint"]["rename"] = json!({"via":"act","op":"codex_thread","args":{"action":"name/set","params":{"threadId":value["threadId"],"name":"<short task title>"}}});
+        }
+    } else if operation == "native"
+        && matches!(string(args, "method"), "thread/start" | "thread/fork")
+    {
+        out["titleHint"] = json!({
+            "code": "NATIVE_THREAD_TITLE",
+            "message": "This native operation uses native thread metadata without an ARC title argument. Set a short human-readable name of at most 120 characters with codex_thread action:name/set and params:{threadId:<returned threadId>,name:<title>}. Prefer codex_create with title for prompt dispatch."
+        });
+    }
     out["stateScope"] = json!("operation");
     if let Some(updated) = value["updatedAt"]
         .as_str()
@@ -262,6 +283,13 @@ pub fn receipt(value: Value) -> Value {
     }
     if out["turnId"].is_null() && result["turn"]["id"].is_string() {
         out["turnId"] = result["turn"]["id"].clone();
+    }
+    if out["titleHint"]["rename"].is_object() {
+        if out["threadId"].is_string() {
+            out["titleHint"]["rename"]["args"]["params"]["threadId"] = out["threadId"].clone();
+        } else {
+            out["titleHint"]["rename"]["args"]["params"]["threadId"] = json!("<created threadId>");
+        }
     }
     if value.get("result").is_some() {
         let operation = string(&value, "operation");
@@ -1094,6 +1122,45 @@ pub(crate) fn next(value: &mut Value, name: &str, args: &Value, push_available: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn creation_receipts_explain_missing_titles() {
+        // Regression: titleless dispatch receipts left callers unaware of prompt-derived task names.
+        for operation in ["create", "agent_create"] {
+            for title in [Value::Null, json!("  "), json!("Review project")] {
+                let out = receipt(
+                    json!({"requestId":"r", "state":"completed", "operation":operation,
+                    "arguments":{"title":title,"prompt":"Private prompt"}, "result":{"thread":{"id":"new-thread"}}}),
+                );
+                assert_eq!(
+                    out["titleHint"]["code"] == "TITLE_FROM_PROMPT",
+                    title != "Review project"
+                );
+                if operation == "create" && title != "Review project" {
+                    assert_eq!(out["titleHint"]["rename"]["op"], "codex_thread");
+                    assert_eq!(
+                        out["titleHint"]["rename"]["args"]["params"]["threadId"],
+                        "new-thread"
+                    );
+                }
+                assert!(out.get("arguments").is_none());
+            }
+        }
+        for method in ["thread/start", "thread/fork", "turn/start"] {
+            let out = receipt(
+                json!({"requestId":"r","state":"completed","operation":"native","arguments":{"method":method}}),
+            );
+            assert_eq!(
+                out["titleHint"]["code"] == "NATIVE_THREAD_TITLE",
+                method != "turn/start"
+            );
+        }
+        let out =
+            receipt(json!({"requestId":"r","state":"completed","operation":"send","arguments":{}}));
+        assert!(out.get("titleHint").is_none());
+        let held = receipt(json!({"requestId":"r","state":"held","operation":"agent_create","heldForUpdate":true}));
+        assert!(held.get("titleHint").is_none());
+    }
 
     #[test]
     // Regression: ax-ce733eee the common guide hid coordination_session and message_route from Claude sources.

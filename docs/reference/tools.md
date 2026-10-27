@@ -155,8 +155,10 @@ act {"op":"write","args":{"path":"/absolute/project/new.txt","content":"hello\n"
 
 ## Codex tasks
 
+Callers SHOULD always provide optional `title` on `codex_create` and `agent_create`: a short human-readable task title of at most 120 characters, shown in task lists and notifications. Omitted or blank titles use the first non-empty prompt line, truncated to 120 characters; the receipt includes an actionable `titleHint`. A promptless `agent_create` has an empty fallback. Rename Codex tasks with `codex_thread` using `action:"name/set"` and `params:{threadId,name}`. Native `codex_thread` fork and `codex_call` thread/start or thread/fork use native metadata without an ARC `title` argument; name the returned thread with that same operation. No Agent rename op is exposed.
+
 ```text
-act {"op":"codex_create","args":{"project":"/absolute/project","prompt":"Read the project and summarize its structure."},"requestId":"<fresh UUID>"}
+act {"op":"codex_create","args":{"project":"/absolute/project","title":"Summarize project structure","prompt":"Read the project and summarize its structure."},"requestId":"<fresh UUID>"}
 query {"op":"codex_wait","args":{"threadId":"<returned ID>","turnId":"<returned turn>","timeoutMs":30000}}
 query {"op":"codex_read","args":{"threadId":"<returned ID>"}}
 query {"op":"codex_changes","args":{"threadId":"<returned ID>","turnId":"<returned turn>"}}

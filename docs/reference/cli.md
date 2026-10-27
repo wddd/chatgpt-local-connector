@@ -69,7 +69,7 @@ hints) under `error`, with a sibling `next`. Every failure includes a schema-val
 ```sh
 arc cli control guide
 arc cli control guide codex_create
-printf '%s' '{"prompt":"Do not call tools. Reply ARC_ACCEPTANCE_OK.","mode":"read-only"}' | arc cli control codex_create --stdin
+printf '%s' '{"title":"Verify dispatch","prompt":"Do not call tools. Reply ARC_ACCEPTANCE_OK.","mode":"read-only"}' | arc cli control codex_create --stdin
 printf '%s' '{"timeoutMs":1000}' | arc cli control inbox_wait --stdin
 ```
 
@@ -734,6 +734,8 @@ New sources offer a selection through `capabilityProfileOffer` and source setup;
 Source preferences follow the stable source ID across connection switches.
 
 Read `cli control dispatch_policy` and `cli control guide codex_create` before dispatch.
+Callers SHOULD always provide optional `title` on `codex_create` and `agent_create`: a short human-readable task title of at most 120 characters, shown in task lists and notifications. Omitted or blank titles use the first non-empty prompt line, truncated to 120 characters; the receipt includes an actionable `titleHint`. A promptless `agent_create` has an empty fallback. Rename Codex tasks with `codex_thread` using `action:"name/set"` and `params:{threadId,name}`. Native `codex_thread` fork and `codex_call` thread/start or thread/fork use native metadata without an ARC `title` argument; name the returned thread with that same operation. No Agent rename op is exposed.
+
 For ordinary work, explicitly provide `purpose:"task"` and `notify:null`.
 Retain the returned receipt, thread, and turn identifiers.
 Use the controller's background-command facility for the wait:

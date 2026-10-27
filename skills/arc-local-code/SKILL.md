@@ -35,10 +35,13 @@ Use `cli control guide --stdin` with `{"view":"full"}` for all permitted operati
 
 CLI stdin is the operation's args object, not an MCP envelope.
 For ordinary work, pass `purpose:"task"` and `notify:null` explicitly because local dispatch defaults to self-test.
+Callers SHOULD always provide `title` on `codex_create` and `agent_create`: a short human-readable task title of at most 120 characters, shown in task lists and notifications.
+Omitted or blank titles fall back to the first non-empty prompt line, truncated to 120 characters; receipts include `titleHint`.
+Rename Codex tasks with `codex_thread` using `action:"name/set"` and `params:{threadId,name}`.
 Use the user's authorized scope and the current policy when constructing the dispatch.
 
 ```sh
-printf '%s' '{"project":"/workspace/project","prompt":"Implement the requested change.","purpose":"task","notify":null}' | arc cli control codex_create --stdin
+printf '%s' '{"project":"/workspace/project","title":"Implement requested change","prompt":"Implement the requested change.","purpose":"task","notify":null}' | arc cli control codex_create --stdin
 ```
 
 Retain `requestId`, `threadId` and `turnId` from the response.
