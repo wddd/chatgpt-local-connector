@@ -615,6 +615,15 @@ async fn call_tool_inner(s: &ControlSource<'_>, tool: &str, envelope: Value) -> 
         }
         let spec = catalog()["tools"].as_array().unwrap().iter().find(|t| t["name"] == tool)
             .ok_or("Unknown tool; call guide, query or act.")?;
+        if let (true, Some(topic)) = (tool == "guide", envelope["topic"].as_str()) {
+            let accepts = |schema: &Value| schema["properties"]["topic"]["enum"].as_array().is_some_and(|topics| topics.iter().any(|t| t == topic));
+            let op = catalog()["ops"].as_array().unwrap().iter().find(|op| op["name"] == "guide").unwrap();
+            if !accepts(&spec["inputSchema"]) && accepts(&op["inputSchema"]) {
+                return Err(json!({"code":"WRONG_TOOL","op":"guide","field":"/topic","via":"query",
+                    "message":"The frozen guide tool accepts only its original topics; read this topic through query guide.",
+                    "next":{"via":"query","op":"guide","args":{"topic":topic},"hint":"Read this topic through query guide with the same topic."}}).to_string());
+            }
+        }
         crate::validator("tool", tool, &spec["inputSchema"])?
             .validate(&envelope)
             .map_err(|e| crate::egress::validation_error("", &spec["inputSchema"], &e))?;

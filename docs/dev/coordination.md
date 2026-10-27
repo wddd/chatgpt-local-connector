@@ -253,7 +253,7 @@ records; built-in local authority can administer them. Optional logical sessions
 are ARC-issued, source-owned handles, pull-only until an explicitly verified
 `message_route` is bound. They provide no stronger isolation than the source credential.
 
-Read `board` at turn start and before shared-resource work. Its default summary
+Read `board` before shared-resource work. Its default summary
 contains one line per active notice or uncleared blocker, plus compact IDs,
 revisions, owners and activity metadata. Use `view:full` for resources, editable
 fields, thread links and clearance evidence. `id` reads a retained terminal record;
@@ -354,8 +354,8 @@ prompts, transcripts, credentials, paths or private routing data.
 `messages` reads the authenticated source's inbox or outbox (`direction`), with
 optional session/negotiation filters, a cursor and a limit of 1–100. Cursors are
 bound to the source authorization, epoch and filters, survive restart, and report
-`MESSAGES_CURSOR_EXPIRED` after retention or authority changes. Read messages at
-turn start and reply only when necessary. Source-only messages appear in the
+`MESSAGES_CURSOR_EXPIRED` after retention or authority changes. Read messages
+before shared-resource work and reply only when necessary. Source-only messages appear in the
 unfiltered inbox. A session filter selects only messages addressed to that session.
 The sender can inspect its own sent mail; unrelated sources see no private bodies.
 The shared journal emits only fixed lifecycle facts, without message summaries.

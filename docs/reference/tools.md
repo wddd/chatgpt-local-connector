@@ -81,7 +81,7 @@ The public MCP surface is frozen at three tools. Call `guide` first; use `guide(
 | query | `{op: string, args: object}` | readOnlyHint=true |
 | act | `{op: string, args: object, requestId?: string}` | readOnlyHint=false |
 
-`args` is open at the MCP boundary and validated against the current op schema. The default `loop` guide returns core rules and common enabled ops. Use `query({"op":"guide","args":{"view":"full"}})` for the complete enabled op index, dispatch workflow, examples, and event contracts. Existing `notify`, `review`, and `approvals` topics remain available. `op` takes precedence over topic and view. Each index row gives `op`, `via`, and a compact `signature`; a single-op response includes the full schema and example.
+`args` is open at the MCP boundary and validated against the current op schema. The default `loop` guide returns core rules and common enabled ops. Use `query({"op":"guide","args":{"view":"full"}})` for the complete enabled op index, dispatch workflow, examples, and event contracts. The full view also carries acceptance and maintenance guidance (isolated instances, fixtures, screen readiness, `app_env`, `acceptance_fault`). Existing `notify`, `review`, and `approvals` topics remain available on the frozen guide tool; `coordination`, `src`, and `context` are read through query guide, and the frozen tool redirects them there with `WRONG_TOOL`. `op` takes precedence over topic and view. Each index row gives `op`, `via`, and a compact `signature`; a single-op response includes the full schema and example.
 
 Every guide response includes `guideHash`. Reuse it with `query({"op":"guide","args":{"knownGuideHash":"<hash>"}})` for the same view, topic, or op. Matching content returns only `guideHash` and `unchanged:true`, plus the normal ARC version. The hash covers source-specific limits, enabled ops, and configured context guidance. A different view or policy returns fresh content. `view` and `knownGuideHash` are query-op parameters only; the three frozen MCP tool schemas remain unchanged. Cached clients can also request individual schemas through `query({"op":"guide","args":{"op":"codex_create"}})`.
 
@@ -856,8 +856,8 @@ feed projection still needs reconciliation; reads and retries reconcile it.
 
 ## Shared bulletin and blockers
 
-Pull `query board` at turn start and before land, application replacement,
-`dev:isolated` or push. Post a notice before multi-step work on shared resources.
+Pull `query board` before multi-step work on shared resources and before land,
+application replacement, `dev:isolated` or push. Post a notice before multi-step work on shared resources.
 Prefer `board` and cursor-based `events` pulls to proactive wakeups.
 
 ```text
@@ -930,7 +930,7 @@ for bounded capacity and actionable errors. Existing ingress allowlists require
 local adoption of the new ops; upgrades do not broaden explicit grants.
 ## Coordination messages
 
-Use `query({op:"messages",args:{}})` at turn start. `direction:"outbox"` selects sent
+Use `query({op:"messages",args:{}})` before shared-resource work. `direction:"outbox"` selects sent
 mail. Save `nextCursor` with the same filters; `hasMore` indicates another page.
 `sessionId`, `negotiationId` and `limit` (1–100) are optional. Only the sender,
 recipient and local authority can inspect a message body.

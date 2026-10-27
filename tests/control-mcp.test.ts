@@ -1850,6 +1850,14 @@ test('source connection switching binds consent and preserves disconnected ident
 });
 
 
+test('frozen guide tool redirects query-only topics to query guide', async () => {
+  // Regression: guide({topic:"context"}) failed with a generic schema error whose next did not name query guide.
+  const {response,result}=await call('guide',{topic:'context'});
+  assert.equal(response.isError,true);
+  assert.equal(result.error.code,'WRONG_TOOL');
+  assert.deepEqual({via:result.next.via,op:result.next.op,args:result.next.args},{via:'query',op:'guide',args:{topic:'context'}});
+});
+
 test('guide progressively discloses every enabled op and caches projected content', async () => {
   // Contract: query guide caches the source-specific view without changing frozen tools.
   const readGuide = async (args: Record<string, unknown>) => (await client.callTool({name:'query',arguments:{op:'guide',args}})).structuredContent!.result as any;
