@@ -1,3 +1,5 @@
+import TimelineEntries from './components/TimelineEntries';
+import TaskOutcome from './components/TaskOutcome';
 import { useState } from 'react';
 import { TaskChip, TaskNode, TaskRow, TaskCard } from './components/objects/task';
 import { DispatchSpec } from './components/composites/DispatchSpec';
@@ -50,6 +52,15 @@ export default function TaskObjectsFixture() {
     <section aria-label="Long task specifications">
       <TaskRow kind="receipt" record={longReceipt} records={[longReceipt]} id="long-receipt" onOpen={() => setAction('Open long receipt')} />
       <TaskCard task={{ kind: 'receipt', record: longReceipt, records: [longReceipt] }} agent="codex" />
+    </section>
+    <section aria-label="Task content boundaries" className="min-w-0">
+      <TaskCard task={{ kind: 'timeline', session, timeline: taskFixtures.contentTimeline, running: false, hasPending: false, title: 'Long task content' }} agent="claude">
+        <div className="timeline-entries flex min-w-0 flex-col gap-3 p-3">
+          <TimelineEntries entries={taskFixtures.contentTimeline.entries} agent="claude" session={session} now={now} status="completed" />
+          <TaskOutcome state="failed" entries={taskFixtures.contentTimeline.entries} onRetry={() => setAction('Retry failed turn')} />
+          <TaskOutcome state="interrupted" entries={taskFixtures.contentTimeline.entries} onResume={() => setAction('Resume interrupted turn')} />
+        </div>
+      </TaskCard>
     </section>
     <section aria-label="Recorded dispatch specifications">{dispatchSpecFixtures.map(fixture => <section key={fixture.label} aria-label={fixture.label}><h3>{fixture.label}</h3><DispatchSpec {...fixture} /></section>)}</section>
   </main>;

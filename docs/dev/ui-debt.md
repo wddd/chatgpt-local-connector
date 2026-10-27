@@ -14,7 +14,7 @@ Raw button, input, select, textarea, label, details, summary and definition-list
 
 Feature CSS selectors are tracked when their names indicate rows, cards, forms, fields, headings, headers, actions, settings or tag clusters, or their direct declarations set spacing, display, flex/grid or alignment. This includes component-local styles and `ui/style.css` / `ui/product.css`. Animation keyframes and the same shared/fixture exclusions are omitted. CSS baselines count individual selectors, including grouped selectors and repeated rules. All dedicated CSS files, including shared legacy CSS, are also compared to the Git debt base: new files and new non-brand selectors fail. Existing selector declarations may evolve during migration; new layout uses Tailwind. `ui/tokens.css` and synthetic fixture CSS are infrastructure exceptions. Brand selector exceptions cover only the mark, topology/earcup connections, quota rings and task bubbles in their existing files.
 
-TASK list and summary-header layout is owned by `ui/components/objects/task/task.css`. Collection layout, timeline bodies and update work grouping retain their feature owners.
+TASK objects, conversation collections, timeline bodies and interaction requests compose shared shadcn primitives with semantic Tailwind utilities. Task bubbles and phase painting retain brand animation CSS. Update work grouping retains its feature owner.
 
 Accounts, AGENT catalog/profile/identity objects and quota surroundings compose shared shadcn primitives with Tailwind utilities. Notification binding behavior and task content retain their existing owners. Quota rings remain brand visuals. Account workspace and Agent panel shell selectors remain with the integration owner.
 
@@ -22,8 +22,7 @@ Accounts, AGENT catalog/profile/identity objects and quota surroundings compose 
 
 | Area | Feature owners | Remaining styles |
 | --- | --- | --- |
-| Task and activity content | `TasksPage.tsx`, `objects/task/Card.tsx`, `ActivityTimeline.tsx`, `TimelineEntries.tsx`, `TaskOutcome.tsx`, `TaskChanges.tsx`, `TaskOwnership.tsx`; TASK and interaction objects | `ui/components/TaskDetail.css`, `ui/components/activity/activity.css`, task/timeline rules in `ui/product.css`, TASK object CSS; task-bubble styling remains brand-owned |
-| Workspace and global shell | `ElasticPanel.tsx`, workspace headers/dock, `ui/components/ui/HoverPreviewGroup.tsx`, `AnimatedSize.tsx` | Global defaults and dialog/workspace rules in `ui/style.css` and `ui/product.css`, the remaining hover/size shared CSS; topology geometry is outside layout migration |
+| Workspace and global shell | `ElasticPanel.tsx`, workspace headers/dock, `ui/components/ui/HoverPreviewGroup.tsx`, `AnimatedSize.tsx` | Global defaults and dialog/workspace rules in `ui/style.css` and `ui/product.css`, sheet shell rules in `ui/components/TaskDetail.css`, shared `.timeline-meta` consumers, the remaining hover/size shared CSS; topology geometry is outside layout migration |
 
 Remote-link pages, setup content, Relay hosting, SRC/TUNNEL objects, authorization requests and deployment progress use shared primitives and Tailwind. Setup dialog geometry remains with the workspace and global shell owner.
 
@@ -42,9 +41,9 @@ Counts are outstanding violations per file and rule, sorted by count.
 <!-- ui-debt:start -->
 | File | Rule | Count |
 | --- | --- | ---: |
-| ui/product.css | shared-layout-css | 282 |
-| ui/components/TaskDetail.css | shared-layout-css | 72 |
-| ui/style.css | shared-layout-css | 32 |
-| ui/components/activity/activity.css | shared-layout-css | 5 |
+| ui/product.css | shared-layout-css | 171 |
+| ui/style.css | shared-layout-css | 26 |
+| ui/components/TaskDetail.css | shared-layout-css | 4 |
+| ui/components/activity/activity.css | shared-layout-css | 2 |
 | ui/components/AppUpdate.css | shared-layout-css | 1 |
 <!-- ui-debt:end -->

@@ -39,14 +39,14 @@ function TimelineImage({ src = "", alt }: { src?: string; alt?: string }) {
   }, [agent, id, src]);
   const url = link?.kind === "image" || link?.kind === "external" && /^https?:\/\//i.test(link.target)
     ? link.target : local?.source === src ? local.url : undefined;
-  if (!url || failed === src) return <span className="timeline-image-placeholder" role="img" aria-label={alt || t("timeline.imageUnavailable")} title={alt || t("timeline.imageUnavailable")}><Icon icon={Image} /></span>;
+  if (!url || failed === src) return <span className="timeline-image-placeholder inline-flex align-middle text-muted-foreground" role="img" aria-label={alt || t("timeline.imageUnavailable")} title={alt || t("timeline.imageUnavailable")}><Icon icon={Image} /></span>;
   return <img src={url} alt={alt ?? ""} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(src)} />;
 }
 export default memo(function TimelineMarkdown({ text }: { text: string }) {
   const { agent, id } = useContext(ResourceContext);
   const root = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
-  return <div ref={root} className="markdown timeline-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={timelineUrl} components={{
+  return <div ref={root} className="markdown timeline-markdown min-w-0 [&>:first-child]:mt-0 [&>:last-child]:mb-0 [&_pre]:overflow-x-auto [&_pre]:whitespace-pre [&_img]:max-w-full [&_a]:text-brand-accent [&_a]:underline [&_.contains-task-list]:list-none [&_.contains-task-list]:pl-1"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={timelineUrl} components={{
     ...headings,
     a: ({ href = "", children }) => {
       const link = timelineLink(href);
@@ -66,6 +66,6 @@ export default memo(function TimelineMarkdown({ text }: { text: string }) {
       }}>{children}</a>;
     },
     img: ({ src, alt }) => <TimelineImage src={src} alt={alt} />,
-    table: ({ children }) => <div className="timeline-table"><table>{children}</table></div>,
-  }}>{text}</ReactMarkdown>{error && <span className="timeline-link-error" role="alert">{error}</span>}</div>;
+    table: ({ children }) => <div className="timeline-table max-w-full overflow-x-auto [&_table]:w-max [&_table]:min-w-full [&_table]:border-collapse [&_th]:border [&_th]:px-2 [&_th]:py-1.5 [&_td]:border [&_td]:px-2 [&_td]:py-1.5"><table>{children}</table></div>,
+  }}>{text}</ReactMarkdown>{error && <span className="timeline-link-error block text-xs text-destructive wrap-anywhere" role="alert">{error}</span>}</div>;
 });

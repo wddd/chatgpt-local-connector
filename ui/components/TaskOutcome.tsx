@@ -15,8 +15,8 @@ export default function TaskOutcome({ state, entries, project, onResume, onRetry
   const diffs = entries.flatMap(entry => entry.status === "completed" ? entry.changes?.filter(change => change.diff?.text) ?? [] : []);
   const ended = [...entries].reverse().find(entry => entry.endedAt)?.endedAt;
   return <>
-    {state === "interrupted" && <div className="task-stop-divider">{t("detail.stoppedUnknown")}{ended && ` · ${new Date(ended).toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit" })}`}</div>}
-    <EntityCard asChild><article className="task-outcome" data-state={state} aria-label={t(state === "failed" ? "detail.turnFailed" : "detail.leftAsIs")}>
+    {state === "interrupted" && <div className="task-stop-divider flex items-center gap-2 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border before:content-[''] after:h-px after:flex-1 after:bg-border after:content-['']">{t("detail.stoppedUnknown")}{ended && ` · ${new Date(ended).toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit" })}`}</div>}
+    <EntityCard asChild><article className="task-outcome bg-muted text-sm leading-relaxed data-[state=failed]:border-destructive/40 data-[state=failed]:bg-danger-soft data-[state=failed]:[&>strong]:text-destructive [&_pre]:overflow-x-auto [&_pre]:font-mono [&_pre]:text-xs [&_pre]:whitespace-pre-wrap [&_pre]:wrap-anywhere" data-state={state} aria-label={t(state === "failed" ? "detail.turnFailed" : "detail.leftAsIs")}>
       <strong>{t(state === "failed" ? "detail.turnFailed" : "detail.leftAsIs")}</strong>
       {state === "failed" && <><p>{taskErrorText(failure?.text || failure?.output?.text, "detail.failureUnknown")}</p>{(failure?.command || failure?.cwd || failure?.path) && <pre>{[failure.command, failure.cwd, failure.path].filter(Boolean).join("\n")}</pre>}</>}
       <p>{t(changes.length ? "detail.recordedChanges" : "detail.changesUnknown")}</p>

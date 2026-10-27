@@ -11,7 +11,7 @@ export function PhaseTile({ phase, running = false, completed = false, paused = 
 }) {
   const mask = useId();
   const drawing = animated && (completed || (running && phase === "file"));
-  return <span className="phase-tile" style={drawing ? { "--phase-mask": `url(#${mask})` } as CSSProperties : undefined} data-phase={completed ? "completed" : phase}
+  return <span className="phase-tile relative grid size-7.5 shrink-0 place-items-center rounded-lg" style={drawing ? { "--phase-mask": `url(#${mask})` } as CSSProperties : undefined} data-phase={completed ? "completed" : phase}
     data-running={running || undefined} data-animated={animated || undefined} aria-hidden="true">
     {running && <span className="phase-orbit" />}
     {drawing && <svg className="phase-mask" width="0" height="0"><defs>
@@ -35,14 +35,14 @@ export function SourceBadge({ source }: { source: NonNullable<DispatchSummary["c
 export function PhaseLabel({ phase, running = false, completed = false, children }: {
   phase: AgentPhase; running?: boolean; completed?: boolean; children: ReactNode;
 }) {
-  return <span className="phase-label" data-phase={completed ? "completed" : phase} data-running={running || undefined}>{children}
-    {running && <span className="phase-shimmer" aria-hidden="true"><span>{children}</span></span>}
+  return <span className="phase-label relative min-w-0 truncate" data-phase={completed ? "completed" : phase} data-running={running || undefined}>{children}
+    {running && <span className="phase-shimmer" aria-hidden="true"><span className="block truncate">{children}</span></span>}
   </span>;
 }
 export function StepTrail({ steps = [], running = false }: {
   steps?: Exclude<AgentPhase, "idle">[]; running?: boolean;
 }) {
-  return <span className="step-trail" data-running={running || undefined} aria-hidden="true">
+  return <span className="step-trail inline-flex shrink-0 items-center gap-0.5" data-running={running || undefined} aria-hidden="true">
     {steps.slice(-5).map((phase, index) => <i key={index} data-phase={phase} />)}
   </span>;
 }

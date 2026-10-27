@@ -209,12 +209,12 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   };
   // Activity snapshots can derive their title from the dispatch prompt.
   const title = (agent === "codex" && taskTitle?.id === session.id && taskTitle.title) || t("timeline.title");
-  return <TaskCard rootRef={detail} className="agent-panel-layer task-detail-layer" agent={agent} agentName={agentName}
+  return <TaskCard rootRef={detail} className="agent-panel-layer task-detail-layer @container min-w-0" agent={agent} agentName={agentName}
     titleId={titleId} narrow={narrow} expanded={expanded} onBack={onBack} onToggleWidth={resizable ? onToggleWidth : undefined}
     onOpen={nativeSession.open ? () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } : undefined}
     task={{ kind: "timeline", session: nativeSession, fallbackSession: session, timeline, title, running, hasPending, turnId, source, duration: duration === undefined ? undefined : durationText(duration) }}>
-    <div className="task-timeline" aria-busy={loading}>
-      <div className="timeline-scroll" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
+    <div className="task-timeline relative flex min-h-0 min-w-0 flex-1 flex-col gap-2" aria-busy={loading}>
+      <div className={`timeline-scroll ${!atLatest ? "pb-14" : ""} min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [overflow-anchor:none]`} ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
         onWheel={event => {
           const node = event.currentTarget;
           if (manualDisclosure.current) following.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 24;
@@ -228,18 +228,18 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           previousTop.current = node.scrollTop;
           setAtLatest(node.scrollHeight - node.scrollTop - node.clientHeight <= 24);
         }}>
-        <div ref={content} className={loading ? "timeline-loading" : "timeline-entries"} onClickCapture={event => {
+        <div ref={content} className={loading ? "timeline-loading grid h-full place-items-center" : "timeline-entries flex min-w-0 flex-col gap-3 p-3 @sm:gap-4 @sm:p-4"} onClickCapture={event => {
           if ((event.target as Element).closest("button, .timeline-turn[data-state=closed]")) manualDisclosure.current = true;
         }}>
           {loading ? <LoadingIndicator label={t("timeline.loading")} /> : <>
-          {(error || openError || reviewError) && <p className="timeline-error" role="alert">{taskErrorText(openError || error || reviewError)}</p>}
-          {timeline?.coverage.state === "partial" && !timeline.coverage.truncated && <p className="timeline-meta">{t("timeline.partial")}</p>}
-          {!session.timeline && <section className="activity-session-summary">
-            <span className="timeline-meta">{t(`activity.phase.${nativeSession.phase}`)}</span>
+          {(error || openError || reviewError) && <p className="timeline-error rounded-md bg-destructive/10 p-1 text-destructive" role="alert">{taskErrorText(openError || error || reviewError)}</p>}
+          {timeline?.coverage.state === "partial" && !timeline.coverage.truncated && <p className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.partial")}</p>}
+          {!session.timeline && <section className="activity-session-summary wrap-anywhere">
+            <span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t(`activity.phase.${nativeSession.phase}`)}</span>
             {(nativeSession.recentContent?.length ? nativeSession.recentContent : [activityHeadline(nativeSession, t("timeline.title")).text])
               .map((text, index) => <p key={index}>{text}</p>)}
           </section>}
-          {timeline?.entries.length === 0 && <p className="timeline-meta">{t("timeline.empty")}</p>}
+          {timeline?.entries.length === 0 && <p className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.empty")}</p>}
           <TimelineEntries key={session.id} entries={timeline?.entries ?? []} agent={agent} session={nativeSession} now={now} running={running} turnTimings={timeline?.turnTimings} status={timeline?.status} turnStatuses={timeline?.turnStatuses} turnDispatchSummaries={timeline?.turnDispatchSummaries}
             onResume={agent === "codex" && !external && !timeline?.readOnly && state === "interrupted" && turnId ? () => continueTurn("resume") : undefined}
             onRetry={!external && !timeline?.readOnly && state === "failed" && turnId ? () => continueTurn("retry") : undefined} continuing={continuing} />
@@ -247,7 +247,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           </>}
         </div>
       </div>
-      {!atLatest && <Button variant="secondary" className="timeline-latest" onClick={latest}>{t("timeline.latest")}</Button>}
+      {!atLatest && <Button variant="secondary" className="timeline-latest absolute bottom-3 left-1/2 z-2 -translate-x-1/2 rounded-full shadow-md" onClick={latest}>{t("timeline.latest")}</Button>}
     </div>
     {hasPending && <TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={dispatchSourceLabel(source)} narrow={narrow} />}
   </TaskCard>;

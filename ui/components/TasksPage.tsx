@@ -113,9 +113,9 @@ export default function TasksPage() {
           void openAgentTask(selected.first.agent || "codex", selected.first.open!.taskId)
             .catch(error => setActionError(String(error))).finally(() => setOpening(false));
         } : undefined}>
-      <div className="task-focus-content">
+      <div className="task-focus-content mt-5 border-t pt-1">
         {[...selected.records].reverse().map((r) => (
-          <section className="task-entry" key={r.requestId}>
+          <section className="task-entry grid gap-4 border-b py-4 last:border-0 last:pb-0 [&_time]:text-xs [&_time]:text-muted-foreground" key={r.requestId}>
             <SectionHeader  level={3} title={<>
                 {t(
                   {
@@ -187,7 +187,7 @@ export default function TasksPage() {
     </Dialog>
   );
   return (
-    <section className="tasks-page">
+    <section className="tasks-page min-w-0">
       {error && (
         <Notice
           action={
@@ -200,9 +200,9 @@ export default function TasksPage() {
       {loading ? (
         <Loading />
       ) : (
-        <div className="task-grid">
+        <div className="task-grid flex min-w-0 flex-col">
           {visible.map((g) => (
-            <div className="task-cell" key={g.id}>
+            <div className="task-cell min-w-0 self-stretch" key={g.id}>
               <TaskRow kind="receipt" record={g.first} runtime={runtime(g.first)} records={g.records} id={g.id} selected={g.id === selectedId}
                 onOpen={() => { setSelectedId(g.id); setActionError(""); }} />
             </div>

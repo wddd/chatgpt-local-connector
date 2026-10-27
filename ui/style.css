@@ -5,8 +5,6 @@
   display: block;
   pointer-events: none;
 }
-.task-tag[data-tone="source"] { color: var(--role-source); background: var(--role-source-soft); }
-.task-tag[data-tone="agent"] { color: var(--role-agent); background: var(--role-agent-soft); }
 .form {
   display: grid;
   gap: 20px;
@@ -304,27 +302,6 @@
 .app-feedback .notice {
   max-height: 40dvh;
   overflow: auto;
-}
-.task-entry {
-  padding: 24px 0;
-  border-top: 1px solid var(--border);
-  display: grid;
-  gap: 16px;
-}
-.task-entry > header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-}
-.task-entry > header time {
-  color: var(--text-secondary);
-  font-size: 12px;
-  margin-left: auto;
-}
-.task-prompt {
-  font: 14px/1.8 var(--font-ui);
-  margin: 0;
 }
 .hover-scope {
   position: relative;

@@ -12,7 +12,7 @@ import { SrcAccountChip } from '../src-account';
 import { statePresentation } from '../statePresentation';
 import { projectName, receiptState, taskIdentity } from './projection';
 import '../../TaskDetail.css';
-import './task.css';
+import { Progress } from '../../ui/progress';
 
 type Detail =
   | { kind: 'timeline'; session: AgentActivitySession; fallbackSession?: AgentActivitySession; timeline?: AgentTimeline; title?: string; running: boolean; hasPending: boolean; turnId?: string; source?: DispatchSummary['controlSource']; duration?: string }
@@ -32,43 +32,43 @@ export function TaskCard({ task, agent, agentName = agent, titleId, children, on
   const presentation = task.kind === 'timeline' ? statePresentation('task', state) : statePresentation('dispatch',
     ({ runtimeError: 'failed', awaitingConfirmation: 'pending', awaitingInteraction: 'pending', idle: 'completed' } as Record<string, string>)[state] || state);
   const groups = task.kind === 'timeline' ? timelineGroups(timeline?.entries ?? []) : [];
-  const header = <SectionHeader className="dialog-header task-detail-header" level={2}
-    back={(onBack || onOpen || onToggleWidth || onClose) && <div className="task-detail-navigation">
-      {onBack ? <Button variant="ghost" aria-label={t('back')} title={`${agentName}${project ? ` · ${project}` : ''}`} onClick={onBack}>
-        <Icon icon={ArrowLeft} /><span>{agentName}{project && ` · ${project}`}</span></Button> : <span className="task-card-project">{project}</span>}
-      {!narrow && <div className="actions">
+  const header = <SectionHeader className="task-detail-header flex shrink-0 flex-col items-stretch gap-2 bg-card px-3 py-3 [&>.section-header-copy]:w-full [&>.section-header-copy]:flex-none" level={2}
+    back={(onBack || onOpen || onToggleWidth || onClose) && <div className="task-detail-navigation flex min-w-0 justify-between gap-2 [&>.button]:min-w-0 [&>.button]:justify-start [&>.button]:text-muted-foreground [&>.button>span]:truncate">
+      {onBack ? <Button variant="ghost" className="min-w-0 flex-1 shrink" aria-label={t('back')} title={`${agentName}${project ? ` · ${project}` : ''}`} onClick={onBack}>
+        <Icon icon={ArrowLeft} /><span>{agentName}{project && ` · ${project}`}</span></Button> : <span className="task-card-project min-w-0 truncate text-muted-foreground">{project}</span>}
+      {!narrow && <div className="flex shrink-0 items-center gap-1">
         {onOpen && <IconButton icon={ArrowUpRight} label={t('activity.open')} busy={busy} onClick={onOpen} />}
         {onToggleWidth && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? 'restorePanelWidth' : 'expandPanelWidth')} aria-pressed={expanded} onClick={onToggleWidth} />}
         {onClose && <IconButton icon={X} label={t('close')} disabled={busy} onClick={onClose} />}
       </div>}
-      {narrow && (onOpen || onToggleWidth || onClose) && <div className="task-narrow-menu"><Menu label={t('detail.taskActions')} trigger={<IconButton icon={MoreHorizontal} label={t('detail.taskActions')} disabled={busy} />} items={[
+      {narrow && (onOpen || onToggleWidth || onClose) && <div className="task-narrow-menu shrink-0"><Menu label={t('detail.taskActions')} trigger={<IconButton icon={MoreHorizontal} label={t('detail.taskActions')} disabled={busy} />} items={[
         ...(onOpen ? [{ label: t('activity.open'), action: onOpen }] : []),
         ...(onToggleWidth ? [{ label: t(expanded ? 'restorePanelWidth' : 'expandPanelWidth'), action: onToggleWidth }] : []),
         ...(onClose ? [{ label: t('close'), action: onClose }] : []),
       ]} /></div>}
     </div>}
-    title={title} titleProps={{ id: titleId, className: 'activity-panel-title' }}>
-    <div className="task-detail-chips"><StateBadge presentation={presentation} label={task.kind === 'receipt' ? t(state) : undefined} />
+    title={title} titleProps={{ id: titleId, className: 'block min-w-0 truncate text-base font-semibold' }}>
+    <div className="task-detail-chips flex min-w-0 flex-wrap items-center gap-1.5"><StateBadge presentation={presentation} label={task.kind === 'receipt' ? t(state) : undefined} />
       <DispatchSpec agent={agent} record={task.kind === 'receipt' ? { kind: 'task', value: task.record }
         : timeline ? { kind: 'timeline', value: timeline, taskId: task.session.id, turnId: task.turnId, source: task.session.source }
         : { kind: 'session', value: task.session }} />
       {task.kind === 'timeline' && task.source && <SrcAccountChip provenance={task.source} />}
       <TaskOwnership ownership={task.kind === 'receipt' ? task.runtime?.ownership : timeline?.ownership} />
-      {task.kind === 'timeline' && task.duration !== undefined && <time className="timeline-meta task-duration">{task.duration}</time>}
+      {task.kind === 'timeline' && task.duration !== undefined && <time className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere task-duration ml-auto shrink-0 whitespace-nowrap">{task.duration}</time>}
     </div>
-    {task.kind === 'timeline' && !!groups.length && <div className="task-turn-progress">{groups.map((group, index) => {
+    {task.kind === 'timeline' && !!groups.length && <div className="task-turn-progress flex gap-1">{groups.map((group, index) => {
       const current = index === groups.length - 1 && (!task.session.turnId || task.session.turnId === group.turnId);
       const turnState = taskState((group.turnId && timeline?.turnStatuses?.[group.turnId]) || (current ? timeline?.status : undefined), current && task.running, current && task.hasPending);
       const plan = [...group.entries].reverse().find(entry => entry.type === 'plan')?.plan;
       const completed = plan?.filter(step => step.status === 'completed').length ?? 0;
       const value = plan?.length ? completed / plan.length * 100 : turnState === 'done' ? 100 : undefined;
-      return <div key={group.id} role="progressbar" aria-label={t('detail.turnProgress', { count: index + 1, state: t(`detail.state.${turnState}`) })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}
-        aria-valuetext={plan?.length ? t('detail.planProgress', { completed, total: plan.length }) : t(`detail.state.${turnState}`)} data-state={turnState} data-indeterminate={value === undefined || undefined}>
-        <span style={value === undefined ? undefined : { width: `${value}%` }} />
-      </div>;
+      return <Progress key={group.id} value={value ?? null} className={`h-1 min-w-0 flex-1 bg-muted [&>[data-slot=progress-indicator]]:bg-current ${turnState === 'done' ? 'text-success' : turnState === 'running' ? 'text-brand-accent' : turnState === 'failed' ? 'text-destructive' : 'text-muted-foreground'} ${value === undefined ? '[&>[data-slot=progress-indicator]]:transform-none! [&>[data-slot=progress-indicator]]:opacity-40' : ''} ${value === undefined && turnState === 'running' ? 'motion-safe:animate-pulse [[data-reduced-motion=true]_&]:animate-none' : ''}`}
+        aria-label={t('detail.turnProgress', { count: index + 1, state: t(`detail.state.${turnState}`) })}
+        aria-valuetext={plan?.length ? t('detail.planProgress', { completed, total: plan.length }) : t(`detail.state.${turnState}`)}
+        getValueLabel={() => plan?.length ? t('detail.planProgress', { completed, total: plan.length }) : t(`detail.state.${turnState}`)} />;
     })}</div>}
   </SectionHeader>;
-  return <EntityCard asChild className={`task-object-card ${className}`}><section ref={rootRef} data-narrow={narrow || undefined}>
+  return <EntityCard asChild className={`task-object-card flex min-w-0 flex-col gap-0 rounded-none border-0 bg-transparent p-0 ${className}`}><section ref={rootRef} data-narrow={narrow || undefined}>
     {header}{children}
   </section></EntityCard>;
 }

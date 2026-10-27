@@ -5,7 +5,6 @@ import type { TrackedActivity, BubbleDensity } from '../../../state/activityMode
 import { Button, Icon } from '../../ui';
 import { SourceBadge } from '../../activity';
 import { ActivityBubbleContent } from './Content';
-import './task.css';
 
 export function TaskNode({ agent, session, now, onMove, onRead, density = "standard", blocking = false, selected, disabled, onOpen }: { agent: string; session: TrackedActivity; now: number; density?: BubbleDensity; onMove?: (by: number) => void; onRead: () => void; onOpen: () => void; blocking?: boolean; selected?: boolean; disabled?: boolean }) {
   const completed = session.endedAt !== undefined, unread = completed && session.readAt === undefined;

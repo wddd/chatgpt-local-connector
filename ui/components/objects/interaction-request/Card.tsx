@@ -9,7 +9,6 @@ import { Sensitive, useSensitiveText } from '../../Sensitive';
 import { RequestCard, type RequestCardProps } from '../../composites/RequestCard';
 import { statePresentation } from '../statePresentation';
 import { QuestionField } from './QuestionField';
-import './interaction-request.css';
 
 export type InteractionRequestCardProps = {
   interaction: AgentInteraction; submission?: ApprovalSubmission;
@@ -30,13 +29,13 @@ export function InteractionRequestCard({ interaction, submission, answers, onAns
     if (payload && !terminal) onRespond(decision, payload);
   }
   const footer = question ? <><Button variant="ghost" disabled={!supported || locked && submission.decision !== 'cancel' || terminal} onClick={() => send(true)}>{t('detail.skip')}</Button><Button type="submit" disabled={!inputResponse(interaction, answers) || locked && submission.decision !== 'answer' || terminal} busy={submission?.status === 'submitting'}>{t(submission?.status === 'pending' || submission?.status === 'failed' ? 'activity.checkResult' : 'detail.sendAnswer')}</Button></>
-    : !terminal && <><span className="activity-once">{t('timeline.allowOnce')}</span><Button disabled={!permissionResponse(interaction, 'deny') || locked && submission.decision !== 'deny'} onClick={() => decide('deny')}>{t('detail.reject')}</Button><Tooltip text={t('detail.nativeBypassUnavailable')}><span tabIndex={0}><Button disabled>{t('detail.bypass')}</Button></span></Tooltip><Button disabled={!supported || locked && submission.decision !== 'allow'} onClick={() => decide('allow')}>{t('detail.approve')}</Button></>;
+    : !terminal && <><span className="activity-once flex-1 basis-full text-muted-foreground">{t('timeline.allowOnce')}</span><Button disabled={!permissionResponse(interaction, 'deny') || locked && submission.decision !== 'deny'} onClick={() => decide('deny')}>{t('detail.reject')}</Button><Tooltip text={t('detail.nativeBypassUnavailable')}><span tabIndex={0}><Button disabled>{t('detail.bypass')}</Button></span></Tooltip><Button disabled={!supported || locked && submission.decision !== 'allow'} onClick={() => decide('allow')}>{t('detail.approve')}</Button></>;
   return <RequestCard {...frame} title={protect(interaction.title || interaction.summary || t('detail.needsYou'))} busy={submission?.status === 'submitting'}
     onSubmit={question ? event => { event.preventDefault(); send(false); } : undefined} footer={footer}
     state={submission && <StateBadge variant="text" presentation={statePresentation('submission', submission.status)} />}
     error={submission?.status === 'failed' ? taskErrorText(submission.error) : undefined}>
-    {question ? <div className="task-question-options">{interactionQuestions(interaction).map(item => <QuestionField key={item.id} question={item} value={answers[item.id] ?? []} onChange={value => onAnswersChange({ ...answers, [item.id]: value })} disabled={locked || !supported} />)}</div>
-      : <div className="task-request-preview">{(interaction.command || interaction.preview || interaction.path) && <pre>{protect(interaction.command || interaction.preview || interaction.path || "")}</pre>}{interaction.cwd && <div className="mono">{t('timeline.cwd')} · <Sensitive wrap>{interaction.cwd}</Sensitive></div>}{interaction.reason && <p>{protect(interaction.reason)}</p>}</div>}
+    {question ? <div className="task-question-options grid min-w-0 gap-3">{interactionQuestions(interaction).map(item => <QuestionField key={item.id} question={item} value={answers[item.id] ?? []} onChange={value => onAnswersChange({ ...answers, [item.id]: value })} disabled={locked || !supported} />)}</div>
+      : <div className="task-request-preview flex min-w-0 flex-col gap-2.5 [&>*]:shrink-0 [&>p]:m-0 [&>pre]:m-0 [&>pre]:rounded-xl [&>pre]:bg-muted [&>pre]:p-2.5 [&>pre]:font-mono [&>pre]:text-xs [&>pre]:whitespace-pre-wrap [&>pre]:wrap-anywhere">{(interaction.command || interaction.preview || interaction.path) && <pre>{protect(interaction.command || interaction.preview || interaction.path || "")}</pre>}{interaction.cwd && <div className="mono">{t('timeline.cwd')} · <Sensitive wrap>{interaction.cwd}</Sensitive></div>}{interaction.reason && <p>{protect(interaction.reason)}</p>}</div>}
     {!supported && <p>{t('timeline.responseUnavailable')}</p>}
   </RequestCard>;
 }
