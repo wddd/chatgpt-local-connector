@@ -14,8 +14,8 @@ pub(crate) async fn evidence(
     name: &str,
     args: &Value,
     value: &mut Value,
-) {
-    if name == "codex_wait" && value["turnId"].is_string() {
+) -> Result<()> {
+    if name.starts_with("codex_") && value["turnId"].is_string() {
         let pinned = json!({"threadId":args["threadId"],"turnId":value["turnId"]});
         match crate::review::turn_page(control, &pinned).await {
             Ok(page) => {
@@ -23,21 +23,35 @@ pub(crate) async fn evidence(
                 value["files"] = crate::review::native_files(
                     turn["items"].as_array().map(Vec::as_slice).unwrap_or(&[]),
                 );
-                if matches!(
+                let terminal = matches!(
                     value["state"].as_str(),
                     Some("completed" | "failed" | "cancelled")
-                ) {
+                );
+                if terminal || value["finalResponse"]["itemId"].is_string() {
+                    let item_id = value["finalResponse"]["itemId"].clone();
                     value["finalResponse"] = turn["items"]
                         .as_array()
                         .into_iter()
                         .flatten()
                         .rev()
-                        .find(|i| i["type"] == "agentMessage" && i["phase"] != "commentary")
+                        .find(|i| {
+                            i["type"] == "agentMessage"
+                                && if terminal {
+                                    i["phase"] != "commentary"
+                                } else {
+                                    i["id"] == item_id
+                                }
+                        })
                         .map(|i| i["text"].clone())
                         .unwrap_or(Value::Null);
                 }
             }
-            Err(_) => value["files"] = Value::Null,
+            Err(error) => {
+                if value["finalResponse"]["textTruncated"] == true {
+                    return Err(error);
+                }
+                value["files"] = Value::Null;
+            }
         }
     }
     if name.starts_with("codex_") && value["turnId"].is_string() {
@@ -66,6 +80,40 @@ pub(crate) async fn evidence(
         value["state"] = value["status"].clone();
         value["recordedStatus"] = value["status"].clone();
     }
+    if name.starts_with("agent_")
+        && value["outputTruncated"] == true
+        && value["finalResponse"].is_string()
+    {
+        let mut selected = false;
+        let mut found = false;
+        let mut text = String::new();
+        crate::kernel::event_store::visit(string(value, "taskId"), |row| {
+            if row["method"] == "arc/user" {
+                selected = row["params"]["turnId"] == value["turnId"];
+                found |= selected;
+            }
+            let update = &row["params"]["params"]["update"];
+            if selected
+                && row["method"] == "session/update"
+                && update["sessionUpdate"] == "agent_message_chunk"
+                && update["content"]["type"] == "text"
+            {
+                text.push_str(string(&update["content"], "text"));
+            }
+            Ok(())
+        })?;
+        if !found || !text.ends_with(string(value, "finalResponse")) {
+            return Err("FINAL_RESPONSE_UNAVAILABLE: The selected turn's complete message could not be recovered from its event archive".into());
+        }
+        value["finalResponse"] = json!(text);
+    }
+    let text = value["finalResponse"]
+        .as_str()
+        .or_else(|| value["finalResponse"]["text"].as_str());
+    if let Some(text) = text.filter(|text| text.chars().count() > 800) {
+        value["finalResponseNext"] = crate::kernel::results::text_continuation(text)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn project(name: &str, args: &Value, value: &Value) -> Value {
@@ -89,6 +137,7 @@ pub(crate) fn project(name: &str, args: &Value, value: &Value) -> Value {
         "error",
         "next",
         "finalResponseUnchanged",
+        "finalResponseNext",
         "attribution",
         "changeCorrection",
     ] {
@@ -110,11 +159,10 @@ pub(crate) fn project(name: &str, args: &Value, value: &Value) -> Value {
     out["finalResponse"] = text
         .map(|s| json!(s.chars().take(800).collect::<String>()))
         .unwrap_or(Value::Null);
-    out["finalResponseTruncated"] = json!(
-        text.is_some_and(|s| s.chars().count() > 800)
-            || value["finalResponse"]["truncated"] == true
-            || value["outputTruncated"] == true
-    );
+    out["finalResponseTruncated"] = json!(text.is_some_and(|s| s.chars().count() > 800
+        || value["finalResponse"]["truncated"] == true
+        || value["finalResponse"]["textTruncated"] == true
+        || value["outputTruncated"] == true));
     let files = value["files"].as_array();
     out["files"] = files
         .map(|f| json!(f.iter().take(50).collect::<Vec<_>>()))

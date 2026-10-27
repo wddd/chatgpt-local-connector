@@ -342,7 +342,7 @@ Native handles for processes, watches, and MCP subscriptions belong to the curre
 
 ## Output, events, and logs
 
-Large JSON results over 64 KiB are stored as snapshots with outputId and nextOffset. `control_output` reads up to 65536 UTF-16 code units per page; join all text pages before parsing JSON. Snapshots expire after one hour and share a 64 MiB quota. Expired reads return OUTPUT_EXPIRED; oversized/unallocatable snapshots return OUTPUT_STORAGE_LIMIT.
+Large JSON results over 64 KiB are stored as snapshots with outputId and nextOffset. `control_output` reads up to 65536 UTF-16 code units per page; join all text pages before parsing JSON. JSON and plain-text snapshots expire after one hour and share a 64 MiB quota. Expired reads return OUTPUT_EXPIRED; oversized/unallocatable snapshots return OUTPUT_STORAGE_LIMIT.
 
 Codex events keep a bounded memory window of 2000 entries or 8 MiB. gap/reset reports loss or restart. Native task history remains readable on demand. In `task_timeline`, a silent command has empty `output.text`; missing or null native output is never rendered as the text `null`. Commands that actually print `null` retain that text. Pi/ACP events additionally have durable archives; see [Agents](agents.md). `codex_read` and `codex_items` default to compact structured items: agentMessage, userMessage, fileChange, error, and commandExecution (command, exitCode and bounded output). Reasoning and other internal items are omitted. Truncated bodies carry `truncated:true` and a shared readMore hint. `view:"full"` retains original item IDs, text hashes, text offsets and configuration/action metadata where available. In codex_items, text continuation with offset/expectedHash requires full view; native page cursors and turn IDs are preserved in both views. `codex_read` can include local images with includeImages and maxImages.
 
@@ -979,6 +979,13 @@ Summary results retain this task's status, identifiers, wait condition, snapshot
 `diffstat` contains the total file count, added/removed line counts, and the number with unknown counts.
 `finalResponseTruncated` and `filesTruncated` identify bounded results.
 `completeEvidence:{via,op,args}` retrieves complete evidence; Codex continuations pin the selected turn.
+When `finalResponseTruncated:true`, follow `finalResponseNext:{via:"query",op:"control_output",args:{outputId,offset:0}}` to read the complete message of the summarized turn.
+This continuation freezes the message when the summary is produced; later turns cannot change it.
+The continuation includes `format:"plain-text"`, UTF-16 `characters`, UTF-8 `bytes`, `sha256`, and cache retention metadata.
+Each page contains the message directly in `text`, not a serialized task record. Concatenate `text` without JSON parsing or shell escape processing.
+Pass the returned `nextOffset` to `control_output` until it is null. Offsets and `length` count UTF-16 code units; plain-text pages preserve Unicode scalar boundaries, so a one-unit request may return a two-unit scalar. An offset inside a surrogate pair returns `INVALID_OUTPUT_OFFSET`.
+ACP summaries recover messages exceeding the 256 KiB task tail from the selected turn's event archive. Missing or inconsistent archive evidence returns an error instead of a partial message labeled complete.
+Message snapshots use the same temporary one-hour, 64 MiB output cache as JSON snapshots. Read them promptly; after expiration or eviction, request a fresh summary of the intended turn. Codex supports historical `turnId`; an Agent read summarizes its current turn, so do not substitute a newer turn for an expired snapshot.
 `changeEvidence` identifies a terminal Git snapshot, a live Git baseline, direct native file changes, or the reason evidence is unavailable. `attribution` discloses the scope of Git evidence; `changeCorrection` provides a correction hint when it is unavailable.
 Current workspace Git changes are not attributed to a summary turn merely because they exist.
 Summary mode omits inbox reminders, conversation bindings, dispatch history, and unrelated task data.

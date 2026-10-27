@@ -912,6 +912,7 @@ It includes an 800-character final-message excerpt, up to 50 changed paths, diff
 Codex summaries reuse terminal Git snapshots, including committed work after a lane is removed, with native file changes as fallback.
 Git evidence may include concurrent or pre-existing workspace changes. Unavailable evidence is null with a reason and correction hint rather than an empty successful diff.
 Use `view:"summary"` on Codex/Agent reads and waits; Codex reads additionally accept `turnId`.
+When `finalResponseTruncated:true`, follow `finalResponseNext` for the selected turn's immutable plain-text message snapshot. Continue `control_output` using each returned `nextOffset` until null; concatenate `text` directly without JSON parsing. Offsets count UTF-16 units and preserve Unicode scalar boundaries. Read promptly: snapshots share the one-hour, 64 MiB output cache.
 Follow `completeEvidence` for full evidence before recording `codex_review` or `agent_review`.
 An independent model review requires a separate dispatched task.
 

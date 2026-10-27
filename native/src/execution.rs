@@ -67,7 +67,7 @@ impl Execution {
             .await;
         }
         if summary {
-            crate::task_summary::evidence(&self.control, name, &args, &mut result).await;
+            crate::task_summary::evidence(&self.control, name, &args, &mut result).await?;
         }
         if let Some((agent, task)) = read_task.filter(|_| !summary) {
             result["srcConversation"] = crate::src_conversations::task_ref(&agent, &task)?;

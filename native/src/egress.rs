@@ -142,6 +142,7 @@ pub fn failure(e: &str) -> Value {
                 "PERMISSION_REQUIRED"
                     | "REPLACE_PENDING"
                     | "INVALID_ARGUMENTS"
+                    | "INVALID_OUTPUT_OFFSET"
                     | "DISPATCH_POLICY_CONFLICT"
                     | "UNKNOWN_OP"
                     | "OP_UNAVAILABLE"

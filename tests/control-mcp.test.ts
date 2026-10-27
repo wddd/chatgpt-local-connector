@@ -230,6 +230,13 @@ for await (const line of createInterface({input:process.stdin})) {
   else if(r.method==='session/new')emit({jsonrpc:'2.0',id:r.id,result:{sessionId:'example-session'}});
   else if(r.method==='session/prompt') {
     promptId=r.id;
+    const prompt=r.params.prompt.map(item=>item.text??'').join('');
+    if(prompt.startsWith('fixture-final-text:')) {
+      const text=Array.from(prompt.slice('fixture-final-text:'.length));
+      for(let offset=0;offset<text.length;offset+=8192) update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:text.slice(offset,offset+8192).join('')}});
+      emit({jsonrpc:'2.0',id:promptId,result:{stopReason:'end_turn'}});
+      continue;
+    }
     update({sessionUpdate:'tool_call',toolCallId:'example-command',title:'Bash',kind:'other',status:'in_progress',rawInput:{command:'printf example',api_key:'fixture-secret-value'}});
     emit({jsonrpc:'2.0',id:'example-permission',method:'session/request_permission',params:{toolCall:{toolCallId:'example-command'},options:[{optionId:'allow',kind:'allow_once',name:'Allow'}]}});
   } else if(r.id==='example-permission') {
@@ -1232,6 +1239,83 @@ test('wait omits repeated nonterminal text and retains complete terminal replies
   assert.equal(terminal.state,'completed');assert.ok(terminal.finalResponse,JSON.stringify(terminal));assert.equal(terminal.finalResponse.text,'pong');
   const repeated=(await call('codex_wait',{...args,expectedHash:terminal.snapshotHash})).result;
   assert.equal(repeated.changed,false);assert.equal(repeated.finalResponse.text,'pong');assert.equal(repeated.finalResponseUnchanged,undefined);
+});
+
+async function readFinalText(summary: any, expected: string) {
+  assert.equal(summary.finalResponseTruncated, true);
+  const next = summary.finalResponseNext;
+  assert.equal(next.via, 'query');
+  assert.equal(next.op, 'control_output');
+  assert.equal(next.format, 'plain-text');
+  assert.equal(next.characters, expected.length);
+  assert.equal(next.sha256, createHash('sha256').update(expected).digest('hex'));
+  let offset: number | null = next.args.offset;
+  let text = '';
+  while (offset !== null) {
+    const page = (await call(next.op, {...next.args, offset, length: 4093})).result;
+    assert.equal(page.format, 'plain-text');
+    assert.equal(page.offset, text.length);
+    text += page.text;
+    if (page.nextOffset !== null) assert.equal(page.nextOffset, text.length);
+    offset = page.nextOffset;
+  }
+  assert.equal(text, expected);
+}
+
+test('final text continuation preserves long Codex messages and the selected turn', async () => {
+  // Regression: long final messages required parsing task-record JSON and could drift to a newer turn.
+  const task = await dispatchFixture('fixture-dispatch-completed');
+  const text = '🧪报告 "quoted" \\path\n\t\u0000\r\n'.repeat(4000);
+  await completed('codex_call', {method:'fixture/update-turn', params:{threadId:task.threadId, turnId:task.turnId,
+    patch:{items:[{id:'final-report', type:'agentMessage', phase:'final_answer', status:'completed', text},
+      {id:'commentary', type:'agentMessage', phase:'commentary', status:'completed', text:'Later commentary'}]}}, requestId:randomUUID()});
+  const summaries = [];
+  for (const op of ['codex_read', 'codex_wait']) {
+    const summary = (await call(op, {threadId:task.threadId, turnId:task.turnId, view:'summary',
+      ...(op === 'codex_wait' ? {timeoutMs:1000} : {})})).result;
+    assert.equal(summary.turnId, task.turnId);
+    assert.equal(summary.finalResponse, [...text].slice(0,800).join(''));
+    summaries.push(summary);
+  }
+  await completed('codex_send', {threadId:task.threadId, prompt:'A newer turn', requestId:randomUUID(), approval:'approved', purpose:'self-test'});
+  for (const summary of summaries) await readFinalText(summary, text);
+  const historical = (await call('codex_read', {threadId:task.threadId, turnId:task.turnId, view:'summary'})).result;
+  await readFinalText(historical, text);
+  const first = (await call('control_output', {...historical.finalResponseNext.args, length:1})).result;
+  assert.equal(first.text, '🧪');
+  assert.equal(first.nextOffset, 2);
+  const invalid = (await call('control_output', {...historical.finalResponseNext.args, offset:1})).result;
+  assert.equal(invalid.error.code, 'INVALID_OUTPUT_OFFSET');
+});
+
+test('final text continuation restores ACP archives and survives task reuse', async () => {
+  // Regression: ACP summaries exposed only an excerpt or a 256 KiB tail with task-record JSON as continuation.
+  const agent = 'tracking-example';
+  const text = '🧪报告 "quoted" \\path\n\t\u0000\r\n'.repeat(14000);
+  const created = await completed('agent_create', {agent, cwd:directory, prompt:'fixture-final-text:' + text,
+    title:'Final text fixture', requestId:randomUUID(), approval:'approved', purpose:'self-test'});
+  const taskId = created.taskId;
+  const summaries = [];
+  for (const op of ['agent_wait', 'agent_read']) {
+    const summary = (await call(op, {agent, taskId, view:'summary', ...(op === 'agent_wait' ? {timeoutMs:10000} : {})})).result;
+    assert.equal(summary.state, 'completed');
+    assert.equal(summary.finalResponse, [...text].slice(0,800).join(''));
+    assert.equal(summary.arcInbox, undefined);
+    summaries.push(summary);
+  }
+  const nextText = 'Second turn 🧩\\"\n'.repeat(20000);
+  await completed('agent_send', {agent, taskId, prompt:'fixture-final-text:' + nextText,
+    requestId:randomUUID(), approval:'approved', purpose:'self-test'});
+  const next = (await call('agent_read', {agent, taskId, view:'summary'})).result;
+  assert.notEqual(next.turnId, summaries[0].turnId);
+  for (const summary of summaries) await readFinalText(summary, text);
+  await readFinalText(next, nextText);
+  await completed('agent_send', {agent, taskId, prompt:'fixture-final-text:Short final',
+    requestId:randomUUID(), approval:'approved', purpose:'self-test'});
+  const short = (await call('agent_read', {agent, taskId, view:'summary'})).result;
+  assert.equal(short.finalResponse, 'Short final');
+  assert.equal(short.finalResponseTruncated, false);
+  assert.equal(short.finalResponseNext, undefined);
 });
 
 test('inbox_wait filters unread events before limiting, isolates ingress and cooperates with ack', async () => {
