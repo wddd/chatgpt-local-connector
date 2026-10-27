@@ -1,7 +1,35 @@
+export async function acceptAgentObjectGeometry(page) {
+  // Regression: percentage-sized Agent logos expanded ordinary references and collapsed profile copy.
+  const geometry = await page.evaluate(() => {
+    const logos = [...document.querySelectorAll('.object-chip > .agent-logo, .entity-row > .agent-logo')].map(node => {
+      const expected = node.parentElement.classList.contains('object-chip') ? 16 : 20;
+      const box = node.getBoundingClientRect(), svg = node.querySelector('svg').getBoundingClientRect();
+      return { expected, width: box.width, height: box.height, svgWidth: svg.width, svgHeight: svg.height };
+    });
+    const profiles = [...document.querySelectorAll('.entity-row-actions.agent-profile-row')].map(node => {
+      const title = node.querySelector('.entity-row-title'), range = document.createRange();
+      range.selectNodeContents(title);
+      const box = title.getBoundingClientRect(), actions = node.querySelector('.actions').getBoundingClientRect();
+      const state = node.querySelector('.status').getBoundingClientRect();
+      const overlap = other => Math.min(box.right, other.right) > Math.max(box.left, other.left) + 1 && Math.min(box.bottom, other.bottom) > Math.max(box.top, other.top) + 1;
+      return {
+        clipped: box.width === 0 || [...range.getClientRects()].some(rect => rect.left < box.left - 1 || rect.right > box.right + 1 || rect.bottom > box.bottom + 1),
+        overlap: overlap(actions) || overlap(state),
+        overflow: node.scrollWidth > node.clientWidth,
+      };
+    });
+    return { logos, profiles };
+  });
+  if (!geometry.logos.length || geometry.logos.some(logo => [logo.width, logo.height, logo.svgWidth, logo.svgHeight].some(size => Math.abs(size - logo.expected) > 1))) throw new Error('Ordinary Agent logos lost their explicit control size');
+  if (!geometry.profiles.length || geometry.profiles.some(profile => profile.clipped || profile.overlap || profile.overflow)) throw new Error('Profile identity is clipped, overlaps controls, or overflows');
+  return geometry;
+}
+
 export async function acceptAgentObjects(page) {
   // Regression: same-Agent profile controls targeted the first profile and SRC authorization used a parallel renderer.
   const main = page.getByRole('main');
   await main.getByRole('heading', { name: 'AGENT objects', exact: true }).waitFor();
+  await acceptAgentObjectGeometry(page);
   const receipt = page.getByLabel('Agent object action', { exact: true });
   const inspector = page.getByRole('region', { name: 'Profile inspector', exact: true });
   const defaults = inspector.getByRole('switch');
@@ -31,4 +59,5 @@ export async function acceptAgentObjects(page) {
   await inspector.getByText('private@example.test', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Privacy mode', exact: true }).click();
   if (await main.evaluate(node => node.scrollWidth > node.clientWidth)) throw new Error('Agent objects overflow horizontally');
+  await acceptAgentObjectGeometry(page);
 }

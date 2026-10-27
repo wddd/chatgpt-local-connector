@@ -1,4 +1,4 @@
-import { acceptAgentObjects } from './agent-objects.mjs';
+import { acceptAgentObjects, acceptAgentObjectGeometry } from './agent-objects.mjs';
 import { acceptLongRequest, acceptRequests } from './requests.mjs';
 import { requireMainCheckout } from '../coding-lane.mjs';
 requireMainCheckout();
@@ -467,6 +467,8 @@ try {
           await dialog.getByRole('textbox', { name: messages['accounts.alias'], exact: true }).waitFor({ state: 'visible' });
           await dialog.getByRole('button', { name: messages['accounts.confirm'], exact: true }).click();
           await dialog.waitFor({ state: 'hidden' });
+          await page.getByRole('button', { name: /^Studio / }).click();
+          await acceptAgentObjectGeometry(page);
         }
 
         await writeFile(path.join(out, `${key}.json`), JSON.stringify(model, null, 2));

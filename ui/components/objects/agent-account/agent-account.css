@@ -1,7 +1,5 @@
 .entity-card.agent-account-card { border: 0; background: transparent; padding: 0; border-radius: 0; }
 .entity-card.agent-account-panel { display: flex; flex-direction: column; min-height: 0; flex: 1; gap: 0; }
-.entity-row-actions.agent-profile-row { flex-wrap: wrap; }
-.agent-profile-row > .actions { flex-wrap: wrap; }
 .entity-card.agent-account-detail { gap: 16px; }
 
 .account-avatar { width: 36px; height: 36px; display: grid; place-items: center; flex-shrink: 0; }

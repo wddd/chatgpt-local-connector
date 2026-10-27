@@ -26,6 +26,7 @@ import config from '../native/src/ingress/config.json';
 import { taskScenario } from './scenarioTasks';
 import type { RequestRouting } from './state/requestRouting';
 import { taskPanelSnapshot } from './state/taskPanel';
+import { toolCatalogFixture } from './scenarioToolCatalog';
 
 export type PageFixture = 'agents-settings' | 'agent-display-settings' | 'add-account' | 'merge-accounts' | 'oauth-grants' | 'relay-hosting' | 'quota-segments';
 export let pageFixture: PageFixture | undefined;
@@ -288,6 +289,7 @@ export async function installScenario(name: string) {
     sessions: group.sessions.filter(session => !fixture.tasks[Number(session.id.replace('fixture-task-', ''))]?.outcome),
   }])) };
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': initialActivity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
+  responses['tool-catalog'] = toolCatalogFixture;
   responses['accounts'] = { accounts: topologyAccounts, login: null } satisfies AccountsResult;
   srcConversationResponse = srcConversationsScenario();
   accountResponse = ['accounts', 'source-panel', 'src-account-multiple'].includes(name) || ['add-account', 'merge-accounts'].includes(fixture.pageFixture ?? '') ? accountScenario(status, sources, !!fixture.pageFixture, fixture.multipleSources) : undefined;
