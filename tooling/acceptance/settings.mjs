@@ -9,9 +9,10 @@ export async function acceptSettings(page, fixture, messages, captureEntry = asy
     return;
   }
   if (fixture.settingsUpdates) {
+    const main = page.getByRole('region', { name: messages.settings, exact: true }).getByRole('main');
     if (fixture.update?.error) await page.getByText(fixture.update.error, { exact: true }).waitFor();
     for (const job of fixture.update?.recent ?? []) {
-      if (job.instance && (await page.getByRole('main').innerText()).includes(job.instance)) throw new Error('Update history exposes an internal instance ID');
+      if (job.instance && (await main.innerText()).includes(job.instance)) throw new Error('Update history exposes an internal instance ID');
       await page.getByText(messages[job.source.kind === 'local' ? 'updates.localVersion' : 'updates.releaseVersion'].replace('{version}', job.source.version), { exact: true }).waitFor();
     }
   }

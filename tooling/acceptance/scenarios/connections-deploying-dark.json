@@ -1,0 +1,14 @@
+{
+  "theme": "dark",
+  "language": "zh-CN",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "page": "connections",
+  "remoteLink": {
+    "empty": true,
+    "all": true
+  },
+  "connectionDeployment": true
+}

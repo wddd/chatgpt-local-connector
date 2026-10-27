@@ -77,7 +77,7 @@ export async function acceptSurface(page, fixture, name, messages) {
       if (fixture.remoteLink?.empty) await button(dialog, fixture.sourceSetup.deploying ? 'cancel' : 'source.createRelay').waitFor();
       else await dialog.getByRole('textbox', { name: messages[fixture.remoteLink?.local ? 'connections.localCommand' : 'source.copyAddress'], exact: true }).waitFor();
       if (fixture.remoteLink?.local) {
-        const command = await dialog.getByRole('textbox', { name: messages['connections.localCommand'], exact: true }).inputValue();
+        const command = await dialog.getByRole('textbox', { name: messages['connections.localCommand'], exact: true }).innerText();
         const target = fixture.sourceSetup.source === 'local-desktop' ? 'desktop' : 'code';
         if (!command.includes(JSON.stringify({ body: { target } }))) throw new Error('Local setup command targets the wrong client');
       }
