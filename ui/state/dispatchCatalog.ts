@@ -3,12 +3,14 @@ import { api } from '../api';
 import { createStore } from './store';
 
 export type CatalogOption = { id: string; category?: string; values?: (string | { value: string; name?: string })[] };
+export type CatalogModel = { model: string; name?: string; displayName?: string; provider?: { id: string; name: string }; contextWindow?: number | number[]; group?: string; options?: CatalogOption[] };
 export type DispatchCatalog = {
+  authoritative?: boolean;
   source?: string;
   unavailable?: string;
   currentModel?: string;
   optionsForModel?: string;
-  models?: { model: string; name?: string; group?: string; options?: CatalogOption[] }[] | { unavailable: string };
+  models?: CatalogModel[] | { unavailable: string };
   options?: CatalogOption[];
 };
 export type CatalogState = { status: 'loading' | 'ready' | 'error'; catalog?: DispatchCatalog };

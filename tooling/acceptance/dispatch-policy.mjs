@@ -46,7 +46,7 @@ try{
  await save('decision',decision);await save('full',full);
  const c=decision.agents.find(a=>a.agent==='codex'),f=full.agents.find(a=>a.agent==='codex');
  check('defaults and restrictions retained',c.defaults.model==='sample-model'&&c.defaults.effort==='high'&&c.denyModels[0]==='denied-model');
- check('native model ranges preserve gaps',c.models.includes('sample-model: low-ultra, fast=priority')&&c.models.includes('sparse-model: low/high'));
+ check('native model options preserve gaps',c.models.some(m=>m.model==='sample-model'&&m.efforts.join('/')==='low/medium/high/xhigh/max/ultra'&&m.serviceTiers.some(t=>t.id==='priority'))&&c.models.some(m=>m.model==='sparse-model'&&m.efforts.join('/')==='low/high'));
  check('quota usage summary',c.quota[0].summary==='weekly 22%');
  // Regression: sparse dispatch groups must preserve their original pooled duration median and outcomes.
  check('merged median uses original duration samples',c.history.groups.some(row=>/other.*n3.*med9\.0m.*pass1 rework1 unrev1/.test(row)));

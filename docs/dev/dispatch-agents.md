@@ -33,6 +33,18 @@ Session catalogs come from initialize/session/new and do not prove model switchi
 | Hermes | Native provider configuration, ACP/dimensions unverified. | magpie agent/hermes.go. | Per provider, not integrated. |
 | Junie/custom ACP | Actual process handshake and exposed fields only. | Keep native defaults without a catalog/setter contract. | Unconfirmed. Do not add unsupported dimensions. |
 
+Catalog model rows keep the opaque `model` ID and existing fields. Optional `displayName` is the unmodified native human name. Optional `provider:{id,name}` comes from an explicit native provider record or a provider-defined group; if only a provider key is supplied, both fields use that key. Optional `contextWindow` is a native token count, or an array of native token counts when only selectable windows are supplied. A stated default count takes precedence over the window list. Missing metadata is omitted, never inferred from model IDs, brands, model families, endpoints or names.
+
+`authoritative` describes completeness for the queried native session/catalog, not entitlement or execution. It is true for a fully paginated Codex model/list response, live Pi get_available_models, or a complete live ACP model selector. It is false for persistent/session snapshots, the Grok cache, Pi's installed registry subset, unavailable catalogs, empty provider groups and truncated previews. A selection absent from a non-authoritative list is not evidence of an invalid selection. Snapshots retain all model metadata but are always non-authoritative when read without a live session. The decision view returns structured model rows too; clients MUST NOT parse a compact model string or any model ID to recover metadata.
+
+Native extraction boundaries:
+
+- Codex copies model/list displayName, provider/providerId and providerName when present, and contextWindow. It does not assign OpenAI from an Agent name.
+- Pi copies the RPC provider field or installed registry provider key, model name and contextWindow. The provider key is not recovered by splitting a model ID.
+- DSH model selector groups declare provider IDs and names. ARC retains their JSON-array model values byte for byte.
+- ACP model options and availableModels supply names and explicit provider metadata. Generic groups such as Recommended do not denote providers. Grok, Cursor and Claude groups become providers only when native metadata declares provider semantics. `category:model` denotes a selector, not a provider.
+- ACP `_meta` may supply provider and context metadata. Grok supplies totalContextTokens/contextWindows there and context_window/context_windows in cache model info. A configOptions selector may use metadata from an availableModels entry only when their complete IDs match.
+
 Sessionless queries do not launch Agents:
 
 | Agent | Source | Boundary |
@@ -59,7 +71,7 @@ Full facts include availability.installed/available/enabled and separate authent
 
 Only absence of both native and cached catalogs yields needs-session. Create one empty-prompt session and query its taskId if needed. Queries never create or resume sessions. Dispatch revalidates session catalogs and updates snapshots. Disabled Agents do not start processes.
 
-Quota reuses SubscriptionService windows, provider IDs, and stale/error state without another poller or credential copy. Missing integration is not zero. Multiple providers expose only known associations, not a claim that a quota covers the selected model. General queries use bounded catalog previews and omitted counts. Single-Agent queries return complete catalogs.
+Quota reuses SubscriptionService windows, provider IDs, and stale/error state without another poller or credential copy. Missing integration is not zero. Multiple providers expose only known associations, not a claim that a quota covers the selected model. General queries use bounded catalog previews and omitted counts. Single-Agent queries return untruncated catalogs; authoritative still determines native completeness.
 
 Codex models/policy/quota/history are in its Agent row. Non-Codex native facts live under capabilities. selectionSupported means ARC implements the native selection protocol, not that every Agent's inference has been verified. Actual models and dimensions remain session-defined.
 
@@ -117,4 +129,4 @@ Loop guides require dispatch_policy, native Agent/model/effort selection with re
 
 Capability work distinguishes handshake evidence, source inference, and unsupported dimensions without changing local policy. Read-only queries add filters, availability, shared quota, and session facts without regressing Codex. Dispatch integration includes defaults, constraints, confirmation, records, reviews, rework, history, and guide together. Extend providers individually only with reliable authentication, quota, and model-association sources under subscriptions/providers.
 
-Run existing checks without adding unit tests. After authorized build/install, use temporary tasks with purpose:self-test and notify:null to verify defaults, explicit selection, denial, idempotency, records/review/rework, and history exclusion. Report configuration confirmation separately from inference evidence. Close self-test processes and remove only created tasks/native sessions. Where native deletion is unsupported, clean exact IDs. Preserve and recheck original Codex policy bytes unless the task explicitly authorizes editing them.
+Use small Regression/Property fixtures for native catalog extraction and no-inference invariants. After authorized build/install, use temporary tasks with purpose:self-test and notify:null to verify defaults, explicit selection, denial, idempotency, records/review/rework, and history exclusion. Report configuration confirmation separately from inference evidence. Close self-test processes and remove only created tasks/native sessions. Where native deletion is unsupported, clean exact IDs. Preserve and recheck original Codex policy bytes unless the task explicitly authorizes editing them.

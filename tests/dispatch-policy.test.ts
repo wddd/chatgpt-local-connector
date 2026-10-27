@@ -73,12 +73,12 @@ for await(const line of createInterface({input:process.stdin})) {
     assert.ok(history.some(row=>/model-main.*n10.*med10\.0m.*pass10/.test(row)));
     assert.ok(history.some(row=>/other.*n23.*med1\.0m.*pass23.*ext12.*rework12/.test(row)));
     assert.ok(!history.some(row=>row.startsWith('model-small')));
-    for(const model of ['model-main','model-small','model-tiny','model-four','model-five','model-six','model-seven']) assert.ok(agent.models.some((row:string)=>row.includes(model)));
+    for(const model of ['model-main','model-small','model-tiny','model-four','model-five','model-six','model-seven']) assert.ok(agent.models.some((row:{model:string})=>row.model===model));
     const cached=await fixture.call('dispatch_policy',{...args,knownCriteriaHash:agent.criteriaHash});
     assert.equal(cached.agents[0].criteriaUnchanged,true);
     assert.equal(cached.arcInbox,undefined);assert.equal(decision.arcInbox,undefined);
-    assert.ok(JSON.stringify(cached).length<=2000,JSON.stringify(cached));
-    assert.ok(JSON.stringify(decision).length<=4500,JSON.stringify(decision));
+    assert.equal(agent.authoritative,true);
+    assert.deepEqual(cached.agents[0].models,agent.models);
     const full=await fixture.call('dispatch_policy',{...args,view:'full'});
     const detail=full.agents[0];
     assert.equal(detail.policy.criteria,criteria);

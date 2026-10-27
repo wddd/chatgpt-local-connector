@@ -27,7 +27,15 @@ fn clean(value: &mut Value) {
                 });
             map.retain(|key, value| {
                 clean(value);
-                !(key == "observedAt" && !stale || empty(value))
+                // Native identities and labels are data, even when their literal
+                // text equals a presentation sentinel. Empty model lists are facts.
+                (value.is_string()
+                    && matches!(
+                        key.as_str(),
+                        "model" | "displayName" | "name" | "id" | "value"
+                    ))
+                    || (key == "models" && value.is_array())
+                    || !(key == "observedAt" && !stale || empty(value))
             });
         }
         Value::Array(values) => {
@@ -44,63 +52,6 @@ fn empty(value: &Value) -> bool {
             .is_some_and(|s| s.is_empty() || s == "unknown")
         || value.as_array().is_some_and(Vec::is_empty)
         || value.as_object().is_some_and(serde_json::Map::is_empty)
-}
-fn model_list(row: &Value) -> Vec<String> {
-    let models = row.get("models").unwrap_or(&row["capabilities"]["models"]);
-    let mut grouped = BTreeMap::<String, Vec<String>>::new();
-    for m in models.as_array().into_iter().flatten() {
-        let mut parts = vec![];
-        let efforts: Vec<_> = m["efforts"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .collect();
-        let order = [
-            "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
-        ];
-        if !efforts.is_empty() {
-            let contiguous = order.windows(efforts.len()).any(|v| v == efforts);
-            parts.push(if contiguous && efforts.len() > 2 {
-                format!("{}-{}", efforts[0], efforts[efforts.len() - 1])
-            } else {
-                efforts.join("/")
-            });
-        }
-        for tier in m["serviceTiers"].as_array().into_iter().flatten() {
-            parts.push(format!(
-                "{}={}",
-                string(tier, "name").to_lowercase(),
-                string(tier, "id")
-            ));
-        }
-        for option in m["options"].as_array().into_iter().flatten() {
-            let values = option["values"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(|v| v["value"].as_str())
-                .collect::<Vec<_>>()
-                .join("/");
-            if !values.is_empty() {
-                parts.push(format!("{}={values}", string(option, "id")));
-            }
-        }
-        grouped
-            .entry(parts.join(", "))
-            .or_default()
-            .push(string(m, "model").into());
-    }
-    grouped
-        .into_iter()
-        .map(|(settings, ids)| {
-            if settings.is_empty() {
-                ids.join(",")
-            } else {
-                format!("{}: {settings}", ids.join(","))
-            }
-        })
-        .collect()
 }
 fn history(row: &Value) -> Value {
     if row["history"]["unavailable"].is_string() {
@@ -310,9 +261,18 @@ pub(super) fn present(mut facts: Value, args: &Value) -> Value {
         ] {
             out[k] = policy[k].clone();
         }
+        let catalog = if agent == "codex" {
+            row
+        } else {
+            &row["capabilities"]
+        };
+        out["models"] = catalog["models"].clone();
+        out["authoritative"] = json!(catalog["authoritative"] == true);
+        for key in ["source", "observedAt", "omittedModels", "unavailable"] {
+            out[key] = catalog[key].clone();
+        }
         if !no_policy {
             out["history"] = history;
-            out["models"] = json!(model_list(row));
             let options: Vec<_> = row["capabilities"]["options"]
                 .as_array()
                 .into_iter()
@@ -333,14 +293,6 @@ pub(super) fn present(mut facts: Value, args: &Value) -> Value {
                 out["options"] = json!(options);
                 out["optionsForModel"] = row["capabilities"]["optionsForModel"].clone();
                 out["currentModel"] = row["capabilities"]["currentModel"].clone();
-            }
-            for k in ["source", "observedAt", "omittedModels", "unavailable"] {
-                out[k] = row["capabilities"][k].clone();
-            }
-            if row["models"].is_object() {
-                out["models"] = row["models"].clone();
-            } else if row["capabilities"]["models"].is_object() {
-                out["models"] = row["capabilities"]["models"].clone();
             }
         }
         let mut quota = vec![];
@@ -418,5 +370,27 @@ mod tests {
         assert_eq!(cached["agents"][0]["accounts"], row["accounts"]);
         let full = present(facts, &json!({"view":"full"}));
         assert_eq!(full["agents"][0]["accounts"], accounts);
+    }
+}
+
+#[cfg(test)]
+mod catalog_metadata_tests {
+    use super::*;
+
+    #[test]
+    fn catalog_metadata_decision_preserves_native_rows_even_without_policy() {
+        // Regression: decision view encoded model IDs into strings and discarded native display metadata.
+        let models = json!([{"model":"[\"opaque\", \"id\"]","name":"Native","displayName":"Native","provider":{"id":"p","name":"Provider"},"contextWindow":64000},{"model":"unknown","displayName":"unknown","provider":{"id":"unknown","name":"unknown"}}]);
+        let facts = json!({"agents":[
+            {"agent":"codex","models":models,"authoritative":true},
+            {"agent":"dsh","capabilities":{"models":models,"authoritative":false,"omittedModels":2}}
+        ]});
+        let result = present(facts, &json!({}));
+        for row in result["agents"].as_array().unwrap() {
+            assert_eq!(row["models"], models);
+        }
+        assert_eq!(result["agents"][0]["authoritative"], true);
+        assert_eq!(result["agents"][1]["authoritative"], false);
+        assert_eq!(result["agents"][1]["omittedModels"], 2);
     }
 }

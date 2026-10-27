@@ -306,14 +306,7 @@ async fn models(c: &control::Control) -> Result<Value> {
             .request("model/list", json!({"cursor":cursor}), 15000)
             .await?;
         for model in page["data"].as_array().ok_or("NATIVE_MODELS_MISSING")? {
-            rows.push(json!({
-                "model":model["model"],
-                "name":model["displayName"],
-                "defaultServiceTier":model["defaultServiceTier"],
-                "serviceTiers":model["serviceTiers"],
-                "efforts":model["supportedReasoningEfforts"].as_array().into_iter().flatten()
-                    .map(|e| e["reasoningEffort"].clone()).collect::<Vec<_>>()
-            }));
+            rows.push(codex_model(model));
         }
         cursor = page["nextCursor"].clone();
         if cursor.is_null() {
@@ -322,6 +315,31 @@ async fn models(c: &control::Control) -> Result<Value> {
     }
     Ok(json!(rows))
 }
+pub(super) fn codex_model(model: &Value) -> Value {
+    let mut row = json!({
+        "model":model["model"], "name":model["displayName"],
+        "defaultServiceTier":model["defaultServiceTier"], "serviceTiers":model["serviceTiers"],
+        "efforts":model["supportedReasoningEfforts"].as_array().into_iter().flatten()
+            .map(|e| e["reasoningEffort"].clone()).collect::<Vec<_>>()
+    });
+    if model["displayName"].as_str().is_some_and(|s| !s.is_empty()) {
+        row["displayName"] = model["displayName"].clone();
+    }
+    let provider = &model["provider"];
+    if let Some(id) = provider["id"]
+        .as_str()
+        .or(provider.as_str())
+        .or(model["providerId"].as_str())
+        .filter(|s| !s.is_empty())
+    {
+        row["provider"] = json!({"id":id,"name":provider["name"].as_str().or(model["providerName"].as_str()).filter(|s| !s.is_empty()).unwrap_or(id)});
+    }
+    if model["contextWindow"].as_u64().is_some_and(|n| n > 0) {
+        row["contextWindow"] = model["contextWindow"].clone();
+    }
+    row
+}
+
 /// Read labels only; recorded specs and dispatch defaults are not changed.
 pub(crate) async fn catalog(
     c: &control::Control,
@@ -329,7 +347,9 @@ pub(crate) async fn catalog(
     args: &Value,
 ) -> Result<Value> {
     if args["agent"] == "codex" {
-        return Ok(json!({"source":"codex-model-list","models":models(c).await?}));
+        return Ok(
+            json!({"source":"codex-model-list","authoritative":true,"models":models(c).await?}),
+        );
     }
     let mut request = args.clone();
     request["all"] = json!(true);
@@ -337,7 +357,9 @@ pub(crate) async fn catalog(
     Ok(rows
         .first()
         .map(|row| row["capabilities"].clone())
-        .unwrap_or_else(|| json!({"unavailable":"agent-catalog-unavailable"})))
+        .unwrap_or_else(
+            || json!({"authoritative":false,"unavailable":"agent-catalog-unavailable"}),
+        ))
 }
 
 async fn codex_facts(c: &control::Control, compact: bool) -> Result<Value> {
@@ -365,8 +387,9 @@ async fn codex_facts(c: &control::Control, compact: bool) -> Result<Value> {
             pool
         }).collect::<Vec<_>>()})
     });
+    let authoritative = models.is_ok();
     Ok(json!({
-        "observedAt":now(),
+        "observedAt":now(),"authoritative":authoritative,
         "models":models.unwrap_or_else(|error| json!({"unavailable":error})),
         "policy":policy,
         "quota":quota.unwrap_or_else(|error| json!({"unavailable":error})),
@@ -412,7 +435,7 @@ pub(crate) async fn query(
         });
         if agent == "codex" {
             let facts = codex_facts(c, args["view"] != "full").await?;
-            for key in ["models", "quota", "history"] {
+            for key in ["models", "authoritative", "quota", "history"] {
                 row[key] = facts[key].clone();
             }
             row["policy"] = facts["policy"]["codex"].clone();
@@ -1457,5 +1480,31 @@ mod inheritance_tests {
             json!({"model":"desktop-model","effort":"low"})
         );
         assert_eq!(inherited_configuration(&Value::Null, &[]), json!({}));
+    }
+}
+
+#[cfg(test)]
+mod catalog_metadata_tests {
+    use super::*;
+
+    #[test]
+    fn catalog_metadata_codex_retains_only_native_display_fields() {
+        // Regression: Codex model/list display metadata was omitted from catalog rows.
+        let native = json!({"model":"opaque-id","displayName":"Native model","provider":{"id":"native","name":"Native provider"},"contextWindow":200000,"serviceTiers":[{"id":"priority"}],"supportedReasoningEfforts":[{"reasoningEffort":"high"}]});
+        let row = codex_model(&native);
+        for key in [
+            "model",
+            "displayName",
+            "provider",
+            "contextWindow",
+            "serviceTiers",
+        ] {
+            assert_eq!(row[key], native[key]);
+        }
+        assert_eq!(row["efforts"], json!(["high"]));
+        let absent = codex_model(&json!({"model":"openai/gpt-128k"}));
+        for key in ["displayName", "provider", "contextWindow"] {
+            assert!(absent.get(key).is_none());
+        }
     }
 }

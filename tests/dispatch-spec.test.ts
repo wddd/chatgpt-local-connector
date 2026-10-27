@@ -4,7 +4,7 @@ import { Window } from 'happy-dom';
 import { createServer } from 'vite';
 import { act, createElement as h, useLayoutEffect } from 'react';
 import { within } from '@testing-library/dom';
-import { shortenModelLabel } from '../ui/components/composites/dispatchSpecLabel.ts';
+import { modelLabel } from '../ui/components/composites/dispatchSpecLabel.ts';
 import type { CatalogState } from '../ui/state/dispatchCatalog';
 
 test('recorded dispatch specs expose readable catalog labels on focus and identify unresolved models', async () => {
@@ -28,7 +28,7 @@ test('recorded dispatch specs expose readable catalog labels on focus and identi
     const { dispatchCatalogFixtures } = await server.ssrLoadModule('/ui/scenarioDispatchSpec.ts');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
     const catalog = dispatchCatalogFixtures.dsh;
-    const { model } = catalog.models[0], name = shortenModelLabel(catalog.models[0].name);
+    const { model } = catalog.models[0], name = catalog.models[0].displayName;
     const summary = { model, effort: 'max', serviceTier: 'priority' };
     const records = [
       { kind: 'session', value: { id: 'dsh-task', source: 'arc-task', dispatchSummary: summary } },
@@ -45,13 +45,13 @@ test('recorded dispatch specs expose readable catalog labels on focus and identi
       await render(record, { status: 'loading' });
       const loading = page.getByLabelText((label) => label.includes(t('dispatchSpec.loading')));
       assert.equal(loading.getAttribute('aria-busy'), 'true');
-      assert.ok(!loading.textContent?.includes(model));
-      assert.ok(!loading.getAttribute('aria-label')!.includes(model));
+      assert.ok(loading.textContent?.includes(model));
+      assert.ok(loading.getAttribute('aria-label')!.includes(model));
       assert.ok(loading.textContent?.includes(t('dispatchSpec.effort.max')));
       if (record.kind !== 'task') assert.ok(loading.textContent?.includes(t('activity.fast')));
       await act(() => loading.focus());
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
-      assert.ok(!page.getByRole('tooltip').textContent?.includes(model));
+      assert.ok(page.getByRole('tooltip').textContent?.includes(model));
       await act(() => loading.blur());
       await render(record);
       const chip = page.getByLabelText((label) => label.includes(name));
@@ -65,7 +65,7 @@ test('recorded dispatch specs expose readable catalog labels on focus and identi
       await render(record, { status: 'loading', catalog });
       assert.ok(page.getByLabelText((label) => label.includes(name)).textContent?.includes(name));
     }
-    await render(records[0], { status: 'ready', catalog: { models: [] } });
+    await render(records[0], { status: 'ready', catalog: { models: [], authoritative: true } });
     const unresolved = page.getByLabelText((label) => label.includes(model));
     assert.ok(unresolved.getAttribute('aria-label')!.includes(t('dispatchSpec.unresolved')));
     await act(() => unresolved.focus());
@@ -74,9 +74,11 @@ test('recorded dispatch specs expose readable catalog labels on focus and identi
     assert.ok(tooltip.textContent?.includes(model));
     assert.ok(tooltip.textContent?.includes(t('dispatchSpec.unresolved')));
     await act(() => unresolved.blur());
+    await render(records[0], { status: 'ready', catalog: { models: [], authoritative: false } });
+    assert.ok(!page.getByLabelText(label => label.includes(model)).getAttribute('aria-label')!.includes(t('dispatchSpec.unresolved')));
     await render(records[0], { status: 'error' });
     const failed = page.getByLabelText((label) => label.includes(model));
-    assert.ok(failed.getAttribute('aria-label')!.includes(t('dispatchSpec.unresolved')));
+    assert.ok(!failed.getAttribute('aria-label')!.includes(t('dispatchSpec.unresolved')));
     assert.ok(failed.getAttribute('aria-label')!.includes(t('dispatchSpec.error')));
     for (const variant of ['panel', 'inline'] as const) {
       const record = { kind: 'session', value: { id: 'no-model', source: 'arc-task', dispatchSummary: { effort: 'high', serviceTier: 'default' } } };
@@ -103,8 +105,8 @@ test('recorded dispatch specs expose readable catalog labels on focus and identi
     }
     await act(() => root.render(h(TooltipProvider, null, h(NativeChip))));
     assert.ok(firstFrame?.text?.includes(t('dispatchSpec.loading')));
-    assert.ok(!firstFrame?.text?.includes(model));
-    assert.ok(!firstFrame?.label?.includes(model));
+    assert.ok(firstFrame?.text?.includes(model));
+    assert.ok(firstFrame?.label?.includes(model));
     assert.equal(page.getByLabelText(label => label.includes(t('dispatchSpec.loading'))).getAttribute('aria-busy'), 'true');
     await act(async () => complete(new Response(JSON.stringify(catalog))));
     assert.ok(page.getByLabelText(label => label.includes(name)));
@@ -135,7 +137,7 @@ test('task rows expose the recorded model and effort through the shared dispatch
     const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
     const { dispatchCatalogFixtures } = await server.ssrLoadModule('/ui/scenarioDispatchSpec.ts');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
-    const catalog = dispatchCatalogFixtures.dsh, { model } = catalog.models[0], name = shortenModelLabel(catalog.models[0].name);
+    const catalog = dispatchCatalogFixtures.dsh, { model } = catalog.models[0], name = catalog.models[0].displayName;
     const record = { agent: 'dsh', taskId: 'recorded-task', requestId: 'request', state: 'completed',
       createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', approval: { decision: 'automatic', source: 'remote', at: '' },
       task: { kind: 'create', title: 'Recorded task', prompt: 'Review configuration', input: [], model, effort: 'max', settings: { serviceTier: 'priority' } } };
@@ -158,13 +160,26 @@ test('task rows expose the recorded model and effort through the shared dispatch
 });
 
 
-test('model label shortening preserves unmatched names and native version text', () => {
-  // Property: only complete recognized leading brands are removed; other names remain unchanged.
-  for (const [name, expected] of [
-    ['GPT-6-Astra', '6 Astra'], ['GPT-6.1-Sol', '6.1 Sol'],
-    ['Claude Opus 5.5', 'Opus 5.5'], ['DeepSeek V4.1 Flash · OpenCode Go', 'V4.1 Flash · OpenCode Go'],
-    ['claude-Sonnet-5.2', 'Sonnet 5.2'], ['OpenAI Research-Preview', 'Research Preview'],
-    ['Unknown-model-v2', 'Unknown-model-v2'], ['My Claude model', 'My Claude model'],
-    ['GPTish-6', 'GPTish-6'], ['Claude', 'Claude'], ['Claude-', 'Claude-'], ['GPT--', 'GPT--'], ['GPT  ', 'GPT  '], ['', ''],
-  ]) assert.equal(shortenModelLabel(name), expected);
+test('catalog labels preserve opaque identities and native text without inference', () => {
+  // Property: labels use only exact native display metadata and never parse or rewrite IDs or names.
+  const ids = ['["provider", "model"]', 'provider/model', ' GPT-6-Astra ', 'opaque · suffix'];
+  for (const model of ids) {
+    assert.equal(modelLabel(model, [{ model, name: 'Legacy inferred name' }]), model);
+    assert.equal(modelLabel(model, [{ model: `${model}x`, displayName: 'Different identity' }]), model);
+    for (const displayName of ['GPT-6-Astra', 'DeepSeek V4 · native suffix', 'Provider/model-name']) {
+      assert.equal(modelLabel(model, [{ model, displayName }]), displayName);
+    }
+  }
+  assert.equal(modelLabel('["p", "m"]', [{ model: '["p","m"]', displayName: 'Other identity' }]), '["p", "m"]');
+});
+
+test('native provider names disambiguate equal display names', () => {
+  // Regression: model labels parsed provider suffixes instead of using native provider metadata.
+  const models = [
+    { model: 'opaque-1', displayName: 'Shared', provider: { id: 'one', name: 'First provider' } },
+    { model: 'opaque-2', displayName: 'Shared', provider: { id: 'two', name: 'Second provider' } },
+    { model: 'opaque-3', displayName: 'Unique', provider: { id: 'one', name: 'First provider' } },
+  ];
+  assert.equal(modelLabel(models[0].model, models), `${models[0].displayName} · ${models[0].provider.name}`);
+  assert.equal(modelLabel(models[2].model, models), models[2].displayName);
 });

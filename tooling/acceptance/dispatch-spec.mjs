@@ -1,6 +1,6 @@
 export async function acceptDispatchSpecBubbles(page, fixture) {
   // Regression: inline dispatch chips were required to match larger project tags exactly.
-  for (const [index, label] of [[0, 'Opus 5.5 · Medium'], [1, 'High · Fast'], [3, '6 Astra · High']]) {
+  for (const [index, label] of [[0, 'Claude Opus 5.5 · Medium'], [1, 'High · Fast'], [3, 'GPT-6-Astra · High']]) {
     const task = page.getByRole('button', { name: new RegExp(`^${fixture.tasks[index].title} ·`) });
     const chip = task.getByLabel(label, { exact: true });
     const project = task.getByText('acceptance', { exact: true });
