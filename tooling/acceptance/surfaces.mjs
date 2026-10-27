@@ -77,9 +77,22 @@ export async function acceptSurface(page, fixture, name, messages) {
       if (fixture.remoteLink?.empty) await button(dialog, fixture.sourceSetup.deploying ? 'cancel' : 'source.createRelay').waitFor();
       else await dialog.getByRole('textbox', { name: messages[fixture.remoteLink?.local ? 'connections.localCommand' : 'source.copyAddress'], exact: true }).waitFor();
       if (fixture.remoteLink?.local) {
-        const command = await dialog.getByRole('textbox', { name: messages['connections.localCommand'], exact: true }).innerText();
-        const target = fixture.sourceSetup.source === 'local-desktop' ? 'desktop' : 'code';
-        if (!command.includes(JSON.stringify({ body: { target } }))) throw new Error('Local setup command targets the wrong client');
+        // Regression: privacy mode masks rendered commands, but Copy must retain the raw install target.
+        const clipboard = await page.evaluateHandle(() => {
+          const state = { writeText: navigator.clipboard.writeText, value: null };
+          navigator.clipboard.writeText = async value => { state.value = value; };
+          return state;
+        });
+        try {
+          await button(dialog, 'copy').click();
+          await page.waitForFunction(state => typeof state.value === 'string', clipboard);
+          const command = await clipboard.evaluate(state => state.value);
+          const target = fixture.sourceSetup.source === 'local-desktop' ? 'desktop' : 'code';
+          if (!command.includes(JSON.stringify({ body: { target } }))) throw new Error('Local setup command targets the wrong client');
+        } finally {
+          await clipboard.evaluate(state => { navigator.clipboard.writeText = state.writeText; });
+          await clipboard.dispose();
+        }
       }
       if (await dialog.getByRole('combobox').count() || await dialog.getByRole('radiogroup').count()) throw new Error('Configure step exposes a connection selector');
     } else if (step === 'approval') {
