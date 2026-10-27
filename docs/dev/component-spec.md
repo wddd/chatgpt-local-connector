@@ -305,7 +305,7 @@ Recommended order:
 5. Interaction and authorization requests: implemented with RequestCard and separate execution/OAuth adapters, relay deployment and member objects. SRC account hosts also mount SourceAuthorizationChip and pending authorization Rows, without grant history.
 6. Peer message only after its data contract and placement are decided. Notification binding remains deferred.
 
-`debt-*` light/dark fixtures mount Tasks, Records, Permissions, AgentsSettings, AgentDisplaySettings, AddAccount, MergeAccounts, RelayHosting and OAuthGrants. `settings-light/dark` and `updates-settings` cover the main Settings hosts. Future browser coverage must include remaining SettingsExtras states, both empty homepage wings, account-store disagreement recovery, unknown icons/states, dsh recorded spec, quota failure families. Layout/state acceptance uses browser fixtures; this document does not require a native app run or claim any visual acceptance.
+`debt-*` light/dark fixtures mount Tasks, Records, Permissions, AgentsSettings, AgentDisplaySettings, AddAccount, MergeAccounts, RelayHosting and OAuthGrants. `settings-light/dark` and `updates-settings` cover the main Settings hosts. `settings-extras-light/dark` cover Relay hosting and Experimental through the real settings navigation. `management-table-light/dark` cover shared table rows, pagination and empty states. Future browser coverage must include both empty homepage wings, account-store disagreement recovery, unknown icons/states, dsh recorded spec, quota failure families. Layout/state acceptance uses browser fixtures; this document does not require a native app run or claim any visual acceptance.
 
 ### SRC/TUNNEL implementation and mounts
 

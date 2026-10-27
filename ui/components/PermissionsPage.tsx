@@ -61,16 +61,16 @@ export default function PermissionsPage() {
   function row(item: {id: string; state: string}) {
     const system = systemIds.includes(item.id);
     const authorization = system && item.id !== "login-start";
-    return <EntityRow className="permission-entity-row" key={item.id} leading={<><Tooltip text={t("permissionTools." + item.id)}><span className="permission-symbol" tabIndex={0}><Icon icon={icons[item.id]} size={20} /></span></Tooltip></>} title={<><h3>{t("permission." + item.id)}</h3></>} secondary={<><p>{t("permissionUse." + item.id)}</p>{item.id === "full-disk-access" && disk && commandDisk && disk.state !== commandDisk.state && <p className="permission-hint">{t("permissionsDiskMismatch")}</p>}</>} actions={<>{badge(item.state, authorization)}{item.state !== "granted" && <Button disabled={busy || (system && !isDesktop)} onClick={() => void act(item.id).catch(e => notify(String(e), true))}>
+    return <EntityRow className="flex-wrap gap-3 py-3 [&.entity-row]:p-0 [&.entity-row-actions]:border-b [&.entity-row-actions]:last:border-0 [&>.actions]:ms-8 [&>.actions]:max-w-full @2xl:[&>.actions]:ms-auto [&>.entity-row]:basis-60" key={item.id} leading={<><Tooltip text={t("permissionTools." + item.id)}><span className="flex text-muted-foreground" tabIndex={0}><Icon icon={icons[item.id]} size={20} /></span></Tooltip></>} title={<><h3 className="text-sm font-semibold">{t("permission." + item.id)}</h3></>} secondary={<><p className="text-xs leading-relaxed">{t("permissionUse." + item.id)}</p>{item.id === "full-disk-access" && disk && commandDisk && disk.state !== commandDisk.state && <p className="text-xs text-muted-foreground">{t("permissionsDiskMismatch")}</p>}</>} actions={<>{badge(item.state, authorization)}{item.state !== "granted" && <Button disabled={busy || (system && !isDesktop)} onClick={() => void act(item.id).catch(e => notify(String(e), true))}>
           {t(system ? item.id === "login-start" ? "permissionsEnable" : "permissionsGrant" : "permissionsInstructions")}
         </Button>}</>} />;
   }
-  return <div className="permissions-page">
+  return <div className="@container min-w-0">
     {data && <>
-      {mac && <SettingsSection title={t("permissionsSystem")}><p className="permission-hint">{t("permissionsAppHint", {app: appName})}</p>{visible.filter(item => systemIds.includes(item.id)).map(row)}</SettingsSection>}
+      {mac && <SettingsSection title={t("permissionsSystem")}><p className="text-xs text-muted-foreground">{t("permissionsAppHint", {app: appName})}</p>{visible.filter(item => systemIds.includes(item.id)).map(row)}</SettingsSection>}
       <SettingsSection title={t("permissionsEnvironment")}>{visible.filter(item => !systemIds.includes(item.id)).map(row)}</SettingsSection>
       <SettingsSection title={t("permissionsConnections")}>
-        {connections.length === 0 && <p className="permission-hint">{t("permissionsNoConnections")}</p>}
+        {connections.length === 0 && <p className="text-xs text-muted-foreground">{t("permissionsNoConnections")}</p>}
         {connections.map(({entry, state}) => <TunnelRow key={entry.id} ingress={entry} sources={sources} onOpen={() => setDetails(entry)} actions={badge(state, false, true)} />)}
       </SettingsSection>
     </>}

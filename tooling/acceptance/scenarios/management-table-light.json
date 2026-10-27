@@ -1,0 +1,10 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "pageFixture": "management-table",
+  "shells": true
+}

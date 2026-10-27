@@ -22,12 +22,13 @@ Accounts, AGENT catalog/profile/identity objects and quota surroundings compose 
 
 | Area | Feature owners | Remaining styles |
 | --- | --- | --- |
-| Settings, updates and management | `SettingsPage.tsx`, `SettingsExtras.tsx`, `AgentDisplaySettings.tsx`, `AgentsSettings.tsx`, `AppUpdate.tsx` (including UpdatesSettings), `PermissionsPage.tsx`, `RecordsPage.tsx` | Settings/update/table rules in `ui/style.css`, `ui/product.css`, `ui/components/AppUpdate.css`; `ui/components/ui/DataTable.css` |
 | Remote link, setup and Relay | `RemoteLinkPage.tsx`, `SourceConnection.tsx`, `IngressDialog.tsx`, `AddConnection.tsx`, `SetupDialog.tsx`, `RelayHosting.tsx`, `RelaySettings.tsx`; SRC/TUNNEL/relay/request objects | Setup, connection and relay selectors in `ui/product.css`; relevant rules in `ui/components/objects/objects.css` and request/deployment stylesheets |
 | Task and activity content | `TasksPage.tsx`, `objects/task/Card.tsx`, `ActivityTimeline.tsx`, `TimelineEntries.tsx`, `TaskOutcome.tsx`, `TaskChanges.tsx`, `TaskOwnership.tsx`; TASK and interaction objects | `ui/components/TaskDetail.css`, `ui/components/activity/activity.css`, task/timeline rules in `ui/product.css`, TASK object CSS; task-bubble styling remains brand-owned |
 | Workspace and global shell | `ElasticPanel.tsx`, workspace headers/dock, `ui/components/ui/HoverPreviewGroup.tsx`, `AnimatedSize.tsx` | Global defaults and dialog/workspace rules in `ui/style.css` and `ui/product.css`, the remaining hover/size shared CSS; topology geometry is outside layout migration |
 
 File names in the feature-owner column are relative to `ui/components/` unless another prefix is shown. Shared `ui/product.css` and `ui/style.css` need a single integration owner when areas are worked in parallel; feature lanes remove only their named selector families. Primitive and form/shell CSS has moved into Tailwind; these remaining areas do not authorize redesigning topology, quota or notification behavior.
+
+Settings, updates and management use Tailwind and shadcn Table, Popover and Card alongside the shared settings shells. `AppUpdate.css` retains only task-bubble update-blocking visuals for the TASK owner. Workspace sizing and the settings breadcrumb remain with the global shell owner. `settings-extras-light/dark` cover both Extras panes; `management-table-light/dark` cover pagination, row actions and empty tables. Run `node tooling/acceptance/settings-migration.mjs` for fixture-only Chrome geometry and keyboard checks at narrow and wide widths in both themes.
 
 ## Cleanup
 
@@ -40,9 +41,9 @@ Counts are outstanding violations per file and rule, sorted by count.
 <!-- ui-debt:start -->
 | File | Rule | Count |
 | --- | --- | ---: |
-| ui/product.css | shared-layout-css | 367 |
+| ui/product.css | shared-layout-css | 348 |
 | ui/components/TaskDetail.css | shared-layout-css | 72 |
-| ui/style.css | shared-layout-css | 44 |
-| ui/components/AppUpdate.css | shared-layout-css | 37 |
+| ui/style.css | shared-layout-css | 32 |
 | ui/components/activity/activity.css | shared-layout-css | 5 |
+| ui/components/AppUpdate.css | shared-layout-css | 1 |
 <!-- ui-debt:end -->

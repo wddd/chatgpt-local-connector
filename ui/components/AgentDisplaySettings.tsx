@@ -44,7 +44,7 @@ export default function AgentDisplaySettings({
     <Dialog title={t("agentDisplaySettings")} onClose={onClose} busy={saving}>
       {error && <Notice>{error}</Notice>}
       <SettingsSection title={t("activity.bubbleSettings")}>
-        <div className="activity-preview" aria-label={t("activity.preview")}>
+        <div className="activity-preview grid place-items-center overflow-hidden pt-3 pb-5" aria-label={t("activity.preview")}>
           <div className="activity-bubble" data-density={density} style={{ "--bubble-width": `${bubbleWidths[width]}px`, "--bubble-height": `${bubbleHeights[density]}px` } as CSSProperties}>
             <ActivityBubbleContent agent="codex" density={density} now={83000} session={{ id: "preview", source: "arc-task", title: t("activity.previewTitle"), phase: "command", headline: "npm run check", phaseSince: null,
               turnStartedAt: "1970-01-01T00:00:00Z", timeline: false, orderAt: 0, project: "/workspace/arc", recentContent: [t("activity.previewPrevious"), "npm run check"], recentSteps: ["thinking", "file", "command"],

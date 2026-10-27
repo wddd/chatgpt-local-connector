@@ -11,6 +11,7 @@ import MergeAccounts from './components/MergeAccounts';
 import OAuthGrants from './components/OAuthGrants';
 import RelayHosting from './components/RelayHosting';
 import './scenarioShells.css';
+import ManagementTableFixture from './scenarioManagement';
 
 export default function PagesFixture() {
   const [open, setOpen] = useState(true), [busy, setBusy] = useState(false);
@@ -19,6 +20,7 @@ export default function PagesFixture() {
   return <main className="shell-fixture">
     {!open && <Button onClick={() => setOpen(true)}>Reopen fixture</Button>}
     {open && <>
+      {pageFixture === 'management-table' && <ManagementTableFixture />}
       {pageFixture === 'agents-settings' && <AgentsSettings onClose={close} />}
       {pageFixture === 'agent-display-settings' && <AgentDisplaySettings onClose={close} />}
       {pageFixture === 'add-account' && <AddAccount onClose={close} initialLogin={state.login ?? undefined} />}

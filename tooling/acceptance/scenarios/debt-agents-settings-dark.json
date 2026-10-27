@@ -8,5 +8,46 @@
   "tasks": [],
   "shells": true,
   "pageFixture": "agents-settings",
-  "quota": true
+  "quota": true,
+  "agentInventory": [
+    {
+      "agent": "codex",
+      "installed": true,
+      "available": true,
+      "enabled": true,
+      "status": "ready",
+      "version": "fixture-release-with-long-version-identifier"
+    },
+    {
+      "agent": "claude",
+      "installed": true,
+      "available": true,
+      "enabled": true,
+      "status": "ready",
+      "version": "fixture"
+    },
+    {
+      "agent": "dsh",
+      "installed": true,
+      "available": false,
+      "enabled": false,
+      "status": "unavailable",
+      "version": "fixture",
+      "discoveryError": "Fixture discovery is unavailable. Refresh to retry."
+    },
+    {
+      "agent": "gemini",
+      "installed": false,
+      "available": false,
+      "enabled": false,
+      "status": "unavailable"
+    },
+    {
+      "agent": "cursor",
+      "installed": false,
+      "available": false,
+      "enabled": false,
+      "status": "unavailable"
+    }
+  ]
 }

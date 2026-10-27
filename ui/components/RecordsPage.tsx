@@ -5,6 +5,7 @@ import { t, locale, type MessageKey } from "../i18n";
 import { displayMessage } from "../messages";
 import { connector } from "../state/connector";
 import { Disclosure, Empty, Input, SingleChoice, Status } from "./ui";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableCaption } from "./ui/table";
 export default function RecordsPage() {
   const { status } = connector.use();
   const { recordsSource } = navigation.use();
@@ -128,11 +129,12 @@ export default function RecordsPage() {
         .includes(query.toLowerCase()),
   );
   return (
-    <section>
-      <div className="list-toolbar">
+    <section className="min-w-0">
+      <div className="mb-5 flex min-w-0 flex-wrap items-center gap-3 [&>.choice]:w-auto [&>.choice]:min-w-36 [&>.choice]:max-w-full">
         <SingleChoice label={t("recordSource")} value={recordsSource ? `source:${recordsSource}` : "all"} onChange={value => navigation.set(old => ({ ...old, recordsSource: value === "all" ? undefined : value.slice(7) }))}
           options={[{ value: "all", label: t("all") }, ...(status?.ingresses ?? []).map(i => ({ value: `source:${i.id}`, label: i.name }))]} />
         <Input
+          className="min-w-36 flex-1"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label={t("searchLogs")}
@@ -153,38 +155,36 @@ export default function RecordsPage() {
         />
       </div>
       {recordsSource && <section><h3>{t("sourcePanel.dispatches")}</h3>{status?.ingresses.find(i => i.id === recordsSource)?.sources?.map(source => <div key={source.id}><h4>{source.label}</h4><SourceDispatches sourceId={source.id} /></div>)}</section>}
-      <div className="log-table-scroll">
-        <table className="log-table">
-          <caption className="sr-only">{t("connectionLogContents")}</caption>
-          <thead>
-            <tr>
-              <th>{t("time")}</th>
-              {hasSource && <th>{t("recordSource")}</th>}
-              <th>{t("recordOperation")}</th>
-              {hasResult && <th>{t("recordResult")}</th>}
-            </tr>
-          </thead>
-          <tbody>
+      <Table className="text-xs">
+          <TableCaption className="sr-only">{t("connectionLogContents")}</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col" className="h-8 text-muted-foreground">{t("time")}</TableHead>
+              {hasSource && <TableHead scope="col" className="h-8 text-muted-foreground">{t("recordSource")}</TableHead>}
+              <TableHead scope="col" className="h-8 text-muted-foreground">{t("recordOperation")}</TableHead>
+              {hasResult && <TableHead scope="col" className="h-8 text-muted-foreground">{t("recordResult")}</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {visibleRows.map((row) => (
-              <tr key={row.index}>
-                <td>
-                  <time title={row.timestamp}>{row.time}</time>
-                </td>
-                {hasSource && <td className="record-source">{row.source || "—"}</td>}
-                <td className="record-operation">
-                  <span title={row.operation}>{row.operation}{row.count > 1 ? ` ×${row.count}` : ""}</span>
+              <TableRow key={row.index}>
+                <TableCell>
+                  <time className="whitespace-nowrap text-muted-foreground tabular-nums" title={row.timestamp}>{row.time}</time>
+                </TableCell>
+                {hasSource && <TableCell className="whitespace-nowrap">{row.source || "—"}</TableCell>}
+                <TableCell className="w-full min-w-40 whitespace-normal">
+                  <span className="block wrap-anywhere" title={row.operation}>{row.operation}{row.count > 1 ? ` ×${row.count}` : ""}</span>
                   {row.detail && (
                     <Disclosure title={t("details")}>
-                      <pre>{row.detail}</pre>
+                      <pre className="whitespace-pre-wrap wrap-anywhere">{row.detail}</pre>
                     </Disclosure>
                   )}
-                </td>
-                {hasResult && <td>{row.result ? <Status tone={row.result === "recordFailure" ? "danger" : "neutral"}>{t(row.result)}</Status> : "—"}</td>}
-              </tr>
+                </TableCell>
+                {hasResult && <TableCell>{row.result ? <Status tone={row.result === "recordFailure" ? "danger" : "neutral"}>{t(row.result)}</Status> : "—"}</TableCell>}
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+        </Table>
       {!visibleRows.length && (
         <Empty>
           {t(rows.length ? "noMatchingRecords" : "noConnectionRecordsYet")}

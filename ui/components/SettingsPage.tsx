@@ -104,7 +104,7 @@ export default function SettingsPage() {
   if (settingsUpdates) return <UpdatesSettings />;
   if (settingsExtras) return <SettingsExtras />;
   return (
-    <div className="settings-page">
+    <div className="settings-page mx-auto w-full min-w-0 max-w-3xl">
       <SettingsSection title={t("behavior")}>
         <SettingRow label={t("routing.delaySetting")}>
           <Input key={status?.requestRoutingDelaySeconds ?? 15} type="number" min={0} max={300} step={1} aria-label={t("routing.delaySetting")} defaultValue={status?.requestRoutingDelaySeconds ?? 15} disabled={!!busy || !status}

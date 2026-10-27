@@ -17,15 +17,15 @@ export default function SettingsExtras() {
       }));
     });
   }
-  return <div className="settings-extras">
-    <div className="extras-layout">
-      <aside className="extras-nav">
+  return <div className="@container">
+    <div className="grid min-w-0 grid-cols-1 gap-6 @2xl:grid-cols-[auto_minmax(0,1fr)]">
+      <aside className="min-w-0 border-b pb-3 @2xl:w-50 @2xl:border-0 @2xl:pb-0">
         <HoverScope><ChoiceControl navigation label={t("extras.title")} value={pane} onChange={setPane} options={[
           { value: "hosting", label: t("extras.hosting"), description: t("extras.hostingDescription") },
           { value: "experimental", label: t("topology.experimental"), description: t("extras.experimentalDescription") },
         ]} /></HoverScope>
       </aside>
-      <div className="extras-content">
+      <div className="min-w-0">
         {pane === "hosting" ? <RelayHosting /> : <SettingsSection title={t("topology.experimental")}>
           <SettingRow label={t("extras.maintainerMode")}>
             <Switch label={t("extras.maintainerMode")} checked={maintainer} disabled={!!busy || !status} onChange={saveMaintainer} />

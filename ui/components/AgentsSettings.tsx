@@ -35,7 +35,7 @@ function AgentCard({ agent, onMove, children }: {
   const reduced = useReducedMotion();
   const transition = reduced ? { duration: 0 } : springTransition(0.3, 0.9);
   if (!canReorder(agent)) {
-    return <motion.article className="agent-reorder data-[reorderable]:cursor-grab data-[reorderable]:touch-none data-[reorderable]:select-none" layout="position" transition={transition}>
+    return <motion.article className="min-w-0 rounded-lg" layout="position" transition={transition}>
       {children}
     </motion.article>;
   }
@@ -43,7 +43,7 @@ function AgentCard({ agent, onMove, children }: {
     <Reorder.Item
       as="article"
       value={agent.agent}
-      className="agent-reorder data-[reorderable]:cursor-grab data-[reorderable]:touch-none data-[reorderable]:select-none"
+      className="min-w-0 touch-none cursor-grab rounded-lg select-none focus-visible:outline-2 focus-visible:outline-ring"
       data-reorderable
       tabIndex={0}
       aria-label={t("reorderAgent", { agent: name(agent) })}
@@ -140,7 +140,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
         <Reorder.Group
           as="div"
           axis="xy"
-          className="agent-grid"
+          className="mb-4 grid grid-cols-1 gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3"
           values={items.filter(canReorder).map(agent => agent.agent)}
           onReorder={reorderAgents}
         >
@@ -159,7 +159,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
         </Reorder.Group>
         </SettingsSection>}
         {items.some((agent) => !agent.installed) && <SettingsSection title={t("notInstalledAgents")}>
-        <div className="uninstalled-agents">
+        <div className="grid grid-cols-1 gap-1 @lg:grid-cols-2 @3xl:grid-cols-3">
           {items.filter(agent => !agent.installed).map(agent => (
             <AgentPlatformRow key={agent.agent} agent={agent} onOpen={agentLinks[agent.agent] ? () => void openUrl(agentLinks[agent.agent]!).catch(error => setError(String(error))) : undefined} />
           ))}
