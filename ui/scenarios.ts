@@ -27,9 +27,9 @@ import { taskScenario } from './scenarioTasks';
 import type { RequestRouting } from './state/requestRouting';
 import { taskPanelSnapshot } from './state/taskPanel';
 
-export type PageFixture = 'agents-settings' | 'add-account' | 'quota-segments' | 'management-table';
+export type PageFixture = 'agents-settings' | 'add-account' | 'quota-segments';
 export let pageFixture: PageFixture | undefined;
-type Fixture = { agentInventory?: Agent[]; panelAccounts?: boolean; multipleAccounts?: boolean; multipleSources?: boolean; pageFixture?: PageFixture; shells?: boolean; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsPermissions?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; agentAccountId?: string | null; phase: AgentActivitySession['phase']; title: string; headline: string; dispatchSummary?: DispatchSummary; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { all?: boolean; empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean }; sourceSetup?: SourceSetup; page?: Page; relayProgress?: RelayProgress };
+type Fixture = { topologyAccounts?: boolean; emptyTopology?: boolean; logsEmpty?: boolean; agentInventory?: Agent[]; panelAccounts?: boolean; multipleAccounts?: boolean; multipleSources?: boolean; pageFixture?: PageFixture; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsPermissions?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; agentAccountId?: string | null; phase: AgentActivitySession['phase']; title: string; headline: string; dispatchSummary?: DispatchSummary; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { all?: boolean; empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; stopped?: boolean }; sourceSetup?: SourceSetup; page?: Page; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 let conversations: Record<string, AgentConversation[]> = {};
@@ -151,6 +151,11 @@ export async function installScenario(name: string) {
     if (remote.all && !remote.empty) status.ingresses.push({ ...base, id: 'cli-custom', name: 'CLI proxy', transport: 'https', auth: 'oauth', url: 'https://proxy.example.com/mcp', sources: [], config: { ...base.config, configured: true, httpsProvider: 'custom' } });
     if (remote.local) status.ingresses = [{ ...base, id: 'local-claude-code', name: 'Claude Code', sources: [{ ...base.sources![0], id: 'local-source', ingressId: 'local-claude-code', connectedAt: null, lastSeenAt: null }] }];
   }
+  if (fixture.emptyTopology) { status.ingresses = []; status.ingressSummary = { running: 0, ready: 0, total: 0 }; }
+  if (fixture.remoteLink?.stopped) {
+    const link = status.ingresses.find(entry => entry.id === 'relay-main');
+    if (link) { link.running = false; link.state = 'stopped'; }
+  }
   const sources = status.ingresses.flatMap(i => i.sources ?? []);
   const inventory: Agent[] = fixture.agentInventory ?? fixture.agents.map(agent => ({ agent, installed: true, available: true, enabled: true, status: 'ready', version: 'fixture' }));
   const activity: AgentActivitySnapshot = { observedAt: now, activeAgents: fixture.agents, agents: Object.fromEntries(fixture.agents.map(a => [a, { sessions: [] }])) };
@@ -167,7 +172,7 @@ export async function installScenario(name: string) {
       ...(task.interaction ? { interaction: task.interaction } : {}),
     });
   });
-  const topologyAccounts = name.startsWith('topology-accounts') ? installTopologyAccounts(status, activity) : [];
+  const topologyAccounts = fixture.topologyAccounts ? installTopologyAccounts(status, activity) : [];
   if (topologyAccounts.length) sources.splice(0, sources.length, ...status.ingresses.flatMap(i => i.sources ?? []));
   fixture.tasks.forEach((task, index) => {
     if (task.agentAccountId === undefined) return;
@@ -266,7 +271,7 @@ export async function installScenario(name: string) {
     { id: 'codex-desktop', state: 'granted' }, { id: 'codex-login', state: 'granted' },
     { id: 'claude-code', state: 'missing' }, { id: 'ingress:fixture-source', state: 'granted' },
   ] as PermissionItem[] : []), observedAt: now };
-  if (fixture.page === 'logs') status.logs = [
+  if (fixture.page === 'logs' && !fixture.logsEmpty) status.logs = [
     JSON.stringify({ time: now, level: 'info', msg: 'Request processed: status', ingressId: 'fixture-source' }),
     JSON.stringify({ time: now, level: 'error', msg: 'Request failed: query', ingressId: 'fixture-source', error: 'Fixture connection unavailable', duration: 120 }),
     JSON.stringify({ time: now, level: 'warn', msg: 'Connection retry pending', reason: 'Fixture upstream unavailable' }),
@@ -286,7 +291,7 @@ export async function installScenario(name: string) {
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': initialActivity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
   responses['accounts'] = { accounts: topologyAccounts, login: null } satisfies AccountsResult;
   srcConversationResponse = srcConversationsScenario();
-  accountResponse = ['source-panel', 'source-panel-light'].includes(name) || fixture.panelAccounts || fixture.panel?.kind === 'agent' || fixture.pageFixture === 'add-account' ? accountScenario(status, sources, !!fixture.pageFixture, fixture.multipleSources, fixture.multipleAccounts) : undefined;
+  accountResponse = fixture.panelAccounts || fixture.panel?.kind === 'agent' || fixture.pageFixture === 'add-account' ? accountScenario(status, sources, !!fixture.pageFixture, fixture.multipleSources, fixture.multipleAccounts) : undefined;
   if (accountResponse) {
     if (fixture.quota && subscriptionData.providers[0]) {
       const account = accountResponse('accounts/account-openai', 'GET') as AccountsResult['accounts'][number];
@@ -335,7 +340,7 @@ export async function installScenario(name: string) {
     }
     if (fixture.settingsPermissions) navigation.set(old => ({ ...old, page: 'settings', settingsPermissions: true }));
     if (fixture.settingsUpdates) navigation.set(old => ({ ...old, page: 'settings', settingsUpdates: true }));
-    if (!fixture.shells) await settledViewModel();
+    if (!fixture.pageFixture) await settledViewModel();
     finishScenario();
     for (let frame = 0; frame < 120; frame++) {
       const state = scenarioReadiness(taskPanelSnapshot());

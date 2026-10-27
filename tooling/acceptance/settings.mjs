@@ -1,6 +1,13 @@
 export async function acceptSettings(page, fixture, messages, captureEntry = async () => {}) {
   if (fixture.page !== 'settings') return;
-  if (fixture.settingsPermissions) { await page.getByRole('button', { name: messages.permissionsRefresh, exact: true }).waitFor(); return; }
+  if (fixture.settingsPermissions) {
+    await page.getByRole('button', { name: messages.permissionsRefresh, exact: true }).waitFor();
+    for (const id of ['accessibility', 'screen-recording', 'full-disk-access', 'notifications', 'login-start']) {
+      await page.getByRole('heading', { name: messages[`permission.${id}`], exact: true }).waitFor();
+    }
+    if (await page.getByRole('textbox').count() || await page.getByRole('combobox').count()) throw new Error('System permissions exposes grant or tool-policy editing');
+    return;
+  }
   if (!fixture.settingsUpdates) {
     // Regression: advanced network and routing controls crowded the basic Settings path.
     if (await page.getByRole('spinbutton').count() || await page.getByRole('textbox').count()) throw new Error('Advanced configuration input remains in Settings');

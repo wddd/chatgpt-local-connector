@@ -18,7 +18,7 @@ node node_modules/shadcn/dist/index.js add accordion
 
 Use Tailwind scale utilities and semantic tokens in features. Native controls, direct Select/ToggleGroup use, new dedicated CSS files, inline layout declarations and arbitrary color/spacing/radius/type values are rejected by `check:ui`. Compose domain objects under `ui/components/objects` and cross-object composites under `ui/components/composites`. Shared-layout CSS debt is zero. Only topology/earcup connections, quota rings and task bubbles retain dedicated brand stylesheets; ARC mark assets retain their brand painting. [UI debt](ui-debt.md) identifies the closed file and selector boundaries.
 
-The copied primitives include button, input, textarea, label, switch, select, toggle/toggle-group, tabs, dialog, alert-dialog, tooltip, dropdown-menu, popover, card, badge, separator, scroll-area, skeleton, alert, field/form, collapsible, checkbox, slider, progress, empty and spinner. Native forms remain the default; the form helpers are available for React Hook Form consumers. `foundation-light` and `foundation-dark` exercise the primitive states and floating layers. Existing forms, shells, objects and product fixtures exercise public adapters.
+The copied primitives include button, input, textarea, label, switch, select, toggle/toggle-group, tabs, dialog, alert-dialog, tooltip, dropdown-menu, popover, card, badge, separator, scroll-area, skeleton, alert, field/form, collapsible, checkbox, slider, progress, empty and spinner. Native forms remain the default; the form helpers are available for React Hook Form consumers. Design-mount and Claude Design previews show primitive and shared-component states. Surface-state browser fixtures exercise their product composition.
 
 ### Token map
 
@@ -108,7 +108,7 @@ The left center dot opens the shared Add a control source flow. Welcome appears 
 
 Account topology follows [Accounts → Topology](accounts.md#topology). The topology consumes the shared `useAccounts` store and retains the source-ID homepage when account data is absent. Shared polling refreshes every ten seconds; native quota reads retain their own cache. Single-account platforms show the platform name in both modes and retain their bubble slots. Account nodes reuse their platform logo in both modes. Multi-account Agent platform nodes have no quota ring; each account node uses its own account quota with the shared quota renderer. A missing reading leaves that account logo without a ring. Account labels have no link icon. Same-identity path highlighting remains available. Distinct `Unidentified` account IDs stay separate; their labels include ordinals sorted by account ID, independent of mode and manual order. Account identity comes only from the account IDs, source memberships and Agent profiles returned by Core. Tree and Flat share stable account keys, account order and collapse overrides. Task attribution uses `agentAccountId` and `origin.accountId` or `origin.sourceId`; unattributed historical tasks remain on the platform. Account nodes open L2 in the source or Agent panel. Platform nodes open L1, except that a sole account opens L2 directly. Back always returns to L1. Account administration belongs only in these homepage panels. Collapse toggles use 20px theme-color circles with canvas knockout symbols and a 2px canvas ring, positioned toward the node with clearance from the outer arc. Hover and focus reveal them with a short scale/fade transition. Path dimming uses the animator for wires, outer arcs, nodes and bubbles in the same frame; hovered nodes have no halo or extra scale. Reduced motion switches directly.
 
-The `?scenario=topology-accounts` development fixture supplies two shared Claude identities, a shared ChatGPT/Codex identity, a single-account dsh Agent and running, pending and completed tasks. Multiple source connections share one Claude account; two additional source-only `Unidentified` accounts have distinct IDs and identical aliases. Reads and preference writes stay inside the development scenario; unsupported actions fail locally. Use this scenario from the main checkout after landing; coding lanes do not run the app or acceptance.
+The `?scenario=homepage-accounts-light` development fixture supplies two shared Claude identities, a shared ChatGPT/Codex identity, a single-account dsh Agent and running, pending and completed tasks. Multiple source connections share one Claude account; two additional source-only `Unidentified` accounts have distinct IDs and identical aliases. Reads and preference writes stay inside the development scenario; unsupported actions fail locally. Use this scenario from the main checkout after landing; coding lanes do not run the app or acceptance.
 
 ## Settings
 
@@ -154,7 +154,7 @@ AGENT L1 shows the Agent name/version, Add account using the existing native log
 
 Agent settings distinguishes installed cards from compact uninstalled rows. Installed enabled cards use Motion Reorder, with pointer dragging outside controls and arrow sorting on focused cards. Enable/disable and order persist to the homepage. Not-installed entries link to official setup. Agent settings no longer opens Agent details, quota overview or display settings. CLI/AX owns task bubble density, width, auto-compact, homepage Agent count and quota presentation.
 
-The `panels-*` scenarios cover SRC/AGENT L1, L2, single-account shortcuts, empty states, the unchanged task detail and Agent settings. `agent-panel-empty` retains both quota windows and the centered conversation empty state. Browser acceptance runs only from main after landing.
+The `src-*`, `agent-*` and `task-detail-*` scenarios cover L1, L2, single-account shortcuts, empty states, task detail and Agent settings. `agent-l2-empty` covers the conversation empty state. Browser acceptance runs only from main after landing.
 
 ## Subscription quota
 
@@ -164,13 +164,13 @@ CLI/AX retains homepage count, remaining/used, countdown/date, enablement, and r
 
 ## Update notification
 
-The update popover keeps its header and action footer outside the scrolling body. Release notes and impact details scroll independently within a bounded content area, capped at 460px and reduced for short windows. Narrow windows stack the two scrolling sections. `?scenario=updates-long-notes` supplies long release notes for this layout.
+The update popover keeps its header and action footer outside the scrolling body. Release notes and impact details scroll independently within a bounded content area, capped at 460px and reduced for short windows. Narrow windows stack the two scrolling sections. `?scenario=update-long-notes` supplies long release notes for this layout.
 
 Only the primary button shows download size/progress. Do not add a body progress area. Completion changes the button to the localized install-update action. Installation requires another click.
 
 ## Verification
 
-Check light/dark, narrow windows, long Chinese/English text, keyboard traversal, layered Escape, focus restoration, and field errors. Run existing checks without adding unit tests. Browsers verify rendering. `node tooling/acceptance/shell-migration.mjs` renders workspace, Agent, setup, input sheet and shared-shell fixtures at 360px and 1280px in both themes, blocks live management calls, and checks bounds, overflow, layered Escape and focus restoration. Use `--motion --scenario=agent-panel` for ordinary-motion dock checks and `--motion --scenario=shells-light` for shared preview continuity. Installed WebView, tray, and lifecycle require separate real acceptance.
+Check light/dark, narrow windows, long Chinese/English content, layered Escape and focus restoration through `npm run accept:ui`. The surface-state runner uses all three shared viewports, blocks live management calls and checks bounds, overflow, navigation and ARC brand visuals. Radix owns generic keyboard handling and dialog semantics. Installed WebView, tray and lifecycle require separate runtime acceptance.
 
 ## Task detail projection
 
@@ -180,7 +180,7 @@ At 360px of panel width or below, the header uses a single-line title, status an
 
 The pending-input dock uses at most 60% of the task panel height. The timeline shrinks into the remaining space. Question fields and permission previews scroll inside the dock while request navigation, answer actions and routing status remain visible. The narrow input sheet uses its actual shell width and available height, with the same internal scrolling boundary.
 
-Development scenarios mock task receipts, queue/review reads and explicit actions in memory. Open `?scenario=task-actions` in the Vite development UI for read-only queue/review state and execution question/permission controls. `timeline-multi-turn` also supports these task operations. Mock control-source sends complete immediately when idle so continuation and review states remain inspectable without running an Agent. Responses and resulting timeline/queue/review state can be read again; reloading resets the scenario. Unsupported mutations fail locally and never fall through to Core. Fixtures exercise UI behavior, not native execution ownership or provider acceptance.
+Development scenarios mock task receipts, queue/review reads and explicit actions in memory. Open `?scenario=task-detail-multi-turn` in the Vite development UI for read-only queue/review state and execution question/permission controls. Mock control-source sends complete immediately when idle so continuation and review states remain inspectable without running an Agent. Responses and resulting timeline/queue/review state can be read again; reloading resets the scenario. Unsupported mutations fail locally and never fall through to Core. Fixtures exercise UI behavior, not native execution ownership or provider acceptance.
 
 ## Account privacy and development scenarios
 
@@ -190,6 +190,6 @@ Render sensitive fields with `Sensitive` and compound email/organization lines w
 
 `SensitiveInput` displays bullet stand-ins and becomes read-only while masked; turn privacy off to edit. Copy buttons continue to copy the real value from React state. Turning privacy off restores the exact original text. Snapshot requests and development scenarios enable privacy before rendering; AX and management responses remain unchanged.
 
-`?scenario=source-panel` opens SRC account L2 with invented identities and in-memory responses. Add-account and topology fixtures cover their surviving hosts. Removed page, connection-editor, grant-history, merge and notification UI fixtures are deleted. Unsupported mutations fail locally; scenarios do not authenticate with a provider.
+`?scenario=src-l2` opens SRC account L2 with invented identities and in-memory responses. Add-account and topology fixtures cover their surviving hosts. Removed page, connection-editor, grant-history, merge and notification UI fixtures are deleted. Unsupported mutations fail locally; scenarios do not authenticate with a provider.
 
 `ui/types.ts` owns the native account types and `accountsApi` in `ui/api.ts` owns management routes. Login polling reads the list's `login` field and code submission receipts do not imply completion. Notification tests send to an explicit session target; manual binding assigns a host route and does not verify delivery. MCP Events exposes observed reachability without Claude notification actions. Unidentified sources retain their native alias and have no inferred identity or fake reauthorization recovery. `defaultFor` selects a replacement default; `default:false` clears that Agent default through CLI/AX. Current native limitations also include API-key authentication through each Agent's CLI and no provider identity claims from MCP OAuth grants.

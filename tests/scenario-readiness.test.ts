@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { beginScenario, finishScenario, missingScenarioRoute, scenarioReadiness } from '../ui/state/scenarioReadiness.ts';
 test('fixture readiness waits for its final task detail and loaded timeline', () => {
   // Regression: fixture auto-open replaced list nodes after agents began interacting.
-  beginScenario('task-actions','target');
+  beginScenario('task-detail-multi-turn','target');
   assert.equal(scenarioReadiness(null)?.ready,false);
   finishScenario();
   assert.equal(scenarioReadiness({id:'other',timeline:{}})?.ready,false);

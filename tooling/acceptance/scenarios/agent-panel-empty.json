@@ -1,8 +1,0 @@
-{
-  "theme": "light",
-  "language": "en",
-  "agents": ["codex"],
-  "tasks": [],
-  "quota": true,
-  "panel": { "kind": "agent", "id": "codex" }
-}

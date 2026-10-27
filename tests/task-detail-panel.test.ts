@@ -114,7 +114,7 @@ test("task detail projects native titles, compact ownership and pending input wi
     const { installScenario, scenarioResponse } = await server.ssrLoadModule("/ui/scenarios.ts");
     const { setPrivacy } = await server.ssrLoadModule("/ui/state/privacy.ts");
     globalThis.fetch = async (input, init) => new Response(JSON.stringify(scenarioResponse(String(input).replace("/api/", ""), init?.method ?? "GET", init?.body ? JSON.parse(String(init.body)) : undefined)));
-    for (const [scenario, key] of [["task-turn-failed", "detail.retry"], ["task-turn-interrupted", "detail.resumeInterrupted"]]) {
+    for (const [scenario, key] of [["task-detail-turn-failed", "detail.retry"], ["task-detail-turn-interrupted", "detail.resumeInterrupted"]]) {
       await act(async () => { await installScenario(scenario); setPrivacy(false); });
       const records = scenarioResponse("tasks", "GET").records;
       const id = records[0].threadId;
@@ -131,7 +131,7 @@ test("task detail projects native titles, compact ownership and pending input wi
     }
     const { default: AgentPanel } = await server.ssrLoadModule("/ui/components/AgentPanel.tsx");
     const { selectAgentPanel } = await server.ssrLoadModule("/ui/state/overviewPanels.ts");
-    for (const scenario of ["task-owner-desktop", "task-turn-interrupted"]) {
+    for (const scenario of ["task-detail-owner-desktop", "task-detail-turn-interrupted"]) {
       await act(async () => { await installScenario(scenario); setPrivacy(false); });
       const record = scenarioResponse("tasks", "GET").records[0];
       await act(async () => {

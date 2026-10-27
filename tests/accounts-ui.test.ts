@@ -9,7 +9,7 @@ import { act, createElement as h } from 'react';
 import { within, fireEvent } from '@testing-library/dom';
 
 async function withAccountUI(run: (context: { window: Window; server: ViteDevServer; root: Root }) => Promise<void>) {
-  const window = new Window({ url: 'http://localhost/?scenario=source-panel' });
+  const window = new Window({ url: 'http://localhost/?scenario=src-l2' });
   const media = Object.assign(new window.EventTarget(), { matches: true });
   window.matchMedia = () => media as unknown as MediaQueryList;
   class Observer { observe() {} unobserve() {} disconnect() {} }
@@ -25,7 +25,7 @@ async function withAccountUI(run: (context: { window: Window; server: ViteDevSer
   const mount = document.createElement('div'); document.body.append(mount); const root = createRoot(mount);
   try {
     const { installScenario } = await server.ssrLoadModule('/ui/scenarios.ts');
-    await installScenario('source-panel');
+    await installScenario('src-l2');
     await run({ window, server, root });
   } finally {
     await act(async () => root.unmount());

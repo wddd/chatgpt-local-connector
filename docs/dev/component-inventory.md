@@ -4,7 +4,7 @@
 
 MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.
 
-This inventory describes current presentation owners. The object model defines the remaining panel and connection-flow targets. A browser fixture establishes synthetic rendering coverage, not native authentication, connectivity or delivery.
+This inventory describes current presentation owners. The object model defines the panel and connection-flow boundaries. A browser fixture establishes synthetic rendering coverage, not native authentication, connectivity or delivery.
 
 ## Identity and shared state
 
@@ -84,10 +84,10 @@ SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, Setting
 
 ## Fixtures and design mounts
 
-- `src-tunnel-*`, `agent-objects-*` and `task-objects-*` mount the retained object variants with synthetic data, privacy, missing/disabled/busy/error states and observable callbacks.
-- `source-panel*`, `panels-*`, `topology-accounts*`, `agent-panel*` and task-detail scenarios cover current homepage hosts.
-- `settings-*`, `settings-permissions-*`, `connections-basic-*` and Records fixtures cover surviving workspace surfaces.
-- Add SRC fixtures cover product, address, approval, success, local commands and missing public links. Connections fixtures cover public, Local and CLI-configured entries together, plus no public link. The navigation fixture exercises all four removed page targets. Phase 4 completes the remaining target state matrix.
-- Removed pages, connection editors, switch flows, merge dialogs, grant lists and relay-member surfaces have no dedicated scenario or design export.
+- `homepage-*`, `task-bubbles-*` and `task-detail-*` cover topology and L3, including portrait/narrow layout at the shared 640-wide viewport.
+- `src-*` and `agent-*` cover L1/L2, single-account shortcuts, empty collections, multi-connection source identity, quota and Agent settings/login.
+- `add-src-*`, `connections-*`, `settings-*`, `update-*` and `logs-*` cover the surviving creation and workspace surfaces. `navigation-redirects` covers all four removed page targets through the App navigator.
+- Every scenario runs at 640×800, 1280×800 and 1920×1080. Theme pairs are limited to visually distinct surfaces. See [Acceptance](acceptance.md#ui-scenarios) for the state families.
+- Removed pages, connection editors, switch flows, merge dialogs, grant lists and relay-member surfaces have no dedicated scenario or design export. Shared component permutations use design previews instead of migration-only browser fixtures.
 
 `ui/design-mount` exports the same retained object components and fixtures. `design-system/claude/previews.mjs` covers those exports. Browser acceptance is main-checkout-only; lane checks do not establish rendered layout or real-client success.

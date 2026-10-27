@@ -1,0 +1,11 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex",
+    "claude"
+  ],
+  "tasks": [],
+  "page": "logs",
+  "logsEmpty": true
+}

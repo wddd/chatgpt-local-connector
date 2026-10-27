@@ -29,6 +29,22 @@ for (const name of exports) {
   if (!Object.hasOwn(previews, name)) throw new Error(`Add a Claude Design preview for Arc.${name} in design-system/claude/previews.mjs.`);
 }
 
+// Keep exported panel recipes tied to runnable surface-state fixtures.
+const panelSource = ts.createSourceFile('panelFixtures.ts', await read('ui/design-mount/panelFixtures.ts'), ts.ScriptTarget.Latest, true);
+const scenarioNames = [];
+function visit(node) {
+  if (ts.isPropertyAssignment(node) && node.name.getText(panelSource) === 'scenarios' && ts.isArrayLiteralExpression(node.initializer)) {
+    for (const item of node.initializer.elements) {
+      if (!ts.isStringLiteral(item)) throw new Error('Panel scenario recipes must use explicit scenario names.');
+      scenarioNames.push(item.text);
+    }
+  }
+  ts.forEachChild(node, visit);
+}
+visit(panelSource);
+if (!scenarioNames.length) throw new Error('Export panel scenario recipes in fixtures.panels.');
+for (const name of scenarioNames) JSON.parse(await read(`tooling/acceptance/scenarios/${name}.json`));
+
 // The ordinary check uses this same enumeration without requiring generated assets.
 if (process.argv.includes('--check')) {
   console.log(`Claude Design previews cover all ${exports.length} component exports.`);

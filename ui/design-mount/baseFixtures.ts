@@ -2,7 +2,7 @@ import { solve } from '../topology/solve';
 import { solvePortrait } from '../topology/portrait';
 import type { PaintNode } from '../topology/render';
 import { dispatchSpecFixtures } from '../scenarioDispatchSpec';
-import scenario from '../../tooling/acceptance/scenarios/topology-accounts.json';
+import scenario from '../../tooling/acceptance/scenarios/homepage-accounts-light.json';
 import configSchema from '../../native/src/ingress/config.json';
 import { installTopologyAccounts } from '../topology/scenarioAccounts';
 import { accountQuotaProvider } from '../subscriptions/accountQuota';

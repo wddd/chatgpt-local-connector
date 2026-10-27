@@ -1,0 +1,47 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "claude",
+    "codex",
+    "pi",
+    "dsh"
+  ],
+  "tasks": [],
+  "panelAccounts": true,
+  "pageFixture": "agents-settings",
+  "agentInventory": [
+    {
+      "agent": "codex",
+      "installed": true,
+      "enabled": true,
+      "available": true,
+      "version": "1.2.3"
+    },
+    {
+      "agent": "claude",
+      "installed": true,
+      "enabled": false,
+      "version": "2.3.4"
+    },
+    {
+      "agent": "pi",
+      "installed": false,
+      "enabled": false
+    },
+    {
+      "agent": "dsh",
+      "installed": true,
+      "enabled": true,
+      "available": true,
+      "version": "fixture-release-with-long-version-identifier"
+    },
+    {
+      "agent": "gemini",
+      "installed": true,
+      "enabled": false,
+      "available": false,
+      "discoveryError": "Synthetic discovery unavailable. Refresh to retry."
+    }
+  ]
+}

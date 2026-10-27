@@ -86,7 +86,7 @@ npx playwright install chromium
 npm run accept:ui
 ```
 
-The script starts an isolated Vite page and captures widths 640 and 1280 at height 800. Stop the existing development service first if it owns port 5187. Scenario mode never connects to real Core. The script rejects all actual management API requests. For WebKit comparison:
+The script starts an isolated Vite page and captures 640×800, 1280×800 and 1920×1080. The 640-wide viewport covers portrait topology and narrow panels; every scenario runs at all three widths. Stop the existing development service first if it owns port 5187. Scenario mode never connects to real Core. The script rejects all actual management API requests. For WebKit comparison:
 
 ```sh
 npx playwright install webkit
@@ -102,29 +102,45 @@ Artifacts live in `output/acceptance/ui/<timestamp>-<browser>/`:
 
 The first run creates a baseline. Later runs compare with the latest directory for the same browser. Changes require visual review and are not automatically defects. Render errors, unexpected real API requests, or missing scenario nodes cause nonzero exit. Git ignores baselines and reports.
 
-Scenarios in tooling/acceptance/scenarios/*.json include idle, single-task, parallel-seven, approval, long-multilingual, narrow-tentacles, left-panel, right-panel, light, and dark. Left and right panels are captured separately under the product's single-panel rule. The `p3-*` scenarios cover Add SRC product selection, public-link address and approval, local commands, missing public link, generic MCP routing and Connections with public/Local/CLI-configured rows. `p3-navigation` exercises tasks/accounts → homepage, remote → Connections and permissions → Settings through the live App navigator, retaining a visible landing receipt per target. Fixtures use `sourceSetup`, `remoteLink` and `relayProgress` without contacting Core. Obsolete connection-choice fixtures are removed. Copy scenario JSON to change Agents, phases, text, themes, language, and panels without unit tests.
+Scenarios in `tooling/acceptance/scenarios/*.json` are named by surface and state. Each file represents one product state; widths belong to the runner, not duplicate files. Light/dark pairs cover topology, account quota, task bubbles, detail, Connections, Logs and Settings where theme affects visual review. Other states use one theme. English and Chinese generic MCP instructions retain separate fixtures for the registry-name regression.
+
+| Surface | Scenarios |
+| --- | --- |
+| Homepage | `homepage-empty`, `homepage-welcome`, `homepage-sources-agents`, `homepage-accounts-*`, `homepage-running`, `homepage-needs-input`, `homepage-completed`, `homepage-long-content` |
+| SRC inspectors | `src-l1`, `src-l1-empty`, `src-single`, `src-l2`, `src-l2-dark`, `src-l2-empty`, `src-multiple-connections` |
+| AGENT inspectors | `agent-l1`, `agent-l1-empty`, `agent-single`, `agent-l2*`, `agent-settings`, `agent-add-account`, `agent-quota-segments*` |
+| Task bubbles and L3 | `task-bubbles-*`, `task-detail-*`: running, input, completion, ownership, routing, failed/interrupted turns, long content and recorded dispatch metadata |
+| Add SRC | `add-src-product`, `add-src-product-selected`, `add-src-remote`, `add-src-generic`, `add-src-generic-en`, `add-src-local`, `add-src-no-public-link`, `add-src-deploying`, `add-src-pairing`, `add-src-success` |
+| Connections | `connections-ready`, `connections-ready-dark`, `connections-stopped`, `connections-no-public-link`; Local and read-only CLI-configured connections share these hosts |
+| Settings and updates | `settings-general*`, `settings-system-permissions`, `settings-updates`, `update-*`: availability, download, coordination, countdown, local replacement, failure and recovery |
+| Logs | `logs-empty`, `logs-populated`, `logs-populated-dark` |
+| Removed page targets | `navigation-redirects`: tasks/accounts → homepage, remote → Connections, permissions → Settings |
+
+`ui.mjs` owns screenshot comparison, API isolation and the report. Shared checks measure viewport bounds and horizontal overflow, required/forbidden entries, navigation, drill-down, layered Escape and focus restoration. Brand checks cover topology wire paint, account quota rings and task bubbles. Regression comments identify retained ARC-specific failures. Generic Radix keyboard behavior, dialog semantics and token contrast do not need browser reimplementation. Component-only permutations remain in design-mount and Claude Design previews rather than additional product scenarios.
+
+Left and right panels are captured separately under the single-panel rule. Fixtures use `sourceSetup`, `remoteLink`, `relayProgress`, `panelAccounts` and `topologyAccounts` to select synthetic state without contacting Core. Scene readiness and missing routes remain fatal. Scenario renames use new screenshot keys; existing baseline directories are preserved, and a missing matching key is reported as a missing baseline rather than compared to an unrelated surface.
 
 Task-detail fixtures use sanitized payloads matching `AgentTimeline` / `AgentInteraction` in `ui/types.ts`. Ownership follows `control::observe_ownership` and `claude_notify::ownership`; request routing follows `claude_notify::routing`. No fixture contains real task content or provider identities.
 
 | Scenario | Target |
 | --- | --- |
-| `task-owner-connector` | Connector ownership hides the owner chip. |
-| `task-owner-desktop` | Desktop ownership shows the owner chip; open it to inspect handoff history. |
-| `task-routing-deferred` | A 15-second countdown with pause and handoff controls. |
-| `task-routing-paused` | Paused routing with resume and handoff controls. |
-| `task-routing-routed` | Routed status without delay controls. |
-| `task-routing-not-routable` | Next-check status without delay controls. |
-| `task-turn-failed` | Native failed turn, Retry card, and empty footer. |
-| `task-turn-interrupted` | Native cancelled turn, Resume card, and empty footer. |
-| `task-long-question` | Long question with 16 described options; options scroll while Submit and routing stay pinned. |
-| `task-long-approval` | Long native approval preview; preview scrolls while decision actions and routing stay pinned. |
-| `task-wide-markdown` | Completed answer with a ten-column table and a long unwrapped code line; horizontal wheel stays in the hovered content. |
+| `task-detail-owner-connector` | Connector ownership hides the owner chip. |
+| `task-detail-owner-desktop` | Desktop ownership shows the owner chip; open it to inspect handoff history. |
+| `task-detail-routing-deferred` | A 15-second countdown with pause and handoff controls. |
+| `task-detail-routing-paused` | Paused routing with resume and handoff controls. |
+| `task-detail-routing-routed` | Routed status without delay controls. |
+| `task-detail-routing-not-routable` | Next-check status without delay controls. |
+| `task-detail-turn-failed` | Native failed turn, Retry card, and empty footer. |
+| `task-detail-turn-interrupted` | Native cancelled turn, Resume card, and empty footer. |
+| `task-detail-long-question` | Long question with 16 described options; options scroll while Submit and routing stay pinned. |
+| `task-detail-long-approval` | Long native approval preview; preview scrolls while decision actions and routing stay pinned. |
+| `task-detail-wide-markdown` | Completed answer with a ten-column table and a long unwrapped code line; horizontal wheel stays in the hovered content. |
 
 Task dialogs take their accessible name from the visible native task-title heading; returning to the Agent overview restores the Agent name.
 
 At narrow panel widths, open the needs-you banner to inspect the capped bottom sheet in either long-input scenario.
 
-Target one fixture with `npm run accept:ui -- --scenario=task-owner-desktop` from main. The runner uses browser fixtures and screenshots. A missing route fails readiness with its method and path in `scenario.missingRoutes` and `data-scenario-error`.
+Target one fixture with `npm run accept:ui -- --scenario=task-detail-owner-desktop` from main. The runner uses browser fixtures and screenshots. A missing route fails readiness with its method and path in `scenario.missingRoutes` and `data-scenario-error`.
 
 For manual inspection, run npm run dev:ui and open `http://127.0.0.1:5187/?scenario=<scenario>`. Only Vite development loads scenarios. Release builds exclude fixture modules. Fixed time and reduced animation support layout comparison. These screenshots are the evidence for UI/UX acceptance; they do not cover real Agent or native-window behavior, which follows the runtime scope above.
 

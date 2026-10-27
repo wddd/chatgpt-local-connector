@@ -19,13 +19,15 @@ export async function measureTopologyWires(page) {
         flow: path.matches('.activity-flow,.connecting-wire'), animation: style.animationName, duration: style.animationDuration,
         dashoffset: style.strokeDashoffset };
     });
-    return { orientation: svg.classList.contains('portrait-wires') ? 'portrait' : 'landscape', paths };
+    const actionable = [...svg.querySelectorAll('path')].some(path => path.onclick || path.closest('button,a,[role=button]'));
+    return { actionable, orientation: svg.classList.contains('portrait-wires') ? 'portrait' : 'landscape', paths };
   });
 }
 
 export function assertTopologyWires(measurement) {
   // Regression: 24840f1 omitted portrait rail/task paint, leaving black fill and no stroke.
   const { orientation, paths } = measurement;
+  if (measurement.actionable) throw new Error('Topology lines must not be navigation targets');
   if (paths.filter(path => path.kind === 'topology-ear').length !== 2) throw new Error('Both topology earcups must be painted');
   if (orientation === 'portrait' && !paths.some(path => path.kind === 'portrait-rail')) throw new Error('Portrait rails were not painted');
   const unpainted = paths.filter(path => !['primary-body', 'task-body'].includes(path.kind)

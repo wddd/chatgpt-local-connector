@@ -34,7 +34,7 @@ test('substring masking preserves prose and treats identities literally', () => 
 
 test('account privacy replaces DOM values, restores them exactly and preserves real copy actions', async () => {
   // Regression: blurred account identities and read-only connection inputs retained real values in DOM, while unrelated task bubbles were hidden.
-  const window = new Window({ url: 'http://localhost/?scenario=source-panel' });
+  const window = new Window({ url: 'http://localhost/?scenario=src-l2' });
   const media = Object.assign(new window.EventTarget(), { matches: true });
   window.matchMedia = () => media as unknown as MediaQueryList;
   class Observer { observe() {} unobserve() {} disconnect() {} }
@@ -52,7 +52,7 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
   const mount = document.createElement('main'); document.body.append(mount); const root = createRoot(mount);
   try {
     const { installScenario } = await server.ssrLoadModule('/ui/scenarios.ts');
-    await installScenario('source-panel');
+    await installScenario('src-l2');
     const { refreshAccounts, accounts } = await server.ssrLoadModule('/ui/state/accounts.ts');
     await refreshAccounts();
     const { setPrivacy, protectSnapshot } = await server.ssrLoadModule('/ui/state/privacy.ts');

@@ -127,4 +127,4 @@ The hub-right Agent settings dialog owns discovery, enable/disable, order and of
 
 Fixtures, scenarios and docs use invented identities on `example.com` and placeholder organizations. No real emails, organization names or session IDs.
 
-The `panels-*-light` and `panels-*-dark` browser scenario pairs cover platform lists, account details, single-account shortcuts, empty collections, multiple connections for one SRC account, task detail and Agent settings. Design mounts expose `AccountActions`, `SrcConversationRow` and `fixtures.panels` alongside the existing platform/account cards.
+The `src-*`, `agent-*` and `task-detail-*` browser scenarios cover platform lists, account details, single-account shortcuts, empty collections, multiple connections for one SRC account, task detail and Agent settings. Theme pairs cover account detail and quota. Design mounts expose `AccountActions`, `SrcConversationRow` and `fixtures.panels` alongside the platform/account cards.

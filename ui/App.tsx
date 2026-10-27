@@ -48,7 +48,7 @@ import { UpdateDock, UpdateOutcome } from "./components/AppUpdate";
 import { Button, Icon, IconButton, Notice, HoverScope } from "./components/ui";
 import { api } from "./api";
 import { startPermissions } from "./state/permissions";
-const NavigationFixture = import.meta.env.DEV && scenarioName === "p3-navigation" ? (await import("./scenarioNavigation")).default : undefined;
+const NavigationFixture = import.meta.env.DEV && scenarioName === "navigation-redirects" ? (await import("./scenarioNavigation")).default : undefined;
 export default function App() {
   locale.use();
   const privateMode = usePrivacy();

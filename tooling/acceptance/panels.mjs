@@ -1,3 +1,5 @@
+import { restoredFocus } from './surfaces.mjs';
+
 export async function returnToAccount(page, panel, messages) {
   const titles = [...new Set(await panel.getByRole('heading', { level: 2 }).allTextContents())];
   await panel.getByRole('button', { name: messages.back, exact: true }).click();
@@ -12,6 +14,7 @@ export async function returnToAccount(page, panel, messages) {
   }
   if (matching.length !== 1) throw new Error('Back did not reveal the selected account in L1');
   const { title, row } = matching[0];
+  await restoredFocus(page, row);
   await row.click();
   await panel.getByRole('button', { name: messages['panels.rename'], exact: true }).waitFor();
   await panel.getByRole('heading', { name: title, exact: true, level: 2 }).first().waitFor();
@@ -30,6 +33,12 @@ export async function acceptPanels(page, fixture, state, messages, model) {
       if (await toggle.isChecked() !== enabled) throw new Error(`Agent discovery state is wrong for ${agent}`);
     }
     await panel.getByRole('button', { name: /Pi/ }).waitFor();
+    const ordered = panel.getByRole('article', { name: /.+/ });
+    if (await ordered.count() !== 2) throw new Error('Enabled installed Agents lack order controls');
+    const last = await ordered.last().getAttribute('aria-label');
+    await ordered.last().press('ArrowUp');
+    await page.waitForFunction(label => document.querySelector('[data-reorderable]')?.getAttribute('aria-label') === label, last);
+    await ordered.first().press('ArrowDown');
     if (await panel.getByRole('button', { name: messages['accounts.add'], exact: true }).count()) throw new Error('Agent settings exposes account management');
     return { kind: 'agent-settings' };
   }
@@ -56,7 +65,7 @@ export async function acceptPanels(page, fixture, state, messages, model) {
   if (edge < 0 || edge > 18 || opposite < edge - 1 || bounds.y < 0 || bounds.y + bounds.height > viewport.height) {
     throw new Error(`${side} panel is not docked inside the viewport: ${JSON.stringify(bounds)}`);
   }
-  if (state === 'panels-task-l3') {
+  if (fixture.detailTask !== undefined) {
     await panel.getByRole('button', { name: messages.back, exact: true }).waitFor();
     return { side, bounds, level: 3 };
   }
@@ -75,7 +84,7 @@ export async function acceptPanels(page, fixture, state, messages, model) {
   await add.waitFor();
   if (await rename.count() || await back.count()) throw new Error('Platform panel opened account actions');
   if (state.endsWith('-empty')) await panel.getByText(messages['panels.noAccounts'], { exact: true }).waitFor();
-  if (state === 'panels-agent-l1' || state === 'panels-src-l1') {
+  if (state === 'agent-l1' || state === 'src-l1') {
     // Regression: account rows filled the panel height, and attention was conveyed only by color.
     const agent = fixture.panel.kind === 'agent';
     const healthy = panel.getByRole('button', { name: new RegExp(agent ? 'Studio' : 'Unidentified') });

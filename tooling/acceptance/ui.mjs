@@ -1,10 +1,10 @@
 import { acceptTopologyWires } from './topology-wires.mjs';
-import { acceptAgentObjects } from './agent-objects.mjs';
 import { acceptNodeBranding } from './node-branding.mjs';
-import { acceptLongRequest, acceptRequests } from './requests.mjs';
+import { acceptLongRequest } from './requests.mjs';
 import { acceptDispatchSpecBubbles } from './dispatch-spec.mjs';
 import { acceptSettings } from './settings.mjs';
-import { acceptPanels, returnToAccount } from './panels.mjs';
+import { acceptLayout, acceptSurface, acceptTaskNavigation } from './surfaces.mjs';
+import { acceptPanels } from './panels.mjs';
 import { requireMainCheckout } from '../coding-lane.mjs';
 requireMainCheckout();
 import { chromium, webkit } from 'playwright';
@@ -41,14 +41,14 @@ try {
     const setup = !!(fixture.sourceSetup && fixture.sourceSetup.step !== 'welcome');
     if (setupOnly && !setup) continue;
     const name = file.slice(0, -5);
-    const panelState = name.replace(/-(light|dark)$/, '');
-    const homepage = !fixture.page && !fixture.pageFixture && !fixture.shells;
-    const longRequest = name === 'task-long-question' || name === 'task-long-approval';
-    const outcome = name === 'task-turn-failed' || name === 'task-turn-interrupted';
-    const viewports = longRequest || outcome || ['idle', 'light', 'dark'].includes(name) || name.startsWith('topology-accounts') ? [{ width: 360, height: 800 }, ...report.viewports] : report.viewports;
+    const homepage = !fixture.page && !fixture.pageFixture;
+    const longRequest = name === 'task-detail-long-question' || name === 'task-detail-long-approval';
+    const outcome = name === 'task-detail-turn-failed' || name === 'task-detail-turn-interrupted';
+    const viewports = report.viewports;
     for (const { width, height } of viewports) {
       const key = `${name}-${width}x${height}`;
       const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'reduce', locale: 'en-US' });
+      page.setDefaultTimeout(8000);
       const errors = [];
       page.on('pageerror', e => errors.push(e.message));
       await page.route('**/api/**', route => { errors.push(`Unexpected live API: ${route.request().url()}`); return route.abort(); });
@@ -70,18 +70,21 @@ try {
           if (/\bCustom\b/.test(await dialog.innerText())) throw new Error('Generic MCP guide exposes an internal registry name');
         }
         if (homepage && !model.topology) throw new Error('No rendered topology exported');
-        if (model.topology && homepage) row.wires = await acceptTopologyWires(page);
+        if (model.topology && homepage) {
+          row.wires = await acceptTopologyWires(page);
+          if (row.wires.orientation !== (width === 640 ? 'portrait' : 'landscape')) throw new Error('Homepage orientation does not match the viewport');
+        }
         const actualAgents = (model.topology?.nodes ?? []).filter(n => n.side === 1).map(n => n.id);
         if (homepage && fixture.agents.some(a => !actualAgents.includes(a))) throw new Error('Fixture agents were not rendered');
         const representedTasks = model.topology?.tasks.reduce((sum, task) => sum + (task.count ?? 1), 0);
         if (homepage && !fixture.panel && representedTasks !== fixture.tasks.length) throw new Error(`Task count mismatch: ${representedTasks}/${fixture.tasks.length}`);
         if (fixture.panel?.kind === 'agent' && model.panels.agent?.agent !== fixture.panel.id) throw new Error('Agent panel not opened');
         if (fixture.panel?.kind === 'source' && !model.panels.source) throw new Error('Source panel not opened');
-        if (name.startsWith('panels-')) {
+        if (fixture.panelAccounts || fixture.pageFixture === 'agents-settings') {
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          row.panel = await acceptPanels(page, fixture, panelState, messages, model);
+          row.panel = await acceptPanels(page, fixture, name, messages, model);
         }
-        if (name === 'p3-navigation') {
+        if (name === 'navigation-redirects') {
           // Regression: removed dock targets need to redirect through the live App navigator.
           for (const [target, destination] of [['tasks', 'overview'], ['accounts', 'overview'], ['remote', 'connections'], ['permissions', 'settings']]) {
             await page.getByRole('button', { name: `Navigate ${target}`, exact: true }).click();
@@ -89,9 +92,7 @@ try {
             await page.getByRole('status', { name: target }).filter({ hasText: destination }).waitFor();
           }
         }
-        if (name.startsWith('agent-objects-')) await acceptAgentObjects(page);
-        if (name.startsWith('requests-')) await acceptRequests(page);
-        if (name.startsWith('topology-accounts')) {
+        if (fixture.topologyAccounts) {
           // Regression: PlatformIcon convergence shrank the unringed Agent parent and ringed account logos.
           const parent = page.getByRole('button', { name: 'Claude Code', exact: true });
           if (await parent.getByRole('img').count()) throw new Error('Agent parent must remain without quota for the logo fixture');
@@ -100,7 +101,7 @@ try {
             if (await account.count() !== 1) throw new Error('Each Agent account must expose its quota ring in the logo fixture');
           }
         }
-        if (name.startsWith('topology-accounts')) {
+        if (fixture.topologyAccounts && fixture.tasks.length) {
           const attributed = model.topology.tasks.find(task => task.taskId === 'fixture-task-0');
           const account = model.topology.nodes.find(node => node.side === 1 && node.accountId === 'example-personal');
           if (!account || attributed?.parent !== account.id) throw new Error('Claude task did not branch from its execution account');
@@ -109,10 +110,10 @@ try {
           row.nodeBranding = await acceptNodeBranding(page);
           await page.getByLabel('Opus 5.5 · Medium', { exact: true }).waitFor({ state: 'visible' });
         }
-        if (name.startsWith('bubbles-claude-spec')) {
+        if (name.startsWith('task-bubbles-claude-spec')) {
           await acceptDispatchSpecBubbles(page, fixture);
         }
-        if (name === 'agent-panel-unread') {
+        if (name === 'agent-l2-unread') {
           // Regression: completed unread tasks were mixed into date groups instead of appearing between Running and Today.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           const panel = page.getByRole('dialog');
@@ -138,7 +139,7 @@ try {
           await unread.waitFor({ state: 'hidden' });
           row.unread = { opened: completed.length, movedToToday: completed.length };
         }
-        if (name === 'task-queue-overflow') {
+        if (name === 'task-bubbles-overflow') {
           // Regression: overflow hid running tasks, and View all opened the Agent panel instead of temporarily revealing the queue.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           const summary = page.getByRole('button', { name: new RegExp(`${messages['activity.viewAll']}$`) });
@@ -162,58 +163,19 @@ try {
           await summary.waitFor({ state: 'visible' });
           await taskButton(fixture.tasks[1]).waitFor({ state: 'hidden' });
         }
-        if (name.startsWith('debt-add-account-')) {
-          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          const disclosure = page.getByRole('button', { name: messages['claudeAccounts.enterCode'], exact: true });
-          await disclosure.press('Enter');
-          const code = page.getByRole('textbox', { name: messages['claudeAccounts.code'], exact: true });
-          await code.waitFor({ state: 'visible' });
-          await page.getByRole('button', { name: messages.submit ?? 'submit', exact: true }).click();
-          if (!await code.evaluate(element => element === document.activeElement && element.getAttribute('aria-invalid') === 'true')) throw new Error('Authorization-code validation did not focus its field');
-          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-validation.png`), animations: 'disabled' });
-          await code.fill('fixture-code');
-          await page.getByRole('button', { name: messages.submit ?? 'submit', exact: true }).click();
-          const alias = page.getByRole('textbox', { name: messages['accounts.alias'], exact: true });
-          await alias.waitFor({ state: 'visible' });
-          await alias.fill('');
-          await page.getByRole('button', { name: messages['accounts.confirm'], exact: true }).click();
-          if (!await alias.evaluate(element => element === document.activeElement && element.getAttribute('aria-invalid') === 'true')) throw new Error('Account alias validation did not focus its field');
-          await alias.fill('Fixture account');
-        }
-        if (name.startsWith('debt-quota-segments-')) {
-          const segment = page.getByRole('button', { name: 'Code · 40%', exact: true });
-          await segment.focus();
-          if (await segment.getAttribute('aria-expanded') !== 'true') await page.waitForFunction(() => document.activeElement?.getAttribute('aria-expanded') === 'true');
-          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-segment.png`), animations: 'disabled' });
-          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          const remaining = page.getByRole('button', { name: `${messages.usageRemaining} · 35%`, exact: true });
-          await remaining.focus();
-          await page.waitForFunction(() => document.activeElement?.getAttribute('aria-expanded') === 'true');
-        }
-        if (name.startsWith('debt-records-')) {
-          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          const disclosure = page.getByRole('button', { name: messages.details, exact: true }).first();
-          await disclosure.press('Enter');
-          if (await disclosure.getAttribute('aria-expanded') !== 'true') throw new Error('Record details did not expand from the keyboard');
-          await disclosure.press('Space');
-          if (await disclosure.getAttribute('aria-expanded') !== 'false') throw new Error('Record details did not collapse from the keyboard');
-          await disclosure.press('Enter');
-        }
         let taskDetail;
         if (fixture.detailTask !== undefined) {
           const task = fixture.tasks[fixture.detailTask];
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           const title = task.agent === 'codex' ? task.title : messages['timeline.title'];
           taskDetail = page.getByRole('dialog', { name: title, exact: true });
-          // Semantic snapshots exclude aria-hidden Radix form inputs and visual announcement mirrors.
-          row.taskAccessibility = await taskDetail.ariaSnapshot();
           if (longRequest) row.requestBody = await acceptLongRequest(page, taskDetail, messages);
         }
         if (outcome) {
           // Regression: dc01e93 replaced the 95d397e viewport reservation with scroll padding, covering outcome actions.
           await page.evaluate(() => document.fonts.ready);
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          const action = taskDetail.getByRole('button', { name: messages[name === 'task-turn-failed' ? 'detail.retry' : 'detail.resumeInterrupted'], exact: true });
+          const action = taskDetail.getByRole('button', { name: messages[name === 'task-detail-turn-failed' ? 'detail.retry' : 'detail.resumeInterrupted'], exact: true });
           const latest = taskDetail.getByRole('button', { name: messages['timeline.latest'], exact: true });
           const viewport = taskDetail.getByLabel(messages['timeline.title'], { exact: true });
           const assertActionExposed = async () => {
@@ -247,39 +209,13 @@ try {
           // Trial click checks the real center target without dispatching a native turn.
           await action.click({ trial: true });
         }
-        if (name === 'task-dispatch-dsh') {
+        if (name === 'task-detail-dispatch-dsh') {
           // Regression: dsh task rows omitted the recorded model and effort chip.
           const scope = taskDetail;
           const chips = scope.getByLabel('V4.1 Flash · OpenCode Go · Max', { exact: true }).filter({ visible: true });
           await chips.first().waitFor({ state: 'visible' });
           for (const chip of await chips.all()) {
             if ((await chip.innerText()).includes(fixture.tasks[0].dispatchSummary.model)) throw new Error('Resolved dispatch chip exposes a raw model ID');
-          }
-        }
-        if (setup) {
-          // Regression: standard setup steps scrolled inside a fixed 496px shell on large windows.
-          const layout = await page.evaluate(() => {
-            const dialogs = [...document.querySelectorAll('.setup-dialog:has(.setup-steps)')];
-            return dialogs.map(dialog => {
-              const rect = dialog.getBoundingClientRect(), body = dialog.querySelector('.dialog-body');
-              const tiles = [...dialog.querySelectorAll('.choice-tiles .choice-radio')].map(grid => [...grid.children].map(tile => {
-                const r = tile.getBoundingClientRect(); return { width: r.width, top: r.top };
-              }));
-              return { recessed: dialog.hasAttribute('data-recessed'), stacked: !!dialog.querySelector('.setup-return'),
-                x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width,
-                scroll: body.scrollHeight - body.clientHeight, horizontalScroll: body.scrollWidth - body.clientWidth, tiles };
-            });
-          });
-          row.layout = layout;
-          if (!layout.length) throw new Error('Setup dialog was not rendered');
-          for (const dialog of layout.filter(d => !d.recessed)) {
-            if (dialog.x < 0 || dialog.y < 0 || dialog.right > width || dialog.bottom > height) throw new Error('Setup dialog exceeds the viewport');
-            if (dialog.horizontalScroll > 1) throw new Error('Setup content scrolls horizontally');
-            if (width >= 1280 && dialog.scroll > 1) throw new Error(`Standard setup step scrolls by ${dialog.scroll}px`);
-            for (const tiles of dialog.tiles) {
-              if (tiles.length >= 3 && (Math.abs(tiles[0].width - tiles[1].width) > 1 || Math.abs(tiles[1].width - tiles[2].width) > 1 || tiles[0].top !== tiles[2].top)) throw new Error('Platform grid is not three equal columns');
-            }
-            if (dialog.stacked && !layout.some(parent => parent.recessed && parent.width > dialog.width)) throw new Error('Stacked dialog is not narrower than its parent');
           }
         }
         if (fixture.update) {
@@ -302,143 +238,9 @@ try {
             if (fixture.update.state === 'countdown') await panel.getByRole('list', { name: messages['updates.progress'] }).waitFor({ state: 'visible' });
           }
         }
-        if (name.startsWith('task-objects-')) {
-          // Regression: TASK convergence must preserve unread/reorder actions and recorded turn boundaries across hosts.
-          const action = page.getByLabel('Task action', { exact: true });
-          const nodes = page.getByRole('region', { name: 'Task nodes', exact: true });
-          const unread = nodes.getByRole('button', { name: /Inspect task presentation.*Unread/i });
-          await unread.focus();
-          await page.keyboard.press('ArrowUp');
-          if (await action.innerText() !== 'Move task -1') throw new Error('Task Node lost keyboard reorder');
-          const markRead = nodes.getByRole('button', { name: 'Mark as read', exact: true });
-          await markRead.focus(); await page.keyboard.press('Enter');
-          if (await action.innerText() !== 'Marked task read' || await markRead.count()) throw new Error('Task Node lost its independent unread action');
-          const rows = page.getByRole('region', { name: 'Task rows', exact: true });
-          await rows.getByRole('button', { name: 'Native open', exact: true }).focus();
-          await page.keyboard.press('Enter');
-          if (await action.innerText() !== 'Native open') throw new Error('Task Row action navigated its parent');
-          if (await rows.getByRole('button', { name: /^Stale dispatch/ }).isEnabled()) throw new Error('Stale dispatch invented a live destination');
-          await page.getByRole('switch', { name: 'Task action error', exact: true }).click();
-          await page.getByText('Synthetic task review failure', { exact: true }).waitFor();
-          await page.getByRole('switch', { name: 'Task busy', exact: true }).click();
-          const main = page.getByRole('main');
-          for (let toggle = 0; toggle < 2; toggle++) {
-            if ((await main.innerText()).includes('secret-must-not-render') || (await main.innerText()).includes('current-must-not-leak')) throw new Error('Task summary leaked secret history or another turn specification');
-            if (await main.locator('[title], [aria-label]').evaluateAll(nodes => nodes.some(node => ['title', 'aria-label'].some(attr => /secret-must-not-render|current-must-not-leak/.test(node.getAttribute(attr) ?? ''))))) throw new Error('Task metadata leaked through an accessible label');
-            await page.getByRole('button', { name: 'Privacy mode', exact: true }).click();
-          }
-          for (const name of ['Long native label', 'Long recorded effort']) {
-            const spec = page.getByRole('region', { name, exact: true }).locator('.dispatch-spec');
-            const fullLabel = await spec.getAttribute('aria-label');
-            await spec.scrollIntoViewIfNeeded();
-            await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-            await spec.focus();
-            const tooltip = page.getByRole('tooltip');
-            await tooltip.waitFor();
-            if (await tooltip.innerText() !== fullLabel) throw new Error('Truncated dispatch specification lost its complete tooltip');
-            await page.keyboard.press('Escape');
-          }
-          const overflowingSpecs = await main.locator('.dispatch-spec').evaluateAll(nodes => nodes.filter(node => node.scrollWidth > node.clientWidth).map(node => node.getAttribute('aria-label')));
-          if (overflowingSpecs.length) throw new Error('Dispatch specification content overflows its chip: ' + JSON.stringify(overflowingSpecs));
-          if (await main.evaluate(node => node.scrollWidth > node.clientWidth)) throw new Error('Task objects overflow horizontally');
-          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-tasks.png`), animations: 'disabled' });
-        }
-        if (name.startsWith('src-tunnel-')) {
-          // Regression: source rows rendered inert connection labels and nested connection targets during object convergence.
-          const rows = page.getByRole('region', { name: 'Source rows', exact: true });
-          const source = rows.getByRole('button', { name: /^Shared account/ });
-          await source.focus();
-          await page.keyboard.press('Enter');
-          const receipt = page.getByLabel('Object action', { exact: true });
-          await page.getByText('Source: object-source', { exact: true }).waitFor();
-          await page.keyboard.press('Tab');
-          const chip = rows.getByRole('button', { name: /^Design connection/ });
-          if (!await chip.evaluate(node => node === document.activeElement)) throw new Error('Connection Chip is not the independent next keyboard target');
-          await page.keyboard.press('Enter');
-          if (await receipt.innerText() !== 'Connection: object-tunnel') throw new Error('Connection Chip did not open its own connection');
-          if (await rows.getByRole('button', { name: /^Revoked source/ }).isEnabled()) throw new Error('Disabled revoked row remains actionable');
-          const references = page.getByRole('region', { name: 'References', exact: true });
-          if (await references.getByRole('button', { name: /Removed connection|Historical source/ }).count()) throw new Error('Missing or historical references invent navigation');
-          const targets = page.getByRole('region', { name: 'Mutation targets', exact: true });
-          if (await page.getByRole('button', { name: 'Disconnect', exact: true }).count()) throw new Error('Grouped account silently picked a mutation target');
-          await targets.getByRole('button', { name: /^Second source/ }).click();
-          await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
-          if (await receipt.innerText() !== 'Disconnect: second-source') throw new Error('Mutation lost the explicitly selected source');
-          await page.getByRole('switch', { name: 'Refresh error', exact: true }).click();
-          await page.getByText('Synthetic refresh failure', { exact: true }).first().waitFor();
-          await page.getByRole('switch', { name: 'Busy', exact: true }).click();
-          if (await page.getByRole('button', { name: 'Disconnect', exact: true }).isEnabled()) throw new Error('Busy mutation remains actionable');
-          const main = page.getByRole('main');
-          if ((await main.innerText()).includes('private@example.test') || (await main.innerText()).includes('https://private.example.test/mcp')) throw new Error('Privacy exposes raw identity or address');
-          if (await main.locator('[title], [aria-label]').evaluateAll(nodes => nodes.some(node => ['title', 'aria-label'].some(attr => /private@example\.test|private\.example\.test/.test(node.getAttribute(attr) ?? ''))))) throw new Error('Privacy exposes identity through an accessible name or title');
-          const privacy = page.getByRole('button', { name: 'Privacy mode', exact: true });
-          await privacy.click();
-          await page.getByText('private@example.test', { exact: true }).first().waitFor();
-          await privacy.click();
-          if (await main.evaluate(node => node.scrollWidth > node.clientWidth)) throw new Error('Object fixture overflows horizontally: ' + JSON.stringify(await main.evaluate(node => [...node.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > node.getBoundingClientRect().right + 1).slice(0, 12).map(el => ({ tag: el.tagName, text: el.textContent?.slice(0, 80), width: el.getBoundingClientRect().width })))));
-          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-objects.png`), animations: 'disabled' });
-        }
-        if (name === 'source-panel' || name === 'source-panel-light') {
-          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          const panel = page.getByRole('dialog');
-          await panel.getByRole('button', { name: messages['panels.rename'], exact: true }).waitFor();
-          await returnToAccount(page, panel, messages);
-        }
-        if (fixture.page === 'settings') {
-          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          await acceptSettings(page, fixture, messages, async () => {
-            if (screenshots) await page.screenshot({ path: path.join(out, `${key}-entry.png`), animations: 'disabled' });
-          });
-        }
-        if (name.startsWith('forms-')) {
-          // Regression: settings forms had touching actions, decorative selectors and unlabelled advanced fields.
-          await page.getByRole('button', { name: 'Custom surface action', exact: true }).click();
-          await page.getByText('Surface activated', { exact: true }).waitFor();
-          await page.getByRole('button', { name: 'Used 75 percent', exact: true }).click();
-          await page.getByText('Used segment', { exact: true }).waitFor();
-          if (await page.getByText('Retained hidden view', { exact: true }).isVisible()) throw new Error('Hidden panel view remains visible');
-          const nav = page.getByRole('button', { name: 'Current version Agent Remote Control v1.0.0', exact: true });
-          await nav.click();
-          await page.getByText('Navigate to updates', { exact: true }).waitFor();
-          for (const name of ['Release channel', 'Empty choices', 'Unlisted recorded choice']) {
-            if (await page.getByRole('combobox', { name, exact: true }).count() || await page.getByRole('radiogroup', { name, exact: true }).count()) throw new Error('A static choice still exposes a selector');
-          }
-          await page.getByRole('button', { name: 'Save', exact: true }).click();
-          const field = page.getByRole('textbox', { name: 'Label', exact: true });
-          if (!await field.evaluate(node => node === document.activeElement && node.getAttribute('aria-invalid') === 'true')) throw new Error('Invalid field is not focused and marked');
-          if (!await field.evaluate(node => node.getAttribute('aria-describedby').split(' ').every(id => document.getElementById(id)?.textContent))) throw new Error('Field help/error descriptions are not associated');
-          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-validation.png`), animations: 'disabled' });
-          await field.fill('Updated source');
-          await page.getByRole('button', { name: 'Save', exact: true }).click();
-          await page.getByText('Saved', { exact: true }).waitFor();
-          const advanced = page.getByRole('button', { name: 'Advanced', exact: true });
-          await advanced.focus();
-          await page.keyboard.press('Space');
-          if (await advanced.getAttribute('aria-expanded') !== 'false') throw new Error('Disclosure did not collapse');
-          if (await field.isVisible()) throw new Error('Collapsed disclosure exposes fields');
-          await page.keyboard.press('Enter');
-          await field.waitFor({ state: 'visible' });
-          const spec = page.getByRole('region', { name: 'Recorded dispatch specs', exact: true });
-          await spec.scrollIntoViewIfNeeded();
-          await spec.getByLabel('V4.1 Flash · OpenCode Go · Max', { exact: true }).waitFor({ state: 'visible' });
-          // Regression: loading labels exposed an opaque model ID instead of a neutral placeholder.
-          const loadingSpec = spec.getByLabel('Loading labels · Max · Fast', { exact: true });
-          await loadingSpec.waitFor({ state: 'visible' });
-          if ((await loadingSpec.innerText()).includes('["magpie"')) throw new Error('Loading dispatch chip exposes a raw model ID');
-          if ((await spec.innerText()).includes('current-must-not-leak')) throw new Error('A historical turn inherited current defaults');
-          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-specs.png`), animations: 'disabled' });
-          const collisions = await page.locator('.setting-row').evaluateAll(rows => rows.filter(row => {
-            const label = row.querySelector('.setting-row-copy')?.getBoundingClientRect();
-            const control = row.querySelector('.setting-row-control')?.getBoundingClientRect();
-            return label && control && label.bottom > control.top && label.top < control.bottom && label.right > control.left;
-          }).length);
-          if (collisions) throw new Error('Setting labels overlap their trailing controls');
-          const overflow = await page.getByRole('main').evaluate(node => node.scrollWidth > node.clientWidth);
-          if (overflow) throw new Error('Forms overflow horizontally');
-          await nav.scrollIntoViewIfNeeded();
-          await nav.hover();
-        }
-        await writeFile(path.join(out, `${key}.json`), JSON.stringify(model, null, 2));
+        const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+        row.layout = await acceptLayout(page);
+        await writeFile(path.join(out, `${key}.json`), JSON.stringify(await page.evaluate(() => window.__ARC_VIEW_MODEL__()), null, 2));
         if (screenshots) {
           const buffer = await page.screenshot({ path: path.join(out, `${key}.png`), animations: 'disabled' });
           if (previous) {
@@ -457,6 +259,12 @@ try {
             }
           }
         }
+        await acceptSurface(page, fixture, name, messages);
+        await acceptSettings(page, fixture, messages);
+        if (fixture.detailTask !== undefined) await acceptTaskNavigation(page, fixture, messages);
+        row.finalLayout = await acceptLayout(page);
+        const finalModel = await page.evaluate(() => window.__ARC_VIEW_MODEL__());
+        if (finalModel.scenario?.error || finalModel.scenario?.missingRoutes?.length) throw new Error(finalModel.scenario.error || JSON.stringify(finalModel.scenario.missingRoutes));
         if (width >= 1280 && homepage && !fixture.panel && fixture.tasks.some(task => task.completed)) {
           // Regression: dragging a completed card left a click guard that swallowed its mark-read action.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
