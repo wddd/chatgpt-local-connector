@@ -29,6 +29,10 @@ const out = path.join(base, `${new Date().toISOString().replaceAll(':', '-')}-${
 await mkdir(out);
 const scenarios = (await readdir(path.join(root, 'tooling/acceptance/scenarios'))).filter(f => f.endsWith('.json') && (!scenarioFilter || scenarioFilter.split(',').some(name => f === `${name}.json`))).sort();
 if (!scenarios.length) throw new Error('No matching acceptance scenario');
+if (scenarioFilter) {
+  const missing = scenarioFilter.split(',').filter(name => !scenarios.includes(`${name}.json`));
+  if (missing.length) throw new Error(`Unknown acceptance scenarios: ${missing.join(', ')}`);
+}
 const report = { engine, screenshots, previous: screenshots ? previous ?? null : null, viewports: [{ width: 640, height: 800 }, { width: 1280, height: 800 }, { width: 1920, height: 1080 }], scenarios: [], failures: [] };
 // This server has no production owner dependency: fixture API calls are intercepted
 // in the dev-only module, and the browser rejects every real management request.
