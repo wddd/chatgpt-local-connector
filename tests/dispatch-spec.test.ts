@@ -7,8 +7,8 @@ import { within } from '@testing-library/dom';
 import { modelLabel } from '../ui/components/composites/dispatchSpecLabel.ts';
 import type { CatalogState } from '../ui/state/dispatchCatalog';
 
-test('recorded dispatch chips omit unresolved models and retain readable native labels', async () => {
-  // Regression: live task chips exposed opaque model IDs and unresolved diagnostics instead of readable metadata.
+test('recorded dispatch chips retain models and tiers across record kinds', async () => {
+  // Regression: unknown recorded models and recorded service tiers disappeared from task chips.
   const window = new Window({ url: 'http://localhost' });
   class Observer { observe() {} unobserve() {} disconnect() {} }
   Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, Element: window.Element,
@@ -24,18 +24,18 @@ test('recorded dispatch chips omit unresolved models and retain readable native 
   try {
     const { DispatchSpec } = await server.ssrLoadModule('/ui/components/composites/DispatchSpec.tsx');
     const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
+    const { t } = await server.ssrLoadModule('/ui/i18n.ts');
     const summary = { model: 'opaque-id', effort: 'high', serviceTier: 'priority' };
     const records = [
       { kind: 'session', value: { id: 'task', dispatchSummary: summary } },
       { kind: 'timeline', taskId: 'task', turnId: 'turn', value: { turnDispatchSummaries: { turn: summary } } },
-      { kind: 'task', value: { agent: 'codex', taskId: 'task', task: summary } },
+      { kind: 'task', value: { agent: 'codex', taskId: 'task', task: { ...summary, dispatch: { serviceTier: summary.serviceTier } } } },
     ];
     for (const record of records) {
       for (const resolver of [{ status: 'loading' }, { status: 'error' }, { status: 'ready', catalog: { authoritative: true, models: [] } }] as CatalogState[]) {
         await act(() => root.render(h(TooltipProvider, null, h(DispatchSpec, { agent: 'codex', record, resolver }))));
         assert.ok(mount.textContent?.trim());
-        assert.ok(!mount.textContent?.includes(summary.model));
-        assert.ok(!mount.textContent?.includes(' · '));
+        assert.ok(within(mount).getByLabelText(label => label.includes(summary.model) && label.includes(t('activity.fast'))));
       }
       for (const metadata of [{ displayName: 'Native model' }, { name: 'Native model' }]) {
         await act(() => root.render(h(TooltipProvider, null, h(DispatchSpec, { agent: 'codex', record,
@@ -43,12 +43,12 @@ test('recorded dispatch chips omit unresolved models and retain readable native 
         const chip = within(mount).getByLabelText(label => label.includes(metadata.displayName ?? metadata.name!));
         assert.ok(chip.textContent?.includes(metadata.displayName ?? metadata.name!));
         assert.ok(!chip.getAttribute('aria-label')?.includes(summary.model));
-        assert.equal(chip.textContent?.split(' · ').length, 2);
+        assert.ok(chip.textContent?.includes(t('activity.fast')));
       }
     }
     await act(() => root.render(h(TooltipProvider, null, h(DispatchSpec, { agent: 'codex',
       record: { kind: 'session', value: { id: 'task', dispatchSummary: { model: summary.model } } }, resolver: { status: 'error' } }))));
-    assert.equal(mount.textContent, '');
+    assert.ok(within(mount).getByLabelText(summary.model));
   } finally {
     await act(() => root.unmount()); await server.close(); await window.happyDOM.close();
   }
@@ -86,7 +86,7 @@ test('task rows expose the recorded model and effort through the shared dispatch
     assert.ok(!chip.getAttribute('aria-label')!.includes(model));
     assert.ok(!chip.getAttribute('aria-label')!.includes(t('activity.fast')));
     await act(() => root.render(h(TooltipProvider, null, h(TaskRow, { kind: 'receipt', records: [record], id: record.taskId, record: { ...record, task: { ...record.task, dispatch: { serviceTier: 'priority' } } }, onOpen() {} }))));
-    assert.ok(!within(row).getByLabelText(label => label.includes(name)).getAttribute('aria-label')?.includes(t('activity.fast')));
+    assert.ok(within(row).getByLabelText(label => label.includes(name) && label.includes(t('activity.fast'))));
   } finally {
     await act(() => root.unmount());
     globalThis.fetch = originalFetch;
@@ -97,17 +97,17 @@ test('task rows expose the recorded model and effort through the shared dispatch
 
 
 test('catalog labels preserve opaque identities and native text without inference', () => {
-  // Property: labels use only exact native display metadata and never parse or rewrite IDs or names.
+  // Property: labels match exact identities and never parse or rewrite recorded IDs or native names.
   const ids = ['["provider", "model"]', 'provider/model', ' GPT-6-Astra ', 'opaque · suffix'];
   for (const model of ids) {
     assert.equal(modelLabel(model, [{ model, name: 'Native name' }]), 'Native name');
-    assert.equal(modelLabel(model, []), '');
-    assert.equal(modelLabel(model, [{ model: `${model}x`, displayName: 'Different identity' }]), '');
+    assert.equal(modelLabel(model, []), model);
+    assert.equal(modelLabel(model, [{ model: `${model}x`, displayName: 'Different identity' }]), model);
     for (const displayName of ['GPT-6-Astra', 'DeepSeek V4 · native suffix', 'Provider/model-name']) {
       assert.equal(modelLabel(model, [{ model, displayName }]), displayName);
     }
   }
-  assert.equal(modelLabel('["p", "m"]', [{ model: '["p","m"]', displayName: 'Other identity' }]), '');
+  assert.equal(modelLabel('["p", "m"]', [{ model: '["p","m"]', displayName: 'Other identity' }]), '["p", "m"]');
 });
 
 test('native provider names disambiguate equal display names', () => {

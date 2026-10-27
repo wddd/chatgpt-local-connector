@@ -27,6 +27,7 @@ try {
     'tests/dev-identity.test.ts',
     'tests/dispatch-policy.test.ts',
     'tests/dispatch-spec.test.ts',
+    'tests/dispatch-spec-label.test.ts',
     'tests/dom-assert.test.ts',
     'tests/i18n-message.test.ts',
     'tests/live-ui-projection.test.ts',
