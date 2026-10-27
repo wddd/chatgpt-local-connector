@@ -9,6 +9,45 @@ fn types(t: &Timeline) -> Vec<&str> {
 }
 
 #[test]
+fn claude_thinking_only_tail_preserves_activity_without_role_or_uuid() {
+    // Regression: b9ed45b3 dropped thinking-only Claude records without message.role or uuid, leaving activity headlines empty.
+    let now = std::time::SystemTime::from(
+        chrono::DateTime::parse_from_rfc3339(AT)
+            .unwrap()
+            .with_timezone(&chrono::Utc),
+    );
+    for with_role in [false, true] {
+        for with_uuid in [false, true] {
+            let mut record = json!({"type":"assistant","sessionId":"fixture","cwd":"/workspace","timestamp":AT,
+                "message":{"stop_reason":null,"content":[{"type":"thinking","thinking":"Review example"}]}});
+            if with_role {
+                record["message"]["role"] = json!("assistant");
+            }
+            if with_uuid {
+                record["uuid"] = json!("thinking-record");
+            }
+            let mut timeline = Timeline::default();
+            timeline.backfill_claude(std::slice::from_ref(&record));
+            let row = timeline.transcript_session("fixture", "claude");
+            assert_eq!(row["source"], "transcript");
+            assert_eq!(row["phase"], "thinking");
+            assert_eq!(row["headline"], "Review example");
+            assert_eq!(row["timeline"], true);
+            assert_eq!(row["recentSteps"], json!(["thinking"]));
+            assert!(row["turnStartedAt"].is_null());
+            assert_eq!(row["turnCount"], 0);
+            assert!(timeline.transcript_active(now, now + std::time::Duration::from_secs(90)));
+            assert!(!timeline.transcript_active(now, now + std::time::Duration::from_secs(91)));
+            assert_eq!(types(&timeline), ["thinking"]);
+            let entry_id = timeline.entries[0]["id"].clone();
+            let mut reread = Timeline::default();
+            reread.backfill_claude(&[record]);
+            assert_eq!(reread.entries[0]["id"], entry_id);
+        }
+    }
+}
+
+#[test]
 fn live_acp_and_claude_backfill_have_equivalent_entry_order() {
     // Property: equivalent native conversations preserve entry types and order across live and history paths.
     let mut live = Timeline::default();

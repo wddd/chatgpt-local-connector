@@ -209,16 +209,27 @@ impl Timeline {
                 );
                 continue;
             }
-            let role = string(&record["message"], "role");
+            let role = record["message"]["role"]
+                .as_str()
+                .unwrap_or_else(|| string(record, "type"));
             if record["isMeta"] == true || !matches!(role, "user" | "assistant") {
                 continue;
             }
-            let at = string(record, "timestamp");
-            let id = string(record, "uuid");
-            if id.is_empty() || at.is_empty() {
+            if at.is_empty() {
                 self.partial = true;
                 continue;
             }
+            let native_id = string(record, "uuid");
+            let generated_id;
+            let id = if native_id.is_empty() {
+                // Missing identity must not discard native content. Keep the
+                // fallback stable across tail/history reads, with partial coverage.
+                self.partial = true;
+                generated_id = format!("claude:{}", hash(record.to_string()));
+                generated_id.as_str()
+            } else {
+                native_id
+            };
             if record["cwd"].is_string() {
                 self.info["project"] = record["cwd"].clone();
             }
