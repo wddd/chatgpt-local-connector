@@ -55,7 +55,9 @@ fn save_task(task: &Value) -> Result<()> {
         &task_path(string(task, "taskId"))?,
         task,
         crate::coordination::observers::Owner::Agent,
-    )?;
+    )
+}
+fn remember_task_configuration(task: &Value) -> Result<()> {
     if task["agent"] != "pi" {
         let facts = dispatch::catalog_facts(
             task,
@@ -784,6 +786,7 @@ impl AgentHost {
         let p = self.drivers[agent]
             .start(state, true, self.wake.clone())
             .await?;
+        p.remember_configuration().await;
         self.processes.lock().await.insert(task.into(), p.clone());
         Ok(p)
     }
@@ -1183,6 +1186,7 @@ impl AgentHost {
                     return Err(e);
                 }
             };
+            p.remember_configuration().await;
             self.processes.lock().await.insert(task.into(), p.clone());
             p
         } else {

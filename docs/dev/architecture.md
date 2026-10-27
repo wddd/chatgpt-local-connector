@@ -71,6 +71,10 @@ Control shares Desktop IPC using macOS Unix sockets or Windows named pipes, chec
 
 Each Pi/ACP task owns a process. AgentHost maps ARC taskId to upstream sessionId. Generic drivers discover, start, and negotiate using descriptors. Codex does not use agent_* adapters. Upstream resume capability determines session/load support. Uncertain writes are not replayed.
 
+Pi/ACP stdout tolerates non-JSON lines. Task state exposes `stdoutDiagnostics`, a redacted ring capped at 4 KiB and 32 entries (up to 1 KiB per entry), with a skipped-line count and truncation flag. Abnormal process exits include this ring in the task error. A read failure or a line exceeding 32 MiB records an actionable task error and timeline error before the reader exits. EOF retains the existing process-exit reconciliation behavior.
+
+In-memory state, timeline updates, and live events remain immediate. Pure ACP message/thought chunks and Pi text/thinking/tool-call argument deltas share a checkpoint scheduled within one second of the first unsaved delta; later deltas do not postpone it. Structural events and control operations persist immediately, including turn boundaries, interactions, tools, plans, errors, configuration changes, and process exit. Closing a process drains and joins its stdout reader and flushes the final snapshot. An abrupt Core crash can lose approximately the last second of streaming deltas; disk stalls can extend this window, and persistence failures surface as `storageError`. Clean shutdown retains all observed deltas. Catalog snapshots update on session initialization and actual configuration changes, independently of streaming checkpoints. Late events cannot reopen a terminal turn; a new turn requires an explicit start.
+
 ## Receipts, observation, and notifications
 
 Writes reserve an idempotent UUID receipt before dispatch. Repeated IDs with identical arguments read the original operation. Conflicting arguments are rejected. Request timeout returns pending. Connection loss after submission returns unconfirmed. Both retain original identifiers for readback.

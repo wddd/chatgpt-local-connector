@@ -322,6 +322,22 @@ impl Timeline {
         if !row["turnId"].is_string() {
             row["turnId"] = json!(self.turn);
         }
+        if matches!(string(&row, "status"), "running" | "pending")
+            && self
+                .turn_statuses
+                .get(string(&row, "turnId"))
+                .is_some_and(|status| {
+                    matches!(status.as_str(), "completed" | "failed" | "cancelled")
+                })
+        {
+            row["status"] = json!(
+                if matches!(string(&row, "type"), "text" | "thinking" | "user") {
+                    "completed"
+                } else {
+                    "unknown"
+                }
+            );
+        }
         if matches!(
             string(&row, "status"),
             "completed" | "failed" | "cancelled" | "unknown"
@@ -410,6 +426,12 @@ impl Timeline {
         timing.as_object_mut().unwrap().remove("endedAt");
     }
     pub fn finish(&mut self, status: &str, at: &str) {
+        // A lost observation or a late settlement cannot replace a known outcome.
+        let terminal = self
+            .turn_status(&self.turn)
+            .filter(|status| matches!(*status, "completed" | "failed" | "cancelled"))
+            .map(str::to_owned);
+        let status = terminal.as_deref().unwrap_or(status);
         if !self.turn.is_empty() {
             let timing = self
                 .turn_timings
@@ -498,6 +520,18 @@ impl Timeline {
         }
     }
     pub fn agent(&mut self, method: &str, msg: &Value, at: &str) {
+        let terminal = self
+            .turn_status(&self.turn)
+            .filter(|status| matches!(*status, "completed" | "failed" | "cancelled"))
+            .map(str::to_owned);
+        if terminal.is_some()
+            && matches!(
+                method,
+                "session/request_permission" | "extension_ui_request"
+            )
+        {
+            return;
+        }
         match method {
             "arc/user" => {
                 self.end_chunk(at);
@@ -628,10 +662,12 @@ impl Timeline {
                         self.put(json!({"id":id,"type":kind,"status":"completed","text":text,"truncated":truncated}),at);
                     }
                     if m["stopReason"] == "error" {
-                        self.status = "failed".into();
+                        if terminal.is_none() {
+                            self.status = "failed".into();
+                        }
                         self.error(&m["errorMessage"], at);
                     }
-                    if m["stopReason"] == "aborted" {
+                    if m["stopReason"] == "aborted" && terminal.is_none() {
                         self.status = "cancelled".into();
                     }
                     self.record_turn_status();
@@ -1436,6 +1472,42 @@ mod tests {
     use super::*;
 
     #[test]
+    fn stream_stability_late_events_do_not_reopen_terminal_turns() {
+        // Regression: reader EOF and late permission or Pi events overwrote terminal turn outcomes.
+        for status in ["completed", "failed", "cancelled"] {
+            let mut timeline = Timeline::default();
+            let at = "2026-01-01T00:00:00Z";
+            timeline.agent("arc/user", &json!({"turnId":"old","text":"fixture"}), at);
+            timeline.finish(status, at);
+            timeline.finish("unknown", "2026-01-01T00:00:01Z");
+            timeline.agent(
+                "session/request_permission",
+                &json!({"id":"late","params":{"toolCall":{"title":"late"}}}),
+                at,
+            );
+            timeline.agent("session/update", &json!({"params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"late evidence"}}}}), at);
+            timeline.agent("message_end", &json!({"message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"late failure"}}), at);
+            timeline.agent("agent_settled", &json!({}), at);
+            assert_eq!(timeline.turn_status("old"), Some(status));
+            let response = timeline.response("fixture", 0);
+            assert_eq!(response["status"], status);
+            assert!(response["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|r| !matches!(string(r, "status"), "pending" | "running")));
+            assert!(response["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["text"] == "late evidence"));
+            timeline.agent("arc/user", &json!({"turnId":"new","text":"next"}), at);
+            assert_eq!(timeline.turn_status("new"), Some("running"));
+            assert_eq!(timeline.turn_status("old"), Some(status));
+        }
+    }
+
+    #[test]
     fn finished_async_questions_do_not_reactivate_input_work_or_move_to_a_new_turn() {
         // Regression: repeated pending sync revived a terminal turn as waiting for an asynchronous answer.
         let mut timeline = Timeline::default();
@@ -2015,6 +2087,12 @@ mod tests {
         );
         assert_eq!(t.entries[2]["exitCode"], 0);
         assert_eq!(t.entries[2]["status"], "completed");
+        // The fixture turn has ended; a running command requires a new turn.
+        t.agent(
+            "arc/user",
+            &json!({"turnId":"next","text":"Run command"}),
+            AT,
+        );
         acp(
             &mut t,
             json!({"sessionUpdate":"tool_call","toolCallId":"pending-command","title":"Bash","status":"pending"}),
