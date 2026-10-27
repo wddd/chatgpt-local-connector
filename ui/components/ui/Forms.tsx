@@ -22,7 +22,7 @@ type SettingRowProps = { label: ReactNode; description?: ReactNode; controlId?: 
 );
 export function SettingRow({ label, description, children, controlId, id, onNavigate, disabled }: SettingRowProps) {
   const copy = <><span className="setting-row-label font-medium">{label}</span>{description && <span className="setting-row-description text-xs text-muted-foreground">{description}</span>}</>;
-  const grid = 'grid w-full min-w-0 grid-cols-2 items-center gap-x-6 gap-y-3 py-4 @max-settings:has-[.choice,.action-group,.input]:grid-cols-1';
+  const grid = 'grid w-full min-w-0 grid-cols-2 items-center gap-x-6 gap-y-3 px-0 py-4 @max-settings:has-[.choice,.action-group,.input]:grid-cols-1';
   const content = <>
     {controlId ? <Label className="setting-row-copy grid min-w-0 gap-1 text-start" htmlFor={controlId}>{copy}</Label> : <div className="setting-row-copy grid min-w-0 gap-1 text-start">{copy}</div>}
     <div className="setting-row-control flex min-w-0 justify-end [&>.choice]:w-full [&>.choice]:flex [&>.choice]:justify-end">{onNavigate ? <Icon icon={ChevronRight} /> : children}</div>
