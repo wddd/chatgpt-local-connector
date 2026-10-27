@@ -156,10 +156,11 @@ export async function acceptSurface(page, fixture, name, messages) {
       await main.getByRole('textbox', { name: messages['source.copyAddress'], exact: true }).waitFor();
       await main.getByText('CLI proxy', { exact: false }).waitFor();
       // Exactly the public link has a start/stop action; CLI-configured rows are read-only.
-      if (await main.getByRole('button', { name: new RegExp(`^(${messages.start}|${messages.stop})$`) }).count() !== 1) throw new Error('Additional connections expose lifecycle controls');
-      const action = fixture.remoteLink?.stopped ? 'start' : 'stop';
-      await button(main, action).click();
-      await button(main, action === 'start' ? 'stop' : 'start').waitFor();
+      if (await main.getByRole('switch').count() !== 1) throw new Error('Additional connections expose lifecycle controls');
+      const toggle = main.getByRole('switch', { name: messages['connections.publicLink'], exact: true });
+      const before = await toggle.isChecked();
+      await toggle.click();
+      if (await toggle.isChecked() === before) throw new Error('Public link lifecycle did not change');
     }
   }
   if (fixture.panelAccounts && fixture.detailTask === undefined && fixture.panel) {
@@ -167,23 +168,26 @@ export async function acceptSurface(page, fixture, name, messages) {
     await absent(panel, messages, ['accounts.merge', 'accounts.notifications', 'hosting.copyInvite']);
     const rename = button(panel, 'panels.rename');
     if (await rename.isVisible()) {
-      // ARC owns the stacked account editor and the parent's drill-down Escape behavior.
+      // Regression: inline Escape must preserve the account panel and return pencil focus.
       await rename.click();
-      const editor = page.getByRole('dialog', { name: messages['panels.rename'], exact: true });
-      await editor.getByRole('textbox', { name: messages['accounts.alias'], exact: true }).waitFor();
-      await acceptLayout(page);
-      await page.keyboard.press('Escape');
+      const editor = panel.getByRole('textbox', { name: messages['accounts.alias'], exact: true });
+      await editor.waitFor();
+      await editor.fill('');
+      await editor.press('Enter');
+      await panel.getByRole('alert').waitFor();
+      await editor.fill('Cancelled alias');
+      await editor.press('Escape');
       await editor.waitFor({ state: 'hidden' });
       await restoredFocus(page, rename);
-      await rename.waitFor();
-      const remove = button(panel, 'remove');
-      await remove.click();
-      const confirmation = page.getByRole('dialog').filter({ has: page.getByText(messages['accounts.removeConsequence'], { exact: true }) });
+      const menu = button(panel, 'context.accountActions');
+      await menu.click();
+      await page.getByRole('menuitem', { name: messages.remove, exact: true }).click();
+      const confirmation = page.getByRole('dialog', { name: messages.remove, exact: true });
       await confirmation.waitFor();
       await acceptLayout(page);
-      await button(confirmation, 'cancel').click();
+      await page.keyboard.press('Escape');
       await confirmation.waitFor({ state: 'hidden' });
-      await restoredFocus(page, remove);
+      await restoredFocus(page, menu);
       if (name.endsWith('l2-empty')) await panel.getByText(messages[fixture.panel.kind === 'source' ? 'panels.noConversations' : 'agentPanel.noConversations'], { exact: true }).waitFor();
       if (name === 'src-l2' || name === 'src-l2-dark') {
         // Regression: SRC conversation and related-task rows exposed UUIDs and task IDs as titles.

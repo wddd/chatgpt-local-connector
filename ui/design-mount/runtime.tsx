@@ -1,4 +1,7 @@
-import { AccountActions } from '../components/composites/AccountActions';
+import { InlineName } from '../components/composites/InlineName';
+import { ObjectMenu } from '../components/composites/ObjectMenu';
+import { CopyValue } from '../components/composites/CopyValue';
+import { ContextSettings } from '../components/composites/ContextSettings';
 import { SrcConversationRow } from '../components/objects/src-conversation/Row';
 import { TaskChip, TaskNode, TaskRow, TaskCard } from '../components/objects/task';
 import { AgentAccountChip, AgentAccountNode, AgentAccountRow, AgentAccountCard } from '../components/objects/agent-account';
@@ -30,7 +33,7 @@ import { environment, type Environment } from './environment';
 import { setActionTarget } from './data';
 import { PortalHost } from './radix';
 
-const components = { AccountActions, SrcConversationRow, TaskChip, TaskNode, TaskRow, TaskCard, AgentPlatformChip, AgentPlatformNode, AgentPlatformRow, AgentPlatformCard, AgentAccountChip, AgentAccountNode, AgentAccountRow, AgentAccountCard, SrcPlatformChip, SrcPlatformNode, SrcPlatformRow, SrcPlatformCard, SrcAccountChip, SrcAccountNode, SrcAccountRow, SrcAccountCard, TunnelChip, TunnelNode, TunnelRow, TunnelCard, LocalConnectionRow, RequestCard, InteractionRequestCard, InteractionRequestChip, InteractionRequestRow, AuthorizationRequestCard, AuthorizationRequestChip, AuthorizationRequestRow, DeploymentProgressCard, DeploymentProgressChip,  Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
+const components = { InlineName, ObjectMenu, CopyValue, ContextSettings, SrcConversationRow, TaskChip, TaskNode, TaskRow, TaskCard, AgentPlatformChip, AgentPlatformNode, AgentPlatformRow, AgentPlatformCard, AgentAccountChip, AgentAccountNode, AgentAccountRow, AgentAccountCard, SrcPlatformChip, SrcPlatformNode, SrcPlatformRow, SrcPlatformCard, SrcAccountChip, SrcAccountNode, SrcAccountRow, SrcAccountCard, TunnelChip, TunnelNode, TunnelRow, TunnelCard, LocalConnectionRow, RequestCard, InteractionRequestCard, InteractionRequestChip, InteractionRequestRow, AuthorizationRequestCard, AuthorizationRequestChip, AuthorizationRequestRow, DeploymentProgressCard, DeploymentProgressChip,  Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
   AgentQuotaIcon, AgentQuota, QuotaBubble, GraphNode, ActivityBubble,
   FunctionalPage, ViewStack, MeterSegment, PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, ChoiceControl, SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone, DispatchSpec };
 const icons = { RefreshCw, Plus, Check, X, Info, Plug, Bot };

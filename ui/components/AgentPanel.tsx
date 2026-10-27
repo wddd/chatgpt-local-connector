@@ -1,14 +1,17 @@
 import { AgentPlatformCard } from './objects/agent-platform';
 import { AgentAccountCard, AgentAccountRow } from './objects/agent-account';
-import { AccountActions } from './composites/AccountActions';
+import { InlineName } from './composites/InlineName';
+import { ObjectMenu } from './composites/ObjectMenu';
+import { ContextIcon } from './composites/ContextIcon';
+import { ContextSettings } from './composites/ContextSettings';
 import { statePresentation } from './objects/statePresentation';
 import AddAccount from './AddAccount';
-import { ViewStack, Dialog, DialogClose, IconButton, Notice, Button, Empty, StateBadge, Loading } from './ui';
+import { ViewStack, Dialog, DialogClose, IconButton, Notice, Button, Empty, StateBadge, Loading, SectionHeader } from './ui';
 import { useReducedMotion } from '../state/appEnvironment';
 import { agentPanel, selectAgentPanel } from '../state/overviewPanels';
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, X, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, X, Plus, RefreshCw } from 'lucide-react';
 import { accountsApi } from '../api';
 import { t } from '../i18n';
 import { useAccounts, refreshAccounts } from '../state/accounts';
@@ -42,28 +45,30 @@ function AgentView({ agent, account, accountId, accounts, loading, accountError,
     catch (error) { setError(String(error)); }
     finally { setBusy(false); }
   }
+  const visibleAccounts = accounts.filter(item => !item.removedAt && item.agentProfiles.some(profile => profile.agent === agent.agent));
   const headerActions = <>
-    {resizable && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? 'restorePanelWidth' : 'expandPanelWidth')} aria-pressed={expanded} onClick={onToggleWidth} />}
+    {account && <ObjectMenu label={t('context.accountActions')} revealed items={[{ label: t('remove'), consequence: t('accounts.removeConsequence'), onSelect: async () => { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); agentPanel.set({ agent: agent.agent }); } }]} />}
+    {resizable && <ContextSettings label={t('context.panelWidth')} revealed value={expanded ? 'wide' : 'normal'} options={[{ value: 'normal', label: t('context.normal') }, { value: 'wide', label: t('context.wide') }]} onChange={value => { if ((value === 'wide') !== expanded) onToggleWidth(); }} />}
     <DialogClose asChild><IconButton icon={X} label={t('close')} /></DialogClose>
   </>;
   const back = <IconButton icon={ArrowLeft} label={t('back')} onClick={() => selectAgentPanel({ type: 'back' })} />;
   return <section className="agent-overview-layer flex h-full min-h-0 w-full flex-col">
     {account ? <AgentAccountCard account={account} agent={agent} frame="panel" icon={back} showProfiles={false}
+      title={<h2 aria-label={account.alias} tabIndex={-1}><InlineName value={account.alias} revealed onSave={async alias => { await accountsApi.update({ id: account.id, alias }); await refreshAccounts(); }} /></h2>}
       secondary={<StateBadge presentation={statePresentation('account', account.health.state)} />} headerActions={headerActions}>
       {[...new Set(account.agentProfiles.filter(profile => profile.agent === agent.agent).map(profile => profile.state))].map(state => <StateBadge key={state} presentation={statePresentation('profile', state)} />)}
       {providerError && <Notice action={<IconButton icon={RefreshCw} label={t('usageRefresh')} busy={refreshing} onClick={() => void refresh()} />}>{providerError}</Notice>}
       {provider ? <AgentQuota provider={provider} onRefresh={() => void refresh()} refreshing={refreshing} /> : <p className="text-xs text-muted-foreground">{t('agentPanel.noQuota')}</p>}
       <AgentConversations key={`${agent.agent}:${account.id}`} agent={agent.agent} account={account} accountId={account.id} active={active} />
-      <AccountActions alias={account.alias} onRename={async alias => { await accountsApi.update({ id: account.id, alias }); await refreshAccounts(); }}
-        onRemove={async () => { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); agentPanel.set({ agent: agent.agent }); }} />
     </AgentAccountCard> : <AgentPlatformCard agent={agent} frame="panel" quota={null}
       titleActions={accountId ? back : undefined} secondary={<span title={agent.version ?? undefined}>{compactAgentVersion(agent.version)}</span>} headerActions={headerActions}>
       {loading && <Loading />}
       {accountError && <Notice>{accountError}</Notice>}
       {accountId ? <Notice>{t('accounts.identityUnavailable')}</Notice> : <>
-        <Button busy={busy} onClick={() => void add()}>{t('accounts.add')}</Button>
-        {accounts.filter(item => !item.removedAt && item.agentProfiles.some(profile => profile.agent === agent.agent)).map(item => <AgentAccountRow key={item.id} account={item} agent={agent.agent} onOpen={() => selectAgentPanel({ type: 'agent', agent: agent.agent, accountId: item.id })} />)}
-        {!loading && !accounts.some(item => !item.removedAt && item.agentProfiles.some(profile => profile.agent === agent.agent)) && <Empty>{t('panels.noAccounts')}</Empty>}
+        <SectionHeader level={3} title={t('accounts.title')} actions={!!visibleAccounts.length && <ContextIcon icon={Plus} label={t('accounts.add')} busy={busy} onClick={() => void add()} />} />
+        {!loading && !visibleAccounts.length && <Button variant="link" busy={busy} onClick={() => void add()}>{t('accounts.add')}</Button>}
+        {visibleAccounts.map(item => <AgentAccountRow key={item.id} account={item} agent={agent.agent} onOpen={() => selectAgentPanel({ type: 'agent', agent: agent.agent, accountId: item.id })} />)}
+        {!loading && !visibleAccounts.length && <Empty>{t('panels.noAccounts')}</Empty>}
       </>}
     </AgentPlatformCard>}
     {error && <Notice>{error}</Notice>}

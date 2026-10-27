@@ -1,11 +1,12 @@
 import type { ReactNode, Ref } from 'react';
-import { ArrowUpRight, ArrowLeft, Maximize2, Minimize2, MoreHorizontal, X } from 'lucide-react';
+import { ArrowUpRight, ArrowLeft, MoreHorizontal, X } from 'lucide-react';
 import { t } from '../../../i18n';
 import type { AgentActivitySession, AgentTimeline, DispatchSummary } from '../../../types';
 import type { TaskRecord, TaskRuntime } from '../../../state/tasks';
 import { taskState } from '../../../state/taskProjection';
 import { timelineGroups } from '../../../state/timelineGroups';
 import { EntityCard, SectionHeader, StateBadge, Button, Icon, IconButton, Menu } from '../../ui';
+import { ContextSettings } from '../../composites/ContextSettings';
 import { DispatchSpec } from '../../composites/DispatchSpec';
 import TaskOwnership from '../../TaskOwnership';
 import { SrcAccountChip } from '../src-account';
@@ -35,14 +36,13 @@ export function TaskCard({ task, agent, agentName = agent, titleId, children, on
     back={(onBack || onOpen || onToggleWidth || onClose) && <div className="task-detail-navigation flex min-w-0 justify-between gap-2 [&>.button]:min-w-0 [&>.button]:justify-start [&>.button]:text-muted-foreground [&>.button>span]:truncate">
       {onBack ? <Button variant="ghost" className="min-w-0 flex-1 shrink" aria-label={t('back')} title={`${agentName}${project ? ` · ${project}` : ''}`} onClick={onBack}>
         <Icon icon={ArrowLeft} /><span>{agentName}{project && ` · ${project}`}</span></Button> : <span className="task-card-project min-w-0 truncate text-muted-foreground">{project}</span>}
+      {onToggleWidth && <ContextSettings label={t('context.panelWidth')} revealed value={expanded ? 'wide' : 'normal'} options={[{ value: 'normal', label: t('context.normal') }, { value: 'wide', label: t('context.wide') }]} onChange={value => { if ((value === 'wide') !== !!expanded) onToggleWidth(); }} />}
       {!narrow && <div className="flex shrink-0 items-center gap-1">
         {onOpen && <IconButton icon={ArrowUpRight} label={t('activity.open')} busy={busy} onClick={onOpen} />}
-        {onToggleWidth && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? 'restorePanelWidth' : 'expandPanelWidth')} aria-pressed={expanded} onClick={onToggleWidth} />}
         {onClose && <IconButton icon={X} label={t('close')} disabled={busy} onClick={onClose} />}
       </div>}
       {narrow && (onOpen || onToggleWidth || onClose) && <div className="task-narrow-menu shrink-0"><Menu label={t('detail.taskActions')} trigger={<IconButton icon={MoreHorizontal} label={t('detail.taskActions')} disabled={busy} />} items={[
         ...(onOpen ? [{ label: t('activity.open'), action: onOpen }] : []),
-        ...(onToggleWidth ? [{ label: t(expanded ? 'restorePanelWidth' : 'expandPanelWidth'), action: onToggleWidth }] : []),
         ...(onClose ? [{ label: t('close'), action: onClose }] : []),
       ]} /></div>}
     </div>}

@@ -1,7 +1,10 @@
 // Preview recipes are required for every component value export in ui/design-mount.ts.
 // Only Root accepts React elements; all island slots and children stay text-only.
 export const previews = {
-  AccountActions: ['Composites', 240, "h(A.AccountActions,{alias:'Example team',onRename:async()=>{},onRemove:async()=>{}})"],
+  InlineName: ['Composites', 160, "h(A.InlineName,{value:'Example team',revealed:true,onSave:async()=>{}})"],
+  ObjectMenu: ['Composites', 260, "h(A.ObjectMenu,{label:'Account actions',revealed:true,items:[{label:'Remove',consequence:'Future work cannot use this account.',onSelect:async()=>{}}]})"],
+  CopyValue: ['Composites', 160, "h(A.CopyValue,{value:'https://relay.example.com/mcp',onCopy:async()=>{}})"],
+  ContextSettings: ['Composites', 260, "h(A.ContextSettings,{label:'Bubble width',revealed:true,value:'medium',options:['narrow','medium','wide'].map(value=>({value,label:value})),onChange:noop})"],
   SrcConversationRow: ['SRC', 260, "Col(...F.panels.conversations.map(conversation=>h(A.SrcConversationRow,{key:conversation.id,conversation,onTask:noop})))"],
   RequestCard: ['Composites', 340, "Col(h(A.RequestCard,{title:'Review verification',context:'Recorded request',pager:{index:0,count:2,onChange:noop},onClose:noop,footer:'Approve once'},'Run the selected project checks'),h(A.RequestCard,{title:'Response pending',busy:true,state:'Awaiting confirmation',error:'Synthetic response could not be confirmed',footer:'Retry'},'Retained request details'))"],
   InteractionRequestCard: ['Requests', 1040, 'h(InteractionDemo)'],

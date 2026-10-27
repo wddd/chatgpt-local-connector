@@ -1,4 +1,7 @@
-import type { AccountActions as AccountActionsComponent } from '../components/composites/AccountActions';
+import type { InlineName as InlineNameComponent } from '../components/composites/InlineName';
+import type { ObjectMenu as ObjectMenuComponent } from '../components/composites/ObjectMenu';
+import type { CopyValue as CopyValueComponent } from '../components/composites/CopyValue';
+import type { ContextSettings as ContextSettingsComponent } from '../components/composites/ContextSettings';
 import type { SrcConversationRow as SrcConversationRowComponent } from '../components/objects/src-conversation/Row';
 import type { TaskChip as TaskChipComponent, TaskNode as TaskNodeComponent, TaskRow as TaskRowComponent, TaskCard as TaskCardComponent } from '../components/objects/task';
 import type { AgentAccountCard as AgentAccountCardComponent } from '../components/objects/agent-account';
@@ -245,6 +248,10 @@ export const AgentAccountRow = island<TextSlots<ComponentProps<typeof AgentAccou
 
 export const AgentAccountCard = island<TextSlots<ComponentProps<typeof AgentAccountCardComponent>, 'title' | 'icon' | 'headerActions' | 'titleActions' | 'secondary' | 'children' | 'footer' | 'danger'>>('AgentAccountCard');
 
-export const AccountActions = island<ComponentProps<typeof AccountActionsComponent>>('AccountActions');
 export const SrcConversationRow = island<ComponentProps<typeof SrcConversationRowComponent>>('SrcConversationRow');
 export const LocalConnectionRow = island<ComponentProps<typeof LocalConnectionRowComponent>>('LocalConnectionRow');
+
+export const InlineName = island<ComponentProps<typeof InlineNameComponent>>('InlineName');
+export const ObjectMenu = island<ComponentProps<typeof ObjectMenuComponent>>('ObjectMenu');
+export const CopyValue = island<ComponentProps<typeof CopyValueComponent>>('CopyValue');
+export const ContextSettings = island<ComponentProps<typeof ContextSettingsComponent>>('ContextSettings');

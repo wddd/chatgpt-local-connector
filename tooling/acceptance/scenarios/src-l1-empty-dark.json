@@ -1,0 +1,15 @@
+{
+  "theme": "dark",
+  "language": "zh-CN",
+  "agents": [
+    "claude",
+    "codex",
+    "pi"
+  ],
+  "tasks": [],
+  "panelAccounts": true,
+  "panel": {
+    "kind": "source",
+    "platform": "custom"
+  }
+}

@@ -1361,5 +1361,12 @@
   "panels.relatedTask": "{agent} 任务 {number}",
   "panels.noConversations": "暂无会话。",
   "connections.publicLink": "公网链接",
-  "connections.localCommand": "本地配置命令"
+  "connections.localCommand": "本地配置命令",
+  "context.accountActions": "账号操作",
+  "context.panelWidth": "面板宽度",
+  "context.bubbleWidth": "气泡宽度",
+  "context.normal": "标准",
+  "context.narrow": "窄",
+  "context.medium": "中",
+  "context.wide": "宽"
 }

@@ -1,10 +1,12 @@
+import { RefreshCw } from 'lucide-react';
+import { ContextIcon } from './composites/ContextIcon';
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
 import { rememberPublicRelay, useRelayProgress, type RelayProgress } from "../state/relay";
 import { DeploymentProgressCard } from "./objects/deployment-progress";
-import { Button, Loading, Notice } from "./ui";
+import { Loading, Notice } from "./ui";
 
 // Both basic setup surfaces share the existing deployment job and its identity.
 export default function PublicLinkDeployment({ relayId, onReady, onCancel }: {
@@ -59,9 +61,9 @@ export default function PublicLinkDeployment({ relayId, onReady, onCancel }: {
     catch (e) { setError(String(e)); } finally { setBusy(false); }
   }
   return <>
-    {(error || progressError) && <Notice>{error || progressError}</Notice>}
-    {result ? <Button busy={busy} onClick={() => void complete(result)}>{t("retry")}</Button>
+    {(error || progressError) && <Notice action={<ContextIcon icon={RefreshCw} label={t("retry")} busy={busy} onClick={() => { if (result) void complete(result); else void start(progress); }} />}>{error || progressError}</Notice>}
+    {result ? null
       : active || progress.phase === "failed" ? <DeploymentProgressCard progress={progress} busy={busy} account={account} setAccount={setAccount} onRetry={() => void start(progress)} onCancel={() => void cancel()} />
-      : busy ? <Loading /> : error ? <Button onClick={() => void start(progress)}>{t("retry")}</Button> : <Loading />}
+      : busy || !error ? <Loading /> : null}
   </>;
 }

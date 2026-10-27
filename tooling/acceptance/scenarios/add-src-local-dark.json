@@ -1,0 +1,16 @@
+{
+  "theme": "dark",
+  "language": "zh-CN",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "remoteLink": {
+    "local": true
+  },
+  "sourceSetup": {
+    "step": "address",
+    "source": "local-code",
+    "ingressId": "local-claude-code"
+  }
+}

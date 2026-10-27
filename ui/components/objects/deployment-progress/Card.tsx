@@ -1,8 +1,9 @@
+import { ContextIcon } from '../../composites/ContextIcon';
 import { DeploymentProgressChip } from "./Chip";
 import { Sensitive } from "../../Sensitive";
 import { usePrivacy } from "../../../state/privacy";
 import { maskSensitive } from "../../../privacyMask";
-import { Check, Circle } from "lucide-react";
+import { Check, Circle, RefreshCw } from "lucide-react";
 import { t } from "../../../i18n";
 import Address from "../../Address";
 import type { RelayProgress as Progress } from "../../../state/relay";
@@ -21,9 +22,8 @@ export function DeploymentProgressCard({ progress, busy, account, setAccount, on
     : `failure.${progress.failedPhase ?? "connecting"}`;
   return <EntityCard className="gap-4" title={<DeploymentProgressChip progress={progress} />}>
     {progress.cancelled || progress.phase === "failed" ? <>
-      <Notice tone={progress.cancelled ? "warning" : "danger"}>{t(`connect.${failure}`)}</Notice>
+      <Notice tone={progress.cancelled ? "warning" : "danger"} action={<ContextIcon icon={RefreshCw} label={t("retry")} busy={busy} disabled={!!progress.accounts?.length && !accountOptions.some(option => option.id === account)} onClick={onRetry} />}>{t(`connect.${failure}`)}</Notice>
       {!!progress.accounts?.length && <SingleChoice disabled={busy} label={t("connect.chooseAccount")} value={String(accountOptions.findIndex(option => option.id === account))} onChange={value => setAccount(accountOptions[Number(value)].id)} options={accountOptions.map((a, index) => ({ value: String(index), label: hidden ? maskSensitive(a.name || a.id, true) : a.name || a.id }))} />}
-      <Button variant="primary" busy={busy} disabled={!!progress.accounts?.length && !accountOptions.some(option => option.id === account)} onClick={onRetry}>{t("retry")}</Button>
     </> : <ol className="m-0 grid list-none gap-6 p-0">{["login", "deploying", "connecting"].map((step, index) => <li key={step} className="flex items-start gap-3 aria-[current=step]:text-primary" aria-current={index === phase ? "step" : undefined}>
       <Icon icon={phase > index ? Check : Circle} /><div className="grid min-w-0 gap-2"><strong>{t(`connect.phase.${step}`)}</strong>{phase === index && <Loading label={t("connect.inProgress")} />}</div>
     </li>)}</ol>}

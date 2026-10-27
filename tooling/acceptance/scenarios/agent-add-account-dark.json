@@ -1,0 +1,10 @@
+{
+  "theme": "dark",
+  "language": "en",
+  "agents": [
+    "codex",
+    "claude"
+  ],
+  "tasks": [],
+  "pageFixture": "add-account"
+}

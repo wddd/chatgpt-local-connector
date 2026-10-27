@@ -1,3 +1,4 @@
+import { CopyValue } from './components/composites/CopyValue';
 import { ArrowLeft } from "lucide-react";
 import { scenarioName } from "./scenarioMode";
 import { captureRequest, type PanelRequest } from "./acceptance";
@@ -11,14 +12,12 @@ import {
   Logs,
   Settings,
   X,
-  Maximize2,
-  Minimize2,
   Network,
 } from "lucide-react";
 import { animate } from "motion";
 import { reducedMotion } from "./motion/surface";
 import { t, locale } from "./i18n";
-import { copyText, isDesktop } from "./platform";
+import { isDesktop } from "./platform";
 import { connector, notify, startConnector } from "./state/connector";
 import { startAgents } from "./state/agents";
 import { startSubscriptions } from "./state/subscriptions";
@@ -58,7 +57,6 @@ export default function App() {
   const { feedback, status } = connector.use();
   updates.use();
   const [page, setPage] = useState<Page>(() => resolvePage(localStorage.getItem("arc-page")));
-  const [sheetWide, setSheetWide] = useState(false);
   const sheet = useRef<HTMLElement>(null),
     lastPage = useRef<Page>(page === "overview" ? "logs" : page),
     sheetClosing = useRef(false),
@@ -113,7 +111,6 @@ export default function App() {
     const next = resolvePage(target);
     if (next !== "overview") {
       lastPage.current = next;
-      setSheetWide(false);
     }
     setPage(next);
   }
@@ -190,7 +187,7 @@ export default function App() {
   ];
   return (
     <div
-      className={`app-scene relative h-dvh min-h-0 overflow-hidden bg-background [--sheet-inset:--spacing(5)] [--sheet-top:--spacing(5)] max-[600px]:[--sheet-inset:--spacing(3)] max-[600px]:[--sheet-top:--spacing(3)] [&.desktop]:[--sheet-top:--spacing(12)] ${sheetWide ? "sheet-wide" : ""} ${isDesktop ? "desktop" : ""} ${isDesktop && navigator.platform.toLowerCase().includes("mac") ? "mac" : ""}`}
+      className={`app-scene relative h-dvh min-h-0 overflow-hidden bg-background [--sheet-inset:--spacing(5)] [--sheet-top:--spacing(5)] max-[600px]:[--sheet-inset:--spacing(3)] max-[600px]:[--sheet-top:--spacing(3)] [&.desktop]:[--sheet-top:--spacing(12)] ${isDesktop ? "desktop" : ""} ${isDesktop && navigator.platform.toLowerCase().includes("mac") ? "mac" : ""}`}
       onClickCapture={(e) => capturePanelOrigin(e.target)}
       onKeyDown={(e) => {
         if (
@@ -259,14 +256,14 @@ export default function App() {
       {page !== "overview" && (
         <section
           ref={sheet}
-          style={{ top: "var(--sheet-top)", bottom: "var(--sheet-inset)", left: "var(--sheet-inset)", width: sheetWide ? "calc(100vw - 2 * var(--sheet-inset))" : "min(960px, calc(100vw - 2 * var(--sheet-inset)))" }}
+          style={{ top: "var(--sheet-top)", bottom: "var(--sheet-inset)", left: "var(--sheet-inset)", width: "min(960px, calc(100vw - 2 * var(--sheet-inset)))" }}
           className="page-sheet absolute z-30 flex flex-col overflow-hidden rounded-workspace border border-transparent bg-background shadow-overlay origin-top-left data-recessed:invisible data-recessed:pointer-events-none"
           data-panel-depth="1"
           data-recessed={modalOpen || undefined}
           inert={modalOpen}
           aria-label={pages.find((item) => item.id === page)?.label}
         >
-          <div style={{ width: sheetWide ? "calc(100vw - 2 * var(--sheet-inset) - 2px)" : "min(958px, calc(100vw - 2 * var(--sheet-inset) - 2px))", height: "calc(100dvh - var(--sheet-top) - var(--sheet-inset) - 2px)" }} className="page-sheet-content relative flex min-h-0 flex-none flex-col self-center">
+          <div style={{ width: "min(958px, calc(100vw - 2 * var(--sheet-inset) - 2px))", height: "calc(100dvh - var(--sheet-top) - var(--sheet-inset) - 2px)" }} className="page-sheet-content relative flex min-h-0 flex-none flex-col self-center">
             <FunctionalPage header={<>
               {page === "settings" && (nav.settingsUpdates || nav.settingsPermissions) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsUpdates: undefined, settingsPermissions: undefined }))} />}
               <h1 className="capsule-title m-0 min-w-0 flex-1 text-lg font-semibold outline-none" tabIndex={-1}>
@@ -278,13 +275,6 @@ export default function App() {
                   </span>
                 )}
               </h1>
-              <IconButton
-                className="panel-width-toggle hidden min-[1000px]:inline-flex"
-                icon={sheetWide ? Minimize2 : Maximize2}
-                label={t(sheetWide ? "restorePanelWidth" : "expandPanelWidth")}
-                aria-pressed={sheetWide}
-                onClick={() => setSheetWide(!sheetWide)}
-              />
               <IconButton
                 className="capsule-close size-8 rounded-full"
                 icon={X}
@@ -333,7 +323,7 @@ export default function App() {
           <Notice
             tone={feedback.error ? "danger" : "success"}
             action={
-              <>{feedback.copy && <Button onClick={() => void copyText(feedback.copy!).catch(() => notify(t("connect.actionFailed"), true))}>{t("copy")}</Button>}<IconButton
+              <>{feedback.copy && <CopyValue value={feedback.copy}>{null}</CopyValue>}<IconButton
                 icon={X}
                 label={t("dismissMessage")}
                 onClick={() => notify("")}

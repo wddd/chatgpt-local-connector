@@ -1361,5 +1361,12 @@
   "panels.relatedTask": "{agent} task {number}",
   "panels.noConversations": "No conversations.",
   "connections.publicLink": "Public link",
-  "connections.localCommand": "Local setup command"
+  "connections.localCommand": "Local setup command",
+  "context.accountActions": "Account actions",
+  "context.panelWidth": "Panel width",
+  "context.bubbleWidth": "Bubble width",
+  "context.normal": "Standard",
+  "context.narrow": "Narrow",
+  "context.medium": "Medium",
+  "context.wide": "Wide"
 }

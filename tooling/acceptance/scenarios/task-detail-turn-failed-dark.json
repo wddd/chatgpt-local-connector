@@ -1,0 +1,21 @@
+{
+  "theme": "dark",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "panel": {
+    "kind": "agent",
+    "id": "codex"
+  },
+  "detailTask": 0,
+  "tasks": [
+    {
+      "agent": "codex",
+      "phase": "idle",
+      "title": "Failed turn fixture",
+      "headline": "Sample configuration review",
+      "outcome": "failed"
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+import { RefreshCw } from 'lucide-react';
+import { ContextIcon } from './composites/ContextIcon';
 import { useState } from "react";
 import { api } from "../api";
 import { t, locale } from "../i18n";
@@ -5,7 +7,7 @@ import { openUrl } from "../platform";
 import { connector, refreshConnector } from "../state/connector";
 import { useRelays, publicRelay } from "../state/relay";
 import { TunnelCard, TunnelRow, LocalConnectionRow } from "./objects/tunnel";
-import { Button, Notice } from "./ui";
+import { Button, Notice, Switch } from "./ui";
 import PublicLinkDeployment from "./PublicLinkDeployment";
 
 export default function ConnectionsPage() {
@@ -25,10 +27,10 @@ export default function ConnectionsPage() {
   }
   return <div className="grid min-w-0 gap-4">
     {relays.loaded && !relay && relays.relays.some(item => item.owner) && <Notice>{t("connections.multiplePublicLinks")}</Notice>}
-    {(error || readError || relays.error) && <Notice action={<Button onClick={() => void Promise.all([refreshConnector(), relays.refresh()]).catch(e => setError(String(e)))}>{t("retry")}</Button>}>{error || readError || relays.error}</Notice>}
+    {(error || readError || relays.error) && <Notice action={<ContextIcon icon={RefreshCw} label={t("retry")} onClick={() => void Promise.all([refreshConnector(), relays.refresh()]).catch(e => setError(String(e)))} />}>{error || readError || relays.error}</Notice>}
     {deploying ? <PublicLinkDeployment relayId={relay?.id} onReady={() => { setDeploying(false); void relays.refresh().catch(e => setError(String(e))); }} onCancel={() => { setDeploying(false); void relays.refresh().catch(e => setError(String(e))); }} />
-      : publicLink ? <TunnelCard ingress={publicLink} title={t("connections.publicLink")} busy={!!busy}
-        headerActions={<Button disabled={!!busy || ["starting", "stopping"].includes(publicLink.state)} onClick={() => void toggle()}>{t(publicLink.running ? "stop" : "start")}</Button>} />
+      : publicLink ? <TunnelCard ingress={busy ? { ...publicLink, state: publicLink.running ? "stopping" : "starting" } : publicLink} title={t("connections.publicLink")} busy={!!busy}
+        headerActions={<Switch checked={publicLink.running} label={t("connections.publicLink")} disabled={!!busy || ["starting", "stopping"].includes(publicLink.state)} onChange={() => void toggle()} />} />
       : relays.loaded && !relays.error && (relay || !relays.relays.some(item => item.owner)) && <Button className="justify-self-start" variant="primary" onClick={() => setDeploying(true)}>{t(relay ? "retry" : "source.createRelay")}</Button>}
     <LocalConnectionRow ingresses={status?.ingresses} />
     {entries.filter(entry => entry.transport !== "local" && entry.id !== publicLink?.id).map(entry => <TunnelRow key={entry.id} ingress={entry} />)}

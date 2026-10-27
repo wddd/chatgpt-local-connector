@@ -1,11 +1,14 @@
-import { ActionGroup, SectionHeader, Button, SettingsSection, SettingRow, Notice, Progress, Icon, IconButton, ChoiceControl } from "./ui";
+import { CopyValue } from './composites/CopyValue';
+import { ContextIcon } from './composites/ContextIcon';
+import { ObjectMenu } from './composites/ObjectMenu';
+import { SectionHeader, Button, SettingsSection, SettingRow, Notice, Progress, Icon, IconButton, ChoiceControl } from "./ui";
 import { useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "./ui/popover";
 import { Separator } from "./ui/separator";
 import { Card } from "./ui/card";
-import { ArrowUp, Check, LoaderCircle, X } from "lucide-react";
+import { ArrowUp, Check, LoaderCircle, X, RefreshCw } from "lucide-react";
 import { t } from "../i18n";
-import { copyText, isDesktop } from "../platform";
+import { isDesktop } from "../platform";
 import { connector, notify } from "../state/connector";
 import { navigation } from "../state/navigation";
 import { agentActivity } from "../state/activity";
@@ -117,15 +120,14 @@ export function UpdateOutcome() {
   const failedRestore = job.state === "failed" && job.backupMoved;
   const title = failedRestore ? "updates.restoreFailed" : job.state === "succeeded" && job.source?.kind === "local" ? "updates.localReplaced" : `updates.state.${job.state}`;
   return <Card asChild className="fixed right-4 bottom-4 left-4 z-80 grid sm:left-auto sm:w-104 gap-3 rounded-xl p-4 shadow-overlay animate-in fade-in-0 duration-150 motion-reduce:animate-none"><aside className="update-outcome" role="status" aria-live="polite">
-    <SectionHeader  level={3} title={<>{t(title)}</>} actions={<><IconButton icon={X} label={t("dismissMessage")} onClick={dismissOutcome} /></>} />
-    {job.error && <p className="text-sm wrap-anywhere">{job.error}</p>}
-    {failedRestore && <code className="text-sm wrap-anywhere">{job.backup}</code>}
-    <ActionGroup align="leading">
-      {job.state === "succeeded" && <><Button onClick={() => action(openReleaseNotes())}>{t("updates.notes")}</Button><Button onClick={() => { navigation.set(old => ({ ...old, page: "overview" })); dismissOutcome(); }}>{t("updates.resumedTasks", { count: job.resumedCount ?? 0 })}</Button></>}
-      {job.state === "rolled-back" && <><Button disabled={!job.logPath} onClick={() => job.logPath && action(reveal(job.logPath))}>{t("updates.viewLog")}</Button><Button onClick={() => { action(retryUpdate(job)); dismissOutcome(); }}>{t("retryReplacement")}</Button></>}
-      {failedRestore && job.backup && <><Button onClick={() => action(reveal(job.backup!))}>{t("updates.showInFinder")}</Button><Button onClick={() => action(copyText(job.backup!))}>{t("updates.copyPath")}</Button></>}
-      {job.state === "failed" && !failedRestore && <Button onClick={() => { action(retryUpdate(job)); dismissOutcome(); }}>{t("retryReplacement")}</Button>}
-    </ActionGroup>
+    <SectionHeader  level={3} title={<>{t(title)}</>} actions={<><ObjectMenu label={t("appUpdates")} revealed items={[
+      ...(job.state === 'succeeded' ? [{ label: t('updates.notes'), onSelect: () => action(openReleaseNotes()) }, { label: t('updates.resumedTasks', { count: job.resumedCount ?? 0 }), onSelect: () => { navigation.set(old => ({ ...old, page: 'overview' })); dismissOutcome(); } }] : []),
+      ...(job.state === 'rolled-back' ? [{ label: t('updates.viewLog'), disabled: !job.logPath, onSelect: () => { if (job.logPath) action(reveal(job.logPath)); } }] : []),
+      ...(failedRestore && job.backup ? [{ label: t('updates.showInFinder'), onSelect: () => action(reveal(job.backup!)) }] : []),
+    ]} /><IconButton icon={X} label={t("dismissMessage")} onClick={dismissOutcome} /></>} />
+    {(job.error || job.state === 'rolled-back') && <Notice action={!failedRestore && <ContextIcon icon={RefreshCw} label={t('retryReplacement')} onClick={() => { action(retryUpdate(job)); dismissOutcome(); }} />}>{job.error || t(title)}</Notice>}
+    {failedRestore && job.backup && <CopyValue value={job.backup} label={t("updates.copyPath")} />}
+
   </aside></Card>;
 }
 export function AppUpdate() {
@@ -138,8 +140,8 @@ export function UpdatesSettings() {
   const [notes, setNotes] = useState(false);
   return <div className="settings-page mx-auto w-full min-w-0 max-w-3xl">
     <SettingsSection title={t("updates.currentVersion")}><SettingRow label={`Agent Remote Control v${status?.version ?? "—"}`}>
-      <ActionGroup><Button onClick={() => action(openReleaseNotes())}>{t("updates.notes")}</Button><Button disabled={!isDesktop || s.requesting || updateActive(s.snapshot)} busy={s.snapshot.state === "checking"} onClick={() => action(checkUpdate())}>{t("checkForUpdates")}</Button></ActionGroup>
-    </SettingRow>{updateActive(s.snapshot) && <SettingRow label={t(`updates.state.${s.snapshot.state}`)}><Button onClick={() => { navigation.set(old => ({ ...old, page: "overview" })); showUpdate(); }}>{t("viewUpdate")}</Button></SettingRow>}{available() && <SettingRow label={t("newVersionValue", { version: s.snapshot.source?.version })}><ActionGroup><Button onClick={() => setNotes(!notes)}>{t("updates.notes")}</Button><Button onClick={() => action(installUpdate())}>{t("updates.action.settled")}</Button></ActionGroup></SettingRow>}{notes && <pre className="my-4 font-sans text-sm leading-relaxed whitespace-pre-wrap wrap-anywhere">{s.snapshot.notes}</pre>}
+      <div className="flex items-center gap-2"><ContextIcon icon={RefreshCw} label={t("checkForUpdates")} disabled={!isDesktop || s.requesting || updateActive(s.snapshot)} busy={s.snapshot.state === "checking"} onClick={() => action(checkUpdate())} /><ObjectMenu label={t("appUpdates")} revealed items={[{ label: t("updates.notes"), onSelect: () => action(openReleaseNotes()) }]} /></div>
+    </SettingRow>{updateActive(s.snapshot) && <SettingRow label={t(`updates.state.${s.snapshot.state}`)}><Button onClick={() => { navigation.set(old => ({ ...old, page: "overview" })); showUpdate(); }}>{t("viewUpdate")}</Button></SettingRow>}{available() && <SettingRow label={t("newVersionValue", { version: s.snapshot.source?.version })}><div className="flex items-center gap-2"><Button onClick={() => action(installUpdate())}>{t("updates.action.settled")}</Button><ObjectMenu label={t("appUpdates")} revealed items={[{ label: t("updates.notes"), onSelect: () => setNotes(!notes) }]} /></div></SettingRow>}{notes && <pre className="my-4 font-sans text-sm leading-relaxed whitespace-pre-wrap wrap-anywhere">{s.snapshot.notes}</pre>}
       {(s.error || s.snapshot.error) && <Notice>{s.error || s.snapshot.error}</Notice>}{s.message && <p role="status">{s.message}</p>}
     </SettingsSection>
     <SettingsSection title={t("updates.timing")}><SettingRow label={t("updates.installTiming")}><ChoiceControl value={automatic} label={t("updates.installTiming")} onChange={updateAutomatic.set} options={[{ value: "automatic", label: t("updates.automatic") }, { value: "ask", label: t("updates.ask") }]} /></SettingRow>

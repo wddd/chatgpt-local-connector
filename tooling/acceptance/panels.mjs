@@ -76,7 +76,7 @@ export async function acceptPanels(page, fixture, state, messages, model) {
   if (accountLevel) {
     // Regression: platform/account selectors were compared with the obsolete source panel.id.
     await rename.waitFor();
-    await panel.getByRole('button', { name: messages.remove, exact: true }).waitFor();
+    await panel.getByRole('button', { name: messages['context.accountActions'], exact: true }).waitFor();
     if (await add.count()) throw new Error('Account panel unexpectedly exposes the platform Add account action');
     const alias = await returnToAccount(page, panel, messages);
     if (state.endsWith('l2-empty')) {

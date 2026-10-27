@@ -9,4 +9,4 @@ export { SrcPlatformChip, SrcPlatformNode, SrcPlatformRow, SrcPlatformCard, SrcA
 export { TaskChip, TaskNode, TaskRow, TaskCard } from './design-mount/host';
 export { AgentPlatformChip, AgentPlatformNode, AgentPlatformRow, AgentPlatformCard, AgentAccountChip, AgentAccountNode, AgentAccountRow, AgentAccountCard } from './design-mount/host';
 
-export { AccountActions, SrcConversationRow } from './design-mount/host';
+export { InlineName, ObjectMenu, CopyValue, ContextSettings, SrcConversationRow } from './design-mount/host';

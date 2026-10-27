@@ -105,7 +105,10 @@ All synthetic records use the single `Arc.fixtures` entry. `requests` contains p
 | [TunnelRow](api/components/TunnelRow.md) | Read-only connection kind, address and state |
 | [LocalConnectionRow](api/components/LocalConnectionRow.md) | Local state only |
 | [TunnelCard](api/components/TunnelCard.md) | Public-link address and state |
-| [AccountActions](api/components/AccountActions.md) | Account rename and remove |
+| [InlineName](api/components/InlineName.md) | Inline rename |
+| [ObjectMenu](api/components/ObjectMenu.md) | Object actions and confirmation |
+| [CopyValue](api/components/CopyValue.md) | Adjacent value copying |
+| [ContextSettings](api/components/ContextSettings.md) | Element display options |
 | [ChoiceControl](api/components/ChoiceControl.md) | Static settings value for zero or one option; SingleChoice otherwise |
 | [SettingsSection](api/components/SettingsSection.md) | Settings heading and body |
 | [SettingRow](api/components/SettingRow.md) | Aligned control or full-width navigation row |

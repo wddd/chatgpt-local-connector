@@ -108,6 +108,7 @@ export function IconButton({
       disabled={props.disabled || busy}
       aria-busy={busy || undefined}
       aria-label={label}
+      title={label}
       className={cn("icon-button size-7 min-h-7 min-w-7 shrink-0 p-1.25", className)}
     >
       <Icon icon={busy ? LoaderCircle : icon} size={size} className={busy ? "spin" : ""} />

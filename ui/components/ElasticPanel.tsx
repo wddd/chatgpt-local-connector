@@ -401,6 +401,7 @@ export default function ElasticPanel({
             });
           }}
           onEscapeKeyDown={(e) => {
+            if (e.target instanceof Element && e.target.closest("[data-inline-name-edit]")) { e.preventDefault(); return; }
             e.preventDefault();
             if (onBack) onBack(); else void close();
           }}

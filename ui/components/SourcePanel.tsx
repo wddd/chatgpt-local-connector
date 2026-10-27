@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
-import { ArrowLeft, X } from 'lucide-react';
+import { ArrowLeft, X, Plus } from 'lucide-react';
 import { ViewStack, Button, Empty, EntityCard, FactList, Loading, SectionHeader, DialogClose, IconButton, Notice, StateBadge } from './ui';
 import { SrcAccountRow } from './objects/src-account';
 import { SrcPlatformChip } from './objects/src-platform';
@@ -12,7 +12,9 @@ import { useAccounts, refreshAccounts } from '../state/accounts';
 import { ingressPanel, selectSourcePanel } from '../state/overviewPanels';
 import { openOnboarding } from '../state/onboarding';
 import { PrivacyToggle } from './Privacy';
-import { AccountActions } from './composites/AccountActions';
+import { InlineName } from './composites/InlineName';
+import { ObjectMenu } from './composites/ObjectMenu';
+import { ContextIcon } from './composites/ContextIcon';
 import SourceConversations from './SourceConversations';
 
 export default function SourcePanel({ product, accountId, widthControl }: { product: string; accountId?: string; widthControl?: ReactNode }) {
@@ -34,10 +36,10 @@ export default function SourcePanel({ product, accountId, widthControl }: { prod
   const owned = entries.filter(source => account?.sources.includes(source.id));
   const lastSeen = Math.max(0, ...owned.map(source => source.lastSeenAt ?? 0));
   return <div ref={content} className="flex h-full min-h-0 flex-col">
-    <SectionHeader className="dialog-header flex shrink-0 items-center gap-2 border-b px-4 py-3 [&_.section-header-copy]:min-w-0 [&_.section-header-copy]:flex-1 [&_h2]:truncate" level={2}
+    <SectionHeader className="dialog-header flex shrink-0 items-center gap-2 border-b px-4 py-3 [&_.section-header-copy]:min-w-0 [&_.section-header-copy]:flex-1 [&_h2]:min-w-0" level={2}
       leading={accountId && <IconButton icon={ArrowLeft} label={t('back')} onClick={() => selectSourcePanel(product, { platformOnly: true })} />}
-      title={account?.alias ?? <SrcPlatformChip product={product} />} titleProps={{ tabIndex: -1 }}
-      actions={<><PrivacyToggle />{widthControl}<DialogClose asChild><IconButton icon={X} label={t('close')} /></DialogClose></>} />
+      title={account ? <InlineName key={account.id} value={account.alias} revealed onSave={async alias => { await accountsApi.update({ id: account.id, alias }); await refreshAccounts(); }} /> : <SrcPlatformChip product={product} />} titleProps={{ tabIndex: -1, 'aria-label': account?.alias }}
+      actions={<>{account && <ObjectMenu label={t('context.accountActions')} revealed items={[{ label: t('remove'), consequence: t('accounts.removeConsequence'), onSelect: async () => { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); ingressPanel.set({ product }); } }]} />}<PrivacyToggle />{widthControl}<DialogClose asChild><IconButton icon={X} label={t('close')} /></DialogClose></>} />
     <ViewStack hidden={!accountId} className="side-panel-scroll gap-4 overflow-auto p-4">
       {state.error && <Notice>{state.error}</Notice>}
       {state.loading && <Loading />}
@@ -47,14 +49,13 @@ export default function SourcePanel({ product, accountId, widthControl }: { prod
           {[...new Set(owned.map(source => source.state))].map(value => <StateBadge key={value} presentation={statePresentation('source', value)} />)}
         </EntityCard>
         <SourceConversations key={account.id} accountId={account.id} />
-        <AccountActions alias={account.alias} onRename={async alias => { await accountsApi.update({ id: account.id, alias }); await refreshAccounts(); }}
-          onRemove={async () => { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); ingressPanel.set({ product }); }} />
       </> : !state.loading && <Notice>{t('accounts.identityUnavailable')}</Notice>}
     </ViewStack>
     <ViewStack hidden={!!accountId} className="side-panel-scroll gap-4 overflow-auto p-4">
         {state.error && <Notice>{state.error}</Notice>}
         {state.loading && <Loading />}
-        <Button onClick={() => openOnboarding('product', { source: product })}>{t('accounts.add')}</Button>
+        <SectionHeader level={3} title={t('accounts.title')} actions={!!accounts.length && <ContextIcon icon={Plus} label={t('accounts.add')} onClick={() => openOnboarding('product', { source: product })} />} />
+        {!state.loading && !accounts.length && <Button variant="link" onClick={() => openOnboarding('product', { source: product })}>{t('accounts.add')}</Button>}
         {accounts.map(account => <SrcAccountRow key={account.id} account={account} sources={entries.filter(source => account.sources.includes(source.id))} source={entries.find(source => account.sources.includes(source.id))!}
           onOpen={() => selectSourcePanel(product, { accountId: account.id })} />)}
         {!state.loading && !accounts.length && <Empty>{t('panels.noAccounts')}</Empty>}

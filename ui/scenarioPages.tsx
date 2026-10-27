@@ -1,3 +1,4 @@
+import ContextActionsFixture from './scenarioContextActions';
 import { useState } from 'react';
 import { pageFixture } from './scenarios';
 import QuotaBubble from './subscriptions/QuotaBubble';
@@ -14,6 +15,7 @@ export default function PagesFixture() {
   return <main className="mx-auto grid h-dvh w-full max-w-3xl gap-4 overflow-auto bg-background p-6 max-sm:p-3">
     {!open && <Button onClick={() => setOpen(true)}>Reopen fixture</Button>}
     {open && <>
+      {pageFixture === 'context-actions' && <ContextActionsFixture />}
       {pageFixture === 'agents-settings' && <AgentsSettings onClose={close} />}
       {pageFixture === 'add-account' && <AddAccount onClose={close} initialLogin={state.login ?? undefined} />}
       {pageFixture === 'quota-segments' && quota && <QuotaBubble provider={quota} />}

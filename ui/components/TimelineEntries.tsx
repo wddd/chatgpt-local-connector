@@ -1,11 +1,11 @@
 import { Card } from "./ui/card";
 import { LiveInteractionRequestRow } from './objects/interaction-request';
-import { SectionHeader, Button, Icon, IconButton, PlatformIcon } from "./ui";
+import { SectionHeader, Button, Icon, PlatformIcon } from "./ui";
 import { TaskReceiptHistory } from "./TaskNeedsYou";
 import { ChangedFiles } from "./TaskChanges";
 import TaskOutcome from "./TaskOutcome";
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { AlertCircle, Brain, Copy, Check, ChevronRight, Circle, FileText, ListChecks, MessageSquare, ShieldAlert, Terminal, UserRound, Wrench } from "lucide-react";
+import { AlertCircle, Brain, Check, ChevronRight, Circle, FileText, ListChecks, MessageSquare, ShieldAlert, Terminal, UserRound, Wrench } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./ui/collapsible";
 import { AnimatePresence, motion } from "motion/react";
 import { locale, t } from "../i18n";
@@ -14,7 +14,7 @@ import type { AgentActivitySession, AgentTimelineEntry, DispatchSummary, TurnTim
 import { filePathParts } from "../state/activityModel";
 import { timelineGroups, turnDuration } from "../state/timelineGroups";
 import { dispatchSourceLabel } from "./activity";
-import { copyText } from "../platform";
+import { CopyValue } from './composites/CopyValue';
 import { processOpen, projectTurn, taskState, toolCounts, type ProcessRow } from "../state/taskProjection";
 import { taskErrorText } from "../state/taskErrors";
 import FilePath from "./FilePath";
@@ -92,10 +92,6 @@ function ToolDetails({ entry, project }: { entry: AgentTimelineEntry; project?: 
     {(entry.truncated || entry.input?.truncated || entry.output?.truncated) && <span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.truncated")}</span>}
   </div>;
 }
-function CopyReply({ text }: { text: string }) {
-  const [error, setError] = useState("");
-  return <><IconButton icon={Copy} label={t("detail.copyReply")} onClick={() => void copyText(text).catch(() => setError(t("copyFailedSelectAndCopyTheTextManually")))} />{error && <span role="alert">{error}</span>}</>;
-}
 function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; agent: string; session: AgentActivitySession }) {
   if (entry.type === "text") return <article className="task-phase flex min-w-0 gap-2 text-sm leading-relaxed text-foreground"><span className="task-agent-mark hidden size-6 shrink-0 place-items-center rounded-md bg-task-live-soft text-brand-accent @sm:grid" aria-label={agent}><PlatformIcon role="agent" platform={agent} size={16} /></span><TimelineMarkdown text={entry.text ?? ""} /></article>;
   if (entry.type === "user") return <div className="task-prompt m-0 flex min-w-0 flex-col items-end gap-1 [&>small]:text-xs [&>small]:text-muted-foreground">{entry.controlSource && <small>{t("detail.via", { source: dispatchSourceLabel(entry.controlSource) })}{entry.startedAt && ` · ${new Date(entry.startedAt).toLocaleTimeString(locale.get(), { hour: "2-digit", minute: "2-digit" })}`}</small>}<TimelineMarkdown text={entry.text ?? ""} /></div>;
@@ -164,7 +160,7 @@ export default function TimelineEntries({ entries, agent, session, now, running 
         {(state === "failed" || state === "interrupted") && <TaskOutcome state={state} entries={group.entries} project={session.project} onResume={latest && current ? onResume : undefined} onRetry={latest && current ? onRetry : undefined} continuing={continuing} />}
         <TaskReceiptHistory agent={agent} id={session.id} turnId={group.turnId} latest={latest} />
         {projection.thinking && <div className="task-thinking truncate text-sm text-muted-foreground motion-safe:animate-pulse [[data-reduced-motion=true]_&]:animate-none" role="status">{projection.thinking.text}</div>}
-        {final && state !== "failed" && state !== "interrupted" && <Card asChild className="gap-0 p-3"><article className="task-final min-w-0 rounded-xl border bg-card p-3 text-sm leading-relaxed wrap-anywhere [&>header]:mb-2 [&>header]:text-xs [&>header]:text-success"><SectionHeader  level={3} title={<><Icon icon={Check} /></>} actions={<><strong>{t("detail.finalReply")}</strong><CopyReply text={final.text ?? ""} /></>} /><TimelineMarkdown text={final.text ?? ""} />{final.truncated && <span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.truncated")}</span>}<ChangedFiles entries={group.entries} project={session.project} /></article></Card>}
+        {final && state !== "failed" && state !== "interrupted" && <Card asChild className="gap-0 p-3"><article className="task-final min-w-0 rounded-xl border bg-card p-3 text-sm leading-relaxed wrap-anywhere [&>header]:mb-2 [&>header]:text-xs [&>header]:text-success"><SectionHeader  level={3} title={<><Icon icon={Check} /></>} actions={<><strong>{t("detail.finalReply")}</strong></>} /><TimelineMarkdown text={final.text ?? ""} /><CopyValue value={final.text ?? ""} label={t("detail.copyReply")}>{null}</CopyValue>{final.truncated && <span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.truncated")}</span>}<ChangedFiles entries={group.entries} project={session.project} /></article></Card>}
       </div>}
     </section>;
   })}</TimelineResources>;

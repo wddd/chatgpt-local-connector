@@ -1,10 +1,10 @@
-import { Maximize2, Minimize2 } from 'lucide-react';
+import { ContextSettings } from './composites/ContextSettings';
 import { t } from '../i18n';
 import { sourceProductName } from '../controlSources';
 import { ingressPanel, selectSourcePanel } from '../state/overviewPanels';
 import type { SurfaceRect } from '../motion/surface';
 import SourcePanel from './SourcePanel';
-import { Dialog, IconButton } from './ui';
+import { Dialog } from './ui';
 
 export default function IngressPanel({ onPanelFrame, width, expanded, onToggleWidth, dockRect }: {
   onPanelFrame: (rect: SurfaceRect | null) => void; width?: number; dockRect?: SurfaceRect; expanded: boolean; onToggleWidth: () => void;
@@ -17,7 +17,7 @@ export default function IngressPanel({ onPanelFrame, width, expanded, onToggleWi
     onClose={() => { if (ingressPanel.get()?.closing) ingressPanel.set(undefined); }}
     returnFocus={`[data-source-node="${CSS.escape(selected.client?.id ?? `platform:${selected.product}`)}"] button`} onPanelFrame={onPanelFrame}>
     <div className="flex h-full min-h-0 w-full flex-col">
-      <SourcePanel product={selected.product} accountId={selected.accountId} widthControl={!dockRect && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? 'restorePanelWidth' : 'expandPanelWidth')} aria-pressed={expanded} onClick={onToggleWidth} />} />
+      <SourcePanel product={selected.product} accountId={selected.accountId} widthControl={!dockRect && <ContextSettings label={t('context.panelWidth')} revealed value={expanded ? 'wide' : 'normal'} options={[{ value: 'normal', label: t('context.normal') }, { value: 'wide', label: t('context.wide') }]} onChange={value => { if ((value === 'wide') !== expanded) onToggleWidth(); }} />} />
     </div>
   </Dialog>;
 }

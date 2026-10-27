@@ -1,8 +1,11 @@
+import { RefreshCw } from 'lucide-react';
+import { ContextIcon } from './composites/ContextIcon';
 import { useEffect, useRef, useState } from 'react';
 import { accountsApi } from '../api';
 import type { ProviderAccount, AccountLogin } from '../types';
 import { t } from '../i18n';
-import { copyText } from '../platform';
+import { CopyValue } from './composites/CopyValue';
+import { Sensitive } from './Sensitive';
 import { isUnidentified, refreshAccounts } from '../state/accounts';
 import { Disclosure, Button, Dialog, FormSection, FormField, Input, Notice, SingleChoice } from './ui';
 import { SensitiveIdentity } from './Sensitive';
@@ -84,7 +87,7 @@ export default function AddAccount({ onClose, initialLogin, forAccount }: { onCl
       {step === 1 && <>
         {['claude', 'codex'].includes(loginKind) && <SingleChoice label={t('claudeAccounts.browser')} value={browser} disabled={waiting || busy} onChange={setBrowser} options={[{ value: 'default', label: t('claudeAccounts.defaultBrowser') }, ...browsers.map(b => ({ value: b.id, label: b.name }))]} />}
         {login && <p role="status">{t(`accounts.login.${login.state}`)}</p>}
-        {login?.loginUrl && waiting && <Button onClick={() => void action(async () => copyText(login.loginUrl!))}>{t('claudeAccounts.copyLink')}</Button>}
+        {login?.loginUrl && waiting && <CopyValue value={login.loginUrl} label={t('claudeAccounts.copyLink')}><Sensitive>{login.loginUrl}</Sensitive></CopyValue>}
         {waiting && login?.kind === 'claude' && <Disclosure title={t('claudeAccounts.enterCode')}><form onSubmit={e => { e.preventDefault(); if (!code.trim()) { setFieldError(t('fieldRequired')); document.getElementById('account-code')?.focus(); return; } void action(async () => {
           const result = await accountsApi.login({ loginId: login.loginId, action: 'code', code: code.trim() });
           if ('loginId' in result) setLogin(result); // A submitted receipt is not login completion; keep polling.
@@ -105,7 +108,7 @@ export default function AddAccount({ onClose, initialLogin, forAccount }: { onCl
         {forAccount && !roleMatched && <Notice tone="warning">{t(isUnidentified(forAccount) ? 'accounts.agentIdentityUnresolved' : 'accounts.agentIdentityMismatch', { alias: forAccount.alias })}</Notice>}
         <FormField id="account-alias" label={t('accounts.alias')} error={fieldError}><Input id="account-alias" autoFocus value={alias} disabled={busy} aria-invalid={!!fieldError} aria-describedby={fieldError ? 'account-alias-error' : undefined} onChange={e => { setAlias(e.target.value); setFieldError(''); }} /></FormField>
       </FormSection></form>}
-      {error && <Notice action={login?.state === 'completed' ? <Button onClick={() => setIdentityRetry(value => value + 1)}>{t('retry')}</Button> : undefined}>{error}</Notice>}
+      {error && <Notice action={login?.state === 'completed' ? <ContextIcon icon={RefreshCw} label={t("retry")} onClick={() => setIdentityRetry(value => value + 1)} /> : undefined}>{error}</Notice>}
     </FormSection>
   </Dialog>;
 }

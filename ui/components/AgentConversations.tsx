@@ -1,4 +1,6 @@
-import { SectionHeader, Button, Empty, Loading, Notice } from "./ui";
+import { RefreshCw } from 'lucide-react';
+import { ContextIcon } from './composites/ContextIcon';
+import { SectionHeader, Empty, Loading, Notice } from "./ui";
 import { useAppNow } from "../state/appEnvironment";
 import { MessagesSquare } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -107,7 +109,7 @@ export default function AgentConversations({ agent, account, accountId, active }
         session={session} live={live.has(session.id)} now={now} />)}</div>
     </section>)}
     {loading && <Loading label={t("timeline.loading")} />}
-    {error && <Notice action={<Button onClick={() => setRetry(value => value + 1)}>{t("retry")}</Button>}>{error}</Notice>}
+    {error && <Notice action={<ContextIcon icon={RefreshCw} label={t("retry")} onClick={() => setRetry(value => value + 1)} />}>{error}</Notice>}
     {empty && <Empty icon={MessagesSquare}>{t("agentPanel.noConversations")}</Empty>}
     {next && <div ref={marker} className="agent-conversation-more h-px" aria-hidden="true" />}
   </div>;
