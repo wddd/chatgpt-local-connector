@@ -10,7 +10,7 @@ export function AgentPlatformCard({ agent, frame = 'detail', quota, onOpen, onLi
   agent: Agent; frame?: 'catalog' | 'detail' | 'panel'; quota?: ProviderAccount['quota'] | null;
   onOpen?: () => void; onLink?: (url: string) => void; headerActions?: ReactNode; titleActions?: ReactNode; secondary?: ReactNode; children?: ReactNode; error?: string; loading?: boolean;
 }) {
-  const classes = { catalog: 'relative grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 p-3 [&>.setting-row]:grid-cols-[minmax(0,1fr)_auto] [&>.setting-row]:gap-3 [&>.setting-row]:border-0 [&>.setting-row]:p-0', detail: 'rounded-none border-0 bg-transparent p-0', panel: 'flex min-h-0 flex-1 flex-col gap-0 rounded-none border-0 bg-transparent p-0' };
+  const classes = { catalog: 'relative grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 p-3 [&>.setting-row]:grid-cols-[minmax(0,1fr)_auto] [&>.setting-row]:gap-3 [&>.setting-row]:border-0 [&>.setting-row]:p-0 [&>.notice]:col-span-full', detail: 'rounded-none border-0 bg-transparent p-0', panel: 'flex min-h-0 flex-1 flex-col gap-0 rounded-none border-0 bg-transparent p-0' };
   const version = agent.installed === false ? t('agentNotInstalled') : compactAgentVersion(agent.version);
   const link = agentLinks[agent.agent];
   return <EntityCard className={cn("agent-object-card", classes[frame])} aria-busy={loading}>

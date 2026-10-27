@@ -108,10 +108,12 @@ try {
         assert.deepEqual(after, before, 'Scrolling notes moved update actions');
         assert.ok(after.y + after.height <= 800, 'Update actions are clipped');
         await page.getByRole('button', { name: 'Close', exact: true }).click();
+        await page.getByRole('dialog', { name: 'App updates', exact: true }).waitFor({ state: 'hidden' });
         const trigger = page.getByRole('button', { name: 'View update', exact: true });
         await trigger.focus();
         await page.keyboard.press('Enter');
         await page.getByRole('button', { name: 'Close', exact: true }).focus();
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         await page.keyboard.press('Escape');
         await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'View update');
       }
