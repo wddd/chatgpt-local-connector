@@ -1,3 +1,4 @@
+import { acceptTopologyWires } from './topology-wires.mjs';
 import { acceptAgentObjects, acceptAgentObjectGeometry } from './agent-objects.mjs';
 import { acceptNodeBranding } from './node-branding.mjs';
 import { acceptLongRequest, acceptRequests } from './requests.mjs';
@@ -38,7 +39,7 @@ try {
     if (setupOnly && !setup) continue;
     const name = file.slice(0, -5);
     const longRequest = name === 'task-long-question' || name === 'task-long-approval';
-    const viewports = longRequest ? [{ width: 360, height: 800 }, ...report.viewports] : report.viewports;
+    const viewports = longRequest || ['idle', 'light', 'dark'].includes(name) || name.startsWith('topology-accounts') ? [{ width: 360, height: 800 }, ...report.viewports] : report.viewports;
     for (const { width, height } of viewports) {
       const key = `${name}-${width}x${height}`;
       const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'reduce', locale: 'en-US' });
@@ -54,6 +55,7 @@ try {
         const model = await page.evaluate(() => window.__ARC_VIEW_MODEL__());
         if (!model.scenario?.ready) throw new Error(model.scenario?.error || 'Fixture task detail is not ready');
         if (!fixture.page && !fixture.shells && !model.topology) throw new Error('No rendered topology exported');
+        if (model.topology && !fixture.page && !fixture.shells) row.wires = await acceptTopologyWires(page);
         const actualAgents = (model.topology?.nodes ?? []).filter(n => n.side === 1).map(n => n.id);
         if (!fixture.page && !fixture.shells && fixture.agents.some(a => !actualAgents.includes(a))) throw new Error('Fixture agents were not rendered');
         const representedTasks = model.topology?.tasks.reduce((sum, task) => sum + (task.count ?? 1), 0);

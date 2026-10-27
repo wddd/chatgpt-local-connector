@@ -412,6 +412,12 @@
 .topology-scene[data-orientation="portrait"] .agents:not(.topology-account) .agent-auto-compact {
   top: calc(50% + 16px); left: calc(100% + 12px); transform: none;
 }
+.portrait-wires .portrait-rail { fill: none; stroke: var(--wire-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.portrait-wires .portrait-task { --task-color: var(--brand-accent); fill: none; stroke: var(--task-color); stroke-width: 2; stroke-linecap: round; }
+.portrait-wires .portrait-task[data-state="completed"] { --task-color: var(--success); }
+.portrait-wires .portrait-task[data-state="attention"] { --task-color: var(--warning); }
+.portrait-wires .portrait-task[data-state="summary"] { --task-color: var(--border-strong); }
+.portrait-wires .portrait-task[data-state="external"] { --task-color: var(--text-tertiary); stroke-dasharray: 3 5; }
 .portrait-wires .portrait-task.activity-flow { stroke: color-mix(in srgb, var(--task-color) 65%, var(--text)); stroke-width: 3; stroke-dasharray: 1 17; }
 .topology-wires[data-inactive="true"] .topology-path-hit { pointer-events: none; }
 .topology-node .graph-node:not(:focus-visible) { outline: 1px solid color-mix(in srgb, var(--text) calc(var(--path-emphasis, 0) * 18%), transparent); outline-offset: 1px; }
