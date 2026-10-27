@@ -33,12 +33,13 @@ function applyTheme() {
   const resolved =
     envOverrides().colorScheme ? envOverrides().colorScheme === "dark" : value === "system" ? (hostDark ?? system.matches) : value === "dark";
   dark.set(resolved);
+  document.documentElement.classList.toggle("dark", resolved);
   document.documentElement.dataset.theme = resolved ? "dark" : "light";
   document.documentElement.style.colorScheme = resolved ? "dark" : "light";
   document.documentElement.dataset.themeColor = themeColor.get();
   const color = themeColors[themeColor.get()];
   document.documentElement.style.setProperty(
-    "--accent",
+    "--brand-accent",
     resolved ? color.dark : color.light,
   );
   document.documentElement.style.setProperty("--accent-dark", color.dark);
@@ -93,6 +94,7 @@ export function applyMcpHostTheme(context: unknown) {
   const host = context as {theme?: string; styles?: {variables?: Record<string, string>}};
   if (host.theme === 'light' || host.theme === 'dark') {
     document.documentElement.dataset.theme = host.theme;
+    document.documentElement.classList.toggle('dark', host.theme === 'dark');
     document.documentElement.style.colorScheme = host.theme;
   }
   document.documentElement.dataset.surface = 'mcp';

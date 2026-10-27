@@ -19,3 +19,19 @@ function TooltipPortal(props: ComponentProps<typeof Radix.Tooltip.Portal>) {
 export const Select = { ...Radix.Select, Portal: SelectPortal };
 export const Popover = { ...Radix.Popover, Portal: PopoverPortal };
 export const Tooltip = { ...Radix.Tooltip, Portal: TooltipPortal };
+
+function DialogPortal(props: ComponentProps<typeof Radix.Dialog.Portal>) {
+  const container = useContext(PortalHost);
+  return <Radix.Dialog.Portal {...props} container={container ?? undefined} />;
+}
+function AlertDialogPortal(props: ComponentProps<typeof Radix.AlertDialog.Portal>) {
+  const container = useContext(PortalHost);
+  return <Radix.AlertDialog.Portal {...props} container={container ?? undefined} />;
+}
+function DropdownMenuPortal(props: ComponentProps<typeof Radix.DropdownMenu.Portal>) {
+  const container = useContext(PortalHost);
+  return <Radix.DropdownMenu.Portal {...props} container={container ?? undefined} />;
+}
+export const Dialog = { ...Radix.Dialog, Portal: DialogPortal };
+export const AlertDialog = { ...Radix.AlertDialog, Portal: AlertDialogPortal };
+export const DropdownMenu = { ...Radix.DropdownMenu, Portal: DropdownMenuPortal };

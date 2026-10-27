@@ -28,5 +28,7 @@ export default [{
     'arc-ui/shared-controls': 'error',
     'arc-ui/dispatch-spec': 'error',
     'arc-ui/shared-layout': 'error',
+    'arc-ui/semantic-utilities': 'error',
+    'arc-ui/single-choice': 'error',
   },
 }];

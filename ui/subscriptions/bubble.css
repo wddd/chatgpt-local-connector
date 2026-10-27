@@ -226,7 +226,7 @@
   height: 18px;
   border-radius: 50%;
   margin-right: 8px;
-  background: var(--accent);
+  background: var(--brand-accent);
   color: white;
   font-size: 10px;
 }
@@ -264,6 +264,6 @@
   border-radius: var(--radius-full, 999px); box-shadow: none;
 }
 .product-usage-bar .product-usage-remaining { background: var(--border); }
-.product-usage-segment:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.product-usage-segment:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 3px; }
 
 .quota-bubble .section-header-title > h3 { font-weight: inherit; }

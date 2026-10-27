@@ -2,6 +2,12 @@
 
 Mount ARC's actual React controls, quota composites and topology components in Claude Design canvases. The global namespace is **`Arc`**. Renderers and brand assets come from the application; this is not a second component library.
 
+## Foundation
+
+The mounted controls are the app's shadcn/ui source backed by Radix and Tailwind v4. `components.json` points the CLI at `ui/components/ui`; add primitives with `node node_modules/shadcn/dist/index.js add <name>` and adapt them there using `cn()` from `ui/lib/utils.ts`. Public Arc exports preserve their existing props. See [the token map and CLI workflow](../docs/dev/ui.md#shadcn-and-tailwind-foundation) and [remaining CSS owners](../docs/dev/ui-debt.md#remaining-migration-ownership).
+
+The bundle compiles `ui/tokens.css` with the same official Tailwind Vite plugin as the desktop frontend and fixtures. It scopes the reset and utilities so host canvases keep their own layout, typography and controls. Floating Radix content stays inside its island. Use semantic `background`/`foreground`, `card`, `primary`, `muted`, `accent`, `destructive` and `ring` variables; `brand-accent` names ARC's selected colored accent, while `accent` is the neutral hover fill. Role, task-phase, quota and brand tokens retain their current palette.
+
 ## Build and load
 
 Run `npm run design:bundle` from the repository root. It writes these ignored artifacts to `design-system/dist/`:
@@ -9,7 +15,7 @@ Run `npm run design:bundle` from the repository root. It writes these ignored ar
 | File | Contents |
 | --- | --- |
 | `arc.js` | IIFE exposing `window.Arc`; React 18 host wrappers and private React 19 islands |
-| `arc.css` | Component rules scoped to `.arc-island`, with namespaced animations |
+| `arc.css` | Tailwind preflight/utilities scoped to `.arc-root`, component rules scoped to `.arc-island`, with namespaced animations |
 | `tokens.css` | Theme variables extracted from `ui/tokens.css`, scoped to `.arc-root` |
 | `tokens.json` | Theme token maps, theme colors, type scale, font families, spacing and radii |
 

@@ -54,7 +54,7 @@ export function HoverPreviewGroup({ children, preview, className = "" }: {
       {children}
     </HoverScope>
     <Popover.Anchor virtualRef={anchor} />
-    <Popover.Portal><Popover.Content ref={content} id={id} role="tooltip" data-moving={moving || undefined} className="tooltip hover-preview" side="bottom" align="center" sideOffset={6} collisionPadding={10}
+    <Popover.Portal><Popover.Content ref={content} id={id} role="tooltip" data-moving={moving || undefined} className="tooltip hover-preview z-overlay w-75 rounded-lg border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-overlay" side="bottom" align="center" sideOffset={6} collisionPadding={10}
       onFocusOutside={event => {
         const node = event.detail.originalEvent.target;
         if (node instanceof Element && node.closest(".hover-scope") === target?.closest(".hover-scope")) event.preventDefault();

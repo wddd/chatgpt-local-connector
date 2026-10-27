@@ -1,0 +1,10 @@
+{
+  "extends": "./ui/tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": [
+        "./ui/*"
+      ]
+    }
+  }
+}

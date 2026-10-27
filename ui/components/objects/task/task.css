@@ -40,7 +40,7 @@
 .activity-bubble.agent-conversation-row { width: 100%; height: auto; min-height: 0; padding: 12px; background: var(--surface-subtle); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 55%, transparent); animation: agent-task-rise 180ms cubic-bezier(.34,1.56,.64,1) var(--row-delay, 0ms) backwards; }
 .activity-bubble.agent-conversation-row:hover { background: var(--hover); }
 .activity-bubble.agent-conversation-row.needs-attention { background: var(--warning-soft); box-shadow: inset 0 0 0 1.5px var(--warning); }
-.activity-bubble.agent-conversation-row:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.activity-bubble.agent-conversation-row:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--brand-accent); }
 :root[data-reduced-motion="true"] .activity-bubble.agent-conversation-row { animation: none; }
 .entity-row.source-dispatch-row { gap: 8px; min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); text-align: left; color: var(--text); }
 .source-dispatch-row:disabled { opacity: 1; cursor: default; }
@@ -58,7 +58,7 @@
 .task-turn-progress { display: flex; gap: 4px; }
 .task-turn-progress > div { flex: 1; height: 3px; min-width: 0; overflow: hidden; border-radius: 4px; background: var(--surface-subtle); color: var(--text-tertiary); }
 .task-turn-progress > [data-state=done] { color: var(--success); }
-.task-turn-progress > [data-state=running] { color: var(--accent); }
+.task-turn-progress > [data-state=running] { color: var(--brand-accent); }
 .task-turn-progress > [data-state=failed] { color: var(--danger); }
 .task-turn-progress > div > span { display: block; height: 100%; background: currentColor; border-radius: inherit; }
 .task-turn-progress > [data-indeterminate] > span { width: 100%; opacity: .4; }

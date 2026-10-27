@@ -6,15 +6,17 @@ The shell layer and domain state presentation map are implemented in the current
 
 ## Boundaries and composition
 
-The system has three layers: object-agnostic shells, object components, and cross-object composites. Each object has exactly four named variant slots: **Chip / Node / Row / Card**. N/A means no real use has been identified; it does not require an empty component or export. Bubble density is a TASK Node preference, not another object variant. TUNNEL Node is a topology line, never a new graph vertex.
+The system has three composition layers above the shadcn primitive foundation: object-agnostic shells, object components, and cross-object composites. Each object has exactly four named variant slots: **Chip / Node / Row / Card**. N/A means no real use has been identified; it does not require an empty component or export. Bubble density is a TASK Node preference, not another object variant. TUNNEL Node is a topology line, never a new graph vertex.
 
 Object adapters MUST use current types and existing domain projections. A ProviderAccount is not a ControlSource, an AccountAgentProfile is not an Agent, and an activity session is not a dispatch receipt. Adapters MUST retain those distinctions. Internal renderers can be replaced directly once callers converge; no legacy aliases or parallel renderer APIs are required. Frozen MCP, notification, CLI and wire contracts are outside this work.
 
 Notification binding is deferred. This specification neither extracts AccountNotifications nor relocates its binding, test or delivery UI. Quota retains the mature AgentQuota/QuotaBubble design. Topology retains its geometry, earcup connections, motion and accessibility behavior.
 
+For CLI installation, the semantic token map and build integration, see [UI foundation](ui.md#shadcn-and-tailwind-foundation). `ui/components/ui` owns copied primitives and domain-neutral adapters; it does not own domain fetching or page state.
+
 ## 1. Shells
 
-Shells accept presentation values and callbacks, never domain records or stores. They do not fetch, navigate or mutate independently. Shared controls, semantic tokens, Icon and Radix remain the foundation.
+Shells accept presentation values and callbacks, never domain records or stores. They do not fetch, navigate or mutate independently. Copied shadcn/ui primitives, Tailwind v4, semantic tokens and Icon form the foundation. Radix owns interaction behavior; shells compose those primitives and utility classes. `Forms.css` and `Shells.css` have been removed. Public adapter props remain stable for existing feature owners.
 
 | Shell | Contract | Consolidates |
 | --- | --- | --- |

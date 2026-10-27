@@ -1,6 +1,7 @@
 import { buildVersion } from './tooling/version.mjs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
@@ -14,7 +15,8 @@ type Endpoint = { port: number; token: string };
 export default defineConfig({
   root: fileURLToPath(new URL('./ui', import.meta.url)),
   define: { __CONNECTOR_VERSION__: JSON.stringify(packageVersion) },
-  plugins: [react(), {
+  resolve: { alias: { '@': fileURLToPath(new URL('./ui', import.meta.url)) } },
+  plugins: [tailwindcss(), react(), {
     name: 'connector-native-preview',
     configureServer(server) {
       if (server.config.mode === 'acceptance-fixture') {

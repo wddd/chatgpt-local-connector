@@ -4,6 +4,42 @@
 
 React renders. Tauri/Rust owns configuration, connections, tasks, authentication, native windows, and updates. The main window shares semantic tokens, preferences, and controls.
 
+## shadcn and Tailwind foundation
+
+ARC uses shadcn/ui source backed by Radix and Tailwind CSS v4. `vite.config.ts` uses the official `@tailwindcss/vite` plugin for the desktop frontend, `dev:ui` and browser fixtures. `design-system/build.mjs` compiles the same token entry with that plugin and scopes preflight and utilities to `.arc-root`; component rules and floating portals remain inside their design islands. Node/npm are build tools, not desktop runtime dependencies.
+
+Add a primitive from the repository root with the pinned CLI:
+
+```sh
+node node_modules/shadcn/dist/index.js add accordion
+```
+
+`components.json` selects the Radix `new-york` source, CSS variables, Lucide, `ui/tokens.css`, and `@/components/ui` → `ui/components/ui`. Adapt copied source in that directory. Use `cn()` from `ui/lib/utils.ts` (clsx plus tailwind-merge); replace a registry-generated `cn` package import with this helper. Keep internal copied-source imports relative so isolated renderer hosts can load them too. Do not add a second class-merging dependency or a wrapper whose only job is restyling. Review CLI dependency changes and keep direct versions pinned. Existing public adapters retain ARC's busy state, localization, privacy and domain-neutral presentation props.
+
+Use Tailwind scale utilities and semantic tokens in features. Native controls, direct Select/ToggleGroup use, new dedicated CSS files, inline layout declarations and arbitrary color/spacing/radius/type values are rejected by `check:ui`. Compose domain objects under `ui/components/objects` and cross-object composites under `ui/components/composites`. Existing legacy CSS is shrinking migration debt; only ARC mark, topology/earcup connections, quota rings and task bubbles retain dedicated brand styling. [UI debt](ui-debt.md) identifies the remaining owners.
+
+The copied primitives include button, input, textarea, label, switch, select, toggle/toggle-group, tabs, dialog, alert-dialog, tooltip, dropdown-menu, popover, card, badge, separator, scroll-area, skeleton, alert, field/form, collapsible, checkbox, slider, progress, empty and spinner. Native forms remain the default; the form helpers are available for React Hook Form consumers. `foundation-light` and `foundation-dark` exercise the primitive states and floating layers. Existing forms, shells, objects and product fixtures exercise public adapters.
+
+### Token map
+
+| Semantic token | ARC value/owner | Utility examples |
+| --- | --- | --- |
+| `background` / `foreground` | White / #171719 in light; black / #f5f5f7 in dark | `bg-background text-foreground` |
+| `card`, `popover` | Existing surface and raised surface | `bg-card text-card-foreground`, `bg-popover` |
+| `primary` / `primary-foreground` | Existing neutral action / on-action | `bg-primary text-primary-foreground` |
+| `secondary`, `muted`, `muted-foreground` | Subtle surface and secondary text | `bg-muted text-muted-foreground` |
+| `accent` / `accent-foreground` | Existing neutral hover fill and foreground | `hover:bg-accent` |
+| `brand-accent`, `ring` | Selected ARC accent; default #5b5ff5 / #7a7dff | `text-brand-accent focus-visible:ring-ring` |
+| `destructive`, `border`, `input` | Existing danger, hairline and strong border | `text-destructive border-border border-input` |
+| `radius` | 10px control base; sm 8px, lg 12px, panel/xl 20px | `rounded-md rounded-lg rounded-xl` |
+| `role-source`, `role-agent`, `phase-*`, `brand-orange` | Existing ARC role, task phase and brand colors | `text-role-source text-phase-thinking` |
+| `quota-*` | Existing quota palette, independent of light/dark except the selected accent | `text-quota-warning` |
+| `chart-1` through `chart-8`, `sidebar-*` | Existing chart palette; sidebar derives from semantic surfaces | `bg-chart-1 bg-sidebar` |
+
+`@theme` exposes these values to Tailwind. Body stays 14px, controls 13px, metadata 12px; spacing uses Tailwind's 4px base. Legacy `canvas`, `surface`, `text`, `action` and related names derive from the semantic variables while their feature consumers remain. Remove each legacy name when its final consumer migrates. `brand-accent` replaces the old overloaded purple `accent`; palette changes, topology and quota use that explicit brand token. This bridge preserves existing feature CSS and is limited to the remaining migration areas.
+
+`ui/theme.ts` follows system appearance by default, sets `data-theme` and the `.dark` class, and keeps native/MCP theme handling. The Tailwind dark variant reads `data-theme` so scoped design roots work without changing the host document. Reduced-motion media and environment overrides disable transitions. Common controls use Radix focus, keyboard and dismissal semantics; topology workspace geometry remains with ElasticPanel, using the shared shadcn Dialog surface.
+
 Activity model badges retain their intrinsic width. Codex project labels use the native project catalog, shared with project resolution through a 30-second cache. Explicit project IDs take precedence; directory matching requires an unambiguous deepest root. The filesystem directory remains separate from its display name. Task details show the project beside the Agent name, with duration, source, and model in the metadata row. Model and effort share one pill. Conversation card height follows its content, with equal padding on every side.
 
 Timeline groups follow native turn IDs regardless of dispatch origin. External Codex history remains readable after the activity monitor no longer retains the session. History read failures stay visible and retryable instead of becoming a cached partial result. Only actual coverage limits show a partial-history notice; external origin alone does not imply missing history. Incomplete coverage is distinct from a clipped output excerpt, whose notice stays beside that output. Every turn keeps a card surface in both disclosure states, including the latest and running turn. Clicking the title row toggles the turn; its right edge shows that turn’s execution duration. The task header sums known turn execution spans and excludes gaps between turns. Native lifecycle timestamps backfill historical turn timing; missing timing is not inferred from the time the panel opened. Work blocks have no outer border or extra padding. Reasoning rows show their available summary and disappear when it is empty.
@@ -100,9 +136,9 @@ SVG guides show current control points, tangents, viewport center, and center of
 
 ## Controls and forms
 
-Reuse Button, Input, Slider, Field, SingleChoice, Switch, Dialog, Tooltip, Popover, menus, tables, and feedback from ui/components/ui/index.tsx. Radix owns selection, keyboard, focus, dismissal layers, Portal, and modal interaction. Layout components only arrange content.
+Reuse Button, Input, Slider, Field, SingleChoice, Switch, Dialog, Tooltip, Popover, menus, tables, and feedback from ui/components/ui/index.tsx. Copied shadcn primitives backed by Radix own selection, keyboard, focus, dismissal layers, Portal, and modal interaction. Layout components only arrange content.
 
-- SingleChoice uses pills for at most five options when space permits, otherwise dropdowns. Remote-link product and connection choices use its vertical list style and Radix navigation.
+- SingleChoice uses shadcn ToggleGroup pills for at most five options when the measured content fits, otherwise shadcn Select. Card/navigation/swatch presentation keeps this same selection boundary. A selected pill cannot be cleared by clicking it again.
 - Native forms default to one column with labels above. Only short related fields share rows.
 - Field errors remain associated with inputs. Failed submission focuses the first error and preserves input.
 - Dialog has an accessible title, scrolling content, and separate actions. Back removes one layer while retaining form/scroll state.
@@ -113,7 +149,7 @@ Reuse Button, Input, Slider, Field, SingleChoice, Switch, Dialog, Tooltip, Popov
 
 ui/tokens.css owns semantic colors, type, spacing, radii, dimensions, and shadows. ui/theme.ts follows the system by default. Explicit light/dark overrides use opaque white/black canvases. System fonts use 13-14px body, 12px metadata, and 14px reading text. IDs/credentials use shared monospace styling.
 
-Functional icons use shared Icon with Lucide at 16/20px and 1.75px strokes. Brands retain their assets. ui/style.css owns controls. ui/product.css owns product layout.
+Functional icons use shared Icon with Lucide at 16/20px and 1.75px strokes. Brands retain their assets. Copied components own control styles through Tailwind. ui/style.css and ui/product.css retain only legacy feature/global styles and brand visuals awaiting their owning migration.
 
 Related tooltips remain mounted and move/resize continuously between triggers. HoverScope uses shared spring highlights following pointer, keyboard, and Radix state. reduced-motion removes unnecessary transitions.
 

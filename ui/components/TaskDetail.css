@@ -15,14 +15,14 @@
 .task-prompt .timeline-user { background: var(--task-user-bg); color: var(--task-user-ink); border-radius: 18px 18px 6px 18px; max-width: 86%; font-size: 13.5px; padding: 10px 14px; }
 .task-prompt .timeline-user-toggle.button { color: inherit; }
 .task-phase { display: flex; gap: 10px; color: var(--text); font-size: 14px; line-height: 1.6; min-width: 0; }
-.task-agent-mark { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 8px; color: var(--accent); background: var(--task-live-soft); }
+.task-agent-mark { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 8px; color: var(--brand-accent); background: var(--task-live-soft); }
 .task-plan { padding: 10px 12px; border: 1px solid var(--border); border-radius: 14px; font-size: 13px; }
 .task-plan > strong { color: var(--text-secondary); font-size: 11px; }
 .task-plan ul { display: grid; gap: 7px; margin: 8px 0 0; padding: 0; list-style: none; }
 .task-plan li { display: flex; gap: 8px; color: var(--text-secondary); }
 .task-plan li[data-state=completed] > span { text-decoration: line-through; }
 .task-plan li[data-state=completed] .icon { color: var(--success); }
-.task-plan li:is([data-state=in_progress], [data-state=inProgress], [data-state=running]) { color: var(--accent); font-weight: 600; }
+.task-plan li:is([data-state=in_progress], [data-state=inProgress], [data-state=running]) { color: var(--brand-accent); font-weight: 600; }
 .task-tool-run { color: var(--text-tertiary); font-size: 12px; }
 .task-tool-counts { display: flex; flex-wrap: wrap; gap: 4px; }
 .task-tool-count + .task-tool-count::before { content: "·"; margin-right: 4px; }

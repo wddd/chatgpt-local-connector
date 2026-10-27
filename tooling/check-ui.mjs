@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { ESLint } from 'eslint';
 import { uiFiles, isFeatureFile, relativeFile } from './ui-policy.mjs';
+import postcss from 'postcss';
 import { checkCssSelectors } from './ui-css-policy.mjs';
 
 const eslintBaselinePath = 'tooling/ui-eslint-baseline.json';
@@ -21,7 +22,7 @@ for (const file of Object.keys(eslintBaseline.files)) {
 function cssFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const file = `${directory}/${entry.name}`;
-    return entry.isDirectory() ? cssFiles(file) : file.endsWith('.css') && isFeatureFile(file) ? [file] : [];
+    return entry.isDirectory() ? cssFiles(file) : file.endsWith('.css') && file !== 'ui/tokens.css' && isFeatureFile(file) ? [file] : [];
   });
 }
 const stylesheets = cssFiles('ui');
@@ -32,6 +33,33 @@ for (const file of Object.keys(cssBaseline.files)) {
 // Compare against HEAD locally or the PR base in CI. The initial baseline is
 // admitted once when the base has no baseline file; there is no regeneration mode.
 const base = process.env.ARC_UI_DEBT_BASE ?? 'HEAD';
+// All dedicated stylesheets are frozen migration debt, including shared shells.
+// Tokens own the foundation; fixture CSS is local to synthetic scenes. Brand
+// selectors retain their existing files and may evolve without layout migration.
+function allCss(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const file = `${directory}/${entry.name}`;
+    return entry.isDirectory() ? allCss(file) : file.endsWith('.css') ? [file] : [];
+  });
+}
+const knownCss = new Set(execFileSync('git', ['ls-tree', '-r', '--name-only', base, '--', 'ui'], { encoding: 'utf8' }).trim().split('\n').filter(file => file.endsWith('.css')));
+const brandSelector = /\.(?:arc-mark|topology[-\w]*|earcup[-\w]*|wire[-\w]*|hub[-\w]*|graph-node|quota[-\w]*|agent-quota[-\w]*|activity-arc|activity-bubble[-\w]*|task-bubble[-\w]*)\b/;
+const selectors = source => {
+  const counts = new Map();
+  postcss.parse(source).walkRules(rule => {
+    for (let parent = rule.parent; parent; parent = parent.parent) if (parent.type === 'atrule' && /keyframes$/.test(parent.name)) return;
+    for (const selector of rule.selectors) counts.set(selector.trim(), (counts.get(selector.trim()) ?? 0) + 1);
+  });
+  return counts;
+};
+for (const file of allCss('ui')) {
+  if (file === 'ui/tokens.css' || /(?:^|\/)(?:scenario|fixture)/.test(file)) continue;
+  if (!knownCss.has(file)) { failures.push(`${file}: New dedicated CSS files are forbidden. Use Tailwind utilities and semantic tokens.`); continue; }
+  const previous = selectors(execFileSync('git', ['show', `${base}:${file}`], { encoding: 'utf8' }));
+  for (const [selector, count] of selectors(readFileSync(file, 'utf8'))) {
+    if (!brandSelector.test(selector) && count > (previous.get(selector) ?? 0)) failures.push(`${file}: New legacy CSS selector ${JSON.stringify(selector)}. Use Tailwind utilities; dedicated CSS is reserved for ARC brand visuals.`);
+  }
+}
 for (const [path, current] of [[eslintBaselinePath, eslintBaseline], [cssBaselinePath, cssBaseline]]) {
   const exists = execFileSync('git', ['ls-tree', '--name-only', base, '--', path], { encoding: 'utf8' }).trim();
   if (!exists) continue;

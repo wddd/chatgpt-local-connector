@@ -5,31 +5,37 @@ import {
   useRef,
   useState,
   type ButtonHTMLAttributes,
-  type InputHTMLAttributes,
-  type TextareaHTMLAttributes,
   type ReactNode,
   type CSSProperties,
   type Ref,
 } from "react";
 import {
   Dialog as D,
-  Select as S,
-  RadioGroup,
-  Switch as Sw,
-  Slider as RS,
-  Checkbox as C,
-  Tooltip as T,
-  DropdownMenu as M,
-  Progress as R,
 } from "radix-ui";
 import {
   X,
   Check,
-  ChevronDown,
-  ChevronUp,
   LoaderCircle,
   type LucideIcon,
 } from "lucide-react";
+import { cn } from "../../lib/utils";
+import { Button as ShadcnButton } from "./button";
+import { Switch as ShadcnSwitch } from "./switch";
+import { Empty as EmptyRoot } from "./empty";
+import { Spinner } from "./spinner";
+import { Badge } from "./badge";
+import { Alert } from "./alert";
+import { ToggleGroup, ToggleGroupItem } from "./toggle-group";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "./select";
+import { Tooltip as TooltipRoot, TooltipTrigger, TooltipContent, TooltipProvider } from "./tooltip";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "./dropdown-menu";
+import { Dialog as DialogRoot, DialogTrigger, DialogContent, DialogTitle, DialogClose as CloseDialog } from "./dialog";
+import { Slider as ShadcnSlider } from "./slider";
+import { Checkbox as ShadcnCheckbox } from "./checkbox";
+import { Progress as ShadcnProgress } from "./progress";
+import { Label } from "./label";
+export { Input } from "./input";
+export { Textarea } from "./textarea";
 import { t } from "../../i18n";
 import { HoverScope } from "./HoverScope";
 export { HoverScope };
@@ -37,7 +43,7 @@ export { HoverPreviewGroup } from "./HoverPreviewGroup";
 export { LoadingIndicator } from "./Feedback";
 export { DataTable, Pagination } from "./DataTable";
 export function Tag({ children, title, tone }: { children: ReactNode; title?: string; tone?: "source" | "agent" }) {
-  return <span className="task-tag" title={title} data-tone={tone}>{children}</span>;
+  return <Badge variant="secondary" className={cn("task-tag rounded-sm border-0 px-1.5 py-0.5 text-xs font-normal", tone === "source" && "bg-role-source-soft text-role-source", tone === "agent" && "bg-role-agent-soft text-role-agent")} title={title} data-tone={tone}>{children}</Badge>;
 }
 export function Icon({
   icon: Component,
@@ -70,16 +76,17 @@ export function Button({
   ref?: Ref<HTMLButtonElement>;
 }) {
   return (
-    <button
+    <ShadcnButton
       type="button"
       {...props}
       disabled={disabled || busy}
       aria-busy={busy || props["aria-busy"]}
-      className={`${variant === "surface" ? "surface-button" : `button ${variant}`} ${className}`}
+      variant={variant}
+      className={cn(variant === "surface" ? "surface-button" : `button ${variant}`, className)}
     >
       {busy && <Icon icon={LoaderCircle} className="spin" />}
       {children}
-    </button>
+    </ShadcnButton>
   );
 }
 export function IconButton({
@@ -101,30 +108,18 @@ export function IconButton({
       disabled={props.disabled || busy}
       aria-busy={busy || undefined}
       aria-label={label}
-      className={`icon-button ${className}`}
+      className={cn("icon-button size-7 min-h-7 min-w-7 shrink-0 p-1.25", className)}
     >
       <Icon icon={busy ? LoaderCircle : icon} size={size} className={busy ? "spin" : ""} />
     </Button>
   );
 }
-export function Input({
-  className = "",
-  ...props
-}: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`input ${className}`} />;
-}
 export function Slider({ label, value, min, max, step, onChange, onCommit }: {
   label: string; value: number; min: number; max: number; step: number;
   onChange: (value: number) => void; onCommit: (value: number) => void;
 }) {
-  return <RS.Root className="slider" value={[value]} min={min} max={max} step={step}
-    onValueChange={values => onChange(values[0])} onValueCommit={values => onCommit(values[0])} onBlur={() => onCommit(value)}>
-    <RS.Track className="slider-track"><RS.Range className="slider-fill" /></RS.Track>
-    <RS.Thumb className="slider-thumb" aria-label={label} />
-  </RS.Root>;
-}
-export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`input ${className}`} />;
+  return <ShadcnSlider className="min-h-9" aria-label={label} value={[value]} min={min} max={max} step={step}
+    onValueChange={values => onChange(values[0])} onValueCommit={values => onCommit(values[0])} onBlur={() => onCommit(value)} thumbLabel={label} />;
 }
 export function Field({
   id,
@@ -140,16 +135,16 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <div className="field">
-      <div className="field-heading">
-        <label htmlFor={id}>{label}</label>
+    <div className="field grid min-w-0 gap-2">
+      <div className="field-heading flex items-center justify-between gap-3 text-sm font-medium">
+        <Label htmlFor={id}>{label}</Label>
         {help}
       </div>
       {children}
       {error && (
         <p
           id={id ? `${id}-error` : undefined}
-          className="field-error"
+          className="field-error text-xs text-destructive"
           role="alert"
         >
           {error}
@@ -169,13 +164,13 @@ export function Notice({
 }) {
   const protect = useSensitiveText();
   return (
-    <div
-      className={`notice ${tone}`}
+    <Alert
+      className={cn("notice flex items-center justify-between gap-3 whitespace-pre-wrap break-words rounded-lg border-0 px-4 py-3 text-sm", tone === "danger" ? "bg-danger-soft text-destructive" : tone === "warning" ? "bg-warning-soft text-warning" : "bg-success-soft text-success")}
       role={tone === "danger" ? "alert" : "status"}
     >
       <span>{typeof children === "string" ? protect(children) : children}</span>
       {action}
-    </div>
+    </Alert>
   );
 }
 export function Empty({
@@ -188,21 +183,22 @@ export function Empty({
   icon?: LucideIcon;
 }) {
   return (
-    <div className="empty" role="status">
+    <EmptyRoot className="empty grid justify-items-center gap-4 px-4 py-8 text-center text-muted-foreground md:p-8" role="status">
       {icon && <Icon icon={icon} size={20} />}
       <p>{children}</p>
       {action}
-    </div>
+    </EmptyRoot>
   );
 }
 export function Loading({ label = t("loading") }: { label?: string }) {
   return (
-    <div className="loading" role="status">
-      <Icon icon={LoaderCircle} className="spin" />
+    <div className="loading flex items-center justify-center gap-2 p-6 text-muted-foreground" role="status">
+      <Spinner aria-hidden="true" />
       {label}
     </div>
   );
 }
+export const toneClasses = { neutral: "text-muted-foreground", accent: "text-brand-accent", success: "text-success", warning: "text-warning", danger: "text-destructive" };
 export function Status({
   children,
   tone = "neutral",
@@ -211,8 +207,8 @@ export function Status({
   tone?: "neutral" | "accent" | "success" | "warning" | "danger";
 }) {
   return (
-    <span className={`status ${tone}`}>
-      <span aria-hidden="true" className="status-dot" />
+    <span className={cn("status inline-flex items-center gap-1.5 whitespace-nowrap text-xs", toneClasses[tone])}>
+      <span aria-hidden="true" className="status-dot size-1.5 shrink-0 rounded-full bg-current" />
       {children}
     </span>
   );
@@ -231,16 +227,14 @@ export function Switch({
   id?: string;
 }) {
   return (
-    <Sw.Root
+    <ShadcnSwitch
       id={id}
       checked={checked}
       onCheckedChange={onChange}
       aria-label={label}
       disabled={disabled}
       className="switch"
-    >
-      <Sw.Thumb className="switch-thumb" />
-    </Sw.Root>
+    />
   );
 }
 export function Checkbox({
@@ -255,23 +249,12 @@ export function Checkbox({
   disabled?: boolean;
 }) {
   const id = useId();
-  return (
-    <label className="checkbox-label" htmlFor={id}>
-      <C.Root
-        id={id}
-        checked={checked}
-        onCheckedChange={(value) => onChange(value === true)}
-        disabled={disabled}
-        className="checkbox"
-      >
-        <C.Indicator>
-          {checked === "indeterminate" ? "−" : <Icon icon={Check} />}
-        </C.Indicator>
-      </C.Root>
-      <span>{children}</span>
-    </label>
-  );
+  return <Label className="flex min-h-7 min-w-0 cursor-pointer items-start gap-2 py-1 text-sm" htmlFor={id}>
+    <ShadcnCheckbox id={id} checked={checked} onCheckedChange={value => onChange(value === true)} disabled={disabled} />
+    <span className="break-words">{children}</span>
+  </Label>;
 }
+
 export type Choice = {
   value: string;
   label: string;
@@ -325,111 +308,39 @@ export function SingleChoice({
     if (measure.current) observer.observe(measure.current);
     return () => observer.disconnect();
   }, [options]);
-  return (
-    <div
-      ref={container}
-      style={compact ? { width: contentWidth } : undefined}
-      className={`choice ${swatches ? "choice-swatches" : ""} ${cards ? "choice-cards" : ""} ${navigation ? "choice-navigation" : ""} ${tiles ? "choice-tiles" : ""}`}
-    >
-      {!swatches && options.length <= 5 && (
-        <div ref={measure} className="choice-measure" aria-hidden="true">
-          {options.map((option) => (
-            <span key={option.value}>
-              {option.icon && <Icon icon={option.icon} />} {option.label}
-            </span>
-          ))}
-        </div>
-      )}
-      {tiles || navigation || cards || swatches || (options.length <= 5 && fits) ? (
-        <RadioGroup.Root
-          value={value}
-          onValueChange={onChange}
-          disabled={disabled}
-          aria-label={label}
-          orientation={cards || navigation ? "vertical" : "horizontal"}
-          className="choice-radio"
-        >
-          {options.map((option) => (
-            <RadioGroup.Item
-              key={option.value}
-              value={option.value}
-              disabled={option.disabled}
-              className="choice-option"
-              data-hover-target={navigation ? option.value : undefined}
-              aria-label={option.label}
-              title={option.disabled ? option.description : undefined}
-              style={
-                option.color
-                  ? ({ "--swatch": option.color } as CSSProperties)
-                  : undefined
-              }
-            >
-              {swatches ? (
-                <Icon icon={Check} />
-              ) : (
-                option.content ?? <>
-                  {option.graphic}
-                  {option.icon && <Icon icon={option.icon} />}
-                  <span>{option.label}{(cards || navigation) && <>{option.description && <small>{option.description}</small>}{option.warning && <small className="choice-warning">{option.warning}</small>}</>}</span>
-                </>
-              )}
-            </RadioGroup.Item>
-          ))}
-        </RadioGroup.Root>
-      ) : (
-        <S.Root value={value} onValueChange={onChange} disabled={disabled}>
-          <S.Trigger className="select-trigger" aria-label={label}>
-            <S.Value />
-            <S.Icon>
-              <Icon icon={ChevronDown} />
-            </S.Icon>
-          </S.Trigger>
-          <S.Portal>
-            <S.Content
-              className="select-content"
-              position="popper"
-              sideOffset={6}
-              collisionPadding={12}
-            >
-              <S.ScrollUpButton className="select-scroll">
-                <Icon icon={ChevronUp} />
-              </S.ScrollUpButton>
-              <S.Viewport>
-                <HoverScope tracking="highlighted">
-                {options.map((option) => (
-                  <S.Item
-                    key={option.value}
-                    value={option.value}
-                    disabled={option.disabled}
-                    className="select-item"
-                    data-hover-target={option.value}
-                  >
-                    <S.ItemText>{option.label}</S.ItemText>
-                    <S.ItemIndicator>
-                      <Icon icon={Check} />
-                    </S.ItemIndicator>
-                  </S.Item>
-                ))}
-                </HoverScope>
-              </S.Viewport>
-              <S.ScrollDownButton className="select-scroll">
-                <Icon icon={ChevronDown} />
-              </S.ScrollDownButton>
-            </S.Content>
-          </S.Portal>
-        </S.Root>
-      )}
-    </div>
-  );
+  const pills = options.length <= 5 && fits;
+  const optionContent = (option: Choice) => option.content ?? <>{option.graphic}{option.icon && <Icon icon={option.icon} />}<span className="min-w-0">{option.label}{(cards || navigation) && <>{option.description && <small className="mt-1 block text-xs font-normal text-muted-foreground">{option.description}</small>}{option.warning && <small className="block text-xs text-warning">{option.warning}</small>}</>}</span></>;
+  const itemClass = cn("min-h-7.5 h-auto gap-2 rounded-sm px-3 py-1 text-sm font-normal text-muted-foreground data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm",
+    (cards || navigation) && "justify-start whitespace-normal text-start",
+    cards && "min-h-20 border border-border p-4 data-[state=on]:border-primary",
+    navigation && "p-3 data-[state=on]:bg-secondary",
+    tiles && "flex-col p-3",
+    swatches && "size-6.5 min-h-6.5 rounded-full p-1 text-white data-[state=on]:bg-transparent");
+  return <div ref={container} style={compact && contentWidth ? { width: contentWidth } : undefined} className="choice relative w-full min-w-0 max-w-full">
+    {options.length <= 5 && <div ref={measure} className="pointer-events-none invisible absolute flex h-0 w-max gap-0.5 overflow-hidden p-0.75" aria-hidden="true" inert>
+      {options.map(option => <span key={option.value} className={cn("flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-1 text-sm", swatches && "size-9.5 p-1")}>{option.graphic}{option.icon && <Icon icon={option.icon} />}{!swatches && option.label}</span>)}
+    </div>}
+    {pills ? <ToggleGroup type="single" value={value} onValueChange={next => { if (next) onChange(next); }} disabled={disabled} aria-label={label}
+      className={cn("w-max max-w-full gap-0.5 rounded-md bg-secondary p-0.75", (cards || navigation) && "grid w-full grid-cols-1 gap-2.5 bg-transparent p-0", swatches && "gap-2.5 bg-transparent p-1")}>
+      {options.map(option => <ToggleGroupItem key={option.value} value={option.value} disabled={option.disabled} aria-label={option.label} title={option.disabled ? option.description : undefined} className={itemClass}
+        data-hover-target={navigation ? option.value : undefined} style={swatches && option.color ? { background: option.color } as CSSProperties : undefined}>
+        {swatches ? <Icon icon={Check} className={option.value === value ? "opacity-100" : "opacity-0"} /> : optionContent(option)}
+      </ToggleGroupItem>)}
+    </ToggleGroup> : <Select value={value} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger aria-label={label}><SelectValue>{options.find(option => option.value === value)?.label}</SelectValue></SelectTrigger>
+      <SelectContent position="popper" sideOffset={6} collisionPadding={12}><HoverScope tracking="highlighted">
+        {options.map(option => <SelectItem key={option.value} value={option.value} textValue={option.label} aria-label={option.label} aria-labelledby={undefined} disabled={option.disabled} data-hover-target={option.value}>{optionContent(option)}</SelectItem>)}
+      </HoverScope></SelectContent>
+    </Select>}
+  </div>;
 }
+
 export function DetailDialog({ trigger, title, children }: { trigger: ReactNode; title: ReactNode; children: ReactNode }) {
-  return <D.Root><D.Trigger asChild>{trigger}</D.Trigger><D.Portal>
-    <D.Overlay className="detail-dialog-overlay" />
-    <D.Content className="detail-dialog" aria-describedby={undefined}>
-      <header><D.Title>{title}</D.Title><D.Close asChild><IconButton icon={X} label={t("close")} /></D.Close></header>
-      <div className="detail-dialog-body"><div className="detail-dialog-content">{children}</div></div>
-    </D.Content>
-  </D.Portal></D.Root>;
+  return <DialogRoot><DialogTrigger asChild>{trigger}</DialogTrigger>
+    <DialogContent showCloseButton={false} aria-describedby={undefined} className="detail-dialog flex max-h-dvh flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+      <header className="flex items-center justify-between gap-4 border-b px-5 py-4"><DialogTitle>{title}</DialogTitle><CloseDialog asChild><IconButton icon={X} label={t("close")} /></CloseDialog></header>
+      <div className="overflow-auto p-5">{children}</div>
+    </DialogContent></DialogRoot>;
 }
 export const DialogClose = D.Close;
 export { default as Dialog } from "../ElasticPanel";
@@ -452,12 +363,12 @@ export function Tooltip({
     setOpen(false);
   };
   return (
-    <T.Root
+    <TooltipRoot
       open={hoverOnly ? open : undefined}
       onOpenChange={hoverOnly ? (next) => setOpen(next && pointerHover.current) : undefined}
       disableHoverableContent={hoverOnly}
     >
-      <T.Trigger
+      <TooltipTrigger
         asChild
         onFocus={hoverOnly ? (event) => event.preventDefault() : undefined}
         onPointerMoveCapture={hoverOnly ? (event) => {
@@ -471,16 +382,14 @@ export function Tooltip({
         onPointerDownCapture={hoverOnly ? dismiss : undefined}
         onClickCapture={hoverOnly ? dismiss : undefined}
         onBlur={hoverOnly ? dismiss : undefined}
-      >{children}</T.Trigger>
-      <T.Portal>
-        <T.Content className="tooltip" side={side} sideOffset={6} collisionPadding={10}>
+      >{children}</TooltipTrigger>
+        <TooltipContent className="tooltip max-w-75 rounded-lg border px-2.5 py-1.5 text-xs shadow-overlay" side={side} sideOffset={6} collisionPadding={10}>
           {typeof text === "string" ? protect(text) : text}
-        </T.Content>
-      </T.Portal>
-    </T.Root>
+        </TooltipContent>
+    </TooltipRoot>
   );
 }
-export const TooltipProvider = T.Provider;
+export { TooltipProvider };
 export function Menu({
   trigger,
   items,
@@ -496,10 +405,9 @@ export function Menu({
   }[];
 }) {
   return (
-    <M.Root>
-      <M.Trigger asChild>{trigger}</M.Trigger>
-      <M.Portal>
-        <M.Content
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+        <DropdownMenuContent
           className="menu"
           aria-label={label}
           sideOffset={6}
@@ -507,20 +415,19 @@ export function Menu({
         >
           <HoverScope tracking="highlighted">
           {items.map((item, index) => (
-            <M.Item
+            <DropdownMenuItem
               key={index}
               data-hover-target={item.danger ? undefined : String(index)}
-              className={`menu-item ${item.danger ? "danger" : ""}`}
+              className={cn("menu-item", item.danger && "text-destructive")}
               disabled={item.disabled}
               onSelect={item.action}
             >
               {item.label}
-            </M.Item>
+            </DropdownMenuItem>
           ))}
           </HoverScope>
-        </M.Content>
-      </M.Portal>
-    </M.Root>
+        </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 export function Progress({
@@ -532,22 +439,9 @@ export function Progress({
   label: string;
   color?: string;
 }) {
-  return (
-    <R.Root
-      className="progress"
-      value={Math.max(0, Math.min(100, value))}
-      aria-label={label}
-    >
-      <R.Indicator
-        style={{
-          width: `${Math.max(0, Math.min(100, value))}%`,
-          background: color,
-        }}
-      />
-    </R.Root>
-  );
+  return <ShadcnProgress className="progress h-1.5 bg-border" value={Math.max(0, Math.min(100, value))} aria-label={label} indicatorColor={color} />;
 }
-import "./DetailDialog.css";
+
 
 export { PlatformIcon } from "./PlatformIcon";
 export { StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField } from "./Shells";

@@ -233,14 +233,22 @@ test("control source dock preserves editing, field navigation and cross-side dis
     const { controlSource } = await server.ssrLoadModule("/ui/controlSources.ts");
     for (const id of ["claude", "chatgpt", "custom"]) {
       await click(button(t("addControlSource")));
-      await click(page.getByRole("radio", { name: id === "custom" ? t("setup.otherClient") : controlSource(id).displayName, exact: true }));
+      const productName = id === "custom" ? t("setup.otherClient") : controlSource(id).displayName;
+      const pill = () => page.queryByRole("radio", { name: productName, exact: true });
+      const productChoice = () => page.getByRole("combobox", { name: t("setup.group.remote"), exact: true });
+      if (pill()) await click(pill());
+      else {
+        await act(() => fireEvent.keyDown(productChoice(), { key: "ArrowDown" })); await flush();
+        await act(() => fireEvent.keyDown(page.getByRole("option", { name: productName, exact: true }), { key: "Enter" })); await flush();
+      }
       await click(button(t("source.next")));
       await click(button(t("source.next")));
       assert.equal(onboarding.get().step, "address");
       assert.equal(page.getByRole("textbox", { name: t("source.copyAddress"), exact: true }).textContent, status.ingresses[0].url);
       await click(button(t("back"))); await click(button(t("back")));
       assert.equal(onboarding.get().step, "product");
-      assert.equal(page.getByRole("radio", { name: id === "custom" ? t("setup.otherClient") : controlSource(id).displayName, exact: true }).getAttribute("aria-checked"), "true");
+      if (pill()) assert.equal(pill()?.getAttribute("aria-checked"), "true");
+      else assert.ok(productChoice().textContent?.includes(productName));
       await escape();
     }
     await click(first());

@@ -10,7 +10,7 @@ import {
 import { animate, type AnimationPlaybackControlsWithThen } from "motion";
 import { surfaceMotion, reducedMotion as reduced, type Surface, type SurfaceRect } from "../motion/surface";
 import { IconButton } from "./ui";
-import { Dialog as D } from "radix-ui";
+import { Dialog as DialogRoot, DialogPortal, DialogOverlay, DialogSurface, DialogTitle } from "./ui/dialog";
 import { X } from "lucide-react";
 import { t } from "../i18n";
 import {
@@ -314,15 +314,15 @@ export default function ElasticPanel({
     origin.current = visual?.rect;
   }, [originKey]);
   return (
-    <D.Root
+    <DialogRoot
       modal={!dock}
       open={open}
       onOpenChange={(next) => {
         if (!next) void close();
       }}
     >
-      <D.Portal>
-        {!dock && <D.Overlay
+      <DialogPortal>
+        {!dock && <DialogOverlay
           className="elastic-backdrop"
           style={{ zIndex: 100 + Math.max(0, layers.indexOf(node!)) * 2 }}
           onPointerDown={(e) => {
@@ -343,9 +343,9 @@ export default function ElasticPanel({
             }
           }}
         />}
-        <D.Content
+        <DialogSurface
           ref={attach}
-          className={`dialog elastic-panel ${wide ? "dialog-wide" : ""} ${unframed ? "unframed" : ""} ${headerless ? "headerless" : ""} ${dock ? "activity-panel" : ""} ${centered ? "setup-dialog" : ""}`}
+          className={`dialog max-w-none elastic-panel ${wide ? "dialog-wide" : ""} ${unframed ? "unframed" : ""} ${headerless ? "headerless" : ""} ${dock ? "activity-panel" : ""} ${centered ? "setup-dialog" : ""}`}
           data-panel-dock={dock}
           data-panel-geometry={dockRect ? "portrait" : undefined}
           data-sheet={sheet || undefined}
@@ -397,7 +397,7 @@ export default function ElasticPanel({
         >
           <div className="elastic-panel-content">
             {unframed || headerless ? (
-              <D.Title className="sr-only">{title}</D.Title>
+              <DialogTitle className="sr-only">{title}</DialogTitle>
             ) : (
               <header
                 className="dialog-header"
@@ -433,7 +433,7 @@ export default function ElasticPanel({
                 onPointerCancel={() => (drag.current = undefined)}
               >
                 {leading}
-                <D.Title>{title}</D.Title>
+                <DialogTitle>{title}</DialogTitle>
                 <div className="actions">
                   {actions}
                   <IconButton icon={X} size={20}
@@ -449,8 +449,8 @@ export default function ElasticPanel({
             <div className="dialog-body">{children}</div>
             {footer && <footer className="dialog-footer">{footer}</footer>}
           </div>
-        </D.Content>
-      </D.Portal>
-    </D.Root>
+        </DialogSurface>
+      </DialogPortal>
+    </DialogRoot>
   );
 }

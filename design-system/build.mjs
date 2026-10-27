@@ -1,5 +1,6 @@
 import { build } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import postcss from 'postcss';
 import { transform } from 'lightningcss';
 import ts from 'typescript';
@@ -19,6 +20,7 @@ const aliases = new Map([
   ['ui/platform.ts', 'platform.ts'], ['ui/api.ts', 'api.ts'],
   ...['accounts', 'connector', 'subscriptions', 'activity', 'updates', 'overviewPanels'].map(name => [`ui/state/${name}.ts`, 'data.ts']),
 ].map(([from, to]) => [resolve(from), adapter(to)]));
+const uiAlias = { '@': path.join(root, 'ui') };
 const cssFiles = new Set([resolve('ui/style.css'), resolve('ui/product.css')]);
 const sourceFiles = new Set();
 const boundary = () => ({
@@ -35,7 +37,7 @@ const boundary = () => ({
     },
   });
 const runtime = await build({
-  configFile: false, root, logLevel: 'warn',
+  configFile: false, root, logLevel: 'warn', resolve: { alias: uiAlias },
   define: { 'process.env.NODE_ENV': '"production"', localStorage: '__arcStorage' },
   plugins: [boundary(), react()],
   build: { write: false, minify: true, lib: { entry: adapter('runtime.tsx'), name: 'ArcRuntime', formats: ['iife'] },
@@ -46,7 +48,7 @@ await mkdir(out, { recursive: true });
 // Each Root gets private module state and React 19. No eval, globals or React 18 elements enter it.
 const factory = `export function createRuntime() { const __arcStorage = { getItem: () => null, setItem() {}, removeItem() {} };\n${runtimeCode}\nreturn ArcRuntime; }`;
 await build({
-  configFile: false, root, logLevel: 'warn',
+  configFile: false, root, logLevel: 'warn', resolve: { alias: uiAlias },
   plugins: [{ name: 'arc-runtime-factory', resolveId: id => id === 'virtual:arc-runtime' ? '\0arc-runtime' : undefined,
     load: id => id === '\0arc-runtime' ? factory : undefined }, boundary(), react({ jsxRuntime: 'classic' })],
   build: { outDir: out, emptyOutDir: true, minify: true,
@@ -62,16 +64,23 @@ theme.walkRules(rule => {
   const target = rule.selector.includes('dark') ? dark : light;
   rule.walkDecls(/^--/, declaration => { target[declaration.prop.slice(2)] = declaration.value; });
 });
+theme.walkAtRules('theme', rule => { if (!rule.params) rule.walkDecls(/^--/, declaration => { light[declaration.prop.slice(2)] = declaration.value; }); });
 const mergedDark = { ...light, ...dark };
 const pick = (values, prefix) => Object.fromEntries(Object.entries(values).filter(([key]) => key.startsWith(prefix)));
+const resolveColor = (values, value, mode, seen = new Set()) => value
+  .replace(/var\(--([\w-]+)\)/g, (match, key) => {
+    if (seen.has(key) || !values[key]) return match;
+    return resolveColor(values, values[key], mode, new Set([...seen, key]));
+  }).replace(/light-dark\((#[\da-f]+),\s*(#[\da-f]+)\)/gi, (_, light, dark) => mode === 'dark' ? dark : light);
 const colors = (values, mode) => Object.fromEntries(Object.entries(values)
-  .filter(([, value]) => /^(?:#|(?:rgb|hsl|color-mix|light-dark)\(|var\(--(?:accent|brand|success|warning|surface|text|role|theme))/.test(value))
-  .map(([key, value]) => [key, value.replace(/light-dark\((#[\da-f]+),\s*(#[\da-f]+)\)/gi, (_, light, dark) => mode === 'dark' ? dark : light)]));
+  .map(([key, value]) => [key, resolveColor(values, value, mode)])
+  .filter(([, value]) => /^(?:#|(?:rgb|hsl|oklch|color-mix|light-dark)\()/.test(value)));
 await writeFile(path.join(out, 'tokens.json'), JSON.stringify({
   source: 'ui/tokens.css', themes: { light, dark: mergedDark },
   colors: { light: colors(light, 'light'), dark: colors(mergedDark, 'dark') },
   typeScale: pick(light, 'text-'), fontFamilies: pick(light, 'font-'), spacing: pick(light, 'space-'), radius: pick(light, 'radius-'),
 }, null, 2) + '\n');
+theme.walkAtRules(rule => { if (['import', 'theme', 'custom-variant', 'source', 'layer', 'utility'].includes(rule.name)) rule.remove(); });
 theme.walkRules(rule => { rule.selector = rule.selector.replaceAll(':root', '.arc-root'); });
 await writeFile(path.join(out, 'tokens.css'), theme.toString());
 
@@ -87,9 +96,29 @@ for (const file of sourceFiles) {
   }
   visit(source);
 }
-const styles = postcss.root();
+// Compile the same Tailwind entry with the official Vite plugin. Utilities and
+// preflight are scoped to each design root; neither can reset the host canvas.
+const tailwind = await build({
+  configFile: false, root, logLevel: 'warn', plugins: [tailwindcss()],
+  build: { write: false, cssMinify: false, rolldownOptions: { input: resolve('ui/tokens.css') } },
+});
+const compiledCss = (Array.isArray(tailwind) ? tailwind[0] : tailwind).output.filter(item => item.type === 'asset' && item.fileName.endsWith('.css')).map(item => item.source).join('\n');
+if (!compiledCss.includes('--tw-')) throw new Error('Tailwind utilities were not compiled for the design bundle.');
+const styles = postcss.parse(compiledCss);
+styles.walkRules(rule => {
+  for (let parent = rule.parent; parent; parent = parent.parent) {
+    if (parent.type === 'atrule' && /keyframes$/.test(parent.name)) return;
+    // Nested selectors already inherit the scoped outer rule.
+    if (parent.type === 'rule') return;
+  }
+  rule.selectors = rule.selectors.map(selector => {
+    if (/^:root/.test(selector)) return selector.replace(/^:root/, '.arc-root');
+    if (/^(?:html|:host|body)$/.test(selector)) return '.arc-root';
+    return `:where(.arc-root) ${selector}`;
+  });
+});
 const orderedCss = [resolve('ui/style.css'), resolve('ui/product.css'),
-  ...[...cssFiles].filter(file => file !== resolve('ui/style.css') && file !== resolve('ui/product.css')).sort()];
+  ...[...cssFiles].filter(file => file !== resolve('ui/style.css') && file !== resolve('ui/product.css') && file !== resolve('ui/tokens.css')).sort()];
 for (const file of orderedCss) {
   const sheet = postcss.parse(await readFile(file, 'utf8'));
   sheet.walkAtRules('import', rule => rule.remove());

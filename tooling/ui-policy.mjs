@@ -50,6 +50,16 @@ function inRenderedExpression(node) {
   return false;
 }
 
+// Match utility values, not arbitrary selectors such as [&>svg]:size-4.
+// String literals inside cn/cva and conditional className expressions are included.
+const arbitraryDesignValue = /(?:^|[\s:!])(?:-?(?:bg|text|font|leading|tracking|decoration|placeholder|border(?:-[xytrblse])?|divide|outline|ring(?:-offset)?|fill|stroke|shadow|accent|caret|rounded(?:-[a-z]+)?|[mp][xytrblse]?|space-[xy]|gap(?:-[xy])?|indent|size|[wh]|min-[wh]|max-[wh]))-(?:\[[^\]]+\]|\([^)]*\))|\[(?:color|background(?:-color)?|font[^:]*|line-height|letter-spacing|padding[^:]*|margin[^:]*|gap|border-radius):[^\]]+\]/g;
+function inspectUtilityText(node, value, report) {
+  if (typeof value !== 'string') return;
+  arbitraryDesignValue.lastIndex = 0;
+  const match = arbitraryDesignValue.exec(value);
+  if (match) report(node, { value: match[0].trim() });
+}
+
 export function createUiPlugin(baseline) {
   function rule(name, message, visit) {
     return {
@@ -80,13 +90,23 @@ export function createUiPlugin(baseline) {
         if (node.name.type === 'JSXIdentifier' && replacements[node.name.name]) report(node, { tag: node.name.name, component: replacements[node.name.name] });
       },
     })),
+    'semantic-utilities': rule('semantic-utilities', 'Use Tailwind scale utilities and semantic tokens; arbitrary color, spacing, radius and typography values are forbidden ({{value}}).', report => ({
+      Literal(node) { inspectUtilityText(node, node.value, report); },
+      TemplateElement(node) { inspectUtilityText(node, node.value.raw, report); },
+    })),
+    'single-choice': rule('single-choice', 'Use SingleChoice or ChoiceControl; direct Select and ToggleGroup belong in ui/components/ui.', report => ({
+      ImportDeclaration(node) {
+        if (/(?:\/(?:select|toggle-group|radio-group)(?:\.[cm]?[jt]sx?)?$|^@radix-ui\/react-(?:select|toggle-group|radio-group)$)/.test(node.source.value)) report(node);
+        if (node.source.value === 'radix-ui' && node.specifiers.some(specifier => ['Select', 'RadioGroup', 'ToggleGroup'].includes(specifier.imported?.name))) report(node);
+      },
+    })),
     'dispatch-spec': rule('dispatch-spec', 'Render recorded model, effort and service-tier fields through DispatchSpec; do not build a dispatch summary in feature JSX.', report => ({
       MemberExpression(node) {
         if (!['model', 'effort', 'serviceTier'].includes(memberName(node))) return;
         if (['dispatchSummary', 'task'].includes(memberName(unwrap(node.object))) && inRenderedExpression(node)) report(node);
       },
     })),
-    'shared-layout': rule('shared-layout', 'Move inline layout property "{{property}}" into a shared shell (EntityRow, EntityCard, FormSection, SettingRow, SectionHeader or ActionGroup). Geometry styles (top/left/width/height/transform) remain allowed.', report => ({
+    'shared-layout': rule('shared-layout', 'Replace inline layout property "{{property}}" with Tailwind utilities or a shared shell (EntityRow, EntityCard, FormSection, SettingRow, SectionHeader or ActionGroup). Geometry styles (top/left/width/height/transform) remain allowed.', report => ({
       JSXAttribute(node) {
         if (node.name.name !== 'style' || node.value?.type !== 'JSXExpressionContainer') return;
         function inspect(expression) {

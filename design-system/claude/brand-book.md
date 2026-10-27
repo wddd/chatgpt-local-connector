@@ -21,8 +21,8 @@ When components change, rebuild the bundle and republish this system from the re
 
 ## Visual foundations
 
-- **Neutral first.** Surfaces are white/near-black with gray hairlines (`--border`). Text has three levels: `--text`, `--text-secondary`, `--text-tertiary`.
-- **One UI accent.** `--accent` marks selection, focus and running work. `--brand-orange` belongs to the mark and promotion, never to UI state.
+- **Neutral first.** Surfaces are white/near-black with gray hairlines (`--border`). Text has three levels: `--foreground`, `--muted-foreground`, `--text-tertiary`.
+- **One UI accent.** `--brand-accent` marks selection, focus and running work; `--ring` derives from it. shadcn `--accent` is the neutral hover surface. `--brand-orange` belongs to the mark and promotion, never to UI state.
 - **Roles have colors.** `--role-source` (SRC, left wing) and `--role-agent` (AGENT, right wing) appear on tags and topology, not as general decoration.
 - **Task phases have colors.** `--phase-*` tokens color thinking, command, file, tool and text steps in task bubbles and timelines.
 - **Compact density.** Body text 14px (`--text-md`), rows and metadata 13px, captions 12px. Controls are 32–36px tall.
@@ -33,13 +33,13 @@ Derived colors that use `color-mix()` or `var()` are omitted from the palette an
 
 ## Component layers
 
-ARC's component system has three layers (`docs/dev/component-spec.md`):
+ARC's shadcn/ui and Tailwind v4 foundation supports three composition layers (`docs/dev/component-spec.md`):
 
 1. **Shells**: PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, plus the primitives.
 2. **Object components**: one per domain object (SRC platform, SRC account, AGENT platform, AGENT account, TUNNEL, TASK, interaction request, authorization request, relay member, deployment progress), each with four variants: **Chip** (inline reference), **Node** (homepage topology), **Row** (panel list entry), **Card** (panel summary).
 3. **Composites**: Quota (ring, panel, bubble), RequestCard, DispatchSpec chip.
 
-The current exports include all eight shells, the primitives, quota composites, the topology node and the task bubble. The exports also include SRC, TUNNEL, TASK, AGENT, request, Relay member and deployment objects. Only their implemented variants appear in the export table. Until a component exists here, lay the area out with plain markup using the tokens, and say so in the design notes.
+The current exports include all eight shells, the primitives, quota composites, the topology node and the task bubble. The exports also include SRC, TUNNEL, TASK, AGENT, request, Relay member and deployment objects. Only their implemented variants appear in the export table. A missing pattern belongs in the repository as a shared component with a browser fixture and design export. Add primitives through the pinned shadcn CLI into `ui/components/ui`; use semantic Tailwind utilities and the shared `cn()` helper. Remaining feature CSS is migration debt described in `docs/dev/ui-debt.md`.
 
 ## Exports
 
