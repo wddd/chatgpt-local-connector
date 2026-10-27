@@ -1733,7 +1733,7 @@
       "name": "agents.conversations",
       "route": "agents/conversations",
       "method": "POST",
-      "description": "Read a metadata-only conversation page in descending creation order. Codex uses native unarchived threads. Other Agents expose ARC-stored tasks only. limit defaults to 20 and is capped at 50. Reuse nextCursor unchanged. Listing never reads timelines or resumes sessions.",
+      "description": "Read a metadata-only conversation page. Codex keeps native unarchived threads in descending creation order. Claude Code and Pi v3 merge read-only native sessions with ARC tasks (scope:native-and-arc-tasks); other Agents expose ARC tasks. Non-Codex rows sort by updatedAt descending, then id ascending. ARC task identity wins nativeSessionId matches. Native rows use source:native, bounded head/tail metadata and a 30-second on-demand cache; metadataPartial marks incomplete samples and messageCount is null when unavailable. Claude child/sidechain sessions are excluded. limit defaults to 20 and is capped at 50. Reuse nextCursor unchanged. Open the returned id with agents.conversations.timeline. Listing never builds timelines or resumes sessions; transcript paths remain private.",
       "localOnly": true,
       "inputSchema": {
         "type": "object",
@@ -1772,7 +1772,7 @@
       "name": "agents.conversations.timeline",
       "route": "agents/conversations/timeline",
       "method": "POST",
-      "description": "Read the selected conversation timeline without resuming it. Unknown Codex histories remain read-only. Other Agents must own the ARC task ID. after is the last update cursor; readOnly responses are full snapshots.",
+      "description": "Read the selected conversation timeline without resuming it. Use the id returned by agents.conversations. Unknown Codex histories and indexed Claude Code/Pi native sessions remain read-only without joining ARC live ownership. Native Claude history uses the existing bounded transcript timeline; Pi v3 follows the latest leaf ancestry. Other Agents must own the ARC task ID. after is the last update cursor; readOnly responses are full snapshots with coverage and no transcript path.",
       "localOnly": true,
       "inputSchema": {
         "type": "object",

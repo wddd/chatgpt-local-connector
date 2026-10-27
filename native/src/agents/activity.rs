@@ -248,6 +248,9 @@ fn scan_roots(
                 if !entry.kind.is_file() || path.extension().is_none_or(|ext| ext != "jsonl") {
                     continue;
                 }
+                if agent == "claude" && claude_sidechain(path, &[]) {
+                    continue;
+                }
                 let Ok(metadata) = std::fs::metadata(path) else {
                     continue;
                 };
@@ -452,7 +455,16 @@ pub(super) fn agent_summary(state: &Value) -> Option<Value> {
     crate::egress::dispatch_summary(&configuration)
 }
 
-fn read_tail(path: &Path, limit: u64) -> Result<(Vec<Value>, bool)> {
+pub(super) fn claude_sidechain(path: &Path, records: &[Value]) -> bool {
+    path.file_stem()
+        .is_some_and(|name| name.to_string_lossy().starts_with("agent-"))
+        || path
+            .components()
+            .any(|part| part.as_os_str() == "subagents")
+        || records.iter().any(|record| record["isSidechain"] == true)
+}
+
+pub(super) fn read_tail(path: &Path, limit: u64) -> Result<(Vec<Value>, bool)> {
     let mut file = File::open(path).map_err(|e| e.to_string())?;
     let size = file.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
     let start = size.saturating_sub(limit);
@@ -487,6 +499,9 @@ fn working_records(
     now: SystemTime,
     records: &[Value],
 ) -> Option<Value> {
+    if agent == "claude" && claude_sidechain(path, records) {
+        return None;
+    }
     let metadata = records
         .iter()
         .find(|r| r["type"] == "session_meta")
