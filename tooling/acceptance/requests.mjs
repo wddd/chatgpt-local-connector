@@ -1,3 +1,5 @@
+import { chooseSingleChoice } from './single-choice.mjs';
+
 export async function assertRequestLayout(page) {
   // Regression: cae518e request cards overflowed 34px grid tracks and deployment intercepted Send answer.
   const layout = await page.getByRole('main').evaluate(main => {
@@ -17,15 +19,7 @@ export async function assertRequestLayout(page) {
 
 export async function acceptRequests(page) {
   // Regression: request controls were duplicated across task/update and setup/switch hosts.
-  const setSubmission = async name => {
-    const dropdown = page.getByRole('combobox', { name: 'Submission state', exact: true });
-    if (await dropdown.isVisible()) {
-      await dropdown.press('Space');
-      await page.getByRole('option', { name, exact: true }).click();
-    } else {
-      await page.getByRole('radiogroup', { name: 'Submission state', exact: true }).getByRole('radio', { name, exact: true }).press('Space');
-    }
-  };
+  const setSubmission = name => chooseSingleChoice(page, 'Submission state', name);
   const request = page.getByRole('main');
   await request.getByRole('heading', { name: 'Requests and relay', exact: true }).waitFor();
   await assertRequestLayout(page);

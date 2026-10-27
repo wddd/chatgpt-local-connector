@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { chooseSingleChoice } from './single-choice.mjs';
 
 const out = new URL('../../output/playwright/mig-settings/', import.meta.url);
 await mkdir(out, { recursive: true });
@@ -67,12 +68,7 @@ try {
         assert.equal(await page.getByRole('button', { name: /Relay hosting & experimental/ }).evaluate(el => document.activeElement === el), true);
       }
       if (name === 'settings-extras-light') {
-        const radio = page.getByRole('radio', { name: /Experimental/ });
-        if (await radio.count()) await radio.click();
-        else {
-          await page.getByRole('combobox', { name: 'Extras', exact: true }).click();
-          await page.getByRole('option', { name: /Experimental/ }).click();
-        }
+        await chooseSingleChoice(page, 'Extras', 'Experimental');
         await page.getByRole('switch', { name: 'Home topology tuning', exact: true }).waitFor();
         assert.deepEqual((await geometry(page)).overflow, []);
       }

@@ -2,6 +2,8 @@ import { acceptTopologyWires } from './topology-wires.mjs';
 import { acceptAgentObjects, acceptAgentObjectGeometry } from './agent-objects.mjs';
 import { acceptNodeBranding } from './node-branding.mjs';
 import { acceptLongRequest, acceptRequests } from './requests.mjs';
+import { acceptDispatchSpecBubbles } from './dispatch-spec.mjs';
+import { acceptSettings } from './settings.mjs';
 import { requireMainCheckout } from '../coding-lane.mjs';
 requireMainCheckout();
 import { chromium, webkit } from 'playwright';
@@ -84,18 +86,7 @@ try {
           await page.getByLabel('Opus 5.5 · Medium', { exact: true }).waitFor({ state: 'visible' });
         }
         if (name.startsWith('bubbles-claude-spec')) {
-          for (const label of ['Opus 5.5 · Medium', '6 Astra · High']) {
-            const chip = page.getByLabel(label, { exact: true });
-            await chip.waitFor({ state: 'visible' });
-            const treatment = await chip.evaluate(node => {
-              const project = node.parentElement.querySelector('.activity-project');
-              const spec = getComputedStyle(node), tag = getComputedStyle(project);
-              return ['borderTopWidth', 'borderTopColor', 'borderRadius', 'backgroundColor', 'fontSize', 'lineHeight', 'paddingLeft', 'paddingRight'].every(key => spec[key] === tag[key]);
-            });
-            if (!treatment) throw new Error('DispatchSpec does not share the project tag pill treatment');
-          }
-          const missing = page.getByRole('button', { name: /^Review unrecorded dispatch ·/ });
-          if (await missing.locator('.dispatch-spec').count()) throw new Error('Unrecorded Claude task invented a dispatch spec');
+          await acceptDispatchSpecBubbles(page, fixture);
         }
         if (name === 'agent-panel-unread') {
           // Regression: completed unread tasks were mixed into date groups instead of appearing between Running and Today.
@@ -392,17 +383,11 @@ try {
           await page.getByRole('textbox', { name: messages['source.label'], exact: true }).waitFor();
           await page.getByText(messages['source.disconnectConsequence'], { exact: true }).waitFor();
         }
-        if (name.startsWith('settings-')) {
-          // Regression: the App updates entry repeated its title and used a full-width hover target.
-          const section = page.getByRole('region', { name: 'App updates', exact: true });
-          if (await section.getByText('App updates', { exact: true }).count() !== 1) throw new Error('Repeated update title');
-          const entry = section.getByRole('button', { name: /^Current version/ });
-          await entry.scrollIntoViewIfNeeded();
-          await entry.hover();
-          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-entry.png`), animations: 'disabled' });
-          await entry.click();
-          await page.getByRole('heading', { name: 'Current version', exact: true }).waitFor();
-          if (await page.getByRole('combobox', { name: 'Release channel', exact: true }).count() || await page.getByRole('radiogroup', { name: 'Release channel', exact: true }).count()) throw new Error('Single release channel remains interactive');
+        if (fixture.page === 'settings') {
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          await acceptSettings(page, fixture, messages, async () => {
+            if (screenshots) await page.screenshot({ path: path.join(out, `${key}-entry.png`), animations: 'disabled' });
+          });
         }
         if (name.startsWith('forms-')) {
           // Regression: settings forms had touching actions, decorative selectors and unlabelled advanced fields.
