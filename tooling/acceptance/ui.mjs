@@ -1,4 +1,5 @@
 import { acceptAgentObjects, acceptAgentObjectGeometry } from './agent-objects.mjs';
+import { acceptNodeBranding } from './node-branding.mjs';
 import { acceptLongRequest, acceptRequests } from './requests.mjs';
 import { requireMainCheckout } from '../coding-lane.mjs';
 requireMainCheckout();
@@ -76,13 +77,7 @@ try {
           if (!account || attributed?.parent !== account.id) throw new Error('Claude task did not branch from its execution account');
           const unknown = model.topology.tasks.find(task => task.taskId === 'fixture-task-2');
           if (unknown?.parent !== 'claude') throw new Error('Unknown execution account was guessed');
-          const logos = await page.locator('.topology-node[data-agent-node] .agent-quota-icon').evaluateAll(nodes => nodes.map(node => {
-            const logo = node.querySelector('.platform-icon'), svg = logo?.querySelector('svg');
-            const box = node.getBoundingClientRect(), mark = svg?.getBoundingClientRect();
-            return { width: box.width, logo: mark?.width ?? 0, height: mark?.height ?? 0, ring: node.classList.contains('has-quota') };
-          }));
-          row.agentLogos = logos;
-          if (!logos.length || logos.some(logo => logo.logo / logo.width < (logo.ring ? .63 : .84) || Math.abs(logo.logo - logo.height) > 1)) throw new Error('Agent logo shrank inside its node');
+          row.nodeBranding = await acceptNodeBranding(page);
           await page.getByLabel('Opus 5.5 · Medium', { exact: true }).waitFor({ state: 'visible' });
         }
         if (name.startsWith('bubbles-claude-spec')) {

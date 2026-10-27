@@ -1,10 +1,14 @@
 export async function acceptAgentObjectGeometry(page) {
   // Regression: percentage-sized Agent logos expanded ordinary references and collapsed profile copy.
   const geometry = await page.evaluate(() => {
-    const logos = [...document.querySelectorAll('.object-chip > .agent-logo, .entity-row > .agent-logo')].map(node => {
+    const controlBrands = [...document.querySelectorAll('.object-chip > .agent-logo, .entity-row > .agent-logo')].map(node => {
       const expected = node.parentElement.classList.contains('object-chip') ? 16 : 20;
       const box = node.getBoundingClientRect(), svg = node.querySelector('svg').getBoundingClientRect();
       return { expected, width: box.width, height: box.height, svgWidth: svg.width, svgHeight: svg.height };
+    });
+    const controlIcons = [...document.querySelectorAll('.icon-button > svg.icon')].filter(node => node.getClientRects().length).map(node => {
+      const box = node.getBoundingClientRect();
+      return { expected: Number(node.getAttribute('width')), width: box.width, height: box.height };
     });
     const profiles = [...document.querySelectorAll('.entity-row-actions.agent-profile-row')].map(node => {
       const title = node.querySelector('.entity-row-title'), range = document.createRange();
@@ -18,9 +22,10 @@ export async function acceptAgentObjectGeometry(page) {
         overflow: node.scrollWidth > node.clientWidth,
       };
     });
-    return { logos, profiles };
+    return { controlBrands, controlIcons, profiles };
   });
-  if (!geometry.logos.length || geometry.logos.some(logo => [logo.width, logo.height, logo.svgWidth, logo.svgHeight].some(size => Math.abs(size - logo.expected) > 1))) throw new Error('Ordinary Agent logos lost their explicit control size');
+  if (!geometry.controlBrands.length || geometry.controlBrands.some(logo => [logo.width, logo.height, logo.svgWidth, logo.svgHeight].some(size => Math.abs(size - logo.expected) > 1))) throw new Error('Agent control branding must retain 16px Chips and 20px Rows');
+  if (!geometry.controlIcons.length || geometry.controlIcons.some(icon => ![16, 20].includes(icon.expected) || Math.abs(icon.width - icon.expected) > 1 || Math.abs(icon.height - icon.expected) > 1)) throw new Error('Functional control icons lost their explicit 16px or 20px size');
   if (!geometry.profiles.length || geometry.profiles.some(profile => profile.clipped || profile.overlap || profile.overflow)) throw new Error('Profile identity is clipped, overlaps controls, or overflows');
   return geometry;
 }

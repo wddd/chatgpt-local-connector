@@ -59,7 +59,7 @@ export function Icon({
       size={size}
       strokeWidth={1.75}
       aria-hidden="true"
-      className={`icon ${className}`}
+      className={cn("icon", size === 20 ? "size-5" : "size-4", className)}
     />
   );
 }

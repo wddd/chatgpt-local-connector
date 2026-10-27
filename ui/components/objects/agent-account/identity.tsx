@@ -13,5 +13,5 @@ export function accountProfiles(account: Pick<ProviderAccount, 'agentProfiles'>,
 
 export function AccountIdentityIcon({ account, sources, providers }: { account: ProviderAccount; sources: ControlSource[]; providers: ProviderSnapshot[] }) {
   const platform = accountPlatform(account, sources, providers);
-  return <span className="inline-grid size-9 shrink-0 place-items-center" aria-hidden="true"><PlatformIcon className="[&_svg]:size-full!" size={36} role={platform.source ? 'source' : 'agent'} platform={platform.source ?? platform.agent} /></span>;
+  return <span className="inline-grid size-9 shrink-0 place-items-center" aria-hidden="true"><PlatformIcon size={36} role={platform.source ? 'source' : 'agent'} platform={platform.source ?? platform.agent} /></span>;
 }

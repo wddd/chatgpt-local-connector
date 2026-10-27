@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { RefreshCw, ExternalLink } from 'lucide-react';
 import { AgentPlatformChip, AgentPlatformNode, AgentPlatformRow, AgentPlatformCard } from './components/objects/agent-platform';
 import { AgentAccountChip, AgentAccountNode, AgentAccountRow, AgentAccountCard } from './components/objects/agent-account';
 import { SrcAccountCard, SrcAccountChip } from './components/objects/src-account';
-import { Button, SectionHeader, Switch, Notice } from './components/ui';
+import { Button, IconButton, SectionHeader, Switch, Notice } from './components/ui';
 import { PrivacyToggle } from './components/Privacy';
 import AgentQuota from './components/AgentQuota';
 import QuotaBubble from './subscriptions/QuotaBubble';
@@ -17,6 +18,10 @@ export default function AgentObjectsFixture() {
     <SectionHeader level={1} title="AGENT objects" actions={<PrivacyToggle />} />
     <output aria-label="Agent object action" aria-live="polite">{action}</output>
     <Switch label="Busy profiles" checked={busy} onChange={setBusy} /><Switch label="Retained read error" checked={error} onChange={setError} />
+    <section aria-label="Control icons" className="flex gap-2">
+      <IconButton icon={RefreshCw} label="Refresh fixture" onClick={() => setAction('Refreshed')} />
+      <IconButton icon={ExternalLink} size={20} label="Open fixture" onClick={() => setAction('Opened')} />
+    </section>
     <section aria-label="Agent references" className="shell-fixture-states">
       <AgentPlatformChip agent={agent} onOpen={() => setAction('Platform opened')} />
       <AgentPlatformChip agent={{ agent: 'unknown-agent' }} />
