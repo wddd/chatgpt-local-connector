@@ -8,7 +8,7 @@ import CollapseSymbol from './CollapseSymbol';
 import { t } from '../i18n';
 import { topologyCollapsed } from './accountState';
 import { highlightedPaths, type PathTask } from './accounts';
-import { observeTopology } from "../acceptance";
+import { observeTopology } from "../runtimeSnapshot";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject, type PointerEvent, type MouseEvent } from "react";
 import { useMedia } from "../state/hooks";
 import { solve, collapseTarget, COLLAPSE_HIT_SIZE, NODE_R, PANEL_MIN_WIDTH, PANEL_MARGIN, panelWidth, type Side, type Scene, type Drag, type Layout, type Task } from "./solve";

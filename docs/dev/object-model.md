@@ -41,7 +41,7 @@ The core keeps every connection kind, multiple connections per computer and per-
 - SRC and AGENT are managed only from the homepage topology. They have no dock page.
 - Each object has exactly one inspect/edit surface.
 - Creating happens in a centered dialog. Existing objects are inspected in side panels or the Connections page.
-- Actions and display options sit on the object they affect, per [Contextual actions](component-spec.md#contextual-actions). There is no central display-settings panel.
+- Actions and display options sit on the object they affect. There is no central display-settings panel.
 - The hub left half opens Add SRC. The hub right half opens Agent settings.
 
 ## Dock
@@ -68,7 +68,7 @@ SRC panels dock left; AGENT panels dock right. A side panel is a drill-down stac
 
 - Account state and last seen.
 - Conversation list for this account. A conversation with an ARC task opens its L3 task detail on the AGENT side.
-- Rename inline on the alias and remove from the `⋯` menu, per [Contextual actions](component-spec.md#contextual-actions).
+- Rename inline on the alias and remove from the `⋯` menu.
 
 ### AGENT L1 — platform
 
@@ -80,7 +80,7 @@ SRC panels dock left; AGENT panels dock right. A side panel is a drill-down stac
 
 - Account state and quota.
 - Task list for this account. A row opens L3.
-- Rename inline on the alias and remove from the `⋯` menu, per [Contextual actions](component-spec.md#contextual-actions).
+- Rename inline on the alias and remove from the `⋯` menu.
 
 ### L3 — task detail
 
@@ -88,7 +88,7 @@ Unchanged. It replaces the removed Tasks page.
 
 ### Agent settings (hub right)
 
-Lists agents discovered on this computer with enable/disable and order. Not-installed agents show their official setup link. It does not manage accounts or tasks.
+Lists agents discovered on this computer with enable/disable and order. A compact list of official setup links is allowed without installation-status rows. It does not manage accounts or tasks.
 
 ### Add SRC (hub left)
 
@@ -125,11 +125,6 @@ Log rows: time, source name when known, op and result.
 - Account UI: merge, notification binding, default-account switch and dispatch policy summary.
 - Every removed capability remains available through CLI/AX and is documented in the user guides.
 
-## Phases
+## Acceptance
 
-1. Removal: dock, page deletions, redirects and removed connection and permission UI.
-2. Panels: SRC and AGENT L1/L2 with the single-account shortcut.
-3. Connections and Add SRC: the two-connection model and the simplified add flow, with user guides updated for CLI/AX configuration.
-4. Acceptance: replace the fixture set with one scenario per surface state above.
-
-Each phase is accepted with UI fixtures.
+Use `npm run dev:ui` connected to the running app's real data to exercise changed surfaces. See [Acceptance](acceptance.md).

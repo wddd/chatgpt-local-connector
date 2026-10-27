@@ -49,18 +49,3 @@ export function parseTests(file, source) {
   });
   return { cases, root };
 }
-
-// Compare syntax tokens so reformatting an assertion does not count as churn.
-export function assertionSignature(testCase) {
-  function tokens(node) {
-    if (typeof node.kind === 'function') {
-      if (/comment/.test(node.kind())) return [];
-      const children = node.children();
-      return children.length ? children.flatMap(tokens) : [node.text()];
-    }
-    if (ts.isStringLiteralLike(node)) return [JSON.stringify(node.text)];
-    const children = node.getChildren();
-    return children.length ? children.flatMap(tokens) : [node.getText()];
-  }
-  return JSON.stringify(testCase.assertions.map(a => tokens(a.node).filter((token, i, all) => token !== "," || !["}", "]", ")"].includes(all[i + 1]))));
-}

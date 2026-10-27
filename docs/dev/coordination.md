@@ -6,9 +6,8 @@ reason justifies an exception. MAY means an option.
 The `coordination` module owns the instance-local metadata journal and `events`
 query. `guide`, `query`, `act`, and `notification` retain their frozen envelopes.
 AX source writes use the owner store below. Resource push remains a later phase.
-ARC observers project dispatch, terminal, receipt, replacement, restart, local
-tooling lifecycle and registered Git facts. Source event-report writes and resource
-push are not implemented. AX and the bulletin own their separate records and producers.
+ARC observers project dispatch, terminal, receipt, replacement, restart and
+registered Git facts. Source event-report writes and resource push are not implemented. AX and the bulletin own their separate records and producers.
 
 ## Producer interface
 
@@ -213,27 +212,11 @@ even in the same thread, are `ambiguous`. Missing evidence, failed observation o
 restart discontinuity is `unknown` (unattributed). Author identity is never evidence.
 The observer never mutates Git, registers projects or resumes threads.
 
-## Local tooling reports
+## Local tooling observation
 
-`coordination.observe` and `coordination.observation` are authenticated local
-management operations, absent from the control-source op catalog. Worktree tooling
-persists a stable transition before its action and marks completion before reporting.
-Core validates the registered parent, current worktree/ref state and land ancestry.
-Isolated supervision reports an opaque instance, actual child start/exit and exit code;
-Core reads process liveness. Starting is not readiness. A lost supervisor supplies no
-fabricated exit. A successful POST requires a separate transition readback.
+The authenticated local `coordination.observe` and `coordination.observation` management operations remain available outside the control-source op catalog. Core validates registered resources, Git facts and process liveness. The worktree and isolated-development commands do not submit lifecycle reports. Ref movement alone does not prove that a tooling action ran.
 
-Tooling uses a 64-record local outbox and reconciles at most two previously completed
-reports per invocation, keeping their IDs and payloads. It never retries the original
-Git or process action. Confirmed tooling records may be pruned locally because Core
-retains their producer checkpoints. Failed/partial operations, unavailable Core,
-unregistered roots and failed readback print `coverage:missing` without changing the
-original command exit result. Prepared-but-unconfirmed actions are not replayed.
-
-`events.coverage.observers` exposes sampled coverage, last gaps, HEAD state and
-registry age. Journal coverage and observer coverage are separate: a healthy journal
-cannot imply that an offline tool, inaccessible repository or missing baseline was
-observed. Observers add no resource subscription or message. Bulletin claims are advisory and never execution leases.
+`events.coverage.observers` exposes sampled coverage, gaps, HEAD state and registry age. Journal coverage does not establish observation of offline tools or inaccessible repositories.
 
 ## Bulletin and resource blockers
 
@@ -331,9 +314,7 @@ for the complete paginated resource picture.
 it is not evidence of an empty board. Sources should weigh inactivity age.
 
 The authenticated local `coordination/conflicts` route reads the cached registered
-project projection. Worktree land and isolated startup print advisory preflight
-warnings, then execute independently and return current warnings with lifecycle
-readback. Missing Core leaves the original command result unchanged. Main-only
+project projection. Worktree and isolated-development tooling do not call this route. Main-only
 worktree/isolated guards remain authoritative. Replacement submission persists
 `app:installed` warnings in its normal receipt. Explicit simple `git push`
 submissions through `command`, including its native argv form and `git -C`, return

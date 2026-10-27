@@ -26,11 +26,10 @@ assets/promo/out/
 # Local Worker emulator state
 relay-worker/.wrangler/
 
-# Local acceptance evidence and pixel baselines
+# Local native acceptance evidence
 output/acceptance/
 
 # Local mutation audit output
 output/mutation/
 mutants.out*/
-.stryker-tmp/
 output/

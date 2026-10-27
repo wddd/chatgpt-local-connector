@@ -70,7 +70,7 @@ for (const file of testFiles()) {
   for (const node of nodes) {
     if (ts.isCallExpression(node)) {
       const expression = node.expression.getText(parsed.root), offset = node.getStart(parsed.root);
-      if (/(?:^|\.)getComputedStyle$/.test(expression)) emit(offset, 'computed-style', 'Move visual assertions to accept:ui.');
+      if (/(?:^|\.)getComputedStyle$/.test(expression)) emit(offset, 'computed-style', 'Verify visuals through dev:ui against the running app.');
       if (/\.querySelector(?:All)?$/.test(expression) && node.arguments.some(arg => /\.[a-z_-]/i.test(arg.text ?? arg.getText(parsed.root))))
         emit(offset, 'class-selector', 'Use accessible role/name queries.');
       if (fsOperation.test(expression) && !/^(?:read|write|load|save)$/.test(expression) && tainted(node.arguments[0])) emit(offset, 'state-access', 'Use public operations, not the ARC state directory.');

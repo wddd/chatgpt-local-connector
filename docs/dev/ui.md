@@ -6,7 +6,7 @@ React renders. Tauri/Rust owns configuration, connections, tasks, authentication
 
 ## shadcn and Tailwind foundation
 
-ARC uses shadcn/ui source backed by Radix and Tailwind CSS v4. `vite.config.ts` uses the official `@tailwindcss/vite` plugin for the desktop frontend, `dev:ui` and browser fixtures. `design-system/build.mjs` compiles the same token entry with that plugin and scopes preflight and utilities to `.arc-root`; component rules and floating portals remain inside their design islands. Node/npm are build tools, not desktop runtime dependencies.
+ARC uses shadcn/ui source backed by Radix and Tailwind CSS v4. `vite.config.ts` uses the official `@tailwindcss/vite` plugin for the desktop frontend and `dev:ui`. `design-system/build.mjs` compiles the same token entry with that plugin and scopes preflight and utilities to `.arc-root`; component rules and floating portals remain inside their design islands. Node/npm are build tools, not desktop runtime dependencies.
 
 Add a primitive from the repository root with the pinned CLI:
 
@@ -18,7 +18,7 @@ node node_modules/shadcn/dist/index.js add accordion
 
 Use Tailwind scale utilities and semantic tokens in features. Native controls, direct Select/ToggleGroup use, new dedicated CSS files, inline layout declarations and arbitrary color/spacing/radius/type values are rejected by `check:ui`. Compose domain objects under `ui/components/objects` and cross-object composites under `ui/components/composites`. Shared-layout CSS debt is zero. Only topology/earcup connections, quota rings and task bubbles retain dedicated brand stylesheets; ARC mark assets retain their brand painting. [UI debt](ui-debt.md) identifies the closed file and selector boundaries.
 
-The copied primitives include button, input, textarea, label, switch, select, toggle/toggle-group, tabs, dialog, alert-dialog, tooltip, dropdown-menu, popover, card, badge, separator, scroll-area, skeleton, alert, field/form, collapsible, checkbox, slider, progress, empty and spinner. Native forms remain the default; the form helpers are available for React Hook Form consumers. Design-mount and Claude Design previews show primitive and shared-component states. Surface-state browser fixtures exercise their product composition.
+The copied primitives include button, input, textarea, label, switch, select, toggle/toggle-group, tabs, dialog, alert-dialog, tooltip, dropdown-menu, popover, card, badge, separator, scroll-area, skeleton, alert, field/form, collapsible, checkbox, slider, progress, empty and spinner. Native forms remain the default; the form helpers are available for React Hook Form consumers. Optional design-mount and Claude Design previews show primitive and shared-component states.
 
 ### Token map
 
@@ -39,7 +39,7 @@ The copied primitives include button, input, textarea, label, switch, select, to
 
 `@theme` exposes these values to Tailwind. Body stays 14px, controls 13px, metadata 12px; spacing uses Tailwind's 4px base. Legacy `canvas`, `surface`, `text`, `action` and related names derive from the semantic variables while their feature consumers remain. Remove each legacy name when its final consumer migrates. `brand-accent` replaces the old overloaded purple `accent`; palette changes, topology and quota use that explicit brand token. These aliases remain only for brand painters and geometry consumers; functional layouts use semantic utilities.
 
-Text and decorative paint have separate contrast needs. `--brand-foreground` derives a darker light-theme or lighter dark-theme color from the selected accent. Tailwind's `--text-color-brand-accent` mapping applies it to existing status, step, link and recommendation text without changing brand fills, borders, quota or topology paint. Brighter blue/orange/green light palettes use their own mixing weights. Success and phase foregrounds cover neutral, hover and soft tone surfaces; muted text uses the same surface matrix. Completed-task text is also checked after compositing the card at `--task-completed-opacity` over its surrounding surface. `tests/token-contrast.test.mjs`, included in `npm test`, computes unrounded sRGB contrast for every supported palette and theme, requiring at least 4.5:1 even for semantic colors also used by large text or icons. Host-provided MCP colors remain owned by the host. `node tooling/acceptance/contrast.mjs` checks the rendered fixture pairs at 1280×800 and writes measurements under `output/playwright/contrast/`; it does not launch a native instance.
+Text and decorative paint have separate contrast needs. `--brand-foreground` derives a darker light-theme or lighter dark-theme color from the selected accent. Tailwind's `--text-color-brand-accent` mapping applies it to existing status, step, link and recommendation text without changing brand fills, borders, quota or topology paint. Brighter blue/orange/green light palettes use their own mixing weights. Success and phase foregrounds cover neutral, hover and soft tone surfaces; muted text uses the same surface matrix. Completed-task text is also checked after compositing the card at `--task-completed-opacity` over its surrounding surface. `tests/token-contrast.test.mjs`, included in `npm test`, computes unrounded sRGB contrast for every supported palette and theme, requiring at least 4.5:1 even for semantic colors also used by large text or icons. Host-provided MCP colors remain owned by the host.
 
 `ui/theme.ts` follows system appearance by default, sets `data-theme` and the `.dark` class, and keeps native/MCP theme handling. The Tailwind dark variant reads `data-theme` so scoped design roots work without changing the host document. Reduced-motion media and environment overrides disable transitions. Common controls use Radix focus, keyboard and dismissal semantics; topology workspace geometry remains with ElasticPanel, using the shared shadcn Dialog surface.
 
@@ -108,8 +108,6 @@ The left center dot opens the shared Add a control source flow. Welcome appears 
 
 Account topology follows [Accounts → Topology](accounts.md#topology). The topology consumes the shared `useAccounts` store and retains the source-ID homepage when account data is absent. Shared polling refreshes every ten seconds; native quota reads retain their own cache. Single-account platforms show the platform name in both modes and retain their bubble slots. Account nodes reuse their platform logo in both modes. Multi-account Agent platform nodes have no quota ring; each account node uses its own account quota with the shared quota renderer. A missing reading leaves that account logo without a ring. Account labels have no link icon. Same-identity path highlighting remains available. Distinct `Unidentified` account IDs stay separate; their labels include ordinals sorted by account ID, independent of mode and manual order. Account identity comes only from the account IDs, source memberships and Agent profiles returned by Core. Tree and Flat share stable account keys, account order and collapse overrides. Task attribution uses `agentAccountId` and `origin.accountId` or `origin.sourceId`; unattributed historical tasks remain on the platform. Account nodes open L2 in the source or Agent panel. Platform nodes open L1, except that a sole account opens L2 directly. Back always returns to L1. Account administration belongs only in these homepage panels. Collapse toggles use 20px theme-color circles with canvas knockout symbols and a 2px canvas ring, positioned toward the node with clearance from the outer arc. Hover and focus reveal them with a short scale/fade transition. Path dimming uses the animator for wires, outer arcs, nodes and bubbles in the same frame; hovered nodes have no halo or extra scale. Reduced motion switches directly.
 
-The `?scenario=homepage-accounts-light` development fixture supplies two shared Claude identities, a shared ChatGPT/Codex identity, a single-account dsh Agent and running, pending and completed tasks. Multiple source connections share one Claude account; two additional source-only `Unidentified` accounts have distinct IDs and identical aliases. Reads and preference writes stay inside the development scenario; unsupported actions fail locally. Use this scenario from the main checkout after landing; coding lanes do not run the app or acceptance.
-
 ## Settings
 
 Settings keeps everyday task behavior, startup, desktop notifications, language, system/light/dark appearance, macOS menu-bar/Dock placement, System permissions, and updates. The nested permissions and update pages retain Back/Escape navigation and entry-focus restoration. Updates shows version, release notes, check/install actions, installation timing, current progress, and recent outcomes with backup restoration.
@@ -152,9 +150,7 @@ SRC L1 lists aliases and states once per account. Add account preselects the pla
 
 AGENT L1 shows the Agent name/version, Add account using the existing native login flow, and account aliases, states and quota icons. It has no aggregate task list. L2 shows account state, quota and only tasks attributed to that account. Rename and Remove use shared centered dialogs. The L3 content and its task actions are unchanged.
 
-Agent settings distinguishes installed cards from compact uninstalled rows. Installed enabled cards use Motion Reorder, with pointer dragging outside controls and arrow sorting on focused cards. Enable/disable and order persist to the homepage. Not-installed entries link to official setup. Agent settings no longer opens Agent details, quota overview or display settings. CLI/AX owns task bubble density, width, auto-compact, homepage Agent count and quota presentation.
-
-The `src-*`, `agent-*` and `task-detail-*` scenarios cover L1, L2, single-account shortcuts, empty states, task detail and Agent settings. `agent-l2-empty` covers the conversation empty state. Browser acceptance runs only from main after landing.
+Agent settings distinguishes installed cards from compact uninstalled rows. Installed enabled cards use Motion Reorder, with pointer dragging outside controls and arrow sorting on focused cards. Enable/disable and order persist to the homepage. A compact list of official setup links may accompany discovered agents; it does not need installation-status rows. Agent settings no longer opens Agent details, quota overview or display settings. CLI/AX owns task bubble density, width, auto-compact, homepage Agent count and quota presentation.
 
 ## Subscription quota
 
@@ -164,13 +160,13 @@ CLI/AX retains homepage count, remaining/used, countdown/date, enablement, and r
 
 ## Update notification
 
-The update popover keeps its header and action footer outside the scrolling body. Release notes and impact details scroll independently within a bounded content area, capped at 460px and reduced for short windows. Narrow windows stack the two scrolling sections. `?scenario=update-long-notes` supplies long release notes for this layout.
+The update popover keeps its header and action footer outside the scrolling body. Release notes and impact details scroll independently within a bounded content area, capped at 460px and reduced for short windows. Narrow windows stack the two scrolling sections.
 
 Only the primary button shows download size/progress. Do not add a body progress area. Completion changes the button to the localized install-update action. Installation requires another click.
 
 ## Verification
 
-Check light/dark, narrow windows, long Chinese/English content, layered Escape and focus restoration through `npm run accept:ui`. The surface-state runner uses all three shared viewports, blocks live management calls and checks bounds, overflow, navigation and ARC brand visuals. Radix owns generic keyboard handling and dialog semantics. Installed WebView, tray and lifecycle require separate runtime acceptance.
+Check light/dark, narrow windows, long Chinese/English content, layered Escape and focus restoration through `npm run dev:ui` connected to the running app. Radix owns generic keyboard handling and dialog semantics. Installed WebView, tray and lifecycle require separate runtime acceptance.
 
 ## Task detail projection
 
@@ -180,16 +176,12 @@ At 360px of panel width or below, the header uses a single-line title, status an
 
 The pending-input dock uses at most 60% of the task panel height. The timeline shrinks into the remaining space. Question fields and permission previews scroll inside the dock while request navigation, answer actions and routing status remain visible. The narrow input sheet uses its actual shell width and available height, with the same internal scrolling boundary.
 
-Development scenarios mock task receipts, queue/review reads and explicit actions in memory. Open `?scenario=task-detail-multi-turn` in the Vite development UI for read-only queue/review state and execution question/permission controls. Mock control-source sends complete immediately when idle so continuation and review states remain inspectable without running an Agent. Responses and resulting timeline/queue/review state can be read again; reloading resets the scenario. Unsupported mutations fail locally and never fall through to Core. Fixtures exercise UI behavior, not native execution ownership or provider acceptance.
-
-## Account privacy and development scenarios
+## Account privacy
 
 The persisted `arc.privacy` preference masks emails, organization names, identity keys, notification session names, and connection addresses. The source-panel header exposes its toggle. Aliases, topology labels, task titles, prompts, and task bubbles remain readable.
 
 Render sensitive fields with `Sensitive` and compound email/organization lines with `SensitiveIdentity`. Hidden fields contain deterministic stand-in letters, preserving whitespace, `@` and `.`, with a soft inline blur and reduced opacity in both themes. Off-DOM font measurement reserves the original text width and scales stand-ins to fit it; narrow containers clip the inline run. Multiline identity fields use `wrap` to let both visible text and masked stand-ins wrap naturally within the card instead of reserving a fixed inline width. Never keep raw values in hidden elements, titles, accessibility labels, input values, or data attributes. Plain-text tooltips and upstream notices use bullet masking for known identities and email substrings. Reduced motion disables the short blur-in animation.
 
-`SensitiveInput` displays bullet stand-ins and becomes read-only while masked; turn privacy off to edit. Copy buttons continue to copy the real value from React state. Turning privacy off restores the exact original text. Snapshot requests and development scenarios enable privacy before rendering; AX and management responses remain unchanged.
-
-`?scenario=src-l2` opens SRC account L2 with invented identities and in-memory responses. Add-account and topology fixtures cover their surviving hosts. Removed page, connection-editor, grant-history, merge and notification UI fixtures are deleted. Unsupported mutations fail locally; scenarios do not authenticate with a provider.
+`SensitiveInput` displays bullet stand-ins and becomes read-only while masked; turn privacy off to edit. Copy buttons continue to copy the real value from React state. Turning privacy off restores the exact original text. Snapshot requests enable privacy before rendering; AX and management responses remain unchanged.
 
 `ui/types.ts` owns the native account types and `accountsApi` in `ui/api.ts` owns management routes. Login polling reads the list's `login` field and code submission receipts do not imply completion. Notification tests send to an explicit session target; manual binding assigns a host route and does not verify delivery. MCP Events exposes observed reachability without Claude notification actions. Unidentified sources retain their native alias and have no inferred identity or fake reauthorization recovery. `defaultFor` selects a replacement default; `default:false` clears that Agent default through CLI/AX. Current native limitations also include API-key authentication through each Agent's CLI and no provider identity claims from MCP OAuth grants.

@@ -24,7 +24,7 @@ test("environment API updates the live snapshot without changing saved preferenc
   };
   try {
     const { refreshAppEnvironment } = await server.ssrLoadModule("/ui/state/appEnvironment.ts");
-    const { viewModel } = await server.ssrLoadModule("/ui/acceptance.ts");
+    const { viewModel } = await server.ssrLoadModule("/ui/runtimeSnapshot.ts");
     const { theme } = await server.ssrLoadModule("/ui/theme.ts");
     const { language } = await server.ssrLoadModule("/ui/i18n.ts");
     const saved = { theme: theme.get(), language: language.get() };

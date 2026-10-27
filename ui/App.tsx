@@ -1,7 +1,6 @@
 import { CopyValue } from './components/composites/CopyValue';
 import { ArrowLeft } from "lucide-react";
-import { scenarioName } from "./scenarioMode";
-import { captureRequest, type PanelRequest } from "./acceptance";
+import { captureRequest, type PanelRequest } from "./runtimeSnapshot";
 import {
   useEffect,
   useLayoutEffect,
@@ -47,7 +46,6 @@ import { UpdateDock, UpdateOutcome } from "./components/AppUpdate";
 import { Button, Icon, IconButton, Notice, HoverScope, FunctionalPage } from "./components/ui";
 import { api } from "./api";
 import { startPermissions } from "./state/permissions";
-const NavigationFixture = import.meta.env.DEV && scenarioName === "navigation-redirects" ? (await import("./scenarioNavigation")).default : undefined;
 export default function App() {
   locale.use();
   const privateMode = usePrivacy();
@@ -115,7 +113,6 @@ export default function App() {
     setPage(next);
   }
   useEffect(() => {
-    if (scenarioName) return;
     const stops = [
       startConnector(),
       startPermissions(),
@@ -218,7 +215,6 @@ export default function App() {
         }
       }}
     >
-      {NavigationFixture && <NavigationFixture page={page} navigate={navigate} />}
       {isDesktop && (
         <div className="window-drag-strip absolute inset-x-0 top-0 z-60 flex h-9.5 justify-end" data-tauri-drag-region />
       )}

@@ -11,5 +11,4 @@ export const panelFixtures = {
   conversations: [conversation, { ...conversation, id: 'without-task', taskRefs: [] }, { ...conversation, id: 'multiple-tasks', taskRefs: [...conversation.taskRefs, { agent: 'claude', id: 'second-task', basis: 'manual' as const }] }],
   source: { product: 'claude', sources: baseFixtures.sources, accounts: baseFixtures.accounts, ingresses: baseFixtures.ingresses },
   agent: agentFixtures.agent, account: agentFixtures.account,
-  scenarios: ['src-l1', 'src-l1-empty', 'src-single', 'src-l2', 'src-l2-empty', 'src-multiple-connections', 'agent-l1', 'agent-l1-empty', 'agent-single', 'agent-l2', 'agent-l2-empty', 'task-detail-running', 'agent-settings'],
 };

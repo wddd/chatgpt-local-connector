@@ -8,4 +8,4 @@ Composes DropdownMenu and an anchored Popover. An item with a consequence requir
 
 ## Mounts
 
-Exported through `ui/design-mount.ts`. The `context-actions-light` and `context-actions-dark` browser fixtures force revealed actions. Secondary icons also reveal on focus-within and coarse pointers. Icon controls expose a name and tooltip.
+Exported through `ui/design-mount.ts`. Secondary icons also reveal on focus-within and coarse pointers. Icon controls expose a name and tooltip.

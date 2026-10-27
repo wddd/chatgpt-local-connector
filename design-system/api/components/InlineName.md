@@ -8,4 +8,4 @@ Edits a name in place. Enter or blur saves a trimmed, nonempty value. Escape can
 
 ## Mounts
 
-Exported through `ui/design-mount.ts`. The `context-actions-light` and `context-actions-dark` browser fixtures force revealed actions. Secondary icons also reveal on focus-within and coarse pointers. Icon controls expose a name and tooltip.
+Exported through `ui/design-mount.ts`. Secondary icons also reveal on focus-within and coarse pointers. Icon controls expose a name and tooltip.

@@ -9,7 +9,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { readCore, coreRequest } from './dev-core.mjs';
-import { beginLifecycle } from './coordination-report.mjs';
 
 // Always allocate new state: never hand the development supervisor an installed instance.
 if (process.argv.length !== 2) throw new Error('Usage: npm run dev:isolated. A new state directory is allocated automatically.');
@@ -29,11 +28,6 @@ const done = new Promise(resolve => {
   child.once('exit', code => { ended = true; actualExitCode = code ?? 1; resolve(actualExitCode); });
 });
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { if (!ended) child.kill(signal); });
-const reportingDirectory = path.join(stateDirectory, 'tooling-observations');
-const startReport = await beginLifecycle(reportingDirectory, {
-  kind: 'isolated.started', repository: root, instance: env.ARC_DEV_INSTANCE_ID, pid: child.pid,
-});
-await startReport(Number.isInteger(child.pid) && !ended);
 try {
   // The existing development supervisor owns signing, rebuilding and cleanup.
   // Read both Core and Desktop before advertising a usable acceptance endpoint.
@@ -68,8 +62,4 @@ try {
   await done.catch(() => {});
   process.exitCode = 1;
 }
-const exitReport = await beginLifecycle(reportingDirectory, {
-  kind: 'isolated.exited', repository: root, instance: env.ARC_DEV_INSTANCE_ID, pid: child.pid, exitCode: actualExitCode,
-});
-await exitReport(ended && Number.isInteger(child.pid));
 // State remains available for inspection. No installed state or artifacts are replaced.

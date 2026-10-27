@@ -36,7 +36,7 @@ for (const width of [232, 264, 304]) for (const mode of ["default", "tree", "fla
     const { ActivityBubble } = await server.ssrLoadModule("/ui/components/ActivityBubbles.tsx");
     const { agentPanel } = await server.ssrLoadModule("/ui/state/overviewPanels.ts");
     const { t } = await server.ssrLoadModule("/ui/i18n.ts");
-    const { viewModel } = await server.ssrLoadModule("/ui/acceptance.ts");
+    const { viewModel } = await server.ssrLoadModule("/ui/runtimeSnapshot.ts");
     const position = () => { const { x, y } = viewModel().topology.tasks.find((task: any) => task.id === "finished").position; return { x, y }; };
     const origin = { kind: "claude", label: "Fixture origin" };
     const session = { id: "finished", title: "Finished task", source: "arc-task", phase: "idle", phaseSince: null, headline: "", orderAt: 1, endedAt: 1, dispatchSummary: { controlSource: origin } };
@@ -145,7 +145,7 @@ test("agents and UI share completion read state without opening details or mutat
     const { controlActivityBubble } = await server.ssrLoadModule("/ui/state/activityBubbles.ts");
     const { ActivityBubble } = await server.ssrLoadModule("/ui/components/ActivityBubbles.tsx");
     const { agentPanel } = await server.ssrLoadModule("/ui/state/overviewPanels.ts");
-    const { viewModel } = await server.ssrLoadModule("/ui/acceptance.ts");
+    const { viewModel } = await server.ssrLoadModule("/ui/runtimeSnapshot.ts");
     const { t } = await server.ssrLoadModule("/ui/i18n.ts");
     const base = { source: "arc-task", phase: "idle", phaseSince: null, headline: "", timeline: true };
     const sessions = ["agent-read", "ui-read", "detail-read"].map(id => ({ ...base, id, title: id }));
@@ -222,7 +222,7 @@ test("read acknowledgements survive a fresh renderer and task replay while a new
     const { useActivityTracking, acceptActivity } = await server.ssrLoadModule("/ui/state/activity.ts");
     const { TooltipProvider } = await server.ssrLoadModule("/ui/components/ui/index.tsx");
     const { controlActivityBubble } = await server.ssrLoadModule("/ui/state/activityBubbles.ts");
-    const { viewModel } = await server.ssrLoadModule("/ui/acceptance.ts");
+    const { viewModel } = await server.ssrLoadModule("/ui/runtimeSnapshot.ts");
     const { ActivityBubble } = await server.ssrLoadModule("/ui/components/ActivityBubbles.tsx");
     const { t } = await server.ssrLoadModule("/ui/i18n.ts");
     function Harness() {

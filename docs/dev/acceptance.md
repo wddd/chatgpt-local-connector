@@ -2,13 +2,13 @@
 
 [Development](development.md) · [CLI contracts](../reference/cli.md)
 
-## Scope: fixtures first
+## Live UI
 
-UI/UX acceptance (layout, visual states, copy, light/dark, widths, panel and task interactions) MUST run on browser fixtures only: `npm run accept:ui -- --scenario=<name>` or `dev:ui` with `?scenario=`. It MUST NOT start `dev:isolated`, build packages or touch the installed app. A state without a fixture gets a new or extended fixture; it is not a reason to fall back to a running app. Remaining experience and visual polish is found by the user through real use after delivery, so acceptance favors early delivery over exhaustive runtime checks.
+Judge layout, copy and interactions with `npm run dev:ui` connected to the running app's real data. Open each changed surface, use its interactions and inspect light and dark themes. Do not remove accounts, complete logins or change connections during UI acceptance. Restore anything renamed or reordered. Report states that cannot be reached with the available data.
 
-`accept:ui` uses Vite mode `acceptance-fixture`, which rejects live management requests before native-owner discovery. Run it from the main checkout after landing. Native app runs, installs and isolated runtime acceptance also require the main checkout.
+`dev:ui` starts only the browser frontend. It does not build or restart Core. It may run from an assigned coding lane. Native app runs, installs and isolated runtime acceptance remain serial in the main checkout.
 
-Isolated-instance runtime acceptance is reserved for behavior fixtures cannot simulate: native windows and focus, the replacement/update lifecycle, real Agent dispatch and resume, and notification delivery. Keep it to the scenarios the change affects.
+Keep separate native runtime acceptance for native windows and focus, update/replacement lifecycle, real Agent dispatch and resume, and notification delivery. Run only the checks relevant to the change and its authorization.
 
 ## Focus policy
 
@@ -77,72 +77,6 @@ gap; acceptance never changes host settings to manufacture them.
 Use the [local app replacement protocol](../reference/app-replacement.md) for an authorized installed-build upgrade. Run the candidate Core's `cli app replace <bundle> --check` first, then `cli app replace <bundle> --now` as the dispatching turn's final command for an explicit user-directed installation. Omit `--now` when idle waiting and a restart countdown are desired. Do not call `app quit` before it. Reconnect from the control source and read `app replace --status`, `app status`, and `status`; compare Desktop/Core build hashes and then perform the requested connection or provider acceptance. A staged receipt or successful package check alone is not installed-app acceptance. Build-only or no-restart tasks must stop before the mutating replacement command.
 
 For offline CLI regressions against a freshly built Core, run `npm run check:tests`, then `ARC_TEST_BINARY="/absolute/path/to/arc" node --test tests/app-replace.test.ts`. These tests use temporary state and do not launch or stop Desktop. The Rust `app_replace` regression covers the active-turn, active-command, pending-interaction, and unknown-observation drain decisions.
-
-## UI scenarios
-
-```sh
-npm ci
-npx playwright install chromium
-npm run accept:ui
-```
-
-The script starts an isolated Vite page and captures 640×800, 1280×800 and 1920×1080. Functional pages also run at 360×800 to cover wrapped controls. The 640-wide viewport covers portrait topology and narrow panels; every scenario runs at all three standard widths. Stop the existing development service first if it owns port 5187. Scenario mode never connects to real Core. The script rejects all actual management API requests. For WebKit comparison:
-
-```sh
-npx playwright install webkit
-npm run accept:ui -- --webkit
-```
-
-Artifacts live in `output/acceptance/ui/<timestamp>-<browser>/`:
-
-- index.html compares current, previous, and pixel-diff images for all scenarios.
-- report.json records missing baselines, changed pixels/ratios, and render errors.
-- `<scenario>-<width>.png` / `.json` contain screenshots and live derived state.
-- `*-before.png` / `*-diff.png` contain the prior baseline and pixel differences.
-
-The first run creates a baseline. Later runs compare with the latest directory for the same browser. Changes require visual review and are not automatically defects. Render errors, unexpected real API requests, or missing scenario nodes cause nonzero exit. Git ignores baselines and reports.
-
-Scenarios in `tooling/acceptance/scenarios/*.json` are named by surface and state. Each file represents one product state; widths belong to the runner, not duplicate files. Light/dark pairs cover topology, account quota, task bubbles, detail, Connections, Logs and Settings where theme affects visual review. Other states use one theme. English and Chinese generic MCP instructions retain separate fixtures for the registry-name regression.
-
-| Surface | Scenarios |
-| --- | --- |
-| Homepage | `homepage-empty`, `homepage-welcome`, `homepage-sources-agents`, `homepage-accounts-*`, `homepage-running`, `homepage-needs-input`, `homepage-completed`, `homepage-long-content` |
-| SRC inspectors | `src-l1`, `src-l1-empty`, `src-single`, `src-l2`, `src-l2-dark`, `src-l2-empty`, `src-multiple-connections` |
-| AGENT inspectors | `agent-l1`, `agent-l1-empty`, `agent-single`, `agent-l2*`, `agent-settings`, `agent-add-account`, `agent-quota-segments*` |
-| Task bubbles and L3 | `task-bubbles-*`, `task-detail-*`: running, input, completion, ownership, routing, failed/interrupted turns, long content and recorded dispatch metadata |
-| Add SRC | `add-src-product`, `add-src-product-selected`, `add-src-remote`, `add-src-generic`, `add-src-generic-en`, `add-src-local` (Claude Code), `add-src-local-desktop`, `add-src-no-public-link`, `add-src-deploying`, `add-src-pairing`, `add-src-success` |
-| Connections | `connections-ready`, `connections-ready-dark`, `connections-stopped`, `connections-no-public-link`, `connections-deploying`; `connections-local-*` and `connections-extra-*` cover error and stopped states |
-| Settings and updates | `settings-general*`, `settings-system-permissions`, `settings-updates`, `update-*`: availability, download, coordination, countdown, local replacement, failure and recovery |
-| Logs | `logs-empty`, `logs-populated`, `logs-populated-dark` |
-| Removed page targets | `navigation-redirects`: tasks/accounts → homepage, remote → Connections, permissions → Settings |
-
-`ui.mjs` owns screenshot comparison, API isolation and the report. Shared checks measure viewport bounds, horizontal overflow, dock clearance and compact empty states, required/forbidden entries, navigation, drill-down, layered Escape and focus restoration. Brand checks cover topology wire paint, account quota rings and task bubbles. Regression comments identify retained ARC-specific failures. Generic Radix keyboard behavior, dialog semantics and token contrast do not need browser reimplementation. Component-only permutations remain in design-mount and Claude Design previews rather than additional product scenarios.
-
-Left and right panels are captured separately under the single-panel rule. Fixtures use `sourceSetup`, `remoteLink`, `relayProgress`, `panelAccounts` and `topologyAccounts` to select synthetic state without contacting Core. Scene readiness and missing routes remain fatal. Scenario renames use new screenshot keys; existing baseline directories are preserved, and a missing matching key is reported as a missing baseline rather than compared to an unrelated surface.
-
-Task-detail fixtures use sanitized payloads matching `AgentTimeline` / `AgentInteraction` in `ui/types.ts`. Ownership follows `control::observe_ownership` and `claude_notify::ownership`; request routing follows `claude_notify::routing`. No fixture contains real task content or provider identities.
-
-| Scenario | Target |
-| --- | --- |
-| `task-detail-owner-connector` | Connector ownership hides the owner chip. |
-| `task-detail-owner-desktop` | Desktop ownership shows the owner chip; open it to inspect handoff history. |
-| `task-detail-routing-deferred` | A 15-second countdown with pause and handoff controls. |
-| `task-detail-routing-paused` | Paused routing with resume and handoff controls. |
-| `task-detail-routing-routed` | Routed status without delay controls. |
-| `task-detail-routing-not-routable` | Next-check status without delay controls. |
-| `task-detail-turn-failed` | Native failed turn, Retry card, and empty footer. |
-| `task-detail-turn-interrupted` | Native cancelled turn, Resume card, and empty footer. |
-| `task-detail-long-question` | Long question with 16 described options; options scroll while Submit and routing stay pinned. |
-| `task-detail-long-approval` | Long native approval preview; preview scrolls while decision actions and routing stay pinned. |
-| `task-detail-wide-markdown` | Completed answer with a ten-column table and a long unwrapped code line; horizontal wheel stays in the hovered content. |
-
-Task dialogs take their accessible name from the visible native task-title heading; returning to the Agent overview restores the Agent name.
-
-At narrow panel widths, open the needs-you banner to inspect the capped bottom sheet in either long-input scenario.
-
-Target one fixture with `npm run accept:ui -- --scenario=task-detail-owner-desktop` from main. The runner uses browser fixtures and screenshots. A missing route fails readiness with its method and path in `scenario.missingRoutes` and `data-scenario-error`.
-
-For manual inspection, run npm run dev:ui and open `http://127.0.0.1:5187/?scenario=<scenario>`. Only Vite development loads scenarios. Release builds exclude fixture modules. Fixed time and reduced animation support layout comparison. These screenshots are the evidence for UI/UX acceptance; they do not cover real Agent or native-window behavior, which follows the runtime scope above.
 
 ## Notification reachability and guides
 

@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { ESLint } from 'eslint';
-import { uiFiles, isFeatureFile, relativeFile, brandStylesheets, isBrandSelector, isFixtureCss, isFoundationSelector } from './ui-policy.mjs';
+import { uiFiles, isFeatureFile, relativeFile, brandStylesheets, isBrandSelector, isFoundationSelector } from './ui-policy.mjs';
 import postcss from 'postcss';
 import { checkCssSelectors } from './ui-css-policy.mjs';
 
@@ -22,7 +22,7 @@ for (const file of Object.keys(eslintBaseline.files)) {
 function cssFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const file = `${directory}/${entry.name}`;
-    return entry.isDirectory() ? cssFiles(file) : file.endsWith('.css') && file !== 'ui/tokens.css' && !brandStylesheets.has(file) && !isFixtureCss(file) && isFeatureFile(file) ? [file] : [];
+    return entry.isDirectory() ? cssFiles(file) : file.endsWith('.css') && file !== 'ui/tokens.css' && !brandStylesheets.has(file) && isFeatureFile(file) ? [file] : [];
   });
 }
 const stylesheets = cssFiles('ui');
@@ -44,7 +44,7 @@ postcss.parse(readFileSync('ui/tokens.css', 'utf8')).walkRules(rule => {
   for (const selector of rule.selectors) if (!isFoundationSelector(selector)) failures.push(`ui/tokens.css:${rule.source.start.line}: Feature selectors cannot be hidden in the foundation entry (${selector}).`);
 });
 for (const file of allCss('ui')) {
-  if (file === 'ui/tokens.css' || isFixtureCss(file)) continue;
+  if (file === 'ui/tokens.css') continue;
   if (!brandStylesheets.has(file)) {
     failures.push(`${file}: Non-brand CSS is forbidden, including shared components. Use Tailwind utilities and semantic tokens.`);
     continue;

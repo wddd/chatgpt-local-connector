@@ -14,7 +14,6 @@ impl arc_core::transport::DesktopAccess for SnapshotDesktop {
         Box<dyn std::future::Future<Output = arc_core::Result<serde_json::Value>> + Send>,
     > {
         let ready = self.0.fetch_add(1, Ordering::SeqCst) > 0;
-        let scenario = std::env::var("ARC_FIXTURE_SNAPSHOT").as_deref() != Ok("native");
         if std::env::var("ARC_FIXTURE_SNAPSHOT").as_deref() == Ok("src-conversations") {
             if let arc_core::transport::DesktopRequest::Route(route, method, body) = &request {
                 if route == "src-containers/status" && method == "GET" {
@@ -57,7 +56,7 @@ impl arc_core::transport::DesktopAccess for SnapshotDesktop {
                     if route == "app/snapshot" && method == "POST" && body["modelOnly"] == true =>
                 {
                     Ok(
-                        serde_json::json!({"model":{"layoutSettled":ready,"scenario":if scenario {serde_json::json!({"ready":ready})}else{serde_json::Value::Null},"taskDetail":if body["taskPanel"].is_object() {serde_json::json!({"agent":body["taskPanel"]["agent"],"id":body["taskPanel"]["id"],"following":true,"atLatest":true,"expanded":true,"state":"running","timeline":{"status":"running","entries":[{"text":"x".repeat(150000)}]},"queue":[],"disclosures":[]})} else {serde_json::Value::Null}}}),
+                        serde_json::json!({"model":{"layoutSettled":ready,"taskDetail":if body["taskPanel"].is_object() {serde_json::json!({"agent":body["taskPanel"]["agent"],"id":body["taskPanel"]["id"],"following":true,"atLatest":true,"expanded":true,"state":"running","timeline":{"status":"running","entries":[{"text":"x".repeat(150000)}]},"queue":[],"disclosures":[]})} else {serde_json::Value::Null}}}),
                     )
                 }
                 _ => Err("FIXTURE_DESKTOP_UNSUPPORTED".into()),
