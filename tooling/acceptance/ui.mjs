@@ -44,7 +44,7 @@ try {
     const homepage = !fixture.page && !fixture.pageFixture;
     const longRequest = name === 'task-detail-long-question' || name === 'task-detail-long-approval';
     const outcome = name === 'task-detail-turn-failed' || name === 'task-detail-turn-interrupted';
-    const viewports = report.viewports;
+    const viewports = fixture.page ? [{ width: 360, height: 800 }, ...report.viewports] : report.viewports;
     for (const { width, height } of viewports) {
       const key = `${name}-${width}x${height}`;
       const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'reduce', locale: 'en-US' });

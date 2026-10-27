@@ -10,7 +10,7 @@ import { HoverScope } from './HoverScope';
 
 export function SettingsSection({ title, description, children }: { title: ReactNode; description?: ReactNode; children: ReactNode }) {
   const id = useId();
-  return <section className="settings-section @container grid gap-3 [&+section]:mt-8" aria-labelledby={id}>
+  return <section className="settings-section @container grid min-w-0 gap-3 [&+section]:mt-8" aria-labelledby={id}>
     <header className="grid gap-1 [&>p]:text-xs [&>p]:text-muted-foreground"><h2 id={id}>{title}</h2>{description && <p>{description}</p>}</header>
     <div className="settings-section-body min-w-0">{children}</div>
   </section>;
@@ -22,14 +22,13 @@ type SettingRowProps = { label: ReactNode; description?: ReactNode; controlId?: 
 );
 export function SettingRow({ label, description, children, controlId, id, onNavigate, disabled }: SettingRowProps) {
   const copy = <><span className="setting-row-label font-medium">{label}</span>{description && <span className="setting-row-description text-xs text-muted-foreground">{description}</span>}</>;
-  if (onNavigate) return <div className="setting-row setting-row-navigation block border-b py-4 last:border-0 [&>.hover-scope]:w-fit [&>.hover-scope]:max-w-full"><HoverScope>
-    <Button className="h-auto max-w-full gap-3 whitespace-normal p-2 text-start" id={id} variant="ghost" disabled={disabled} data-hover-target="navigation" onClick={onNavigate}>
-      <span className="setting-row-copy grid min-w-0 gap-1 text-start">{copy}</span><Icon icon={ChevronRight} />
-    </Button>
-  </HoverScope></div>;
-  return <div className="setting-row grid grid-cols-2 items-center gap-6 border-b py-4 last:border-0 @max-settings:gap-3 @max-settings:has-[.choice,.action-group,.input]:grid-cols-1" id={id}>
+  const grid = 'grid w-full min-w-0 grid-cols-2 items-center gap-x-6 gap-y-3 py-4 @max-settings:has-[.choice,.action-group,.input]:grid-cols-1';
+  const content = <>
     {controlId ? <Label className="setting-row-copy grid min-w-0 gap-1 text-start" htmlFor={controlId}>{copy}</Label> : <div className="setting-row-copy grid min-w-0 gap-1 text-start">{copy}</div>}
-    <div className="setting-row-control flex min-w-0 justify-end @max-settings:has-[.choice,.action-group,.input]:justify-start [&>.choice]:w-full [&>.choice]:justify-end @max-settings:[&>.choice]:justify-start">{children}</div>
+    <div className="setting-row-control flex min-w-0 justify-end [&>.choice]:w-full [&>.choice]:flex [&>.choice]:justify-end">{onNavigate ? <Icon icon={ChevronRight} /> : children}</div>
+  </>;
+  return <div className="setting-row border-b last:border-0" id={onNavigate ? undefined : id}>
+    {onNavigate ? <HoverScope><Button className={grid} id={id} variant="surface" disabled={disabled} data-hover-target="navigation" onClick={onNavigate}>{content}</Button></HoverScope> : <div className={grid}>{content}</div>}
   </div>;
 }
 

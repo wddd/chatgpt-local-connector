@@ -38,6 +38,7 @@ export const previews = {
   TunnelRow: ['TUNNEL', 220, "Col(h(A.TunnelRow,{ingress:F.ingresses[0]}),h(A.TunnelRow,{ingress:{...F.ingresses[0],state:'error',error:'Synthetic failure'}}))"],
   TunnelCard: ['TUNNEL', 380, "h(A.TunnelCard,{ingress:F.ingresses[0]})"],
   Root: ['Foundation', 120, "Row(h(A.Status,{tone:'success'},F.labels.status),h(A.Button,{variant:'primary'},F.labels.button))"],
+  FunctionalPage: ['Shells', 180, "h(A.FunctionalPage,{header:'Settings'},'Functional page content')"],
   ViewStack: ['Shells', 100, "h(A.ViewStack,{},'Retained panel content')"],
   MeterSegment: ['Primitives', 100, "Row(h(A.MeterSegment,{weight:3},'Used'),h(A.MeterSegment,{weight:1},'Remaining'))"],
   Button: ['Primitives', 140, "Row(...['primary','secondary','ghost','link','danger-outline','danger','surface'].map(variant=>h(A.Button,{key:variant,variant},variant)),h(A.Button,{busy:true},'Saving'),h(A.Button,{disabled:true},'Disabled'))"],

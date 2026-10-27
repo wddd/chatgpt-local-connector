@@ -73,7 +73,7 @@ const textSlots: Record<string, readonly string[]> = {
   SrcPlatformCard: ['headerActions'],
   SrcAccountNode: ['labelContent'],
 
-  SettingsSection: ['title', 'description'], SettingRow: ['label', 'description'],
+  FunctionalPage: ['header'], SettingsSection: ['title', 'description'], SettingRow: ['label', 'description'],
   FormField: ['label', 'help'], FormSection: ['title', 'description'],
   Disclosure: ['title'], DangerZone: ['consequence'],
   PlatformIcon: ['quotaRing'],
@@ -166,6 +166,7 @@ export const FactList = island<Omit<ComponentProps<typeof UI.FactList>, 'items' 
 export const Freshness = island<TextSlots<ComponentProps<typeof UI.Freshness>, 'age' | 'unknown'>>('Freshness');
 export const AddressField = island<TextSlots<ComponentProps<typeof UI.AddressField>, 'display'>>('AddressField');
 
+export const FunctionalPage = island<TextSlots<ComponentProps<typeof UI.FunctionalPage>, 'header' | 'children'>>('FunctionalPage');
 export const SettingsSection = island<TextSlots<ComponentProps<typeof UI.SettingsSection>, 'title' | 'description' | 'children'>>('SettingsSection');
 export const SettingRow = island<TextSlots<ComponentProps<typeof UI.SettingRow>, 'label' | 'description' | 'children'>>('SettingRow');
 export const FormField = island<TextSlots<ComponentProps<typeof UI.FormField>, 'label' | 'help' | 'children'>>('FormField');

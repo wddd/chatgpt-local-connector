@@ -86,7 +86,7 @@ npx playwright install chromium
 npm run accept:ui
 ```
 
-The script starts an isolated Vite page and captures 640×800, 1280×800 and 1920×1080. The 640-wide viewport covers portrait topology and narrow panels; every scenario runs at all three widths. Stop the existing development service first if it owns port 5187. Scenario mode never connects to real Core. The script rejects all actual management API requests. For WebKit comparison:
+The script starts an isolated Vite page and captures 640×800, 1280×800 and 1920×1080. Functional pages also run at 360×800 to cover wrapped controls. The 640-wide viewport covers portrait topology and narrow panels; every scenario runs at all three standard widths. Stop the existing development service first if it owns port 5187. Scenario mode never connects to real Core. The script rejects all actual management API requests. For WebKit comparison:
 
 ```sh
 npx playwright install webkit

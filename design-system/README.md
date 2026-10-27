@@ -108,9 +108,10 @@ All synthetic records use the single `Arc.fixtures` entry. `requests` contains p
 | [AccountActions](api/components/AccountActions.md) | Account rename and remove |
 | [ChoiceControl](api/components/ChoiceControl.md) | Static settings value for zero or one option; SingleChoice otherwise |
 | [SettingsSection](api/components/SettingsSection.md) | Settings heading and body |
-| [SettingRow](api/components/SettingRow.md) | Aligned control or content-sized navigation row |
+| [SettingRow](api/components/SettingRow.md) | Aligned control or full-width navigation row |
 | [FormField](api/components/FormField.md) | Label, control, help and error |
 | [FormSection](api/components/FormSection.md) | Semantic field grouping |
+| [FunctionalPage](api/components/FunctionalPage.md) | Functional page title bar and scrollable content with one shared inset |
 | [ViewStack](api/components/ViewStack.md) | Retained full-height panel views |
 | [MeterSegment](api/components/MeterSegment.md) | Interactive weighted meter segment |
 | [ActionGroup](api/components/ActionGroup.md) | Wrapping button layout |

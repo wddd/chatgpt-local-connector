@@ -45,7 +45,7 @@ import RecordsPage from "./components/RecordsPage";
 import SettingsPage from "./components/SettingsPage";
 import { usePrivacy } from "./state/privacy";
 import { UpdateDock, UpdateOutcome } from "./components/AppUpdate";
-import { Button, Icon, IconButton, Notice, HoverScope } from "./components/ui";
+import { Button, Icon, IconButton, Notice, HoverScope, FunctionalPage } from "./components/ui";
 import { api } from "./api";
 import { startPermissions } from "./state/permissions";
 const NavigationFixture = import.meta.env.DEV && scenarioName === "navigation-redirects" ? (await import("./scenarioNavigation")).default : undefined;
@@ -267,7 +267,7 @@ export default function App() {
           aria-label={pages.find((item) => item.id === page)?.label}
         >
           <div style={{ width: sheetWide ? "calc(100vw - 2 * var(--sheet-inset) - 2px)" : "min(958px, calc(100vw - 2 * var(--sheet-inset) - 2px))", height: "calc(100dvh - var(--sheet-top) - var(--sheet-inset) - 2px)" }} className="page-sheet-content relative flex min-h-0 flex-none flex-col self-center">
-            <header className="sheet-header flex shrink-0 items-center gap-3 border-b px-3 py-2 pl-6.625 min-h-13 max-[600px]:pl-4">
+            <FunctionalPage header={<>
               {page === "settings" && (nav.settingsUpdates || nav.settingsPermissions) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsUpdates: undefined, settingsPermissions: undefined }))} />}
               <h1 className="capsule-title m-0 min-w-0 flex-1 text-lg font-semibold outline-none" tabIndex={-1}>
                 {pages.find((item) => item.id === page)?.label}
@@ -291,13 +291,10 @@ export default function App() {
                 label={t("backToHome")}
                 onClick={() => void closeSheet()}
               />
-            </header>
-            <main
-              className={`workspace min-h-0 w-full max-w-none flex-1 m-0 overflow-auto overscroll-contain px-6.625 py-6 max-[600px]:px-4 max-[600px]:py-5 [&>.settings-page]:m-0 [&>.settings-page]:w-full [&>.settings-page]:max-w-none ${page === "logs" ? "records-workspace pb-6" : ""}`}
-            >
+            </>}>
               {page === "logs" ? <RecordsPage /> : page === "connections" ? <ConnectionsPage /> : <SettingsPage />}
 
-            </main>
+            </FunctionalPage>
 
           </div>
         </section>

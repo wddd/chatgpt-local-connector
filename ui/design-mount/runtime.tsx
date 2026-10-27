@@ -20,7 +20,7 @@ import { createElement, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RefreshCw, Plus, Check, X, Info, Plug, Bot } from 'lucide-react';
 import { Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag, TooltipProvider,
-  ViewStack, MeterSegment, PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, ChoiceControl, SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone } from '../components/ui';
+  FunctionalPage, ViewStack, MeterSegment, PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, ChoiceControl, SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone } from '../components/ui';
 import AgentQuota from '../components/AgentQuota';
 import { AgentQuotaIcon } from '../subscriptions/QuotaRing';
 import QuotaBubble from '../subscriptions/QuotaBubble';
@@ -32,7 +32,7 @@ import { PortalHost } from './radix';
 
 const components = { AccountActions, SrcConversationRow, TaskChip, TaskNode, TaskRow, TaskCard, AgentPlatformChip, AgentPlatformNode, AgentPlatformRow, AgentPlatformCard, AgentAccountChip, AgentAccountNode, AgentAccountRow, AgentAccountCard, SrcPlatformChip, SrcPlatformNode, SrcPlatformRow, SrcPlatformCard, SrcAccountChip, SrcAccountNode, SrcAccountRow, SrcAccountCard, TunnelChip, TunnelNode, TunnelRow, TunnelCard, LocalConnectionRow, RequestCard, InteractionRequestCard, InteractionRequestChip, InteractionRequestRow, AuthorizationRequestCard, AuthorizationRequestChip, AuthorizationRequestRow, DeploymentProgressCard, DeploymentProgressChip,  Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
   AgentQuotaIcon, AgentQuota, QuotaBubble, GraphNode, ActivityBubble,
-  ViewStack, MeterSegment, PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, ChoiceControl, SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone, DispatchSpec };
+  FunctionalPage, ViewStack, MeterSegment, PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, ChoiceControl, SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone, DispatchSpec };
 const icons = { RefreshCw, Plus, Check, X, Info, Plug, Bot };
 export function configure(value: Environment, target?: HTMLElement) {
   environment.set(value);

@@ -9,11 +9,38 @@ export async function acceptLayout(page) {
     const box = node => { const { x, y, width, height } = node.getBoundingClientRect(); return { name: node.getAttribute('aria-label') ?? node.tagName, x, y, width, height }; };
     const dock = document.querySelector('.navigation-capsule');
     const core = document.querySelector('.connection-core');
+    // Regression: functional pages lost their gutters, navigation rows were indented, and narrow controls aligned left.
+    const workspace = document.querySelector('.page-sheet .workspace');
+    let pageGutters;
+    if (workspace && visible(workspace)) {
+      const header = document.querySelector('.sheet-header');
+      const bounds = workspace.getBoundingClientRect();
+      const padding = getComputedStyle(workspace), headerPadding = getComputedStyle(header);
+      const left = bounds.left + parseFloat(padding.paddingLeft), right = bounds.right - parseFloat(padding.paddingRight);
+      const misaligned = [];
+      const near = (a, b) => Math.abs(a - b) <= 1;
+      for (const heading of workspace.querySelectorAll('.settings-section > header')) {
+        if (!near(heading.getBoundingClientRect().left, left)) misaligned.push('Section heading');
+      }
+      for (const row of workspace.querySelectorAll('.setting-row')) {
+        const bounds = row.getBoundingClientRect();
+        const copy = row.querySelector('.setting-row-copy');
+        if (!near(copy.getBoundingClientRect().left, bounds.left)) misaligned.push(copy.textContent);
+        const control = row.querySelector('.setting-row-control');
+        const child = control.firstElementChild;
+        const target = child?.matches('.choice') ? child.lastElementChild : child;
+        if (target && !near(target.getBoundingClientRect().right, bounds.right)) misaligned.push(copy.textContent);
+        const navigation = row.querySelector('[data-hover-target="navigation"]');
+        if (navigation && (!near(navigation.getBoundingClientRect().left, bounds.left) || !near(navigation.getBoundingClientRect().right, bounds.right))) misaligned.push('Navigation hit area');
+      }
+      pageGutters = { left: parseFloat(padding.paddingLeft), right: parseFloat(padding.paddingRight), headerLeft: parseFloat(headerPadding.paddingLeft), headerRight: parseFloat(headerPadding.paddingRight), misaligned };
+    }
     // Regression: the fixed dock covered homepage cards and the expanded queue at 640px.
     const dockOverlap = dock && core && visible(dock) && visible(core)
       && core.getBoundingClientRect().bottom > dock.getBoundingClientRect().top;
     return {
       dockOverlap,
+      pageGutters,
       // Regression: hidden choice measurements and setup instruction tracks widened their hosts.
       overflow: roots.filter(node => node.clientWidth && node.scrollWidth > node.clientWidth + 1).map(box),
       bounds: [...document.querySelectorAll('.page-sheet,[role="dialog"],.connection-core')].filter(visible).map(box),
@@ -22,6 +49,8 @@ export async function acceptLayout(page) {
   });
   const viewport = page.viewportSize();
   if (geometry.documentOverflow || geometry.overflow.length || geometry.dockOverlap) throw new Error(`Surface overflow: ${JSON.stringify(geometry)}`);
+  const gutters = geometry.pageGutters;
+  if (gutters && (gutters.left <= 0 || gutters.left !== gutters.right || gutters.left !== gutters.headerLeft || gutters.right !== gutters.headerRight || gutters.misaligned.length)) throw new Error(`Functional page alignment: ${JSON.stringify(gutters)}`);
   for (const box of geometry.bounds) {
     if (box.width <= 0 || box.height <= 0 || box.x < -1 || box.y < -1 || box.x + box.width > viewport.width + 1 || box.y + box.height > viewport.height + 1) throw new Error(`Surface outside viewport: ${JSON.stringify(box)}`);
   }

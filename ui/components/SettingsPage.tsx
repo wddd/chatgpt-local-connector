@@ -168,8 +168,8 @@ export default function SettingsPage() {
             />
           </SettingRow>
         )}
+        <SettingRow id="settings-permissions-entry" label={t("permissionsSystem")} onNavigate={() => navigation.set(old => ({ ...old, settingsPermissions: true }))} />
       </SettingsSection>
-      <SettingRow id="settings-permissions-entry" label={t("permissionsSystem")} onNavigate={() => navigation.set(old => ({ ...old, settingsPermissions: true }))} />
       <AppUpdate />
     </div>
   );
