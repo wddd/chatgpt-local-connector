@@ -3,7 +3,7 @@ import type { Point, Side } from './solve';
 import { TopologyAnimator, nodeKey, taskKey } from './animate';
 import type { PaintNode, PaintTask } from './render';
 import type { SurfaceRect } from '../motion/surface';
-import { portraitSourcePanelRoute, type PortraitLabel, type PortraitLabels } from './portrait';
+import { portraitPanelRoute, type PortraitLabel, type PortraitLabels } from './portrait';
 
 const labelMeasurements = new WeakMap<HTMLElement, { signature: string; label: PortraitLabel }>();
 // Measure intrinsic CSS dimensions, not the animated node transform or the
@@ -140,10 +140,7 @@ export class PortraitPainter {
         }
       }
       if (panel && node.selected) {
-        const end = point(panel.x + panel.width, Math.max(panel.y + 27, Math.min(panel.y + panel.height - 27, n.y)));
-        const start = point(n.x - node.side * (n.size * n.scale / 2 + 4), n.y);
-        const route = node.side === 1 ? [start, point(n.childBusX, n.y), point(n.childBusX, end.y), end]
-          : portraitSourcePanelRoute({ x: n.x, y: n.y, size: n.size, scale: n.scale }, panel);
+        const route = portraitPanelRoute({ x: n.x, y: n.y, size: n.size, scale: n.scale, side: node.side }, panel);
         this.path(`${key}:panel`, railPath(route), `portrait-rail ${sideClass}`, 0.9);
       }
     }

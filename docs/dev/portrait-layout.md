@@ -26,10 +26,10 @@ Task branches form complete rounded routes from the node through the bus column.
 
 ## Panels
 
-Agent/account panels dock inside the right rail over the bubbles, from a 16px left margin to 40px before the selected node's stubs. Their vertical range starts below the lower earmuff and ends above the dock. A selected-node stub reaches the panel's right edge; bubbles and their stubs fade using existing panel state.
+SRC panels dock at the left viewport edge and AGENT/account/task panels dock at the right viewport edge at every width. Portrait panels mirror each other with a 16px outer margin, the shared panel width capped by the viewport, and clearance above the bottom dock.
 
-Source panels open to the right of the visible source nodes and account labels, inside the viewport and above the dock. They overlay the scene without reserving a vertical gap or moving the hub and Agent section. The shared panel scroll area contains long content. The selected source connects directly from the icon's right edge to the panel's left edge, clear of the labels below account nodes. Opening the panel keeps the selected node visible.
+Panels overlay the scene without reserving a vertical gap, moving nodes or scrolling the topology on open. The shared panel scroll area contains long content. A connector reaches the panel's inward edge only when the selected node is outside the panel on that side; covered nodes do not draw a connector through the overlay. Bubbles and their stubs fade using existing panel state.
 
-Portrait panels use the available rail area and omit the landscape width-expansion control. An explicit `app_env.taskPanelWidth` may narrow the Agent panel within that area.
+Portrait panels omit the landscape width-expansion control. An explicit `app_env.taskPanelWidth` may narrow the Agent panel while preserving its right edge.
 
 Both modes reuse the existing nonmodal shell, open/close timing, outside-click, Escape and focus restoration. Header controls and the bottom-left dock retain their positions.

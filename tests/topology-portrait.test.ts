@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { solvePortrait, portraitPanelRect, portraitSourcePanelRoute, type PortraitLabels } from '../ui/topology/portrait.ts';
-import { DEFAULTS, NODE_R, solve, type Entity, type Point } from '../ui/topology/solve.ts';
+import { solvePortrait, portraitPanelRect, portraitPanelRoute, type PortraitLabels } from '../ui/topology/portrait.ts';
+import { DEFAULTS, NODE_R, solve, type Entity } from '../ui/topology/solve.ts';
 import { TopologyAnimator, nodeKey, taskKey } from '../ui/topology/animate.ts';
 import { bubbleWidths } from '../ui/state/activityModel.ts';
 
@@ -116,66 +116,58 @@ test('collapsed subtrees and flat nodes retain their existing queue semantics', 
   assert.deepEqual(flat.wings[1].tasks.map(t => t.id), right[1].children!.flatMap(n => n.tasks.map(t => t.id)));
 });
 
-test('portrait source panels open inward without moving the topology', () => {
-  // Property: source panel selection preserves node geometry and opens to the right within the viewport.
-  for (const vw of [600, 900, 1080]) {
+test('portrait panels mirror viewport edges without moving the topology', () => {
+  // Regression: AGENT L1 and L2 panels docked left at a 640px viewport.
+  for (const vw of [320, 640, 900, 1080]) {
     const scene = { vw, vh: 1200, left, right };
     const closed = solvePortrait(scene, DEFAULTS, null, labels);
-    for (const selected of ['source', 'source/a', 'source/b']) {
-      const open = solvePortrait({ ...scene, panel: { side: -1, selected, edge: 0 } }, DEFAULTS, null, labels);
+    const sourceRect = portraitPanelRect(closed, { side: -1 });
+    const agentRect = portraitPanelRect(closed, { side: 1 });
+    assert.equal(sourceRect.x, vw - agentRect.x - agentRect.width);
+    assert.equal(sourceRect.width, agentRect.width);
+    assert.equal(sourceRect.y, agentRect.y);
+    assert.equal(sourceRect.height, agentRect.height);
+    assert.ok(sourceRect.x <= agentRect.x);
+    for (const wing of closed.wings) for (const selected of wing.nodes) {
+      const open = solvePortrait({ ...scene, panel: { side: wing.side, selected: selected.id, edge: 0 } }, DEFAULTS, null, labels);
       assert.deepEqual(open.hub, closed.hub);
-      for (const [i, wing] of open.wings.entries()) {
-        assert.deepEqual(wing.nodes.map(n => [n.id, n.x, n.y]), closed.wings[i].nodes.map(n => [n.id, n.x, n.y]));
+      for (const [i, current] of open.wings.entries()) {
+        assert.deepEqual(current.nodes.map(n => [n.id, n.x, n.y]), closed.wings[i].nodes.map(n => [n.id, n.x, n.y]));
       }
-      const node = open.wings[0].nodes.find(n => n.id === selected)!;
-      const rect = portraitPanelRect(open, node);
-      assert.ok(rect.x > node.x + node.size * node.scale / 2);
-      assert.ok(rect.x + rect.width <= vw && rect.width > 0);
+      const rect = portraitPanelRect(open, selected);
+      assert.deepEqual(rect, wing.side === -1 ? sourceRect : agentRect);
+      assert.ok(rect.x >= 0 && rect.x + rect.width <= vw && rect.width > 0);
       assert.ok(rect.y >= 0 && rect.y + rect.height <= scene.vh);
-      assert.deepEqual(portraitPanelRect(open, node, node.y), rect);
     }
   }
 });
 
-test('source panel routes reach the inward panel edge without intersecting nodes or labels', () => {
-  // Regression: the Personal source connector crossed Personal, Studio and Unidentified labels on its way to the panel.
-  const scene = { vw: 900, vh: 1600, left, right };
-  const intersects = (a: Point, b: Point, box: { x: number; y: number; width: number; height: number }) =>
-    a.x === b.x ? a.x > box.x && a.x < box.x + box.width && Math.max(a.y, b.y) > box.y && Math.min(a.y, b.y) < box.y + box.height
-      : a.y > box.y && a.y < box.y + box.height && Math.max(a.x, b.x) > box.x && Math.min(a.x, b.x) < box.x + box.width;
-  for (const selected of ['source', 'source/a', 'source/b']) {
-    const layout = solvePortrait({ ...scene, panel: { side: -1, selected, edge: 0 } }, DEFAULTS, null, labels);
-    const nodes = layout.wings[0].nodes, node = nodes.find(n => n.id === selected)!;
-    const panel = portraitPanelRect(layout, node);
-    const route = portraitSourcePanelRoute(node, panel);
-    assert.equal(route.at(-1)!.x, panel.x);
-    assert.ok(route.at(-1)!.y > panel.y && route.at(-1)!.y < panel.y + panel.height);
-    for (let i = 1; i < route.length; i++) {
-      const a = route[i - 1], b = route[i];
-      assert.ok(a.x === b.x || a.y === b.y);
-      for (const sibling of nodes.filter(n => n.opacity > 0)) {
-        const radius = sibling.size * sibling.scale / 2;
-        assert.equal(intersects(a, b, { x: sibling.x - radius, y: sibling.y - radius, width: radius * 2, height: radius * 2 }), false);
-        const metric = labels.left.get(sibling.id)!, scale = radius / NODE_R, width = metric.width * scale;
-        const x = sibling.parent ? sibling.x - width / 2 : sibling.x - (NODE_R + 12) * scale - width;
-        const y = sibling.parent ? sibling.y + radius + 4 * scale : sibling.y - metric.height * scale / 2;
-        assert.equal(intersects(a, b, { x, y, width, height: metric.height * scale }), false);
+test('portrait panel connectors reach the inward edge only from uncovered nodes', () => {
+  // Property: mirrored connector routes are orthogonal and never reverse through an overlaid node.
+  const scene = solvePortrait({ vw: 900, vh: 1200, left, right });
+  for (const side of [-1, 1] as const) {
+    const panel = portraitPanelRect(scene, { side });
+    const edge = side === 1 ? panel.x : panel.x + panel.width;
+    for (const y of [panel.y / 2, panel.y + panel.height / 2, panel.y + panel.height * 2]) {
+      const node = { side, x: edge - side * 100, y, size: 44, scale: 1 };
+      const route = portraitPanelRoute(node, panel);
+      assert.equal(route.at(-1)!.x, edge);
+      assert.ok(route.at(-1)!.y > panel.y && route.at(-1)!.y < panel.y + panel.height);
+      for (let i = 1; i < route.length; i++) {
+        const a = route[i - 1], b = route[i];
+        assert.ok(a.x === b.x || a.y === b.y);
+        assert.ok((b.x - a.x) * side >= 0);
       }
+      assert.deepEqual(portraitPanelRoute({ ...node, x: panel.x + panel.width / 2 }, panel), []);
     }
   }
 });
-test('portrait Agent panels fit inside the selected rail and fade tasks without changing queues', () => {
-  // Property: panel reservation keeps node order and task identity while placing its edge inside the selected node.
+test('portrait Agent panels fade tasks without changing queues', () => {
+  // Property: panel selection preserves task identities and node order while hiding the queue behind the overlay.
   const scene = { vw: 900, vh: 1200, left, right };
   const closed = solvePortrait(scene);
   for (const id of ['agent', 'account/a', 'single']) {
     const open = solvePortrait({ ...scene, panel: { side: 1, selected: id, edge: 0 } });
-    const n = open.wings[1].nodes.find(n => n.id === id)!;
-    const scroll = open.hub.y;
-    const rect = portraitPanelRect(open, n, scroll);
-    assert.ok(rect.x >= 0 && rect.x + rect.width < n.x - n.size * n.scale / 2);
-    assert.ok(rect.y > open.hub.y + open.portrait!.earOffset - scroll);
-    assert.ok(rect.y + rect.height < scene.vh);
     assert.deepEqual(open.wings[1].nodes.map(n => [n.id, n.x, n.y]), closed.wings[1].nodes.map(n => [n.id, n.x, n.y]));
     assert.deepEqual(open.wings[1].tasks.map(t => t.id), closed.wings[1].tasks.map(t => t.id));
     assert.ok(open.wings[1].tasks.every(t => t.hidden));

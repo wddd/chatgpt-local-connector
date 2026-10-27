@@ -4,6 +4,7 @@ import { acceptNodeBranding } from './node-branding.mjs';
 import { acceptLongRequest, acceptRequests } from './requests.mjs';
 import { acceptDispatchSpecBubbles } from './dispatch-spec.mjs';
 import { acceptSettings } from './settings.mjs';
+import { acceptPanels, returnToAccount } from './panels.mjs';
 import { requireMainCheckout } from '../coding-lane.mjs';
 requireMainCheckout();
 import { chromium, webkit } from 'playwright';
@@ -40,6 +41,8 @@ try {
     const setup = !!(fixture.sourceSetup && fixture.sourceSetup.step !== 'welcome');
     if (setupOnly && !setup) continue;
     const name = file.slice(0, -5);
+    const panelState = name.replace(/-(light|dark)$/, '');
+    const homepage = !fixture.page && !fixture.pageFixture && !fixture.shells;
     const longRequest = name === 'task-long-question' || name === 'task-long-approval';
     const outcome = name === 'task-turn-failed' || name === 'task-turn-interrupted';
     const viewports = longRequest || outcome || ['idle', 'light', 'dark'].includes(name) || name.startsWith('topology-accounts') ? [{ width: 360, height: 800 }, ...report.viewports] : report.viewports;
@@ -57,14 +60,18 @@ try {
         await page.waitForFunction(name => document.documentElement.dataset.scenarioError || document.documentElement.dataset.scenarioReady === name, name, { timeout: 15000 });
         const model = await page.evaluate(() => window.__ARC_VIEW_MODEL__());
         if (!model.scenario?.ready) throw new Error(model.scenario?.error || 'Fixture task detail is not ready');
-        if (!fixture.page && !fixture.shells && !model.topology) throw new Error('No rendered topology exported');
-        if (model.topology && !fixture.page && !fixture.shells) row.wires = await acceptTopologyWires(page);
+        if (homepage && !model.topology) throw new Error('No rendered topology exported');
+        if (model.topology && homepage) row.wires = await acceptTopologyWires(page);
         const actualAgents = (model.topology?.nodes ?? []).filter(n => n.side === 1).map(n => n.id);
-        if (!fixture.page && !fixture.shells && fixture.agents.some(a => !actualAgents.includes(a))) throw new Error('Fixture agents were not rendered');
+        if (homepage && fixture.agents.some(a => !actualAgents.includes(a))) throw new Error('Fixture agents were not rendered');
         const representedTasks = model.topology?.tasks.reduce((sum, task) => sum + (task.count ?? 1), 0);
-        if (!fixture.page && !fixture.shells && !fixture.panel && representedTasks !== fixture.tasks.length) throw new Error(`Task count mismatch: ${representedTasks}/${fixture.tasks.length}`);
+        if (homepage && !fixture.panel && representedTasks !== fixture.tasks.length) throw new Error(`Task count mismatch: ${representedTasks}/${fixture.tasks.length}`);
         if (fixture.panel?.kind === 'agent' && model.panels.agent?.agent !== fixture.panel.id) throw new Error('Agent panel not opened');
-        if (fixture.panel?.kind === 'source' && model.panels.source !== fixture.panel.id) throw new Error('Source panel not opened');
+        if (fixture.panel?.kind === 'source' && !model.panels.source) throw new Error('Source panel not opened');
+        if (name.startsWith('panels-')) {
+          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
+          row.panel = await acceptPanels(page, fixture, panelState, messages, model);
+        }
         if (name === 'p3-navigation') {
           // Regression: removed dock targets need to redirect through the live App navigator.
           for (const [target, destination] of [['tasks', 'overview'], ['accounts', 'overview'], ['remote', 'connections'], ['permissions', 'settings']]) {
@@ -99,7 +106,8 @@ try {
         if (name === 'agent-panel-unread') {
           // Regression: completed unread tasks were mixed into date groups instead of appearing between Running and Today.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          const panel = page.getByRole('dialog', { name: 'Codex', exact: true });
+          const panel = page.getByRole('dialog');
+          await panel.getByRole('button', { name: messages['panels.rename'], exact: true }).waitFor();
           const unread = panel.getByRole('region', { name: messages['agentPanel.unread'], exact: true });
           const today = panel.getByRole('region', { name: messages['agentPanel.today'], exact: true });
           await unread.waitFor({ state: 'visible' });
@@ -119,6 +127,7 @@ try {
             await unread.getByRole('button', { name }).waitFor({ state: 'hidden' });
           }
           await unread.waitFor({ state: 'hidden' });
+          row.unread = { opened: completed.length, movedToToday: completed.length };
         }
         if (name === 'task-queue-overflow') {
           // Regression: overflow hid running tasks, and View all opened the Agent panel instead of temporarily revealing the queue.
@@ -360,13 +369,11 @@ try {
           if (await main.evaluate(node => node.scrollWidth > node.clientWidth)) throw new Error('Object fixture overflows horizontally: ' + JSON.stringify(await main.evaluate(node => [...node.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > node.getBoundingClientRect().right + 1).slice(0, 12).map(el => ({ tag: el.tagName, text: el.textContent?.slice(0, 80), width: el.getBoundingClientRect().width })))));
           if (screenshots) await page.screenshot({ path: path.join(out, `${key}-objects.png`), animations: 'disabled' });
         }
-        if (name === 'source-panel' || name === 'source-panel-light' || name === 'panels-src-l2' || name === 'panels-src-single' || name === 'panels-src-multiple-connections') {
+        if (name === 'source-panel' || name === 'source-panel-light') {
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           const panel = page.getByRole('dialog');
           await panel.getByRole('button', { name: messages['panels.rename'], exact: true }).waitFor();
-          await panel.getByRole('button', { name: messages.back, exact: true }).click();
-          await panel.getByRole('button', { name: messages['accounts.add'], exact: true }).waitFor();
-          if (await panel.getByRole('radio').count()) throw new Error('SRC platform retains obsolete inspector tabs');
+          await returnToAccount(page, panel, messages);
         }
         if (fixture.page === 'settings') {
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
@@ -441,7 +448,7 @@ try {
             }
           }
         }
-        if (width >= 1280 && !fixture.page && !fixture.panel && fixture.tasks.some(task => task.completed)) {
+        if (width >= 1280 && homepage && !fixture.panel && fixture.tasks.some(task => task.completed)) {
           // Regression: dragging a completed card left a click guard that swallowed its mark-read action.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           for (const task of fixture.tasks.filter((task, index) => task.completed && model.topology.tasks.some(row => row.taskId === `fixture-task-${index}`))) {

@@ -1,4 +1,4 @@
-import { ACCOUNT_NODE_SIZE, DEFAULTS, NODE_R, type Drag, type Entity, type Layout, type NodeGeometry, type Params, type Scene, type Side, type TaskGeometry, type Wing } from './solve.ts';
+import { ACCOUNT_NODE_SIZE, DEFAULTS, NODE_R, PANEL_MARGIN, PANEL_MIN_WIDTH, type Drag, type Entity, type Layout, type NodeGeometry, type Params, type Scene, type Side, type TaskGeometry, type Wing } from './solve.ts';
 import { bubbleWidths } from '../state/activityModel.ts';
 
 export interface PortraitGeometry {
@@ -111,24 +111,21 @@ export function solvePortrait(sc: Scene, p: Params = DEFAULTS, drag: Drag | null
 }
 
 export interface PortraitPanelRect { x: number; y: number; width: number; height: number }
-export function portraitSourcePanelRoute(node: Pick<NodeGeometry, 'x' | 'y' | 'size' | 'scale'>, panel: PortraitPanelRect) {
+export function portraitPanelRoute(node: Pick<NodeGeometry, 'x' | 'y' | 'size' | 'scale' | 'side'>, panel: PortraitPanelRect) {
   const radius = node.size * node.scale / 2;
-  const start = { x: node.x + radius + 4, y: node.y };
-  const end = { x: panel.x, y: Math.max(panel.y + 27, Math.min(panel.y + panel.height - 27, node.y)) };
-  return [start, { x: panel.x - 12, y: node.y }, { x: panel.x - 12, y: end.y }, end];
+  const edge = node.side === 1 ? panel.x : panel.x + panel.width;
+  const start = { x: node.x + node.side * (radius + 4), y: node.y };
+  // A docked overlay can cover its selected node. Do not draw a connector
+  // backwards through that node or through the panel content.
+  if ((edge - start.x) * node.side <= 0) return [];
+  const end = { x: edge, y: Math.max(panel.y + 27, Math.min(panel.y + panel.height - 27, node.y)) };
+  const bend = edge - node.side * Math.min(12, Math.abs(edge - start.x) / 2);
+  return [start, { x: bend, y: node.y }, { x: bend, y: end.y }, end];
 }
 // Coordinates are scene-local. The host converts them into viewport coordinates;
 // vertical scrolling never feeds a panel's animated dimensions back into solve.
-export function portraitPanelRect(layout: Layout, selected: NodeGeometry, scrollTop = 0): PortraitPanelRect {
-  const p = layout.portrait!;
-  if (selected.side === -1) {
-    const sources = layout.wings[0].nodes.filter(node => node.opacity > 0);
-    const edge = Math.max(...sources.map(node => node.x + Math.max(node.size * node.scale / 2,
-      node.parent ? p.sourceAccountLabelWidth / 2 : 0)));
-    const x = Math.min(layout.vw - 17, edge + 24);
-    return { x, y: 16, width: Math.max(1, layout.vw - 16 - x), height: Math.max(1, layout.vh - 112) };
-  }
-  const y = Math.max(16, layout.hub.y + p.earOffset + 16 - scrollTop);
-  const right = selected.x - selected.size * selected.scale / 2 - 40;
-  return { x: 16, y, width: Math.max(1, right - 16), height: Math.max(1, layout.vh - 96 - y) };
+export function portraitPanelRect(layout: Layout, selected: Pick<NodeGeometry, 'side'>): PortraitPanelRect {
+  const width = Math.max(1, Math.min(PANEL_MIN_WIDTH, layout.vw - 2 * PANEL_MARGIN));
+  return { x: selected.side === -1 ? PANEL_MARGIN : layout.vw - PANEL_MARGIN - width,
+    y: PANEL_MARGIN, width, height: Math.max(1, layout.vh - 112) };
 }

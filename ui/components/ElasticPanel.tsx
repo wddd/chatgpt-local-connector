@@ -200,10 +200,10 @@ export default function ElasticPanel({
       });
       if (visual) {
         if (dock) {
-          // Keep the real moving node above the expanding shell, without
-          // replacing it with a stationary copy or changing its opacity.
+          // Landscape leaves the selected node outside the panel. Portrait
+          // overlays it, so lifting it would cover the panel's controls.
           const anchor = visual.trigger.closest<HTMLElement>(".topology-node");
-          if (anchor) {
+          if (anchor && !dockRectRef.current) {
             const before = anchor.style.zIndex;
             anchor.style.zIndex = String(Number(node.style.zIndex) + 1);
             restoreOrigin.current = () => { anchor.style.zIndex = before; };
@@ -236,6 +236,10 @@ export default function ElasticPanel({
   }, [node, expanded, width]);
   useLayoutEffect(() => {
     if (!node || !dock) return;
+    if (dockRect) {
+      restoreOrigin.current?.();
+      restoreOrigin.current = undefined;
+    }
     const rect = node.getBoundingClientRect(), from = dockFrame.current;
     if (previousExpanded.current !== expanded || previousWidth.current !== width || JSON.stringify(previousDockRect.current) !== JSON.stringify(dockRect)) {
       previousExpanded.current = expanded;

@@ -43,7 +43,6 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
   const frame = useRef(0), lastTime = useRef(0), panel = useRef<SurfaceRect | null>(null);
   const retarget = useRef(() => {}), placeAfterMorph = useRef(false);
   const orientationSource = useRef<"auto" | "manual">("auto");
-  const placedPanel = useRef<string | undefined>(undefined);
   const reportedPanel = useRef<PanelLayout>(undefined);
   const origin = useRef({ x: 0, y: 0 }), size = useRef<{ vw: number; vh: number } | null>(null);
   const drag = useRef<(Drag & { pointer: number; startClientX: number; startClientY: number; grabX: number; grabY: number; parent?: string;
@@ -189,7 +188,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     else {
       lastTime.current = 0;
       if (placeAfterMorph.current) {
-        placeAfterMorph.current = false; placedPanel.current = undefined;
+        placeAfterMorph.current = false;
         retarget.current();
       }
       setRetainedNodes(old => {
@@ -256,20 +255,14 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     if (layout.current.portrait && selectedNode) {
       const container = boundary.current;
       const viewportTop = origin.current.y + (container?.scrollTop ?? 0);
-      if (container && placedPanel.current !== latest.current.panelKey) {
-        const local = portraitPanelRect(layout.current, selectedNode);
-        // Keep the selected node visible while the panel overlays its inward side.
-        const neededBottom = Math.max(local.y + Math.min(320, layout.current.vh * 0.5), selectedNode.y + 44);
-        const desired = Math.max(0, Math.min(layout.current.sceneH - layout.current.vh, Math.max(container.scrollTop, neededBottom + 96 - layout.current.vh)));
-        container.scrollTop = desired;
-        const actual = graph.current!.getBoundingClientRect();
-        origin.current = { x: actual.x, y: actual.y };
+      const local = portraitPanelRect(layout.current, selectedNode);
+      if (selectedNode.side === 1 && envOverrides().taskPanelWidth != null) {
+        const width = Math.min(local.width, envOverrides().taskPanelWidth!);
+        local.x += local.width - width;
+        local.width = width;
       }
-      placedPanel.current = latest.current.panelKey;
-      const local = portraitPanelRect(layout.current, selectedNode, container?.scrollTop ?? 0);
-      if (selectedNode.side === 1 && envOverrides().taskPanelWidth != null) local.width = Math.min(local.width, envOverrides().taskPanelWidth!);
       rect = { ...local, x: local.x + origin.current.x, y: local.y + viewportTop };
-    } else placedPanel.current = undefined;
+    }
     const width = rect?.width ?? ((latest.current.panelKey?.startsWith("agent:") ? envOverrides().taskPanelWidth : undefined) ?? (selectedNode && radius !== undefined ? panelWidth(innerWidth, selectedNode.side, origin.current.x + selectedNode.x,
       radius + 2 * Math.max(0.8, layout.current.hub.Re / 130)) : PANEL_MIN_WIDTH));
     const { panelKey: key, panelExpanded: expanded } = latest.current;
@@ -292,7 +285,7 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
     const previous = orientation.current;
     orientation.current = resolveOrientation(orientation.current, topologyLayout.get(), env.windowWidth ?? innerWidth, env.windowHeight ?? innerHeight);
     orientationSource.current = topologyLayout.get() === 'auto' ? 'auto' : 'manual';
-    if (previous !== orientation.current) { placedPanel.current = undefined; placeAfterMorph.current = !!latest.current.panelKey; }
+    if (previous !== orientation.current) { placeAfterMorph.current = !!latest.current.panelKey; }
     orientationPending.current = false;
     target();
   };
