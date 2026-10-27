@@ -138,12 +138,14 @@ SVG guides show current control points, tangents, viewport center, and center of
 
 Reuse Button, Input, Slider, Field, SingleChoice, Switch, Dialog, Tooltip, Popover, menus, tables, and feedback from ui/components/ui/index.tsx. Copied shadcn primitives backed by Radix own selection, keyboard, focus, dismissal layers, Portal, and modal interaction. Layout components only arrange content.
 
-- SingleChoice uses shadcn ToggleGroup pills for at most five options when the measured content fits, otherwise shadcn Select. Card/navigation/swatch presentation keeps this same selection boundary. A selected pill cannot be cleared by clicking it again.
+- SingleChoice uses shadcn ToggleGroup pills for at most five options when the measured content fits, otherwise shadcn Select. Measurement uses the same content and presentation as the visible pills, including object rows. Card/navigation/swatch presentation keeps this same selection boundary. A selected pill cannot be cleared by clicking it again.
 - Native forms default to one column with labels above. Only short related fields share rows.
 - Field errors remain associated with inputs. Failed submission focuses the first error and preserves input.
 - Dialog has an accessible title, scrolling content, and separate actions. Back removes one layer while retaining form/scroll state.
 - Escape closes one layer and restores trigger focus. Async work may temporarily disable closing.
 - Icon buttons have accessible names. Disabled/loading/empty/expired/failure/success states reflect real responses.
+
+`node tooling/acceptance/product-picker.mjs --url=http://127.0.0.1:5196` checks an existing `dev:ui --mode acceptance-fixture` server. It renders fixed-connection setup and the source panel's Connection → Advanced controls in both themes at 360, 640, 1280 and 1920px, with 800/1080px heights. It checks picker bounds, popup overflow, keyboard access to Grok/More, layered Escape, trigger focus restoration and resizing between pills and Select. `source-panel-light` shares the source-panel fixture's in-memory management responses.
 
 ## Theme and motion
 

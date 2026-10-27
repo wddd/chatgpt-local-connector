@@ -316,16 +316,18 @@ export function SingleChoice({
     navigation && "p-3 data-[state=on]:bg-secondary",
     tiles && "flex-col p-3",
     swatches && "size-6.5 min-h-6.5 rounded-full p-1 text-white data-[state=on]:bg-transparent");
+  const groupClass = cn("w-max max-w-full gap-0.5 rounded-md bg-secondary p-0.75", (cards || navigation) && "grid w-full grid-cols-1 gap-2.5 bg-transparent p-0", swatches && "gap-2.5 bg-transparent p-1");
+  const items = options.map(option => <ToggleGroupItem key={option.value} value={option.value} disabled={option.disabled} aria-label={option.label} title={option.disabled ? option.description : undefined} className={itemClass}
+    data-hover-target={navigation ? option.value : undefined} style={swatches && option.color ? { background: option.color } as CSSProperties : undefined}>
+    {swatches ? <Icon icon={Check} className={option.value === value ? "opacity-100" : "opacity-0"} /> : optionContent(option)}
+  </ToggleGroupItem>);
   return <div ref={container} style={compact && contentWidth ? { width: contentWidth } : undefined} className="choice relative w-full min-w-0 max-w-full">
-    {options.length <= 5 && <div className="pointer-events-none invisible absolute inset-x-0 top-0 h-0 overflow-hidden" aria-hidden="true" inert><div ref={measure} className="flex w-max gap-0.5 p-0.75">
-      {options.map(option => <span key={option.value} className={cn("flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-1 text-sm", swatches && "size-9.5 p-1")}>{option.graphic}{option.icon && <Icon icon={option.icon} />}{!swatches && option.label}</span>)}
-    </div></div>}
+    {/* Measure the same content and variants as the visible pills, including object rows. */}
+    {options.length <= 5 && <div className="pointer-events-none invisible absolute inset-x-0 top-0 h-0 overflow-hidden" aria-hidden="true" inert>
+      <ToggleGroup ref={measure} type="single" value={value} disabled={disabled} rovingFocus={false} className={cn(groupClass, "w-max max-w-none")}>{items}</ToggleGroup>
+    </div>}
     {pills ? <ToggleGroup type="single" value={value} onValueChange={next => { if (next) onChange(next); }} disabled={disabled} aria-label={label}
-      className={cn("w-max max-w-full gap-0.5 rounded-md bg-secondary p-0.75", (cards || navigation) && "grid w-full grid-cols-1 gap-2.5 bg-transparent p-0", swatches && "gap-2.5 bg-transparent p-1")}>
-      {options.map(option => <ToggleGroupItem key={option.value} value={option.value} disabled={option.disabled} aria-label={option.label} title={option.disabled ? option.description : undefined} className={itemClass}
-        data-hover-target={navigation ? option.value : undefined} style={swatches && option.color ? { background: option.color } as CSSProperties : undefined}>
-        {swatches ? <Icon icon={Check} className={option.value === value ? "opacity-100" : "opacity-0"} /> : optionContent(option)}
-      </ToggleGroupItem>)}
+      className={groupClass}>{items}
     </ToggleGroup> : <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger aria-label={label}><SelectValue>{options.find(option => option.value === value)?.label}</SelectValue></SelectTrigger>
       <SelectContent position="popper" sideOffset={6} collisionPadding={12}><HoverScope tracking="highlighted">
