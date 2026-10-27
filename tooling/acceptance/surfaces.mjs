@@ -146,6 +146,7 @@ export async function acceptSurface(page, fixture, name, messages) {
       if (await entry.getByRole('button').count()) throw new Error(`${kind} connection exposes an action in ${state} state`);
     }
     if (fixture.connectionDeployment) {
+      if (fixture.relayProgress?.phase === 'failed') await button(main, 'retry').click();
       await main.getByRole('textbox', { name: messages['connect.copyLogin'], exact: true }).waitFor();
       await button(main, 'cancel').click();
       await button(main, 'source.createRelay').waitFor();
@@ -160,7 +161,7 @@ export async function acceptSurface(page, fixture, name, messages) {
       const toggle = main.getByRole('switch', { name: messages['connections.publicLink'], exact: true });
       const before = await toggle.isChecked();
       await toggle.click();
-      if (await toggle.isChecked() === before) throw new Error('Public link lifecycle did not change');
+      await main.getByRole('switch', { name: messages['connections.publicLink'], exact: true, checked: !before }).waitFor();
     }
   }
   if (fixture.panelAccounts && fixture.detailTask === undefined && fixture.panel) {

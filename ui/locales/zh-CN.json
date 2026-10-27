@@ -197,8 +197,6 @@
   "close": "关闭",
   "addAgent": "添加 Agent",
   "manageAgents": "管理 Agent",
-  "expandPanelWidth": "展开面板宽度",
-  "restorePanelWidth": "恢复面板宽度",
   "toolList": "操作列表（op）",
   "toolsAll": "全部",
   "toolsCommon": "默认",

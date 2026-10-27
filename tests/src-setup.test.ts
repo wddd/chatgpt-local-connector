@@ -113,12 +113,14 @@ test('Add SRC routes registry products to public pairing or local commands with 
         await act(async () => { setPrivacy(false); await refreshConnector(); root.render(h(UiProvider, null, h(ConnectionsPage))); });
         assert.ok(page.getByText('https://extra.example.com/mcp', { exact: true }));
         assert.ok(page.getByText(t('source.kind.local'), { exact: true }));
-        await click(t('stop'));
+        const publicSwitch = page.getByRole('switch', { name: t('connections.publicLink'), exact: true });
+        assert.equal(publicSwitch.getAttribute('aria-checked'), 'true');
+        await act(async () => { fireEvent.click(publicSwitch); });
         assert.equal(ingresses[0].running, false);
         assert.equal(ingresses[1].running, true);
         assert.equal(ingresses[2].running, true);
-        assert.equal(page.queryByRole('button', { name: t('stop'), exact: true }), null);
-        assert.ok(page.getByRole('button', { name: t('start'), exact: true }));
+        assert.equal(publicSwitch.getAttribute('aria-checked'), 'false');
+        assert.equal(page.getAllByRole('switch').length, 1);
       }
 
       await act(async () => root.render(null));

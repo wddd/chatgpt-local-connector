@@ -91,7 +91,8 @@ try {
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           const main = page.getByRole('main');
           await main.getByRole('button', { name: messages['source.createRelay'], exact: true }).click();
-          await main.getByRole('textbox', { name: messages['connect.copyLogin'], exact: true }).waitFor();
+          if (fixture.relayProgress?.phase === 'failed') await main.getByRole('button', { name: messages.retry, exact: true }).waitFor();
+          else await main.getByRole('textbox', { name: messages['connect.copyLogin'], exact: true }).waitFor();
           await main.getByRole('button', { name: messages.cancel, exact: true }).waitFor();
         }
         if (name === 'navigation-redirects') {

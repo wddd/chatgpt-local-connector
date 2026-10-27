@@ -47,8 +47,8 @@ function AgentView({ agent, account, accountId, accounts, loading, accountError,
   }
   const visibleAccounts = accounts.filter(item => !item.removedAt && item.agentProfiles.some(profile => profile.agent === agent.agent));
   const headerActions = <>
-    {account && <ObjectMenu label={t('context.accountActions')} revealed items={[{ label: t('remove'), consequence: t('accounts.removeConsequence'), onSelect: async () => { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); agentPanel.set({ agent: agent.agent }); } }]} />}
-    {resizable && <ContextSettings label={t('context.panelWidth')} revealed value={expanded ? 'wide' : 'normal'} options={[{ value: 'normal', label: t('context.normal') }, { value: 'wide', label: t('context.wide') }]} onChange={value => { if ((value === 'wide') !== expanded) onToggleWidth(); }} />}
+    {account && <ObjectMenu label={t('context.accountActions')} items={[{ label: t('remove'), consequence: t('accounts.removeConsequence'), onSelect: async () => { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); agentPanel.set({ agent: agent.agent }); } }]} />}
+    {resizable && <ContextSettings label={t('context.panelWidth')} value={expanded ? 'wide' : 'normal'} options={[{ value: 'normal', label: t('context.normal') }, { value: 'wide', label: t('context.wide') }]} onChange={value => { if ((value === 'wide') !== expanded) onToggleWidth(); }} />}
     <DialogClose asChild><IconButton icon={X} label={t('close')} /></DialogClose>
   </>;
   const back = <IconButton icon={ArrowLeft} label={t('back')} onClick={() => selectAgentPanel({ type: 'back' })} />;

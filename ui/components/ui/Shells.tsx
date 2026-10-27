@@ -24,7 +24,7 @@ export function SectionHeader({ title, level, count, leading, actions, back, clo
   titleProps?: HTMLAttributes<HTMLHeadingElement>; titleActions?: ReactNode; titleAsChild?: boolean;
 }) {
   const Heading = `h${level}` as const;
-  return <header data-leading={!!(leading || back)} {...props} className={cn("section-header flex min-w-0 items-center justify-between gap-3", className)}>
+  return <header data-leading={!!(leading || back)} {...props} className={cn("section-header group/context flex min-w-0 items-center justify-between gap-3", className)}>
     {back}{leading}<div className="section-header-copy min-w-0 flex-1"><div className="section-header-title flex min-w-0 items-center gap-1 [&>h1]:min-w-0 [&>h2]:min-w-0 [&>h3]:min-w-0 [&>h4]:min-w-0">{titleAsChild ? title : <Heading {...titleProps} className={cn("m-0 text-inherit", titleProps?.className)}>{title}{count !== undefined && <span className="section-header-count ms-1.5 font-normal text-muted-foreground tabular-nums">{count}</span>}</Heading>}{titleActions}</div>{secondary}</div>
     {(actions || widthControl || close) && <div className="actions ms-auto flex shrink-0 flex-wrap items-center gap-2">{actions}{widthControl}{close}</div>}{children}
   </header>;

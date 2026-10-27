@@ -125,7 +125,7 @@ export function UpdateOutcome() {
       ...(job.state === 'rolled-back' ? [{ label: t('updates.viewLog'), disabled: !job.logPath, onSelect: () => { if (job.logPath) action(reveal(job.logPath)); } }] : []),
       ...(failedRestore && job.backup ? [{ label: t('updates.showInFinder'), onSelect: () => action(reveal(job.backup!)) }] : []),
     ]} /><IconButton icon={X} label={t("dismissMessage")} onClick={dismissOutcome} /></>} />
-    {(job.error || job.state === 'rolled-back') && <Notice action={!failedRestore && <ContextIcon icon={RefreshCw} label={t('retryReplacement')} onClick={() => { action(retryUpdate(job)); dismissOutcome(); }} />}>{job.error || t(title)}</Notice>}
+    {(job.error || job.state === 'rolled-back' || job.state === 'failed') && <Notice action={!failedRestore && ['failed', 'rolled-back'].includes(job.state) && <ContextIcon icon={RefreshCw} label={t('retryReplacement')} onClick={() => { action(retryUpdate(job)); dismissOutcome(); }} />}>{job.error || t('requestFailedPleaseRetry')}</Notice>}
     {failedRestore && job.backup && <CopyValue value={job.backup} label={t("updates.copyPath")} />}
 
   </aside></Card>;

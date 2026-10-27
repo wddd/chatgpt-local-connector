@@ -33,7 +33,7 @@ The built-in local authority is excluded from user-managed SRC accounts. Connect
 | Account Row | SrcAccountRow | SRC L1 account list and platform cards; homepage rows show one alias with its observed source states. |
 | Account Card | SrcAccountCard | Object fixtures for identity, state, timestamps and current authorization evidence. Homepage L2 composes account state, last seen and conversation rows. No grant history. |
 
-SourcePanel owns SRC L1/L2. Add account preselects the product. L2 reads account conversations; task references open AGENT L3. AccountActions owns rename/remove dialogs. SourceDispatches remains in Logs for source-attributed receipts. The old source connection inspector and cross-role panel links are removed.
+SourcePanel owns SRC L1/L2. Add account preselects the product. L2 reads account conversations; task references open AGENT L3. InlineName edits aliases in the L2 header; ObjectMenu confirms removal in an anchored Popover. SourceDispatches remains in Logs for source-attributed receipts. The old source connection inspector and cross-role panel links are removed.
 
 There is no Accounts page, notification binding/test card, merge dialog, product correction, Change connection or account-wide dispatch-policy summary. Core identity, notification and merge operations remain available through CLI/AX.
 

@@ -36,7 +36,7 @@ export function TaskCard({ task, agent, agentName = agent, titleId, children, on
     back={(onBack || onOpen || onToggleWidth || onClose) && <div className="task-detail-navigation flex min-w-0 justify-between gap-2 [&>.button]:min-w-0 [&>.button]:justify-start [&>.button]:text-muted-foreground [&>.button>span]:truncate">
       {onBack ? <Button variant="ghost" className="min-w-0 flex-1 shrink" aria-label={t('back')} title={`${agentName}${project ? ` · ${project}` : ''}`} onClick={onBack}>
         <Icon icon={ArrowLeft} /><span>{agentName}{project && ` · ${project}`}</span></Button> : <span className="task-card-project min-w-0 truncate text-muted-foreground">{project}</span>}
-      {onToggleWidth && <ContextSettings label={t('context.panelWidth')} revealed value={expanded ? 'wide' : 'normal'} options={[{ value: 'normal', label: t('context.normal') }, { value: 'wide', label: t('context.wide') }]} onChange={value => { if ((value === 'wide') !== !!expanded) onToggleWidth(); }} />}
+      {onToggleWidth && <ContextSettings label={t('context.panelWidth')} value={expanded ? 'wide' : 'normal'} options={[{ value: 'normal', label: t('context.normal') }, { value: 'wide', label: t('context.wide') }]} onChange={value => { if ((value === 'wide') !== !!expanded) onToggleWidth(); }} />}
       {!narrow && <div className="flex shrink-0 items-center gap-1">
         {onOpen && <IconButton icon={ArrowUpRight} label={t('activity.open')} busy={busy} onClick={onOpen} />}
         {onClose && <IconButton icon={X} label={t('close')} disabled={busy} onClick={onClose} />}

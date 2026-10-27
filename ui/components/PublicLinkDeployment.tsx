@@ -62,7 +62,7 @@ export default function PublicLinkDeployment({ relayId, onReady, onCancel }: {
   }
   return <>
     {(error || progressError) && <Notice action={<ContextIcon icon={RefreshCw} label={t("retry")} busy={busy} onClick={() => { if (result) void complete(result); else void start(progress); }} />}>{error || progressError}</Notice>}
-    {result ? null
+    {result ? busy && <Loading />
       : active || progress.phase === "failed" ? <DeploymentProgressCard progress={progress} busy={busy} account={account} setAccount={setAccount} onRetry={() => void start(progress)} onCancel={() => void cancel()} />
       : busy || !error ? <Loading /> : null}
   </>;

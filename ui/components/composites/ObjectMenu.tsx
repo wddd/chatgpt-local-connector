@@ -15,12 +15,12 @@ export function ObjectMenu({ label, items, revealed = false }: { label: string; 
   async function execute(item: Action) {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError('');
-    try { await item.onSelect(); setSelected(undefined);  }
+    try { await item.onSelect(); setSelected(undefined); }
     catch (error) { setError(String(error)); }
     finally { pending.current = false; setBusy(false); }
   }
   if (!items.length) return null;
-  return <span className="group/context inline-flex"><Popover open={!!selected} onOpenChange={open => { if (!open && !busy) { setSelected(undefined);  } }}>
+  return <span className="group/context inline-flex"><Popover open={!!selected} onOpenChange={open => { if (!open && !busy) { setSelected(undefined); } }}>
     <DropdownMenu open={menu} onOpenChange={setMenu}>
       <PopoverAnchor asChild><DropdownMenuTrigger asChild><ContextIcon ref={trigger} icon={Ellipsis} label={label} revealed={revealed || !!selected} /></DropdownMenuTrigger></PopoverAnchor>
       <DropdownMenuContent align="end" onCloseAutoFocus={event => {
@@ -39,7 +39,7 @@ export function ObjectMenu({ label, items, revealed = false }: { label: string; 
       onInteractOutside={event => { if (busy) event.preventDefault(); }} onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }}>
       <p id={id} className="text-sm">{selected?.consequence}</p>
       {error && <Notice>{error}</Notice>}
-      <div className="mt-3 flex justify-end gap-2"><Button disabled={busy} onClick={() => { setSelected(undefined);  }}>{t('cancel')}</Button>
+      <div className="mt-3 flex justify-end gap-2"><Button disabled={busy} onClick={() => { setSelected(undefined); }}>{t('cancel')}</Button>
         <Button variant="danger" busy={busy} onClick={() => selected && void execute(selected)}>{selected?.label}</Button></div>
     </PopoverContent>
   </Popover>{error && !selected && <Notice>{error}</Notice>}</span>;

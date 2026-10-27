@@ -292,8 +292,9 @@ test("timeline turn disclosures preserve choices through incremental work and re
     const first = { ...base, id: "first", type: "command", status: "running", command: "npm test", cwd: "/project", output: { text: "example output" } };
     const second = { ...base, id: "second", type: "file", operation: "read", status: "completed", path: "/project/src/file.ts", durationMs: 1000, changes: [{ path: "/project/src/file.ts", operation: "edit" }] };
     const session = { id: "example", source: "arc-task", phase: "command", phaseSince: null, headline: "npm test", timeline: true, project: "/project" };
+    const { TooltipProvider } = await server.ssrLoadModule("/ui/components/ui/index.tsx");
     const render = async (entries: { status: string }[], now = Date.parse("2026-01-01T00:00:03Z"), status?: string) => {
-      await act(async () => { root.render(h(TimelineEntries, { entries, session, agent: "claude", now, running: entries.some(e => ["running", "pending"].includes(e.status)), status: status ?? (entries.some(e => e.status === "failed") ? "failed" : entries.some(e => ["running", "pending"].includes(e.status)) ? "running" : "completed") })); });
+      await act(async () => { root.render(h(TooltipProvider, null, h(TimelineEntries, { entries, session, agent: "claude", now, running: entries.some(e => ["running", "pending"].includes(e.status)), status: status ?? (entries.some(e => e.status === "failed") ? "failed" : entries.some(e => ["running", "pending"].includes(e.status)) ? "running" : "completed") }))); });
     };
     const click = async (element: Element) => { await act(async () => { fireEvent.click(element); }); };
     const page = within(mount);
@@ -438,11 +439,12 @@ test("task detail limits input to pending execution requests and consolidates he
     await click(nativeDock.getByRole("button", { name: t("detail.skip"), exact: true }));
     assert.equal(page.queryAllByRole("region", { name: t("detail.needsYou") }).length, 0);
     assert.equal(page.queryAllByRole("textbox").length, 0);
-    assert.ok(page.getByRole("button", { name: t("expandPanelWidth") }));
+    const widthSettings = () => page.getByRole("button", { name: t("context.panelWidth"), exact: true });
+    assert.ok(widthSettings());
     await act(() => { panelWidth = 320; [...observers].forEach(observer => observer.notify()); });
-    assert.equal(page.queryAllByRole("button", { name: t("expandPanelWidth") }).length, 0);
-    await act(() => fireEvent.keyDown(page.getByRole("button", { name: t("detail.taskActions") }), { key: "Enter" }));
-    await click(page.getByRole("menuitem", { name: t("expandPanelWidth") }));
+    await click(widthSettings());
+    const options = within(page.getByRole("dialog", { name: t("context.panelWidth"), exact: true }));
+    await click(options.getByRole("radio", { name: t("context.wide"), exact: true }));
     assert.equal(expanded, true);
   } finally {
     await act(() => root.unmount()); globalThis.fetch = originalFetch;

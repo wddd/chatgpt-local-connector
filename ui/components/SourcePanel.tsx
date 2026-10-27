@@ -39,7 +39,7 @@ export default function SourcePanel({ product, accountId, widthControl }: { prod
     <SectionHeader className="dialog-header flex shrink-0 items-center gap-2 border-b px-4 py-3 [&_.section-header-copy]:min-w-0 [&_.section-header-copy]:flex-1 [&_h2]:min-w-0" level={2}
       leading={accountId && <IconButton icon={ArrowLeft} label={t('back')} onClick={() => selectSourcePanel(product, { platformOnly: true })} />}
       title={account ? <InlineName key={account.id} value={account.alias} revealed onSave={async alias => { await accountsApi.update({ id: account.id, alias }); await refreshAccounts(); }} /> : <SrcPlatformChip product={product} />} titleProps={{ tabIndex: -1, 'aria-label': account?.alias }}
-      actions={<>{account && <ObjectMenu label={t('context.accountActions')} revealed items={[{ label: t('remove'), consequence: t('accounts.removeConsequence'), onSelect: async () => { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); ingressPanel.set({ product }); } }]} />}<PrivacyToggle />{widthControl}<DialogClose asChild><IconButton icon={X} label={t('close')} /></DialogClose></>} />
+      actions={<>{account && <ObjectMenu label={t('context.accountActions')} items={[{ label: t('remove'), consequence: t('accounts.removeConsequence'), onSelect: async () => { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); ingressPanel.set({ product }); } }]} />}<PrivacyToggle />{widthControl}<DialogClose asChild><IconButton icon={X} label={t('close')} /></DialogClose></>} />
     <ViewStack hidden={!accountId} className="side-panel-scroll gap-4 overflow-auto p-4">
       {state.error && <Notice>{state.error}</Notice>}
       {state.loading && <Loading />}

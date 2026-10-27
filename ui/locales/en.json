@@ -197,8 +197,6 @@
   "close": "Close",
   "addAgent": "Add Agent",
   "manageAgents": "Manage Agents",
-  "expandPanelWidth": "Expand panel width",
-  "restorePanelWidth": "Restore panel width",
   "toolList": "Operation list (op)",
   "toolsAll": "All",
   "toolsCommon": "Default",

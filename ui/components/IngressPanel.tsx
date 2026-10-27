@@ -17,7 +17,7 @@ export default function IngressPanel({ onPanelFrame, width, expanded, onToggleWi
     onClose={() => { if (ingressPanel.get()?.closing) ingressPanel.set(undefined); }}
     returnFocus={`[data-source-node="${CSS.escape(selected.client?.id ?? `platform:${selected.product}`)}"] button`} onPanelFrame={onPanelFrame}>
     <div className="flex h-full min-h-0 w-full flex-col">
-      <SourcePanel product={selected.product} accountId={selected.accountId} widthControl={!dockRect && <ContextSettings label={t('context.panelWidth')} revealed value={expanded ? 'wide' : 'normal'} options={[{ value: 'normal', label: t('context.normal') }, { value: 'wide', label: t('context.wide') }]} onChange={value => { if ((value === 'wide') !== expanded) onToggleWidth(); }} />} />
+      <SourcePanel product={selected.product} accountId={selected.accountId} widthControl={!dockRect && <ContextSettings label={t('context.panelWidth')} value={expanded ? 'wide' : 'normal'} options={[{ value: 'normal', label: t('context.normal') }, { value: 'wide', label: t('context.wide') }]} onChange={value => { if ((value === 'wide') !== expanded) onToggleWidth(); }} />} />
     </div>
   </Dialog>;
 }
