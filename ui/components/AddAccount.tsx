@@ -75,13 +75,13 @@ export default function AddAccount({ onClose, initialLogin, forAccount }: { onCl
   }
   const roleMatched = forAccount && identity && (identity.id === forAccount.id || forAccount.sources.some(id => identity.sources.includes(id)));
   return <Dialog centered title={forAccount ? t('accounts.addAgentFor', { alias: forAccount.alias }) : t('accounts.add')} width={560} busy={busy} onClose={close}
-    stepBar={<ol className="account-steps">{['type', 'signin', 'confirm'].map((name, index) => <li key={name} aria-current={step === index ? 'step' : undefined}>{index + 1} · {t(`accounts.${name}`)}</li>)}</ol>}
+    stepBar={<ol className="mx-5 flex list-none flex-wrap gap-3 p-0 text-sm text-muted-foreground sm:mx-7">{['type', 'signin', 'confirm'].map((name, index) => <li className="aria-[current=step]:font-semibold aria-[current=step]:text-brand-accent" key={name} aria-current={step === index ? 'step' : undefined}>{index + 1} · {t(`accounts.${name}`)}</li>)}</ol>}
     footer={<><Button disabled={busy} onClick={close}>{t(waiting ? 'cancel' : 'close')}</Button>{step === 1 && !login && !forAccount && <Button onClick={() => setStep(0)}>{t('back')}</Button>}
       {step === 0 ? <Button variant="primary" onClick={() => setStep(1)}>{t('accounts.next')}</Button> : step === 2 ? identity && <Button variant="primary" type="submit" form="account-confirm" busy={busy}>{t('accounts.confirm')}</Button>
         : login?.state === 'unfinished' ? <Button busy={busy} onClick={() => start('detect')}>{t('accounts.kind.detect')}</Button>
         : !waiting && login?.state !== 'completed' ? <Button variant="primary" busy={busy} onClick={() => start()}>{t(login ? 'retry' : 'accounts.signin')}</Button> : null}</>}>
     <FormSection>
-      {forAccount && step === 1 && <><SensitiveIdentity email={forAccount.email} orgName={forAccount.orgName} /><p className="muted">{t(isUnidentified(forAccount) ? 'accounts.agentIdentityUnresolved' : 'accounts.agentIdentitySignin')}</p></>}
+      {forAccount && step === 1 && <><SensitiveIdentity email={forAccount.email} orgName={forAccount.orgName} /><p className="text-muted-foreground">{t(isUnidentified(forAccount) ? 'accounts.agentIdentityUnresolved' : 'accounts.agentIdentitySignin')}</p></>}
       {step === 0 && <SingleChoice label={t('accounts.type')} value={kind} onChange={value => setKind(value as AccountLogin['kind'])} options={['claude', 'codex', 'api-key', 'detect'].map(value => ({ value, label: t(`accounts.kind.${value}`) }))} />}
       {step === 1 && <>
         {['claude', 'codex'].includes(loginKind) && <SingleChoice label={t('claudeAccounts.browser')} value={browser} disabled={waiting || busy} onChange={setBrowser} options={[{ value: 'default', label: t('claudeAccounts.defaultBrowser') }, ...browsers.map(b => ({ value: b.id, label: b.name }))]} />}
@@ -95,7 +95,7 @@ export default function AddAccount({ onClose, initialLogin, forAccount }: { onCl
           <FormField id="account-code" label={t('claudeAccounts.code')} error={fieldError}><Input id="account-code" value={code} autoComplete="off" disabled={busy} aria-invalid={!!fieldError} aria-describedby={fieldError ? 'account-code-error' : undefined} onChange={e => { setCode(e.target.value); setFieldError(''); }} /></FormField>
           <Button type="submit" busy={busy}>{t('submit')}</Button>
         </FormSection></form></Disclosure>}
-        <p className="muted">{t('accounts.agentFlow')}</p>
+        <p className="text-muted-foreground">{t('accounts.agentFlow')}</p>
       </>}
       {login?.browserError && <Notice tone="warning">{login.browserError}</Notice>}
       {login?.next?.message && <Notice tone="warning">{login.next.message}</Notice>}

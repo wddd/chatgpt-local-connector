@@ -35,7 +35,7 @@ function AgentCard({ agent, onMove, children }: {
   const reduced = useReducedMotion();
   const transition = reduced ? { duration: 0 } : springTransition(0.3, 0.9);
   if (!canReorder(agent)) {
-    return <motion.article className="agent-reorder" layout="position" transition={transition}>
+    return <motion.article className="agent-reorder data-[reorderable]:cursor-grab data-[reorderable]:touch-none data-[reorderable]:select-none" layout="position" transition={transition}>
       {children}
     </motion.article>;
   }
@@ -43,7 +43,7 @@ function AgentCard({ agent, onMove, children }: {
     <Reorder.Item
       as="article"
       value={agent.agent}
-      className="agent-reorder"
+      className="agent-reorder data-[reorderable]:cursor-grab data-[reorderable]:touch-none data-[reorderable]:select-none"
       data-reorderable
       tabIndex={0}
       aria-label={t("reorderAgent", { agent: name(agent) })}

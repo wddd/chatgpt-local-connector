@@ -1054,25 +1054,6 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .agent-panel-header .actions { flex: none; }
 .agent-panel-header .agent-quota-icon { --agent-quota-size: 44px; }
 .dual-quota .quota-outline { stroke-width: 3; }
-.agent-no-quota { margin: 0; }
-.agent-quota-block { display: flex; flex-direction: column; flex: none; gap: 5px; font-family: ui-rounded, "SF Pro Rounded", var(--font-ui); }
-.agent-quota-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.agent-quota-card { display: flex; flex-direction: column; min-width: 0; gap: 10px; padding: 12px; border-radius: var(--radius-row); background: var(--surface-subtle); }
-.agent-quota-card:only-child { grid-column: 1 / -1; }
-.agent-quota-window { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11px; color: var(--text-secondary); }
-.agent-quota-window > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.agent-quota-window > time { margin-left: auto; min-width: 0; font-size: 10px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.agent-quota-percent { flex: none; font-size: 27px; line-height: 1; font-weight: 600; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-.agent-quota-balance { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; height: 27px; }
-.agent-quota-extras { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 0; font-size: 10px; line-height: 12px; text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.agent-quota-extras .agent-quota-resets { min-height: 0; padding: 0; border: 0; border-radius: 3px; font: inherit; color: inherit; line-height: inherit; }
-.agent-quota-refresh { display: flex; flex: none; align-items: center; gap: 3px; font-size: 10px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.agent-quota-refresh .icon-button { width: 18px; min-width: 18px; height: 18px; min-height: 18px; padding: 1px; }
-.agent-quota-refresh .icon { width: 12px; height: 12px; }
-.agent-quota-warning { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--warning); }
-.agent-quota-track { position: relative; height: 5px; border-radius: var(--radius-pill); background: var(--border); }
-.agent-quota-track > div { height: 100%; border-radius: inherit; transition: width 180ms cubic-bezier(.34,1.56,.64,1); }
-.agent-quota-pace-marker { position: absolute; top: -2px; width: 2px; height: 9px; border-radius: 1px; background: var(--text-secondary); transform: translateX(-50%); }
 .agent-conversations { flex: 1 0 auto; gap: 14px; }
 .agent-conversations[data-empty] { justify-content: center; }
 .agent-task-section { min-width: 0; }
@@ -1087,7 +1068,6 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .agent-conversation-more { height: 1px; }
 @keyframes agent-task-rise { from { opacity: 0; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
 :root[data-reduced-motion="true"] {
-  .agent-quota-track > div { transition: none; }
 }
 .agent-task-count { position: absolute; top: -6px; right: -8px; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box; border-radius: var(--radius-pill); background: var(--brand-accent); color: var(--surface); font: 10px/18px var(--font-ui); text-align: center; }
 .agent-task-count[data-attention] { background: var(--warning); }
@@ -1249,42 +1229,16 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 .sensitive-identity { min-width: 0; }
 .copy-value { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; }
 .page-sheet .workspace.accounts-workspace-container { display: flex; flex-direction: column; overflow: hidden; }
-.accounts-workspace { container-type: inline-size; display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 12px; }
-.accounts-columns { display: grid; flex: 1; min-height: 0; grid-template-columns: minmax(220px, 330px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 24px; }
-.account-list { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; }
-.account-list h3 { margin: 18px 10px 8px; color: var(--text-secondary); font-size: 12px; }
-.account-roles, .account-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.account-detail { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; align-content: start; gap: 16px; padding-right: 6px; }
-.account-alias-trigger { max-width: 100%; font: inherit; text-align: start; overflow-wrap: anywhere; }
-.account-alias-trigger > .icon { flex: none; color: var(--text-tertiary); }
-.account-alias-editor { min-width: 0; }
-.account-alias-editor .field { gap: 0; }
-.account-role-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.account-detail h3 { margin: 0; font-size: 14px; }
-.account-session { display: grid; gap: 8px; min-width: 0; padding: 0; }
-.account-sessions { display: grid; gap: var(--space-3); list-style: none; margin: 0; padding: 0; }
-.account-session + .account-session { padding-top: var(--space-3); border-top: 1px solid var(--border); }
-.account-session .section-header .sensitive-value { flex: 0 1 auto; }
-.account-actions { flex-wrap: wrap; }
-.account-remove { display: flex; gap: 16px; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 16px; }
-.account-steps { display: flex; list-style: none; gap: var(--space-3); padding: 0; margin: 0 var(--setup-spacing); flex-wrap: wrap; color: var(--text-secondary); }
-.account-steps [aria-current="step"] { color: var(--brand-accent); font-weight: 650; }
+.account-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .source-account-header { flex-wrap: wrap; gap: 12px; }
 .source-account-header h2 { margin: 0 0 4px; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .source-account-header .section-header-copy > .sensitive-value { color: var(--text-secondary); font-size: 12px; text-overflow: ellipsis; }
 .source-account-header > .actions { margin-left: auto; }
 .source-panel-content { display: flex; flex-direction: column; gap: 16px; }
-@container (max-width: 760px) {
-  .accounts-columns { grid-template-columns: minmax(140px, 0.8fr) minmax(0, 1.2fr); gap: 12px; }
-  .account-role-cards { grid-template-columns: 1fr; }
-}
 @media (max-width: 600px) {
   .sheet-header:has(+ .workspace .accounts-workspace) { flex-wrap: wrap; }
   .sheet-header:has(+ .workspace .accounts-workspace) .capsule-title { flex: 1 1 100%; }
 }
-
-.account-shared-notice { display: flex; align-items: flex-start; gap: var(--space-2); margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-control); background: var(--surface-subtle); color: var(--text-secondary); font-size: var(--text-sm); }
-.account-shared-notice > .icon { flex: none; margin-top: 2px; }
 
 /* Portrait geometry is solver-owned; only label placement belongs to CSS. */
 .topology-hub .graph-brand { transform: rotate(var(--hub-rotation, 0deg)); }
@@ -1322,11 +1276,9 @@ button.timeline-summary:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 
 
 .entity-row-actions.permission-entity-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); }
 .entity-row-actions.permission-entity-row > .actions { display: flex; align-items: center; gap: var(--space-3); }
-.account-list .entity-row-secondary { display: grid; gap: 5px; }
 @container (max-width: 560px) {
   .entity-row-actions.permission-entity-row { grid-template-columns: 20px minmax(0, 1fr); gap: 0 var(--space-3); }
   .entity-row-actions.permission-entity-row > .entity-row { grid-column: 1 / -1; }
   .entity-row-actions.permission-entity-row > .actions { grid-column: 2; justify-content: space-between; padding-bottom: var(--space-3); }
 }
-.account-list .entity-row-title { white-space: nowrap; }
 .agent-panel-header .section-header-title > .activity-panel-title { flex: 0 1 auto; width: auto; overflow: hidden; }

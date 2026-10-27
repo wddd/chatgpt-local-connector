@@ -3,6 +3,7 @@ import { t, locale } from "../i18n";
 import { subscriptions } from "../state/subscriptions";
 import { agents } from "../state/agents";
 import type { Page } from "../state/navigation";
+import { Card } from "../components/ui/card";
 import QuotaBubble from "./QuotaBubble";
 import { Button, Empty, Loading, Notice } from "../components/ui";
 export default function UsageOverview({ onNavigate }: { onNavigate: (page: Page) => void }) {
@@ -15,24 +16,24 @@ export default function UsageOverview({ onNavigate }: { onNavigate: (page: Page)
     : [];
   const [dismissKey, setDismissKey] = useState(0);
   return (
-    <section className="usage-overview" aria-label={t("trayUsage")}>
+    <section className="usage-overview flex min-h-0 flex-col text-foreground" aria-label={t("trayUsage")}>
       <div
-        className="usage-overview-scroll"
+        className="min-h-0 overflow-auto"
         onScroll={() => setDismissKey((k) => k + 1)}
       >
-        <div className="usage-overview-content">
+        <div className="grid gap-2.5">
           {subscriptionError && <Notice>{subscriptionError}</Notice>}
           {!snapshot && !subscriptionError && <Loading />}
           {providers.map((provider) => (
-            <div
+            <Card
               key={provider.providerId}
-              className="usage-provider-card"
+              className="rounded-lg bg-muted p-3 text-foreground shadow-none"
             >
               <QuotaBubble
                 key={`${provider.providerId}:${dismissKey}`}
                 provider={provider}
               />
-            </div>
+            </Card>
           ))}
           {snapshot && !providers.length && (
             <Empty

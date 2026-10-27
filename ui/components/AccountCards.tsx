@@ -1,4 +1,4 @@
-import { EntityCard, SectionHeader, Button, Dialog, Field, Icon, Notice, Status } from "./ui";
+import { ActionGroup, EntityCard, SectionHeader, Button, Dialog, Field, Icon, Notice, Status } from "./ui";
 import { useState } from 'react';
 import { Link } from 'lucide-react';
 import type { ProviderAccount as Account } from '../types';
@@ -11,7 +11,7 @@ import { Sensitive, SensitiveInput, useSensitiveText } from './Sensitive';
 import AgentQuota from './AgentQuota';
 import { accountQuotaProvider } from '../subscriptions/accountQuota';
 export function AccountSharedNotice() {
-  return <div className="account-shared-notice" role="note"><Icon icon={Link} /><span>{t('accounts.sharedQuota')}</span></div>;
+  return <div className="flex items-start gap-2 rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground [&>.icon]:mt-0.5 [&>.icon]:shrink-0" role="note"><Icon icon={Link} /><span>{t('accounts.sharedQuota')}</span></div>;
 }
 export function AccountQuota({ account }: { account: Account }) {
   const [refreshing, setRefreshing] = useState(false);
@@ -34,20 +34,20 @@ export function AccountNotifications({ account }: { account: Account }) {
   return <EntityCard>
     <SectionHeader level={3} title={<>{t('accounts.notifications')}</>} actions={<><Status tone={account.notifications.state === 'verified' ? 'success' : account.notifications.state === 'not-bound' ? 'warning' : 'neutral'}>{t(`accounts.notifications.${account.notifications.state}`)}</Status></>} />
     {account.notifications.state === 'mcp-events' && <p role="status">{t(account.notifications.reachable ? 'accounts.reachable' : 'accounts.unreachable')}</p>}
-    {sessions.length > 0 && <ul className="account-sessions" aria-label={t('accounts.sessions')}>{sessions.map((session, index) => {
+    {sessions.length > 0 && <ul className="m-0 grid list-none gap-3 p-0" aria-label={t('accounts.sessions')}>{sessions.map((session, index) => {
       const state = session.verified ? 'verified' : session.state;
       const reachable = state === 'verified' || state === 'reachable';
       const known = ['verified', 'reachable', 'unavailable', 'failed', 'not-bound'].includes(state);
-      return <li className="account-session" key={`${session.sourceId ?? ''}:${session.target}:${index}`}>
+      return <li className="grid min-w-0 gap-2 p-0 [&+li]:border-t [&+li]:pt-3 [&_.sensitive-value]:flex-initial" key={`${session.sourceId ?? ''}:${session.target}:${index}`}>
         <SectionHeader level={3} title={<><Sensitive>{session.target}</Sensitive></>} actions={<><Status tone={reachable ? 'success' : 'warning'}>{t(`accounts.session.${known ? state : 'unverified'}`)}</Status></>} />
-        <span className="muted small">{t('accounts.lastDelivery', { time: sourceDate(session.lastDelivery?.at) })}{session.lastDelivery && ` · ${session.lastDelivery.status}`}</span>
+        <span className="text-xs text-muted-foreground">{t('accounts.lastDelivery', { time: sourceDate(session.lastDelivery?.at) })}{session.lastDelivery && ` · ${session.lastDelivery.status}`}</span>
         {canNotify && session.channel !== 'mcp-events' && <Button variant="link" disabled={busy} onClick={() => void action(async () => { setSent(''); await accountsApi.notify(account.id, 'test', { target: session.target }); setSent(session.target); })}>{t('accounts.sendTest')}</Button>}
       </li>;
     })}</ul>}
-    <div className="actions account-actions">
+    <ActionGroup align="leading">
       {account.provider === 'anthropic' && account.sources.length > 0 && <Button variant="link" disabled={busy} onClick={() => void action(() => copyText(`Use whoami to confirm account ${account.id}, then use notify_control to bind this session and verify notification reachability.`))}>{t('accounts.copyBind')}</Button>}
       {canNotify && <Button variant="link" disabled={busy} onClick={() => { setError(''); setManual(true); }}>{t('accounts.bindManually')}</Button>}
-    </div>
+    </ActionGroup>
     {sent && <p role="status">{t('accounts.testSent')} <Sensitive>{sent}</Sensitive></p>}{error && !manual && <Notice>{protect(error)}</Notice>}
     {manual && <Dialog centered title={t('accounts.bindManually')} busy={busy} onClose={() => setManual(false)} footer={<><Button onClick={() => setManual(false)} disabled={busy}>{t('cancel')}</Button><Button variant="primary" type="submit" form="account-bind" busy={busy}>{t('save')}</Button></>}>
       <form id="account-bind" onSubmit={e => { e.preventDefault(); if (!target.trim()) { setFieldError(t('fieldRequired')); document.getElementById('account-bind-target')?.focus(); return; } void action(async () => { await accountsApi.route({ accountId: account.id, target: target.trim() }); setManual(false); }); }}>

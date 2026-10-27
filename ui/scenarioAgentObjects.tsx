@@ -32,6 +32,7 @@ export default function AgentObjectsFixture() {
     <AgentAccountRow account={{ ...account, alias: 'Unfinished profile', agentProfiles: [{ ...account.agentProfiles[0], state: 'unfinished' }] }} agent={agent.agent} />
     <AgentPlatformCard agent={agent} frame="catalog" onOpen={() => setAction('Catalog detail opened')} onLink={() => setAction('Official link opened')} headerActions={<Switch label="Enable fixture agent" checked={!busy} onChange={value => setBusy(!value)} />} />
     <AgentPlatformCard agent={agent} error={error ? 'Synthetic retained read failure' : undefined}><AgentAccountRow account={account} agent={agent.agent} onOpen={() => setAction('L2 opened')} /></AgentPlatformCard>
+    <AgentPlatformCard agent={{ ...agent, adapter: { state: 'failed', error: 'CLAUDE_ADAPTER_PROBE_FAILED' } }} />
     <section aria-label="Profile inspector">
       <AgentAccountCard account={account} agent={agent} busy={busy} loading={busy} error={error ? 'Synthetic retained read failure' : undefined}
         onDefault={profile => { setAction(`Default: ${profile.profileId}`); setAccount(old => ({ ...old, agentProfiles: old.agentProfiles.map(item => ({ ...item, default: item.profileId === profile.profileId })) })); }}

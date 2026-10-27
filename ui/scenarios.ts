@@ -292,7 +292,7 @@ export async function installScenario(name: string) {
   responses['tool-catalog'] = toolCatalogFixture;
   responses['accounts'] = { accounts: topologyAccounts, login: null } satisfies AccountsResult;
   srcConversationResponse = srcConversationsScenario();
-  accountResponse = ['accounts', 'source-panel', 'src-account-multiple'].includes(name) || ['add-account', 'merge-accounts'].includes(fixture.pageFixture ?? '') ? accountScenario(status, sources, !!fixture.pageFixture, fixture.multipleSources) : undefined;
+  accountResponse = fixture.page === 'accounts' || ['source-panel', 'src-account-multiple'].includes(name) || ['add-account', 'merge-accounts'].includes(fixture.pageFixture ?? '') ? accountScenario(status, sources, !!fixture.pageFixture, fixture.multipleSources) : undefined;
   if (accountResponse && fixture.pageFixture) {
     const initial = accountResponse('accounts', 'GET') as AccountsResult;
     const login = fixture.pageFixture === 'add-account' ? accountResponse('accounts/add', 'POST', { kind: 'claude' }) as AccountsResult['login'] : null;

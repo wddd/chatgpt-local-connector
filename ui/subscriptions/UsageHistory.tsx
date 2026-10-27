@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Popover } from "radix-ui";
+import { Popover, PopoverAnchor, PopoverContent } from "../components/ui/popover";
 import { useGeometrySpring } from "../motion/geometry";
 export type BubbleControls = {
   register: (key: string, node: HTMLElement | null) => void;
@@ -124,49 +124,47 @@ export default function UsageHistory({
         expanded,
         displayed,
       })}
-      <Popover.Root
+      <Popover
         open={expanded}
         onOpenChange={(next) => {
           if (!next) dismiss();
         }}
       >
-        <Popover.Anchor virtualRef={anchor} />
-        <Popover.Portal>
-          <Popover.Content
-            ref={card}
-            className="history-popover"
-            side="top"
-            align="center"
-            sideOffset={8}
-            collisionPadding={12}
-            updatePositionStrategy="always"
-            style={{ height: motion.value[2]! + 16 }}
-            onInteractOutside={(e) => {
-              const target = e.target;
-              if (target instanceof Node && [...triggers.current.values()].some(node => node.contains(target))) e.preventDefault();
-            }}
-            onOpenAutoFocus={(e) => e.preventDefault()}
-            onCloseAutoFocus={(e) => e.preventDefault()}
-            onEscapeKeyDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              triggers.current.get(displayed)?.focus({ preventScroll: true });
-              dismiss();
-            }}
-            onMouseEnter={() => { schedule(displayed); }}
-            onMouseLeave={() => { schedule(""); }}
-          >
-            <div className="history-scroll">
-              <div
-                ref={attachContent}
-                className="history-detail"
-              >
-                {detail(displayed)}
-              </div>
+        <PopoverAnchor virtualRef={anchor} />
+        <PopoverContent
+          ref={card}
+          className="history-popover z-overlay w-max max-w-80 overflow-visible px-3 py-2 motion-reduce:animate-none"
+          side="top"
+          align="center"
+          sideOffset={8}
+          collisionPadding={12}
+          updatePositionStrategy="always"
+          style={{ height: motion.value[2]! + 16 }}
+          onInteractOutside={(e) => {
+            const target = e.target;
+            if (target instanceof Node && [...triggers.current.values()].some(node => node.contains(target))) e.preventDefault();
+          }}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            triggers.current.get(displayed)?.focus({ preventScroll: true });
+            dismiss();
+          }}
+          onMouseEnter={() => { schedule(displayed); }}
+          onMouseLeave={() => { schedule(""); }}
+        >
+          <div className="h-full overflow-auto overscroll-contain">
+            <div
+              ref={attachContent}
+              className="flex max-w-full flex-col gap-2 text-xs leading-normal wrap-anywhere [&>strong]:text-sm [&>strong]:font-semibold"
+            >
+              {detail(displayed)}
             </div>
-          </Popover.Content>
-        </Popover.Portal>
-      </Popover.Root>
+          </div>
+        </PopoverContent>
+      </Popover>
     </>
   );
 }

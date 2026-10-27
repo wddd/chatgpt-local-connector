@@ -16,7 +16,7 @@ Feature CSS selectors are tracked when their names indicate rows, cards, forms, 
 
 TASK list and summary-header layout is owned by `ui/components/objects/task/task.css`. Collection layout, timeline bodies and update work grouping retain their feature owners.
 
-AGENT object migration moves catalog, profile and identity framing styles into their shared object owners. Account notification styles and task styles retain their existing ownership.
+Accounts, AGENT catalog/profile/identity objects and quota surroundings compose shared shadcn primitives with Tailwind utilities. Notification binding behavior and task content retain their existing owners. Quota rings remain brand visuals. Account workspace and Agent panel shell selectors remain with the integration owner.
 
 ## Remaining migration ownership
 
@@ -24,7 +24,6 @@ AGENT object migration moves catalog, profile and identity framing styles into t
 | --- | --- | --- |
 | Settings, updates and management | `SettingsPage.tsx`, `SettingsExtras.tsx`, `AgentDisplaySettings.tsx`, `AgentsSettings.tsx`, `AppUpdate.tsx` (including UpdatesSettings), `PermissionsPage.tsx`, `RecordsPage.tsx` | Settings/update/table rules in `ui/style.css`, `ui/product.css`, `ui/components/AppUpdate.css`; `ui/components/ui/DataTable.css` |
 | Remote link, setup and Relay | `RemoteLinkPage.tsx`, `SourceConnection.tsx`, `IngressDialog.tsx`, `AddConnection.tsx`, `SetupDialog.tsx`, `RelayHosting.tsx`, `RelaySettings.tsx`; SRC/TUNNEL/relay/request objects | Setup, connection and relay selectors in `ui/product.css`; relevant rules in `ui/components/objects/objects.css` and request/deployment stylesheets |
-| Accounts and quota surroundings | `AccountsPage.tsx`, `AccountCards.tsx`, `AddAccount.tsx`, `MergeAccounts.tsx`, `AgentQuota.tsx`, `subscriptions/UsageHistory.tsx`, `subscriptions/QuotaBubble.tsx`; AGENT objects | Account/usage rules in `ui/style.css` and `ui/product.css`, AGENT object CSS; quota rings remain brand visuals; notification binding stays with its owner |
 | Task and activity content | `TasksPage.tsx`, `objects/task/Card.tsx`, `ActivityTimeline.tsx`, `TimelineEntries.tsx`, `TaskOutcome.tsx`, `TaskChanges.tsx`, `TaskOwnership.tsx`; TASK and interaction objects | `ui/components/TaskDetail.css`, `ui/components/activity/activity.css`, task/timeline rules in `ui/product.css`, TASK object CSS; task-bubble styling remains brand-owned |
 | Workspace and global shell | `ElasticPanel.tsx`, workspace headers/dock, `ui/components/ui/HoverPreviewGroup.tsx`, `AnimatedSize.tsx` | Global defaults and dialog/workspace rules in `ui/style.css` and `ui/product.css`, the remaining hover/size shared CSS; topology geometry is outside layout migration |
 
@@ -41,10 +40,9 @@ Counts are outstanding violations per file and rule, sorted by count.
 <!-- ui-debt:start -->
 | File | Rule | Count |
 | --- | --- | ---: |
-| ui/product.css | shared-layout-css | 404 |
+| ui/product.css | shared-layout-css | 367 |
 | ui/components/TaskDetail.css | shared-layout-css | 72 |
-| ui/style.css | shared-layout-css | 47 |
+| ui/style.css | shared-layout-css | 44 |
 | ui/components/AppUpdate.css | shared-layout-css | 37 |
-| ui/subscriptions/bubble.css | shared-layout-css | 29 |
 | ui/components/activity/activity.css | shared-layout-css | 5 |
 <!-- ui-debt:end -->

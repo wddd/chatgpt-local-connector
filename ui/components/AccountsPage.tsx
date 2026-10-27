@@ -1,7 +1,7 @@
 import { AgentAccountCard, AgentAccountRow } from './objects/agent-account';
 import { AgentProfileRow } from './objects/agent-account/Row';
 import { SrcAccountRow } from "./objects/src-account";
-import { EntityCard, Button, Dialog, Empty, Field, HoverScope, Icon, Input, Notice } from "./ui";
+import { DangerZone, EntityCard, Button, Dialog, Empty, Field, HoverScope, Icon, Input, Notice } from "./ui";
 import { useEffect, useRef, useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { accountsApi } from '../api';
@@ -22,7 +22,7 @@ import MergeAccounts from './MergeAccounts';
 
 export function AccountsActions() {
   const { items } = accounts.use();
-  return <><span className="muted small">{t('accounts.count', { count: items.length })}</span><PrivacyToggle /><Button variant="primary" onClick={() => navigation.set(old => ({ ...old, addAccount: true }))}>{t('accounts.add')}</Button></>;
+  return <><span className="text-xs text-muted-foreground">{t('accounts.count', { count: items.length })}</span><PrivacyToggle /><Button variant="primary" onClick={() => navigation.set(old => ({ ...old, addAccount: true }))}>{t('accounts.add')}</Button></>;
 }
 export default function AccountsPage() {
   const state = useAccounts(), nav = navigation.use();
@@ -37,13 +37,13 @@ export default function AccountsPage() {
     const group = groups.get(platform.id) ?? { label: platform.label, accounts: [] };
     group.accounts.push(item); groups.set(platform.id, group);
   }
-  return <div className="accounts-workspace">
+  return <div className="accounts-workspace @container flex min-h-0 flex-1 flex-col gap-3">
     {state.error && <Notice action={<Button onClick={() => void refreshAccounts()}>{t('retry')}</Button>}>{state.error}</Notice>}
     {state.loading && <p role="status">{t('loading')}</p>}
     {!state.loading && !state.error && !state.items.length && <Empty>{t('accounts.empty')}</Empty>}
-    <div className="accounts-columns">
-      <nav className="account-list" aria-label={t('accounts.title')}><HoverScope>{[...groups].map(([provider, group]) => {
-        return <section key={provider}><h3>{group.label}</h3>{group.accounts.map(row => <AgentAccountRow key={row.id} account={row} sources={sources} providers={snapshot?.providers} onOpen={() => { setSelected(row.id); navigation.set(old => ({ ...old, accountId: undefined })); }} selected={account?.id === row.id} />)}</section>;
+    <div className="grid min-h-0 flex-1 auto-rows-max grid-cols-1 gap-3 overflow-auto @xl:auto-rows-auto @xl:grid-cols-5 @xl:grid-rows-1 @xl:overflow-hidden @4xl:gap-6">
+      <nav className="account-list min-h-0 min-w-0 overscroll-contain @xl:col-span-2 @xl:overflow-y-auto @xl:pr-1.5" aria-label={t('accounts.title')}><HoverScope>{[...groups].map(([provider, group]) => {
+        return <section key={provider}><h3 className="mx-2.5 mt-4 mb-2 text-xs text-muted-foreground">{group.label}</h3>{group.accounts.map(row => <AgentAccountRow key={row.id} account={row} sources={sources} providers={snapshot?.providers} onOpen={() => { setSelected(row.id); navigation.set(old => ({ ...old, accountId: undefined })); }} selected={account?.id === row.id} />)}</section>;
       })}</HoverScope></nav>
       {account && <AccountDetail key={account.id} account={account} onLogin={setLogin} onAdd={() => setRoleAccount(account)} />}
     </div>
@@ -57,23 +57,23 @@ function AccountDetail({ account, onLogin, onAdd }: { account: Account; onLogin:
   const [busy, setBusy] = useState(false), [remove, setRemove] = useState(false);
   const [merging, setMerging] = useState(false);
   async function action(work: () => Promise<unknown>) { setBusy(true); setError(''); try { await work(); await refreshAccounts(); return true; } catch (e) { setError(String(e)); return false; } finally { setBusy(false); } }
-  return <div className="account-detail">
+  return <div className="grid min-h-0 min-w-0 content-start gap-4 overscroll-contain @xl:col-span-3 @xl:overflow-y-auto @xl:pr-1.5">
     <AgentAccountCard account={account} showProfiles={false} icon={<AccountIdentityIcon account={account} sources={sources} providers={snapshot?.providers ?? []} />} title={<AccountAlias account={account} busy={busy} onSave={alias => action(() => accountsApi.update({ id: account.id, alias }))} />} headerActions={<Button variant="ghost" onClick={() => setMerging(true)}>{t('accounts.merge')}</Button>}>
 
-    {isUnidentified(account) && <p className="muted">{t(account.sources.length ? 'accounts.unidentified' : 'accounts.nativeAuth')}</p>}
+    {isUnidentified(account) && <p className="text-muted-foreground">{t(account.sources.length ? 'accounts.unidentified' : 'accounts.nativeAuth')}</p>}
     {error && !remove && <Notice>{error}</Notice>}
-    <h3>{t('accounts.where')}</h3><div className="account-role-cards">
+    <h3>{t('accounts.where')}</h3><div className="grid grid-cols-1 gap-3 @4xl:grid-cols-2">
       <EntityCard title={t('accounts.controlSource')}>{account.sources.length ? account.sources.map(id => {
         const source = sources.find(s => s.id === id), ingress = status?.ingresses.find(i => i.id === source?.ingressId);
-        return source ? <SrcAccountRow key={id} source={source} ingress={ingress} onOpen={() => openSourceWorkspace(id)} onConnection={connectionId => navigation.set(old => ({ ...old, page: 'remote', remoteConnectionId: connectionId, remoteSourceId: undefined }))} /> : <p key={id} className="muted">{t('accounts.identityUnavailable')}</p>;
-      }) : <><p className="muted">{t('accounts.noSource')}</p><Button variant="link" onClick={() => { navigation.set(old => ({ ...old, page: 'overview' })); openOnboarding(); }}>{t('addControlSource')}</Button></>}</EntityCard>
+        return source ? <SrcAccountRow key={id} source={source} ingress={ingress} onOpen={() => openSourceWorkspace(id)} onConnection={connectionId => navigation.set(old => ({ ...old, page: 'remote', remoteConnectionId: connectionId, remoteSourceId: undefined }))} /> : <p key={id} className="text-muted-foreground">{t('accounts.identityUnavailable')}</p>;
+      }) : <><p className="text-muted-foreground">{t('accounts.noSource')}</p><Button variant="link" onClick={() => { navigation.set(old => ({ ...old, page: 'overview' })); openOnboarding(); }}>{t('addControlSource')}</Button></>}</EntityCard>
       <EntityCard title="Agent">{account.agentProfiles.length ? account.agentProfiles.map((profile, index) => <AgentProfileRow key={`${profile.agent}:${profile.profileId}`} profile={profile} ordinal={index + 1} busy={busy}
         onDefault={selected => void action(() => accountsApi.update({ id: account.id, defaultFor: selected.agent, profileId: selected.profileId }))}
-        onReauth={selected => void action(async () => onLogin(await accountsApi.reauth({ id: account.id, agent: selected.agent, profileId: selected.profileId })))} />) : <><p className="muted">{t('accounts.noAgent')}</p><Button variant="link" onClick={onAdd}>{t('accounts.addAgent')}</Button></>}</EntityCard>
+        onReauth={selected => void action(async () => onLogin(await accountsApi.reauth({ id: account.id, agent: selected.agent, profileId: selected.profileId })))} />) : <><p className="text-muted-foreground">{t('accounts.noAgent')}</p><Button variant="link" onClick={onAdd}>{t('accounts.addAgent')}</Button></>}</EntityCard>
     </div>
     {!!account.sources.length && !!account.agentProfiles.length && <AccountSharedNotice />}
     <AccountQuota account={account} /><AccountNotifications account={account} />
-    <div className="account-remove"><p className="muted">{t('accounts.removeConsequence')}</p><Button variant="danger-outline" disabled={busy} onClick={() => setRemove(true)}>{t('remove')}</Button></div>
+    <DangerZone consequence={t('accounts.removeConsequence')}><Button variant="danger-outline" disabled={busy} onClick={() => setRemove(true)}>{t('remove')}</Button></DangerZone>
     </AgentAccountCard>
     {remove && <Dialog centered title={t('accounts.removeTitle', { alias: account.alias })} busy={busy} onClose={() => setRemove(false)} footer={<><Button disabled={busy} onClick={() => setRemove(false)}>{t('cancel')}</Button><Button variant="danger" busy={busy} onClick={() => void action(() => accountsApi.remove({ id: account.id, running: 'finish' }))}>{t('remove')}</Button></>}><p>{t('accounts.removeConsequence')}</p>{error && <Notice>{error}</Notice>}</Dialog>}
     {merging && <MergeAccounts account={account} onClose={() => setMerging(false)} />}
@@ -93,7 +93,7 @@ function AccountAlias({ account, busy, onSave }: { account: Account; busy: boole
     try { if (value === account.alias || await onSave(value)) finish(returnFocus); }
     finally { saving.current = false; }
   }
-  return editing ? <form className="account-alias-editor" onSubmit={event => { event.preventDefault(); void save(true); }}>
+  return editing ? <form className="min-w-0 [&_.field]:gap-0" onSubmit={event => { event.preventDefault(); void save(true); }}>
     <Field id="account-detail-alias" label={<span className="sr-only">{t('accounts.alias')}</span>} error={error}>
       <Input id="account-detail-alias" autoFocus value={alias} disabled={busy} aria-invalid={!!error} aria-describedby={error ? 'account-detail-alias-error' : undefined}
         onFocus={event => event.currentTarget.select()} onChange={event => { setAlias(event.target.value); setError(''); }} onBlur={() => void save(false)}
@@ -103,6 +103,6 @@ function AccountAlias({ account, busy, onSave }: { account: Account; busy: boole
           if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(true); }
         }} />
     </Field>
-  </form> : <h2><Button ref={trigger} variant="ghost" className="account-alias-trigger" disabled={busy} aria-label={t('accounts.editAlias', { alias: account.alias })}
+  </form> : <h2><Button ref={trigger} variant="ghost" className="h-auto max-w-full justify-start whitespace-normal p-0 text-start text-lg font-semibold wrap-anywhere [&>.icon]:shrink-0 [&>.icon]:text-muted-foreground" disabled={busy} aria-label={t('accounts.editAlias', { alias: account.alias })}
     onClick={() => { active.current = true; setAlias(account.alias); setError(''); setEditing(true); }}>{account.alias}<Icon icon={Pencil} /></Button></h2>;
 }

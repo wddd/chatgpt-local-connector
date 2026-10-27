@@ -399,27 +399,6 @@
     grid-template-columns: 1fr;
   }
 }
-.usage-overview {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  color: var(--text);
-}
-.usage-overview-scroll {
-  min-height: 0;
-  overflow: auto;
-  scrollbar-width: thin;
-}
-.usage-overview-content {
-  display: grid;
-  gap: 10px;
-}
-.usage-provider-card {
-  background: var(--surface-subtle);
-  border-radius: var(--radius-row);
-  padding: 12px;
-  color: var(--text);
-}
 .hover-scope {
   position: relative;
   isolation: isolate;
