@@ -40,12 +40,13 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
     const { agentActivity } = await server.ssrLoadModule("/ui/state/activity.ts");
     const { panelLayers } = await server.ssrLoadModule("/ui/state/panels.ts");
     const { capturePanelOrigin } = await server.ssrLoadModule("/ui/components/panelMorph.ts");
-    const session = { id: "example", source: "transcript", title: "External example", phase: "thinking", phaseSince: null, headline: "Summary", timeline: false, orderAt: 1 };
+    const account = { id: "example-account", alias: "Example account", sources: [], agentProfiles: [{ agent: "claude", profileId: "example", state: "signed-in" }], health: { state: "ready" }, notifications: { sessions: [] }, quota: { state: "unavailable", windows: [] } };
+    const session = { agentAccountId: account.id, id: "example", source: "transcript", title: "External example", phase: "thinking", phaseSince: null, headline: "Summary", timeline: false, orderAt: 1 };
     globalThis.fetch = async (input, init) => {
       const path = String(input).replace("/api/", "");
       const body = init?.body ? JSON.parse(String(init.body)) : {};
-      const result = path === "agents/conversations" ? {
-        data: body.agent === "claude" ? [{ id: "example", source: "arc-task", title: "External example", createdAt: "2026-01-01" }] : [],
+      const result = path === "accounts" ? { accounts: [account], login: null } : path === `accounts/${account.id}` ? account : path === "agents/conversations" ? {
+        data: body.agent === "claude" ? [{ id: "example", source: "arc-task", agentAccountId: account.id, title: "External example", createdAt: "2026-01-01" }] : [],
         nextCursor: null, scope: "arc-tasks",
       } : { sessionId: "example", readOnly: true, status: "completed", entries: [], cursor: 0, coverage: { state: "complete" } };
       return new Response(JSON.stringify(result), { status: 200 });
@@ -70,6 +71,8 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
     const page = within(document.body);
     const { t } = await server.ssrLoadModule("/ui/i18n.ts");
     const claude = page.getByRole("button", { name: "claude" }), codex = page.getByRole("button", { name: "codex" });
+    const { refreshAccounts } = await server.ssrLoadModule("/ui/state/accounts.ts");
+    await act(async () => refreshAccounts());
     await click(claude);
     const shell = page.queryByRole("dialog");
     assert.ok(shell);
@@ -85,7 +88,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
     await click(codex);
     assertNodeIdentity(page.queryByRole("dialog"), shell, "peer switch never remounts the shell");
     assert.equal(agentPanel.get().agent, "codex");
-    await act(() => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    await act(() => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
     await flush();
     assert.equal(agentPanel.get(), undefined);
     assertNodeIdentity(page.queryByRole("dialog"), null);
@@ -95,7 +98,7 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
     // A bubble can open the second layer without visiting the Agent list first.
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
-      if (String(input).endsWith("/agents/conversations")) return originalFetch(input, init);
+      if (String(input).endsWith("/agents/conversations") || String(input).includes("/accounts")) return originalFetch(input, init);
       return new Response(JSON.stringify({ sessionId: "owned", status: "completed", cursor: 1,
         coverage: { state: "partial", truncated: true }, entries: [{ id: "result", type: "text", text: "Retained result", status: "completed", cursor: 1, turnId: "turn", startedAt: null, updatedAt: "2026-01-01" }] }), { status: 200 });
     };
@@ -109,7 +112,9 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
       assert.ok(page.getByText("Retained result"));
       await click(page.getByRole("button", { name: t("back"), exact: true }));
       assertNodeIdentity(page.queryByRole("dialog"), detailShell);
-      assertNodeIdentity(page.queryByRole("button", { name: t("back"), exact: true }), null);
+      assert.ok(page.getByRole("button", { name: t("back"), exact: true }));
+      await click(page.getByRole("button", { name: t("back"), exact: true }));
+      assert.equal(page.queryByRole("button", { name: t("back"), exact: true }), null);
       await act(() => selectAgentPanel({ type: "closed" }));
       await flush();
     } finally { globalThis.fetch = originalFetch; }
@@ -167,6 +172,8 @@ test("control source dock preserves source selection, cross-side dispatch and ba
     const status = { ingresses: [source("one"), source("two")], core: { backendSession: "fixture", appServer: { state: "ready" } }, platform: "darwin", logs: [], autoOpenCodex: false };
     connector.set({ status, sources: status.ingresses.flatMap(i => i.sources), sourcesLoaded: true, loading: false, busy: "", error: "", feedback: { text: "", error: false } });
     agents.set({ items: [{ agent: "codex", installed: true, enabled: true, available: true, status: "ready" }], loading: false, error: "" });
+    const sourceAccounts = ['one', 'two'].map(id => ({ id, alias: `Source ${id}`, provider: 'anthropic', identityKey: id,
+      sources: [id], agentProfiles: [], health: { state: 'ready' }, notifications: { sessions: [] }, quota: { state: 'unavailable', windows: [] } }));
     const session = { id: "thread", source: "codex-thread", title: "Dispatch fixture", phase: "command", headline: "Fixture", phaseSince: null, timeline: true };
     agentActivity.set({ snapshot: { observedAt: "2026-01-01", activeAgents: ["codex"], agents: { codex: { sessions: [session] } } }, error: "" });
     tasks.set({ records: [{ requestId: "dispatch", origin: { ingressId: "one", sourceId: "one" }, state: "completed", createdAt: "2026-01-01", task: { kind: "create", threadId: "thread", title: "Dispatch fixture", prompt: "Fixture" } }], error: "", loading: false });
@@ -175,7 +182,9 @@ test("control source dock preserves source selection, cross-side dispatch and ba
       let value: unknown = {};
       if (path === "tasks/control" && body.op === "codex_queue") value = { items: [] };
       else if (path === "status") value = status;
-      else if (path === "accounts") value = { accounts: [], login: null };
+      else if (path === "accounts") value = { accounts: sourceAccounts, login: null };
+      else if (path.startsWith('accounts/')) value = sourceAccounts.find(account => account.id === path.slice(9));
+      else if (path === 'src-conversations/query') value = { accounts: [{ accountId: body.accountId, conversations: [{ id: 'example-conversation', kind: 'chat', lastSeenAt: '2026-01-01', taskRefs: [{ agent: 'codex', id: 'thread', basis: 'correlated' }] }] }] };
       else if (path === "setup/next") value = { hasState: false, complete: false, goal: null, steps: [], step: null, progress: { done: 0, total: 0 }, cliPath: "arc", stateDir: "fixture" };
       else if (path === "relay/list") value = { relays: [{ id: "public", ingressId: "one", owner: true, url: "https://example.com", name: "Public link", workerVersion: null }], version: "test" };
       else if (path === "relay/progress") value = { phase: "idle" };
@@ -185,7 +194,7 @@ test("control source dock preserves source selection, cross-side dispatch and ba
       else if (path === "source") value = { sources: status.ingresses.flatMap(i => i.sources) };
       else if (path.endsWith("/oauth")) value = { grants: [] };
       else if (path.startsWith("tasks/runtime/")) value = { runtimeStatus: "active", observedAt: "2026-01-01" };
-      else if (path.startsWith("agents/timeline/")) value = { sessionId: "thread", status: "running", entries: [], cursor: 0, coverage: { state: "complete" } };
+      else if (path.startsWith("agents/timeline/") || path === "agents/conversations/timeline") value = { sessionId: "thread", status: "running", entries: [], cursor: 0, coverage: { state: "complete" } };
       else if (path === "ingress/one" && method === "PUT") { Object.assign(status.ingresses[0], body); value = status.ingresses[0]; }
       else if (path === "ingress/one" && method === "DELETE") status.ingresses = status.ingresses.filter(i => i.id !== "one");
       return new Response(JSON.stringify(value), { status: 200 });
@@ -199,7 +208,7 @@ test("control source dock preserves source selection, cross-side dispatch and ba
     const click = async (node: Element | null) => { assert.ok(node); await act(() => fireEvent.click(node)); await flush(); };
     const page = within(document.body);
     const button = (name: string) => page.getByRole("button", { name, exact: true });
-    const escape = async () => { await act(() => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }))); await flush(); };
+    const escape = async () => { await act(() => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }))); await flush(); };
     await act(() => root.render(h(UiProvider, null, h("div", { onClickCapture: (e: { target: EventTarget }) => capturePanelOrigin(e.target) }, h(Overview)))));
     await flush();
     const first = () => page.getByRole("button", { name: /Source one/ });
@@ -210,14 +219,15 @@ test("control source dock preserves source selection, cross-side dispatch and ba
     assert.equal(within(shell).queryAllByRole("switch").length, 0, "Source inspection must not expose connection lifecycle controls");
     await click(second());
     assertNodeIdentity(page.getByRole("dialog"), shell);
-    assert.equal(ingressPanel.get().ingress.id, "two");
+    assert.equal(ingressPanel.get().accountId, "two");
+    await escape(); assert.equal(ingressPanel.get().accountId, undefined);
     await escape(); assert.equal(ingressPanel.get(), undefined);
     assert.ok(second().matches(":focus"));
     await click(first()); await click(first()); assert.equal(ingressPanel.get(), undefined);
-    await click(first()); await click(within(page.getByRole("dialog")).getByRole("button", { name: /Dispatch fixture/ }));
+    await click(first()); await click(within(page.getByRole("dialog")).getByRole("button", { name: /example-conversation/ }));
     assert.equal(ingressPanel.get(), undefined); assert.equal(agentPanel.get().session.id, "thread");
     await click(first()); assert.equal(agentPanel.get(), undefined); assert.ok(ingressPanel.get());
-    await escape();
+    await escape(); await escape();
     const { onboarding } = await server.ssrLoadModule("/ui/state/onboarding.ts");
     const { controlSource } = await server.ssrLoadModule("/ui/controlSources.ts");
     for (const id of ["claude", "chatgpt", "custom"]) {

@@ -29,7 +29,7 @@ import { taskPanelSnapshot } from './state/taskPanel';
 
 export type PageFixture = 'agents-settings' | 'agent-display-settings' | 'add-account' | 'quota-segments' | 'management-table';
 export let pageFixture: PageFixture | undefined;
-type Fixture = { agentInventory?: Agent[]; multipleSources?: boolean; pageFixture?: PageFixture; shells?: boolean; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsExtras?: boolean; settingsPermissions?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; agentAccountId?: string | null; phase: AgentActivitySession['phase']; title: string; headline: string; dispatchSummary?: DispatchSummary; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean }; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; relayProgress?: RelayProgress };
+type Fixture = { agentInventory?: Agent[]; panelAccounts?: boolean; multipleAccounts?: boolean; multipleSources?: boolean; pageFixture?: PageFixture; shells?: boolean; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsExtras?: boolean; settingsPermissions?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; agentAccountId?: string | null; phase: AgentActivitySession['phase']; title: string; headline: string; dispatchSummary?: DispatchSummary; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean }; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 let conversations: Record<string, AgentConversation[]> = {};
@@ -134,6 +134,9 @@ export async function installScenario(name: string) {
   const sources = status.ingresses.flatMap(i => i.sources ?? []);
   const inventory: Agent[] = fixture.agentInventory ?? fixture.agents.map(agent => ({ agent, installed: true, available: true, enabled: true, status: 'ready', version: 'fixture' }));
   const activity: AgentActivitySnapshot = { observedAt: now, activeAgents: fixture.agents, agents: Object.fromEntries(fixture.agents.map(a => [a, { sessions: [] }])) };
+  if (fixture.panelAccounts || fixture.panel?.kind === 'agent') {
+    for (const task of fixture.tasks) task.agentAccountId ??= task.agent === 'codex' ? 'account-openai' : 'account-claude';
+  }
   fixture.tasks.forEach((task, index) => {
     activity.agents[task.agent].sessions.push({ id: `fixture-task-${index}`, source: task.agent === 'codex' ? 'codex-thread' : 'arc-task', title: task.title, headline: task.headline, phase: task.phase,
       turnId: `fixture-turn-${index}-${fixture.timeline ? 2 : 1}`, project: '/workspace/acceptance', phaseSince: now, turnStartedAt: new Date(Date.parse(now) - (task.elapsedSeconds ?? 83) * 1000).toISOString(), startedAt: now, timeline: true, recentSteps: ['thinking', 'command', 'file'],
@@ -195,7 +198,7 @@ export async function installScenario(name: string) {
   });
   conversations = Object.fromEntries(fixture.agents.map(agent => {
     const current = activity.agents[agent].sessions.map(session => ({ id: session.id, source: session.source as AgentConversation['source'], title: session.title,
-      project: session.project, createdAt: session.startedAt ?? null }));
+      project: session.project, createdAt: session.startedAt ?? null, agentAccountId: session.agentAccountId, dispatchSummary: session.dispatchSummary }));
     const today = new Date(now); today.setHours(0, 0, 0, 0);
     const history: AgentConversation[] = fixture.panelHistory ? Array.from({ length: 24 }, (_, index) => {
       const id = `fixture-history-${agent}-${index}`, title = `Review project change ${index + 1}`;
@@ -205,7 +208,7 @@ export async function installScenario(name: string) {
         { id: `${id}-prompt`, turnId, type: 'user', status: 'completed', startedAt: createdAt, updatedAt: createdAt, text: title, cursor: 1, position: 0 },
         { id: `${id}-answer`, turnId, type: 'text', status: 'completed', phase: 'final_answer', startedAt: endedAt, updatedAt: endedAt, endedAt, text: 'The project changes have been reviewed.', cursor: 2, position: 1 },
       ], cursor: 2, executionEvidence: true, coverage: { state: 'complete', truncated: false }, turnStatuses: { [turnId]: 'completed' } };
-      return { id, source: agent === 'codex' ? 'codex-thread' : 'arc-task', title, project: '/workspace/acceptance', createdAt };
+      return { id, source: agent === 'codex' ? 'codex-thread' : 'arc-task', title, project: '/workspace/acceptance', createdAt, dispatchSummary: { agentAccountId: agent === 'codex' ? 'account-openai' : 'account-claude' } };
     }) : [];
     return [agent, [...current, ...history]];
   }));
@@ -263,11 +266,15 @@ export async function installScenario(name: string) {
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': initialActivity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
   responses['accounts'] = { accounts: topologyAccounts, login: null } satisfies AccountsResult;
   srcConversationResponse = srcConversationsScenario();
-  accountResponse = ['source-panel', 'source-panel-light', 'src-account-multiple'].includes(name) || fixture.pageFixture === 'add-account' ? accountScenario(status, sources, !!fixture.pageFixture, fixture.multipleSources) : undefined;
-  if (accountResponse && fixture.pageFixture) {
+  accountResponse = ['source-panel', 'source-panel-light'].includes(name) || fixture.panelAccounts || fixture.panel?.kind === 'agent' || fixture.pageFixture === 'add-account' ? accountScenario(status, sources, !!fixture.pageFixture, fixture.multipleSources, fixture.multipleAccounts) : undefined;
+  if (accountResponse) {
+    if (fixture.quota && subscriptionData.providers[0]) {
+      const account = accountResponse('accounts/account-openai', 'GET') as AccountsResult['accounts'][number];
+      account.quota = { state: 'ready', windows: subscriptionData.providers[0].windows, observedAt: subscriptionData.providers[0].observedAt };
+    }
     const initial = accountResponse('accounts', 'GET') as AccountsResult;
     const login = fixture.pageFixture === 'add-account' ? accountResponse('accounts/add', 'POST', { kind: 'claude' }) as AccountsResult['login'] : null;
-    accounts.set({ items: initial.accounts, login, loading: false, error: '' });
+    accounts.set({ items: initial.accounts.map(account => accountResponse!(`accounts/${account.id}`, 'GET') as typeof account), login, loading: false, error: '' });
   }
   responses['updates/status'] = { state: 'idle', when: 'settled', work: { blocking: [], willResume: [], unaffected: [] } };
   responses['service'] = { supported: true, enabled: false };

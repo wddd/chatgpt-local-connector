@@ -6,7 +6,7 @@ import { protectSnapshot } from "./state/privacy";
 import { scenarioReadiness } from "./state/scenarioReadiness";
 // On-demand observation of the real renderer. No alternate layout or state model.
 import { taskPanelSnapshot, controlTaskPanel, type TaskPanelRequest } from "./state/taskPanel";
-import { agentPanel, ingressPanel, selectAgentPanel, selectIngressPanel } from './state/overviewPanels';
+import { agentPanel, ingressPanel, selectAgentPanel, selectSourcePanel } from './state/overviewPanels';
 import { connector, refreshConnector } from './state/connector';
 import { agents, refreshAgents } from './state/agents';
 import { refreshTasks } from './state/tasks';
@@ -38,11 +38,11 @@ export function viewModel(layoutSettled = false) {
     topology: topology?.() ?? null,
     taskDetail: detail,
     taskBubbles: activityBubbleSnapshot(),
-    panels: { agent: agentPanel.get() ?? null, source: ingressPanel.get()?.client?.id ?? null,
+    panels: { agent: agentPanel.get() ?? null, source: ingressPanel.get()?.client?.id ?? ingressPanel.get()?.product ?? null,
       onboarding: onboarding.get()?.step ?? null, connectionSetup: connectionSetup.get() ?? null, page: localStorage.getItem('arc-page') ?? 'overview' },
   };
 }
-export type PanelRequest = { kind: 'agent' | 'source' | 'none'; id?: string };
+export type PanelRequest = { kind: 'agent' | 'source' | 'none'; id?: string; accountId?: string; platform?: string; platformOnly?: boolean };
 export function openSnapshotPanel(panel?: PanelRequest | null) {
   if (!panel) return;
   onboarding.set(undefined);
@@ -50,12 +50,12 @@ export function openSnapshotPanel(panel?: PanelRequest | null) {
   if (panel.kind === 'none') { agentPanel.set(undefined); ingressPanel.set(undefined); return; }
   if (panel.kind === 'agent') {
     if (!agents.get().items.some(a => a.agent === panel.id)) throw new Error('SNAPSHOT_NODE_NOT_FOUND: agent');
-    selectAgentPanel({ type: 'agent', agent: panel.id! });
+    if (panel.platformOnly) agentPanel.set({ agent: panel.id! });
+    else selectAgentPanel({ type: 'agent', agent: panel.id!, accountId: panel.accountId });
   } else {
     const source = connector.get().sources.find(s => s.id === panel.id);
-    const ingress = connector.get().status?.ingresses.find(i => i.id === source?.ingressId);
-    if (!source || !ingress) throw new Error('SNAPSHOT_NODE_NOT_FOUND: source');
-    selectIngressPanel(ingress, { client: { id: source.id, name: source.label, source: source.product } });
+    if (!source && !panel.platform) throw new Error('SNAPSHOT_NODE_NOT_FOUND: source');
+    selectSourcePanel(panel.platform ?? source!.product, { sourceId: source?.id, accountId: panel.accountId, platformOnly: panel.platformOnly });
   }
 }
 export async function settledViewModel() {

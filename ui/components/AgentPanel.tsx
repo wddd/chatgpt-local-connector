@@ -1,81 +1,79 @@
 import { AgentPlatformCard } from './objects/agent-platform';
 import { AgentAccountCard, AgentAccountRow } from './objects/agent-account';
-import { SrcAccountChip } from './objects/src-account';
-import { openSourceWorkspace } from './SourcePanel';
+import { AccountActions } from './composites/AccountActions';
+import { statePresentation } from './objects/statePresentation';
 import AddAccount from './AddAccount';
-import { ViewStack, Dialog, IconButton, Notice } from "./ui";
-import { useReducedMotion } from "../state/appEnvironment";
-import { agentPanel, selectAgentPanel } from "../state/overviewPanels";
-import { useId, useLayoutEffect, useRef, useState } from "react";
-import { motion } from "motion/react";
-import { ArrowUpRight, Settings, Maximize2, Minimize2, RefreshCw } from "lucide-react";
-import { api, accountsApi } from "../api";
-import { t } from "../i18n";
-import { useAccounts, refreshAccounts } from "../state/accounts";
-import { accountQuotaProvider } from "../subscriptions/accountQuota";
-import AgentQuota from "./AgentQuota";
-import { agentActivity } from "../state/activity";
-import { refreshSubscription, subscriptions } from "../state/subscriptions";
-import { compactAgentVersion, name, type Agent } from "../state/agents";
-import { connector } from "../state/connector";
-import { errorLabels } from "../subscriptions/presentation";
-import AgentConversations from "./AgentConversations";
-import ActivityTimeline from "./ActivityTimeline";
-import type { SurfaceRect } from "../motion/surface";
-import type { AccountLogin, ProviderAccount } from "../types";
-import { accountOwns } from "../accountPresentation";
+import { ViewStack, Dialog, DialogClose, IconButton, Notice, Button, Empty, StateBadge, Loading } from './ui';
+import { useReducedMotion } from '../state/appEnvironment';
+import { agentPanel, selectAgentPanel } from '../state/overviewPanels';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { motion } from 'motion/react';
+import { ArrowLeft, X, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
+import { accountsApi } from '../api';
+import { t } from '../i18n';
+import { useAccounts, refreshAccounts } from '../state/accounts';
+import { accountQuotaProvider } from '../subscriptions/accountQuota';
+import AgentQuota from './AgentQuota';
+import { agentActivity } from '../state/activity';
+import { compactAgentVersion, name, type Agent } from '../state/agents';
+import { errorLabels } from '../subscriptions/presentation';
+import AgentConversations from './AgentConversations';
+import ActivityTimeline from './ActivityTimeline';
+import type { SurfaceRect } from '../motion/surface';
+import type { AccountLogin, ProviderAccount } from '../types';
+import { accountOwns } from '../accountPresentation';
 
-function AgentView({ agent, account, accountId, accounts, onSettings, expanded, onToggleWidth, active, resizable = true }: {
-  agent: Agent; active: boolean; resizable?: boolean; account?: ProviderAccount; accountId?: string; accounts: ProviderAccount[];
-  onSettings: () => void; expanded: boolean; onToggleWidth: () => void;
+function AgentView({ agent, account, accountId, accounts, loading, accountError, expanded, onToggleWidth, active, resizable = true }: {
+  agent: Agent; active: boolean; resizable?: boolean; account?: ProviderAccount; accountId?: string; accounts: ProviderAccount[]; loading: boolean; accountError: string;
+  expanded: boolean; onToggleWidth: () => void;
 }) {
-  const { snapshot } = subscriptions.use(), { status, sources } = connector.use();
-  const activity = agentActivity.use().snapshot;
-  const [error, setError] = useState(""), [refreshing, setRefreshing] = useState(false);
-  const provider = accountId ? account ? accountQuotaProvider(agent.agent, account.quota) : undefined
-    : snapshot?.settings.enabled ? snapshot.providers.find(p => p.agentIds.includes(agent.agent) && p.eligible) : undefined;
+  const [error, setError] = useState(''), [refreshing, setRefreshing] = useState(false);
   const [login, setLogin] = useState<AccountLogin>(), [busy, setBusy] = useState(false);
-  async function mutate(work: () => Promise<unknown>) { setBusy(true); setError(''); try { await work(); await refreshAccounts(); } catch (error) { setError(String(error)); } finally { setBusy(false); } }
-  const sessions = activity?.agents[agent.agent]?.sessions.filter(session => !accountId || (account
-    ? accountOwns(account, session.agentAccountId ?? session.dispatchSummary?.agentAccountId)
-    : (session.agentAccountId ?? session.dispatchSummary?.agentAccountId) === accountId)) ?? [];
-  const providerError = provider?.error && !["no-subscription", "no-limits-reported", "unsupported-platform"].includes(provider.error.code)
-    ? provider.error.message || t(errorLabels[provider.error.code] || "usageUnavailable") : undefined;
+  const provider = account ? accountQuotaProvider(agent.agent, account.quota) : undefined;
+  const providerError = provider?.error && !['no-subscription', 'no-limits-reported', 'unsupported-platform'].includes(provider.error.code)
+    ? provider.error.message || t(errorLabels[provider.error.code] || 'usageUnavailable') : undefined;
   async function refresh() {
-    if (!provider) return;
-    setRefreshing(true); setError("");
-    try { if (accountId) await refreshAccounts(); else await refreshSubscription(provider.providerId); }
-    catch (error) { setError(String(error)); }
-    finally { setRefreshing(false); }
+    setRefreshing(true);
+    try { await refreshAccounts(); } finally { setRefreshing(false); }
   }
-  const titleActions = agent.installed && status?.platform && status.platform !== "linux" && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
-    setError(""); void api("agents/open", "POST", { agent: agent.agent }).catch(error => setError(String(error)));
-  }} />;
-  const secondary = <span className="activity-panel-meta min-w-0 truncate text-xs text-muted-foreground" title={agent.version || undefined}>{[compactAgentVersion(agent.version), t("agentPanel.inProgress", { count: sessions.length })].filter(Boolean).join(" · ")}</span>;
-  const headerActions = <><IconButton icon={Settings} label={t("agentDisplaySettings")} onClick={onSettings} />
-    {resizable && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} />}</>;
-  const body = <>
-      {error && <p className="timeline-error" role="alert">{error}</p>}
-      {providerError && <Notice action={<IconButton icon={RefreshCw} size={16} label={t("usageRefresh")}
-        busy={refreshing || provider?.refreshing} onClick={() => void refresh()} />}>{providerError}</Notice>}
-      {provider ? <AgentQuota provider={provider} onRefresh={() => void refresh()} refreshing={refreshing} /> : <p className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere agent-no-quota">{t("agentPanel.noQuota")}</p>}
-      <AgentConversations key={`${agent.agent}:${accountId ?? ""}`} agent={agent.agent} account={account} accountId={accountId} active={active} />
+  async function add() {
+    setBusy(true); setError('');
+    try { setLogin(await accountsApi.add({ kind: agent.agent === 'claude' || agent.agent === 'codex' ? agent.agent : 'api-key' })); }
+    catch (error) { setError(String(error)); }
+    finally { setBusy(false); }
+  }
+  const headerActions = <>
+    {resizable && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? 'restorePanelWidth' : 'expandPanelWidth')} aria-pressed={expanded} onClick={onToggleWidth} />}
+    <DialogClose asChild><IconButton icon={X} label={t('close')} /></DialogClose>
   </>;
-  return <section className="agent-panel-layer flex h-full min-h-0 w-full flex-col [&>.dialog-header]:shrink-0 [&>.task-timeline]:flex-1 [&>.task-timeline]:h-auto [&>.task-timeline]:px-4 [&>.task-timeline]:pb-4 [&>.dialog-footer]:max-h-1/2 agent-overview-layer">
-    {account ? <AgentAccountCard account={account} agent={agent} frame="panel" titleActions={titleActions} secondary={secondary} headerActions={headerActions} busy={busy}
-      onReauth={profile => void mutate(async () => setLogin(await accountsApi.reauth({ id: account.id, agent: profile.agent, profileId: profile.profileId })))}>
-      {sources.filter(source => account.sources.includes(source.id)).map(source => <SrcAccountChip key={source.id} source={source} account={account} onOpen={() => { selectAgentPanel({ type: 'closed' }); openSourceWorkspace(source.id); }} />)}
-      {body}
-    </AgentAccountCard> : <AgentPlatformCard agent={agent} frame="panel" quota={accountId ? null : undefined} titleActions={titleActions} secondary={secondary} headerActions={headerActions}>
-      {accountId ? <Notice>{t('accounts.identityUnavailable')}</Notice> : accounts.filter(item => item.agentProfiles.some(profile => profile.agent === agent.agent)).map(item => <AgentAccountRow key={item.id} account={item} agent={agent.agent} onOpen={() => selectAgentPanel({ type: 'agent', agent: agent.agent, accountId: item.id })} />)}{body}
+  const back = <IconButton icon={ArrowLeft} label={t('back')} onClick={() => selectAgentPanel({ type: 'back' })} />;
+  return <section className="agent-overview-layer flex h-full min-h-0 w-full flex-col">
+    {account ? <AgentAccountCard account={account} agent={agent} frame="panel" icon={back} showProfiles={false}
+      secondary={<StateBadge presentation={statePresentation('account', account.health.state)} />} headerActions={headerActions}>
+      {[...new Set(account.agentProfiles.filter(profile => profile.agent === agent.agent).map(profile => profile.state))].map(state => <StateBadge key={state} presentation={statePresentation('profile', state)} />)}
+      {providerError && <Notice action={<IconButton icon={RefreshCw} label={t('usageRefresh')} busy={refreshing} onClick={() => void refresh()} />}>{providerError}</Notice>}
+      {provider ? <AgentQuota provider={provider} onRefresh={() => void refresh()} refreshing={refreshing} /> : <p className="text-xs text-muted-foreground">{t('agentPanel.noQuota')}</p>}
+      <AgentConversations key={`${agent.agent}:${account.id}`} agent={agent.agent} account={account} accountId={account.id} active={active} />
+      <AccountActions alias={account.alias} onRename={async alias => { await accountsApi.update({ id: account.id, alias }); await refreshAccounts(); }}
+        onRemove={async () => { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); agentPanel.set({ agent: agent.agent }); }} />
+    </AgentAccountCard> : <AgentPlatformCard agent={agent} frame="panel" quota={null}
+      titleActions={accountId ? back : undefined} secondary={<span title={agent.version ?? undefined}>{compactAgentVersion(agent.version)}</span>} headerActions={headerActions}>
+      {loading && <Loading />}
+      {accountError && <Notice>{accountError}</Notice>}
+      {accountId ? <Notice>{t('accounts.identityUnavailable')}</Notice> : <>
+        <Button busy={busy} onClick={() => void add()}>{t('accounts.add')}</Button>
+        {accounts.filter(item => !item.removedAt && item.agentProfiles.some(profile => profile.agent === agent.agent)).map(item => <AgentAccountRow key={item.id} account={item} agent={agent.agent} onOpen={() => selectAgentPanel({ type: 'agent', agent: agent.agent, accountId: item.id })} />)}
+        {!loading && !accounts.some(item => !item.removedAt && item.agentProfiles.some(profile => profile.agent === agent.agent)) && <Empty>{t('panels.noAccounts')}</Empty>}
+      </>}
     </AgentPlatformCard>}
+    {error && <Notice>{error}</Notice>}
     {login && <AddAccount initialLogin={login} onClose={() => setLogin(undefined)} />}
   </section>;
 }
 
-export default function AgentPanel({ agent, onSettings, onPanelFrame, width, expanded, onToggleWidth, dockRect }: {
+export default function AgentPanel({ agent, onPanelFrame, width, expanded, onToggleWidth, dockRect }: {
   agent: Agent; width?: number; dockRect?: SurfaceRect;
-  onSettings: () => void; onPanelFrame: (rect: SurfaceRect | null) => void;
+  onPanelFrame: (rect: SurfaceRect | null) => void;
   expanded: boolean; onToggleWidth: () => void;
 }) {
   const selected = agentPanel.use()!, { error } = agentActivity.use();
@@ -89,22 +87,33 @@ export default function AgentPanel({ agent, onSettings, onPanelFrame, width, exp
       requestAnimationFrame(() => {
         const row = Array.from(content.current?.querySelectorAll<HTMLButtonElement>("[data-activity-session]") ?? [])
           .find(node => node.dataset.activitySession === JSON.stringify([selected.agent, id]));
-        (row ?? content.current?.querySelector<HTMLElement>(".agent-overview-layer h2"))?.focus({ preventScroll: true });
+        (row ?? [...(content.current?.querySelectorAll<HTMLElement>('.agent-overview-layer h2') ?? [])].find(node => !node.closest('[hidden]')))?.focus({ preventScroll: true });
+      });
+    }
+    if (!returning && previous.current.accountId !== selected.accountId) {
+      const id = selected.accountId ? undefined : previous.current.accountId;
+      requestAnimationFrame(() => {
+        const row = id && content.current?.querySelector<HTMLElement>(`[data-hover-target="${CSS.escape(id)}"]`);
+        (row || [...(content.current?.querySelectorAll<HTMLElement>('h2') ?? [])].find(node => !node.closest('[hidden]')))?.focus({ preventScroll: true });
       });
     }
     previous.current = selected;
   }, [selected]);
   return <Dialog width={width} dockRect={dockRect} dock="right" expanded={expanded} headerless title={account?.alias ?? name(agent)} labelledBy={session ? taskTitleId : undefined}
-    originKey={`${agent.agent}:${selected.accountId ?? ""}`} closeRequested={selected.closing}
+    onBack={session || selected.accountId ? () => selectAgentPanel({ type: "back" }) : undefined}
+    originKey={agent.agent} closeRequested={selected.closing}
     onCloseStart={() => agentPanel.set(old => old?.agent === agent.agent && old.accountId === selected.accountId ? { ...old, closing: true } : old)}
     onClose={() => { const current = agentPanel.get(); if (current?.agent === agent.agent && current.accountId === selected.accountId && current.closing) selectAgentPanel({ type: "closed" }); }}
     returnFocus={`[data-agent-node="${CSS.escape(agent.agent)}"]${selected.accountId ? `[data-account-id="${CSS.escape(account?.id ?? selected.accountId)}"]` : ""} button`} onPanelFrame={onPanelFrame}>
     {error && <span className="sr-only" role="status">{t("activity.disconnected")}</span>}
     <ViewStack ref={content}>
-      <ViewStack asChild hidden={!!session}><motion.div key={`${agent.agent}:${selected.accountId ?? ""}`}
+      <ViewStack hidden={!!session || !!selected.accountId}>
+        <AgentView key={agent.agent} resizable={!dockRect} agent={agent} accounts={accountState.items} loading={accountState.loading} accountError={accountState.error} active={!session && !selected.accountId} expanded={expanded} onToggleWidth={onToggleWidth} />
+      </ViewStack>
+      {selected.accountId && <ViewStack asChild hidden={!!session}><motion.div key={`${agent.agent}:${selected.accountId}`}
         initial={{ opacity: reduced ? 1 : 0, x: 0 }} animate={{ opacity: session ? 0 : 1, x: reduced || !session ? 0 : -12 }} transition={{ duration: reduced ? 0 : 0.16 }}>
-        <AgentView resizable={!dockRect} agent={agent} account={account} accounts={accountState.items} accountId={selected.accountId} active={!session} onSettings={onSettings} expanded={expanded} onToggleWidth={onToggleWidth} />
-      </motion.div></ViewStack>
+        <AgentView resizable={!dockRect} agent={agent} account={account} accounts={accountState.items} loading={accountState.loading} accountError={accountState.error} accountId={selected.accountId} active={!session} expanded={expanded} onToggleWidth={onToggleWidth} />
+      </motion.div></ViewStack>}
       {session && <ViewStack asChild><motion.div key={`${agent.agent}:${session.id}`}
         initial={{ opacity: reduced ? 1 : 0, x: reduced ? 0 : 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>
         <ActivityTimeline resizable={!dockRect} titleId={taskTitleId} agent={agent.agent} session={session} expanded={expanded} onToggleWidth={onToggleWidth} onBack={() => selectAgentPanel({ type: "back" })} />

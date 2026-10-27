@@ -11,10 +11,12 @@ import { connector, run, notify, refreshConnector } from "../state/connector";
 import { useInterval } from "../state/hooks";
 import type { Service } from "../state/types";
 import { ActionGroup, FormSection, Button, SettingsSection, SettingRow, Switch, ChoiceControl, Input, FormField } from "./ui";
+import AgentDisplaySettings from "./AgentDisplaySettings";
 import SystemPermissions from "./SystemPermissions";
 import SettingsExtras from "./SettingsExtras";
 import { AppUpdate, UpdatesSettings } from "./AppUpdate";
 export default function SettingsPage() {
+  const [display, setDisplay] = useState(false);
   const { status, busy } = connector.use();
   const { settingsExtras, settingsUpdates, settingsPermissions } = navigation.use();
   const previousSettings = useRef<string | undefined>(undefined);
@@ -286,6 +288,8 @@ export default function SettingsPage() {
         <SettingRow id="settings-extras-entry" label={t("topology.experimental")}
           onNavigate={() => navigation.set(old => ({ ...old, settingsExtras: true }))} />
       </SettingsSection>
+      <SettingRow label={t("agentDisplaySettings")} onNavigate={() => setDisplay(true)} />
+      {display && <AgentDisplaySettings onClose={() => setDisplay(false)} />}
       <AppUpdate />
     </div>
   );

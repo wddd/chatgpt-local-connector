@@ -1,7 +1,7 @@
 import type { ProviderAccount, AccountLogin, AccountsResult } from './types';
 import type { Status, ControlSource } from './state/types';
 // In-memory implementation of the native management routes in docs/reference/tools.md.
-export function accountScenario(status: Status, sources: ControlSource[], manualLogin = false, multipleSources = false) {
+export function accountScenario(status: Status, sources: ControlSource[], manualLogin = false, multipleSources = false, multipleAccounts = false) {
   const now = new Date().toISOString();
   const primary = status.ingresses[0];
   primary.url = 'https://arc.example.com/mcp';
@@ -22,6 +22,10 @@ export function accountScenario(status: Status, sources: ControlSource[], manual
     primary.oauth = { grants: [{ id: 'old-authorization', clientName: 'Old authorization', clientId: 'old-client', connectedAt: 1, registeredAt: 1 }], pending: [{ id: 'old-authorization', sourceId: extra.id, clientName: 'Old authorization', status: 'approved', redirectUri: '', resource: '' }, { id: 'latest-authorization', sourceId: extra.id, clientName: 'Second source', status: 'denied', redirectUri: '', resource: '' }] };
     status.ingresses.find(ingress => ingress.id === extra.pendingSwitch!.ingressId)!.oauth = { grants: [], pending: primary.oauth.pending.filter(request => request.id === extra.pendingSwitch!.requestId) };
     primary.oauth.pending = primary.oauth.pending.filter(request => request.id !== extra.pendingSwitch!.requestId);
+  }
+  if (multipleAccounts) {
+    const extra: ControlSource = { ...sources[0], id: 'fixture-review-source', label: 'Review', state: 'disconnected' };
+    sources.push(extra); accounts.find(account => account.id === 'account-review')!.sources.push(extra.id);
   }
   let polls = 0, sequence = 0, login: AccountLogin | null = null;
   let loginAccount: string | undefined, loginProfile: string | undefined;

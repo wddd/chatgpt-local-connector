@@ -102,11 +102,10 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
       assert.ok(page.getByText(account.orgName, { exact: true }));
     }
     await act(async () => setPrivacy(true));
-    await render(h(Dialog, { title: 'Source', onClose() {} }, h(SourcePanel, { source })));
-    await act(async () => { fireEvent.click(page.getByRole('radio', { name: t('accounts.tab.account'), exact: true })); });
+    await render(h(Dialog, { title: 'Source', onClose() {} }, h(SourcePanel, { product: source.product, accountId: sourceAccount.id })));
     assertPrivate();
     await act(async () => setPrivacy(false));
-    assert.ok(page.getByText(sourceAccount.email, { exact: true }));
+    assert.ok(page.getByRole('heading', { name: sourceAccount.alias, exact: true }));
     await act(async () => setPrivacy(true));
     const completed = { loginId: 'privacy-confirm', kind: 'claude', state: 'completed', accountId: account.id };
     await render(h(AddAccount, { initialLogin: completed, onClose() {} })); assertPrivate();

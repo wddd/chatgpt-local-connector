@@ -35,7 +35,7 @@ export function accountViews(views: NodeView[], side: -1 | 1, accounts: Topology
     const platformIcon = side === 1 ? <AgentQuotaIcon agent={platform} quota={null} /> : first.icon;
     const childViews = linked.map(account => {
       const sources = members.filter(v => account.sources.includes(v.id));
-      const selected = side === -1 ? sources.some(v => v.selected) : members.some(v => v.selected) && members.some(v => v.selectedAccountId === account.id);
+      const selected = side === -1 ? sources.some(v => v.selected && v.selectedAccountId === account.id) : members.some(v => v.selected) && members.some(v => v.selectedAccountId === account.id);
       const sameIdentity = account.sources.length > 0 && account.agentProfiles.length > 0;
       const state = side === -1 ? sources.find(v => v.state === 'normal')?.state ?? sources[0]?.state ?? first.state : first.state;
       const suffix = account.alias === 'Unidentified' ? String(unidentified.indexOf(account.id) + 1) : undefined;

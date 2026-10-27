@@ -11,6 +11,8 @@ export function srcConversationsScenario() {
     conversations: i === 0 ? [
       { accountId: 'account-source', aliases: [], kind: 'chat', id: chatId, url: `https://claude.ai/chat/${chatId}`, firstSeenAt: at, lastSeenAt: at, lastActiveAt: at, basis: 'observed', taskRefs: [{ agent: 'codex', id: 'fixture-task-1', basis: 'correlated' }] },
       { accountId: 'account-source', aliases: [], kind: 'cowork', id: coworkId, url: `https://claude.ai/cowork/${coworkId}`, firstSeenAt: at, lastSeenAt: at, lastActiveAt: null, basis: 'notify-target', taskRefs: [{ agent: 'claude', id: 'fixture-task-2', basis: 'notify-target' }] },
+      { accountId: 'account-source', aliases: [], kind: 'chat', id: 'unlinked-conversation', url: 'https://claude.ai/chat/unlinked-conversation', firstSeenAt: at, lastSeenAt: at, lastActiveAt: null, basis: 'observed', taskRefs: [] },
+      { accountId: 'account-source', aliases: [], kind: 'chat', id: 'multiple-task-conversation', url: 'https://claude.ai/chat/multiple-task-conversation', firstSeenAt: at, lastSeenAt: at, lastActiveAt: null, basis: 'observed', taskRefs: [{ agent: 'codex', id: 'fixture-task-1', basis: 'manual' }, { agent: 'claude', id: 'fixture-task-2', basis: 'manual' }] },
     ] : [],
   }));
   return (path: string, method: string, raw?: unknown): unknown => {

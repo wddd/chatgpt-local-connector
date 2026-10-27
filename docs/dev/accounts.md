@@ -2,7 +2,7 @@
 
 [UI conventions](ui.md) · [Coding lanes](worktrees.md) · [Architecture](architecture.md) · [Tools](../reference/tools.md)
 
-This page describes account ownership, identity resolution and the Accounts workspace.
+This page describes account ownership, identity resolution and the homepage account panels.
 
 ## Model
 
@@ -92,22 +92,28 @@ SRC and AGENT accounts are inspected from the homepage topology. There is no Acc
 
 ### Add account
 
-Centered dialog, no scrim, three steps: Account type (Claude, ChatGPT / Codex, API key, Detect on this computer) → Sign in (waiting state, browser choice as pills inside this step, Copy login link, Paste a code instead, one line noting that `account_add` lets Agents run the flow) → Confirm (detected identity, alias field, an identity-match notice when it matches an existing source).
+AGENT L1 starts the existing native login for its selected Agent, then opens the centered sign-in and confirmation dialog. Standalone login fixtures also expose Account type (Claude, ChatGPT / Codex, API key, Detect on this computer) → Sign in (waiting state, browser choice as pills inside this step, Copy login link, Paste a code instead, one line noting that `account_add` lets Agents run the flow) → Confirm (detected identity, alias field, an identity-match notice when it matches an existing source).
 
 ### Privacy mode
 
 One persisted preference, toggled from the source panel header. It blurs emails, organizations, identity keys, session names and connection addresses everywhere they render. `cli app snapshot` and UI scenario screenshots default to privacy on. The topology shows aliases only, so it needs no blurring.
 
-### Control source panel
+### Homepage panels
 
-The homepage owns the source side panel. It retains its Activity, Account and Connection tabs until the phase 2 panel stack replaces them. Activity shows source-attributed dispatches. Account shows identity and links to the same-identity Agent. Connection shows the actual connection reference, rename and disconnect. No notification controls, default switch, product correction or Change connection action remain.
+SRC panels dock left; AGENT panels dock right. Platform L1 opens account L2 and task L3 with a back control. A platform with exactly one active account opens L2 directly; Back still returns to L1. The panel shell stays in place while layers change. Escape returns one layer before closing the panel, and editing dialogs dismiss first.
 
-AGENT panels retain account quota, tasks and native reauthentication. There is no link to a removed Accounts workspace. Phase 2 supplies the canonical L1/L2 account maintenance surfaces.
+SRC L1 lists each account once with alias and source state, even when several connections belong to that account. Add account opens Add SRC with the product preselected. SRC L2 shows account health, observed source states and the latest last-seen timestamp among this platform's sources for the account. Its conversation list reads `src-conversations/query` by account ID. A conversation with one task reference opens that task on the AGENT side; several task references expand into explicit choices. A conversation without an ARC task remains read-only. It does not infer a task from the conversation URL, title or source order.
+
+AGENT L1 shows name, version, Add account and account rows with alias, profile state and the account's quota icon. It has no aggregate task list or platform quota. AGENT L2 shows account health, profile states, account quota and tasks with recorded account attribution, including merged account IDs. Task rows open the unchanged L3 detail. A task opened directly without recorded account attribution returns to L1 rather than inventing an account.
+
+Both L2 panels provide Rename and Remove through the shared AccountActions dialogs. Removal uses `account_remove` with `running:finish`; the confirmation states the effect on running tasks and retained history. Rename uses `account_update` and refreshes the shared account store. There are no connection tabs, source disconnect controls, cross-role account links, profile reauthentication shortcuts, default selectors or merge controls in these panels. CLI/AX retains those capabilities.
+
+The hub-right Agent settings dialog owns discovery, enable/disable, order and official installation links. It has no account, task, quota overview or display-settings inspector. Display settings are opened from Settings. Quota overview remains available through its existing tray surface.
 
 ### Topology
 
 - Modes: Tree (default) and Flat, a persisted preference at the end of Settings > General. Switching never reorders nodes.
-- Tree: L1 is the platform. A platform with more than one account grows L2 account nodes (42px, platform logo, alias label). Agent tasks attach to their account node (L3). A single-account platform has no L2; tasks attach to the platform.
+- Tree: L1 is the platform. A platform with more than one account grows L2 account nodes (42px, platform logo, alias label). Agent tasks attach to their account node (L3). A single-account platform omits the L2 topology node; tasks attach to the platform, whose panel still opens L2 with Back to L1.
 - Flat: L1 is `Platform · Alias` (platform name alone for single-account platforms); same-platform nodes stay adjacent.
 - Account visuals: both control-source and Agent account nodes reuse their platform logo. For multi-account Agents, the platform node shows only the logo; each account node shows its own quota ring from that account's profile quota. Missing account quota never falls back to another account's reading.
 - Same identity: hovering an account also lights its counterpart on the other side. Account labels contain no link icon.
@@ -120,3 +126,5 @@ AGENT panels retain account quota, tasks and native reauthentication. There is n
 ## Fixtures
 
 Fixtures, scenarios and docs use invented identities on `example.com` and placeholder organizations. No real emails, organization names or session IDs.
+
+The `panels-*` browser scenarios cover platform lists, account details, single-account shortcuts, empty collections, multiple connections for one SRC account, task detail and Agent settings. Design mounts expose `AccountActions`, `SrcConversationRow` and `fixtures.panels` alongside the existing platform/account cards.

@@ -30,10 +30,10 @@ The built-in local authority is excluded from user-managed SRC accounts. Connect
 | --- | --- | --- |
 | Platform Chip / Node / Row / Card | `objects/src-platform/` | Provenance, topology, Add SRC product choice and shared platform framing. Platform identity is distinct from vendor grouping. |
 | Account Chip / Node | `objects/src-account/` | Cross-role references, task provenance and topology. Historical references do not invent live state. |
-| Account Row | SrcAccountRow | Grouped-source selection and platform cards; connection reference is a separate keyboard target. |
-| Account Card | SrcAccountCard | SourcePanel and SourceConnection; identity, state, timestamps, actual connection and current authorization evidence. No grant history. |
+| Account Row | SrcAccountRow | SRC L1 account list and platform cards; homepage rows show one alias with its observed source states. |
+| Account Card | SrcAccountCard | Object fixtures for identity, state, timestamps and current authorization evidence. Homepage L2 composes account state, last seen and conversation rows. No grant history. |
 
-SourcePanel retains Activity, Account and Connection tabs pending phase 2. Multiple sources require explicit selection before rename or disconnect. SourceDispatches renders source-attributed work. SourceConnection owns rename and disconnect confirmation. Cross-role references open the homepage Agent inspector or Connections.
+SourcePanel owns SRC L1/L2. Add account preselects the product. L2 reads account conversations; task references open AGENT L3. AccountActions owns rename/remove dialogs. SourceDispatches remains in Logs for source-attributed receipts. The old source connection inspector and cross-role panel links are removed.
 
 There is no Accounts page, notification binding/test card, merge dialog, product correction, Change connection or account-wide dispatch-policy summary. Core identity, notification and merge operations remain available through CLI/AX.
 
@@ -42,11 +42,11 @@ There is no Accounts page, notification binding/test card, merge dialog, product
 | Variant | Implementation | Current callers and behavior |
 | --- | --- | --- |
 | Platform Chip / Node / Row / Card | `objects/agent-platform/` | Topology, catalog/settings and AgentPanel framing. Catalog owns enablement, order and official setup links. |
-| Account Chip / Node | `objects/agent-account/` | Source cross-role references and account topology with account-owned quota. |
+| Account Chip / Node | `objects/agent-account/` | Account topology and object reference mounts with account-owned quota. |
 | Account Row / Profile Row | AgentAccountRow, AgentProfileRow | Account lists and profile evidence; native reauthentication uses explicit profile IDs. Default state is read-only. |
 | Account Card | AgentAccountCard | AgentPanel identity, profile state, quota and account-filtered conversations/tasks. |
 
-AddAccount retains native login and confirmation. AgentPanel retains native reauthentication and its quota/conversation presentation. No default-account switch or link to a removed account workspace remains. Phase 2 defines the canonical L1/L2 maintenance stack.
+AddAccount retains native login and confirmation. AgentPanel L1 lists accounts with state/quota icons and starts the Agent login flow. L2 owns account quota, attributed tasks and rename/remove. Back traverses L3 to L2 to L1, including the single-account shortcut. Display settings moved to Settings; Agent settings has no quota overview or detail inspector.
 
 ## TUNNEL and Add SRC
 
@@ -85,7 +85,7 @@ SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, Setting
 ## Fixtures and design mounts
 
 - `src-tunnel-*`, `agent-objects-*` and `task-objects-*` mount the retained object variants with synthetic data, privacy, missing/disabled/busy/error states and observable callbacks.
-- `source-panel*`, `src-account-multiple`, `topology-accounts*`, `agent-panel*` and task-detail scenarios cover current homepage hosts.
+- `source-panel*`, `panels-*`, `topology-accounts*`, `agent-panel*` and task-detail scenarios cover current homepage hosts.
 - `settings-*`, `settings-permissions-*`, `connections-basic-*` and Records fixtures cover surviving workspace surfaces.
 - Add SRC product, connection, address, approval and success fixtures remain. Phase 3 replaces the transitional connection setup flow; phase 4 completes the target state matrix.
 - Removed pages, connection editors, switch flows, merge dialogs, grant lists and relay-member surfaces have no dedicated scenario or design export.

@@ -11,7 +11,7 @@ import { accountOwns } from '../accountPresentation';
 import { topologyMode, topologyAccountOrder } from '../topology/accountState';
 import { useAccounts } from '../state/accounts';
 import { scenarioName } from "../scenarioMode";
-import { agentPanel, selectAgentPanel, ingressPanel, selectIngressPanel } from "../state/overviewPanels";
+import { agentPanel, selectAgentPanel, ingressPanel, selectSourcePanel } from "../state/overviewPanels";
 import { PhaseTile, PhaseLabel } from "./activity";
 import { resetActivityCore, useActivityTracking } from "../state/activity";
 import { orderActivity, visibleActivity, effectiveBubbleDensity, bubbleWidths, bubbleHeights } from "../state/activityModel";
@@ -55,7 +55,6 @@ import SourceConnectionSetup from "./SourceConnectionSetup";
 import { onboarding, openOnboarding, connectionSetup, addedSource } from "../state/onboarding";
 import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
-import AgentDisplaySettings from "./AgentDisplaySettings";
 import AgentPanel from "./AgentPanel";
 import Hub from "../topology/Hub";
 function wireState(state: string): WireState {
@@ -76,8 +75,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   }, [newSourceId, flow]);
   const detailOpen = !!selection || !!sourceSelection, panelOpen = detailOpen || !!flow || !!newConnection;
   const [panelExpanded, setPanelExpanded] = useState(false);
-  const panelKey = selection && !selection.closing ? `agent:${selection.agent}:${selection.accountId ?? ""}`
-    : sourceSelection && !sourceSelection.closing ? `source:${sourceSelection.client?.id ?? sourceSelection.ingress.id}` : undefined;
+  const panelKey = selection && !selection.closing ? `agent:${selection.agent}`
+    : sourceSelection && !sourceSelection.closing ? `source:${sourceSelection.product}` : undefined;
   appEnvironment.use();
   const [panelLayout, setPanelLayout] = useState<PanelLayout>({ width: PANEL_MIN_WIDTH, expanded: false });
   const updatePanelLayout = useCallback((next: PanelLayout) => {
@@ -115,7 +114,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     return () => { window.removeEventListener("pointerdown", outside, true); window.removeEventListener("keydown", escape); };
   }, [expandedQueue]);
   const { snapshot } = subscriptions.use(), nav = navigation.use();
-  const [agentsOpen, setAgentsOpen] = useState(false), [displaySettingsOpen, setDisplaySettingsOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
   const initialSetupShown = useRef(false);
   useEffect(() => {
     if (scenarioName || !visible || initialSetupShown.current || !status || !sourcesLoaded || loading || error) return;
@@ -202,18 +201,18 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     const ingress = sources.find(i => i.id === source.ingressId);
     if (!ingress) return [];
     const state = source.state === "disconnected" ? "disconnected" : sourceState(ingress);
-    const selected = !sourceSelection?.closing && sourceSelection?.client?.id === source.id;
+    const selected = !sourceSelection?.closing && sourceSelection?.product === source.product;
     const platformLabel = controlSource(source.product)?.displayName ?? source.product;
     const nodeLabel = accounts.some(account => account.sources.includes(source.id)) ? platformLabel : source.label;
     return [{
       id: source.id, platform: source.product, platformLabel, label: nodeLabel,
-      icon: <PlatformIcon role="source" platform={source.product} panelVisual />, sourceIds: [source.id], state: wireState(state), attention: false, selected, tasks: [], reorderable: !panelOpen,
+      selectedAccountId: sourceSelection?.accountId, icon: <PlatformIcon role="source" platform={source.product} panelVisual />, sourceIds: [source.id], state: wireState(state), attention: false, selected, tasks: [], reorderable: !panelOpen,
       content: accounts.some(account => account.sources.includes(source.id)) ? <SrcPlatformNode product={source.product} state={wireState(state)} selected={selected} newlyAdded={source.id === newSourceId && !flow}
         onMove={panelOpen ? undefined : by => moveSource(source.id, by)}
-        onOpen={() => selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } })} />
+        onOpen={() => selectSourcePanel(source.product, { toggle: true, sourceId: source.id })} />
         : <SrcAccountNode product={source.product} sourceLabel={source.label} state={wireState(state)} selected={selected} newlyAdded={source.id === newSourceId && !flow}
           onMove={panelOpen ? undefined : by => moveSource(source.id, by)}
-          onOpen={() => selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } })} />,
+          onOpen={() => selectSourcePanel(source.product, { toggle: true, sourceId: source.id })} />,
     }];
   });
   const agentViews: NodeView[] = agents.map(agent => {
@@ -271,8 +270,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     if (side === 1) {
       selectAgentPanel({ type: 'toggle', agent: platform, accountId });
     } else {
-      const source = controlSources.find(s => s.id === sourceId), ingress = source && sources.find(i => i.id === source.ingressId);
-      if (source && ingress) selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } });
+      const source = controlSources.find(s => s.id === sourceId);
+      selectSourcePanel(platform, { toggle: true, sourceId: source?.id, accountId });
     }
   };
   const topologyLeft = accountViews(sourceViews, -1, accounts, mode, accountOrders, { open: openAccountNode });
@@ -316,7 +315,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
             onManageAgents={() => setAgentsOpen(true)} />} />
         {selectedAgent && visible && (panelReady || selection?.closing || panelLayout.key?.startsWith("agent:")) && <AgentPanel agent={selectedAgent} dockRect={panelLayout.rect}
           width={envOverrides().taskPanelWidth ?? panelLayout.width} expanded={envOverrides().taskPanelWidth == null && panelLayout.expanded} onToggleWidth={() => setPanelExpanded(value => !value)}
-          onSettings={() => setDisplaySettingsOpen(true)} onPanelFrame={panelFrame} />}
+           onPanelFrame={panelFrame} />}
         {sourceSelection && visible && (panelReady || sourceSelection.closing || panelLayout.key?.startsWith("source:")) && <IngressPanel dockRect={panelLayout.rect} width={panelLayout.width} expanded={panelLayout.expanded} onToggleWidth={() => setPanelExpanded(value => !value)} onPanelFrame={panelFrame} />}
         <div className="activity-edge-fade" aria-hidden="true" />
 
@@ -342,7 +341,6 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
         connectionSetup.set(undefined);
       }} />}
       {agentsOpen && <AgentsSettings onClose={() => setAgentsOpen(false)} />}
-      {displaySettingsOpen && <AgentDisplaySettings onClose={() => setDisplaySettingsOpen(false)} />}
     </>
   );
 }

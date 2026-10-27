@@ -3,7 +3,7 @@ import { ActionGroup, SettingsSection, Dialog, IconButton, Switch, Notice, Loadi
 import { useReducedMotion } from "../state/appEnvironment";
 import { useState, type ReactNode } from "react";
 import { motion, Reorder, useDragControls } from "motion/react";
-import { RefreshCw, Settings, Gauge } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { t } from "../i18n";
 import { openUrl } from "../platform";
 import {
@@ -17,10 +17,6 @@ import {
   refreshAgents,
   type Agent,
 } from "../state/agents";
-import { subscriptions } from "../state/subscriptions";
-import UsageOverview from "../subscriptions/UsageOverview";
-import QuotaBubble from "../subscriptions/QuotaBubble";
-import AgentDisplaySettings from "./AgentDisplaySettings";
 import { springTransition } from "../motion/geometry";
 
 const canReorder = (agent: Agent) =>
@@ -74,38 +70,10 @@ function AgentCard({ agent, onMove, children }: {
   );
 }
 
-export function AgentDetails({
-  agent: selected,
-  onClose,
-  showOfficialLink = false,
-}: {
-  agent: Agent;
-  showOfficialLink?: boolean;
-  onClose: () => void;
-}) {
-  const inventory = agents.use();
-  const agent = inventory.items.find((item) => item.agent === selected.agent) || selected;
-  const { snapshot } = subscriptions.use();
-  const provider = snapshot?.settings.enabled
-    ? snapshot.providers.find(
-        (p) => p.agentIds.includes(agent.agent) && p.eligible,
-      )
-    : undefined;
-  return (
-    <Dialog title={name(agent)} onClose={onClose} headerless width={440}>
-      <AgentPlatformCard agent={agent} onLink={showOfficialLink ? url => void openUrl(url) : undefined}>
-        {provider && <QuotaBubble provider={provider} />}
-      </AgentPlatformCard>
-    </Dialog>
-  );
-}
-export default function AgentsSettings({ onClose, initialAgent }: { onClose: () => void; initialAgent?: Agent }) {
+export default function AgentsSettings({ onClose }: { onClose: () => void }) {
   const state = agents.use(),
     items = orderedAgents();
-  const [detail, setDetail] = useState<Agent | undefined>(initialAgent),
-    [display, setDisplay] = useState(false),
-    [overview, setOverview] = useState(false),
-    [error, setError] = useState("");
+  const [error, setError] = useState('');
   function move(id: string, by: number) {
     const list = items.filter(canReorder),
       index = list.findIndex((a) => a.agent === id);
@@ -119,12 +87,6 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
         wide
         actions={
           <ActionGroup>
-            <IconButton icon={Gauge} label={t("trayUsage")} onClick={() => setOverview(true)} />
-            <IconButton
-              icon={Settings}
-              label={t("agentDisplaySettings")}
-              onClick={() => setDisplay(true)}
-            />
             <IconButton
               icon={RefreshCw}
               label={t("refreshAgents")}
@@ -150,7 +112,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
               agent={agent}
               onMove={by => move(agent.agent, by)}
             >
-              <AgentPlatformCard agent={agent} frame="catalog" onOpen={() => setDetail(agent)} onLink={url => void openUrl(url).catch(error => setError(String(error)))}
+              <AgentPlatformCard agent={agent} frame="catalog" quota={null} onLink={url => void openUrl(url).catch(error => setError(String(error)))}
                 headerActions={<Switch label={t("allowConnectorToUseValue", { agent: name(agent) })} checked={agent.enabled === true}
                   disabled={!!state.saving || state.loading || agent.adapter?.state === "preparing" || typeof agent.enabled !== "boolean"}
                   onChange={enabled => void toggleAgent(agent, enabled)} />} />
@@ -167,13 +129,6 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
         </SettingsSection>}
         {(error || state.error) && <Notice>{error || state.error}</Notice>}
       </Dialog>
-      {detail && (
-        <AgentDetails showOfficialLink agent={detail} onClose={() => setDetail(undefined)} />
-      )}{" "}
-      {overview && <Dialog title={t("trayUsage")} onClose={() => setOverview(false)} width={440}>
-        <UsageOverview onNavigate={() => { setOverview(false); setDisplay(true); }} />
-      </Dialog>}
-      {display && <AgentDisplaySettings onClose={() => setDisplay(false)} />}
     </>
   );
 }

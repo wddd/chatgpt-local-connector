@@ -1,59 +1,63 @@
-import { EntityCard, SectionHeader, DialogClose, IconButton, Notice, SingleChoice } from './ui';
-import { SrcAccountCard, SrcAccountRow } from './objects/src-account';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { ArrowLeft, X } from 'lucide-react';
+import { ViewStack, Button, Empty, EntityCard, FactList, Loading, SectionHeader, DialogClose, IconButton, Notice, StateBadge } from './ui';
+import { SrcAccountRow } from './objects/src-account';
 import { SrcPlatformChip } from './objects/src-platform';
-import { useState, type ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { statePresentation } from './objects/statePresentation';
 import { t } from '../i18n';
-import { isLocalSource } from '../sourcePresentation';
-import { AgentAccountChip } from './objects/agent-account';
+import { isLocalSource, sourceDate } from '../sourcePresentation';
+import { accountsApi } from '../api';
 import { connector } from '../state/connector';
-import { useAccounts } from '../state/accounts';
-import { navigation } from '../state/navigation';
-import { ingressPanel, selectAgentPanel, selectIngressPanel } from '../state/overviewPanels';
-import type { ControlSource } from '../state/types';
+import { useAccounts, refreshAccounts } from '../state/accounts';
+import { ingressPanel, selectSourcePanel } from '../state/overviewPanels';
+import { openOnboarding } from '../state/onboarding';
 import { PrivacyToggle } from './Privacy';
-import { AccountSharedNotice } from './AccountCards';
-import SourceConnection from './SourceConnection';
-import SourceDispatches from './SourceDispatches';
+import { AccountActions } from './composites/AccountActions';
+import SourceConversations from './SourceConversations';
 
-export function openSourceWorkspace(id: string) {
-  const { status, sources } = connector.get();
-  const source = sources.find(entry => entry.id === id);
-  const ingress = status?.ingresses.find(entry => entry.id === source?.ingressId);
-  if (!source || !ingress || isLocalSource(source)) return;
-  selectIngressPanel(ingress, { client: { id: source.id, name: source.label, source: source.product } });
-  navigation.set(old => ({ ...old, page: 'overview' }));
-}
-export default function SourcePanel({ source, widthControl }: { source: ControlSource; widthControl?: ReactNode }) {
-  const { status, sources } = connector.use(), state = useAccounts();
-  const account = state.items.find(a => a.sources.includes(source.id));
-  const entries = account ? sources.filter(s => account.sources.includes(s.id) && !isLocalSource(s)) : [source];
-  const [tab, setTab] = useState('activity'), [selectedId, setSelectedId] = useState<string>();
-  // A grouped inspector never chooses a mutation target from array order.
-  const selected = entries.length === 1 ? entries[0] : entries.find(s => s.id === selectedId);
-  const ingress = status?.ingresses.find(i => i.id === selected?.ingressId);
-  if (isLocalSource(source)) return null;
-  function openConnection() {
-    ingressPanel.set(undefined);
-    navigation.set(old => ({ ...old, page: 'connections' }));
-  }
-  return <>
-    <SectionHeader className="dialog-header flex shrink-0 items-center justify-between gap-4 border-b px-5 py-4 [&_h2]:min-w-0 [&_h2]:flex-1 [&_h2]:text-left [&_h2]:text-base [&_h2]:font-semibold [&_h2]:wrap-anywhere [&_.actions]:shrink-0 source-account-header flex-wrap gap-3 [&_h2]:m-0 [&_h2]:mb-1 [&_h2]:truncate [&_.section-header-copy>.sensitive-value]:text-xs [&_.section-header-copy>.sensitive-value]:text-muted-foreground [&>.actions]:ml-auto" level={2} title={<><SrcPlatformChip product={source.product} sources={selected ? [selected] : undefined} /> · {account?.alias ?? source.label}</>}
+export default function SourcePanel({ product, accountId, widthControl }: { product: string; accountId?: string; widthControl?: ReactNode }) {
+  const content = useRef<HTMLDivElement>(null), previous = useRef(accountId);
+  useLayoutEffect(() => {
+    if (previous.current !== accountId) {
+      const id = accountId ? undefined : previous.current;
+      requestAnimationFrame(() => {
+        const row = id && content.current?.querySelector<HTMLElement>(`[data-hover-target="${CSS.escape(id)}"]`);
+        (row || content.current?.querySelector<HTMLElement>('h2'))?.focus({ preventScroll: true });
+      });
+    }
+    previous.current = accountId;
+  }, [accountId]);
+  const { sources } = connector.use(), state = useAccounts();
+  const entries = sources.filter(source => source.product === product && !isLocalSource(source));
+  const accounts = state.items.filter(account => !account.removedAt && account.sources.some(id => entries.some(source => source.id === id)));
+  const account = accounts.find(account => account.id === accountId);
+  const owned = entries.filter(source => account?.sources.includes(source.id));
+  const lastSeen = Math.max(0, ...owned.map(source => source.lastSeenAt ?? 0));
+  return <div ref={content} className="flex h-full min-h-0 flex-col">
+    <SectionHeader className="dialog-header flex shrink-0 items-center gap-2 border-b px-4 py-3 [&_.section-header-copy]:min-w-0 [&_.section-header-copy]:flex-1 [&_h2]:truncate" level={2}
+      leading={accountId && <IconButton icon={ArrowLeft} label={t('back')} onClick={() => selectSourcePanel(product, { platformOnly: true })} />}
+      title={account?.alias ?? <SrcPlatformChip product={product} />} titleProps={{ tabIndex: -1 }}
       actions={<><PrivacyToggle />{widthControl}<DialogClose asChild><IconButton icon={X} label={t('close')} /></DialogClose></>} />
-    <div className="side-panel-scroll flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto p-4 [&_h3]:mb-2 [&_h3]:text-sm source-panel-content gap-4">
-      {entries.length > 1 && <EntityCard title={account?.alias}>
-        {entries.map(entry => <SrcAccountRow key={entry.id} source={entry} selected={selected?.id === entry.id}
-          ingress={status?.ingresses.find(i => i.id === entry.ingressId)} onConnection={openConnection} onOpen={() => setSelectedId(entry.id)} />)}
-      </EntityCard>}
-      <SingleChoice label={t('accounts.sourceTabs')} value={tab} onChange={setTab} options={['activity', 'account', 'connection'].map(value => ({ value, label: t(`accounts.tab.${value}`) }))} />
-      {tab === 'activity' && (selected ? <SourceDispatches sourceId={selected.id} summary /> : entries.map(entry => <EntityCard key={entry.id} title={entry.label}><SourceDispatches sourceId={entry.id} summary /></EntityCard>))}
-      {tab === 'account' && <>
-        <SrcAccountCard source={selected} product={source.product} account={account} ingress={ingress} ingresses={status?.ingresses} onConnection={openConnection} loading={state.loading} error={state.error} />
-        {account && <>
-          {!!account.agentProfiles.length && <EntityCard><AccountSharedNotice />{[...new Set(account.agentProfiles.map(profile => profile.agent))].map(agent => <AgentAccountChip key={agent} account={account} agent={agent} onOpen={() => { selectAgentPanel({ type: 'agent', agent, accountId: account.id }); navigation.set(old => ({ ...old, page: 'overview' })); }} />)}</EntityCard>}
-        </>}
-      </>}
-      {tab === 'connection' && (selected ? <SourceConnection key={selected.id} source={selected} account={account} onConnection={openConnection} /> : <Notice tone="warning">{t('source.selectForActions')}</Notice>)}
-    </div>
-  </>;
+    <ViewStack hidden={!accountId} className="side-panel-scroll gap-4 overflow-auto p-4">
+      {state.error && <Notice>{state.error}</Notice>}
+      {state.loading && <Loading />}
+      {account ? <>
+        <EntityCard headerActions={<StateBadge presentation={statePresentation('account', account.health.state)} />}>
+          <FactList missing={{ placeholder: '—' }} items={[{ label: t('source.lastSeen'), value: sourceDate(lastSeen) }]} />
+          {[...new Set(owned.map(source => source.state))].map(value => <StateBadge key={value} presentation={statePresentation('source', value)} />)}
+        </EntityCard>
+        <SourceConversations key={account.id} accountId={account.id} />
+        <AccountActions alias={account.alias} onRename={async alias => { await accountsApi.update({ id: account.id, alias }); await refreshAccounts(); }}
+          onRemove={async () => { await accountsApi.remove({ id: account.id, running: 'finish' }); await refreshAccounts(); ingressPanel.set({ product }); }} />
+      </> : !state.loading && <Notice>{t('accounts.identityUnavailable')}</Notice>}
+    </ViewStack>
+    <ViewStack hidden={!!accountId} className="side-panel-scroll gap-4 overflow-auto p-4">
+        {state.error && <Notice>{state.error}</Notice>}
+        {state.loading && <Loading />}
+        <Button onClick={() => openOnboarding('product', { source: product })}>{t('accounts.add')}</Button>
+        {accounts.map(account => <SrcAccountRow key={account.id} account={account} sources={entries.filter(source => account.sources.includes(source.id))} source={entries.find(source => account.sources.includes(source.id))!}
+          onOpen={() => selectSourcePanel(product, { accountId: account.id })} />)}
+        {!state.loading && !accounts.length && <Empty>{t('panels.noAccounts')}</Empty>}
+    </ViewStack>
+  </div>;
 }

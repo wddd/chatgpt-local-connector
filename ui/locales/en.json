@@ -1445,5 +1445,8 @@
   "logs": "Logs",
   "connections.multiplePublicLinks": "Multiple owned relays are configured. Manage them through CLI/AX until a public link is selected.",
   "start": "Start",
-  "stop": "Stop"
+  "stop": "Stop",
+  "panels.rename": "Rename",
+  "panels.noAccounts": "No accounts.",
+  "panels.noConversations": "No conversations."
 }

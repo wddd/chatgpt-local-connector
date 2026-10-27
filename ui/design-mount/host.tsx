@@ -1,3 +1,5 @@
+import type { AccountActions as AccountActionsComponent } from '../components/composites/AccountActions';
+import type { SrcConversationRow as SrcConversationRowComponent } from '../components/objects/src-conversation/Row';
 import type { TaskChip as TaskChipComponent, TaskNode as TaskNodeComponent, TaskRow as TaskRowComponent, TaskCard as TaskCardComponent } from '../components/objects/task';
 import type { AgentAccountCard as AgentAccountCardComponent } from '../components/objects/agent-account';
 import type { AgentAccountRow as AgentAccountRowComponent } from '../components/objects/agent-account';
@@ -242,3 +244,6 @@ export const AgentAccountNode = island<ComponentProps<typeof AgentAccountNodeCom
 export const AgentAccountRow = island<TextSlots<ComponentProps<typeof AgentAccountRowComponent>, 'actions'>>('AgentAccountRow');
 
 export const AgentAccountCard = island<TextSlots<ComponentProps<typeof AgentAccountCardComponent>, 'title' | 'icon' | 'headerActions' | 'titleActions' | 'secondary' | 'children' | 'footer' | 'danger'>>('AgentAccountCard');
+
+export const AccountActions = island<ComponentProps<typeof AccountActionsComponent>>('AccountActions');
+export const SrcConversationRow = island<ComponentProps<typeof SrcConversationRowComponent>>('SrcConversationRow');

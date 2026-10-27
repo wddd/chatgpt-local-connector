@@ -65,7 +65,7 @@ test('account UI uses native routes, login evidence and notification targets', a
     const codex = await accountsApi.add({ kind: 'codex' });
     await assert.rejects(accountsApi.login({ loginId: codex.loginId, action: 'code', code: 'example-code' }), /ACCOUNT_LOGIN_CODE_UNSUPPORTED/);
     const { default: AddAccount } = await server.ssrLoadModule('/ui/components/AddAccount.tsx');
-    const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
+    const { TooltipProvider, Dialog } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
     const page = within(document.body);
     await act(async () => root.render(h(TooltipProvider, null, h(AddAccount, { initialLogin: codex, onClose() {} }))));
@@ -117,27 +117,23 @@ test('source dates treat zero and absent timestamps as never in every locale', a
   });
 });
 
-test('account source panels use product display names in every locale', async () => {
-  // Regression: the same-identity Agent link rendered the internal codex ID instead of the Codex display name.
+test('source platform rows open accounts and keep localized product names', async () => {
+  // Regression: the source inspector used connection tabs instead of a platform and account drill-down.
   await withAccountUI(async ({ server, root }) => {
     const { refreshAccounts } = await server.ssrLoadModule('/ui/state/accounts.ts');
-    const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
-    const { connector } = await server.ssrLoadModule('/ui/state/connector.ts');
     const { default: SourcePanel } = await server.ssrLoadModule('/ui/components/SourcePanel.tsx');
+    const { ingressPanel } = await server.ssrLoadModule('/ui/state/overviewPanels.ts');
     const { Dialog, TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
     const { locale, t } = await server.ssrLoadModule('/ui/i18n.ts');
-    const { name } = await server.ssrLoadModule('/ui/state/agents.ts');
     await refreshAccounts();
-    const account = await accountsApi.get('account-openai');
-    const source = connector.get().sources.find((item: any) => account.sources.includes(item.id));
     const page = within(document.body);
     for (const language of ['en', 'zh-CN']) {
-      await act(async () => { locale.set(language); root.render(h(TooltipProvider, null, h(Dialog, { title: 'Source', onClose() {} }, h(SourcePanel, { source })))); });
-      await act(async () => { fireEvent.click(page.getByRole('radio', { name: t('accounts.tab.account'), exact: true })); });
-      const label = `${name(account.agentProfiles[0])} · ${account.alias}`;
-      assert.ok(page.getByRole('button', { name: name => name.startsWith(label) }));
-      assert.equal(page.queryByRole('button', { name: name => name.startsWith(`${account.agentProfiles[0].agent} · ${account.alias}`) }), null);
-      const keys = Object.keys(en).filter(key => key.startsWith('accounts.'));
+      await act(async () => { locale.set(language); root.render(h(TooltipProvider, null, h(Dialog, { title: 'Source', onClose() {} }, h(SourcePanel, { product: 'chatgpt' })))); });
+      assert.ok(page.getByText('ChatGPT', { exact: true }));
+      assert.ok(page.getByRole('button', { name: t('accounts.add'), exact: true }));
+      await act(async () => fireEvent.click(page.getByRole('button', { name: /Personal/ })));
+      assert.equal(ingressPanel.get().accountId, 'account-openai');
+      const keys = Object.keys(en).filter(key => key.startsWith('panels.'));
       assert.ok(keys.every(key => Object.hasOwn(zhCN, key)));
       await act(async () => root.render(null));
     }
@@ -151,8 +147,7 @@ test('built-in local authority is absent from control sources, accounts and disc
     const { accounts, refreshAccounts } = await server.ssrLoadModule('/ui/state/accounts.ts');
     const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
     const { default: SourcePanel } = await server.ssrLoadModule('/ui/components/SourcePanel.tsx');
-    const { default: SourceConnection } = await server.ssrLoadModule('/ui/components/SourceConnection.tsx');
-    const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
+    const { TooltipProvider, Dialog } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
     const local = { ...connector.get().sources[0], id: 'example-local', ingressId: 'local-cli', credential: { type: 'local' }, product: 'local-cli', platform: 'local', label: 'Local authority fixture', state: 'connected' };
     connector.set((old: any) => ({ ...old, sources: [...old.sources, local] }));
@@ -164,18 +159,15 @@ test('built-in local authority is absent from control sources, accounts and disc
     accountsApi.list = async () => { const value = await list(); return { ...value, accounts: [...value.accounts, legacy] }; };
     accountsApi.get = async (id: string) => id === legacy.id ? legacy : get(id);
     const page = within(document.body);
-    const render = async (node: any) => { await act(async () => root.render(h(TooltipProvider, null, node))); };
+    const render = async (node: any) => { await act(async () => root.render(h(TooltipProvider, null, h(Dialog, { title: 'Source', onClose() {} }, node)))); };
     try {
       await refreshAccounts();
       assert.ok(!accounts.get().items.some((account: any) => account.id === legacy.id));
       assert.ok(accounts.get().items.some((account: any) => account.sources.includes(external.id)));
-      for (const component of [SourcePanel, SourceConnection]) {
-        await render(h(component, { source: local, onConnection() {} }));
-        assert.equal(page.queryByRole('button', { name: t('source.disconnect'), exact: true }), null);
-        assert.equal(page.queryByRole('button', { name: t('switch.title'), exact: true }), null);
-      }
-      await render(h(SourceConnection, { source: external, onConnection() {} }));
-      assert.ok(page.getByRole('button', { name: t('source.disconnect'), exact: true }));
+      await render(h(SourcePanel, { product: local.product }));
+      assert.equal(page.queryByRole('button', { name: t('remove'), exact: true }), null);
+      await render(h(SourcePanel, { product: external.product, accountId: 'account-source' }));
+      assert.ok(page.getByRole('button', { name: t('remove'), exact: true }));
     } finally { accountsApi.list = list; accountsApi.get = get; }
   });
 });

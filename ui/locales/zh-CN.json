@@ -1445,5 +1445,8 @@
   "logs": "日志",
   "connections.multiplePublicLinks": "已配置多个自建 Relay。确定公共链接前，请通过 CLI/AX 管理。",
   "start": "启动",
-  "stop": "停止"
+  "stop": "停止",
+  "panels.rename": "重命名",
+  "panels.noAccounts": "暂无账户。",
+  "panels.noConversations": "暂无会话。"
 }

@@ -1,6 +1,8 @@
 // Preview recipes are required for every component value export in ui/design-mount.ts.
 // Only Root accepts React elements; all island slots and children stay text-only.
 export const previews = {
+  AccountActions: ['Composites', 240, "h(A.AccountActions,{alias:'Example team',onRename:async()=>{},onRemove:async()=>{}})"],
+  SrcConversationRow: ['SRC', 260, "Col(...F.panels.conversations.map(conversation=>h(A.SrcConversationRow,{key:conversation.id,conversation,onTask:noop})))"],
   RequestCard: ['Composites', 340, "Col(h(A.RequestCard,{title:'Review verification',context:'Recorded request',pager:{index:0,count:2,onChange:noop},onClose:noop,footer:'Approve once'},'Run the selected project checks'),h(A.RequestCard,{title:'Response pending',busy:true,state:'Awaiting confirmation',error:'Synthetic response could not be confirmed',footer:'Retry'},'Retained request details'))"],
   InteractionRequestCard: ['Requests', 1040, 'h(InteractionDemo)'],
   InteractionRequestChip: ['Requests', 180, "Col(Row(h(A.InteractionRequestChip,{interaction:R.question,onOpen:noop,count:2}),h(A.InteractionRequestChip,{interaction:R.permission})),Row(...['submitting','unconfirmed','failed','submitted'].map(status=>h(A.InteractionRequestChip,{key:status,interaction:R.permission,submission:Submission(status,'allow'),onOpen:noop,disabled:status==='submitting'}))))"],

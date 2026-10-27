@@ -352,25 +352,13 @@ try {
           if (await main.evaluate(node => node.scrollWidth > node.clientWidth)) throw new Error('Object fixture overflows horizontally: ' + JSON.stringify(await main.evaluate(node => [...node.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > node.getBoundingClientRect().right + 1).slice(0, 12).map(el => ({ tag: el.tagName, text: el.textContent?.slice(0, 80), width: el.getBoundingClientRect().width })))));
           if (screenshots) await page.screenshot({ path: path.join(out, `${key}-objects.png`), animations: 'disabled' });
         }
-        if (name === 'src-account-multiple') {
-          // Regression: grouped source accounts silently used their first source for Change connection and disconnect.
-          const panel = page.getByRole('dialog').filter({ has: page.getByRole('radio', { name: 'Connection', exact: true }) });
-          const second = panel.getByRole('button', { name: /^Second source/ });
-          await second.waitFor();
-          await panel.getByRole('radio', { name: 'Connection', exact: true }).click();
-          if (await panel.getByRole('button', { name: 'Disconnect…', exact: true }).count()) throw new Error('Mutation target was inferred from source order');
-          await second.click();
-          await panel.getByText('Denied', { exact: true }).waitFor();
-          if (await panel.getByText('Old authorization', { exact: true }).count()) throw new Error('SRC inspector exposes grant history');
-          await panel.getByRole('button', { name: 'Disconnect…', exact: true }).click();
-          await page.getByRole('dialog', { name: /Second source/ }).waitFor();
-        }
-        if (name === 'source-panel') {
-          // Regression: the source connection advanced area lacked shared fields, disclosure and destructive-action framing.
+        if (name === 'source-panel' || name === 'source-panel-light' || name === 'panels-src-l2' || name === 'panels-src-single' || name === 'panels-src-multiple-connections') {
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          await page.getByRole('radio', { name: messages['accounts.tab.connection'], exact: true }).click();
-          await page.getByRole('textbox', { name: messages['source.label'], exact: true }).waitFor();
-          await page.getByText(messages['source.disconnectConsequence'], { exact: true }).waitFor();
+          const panel = page.getByRole('dialog');
+          await panel.getByRole('button', { name: messages['panels.rename'], exact: true }).waitFor();
+          await panel.getByRole('button', { name: messages.back, exact: true }).click();
+          await panel.getByRole('button', { name: messages['accounts.add'], exact: true }).waitFor();
+          if (await panel.getByRole('radio').count()) throw new Error('SRC platform retains obsolete inspector tabs');
         }
         if (fixture.page === 'settings') {
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
