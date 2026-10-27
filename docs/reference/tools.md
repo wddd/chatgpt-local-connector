@@ -153,6 +153,14 @@ act {"op":"write","args":{"path":"/absolute/project/new.txt","content":"hello\n"
 
 `git` reads status/history/diffs. Diffs above 12000 UTF-8 bytes return a bounded preview, `truncated:true`, file-level added/removed counts (up to fifty files), and `output.outputId`. Read `control_output` from offset 0 to reconstruct the immutable JSON containing complete text and file statistics, or narrow with path; `git_write` performs its cataloged mutations with receipts. `file_search` exposes fuzzy filename search. `fs` exposes native writes and watches with base64 contents and native path semantics; use the upstream schema for parameters.
 
+## Non-Codex task archival
+
+Use `act({op:"agent_archive",args:{agent:"pi",taskId:"<task-id>"}})` for an explicitly selected ended Pi or ACP task. `agent` and `taskId` are required. Optional `requestId` and `waitMs` follow `codex_archive`: ARC generates a UUID when omitted, waits 25000ms by default (0–120000ms allowed), and returns a durable receipt. Retry identical arguments with the same requestId or query `receipt` after a timeout. A rejected attempt retains its result; after resolving the blocker, use a new requestId.
+
+`ARCHIVE_ACTIVE_TURN` refuses active/unconfirmed turns or dispatches and pending interactions. Complete the turn or explicitly call `agent_interrupt`; for an interaction, read `agent_pending` and use `agent_respond` with the user's decision. Follow the returned schema-valid `next` and verify the task before archiving. Archival never interrupts work implicitly.
+
+Successful archival closes only the ARC-owned process and flushes its final output before setting `archived:true`. It removes the task from `agent_tasks`, conversations, the task feed and activity, including its associated native-session listing. It ends live notification scope using the same mechanism as `codex_archive`; existing inbox evidence is retained. `agent_wait` and process-backed operations return `TASK_ARCHIVED` rather than restarting the task. `agent_read`, timeline evidence, reviews and receipts remain readable. Already archived tasks succeed without reopening a process, including after restart or when the Agent is disabled. Native upstream sessions and transcripts are never deleted. There is no restore op.
+
 ## Codex tasks
 
 Callers SHOULD always provide optional `title` on `codex_create` and `agent_create`: a short human-readable task title of at most 120 characters, shown in task lists and notifications. Omitted or blank titles use the first non-empty prompt line, truncated to 120 characters; the receipt includes an actionable `titleHint`. A promptless `agent_create` has an empty fallback. Rename Codex tasks with `codex_thread` using `action:"name/set"` and `params:{threadId,name}`. Native `codex_thread` fork and `codex_call` thread/start or thread/fork use native metadata without an ARC `title` argument; name the returned thread with that same operation. No Agent rename op is exposed.

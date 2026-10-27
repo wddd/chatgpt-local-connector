@@ -79,7 +79,7 @@ Every cell is intersected with policy and runtime availability.
 | `connector_verify` | D | C | C | Current |
 | `agents`, `agent_create`, `agent_wait`, `agent_read`, `agent_review` | 1 | 1 | 1 | Current |
 | `codex_send`, `codex_resume`, `codex_interrupt`, `codex_pending`, `codex_respond`, `codex_interactions` | D | D | D | Current |
-| `agent_send`, `agent_interrupt`, `agent_pending`, `agent_respond`, `agent_capabilities`, `agent_tasks`, `agent_context`, `agent_events` | D | D | D | Current |
+| `agent_send`, `agent_archive`, `agent_interrupt`, `agent_pending`, `agent_respond`, `agent_capabilities`, `agent_tasks`, `agent_context`, `agent_events` | D | D | D | Current |
 | `codex_tasks`, `codex_items`, `codex_changes`, `codex_queue`, `codex_queue_control`, `codex_owner`, `codex_release`, `codex_archive` | D | D | D | Current |
 | `projects`, `command` | D | 1 | 1 | Current |
 | `overview`, `tree`, `search`, `read`, `git`, `edit`, `write` | D | D | D | Current |

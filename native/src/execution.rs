@@ -27,6 +27,9 @@ impl Execution {
         self.control.auto_open_codex()
     }
     pub async fn available(&self, name: &str) -> bool {
+        if name == "agent_archive" {
+            return true; // Local cleanup does not require an enabled or installed Agent.
+        }
         if name == "agents" || name.starts_with("agent_") {
             return self.agents.ui_inventory(false).await["agents"]
                 .as_array()

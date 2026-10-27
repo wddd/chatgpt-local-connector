@@ -155,6 +155,7 @@ pub fn failure(e: &str) -> Value {
                     | "ACCOUNT_ROUTE_CHANGED"
                     | "HANDSHAKE_INVALID_OR_EXPIRED"
                     | "DESKTOP_STEER_UNAVAILABLE"
+                    | "TASK_ARCHIVED"
                     | "ARCHIVE_ACTIVE_TURN"
                     | "ARCHIVE_WRITER_BUSY"
                     | "THREAD_WRITER_BUSY"
@@ -318,7 +319,7 @@ pub fn receipt(value: Value) -> Value {
                 fields.remove(key);
             }
             if matches!(operation, "create" | "send" | "interrupt")
-                || operation.starts_with("agent_")
+                || (operation.starts_with("agent_") && operation != "agent_archive")
             {
                 fields.retain(|key, _| {
                     [
@@ -808,6 +809,7 @@ pub fn retry_contract(op: &Value) -> Value {
             | "agent_create"
             | "agent_send"
             | "agent_review"
+            | "agent_archive"
             | "agent_interrupt"
             | "agent_respond"
             | "command"

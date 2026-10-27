@@ -920,7 +920,7 @@ impl Service {
                     item["description"] = tool["description"].clone();
                     item["via"] = json!(crate::egress::via(tool));
                     item["available"] =
-                        json!(!name.starts_with("agent_") && name != "agents" || agents_available);
+                        json!(name == "agent_archive" || (!name.starts_with("agent_") && name != "agents") || agents_available);
                     item
                 })
                 .collect();

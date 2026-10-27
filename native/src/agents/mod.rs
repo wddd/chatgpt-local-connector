@@ -3,6 +3,7 @@ use crate::*;
 use std::collections::{HashMap, HashSet};
 mod activity;
 mod adapter;
+mod archive;
 mod conversations;
 mod dispatch;
 pub(crate) mod driver;
@@ -415,6 +416,9 @@ impl AgentHost {
                     }
                 })
                 .unwrap_or(Value::Null);
+            if task["archived"] == true {
+                continue;
+            }
             let state = string(&task, "status");
             let runtime = match state {
                 "running" | "starting" | "cancelling" => "active",
@@ -563,7 +567,11 @@ impl AgentHost {
         } else {
             Vec::new()
         };
+        let archived_sessions = archive::hidden_sessions().unwrap_or_default();
         for (agent, mut session) in transcripts {
+            if archived_sessions.contains(&(agent.clone(), string(&session, "id").to_owned())) {
+                continue;
+            }
             if agent == "codex" {
                 let external = self.activity.lock().await.external(string(&session, "id"));
                 if let Some(external) = external {
@@ -771,6 +779,7 @@ impl AgentHost {
     }
     async fn process(&self, agent: &str, task: &str, resume: bool) -> Result<Arc<Process>> {
         let _lock = self.lifecycle.lock().await;
+        archive::ensure_unarchived(&self.task(agent, task).await?)?;
         if let Some(p) = self.processes.lock().await.get(task).cloned() {
             if p.alive.load(std::sync::atomic::Ordering::SeqCst) {
                 return Ok(p);
@@ -926,7 +935,9 @@ impl AgentHost {
         }
         let agent = agent.as_str();
         let driver = self.drivers.get(agent).ok_or("UNKNOWN_AGENT")?;
-        self.ensure_enabled(agent).await?;
+        if name != "agent_archive" {
+            self.ensure_enabled(agent).await?;
+        }
         if name == "agent_wait" {
             return wait::agent_wait(self, native, &args).await;
         }
@@ -945,7 +956,7 @@ impl AgentHost {
                 if path.extension().is_some_and(|e| e == "json") {
                     let result: Result<Option<Value>> = async {
                         let t = load(&path)?;
-                        if t["agent"] == agent {
+                        if t["agent"] == agent && t["archived"] != true {
                             Ok(Some(self.task(agent, string(&t, "taskId")).await?))
                         } else {
                             Ok(None)
@@ -1017,7 +1028,12 @@ impl AgentHost {
         }
         if !matches!(
             name,
-            "agent_create" | "agent_send" | "agent_interrupt" | "agent_respond" | "agent_review"
+            "agent_create"
+                | "agent_send"
+                | "agent_interrupt"
+                | "agent_respond"
+                | "agent_review"
+                | "agent_archive"
         ) {
             return Err("UNKNOWN_TOOL".into());
         }
@@ -1122,7 +1138,7 @@ impl AgentHost {
                 }
                 Err(e) => {
                     r["state"] = json!(crate::kernel::receipts::failure_state(&e));
-                    r["error"] = json!(e);
+                    r["error"] = crate::egress::failure(&e);
                 }
             }
             // Failure leaves the original pending receipt; replay is always prohibited.
@@ -1148,6 +1164,9 @@ impl AgentHost {
         task: &str,
     ) -> Result<Value> {
         let agent = string(args, "agent");
+        if name == "agent_archive" {
+            return self.archive(agent, task).await;
+        }
         if name == "agent_review" {
             let mut snapshot = self.task(agent, task).await?;
             let facts = dispatch::catalog_facts(
@@ -1200,6 +1219,7 @@ impl AgentHost {
                     .try_lock()
                     .map_err(|_| "TASK_BUSY_OR_UNCONFIRMED")?;
                 let snapshot = p.state.lock().await.clone();
+                archive::ensure_unarchived(&snapshot)?;
                 if !matches!(
                     string(&snapshot, "status"),
                     "idle" | "completed" | "cancelled" | "failed"

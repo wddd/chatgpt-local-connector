@@ -165,6 +165,9 @@ pub(super) fn merge(mut tasks: Vec<Value>, sessions: &[Value]) -> Vec<Value> {
 }
 
 impl Cache {
+    pub(super) fn invalidate(&mut self) {
+        self.sampled = None;
+    }
     async fn refresh(&mut self) -> Result<()> {
         if self
             .sampled
@@ -175,12 +178,20 @@ impl Cache {
         let mut index = std::mem::take(&mut self.native_index);
         let (result, index) = tokio::task::spawn_blocking(move || {
             let sessions = index.scan(&native::roots());
-            let result = stored().map(|tasks| {
-                let rows: Vec<_> = sessions
-                    .iter()
-                    .map(|session| (*session.row).clone())
-                    .collect();
-                (merge(tasks, &rows), sessions)
+            let result = archive::hidden_sessions().and_then(|hidden| {
+                stored().map(|tasks| {
+                    let rows: Vec<_> = sessions
+                        .iter()
+                        .filter(|session| {
+                            !hidden.contains(&(
+                                string(&session.row, "agent").to_owned(),
+                                string(&session.row, "id").to_owned(),
+                            ))
+                        })
+                        .map(|session| (*session.row).clone())
+                        .collect();
+                    (merge(tasks, &rows), sessions)
+                })
             });
             (result, index)
         })
