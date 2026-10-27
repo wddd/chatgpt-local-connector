@@ -40,7 +40,8 @@ import {
 import type { Ingress } from "../state/types";
 import { PlatformIcon, Button, Icon, Notice } from "./ui";
 import { isPendingSource } from "../sourcePresentation";
-import GraphNode from "./GraphNode";
+import { AgentPlatformNode } from './objects/agent-platform';
+import { agentState as projectAgentState } from './objects/agent-platform/presentation';
 import { ActivityBubble } from "./ActivityBubbles";
 import Topology, { type TopologyHandle, type NodeView, type PanelLayout } from "../topology/Topology";
 import { PANEL_MIN_WIDTH } from "../topology/solve";
@@ -185,28 +186,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     selectAgentPanel({ type: "agent", agent: agent.agent });
     navigation.set((old) => ({ ...old, providerId: undefined }));
   }, [nav.providerId, snapshot, inventory.items]);
-  function agentState(a: Agent) {
-    {
-      if (a.adapter?.state === "preparing") return "preparing";
-      if (a.adapter?.state === "failed") return "connectionError";
-      if (!a.installed || !a.enabled) return "disabled";
-    }
-    if (a.agent === "codex") {
-      const state =
-        status?.autoOpenCodex === false
-          ? status?.core.appServer.state
-          : status?.core.desktop?.state;
-      if (state === "ready") return "connected";
-      if (state === "error") return "connectionError";
-      if (state === "connecting") return "preparing";
-      return "disconnected";
-    }
-    return a.status === "ready"
-      ? "connected"
-      : a.installed && a.available
-        ? "agentAvailable"
-        : "connectionError";
-  }
+  function agentState(a: Agent) { return projectAgentState(a, status); }
   function sourceState(i: Ingress) {
     if (!i.enabled) return "disabled";
     return error ? "unknown" : ingressState(i);
@@ -253,7 +233,7 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const agentViews: NodeView[] = agents.map(agent => {
     const sessions = orderActivity(tracked[agent.agent] ?? [], manualOrder[agent.agent] ?? []), selected = !selection?.closing && selection?.agent === agent.agent;
     const agentAccounts = accounts.filter(a => a.agentProfiles.some(p => p.agent === agent.agent));
-    const sharedAccount = agentAccounts.length === 1 && agentAccounts[0].quotaProviderId ? agentAccounts[0] : undefined;
+    const sharedAccount = agentAccounts.length === 1 ? agentAccounts[0] : undefined;
     const accountIds = agentAccounts.map(a => a.id);
     const accountGroup = (id: string | null | undefined) => agentAccounts.find(account => accountOwns(account, id))?.id;
     const origin = (session: typeof sessions[number]) => session.origin && { ...session.origin,
@@ -266,14 +246,12 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     return {
       id: agent.agent, platform: agent.agent, platformLabel: name(agent), icon: <AgentQuotaIcon agent={agent.agent} quota={sharedAccount?.quota} />,
       selectedAccountId: accountGroup(selection?.accountId), state: wireState(agentState(agent)), attention: sessions.some(s => !!s.interaction), selected, reorderable: agent.enabled && !panelOpen,
-      content: <GraphNode label={`${name(agent)}: ${t(agentState(agent))}`} state={wireState(agentState(agent))}
+      content: <AgentPlatformNode agent={agent} quota={sharedAccount?.quota} label={`${name(agent)}: ${t(agentState(agent))}`} state={wireState(agentState(agent))}
         onMove={agent.enabled && !panelOpen ? by => moveVisibleAgent(agent.agent, by) : undefined}
-        highlighted={selected} onOpen={() => selectAgentPanel({ type: "toggle", agent: agent.agent, accountId: sharedAccount?.id })}>
-        <AgentQuotaIcon agent={agent.agent} quota={sharedAccount?.quota} />
+        selected={selected} onOpen={() => selectAgentPanel({ type: "toggle", agent: agent.agent, accountId: sharedAccount?.id })}>
         {selection && !selected && sessions.some(s => s.endedAt === undefined) && <span className="agent-task-count" data-attention={sessions.some(s => !!s.interaction) || undefined}>{sessions.filter(s => s.endedAt === undefined).length}</span>}
-        <span className="graph-node-name">{name(agent)}</span>
         {effectiveDensity !== density && <span className="agent-auto-compact">{t("activity.autoCompacted")}</span>}
-      </GraphNode>,
+      </AgentPlatformNode>,
       tasks: [
         ...shown.sessions.map(session => ({ id: JSON.stringify([agent.agent, session.id]), activityQueue: queueKey([session]), width, height: bubbleHeights[effectiveDensity], taskId: session.id, threadId: session.nativeSessionId, agentAccountId: accountGroup(session.agentAccountId) ?? session.agentAccountId, origin: origin(session),
           state: (session.endedAt !== undefined ? "completed" : session.interaction ? "attention" : session.source === "transcript" ? "external" : "running") as import("../topology/render").TaskState,

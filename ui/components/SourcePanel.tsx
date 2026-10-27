@@ -4,8 +4,9 @@ import { SrcPlatformChip } from './objects/src-platform';
 import { useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { t } from '../i18n';
-import { isLocalSource, sourceAuthorization } from '../sourcePresentation';
-import { name as agentName } from '../state/agents';
+import { isLocalSource } from '../sourcePresentation';
+import { AgentAccountChip } from './objects/agent-account';
+import { connectionSwitch } from '../state/onboarding';
 import { connector } from '../state/connector';
 import { useAccounts } from '../state/accounts';
 import { navigation } from '../state/navigation';
@@ -28,7 +29,6 @@ export default function SourcePanel({ source, widthControl }: { source: ControlS
   // A grouped inspector never chooses a mutation target from array order.
   const selected = entries.length === 1 ? entries[0] : entries.find(s => s.id === selectedId);
   const ingress = status?.ingresses.find(i => i.id === selected?.ingressId);
-  const authorization = sourceAuthorization(selected, ingress);
   if (isLocalSource(source)) return null;
   function openConnection(id: string) {
     ingressPanel.set(undefined);
@@ -46,10 +46,10 @@ export default function SourcePanel({ source, widthControl }: { source: ControlS
       <SingleChoice label={t('accounts.sourceTabs')} value={tab} onChange={setTab} options={['activity', 'account', 'connection'].map(value => ({ value, label: t(`accounts.tab.${value}`) }))} />
       {tab === 'activity' && (selected ? <SourceDispatches sourceId={selected.id} summary /> : entries.map(entry => <EntityCard key={entry.id} title={entry.label}><SourceDispatches sourceId={entry.id} summary /></EntityCard>))}
       {tab === 'account' && <>
-        <SrcAccountCard source={selected} product={source.product} account={account} ingress={ingress} authorization={authorization} onConnection={openConnection} loading={state.loading} error={state.error}
+        <SrcAccountCard source={selected} product={source.product} account={account} ingress={ingress} ingresses={status?.ingresses} onAuthorization={(ingressId, requestId) => connectionSwitch.set({ sourceId: selected!.id, step: 'approval', ingressId, requestId })} onConnection={openConnection} loading={state.loading} error={state.error}
           footer={account && <Button variant="link" onClick={() => { ingressPanel.set(undefined); navigation.set(old => ({ ...old, page: 'accounts', accountId: account.id, remoteSourceId: undefined })); }}>{t('accounts.openAccount')}</Button>} />
         {account && <>
-          {!!account.agentProfiles.length && <EntityCard><AccountSharedNotice />{account.agentProfiles.map(profile => <Button key={profile.profileId} variant="link" onClick={() => { selectAgentPanel({ type: 'agent', agent: profile.agent, accountId: account.id }); navigation.set(old => ({ ...old, page: 'overview', remoteSourceId: undefined })); }}>{agentName(profile)} · {account.alias}</Button>)}</EntityCard>}
+          {!!account.agentProfiles.length && <EntityCard><AccountSharedNotice />{[...new Set(account.agentProfiles.map(profile => profile.agent))].map(agent => <AgentAccountChip key={agent} account={account} agent={agent} onOpen={() => { selectAgentPanel({ type: 'agent', agent, accountId: account.id }); navigation.set(old => ({ ...old, page: 'overview', remoteSourceId: undefined })); }} />)}</EntityCard>}
           <AccountNotifications account={account} />
         </>}
       </>}

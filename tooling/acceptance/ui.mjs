@@ -1,3 +1,4 @@
+import { acceptAgentObjects } from './agent-objects.mjs';
 import { acceptRequests } from './requests.mjs';
 import { requireMainCheckout } from '../coding-lane.mjs';
 requireMainCheckout();
@@ -55,6 +56,7 @@ try {
         if (!fixture.page && !fixture.shells && !fixture.panel && representedTasks !== fixture.tasks.length) throw new Error(`Task count mismatch: ${representedTasks}/${fixture.tasks.length}`);
         if (fixture.panel?.kind === 'agent' && model.panels.agent?.agent !== fixture.panel.id) throw new Error('Agent panel not opened');
         if (fixture.panel?.kind === 'source' && model.panels.source !== fixture.panel.id) throw new Error('Source panel not opened');
+        if (name.startsWith('agent-objects-')) await acceptAgentObjects(page);
         if (name.startsWith('requests-')) await acceptRequests(page);
         if (name.startsWith('topology-accounts')) {
           // Regression: PlatformIcon convergence shrank the unringed Agent parent and ringed account logos.

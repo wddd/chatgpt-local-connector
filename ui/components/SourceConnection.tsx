@@ -7,7 +7,7 @@ import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
 import { connectionSwitch } from "../state/onboarding";
 import type { ControlSource } from "../state/types";
-import { isLocalSource, sourceAuthorization } from "../sourcePresentation";
+import { isLocalSource } from "../sourcePresentation";
 import { remoteProfiles, remoteProfileName, remoteProfileSetting, type CapabilityProfile, type RemoteProfile } from "../controlSources";
 import SourceProductChoice from "./SourceProductChoice";
 
@@ -38,10 +38,9 @@ export default function SourceConnection({ source, account, onConnection }: { so
     finally { setBusy(false); }
   }
   if (isLocalSource(source)) return null;
-  const authorization = sourceAuthorization(source, ingress);
   return <div className="source-detail">
     {error && !confirm && <Notice>{error}</Notice>}
-    <SrcAccountCard source={source} account={account} ingress={ingress} authorization={authorization} onConnection={onConnection}
+    <SrcAccountCard source={source} account={account} ingress={ingress} ingresses={status?.ingresses} onAuthorization={(ingressId, requestId) => connectionSwitch.set({ sourceId: source.id, step: 'approval', ingressId, requestId })} onConnection={onConnection}
       headerActions={<Button data-change-connection disabled={source.state === "revoked" || busy} onClick={() => connectionSwitch.set({ sourceId: source.id, step: source.pendingSwitch ? source.pendingSwitch.requestId ? "approval" : "address" : "connection", ingressId: source.pendingSwitch?.ingressId, requestId: source.pendingSwitch?.requestId })}>{t("switch.title")}</Button>} />
     <Disclosure title={t("accounts.advanced")}><FormSection>
       <form onSubmit={e => { e.preventDefault(); void update({ label: label.trim() }); }}>

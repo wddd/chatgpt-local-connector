@@ -17,14 +17,14 @@ Use `notify_control({action:"bind",target,accountId?})` (or `route` followed by 
 | Action | Arguments | Result |
 | --- | --- | --- |
 | `account_merge` | `{into,ids,alias?,quotaProviderId?}` | Full canonical account; all active members validated before saving |
-| `account_update` | `{id,alias?,defaultFor?,default?}` | Full updated account |
+| `account_update` | `{id,alias?,defaultFor?,default?,profileId?}` | Full updated account |
 | `account_add` | `{kind:"claude"|"codex"|"api-key"|"detect",browserId?}` | `{loginId,kind,state,loginUrl?,accountId?,error?,browserError?}` |
 | `account_login` | `{loginId,action:"code"|"cancel",code?}` | Login progress or `{submitted:true}` |
-| `account_reauth` | `{id,agent}` | New login progress |
+| `account_reauth` | `{id,agent,profileId?}` | New login progress |
 | `account_remove` | `{id,running:"finish"|"cancel"}` | Retained account with `removedAt`, `health.state:"removed"`, and `displayName` |
 | `account_notify` | `{id,action:"send"|"test"|"bind",target,message?}` | Binding or delivery result |
 
-`account_update({id,defaultFor:"claude"})` selects the account for that Agent (`default:true` is equivalent). `{id,defaultFor:"claude",default:false}` clears only that account's default; it leaves another account's default unchanged. `default` requires `defaultFor`. Clearing persists across refresh and restart without an automatic replacement. Dispatch without `account` then reports `ACCOUNT_DEFAULT_MISSING` until a default is selected. The first profile of a previously unconfigured Agent is initially default.
+`account_update({id,defaultFor:"claude"})` selects the account for that Agent (`default:true` is equivalent). `{id,defaultFor:"claude",default:false}` clears only the addressed profile's default; it leaves other defaults unchanged. `default` and `profileId` require `defaultFor`. For an account with several profiles of the same Agent, update and reauthentication require `profileId` from `agentProfiles`; ambiguous or missing targets are rejected. Reauthentication of Codex targets only its current `codex-home` profile. Clearing persists across refresh and restart without an automatic replacement. Dispatch without `account` then reports `ACCOUNT_DEFAULT_MISSING` until a default is selected. The first profile of a previously unconfigured Agent is initially default.
 
 Poll `accounts` for login progress. `account_browsers` returns `{browsers:[{id,name}]}`; omit `browserId` for the system browser. Claude code submission uses the official CLI's stdin. Codex completes its browser callback; a pasted code returns `ACCOUNT_LOGIN_CODE_UNSUPPORTED`. `detect` reads native authentication and imports the system Claude profile. Key-based Agents expose one native `api-key` profile each. Their generic login protocol and provider identity are not standardized: `account_add({kind:"api-key"})` returns `unfinished` with a native-authentication instruction, and unknown profile auth remains `unfinished`. It does not claim a successful sign-in or accept/store an inference key. Native-specific login remains required for those Agents.
 

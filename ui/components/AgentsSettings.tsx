@@ -1,4 +1,5 @@
-import { Button, ActionGroup, SettingsSection, SettingRow, EntityCard, SectionHeader, Dialog, IconButton, Switch, Notice, Loading } from "./ui";
+import { AgentPlatformCard, AgentPlatformRow } from './objects/agent-platform';
+import { ActionGroup, SettingsSection, Dialog, IconButton, Switch, Notice, Loading } from "./ui";
 import { useReducedMotion } from "../state/appEnvironment";
 import { useState, type ReactNode } from "react";
 import { motion, Reorder, useDragControls } from "motion/react";
@@ -11,14 +12,12 @@ import {
   moveAgent,
   reorderAgents,
   name,
-  compactAgentVersion,
   agentLinks,
   toggleAgent,
   refreshAgents,
   type Agent,
 } from "../state/agents";
 import { subscriptions } from "../state/subscriptions";
-import { AgentQuotaIcon } from "../subscriptions/QuotaRing";
 import UsageOverview from "../subscriptions/UsageOverview";
 import QuotaBubble from "../subscriptions/QuotaBubble";
 import AgentDisplaySettings from "./AgentDisplaySettings";
@@ -36,15 +35,15 @@ function AgentCard({ agent, onMove, children }: {
   const reduced = useReducedMotion();
   const transition = reduced ? { duration: 0 } : springTransition(0.3, 0.9);
   if (!canReorder(agent)) {
-    return <EntityCard asChild><motion.article className="agent-card" layout="position" transition={transition}>
+    return <motion.article className="agent-reorder" layout="position" transition={transition}>
       {children}
-    </motion.article></EntityCard>;
+    </motion.article>;
   }
   return (
-    <EntityCard asChild><Reorder.Item
+    <Reorder.Item
       as="article"
       value={agent.agent}
-      className="agent-card"
+      className="agent-reorder"
       data-reorderable
       tabIndex={0}
       aria-label={t("reorderAgent", { agent: name(agent) })}
@@ -71,7 +70,7 @@ function AgentCard({ agent, onMove, children }: {
       }}
     >
       {children}
-    </Reorder.Item></EntityCard>
+    </Reorder.Item>
   );
 }
 
@@ -94,11 +93,9 @@ export function AgentDetails({
     : undefined;
   return (
     <Dialog title={name(agent)} onClose={onClose} headerless width={440}>
-      <SectionHeader className="agent-summary" level={2} leading={<><AgentQuotaIcon agent={agent.agent} /></>} title={<>{name(agent)}</>} secondary={<>{agent.installed !== undefined && <p title={agent.version || undefined}>{agent.installed ? compactAgentVersion(agent.version) : t("agentNotInstalled")}</p>}</>} />
-      {showOfficialLink && agentLinks[agent.agent] && <a href={agentLinks[agent.agent]} onClick={e => { e.preventDefault(); void openUrl(agentLinks[agent.agent]!); }}>{t("officialSetup")}</a>}
-      {agent.installed !== undefined && agent.discoveryError && agent.discoveryError !== "AGENT_NOT_INSTALLED" &&
-        <Notice>{agent.discoveryError}</Notice>}
-      {provider && <QuotaBubble provider={provider} />}
+      <AgentPlatformCard agent={agent} onLink={showOfficialLink ? url => void openUrl(url) : undefined}>
+        {provider && <QuotaBubble provider={provider} />}
+      </AgentPlatformCard>
     </Dialog>
   );
 }
@@ -153,65 +150,10 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
               agent={agent}
               onMove={by => move(agent.agent, by)}
             >
-              <Button variant="surface"
-                type="button"
-                className="agent-detail-trigger"
-                aria-label={name(agent)}
-                aria-haspopup="dialog"
-                onClick={() => setDetail(agent)}
-              >
-                <AgentQuotaIcon agent={agent.agent} />
-              </Button>
-              <SettingRow label={<>
-                {agentLinks[agent.agent] ? (
-                  <a
-                    href={agentLinks[agent.agent]}
-                    draggable={false}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      void openUrl(agentLinks[agent.agent]!).catch((e) =>
-                        setError(String(e)),
-                      );
-                    }}
-                  >
-                    {name(agent)}
-                  </a>
-                ) : (
-                  <strong>{name(agent)}</strong>
-                )}
-              </>} description={<span title={agent.version || undefined}>{agent.installed ? compactAgentVersion(agent.version) : t("agentNotInstalled")}</span>}>
-              {agent.installed && (
-                <Switch
-                  label={t("allowConnectorToUseValue", { agent: name(agent) })}
-                  checked={agent.enabled === true}
-                  disabled={
-                    !!state.saving ||
-                    state.loading ||
-                    agent.adapter?.state === "preparing" ||
-                    typeof agent.enabled !== "boolean"
-                  }
-                  onChange={(enabled) => void toggleAgent(agent, enabled)}
-                />
-              )}
-              </SettingRow>
-              {agent.installed &&
-                agent.adapter &&
-                agent.adapter.state !== "ready" && (
-                  <p
-                    className="agent-adapter"
-                    role={agent.adapter.state === "failed" ? "alert" : "status"}
-                  >
-                    {t(
-                      agent.adapter.state === "preparing"
-                        ? "agentAdapterPreparing"
-                        : agent.adapter.state === "failed"
-                          ? "agentAdapterFailed"
-                          : "agentAdapterMissing",
-                    )}
-                    {agent.adapter.error &&
-                      ` · ${t({ CLAUDE_ADAPTER_DOWNLOAD_FAILED: "agentAdapterDownloadFailed", CLAUDE_ADAPTER_CHECKSUM_FAILED: "agentAdapterChecksumFailed", CLAUDE_ADAPTER_EXTRACT_FAILED: "agentAdapterExtractFailed", CLAUDE_ADAPTER_PROBE_FAILED: "agentAdapterProbeFailed" }[agent.adapter.error] || "agentAdapterSetupFailed")}`}
-                  </p>
-                )}
+              <AgentPlatformCard agent={agent} frame="catalog" onOpen={() => setDetail(agent)} onLink={url => void openUrl(url).catch(error => setError(String(error)))}
+                headerActions={<Switch label={t("allowConnectorToUseValue", { agent: name(agent) })} checked={agent.enabled === true}
+                  disabled={!!state.saving || state.loading || agent.adapter?.state === "preparing" || typeof agent.enabled !== "boolean"}
+                  onChange={enabled => void toggleAgent(agent, enabled)} />} />
             </AgentCard>
           ))}
         </Reorder.Group>
@@ -219,18 +161,7 @@ export default function AgentsSettings({ onClose, initialAgent }: { onClose: () 
         {items.some((agent) => !agent.installed) && <SettingsSection title={t("notInstalledAgents")}>
         <div className="uninstalled-agents">
           {items.filter(agent => !agent.installed).map(agent => (
-            <a
-              key={agent.agent}
-              className="agent-uninstalled"
-              href={agentLinks[agent.agent]}
-              onClick={(event) => {
-                event.preventDefault();
-                void openUrl(agentLinks[agent.agent]!).catch(error => setError(String(error)));
-              }}
-            >
-              <AgentQuotaIcon agent={agent.agent} />
-              <span>{name(agent)}</span>
-            </a>
+            <AgentPlatformRow key={agent.agent} agent={agent} onOpen={agentLinks[agent.agent] ? () => void openUrl(agentLinks[agent.agent]!).catch(error => setError(String(error))) : undefined} />
           ))}
         </div>
         </SettingsSection>}

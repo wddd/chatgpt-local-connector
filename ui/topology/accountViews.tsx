@@ -1,6 +1,7 @@
 import { SrcAccountNode } from "../components/objects/src-account";
 import { SrcPlatformNode } from "../components/objects/src-platform";
-import GraphNode from '../components/GraphNode';
+import { AgentPlatformNode } from '../components/objects/agent-platform';
+import { AgentAccountNode } from '../components/objects/agent-account';
 import type { NodeView } from './Topology';
 import { accountNodeId, type TopologyAccount } from './accounts';
 import { orderedSubset } from './order';
@@ -47,21 +48,14 @@ export function accountViews(views: NodeView[], side: -1 | 1, accounts: Topology
         attention: tasks.some(t => t.agentAccountId === account.id && (t.state === 'attention' || t.pending)),
         state,
         tasks: tasks.filter(t => t.agentAccountId === account.id),
-        content: side === -1 ? <SrcAccountNode product={platform} account={account} suffix={suffix} flat={mode === 'flat'} state={state} selected={selected} onOpen={() => actions.open(side, platform, sources[0]?.id, account.id)} /> : <GraphNode label={nodeLabel} state={state} highlighted={selected} onOpen={() => actions.open(side, platform, sources[0]?.id, account.id)}>
-          {icon}
-          <span className={`graph-node-name${suffix ? ' topology-unidentified-label' : ''}`}>
-            {suffix ? <><span>{mode === 'flat' ? `${label} · ${account.alias}` : account.alias}</span><span> · {suffix}</span></> : nodeLabel}
-          </span>
-        </GraphNode>,
+        content: side === -1 ? <SrcAccountNode product={platform} account={account} suffix={suffix} flat={mode === 'flat'} state={state} selected={selected} onOpen={() => actions.open(side, platform, sources[0]?.id, account.id)} /> : <AgentAccountNode account={account} agent={platform} platformLabel={label} flat={mode === 'flat'} suffix={suffix} state={state} selected={selected} onOpen={() => actions.open(side, platform, undefined, account.id)} />,
       } satisfies NodeView;
     });
     const platformView: NodeView = { ...first, id: side === 1 ? platform : `platform:${platform}`, platform,
       label, icon: platformIcon, sourceIds: covered.map(v => v.id),
       selected: covered.some(v => v.selected) && !childViews.some(v => v.selected),
       tasks: tasks.filter(t => !linked.some(a => a.id === t.agentAccountId)),
-      content: side === -1 ? <SrcPlatformNode product={platform} state={first.state} selected={members.some(v => v.selected)} onOpen={() => actions.open(side, platform, first.id)} /> : <GraphNode label={label} state={first.state} highlighted={members.some(v => v.selected)} onOpen={() => actions.open(side, platform, first.id)}>
-        {platformIcon}<span className="graph-node-name">{label}</span>
-      </GraphNode>,
+      content: side === -1 ? <SrcPlatformNode product={platform} state={first.state} selected={members.some(v => v.selected)} onOpen={() => actions.open(side, platform, first.id)} /> : <AgentPlatformNode agent={{ agent: platform, displayName: label }} quota={null} state={first.state} selected={members.some(v => v.selected)} onOpen={() => actions.open(side, platform, first.id)} />,
     };
     if (mode === 'flat') {
       // Legacy unattributed tasks remain attached to their platform, never guessed.

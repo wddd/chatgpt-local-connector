@@ -1,6 +1,7 @@
+import { AgentAccountCard, AgentAccountRow } from './objects/agent-account';
+import { AgentProfileRow } from './objects/agent-account/Row';
 import { SrcAccountRow } from "./objects/src-account";
-import { EntityRow, StateBadge, EntityCard, SectionHeader, Button, Dialog, Empty, Field, HoverScope, Icon, Input, Notice, Switch, Tag } from "./ui";
-import { statePresentation } from "./objects/statePresentation";
+import { EntityCard, Button, Dialog, Empty, Field, HoverScope, Icon, Input, Notice } from "./ui";
 import { useEffect, useRef, useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { accountsApi } from '../api';
@@ -10,15 +11,13 @@ import { accounts, refreshAccounts, useAccounts, isUnidentified } from '../state
 import { connector } from '../state/connector';
 import { subscriptions } from '../state/subscriptions';
 import { accountPlatform, accountOwns } from '../accountPresentation';
-import { name as agentName } from '../state/agents';
 import { navigation } from '../state/navigation';
 import { openOnboarding } from '../state/onboarding';
 import { PrivacyToggle } from './Privacy';
-import { Sensitive, SensitiveIdentity } from './Sensitive';
 import { AccountNotifications, AccountQuota, AccountSharedNotice } from './AccountCards';
 import AddAccount from './AddAccount';
 import { openSourceWorkspace } from './SourcePanel';
-import AccountAvatar from './AccountAvatar';
+import { AccountIdentityIcon } from './objects/agent-account/identity';
 import MergeAccounts from './MergeAccounts';
 
 export function AccountsActions() {
@@ -44,7 +43,7 @@ export default function AccountsPage() {
     {!state.loading && !state.error && !state.items.length && <Empty>{t('accounts.empty')}</Empty>}
     <div className="accounts-columns">
       <nav className="account-list" aria-label={t('accounts.title')}><HoverScope>{[...groups].map(([provider, group]) => {
-        return <section key={provider}><h3>{group.label}</h3>{group.accounts.map(row => <EntityRow key={row.id} data-hover-target={row.id} onClick={() => { setSelected(row.id); navigation.set(old => ({ ...old, accountId: undefined })); }} selected={account?.id === row.id} leading={<><AccountAvatar account={row} /></>} title={row.alias} secondary={<>{row.email && <Sensitive>{row.email}</Sensitive>}<span className="account-roles">{!!row.sources.length && <Tag tone="source">SRC</Tag>}{!!row.agentProfiles.length && <Tag tone="agent">AGENT</Tag>}</span></>} state={<>{(row.notifications.state === 'not-bound' || row.agentProfiles.some(p => p.state !== 'signed-in')) && <StateBadge variant="dot" presentation={statePresentation("account", "attention")} />}</>} />)}</section>;
+        return <section key={provider}><h3>{group.label}</h3>{group.accounts.map(row => <AgentAccountRow key={row.id} account={row} sources={sources} providers={snapshot?.providers} onOpen={() => { setSelected(row.id); navigation.set(old => ({ ...old, accountId: undefined })); }} selected={account?.id === row.id} />)}</section>;
       })}</HoverScope></nav>
       {account && <AccountDetail key={account.id} account={account} onLogin={setLogin} onAdd={() => setRoleAccount(account)} />}
     </div>
@@ -53,12 +52,14 @@ export default function AccountsPage() {
 }
 function AccountDetail({ account, onLogin, onAdd }: { account: Account; onLogin: (login: AccountLogin) => void; onAdd: () => void }) {
   const { sources, status } = connector.use();
+  const { snapshot } = subscriptions.use();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false), [remove, setRemove] = useState(false);
   const [merging, setMerging] = useState(false);
   async function action(work: () => Promise<unknown>) { setBusy(true); setError(''); try { await work(); await refreshAccounts(); return true; } catch (e) { setError(String(e)); return false; } finally { setBusy(false); } }
   return <div className="account-detail">
-    <SectionHeader className="account-detail-header" level={2} titleAsChild leading={<><AccountAvatar account={account} /></>} title={<><AccountAlias account={account} busy={busy} onSave={alias => action(() => accountsApi.update({ id: account.id, alias }))} /></>} secondary={<><div className="account-detail-meta"><SensitiveIdentity email={account.email} orgName={account.orgName} />{account.plan && <>{(account.email || account.orgName) && <span aria-hidden="true"> · </span>}<Tag>{account.plan}</Tag></>}</div></>} actions={<><Button variant="ghost" onClick={() => setMerging(true)}>{t('accounts.merge')}</Button></>} />
+    <AgentAccountCard account={account} showProfiles={false} icon={<AccountIdentityIcon account={account} sources={sources} providers={snapshot?.providers ?? []} />} title={<AccountAlias account={account} busy={busy} onSave={alias => action(() => accountsApi.update({ id: account.id, alias }))} />} headerActions={<Button variant="ghost" onClick={() => setMerging(true)}>{t('accounts.merge')}</Button>}>
+
     {isUnidentified(account) && <p className="muted">{t(account.sources.length ? 'accounts.unidentified' : 'accounts.nativeAuth')}</p>}
     {error && !remove && <Notice>{error}</Notice>}
     <h3>{t('accounts.where')}</h3><div className="account-role-cards">
@@ -66,11 +67,14 @@ function AccountDetail({ account, onLogin, onAdd }: { account: Account; onLogin:
         const source = sources.find(s => s.id === id), ingress = status?.ingresses.find(i => i.id === source?.ingressId);
         return source ? <SrcAccountRow key={id} source={source} ingress={ingress} onOpen={() => openSourceWorkspace(id)} onConnection={connectionId => navigation.set(old => ({ ...old, page: 'remote', remoteConnectionId: connectionId, remoteSourceId: undefined }))} /> : <p key={id} className="muted">{t('accounts.identityUnavailable')}</p>;
       }) : <><p className="muted">{t('accounts.noSource')}</p><Button variant="link" onClick={() => { navigation.set(old => ({ ...old, page: 'overview' })); openOnboarding(); }}>{t('addControlSource')}</Button></>}</EntityCard>
-      <EntityCard title="Agent">{account.agentProfiles.length ? account.agentProfiles.map(profile => <EntityRow key={profile.profileId} className="account-profile"><SectionHeader level={3} title={<><strong>{agentName(profile)}</strong></>} actions={<><StateBadge presentation={statePresentation("profile", profile.state)} /></>} /><span className="muted small">{profile.kind}</span><SectionHeader level={3} title={<><span>{t('accounts.default')}</span></>} actions={<><Switch label={`${agentName(profile)} · ${t('accounts.default')}`} checked={profile.default} disabled={busy || profile.default || profile.state !== 'signed-in'} onChange={() => void action(() => accountsApi.update({ id: account.id, defaultFor: profile.agent }))} /></>} />{['claude', 'codex'].includes(profile.agent) ? <Button variant="link" disabled={busy} onClick={() => void action(async () => onLogin(await accountsApi.reauth({ id: account.id, agent: profile.agent })))}>{t('accounts.reauth')}</Button> : <p className="muted">{t('accounts.nativeAuth')}</p>}</EntityRow>) : <><p className="muted">{t('accounts.noAgent')}</p><Button variant="link" onClick={onAdd}>{t('accounts.addAgent')}</Button></>}</EntityCard>
+      <EntityCard title="Agent">{account.agentProfiles.length ? account.agentProfiles.map((profile, index) => <AgentProfileRow key={`${profile.agent}:${profile.profileId}`} profile={profile} ordinal={index + 1} busy={busy}
+        onDefault={selected => void action(() => accountsApi.update({ id: account.id, defaultFor: selected.agent, profileId: selected.profileId }))}
+        onReauth={selected => void action(async () => onLogin(await accountsApi.reauth({ id: account.id, agent: selected.agent, profileId: selected.profileId })))} />) : <><p className="muted">{t('accounts.noAgent')}</p><Button variant="link" onClick={onAdd}>{t('accounts.addAgent')}</Button></>}</EntityCard>
     </div>
     {!!account.sources.length && !!account.agentProfiles.length && <AccountSharedNotice />}
     <AccountQuota account={account} /><AccountNotifications account={account} />
     <div className="account-remove"><p className="muted">{t('accounts.removeConsequence')}</p><Button variant="danger-outline" disabled={busy} onClick={() => setRemove(true)}>{t('remove')}</Button></div>
+    </AgentAccountCard>
     {remove && <Dialog centered title={t('accounts.removeTitle', { alias: account.alias })} busy={busy} onClose={() => setRemove(false)} footer={<><Button disabled={busy} onClick={() => setRemove(false)}>{t('cancel')}</Button><Button variant="danger" busy={busy} onClick={() => void action(() => accountsApi.remove({ id: account.id, running: 'finish' }))}>{t('remove')}</Button></>}><p>{t('accounts.removeConsequence')}</p>{error && <Notice>{error}</Notice>}</Dialog>}
     {merging && <MergeAccounts account={account} onClose={() => setMerging(false)} />}
   </div>;

@@ -1,10 +1,16 @@
-import { ViewStack, SectionHeader, Dialog, IconButton, Notice } from "./ui";
+import { AgentPlatformCard } from './objects/agent-platform';
+import { AgentAccountCard, AgentAccountRow } from './objects/agent-account';
+import { SrcAccountChip } from './objects/src-account';
+import { openSourceWorkspace } from './SourcePanel';
+import AddAccount from './AddAccount';
+import { navigation } from '../state/navigation';
+import { ViewStack, Dialog, IconButton, Notice, Button } from "./ui";
 import { useReducedMotion } from "../state/appEnvironment";
 import { agentPanel, selectAgentPanel } from "../state/overviewPanels";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { ArrowUpRight, Settings, Maximize2, Minimize2, RefreshCw } from "lucide-react";
-import { api } from "../api";
+import { api, accountsApi } from "../api";
 import { t } from "../i18n";
 import { useAccounts, refreshAccounts } from "../state/accounts";
 import { accountQuotaProvider } from "../subscriptions/accountQuota";
@@ -13,24 +19,24 @@ import { agentActivity } from "../state/activity";
 import { refreshSubscription, subscriptions } from "../state/subscriptions";
 import { compactAgentVersion, name, type Agent } from "../state/agents";
 import { connector } from "../state/connector";
-import { AgentQuotaIcon } from "../subscriptions/QuotaRing";
 import { errorLabels } from "../subscriptions/presentation";
 import AgentConversations from "./AgentConversations";
 import ActivityTimeline from "./ActivityTimeline";
 import type { SurfaceRect } from "../motion/surface";
-import type { ProviderAccount } from "../types";
+import type { AccountLogin, ProviderAccount } from "../types";
 import { accountOwns } from "../accountPresentation";
 
-function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWidth, active, resizable = true }: {
-  agent: Agent; active: boolean; resizable?: boolean; account?: ProviderAccount; accountId?: string;
+function AgentView({ agent, account, accountId, accounts, onSettings, expanded, onToggleWidth, active, resizable = true }: {
+  agent: Agent; active: boolean; resizable?: boolean; account?: ProviderAccount; accountId?: string; accounts: ProviderAccount[];
   onSettings: () => void; expanded: boolean; onToggleWidth: () => void;
 }) {
-  const { snapshot } = subscriptions.use(), { status } = connector.use();
+  const { snapshot } = subscriptions.use(), { status, sources } = connector.use();
   const activity = agentActivity.use().snapshot;
   const [error, setError] = useState(""), [refreshing, setRefreshing] = useState(false);
   const provider = accountId ? account ? accountQuotaProvider(agent.agent, account.quota) : undefined
     : snapshot?.settings.enabled ? snapshot.providers.find(p => p.agentIds.includes(agent.agent) && p.eligible) : undefined;
-  const title = account?.alias ?? name(agent);
+  const [login, setLogin] = useState<AccountLogin>(), [busy, setBusy] = useState(false);
+  async function mutate(work: () => Promise<unknown>) { setBusy(true); setError(''); try { await work(); await refreshAccounts(); } catch (error) { setError(String(error)); } finally { setBusy(false); } }
   const sessions = activity?.agents[agent.agent]?.sessions.filter(session => !accountId || (account
     ? accountOwns(account, session.agentAccountId ?? session.dispatchSummary?.agentAccountId)
     : (session.agentAccountId ?? session.dispatchSummary?.agentAccountId) === accountId)) ?? [];
@@ -43,21 +49,30 @@ function AgentView({ agent, account, accountId, onSettings, expanded, onToggleWi
     catch (error) { setError(String(error)); }
     finally { setRefreshing(false); }
   }
-  return <section className="agent-panel-layer agent-overview-layer">
-    <SectionHeader className="dialog-header agent-panel-header" level={2} leading={<><AgentQuotaIcon agent={agent.agent} quota={accountId ? account?.quota ?? null : undefined} dual /></>} title={<>{title}</>} titleProps={{ className: 'activity-panel-title', tabIndex: -1, title }} titleActions={<>{agent.installed && status?.platform && status.platform !== "linux" && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
-            setError(""); void api("agents/open", "POST", { agent: agent.agent }).catch(error => setError(String(error)));
-          }} />}</>} secondary={<><span className="activity-panel-meta" title={agent.version || undefined}>{[compactAgentVersion(agent.version), t("agentPanel.inProgress", { count: sessions.length })].filter(Boolean).join(" · ")}</span></>} actions={<>
-        <IconButton icon={Settings} label={t("agentDisplaySettings")} onClick={onSettings} />
-        {resizable && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")}
-          aria-pressed={expanded} onClick={onToggleWidth} />}
-      </>} />
-    <div className="agent-view-scroll">
+  const titleActions = agent.installed && status?.platform && status.platform !== "linux" && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
+    setError(""); void api("agents/open", "POST", { agent: agent.agent }).catch(error => setError(String(error)));
+  }} />;
+  const secondary = <span className="activity-panel-meta" title={agent.version || undefined}>{[compactAgentVersion(agent.version), t("agentPanel.inProgress", { count: sessions.length })].filter(Boolean).join(" · ")}</span>;
+  const headerActions = <><IconButton icon={Settings} label={t("agentDisplaySettings")} onClick={onSettings} />
+    {resizable && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} />}</>;
+  const body = <>
       {error && <p className="timeline-error" role="alert">{error}</p>}
       {providerError && <Notice action={<IconButton icon={RefreshCw} size={16} label={t("usageRefresh")}
         busy={refreshing || provider?.refreshing} onClick={() => void refresh()} />}>{providerError}</Notice>}
       {provider ? <AgentQuota provider={provider} onRefresh={() => void refresh()} refreshing={refreshing} /> : <p className="timeline-meta agent-no-quota">{t("agentPanel.noQuota")}</p>}
       <AgentConversations key={`${agent.agent}:${accountId ?? ""}`} agent={agent.agent} account={account} accountId={accountId} active={active} />
-    </div>
+  </>;
+  return <section className="agent-panel-layer agent-overview-layer">
+    {account ? <AgentAccountCard account={account} agent={agent} frame="panel" titleActions={titleActions} secondary={secondary} headerActions={headerActions} busy={busy}
+      onDefault={profile => void mutate(() => accountsApi.update({ id: account.id, defaultFor: profile.agent, profileId: profile.profileId }))}
+      onReauth={profile => void mutate(async () => setLogin(await accountsApi.reauth({ id: account.id, agent: profile.agent, profileId: profile.profileId })))}>
+      {sources.filter(source => account.sources.includes(source.id)).map(source => <SrcAccountChip key={source.id} source={source} account={account} onOpen={() => { selectAgentPanel({ type: 'closed' }); openSourceWorkspace(source.id); }} />)}
+      <Button variant="link" onClick={() => { selectAgentPanel({ type: 'closed' }); navigation.set(old => ({ ...old, page: 'accounts', accountId: account.id })); }}>{t('accounts.openAccount')}</Button>
+      {body}
+    </AgentAccountCard> : <AgentPlatformCard agent={agent} frame="panel" quota={accountId ? null : undefined} titleActions={titleActions} secondary={secondary} headerActions={headerActions}>
+      {accountId ? <Notice>{t('accounts.identityUnavailable')}</Notice> : accounts.filter(item => item.agentProfiles.some(profile => profile.agent === agent.agent)).map(item => <AgentAccountRow key={item.id} account={item} agent={agent.agent} onOpen={() => selectAgentPanel({ type: 'agent', agent: agent.agent, accountId: item.id })} />)}{body}
+    </AgentPlatformCard>}
+    {login && <AddAccount initialLogin={login} onClose={() => setLogin(undefined)} />}
   </section>;
 }
 
@@ -91,7 +106,7 @@ export default function AgentPanel({ agent, onSettings, onPanelFrame, width, exp
     <ViewStack ref={content}>
       <ViewStack asChild hidden={!!session}><motion.div key={`${agent.agent}:${selected.accountId ?? ""}`}
         initial={{ opacity: reduced ? 1 : 0, x: 0 }} animate={{ opacity: session ? 0 : 1, x: reduced || !session ? 0 : -12 }} transition={{ duration: reduced ? 0 : 0.16 }}>
-        <AgentView resizable={!dockRect} agent={agent} account={account} accountId={selected.accountId} active={!session} onSettings={onSettings} expanded={expanded} onToggleWidth={onToggleWidth} />
+        <AgentView resizable={!dockRect} agent={agent} account={account} accounts={accountState.items} accountId={selected.accountId} active={!session} onSettings={onSettings} expanded={expanded} onToggleWidth={onToggleWidth} />
       </motion.div></ViewStack>
       {session && <ViewStack asChild><motion.div key={`${agent.agent}:${session.id}`}
         initial={{ opacity: reduced ? 1 : 0, x: reduced ? 0 : 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>

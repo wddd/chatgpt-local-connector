@@ -442,6 +442,22 @@ pub(crate) fn attach(args: &mut Value, selection: &Value) {
         args[key] = selection[key].clone();
     }
 }
+/// Resolve a mutation target without choosing a profile by collection order.
+pub fn mutation_profile<'a>(
+    account: &'a Value,
+    agent: &str,
+    profile_id: Option<&str>,
+) -> Result<&'a Value> {
+    let mut matches = profiles(account).filter(|profile| {
+        profile["agent"] == agent && profile_id.is_none_or(|id| profile["profileId"] == id)
+    });
+    let profile = matches.next().ok_or("ACCOUNT_PROFILE_MISSING: Refresh accounts and select a profile belonging to this account and Agent")?;
+    if matches.next().is_some() {
+        return Err("ACCOUNT_PROFILE_REQUIRED: Supply profileId from the selected account agentProfiles for this Agent".into());
+    }
+    Ok(profile)
+}
+
 fn update(args: &Value) -> Result<Value> {
     let account = resolve(string(args, "id"))?;
     if !live(&account) {
@@ -457,16 +473,20 @@ fn update(args: &Value) -> Result<Value> {
     if args.get("default").is_some() && !args["defaultFor"].is_string() {
         return Err(json!({"code":"ACCOUNT_DEFAULT_AGENT_REQUIRED","message":"Supply defaultFor with default.","next":{"via":"query","op":"guide","args":{"op":"account_update"}}}).to_string());
     }
+    if args["profileId"].is_string() && !args["defaultFor"].is_string() {
+        return Err("ACCOUNT_DEFAULT_AGENT_REQUIRED: Supply defaultFor with profileId".into());
+    }
     change(|rows| {
         if let Some(agent) = args["defaultFor"].as_str() {
-            let selected = profiles(&account)
-                .find(|p| p["agent"] == agent)
-                .ok_or("ACCOUNT_AGENT_MISSING")?["profileId"]
-                .clone();
+            let selected =
+                mutation_profile(&account, agent, args["profileId"].as_str())?["profileId"].clone();
             for row in rows.iter_mut().filter(|a| live(a)) {
                 let selected_account = row["id"] == account["id"];
                 for p in row["agentProfiles"].as_array_mut().unwrap() {
-                    if p["agent"] == agent && (args["default"] != false || selected_account) {
+                    if p["agent"] == agent
+                        && (args["default"] != false
+                            || (selected_account && p["profileId"] == selected))
+                    {
                         p["default"] = json!(
                             args["default"] != false
                                 && selected_account
@@ -967,6 +987,28 @@ mod tests {
             identity_key("anthropic", &json!({"accountId":"one"}))
         );
         assert!(identity_key("openai", &json!({"name":"person@example.com"})).is_none());
+    }
+    #[test]
+    fn explicit_profile_mutation_selection() {
+        // Regression: same-Agent account mutations silently selected the first profile.
+        let account = json!({"agentProfiles":[
+            {"agent":"claude","profileId":"first"},
+            {"agent":"claude","profileId":"second"},
+            {"agent":"codex","profileId":"home"}
+        ]});
+        assert!(mutation_profile(&account, "claude", None)
+            .unwrap_err()
+            .contains("ACCOUNT_PROFILE_REQUIRED"));
+        assert_eq!(
+            mutation_profile(&account, "claude", Some("second")).unwrap()["profileId"],
+            "second"
+        );
+        assert!(mutation_profile(&account, "claude", Some("home")).is_err());
+        assert!(mutation_profile(&account, "claude", Some("removed")).is_err());
+        assert_eq!(
+            mutation_profile(&account, "codex", None).unwrap()["profileId"],
+            "home"
+        );
     }
     #[test]
     fn source_profile_merge_and_single_default() {

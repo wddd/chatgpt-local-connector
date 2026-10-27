@@ -1,4 +1,12 @@
 import type { TaskChip as TaskChipComponent, TaskNode as TaskNodeComponent, TaskRow as TaskRowComponent, TaskCard as TaskCardComponent } from '../components/objects/task';
+import type { AgentAccountCard as AgentAccountCardComponent } from '../components/objects/agent-account';
+import type { AgentAccountRow as AgentAccountRowComponent } from '../components/objects/agent-account';
+import type { AgentAccountNode as AgentAccountNodeComponent } from '../components/objects/agent-account';
+import type { AgentAccountChip as AgentAccountChipComponent } from '../components/objects/agent-account';
+import type { AgentPlatformCard as AgentPlatformCardComponent } from '../components/objects/agent-platform';
+import type { AgentPlatformRow as AgentPlatformRowComponent } from '../components/objects/agent-platform';
+import type { AgentPlatformNode as AgentPlatformNodeComponent } from '../components/objects/agent-platform';
+import type { AgentPlatformChip as AgentPlatformChipComponent } from '../components/objects/agent-platform';
 import type { RequestCard as RequestCardComponent } from '../components/composites/RequestCard';
 import type { InteractionRequestCard as InteractionRequestCardComponent } from '../components/objects/interaction-request/Card';
 import type { InteractionRequestChip as InteractionRequestChipComponent } from '../components/objects/interaction-request/Chip';
@@ -53,6 +61,11 @@ type TextProps<P> = Omit<P, 'children' | 'ref' | 'action' | 'icon' | 'dangerousl
 type TextSlots<P, K extends keyof P> = Omit<{ [Key in keyof P]: Key extends K ? string : P[Key] }, 'ref' | 'dangerouslySetInnerHTML'>;
 const textSlots: Record<string, readonly string[]> = {
   TaskRow: ['actions'], TaskCard: ['children'],
+  AgentAccountCard: ["title", "icon", "headerActions", "titleActions", "secondary", "children", "footer", "danger"],
+  AgentAccountRow: ["actions"],
+  AgentPlatformCard: ["headerActions", "titleActions", "secondary", "children"],
+  AgentPlatformRow: ["actions"],
+  AgentPlatformNode: ["children"],
   RequestCard: ['title', 'context', 'leading', 'state', 'footer'],
   SrcAccountRow: ['actions'],
   TunnelRow: ['actions'],
@@ -218,3 +231,18 @@ export const TaskNode = island<ComponentProps<typeof TaskNodeComponent>>('TaskNo
 type TaskRowMountProps<P> = P extends object ? Omit<P, 'actions'> & { actions?: string } : never;
 export const TaskRow = island<TaskRowMountProps<ComponentProps<typeof TaskRowComponent>>>('TaskRow');
 export const TaskCard = island<TextSlots<Omit<ComponentProps<typeof TaskCardComponent>, 'rootRef'>, 'children'>>('TaskCard');
+export const AgentPlatformChip = island<ComponentProps<typeof AgentPlatformChipComponent>>('AgentPlatformChip');
+
+export const AgentPlatformNode = island<TextSlots<ComponentProps<typeof AgentPlatformNodeComponent>, 'children'>>('AgentPlatformNode');
+
+export const AgentPlatformRow = island<TextSlots<ComponentProps<typeof AgentPlatformRowComponent>, 'actions'>>('AgentPlatformRow');
+
+export const AgentPlatformCard = island<TextSlots<ComponentProps<typeof AgentPlatformCardComponent>, 'headerActions' | 'titleActions' | 'secondary' | 'children'>>('AgentPlatformCard');
+
+export const AgentAccountChip = island<ComponentProps<typeof AgentAccountChipComponent>>('AgentAccountChip');
+
+export const AgentAccountNode = island<ComponentProps<typeof AgentAccountNodeComponent>>('AgentAccountNode');
+
+export const AgentAccountRow = island<TextSlots<ComponentProps<typeof AgentAccountRowComponent>, 'actions'>>('AgentAccountRow');
+
+export const AgentAccountCard = island<TextSlots<ComponentProps<typeof AgentAccountCardComponent>, 'title' | 'icon' | 'headerActions' | 'titleActions' | 'secondary' | 'children' | 'footer' | 'danger'>>('AgentAccountCard');

@@ -20,9 +20,11 @@ export function accountScenario(status: Status, sources: ControlSource[], manual
     const extra: ControlSource = { ...sources[0], id: 'fixture-second-source', label: 'Second source', credential: { type: 'oauth-grant', grantId: 'old-authorization' }, pendingSwitch: { ingressId: 'example-spare-connection', expiresAt: 1767225900, requestId: 'latest-authorization' } };
     sources.push(extra); accounts[0].sources.push(extra.id);
     primary.oauth = { grants: [{ id: 'old-authorization', clientName: 'Old authorization', clientId: 'old-client', connectedAt: 1, registeredAt: 1 }], pending: [{ id: 'old-authorization', sourceId: extra.id, clientName: 'Old authorization', status: 'approved', redirectUri: '', resource: '' }, { id: 'latest-authorization', sourceId: extra.id, clientName: 'Second source', status: 'denied', redirectUri: '', resource: '' }] };
+    status.ingresses.find(ingress => ingress.id === extra.pendingSwitch!.ingressId)!.oauth = { grants: [], pending: primary.oauth.pending.filter(request => request.id === extra.pendingSwitch!.requestId) };
+    primary.oauth.pending = primary.oauth.pending.filter(request => request.id !== extra.pendingSwitch!.requestId);
   }
   let polls = 0, sequence = 0, login: AccountLogin | null = null;
-  let loginAccount: string | undefined;
+  let loginAccount: string | undefined, loginProfile: string | undefined;
   const requireAccount = (id: string): ProviderAccount => {
     for (let hop = 0; hop <= accounts.length; hop++) {
       const account = accounts.find(a => a.id === id);
@@ -35,7 +37,7 @@ export function accountScenario(status: Status, sources: ControlSource[], manual
   function completeLogin() {
     if (!login || !['claude', 'codex'].includes(login.kind)) return;
     const account = requireAccount(loginAccount ?? (login.kind === 'claude' ? 'account-claude' : 'account-openai'));
-    account.agentProfiles.forEach(profile => { if (profile.agent === login!.kind) profile.state = 'signed-in'; });
+    account.agentProfiles.forEach(profile => { if (profile.agent === login!.kind && (!loginProfile || profile.profileId === loginProfile)) profile.state = 'signed-in'; });
     account.health.state = 'ready'; login = { ...login, state: 'completed', loginUrl: null, accountId: account.id };
   }
   function list(agent?: string): AccountsResult {
@@ -80,7 +82,8 @@ export function accountScenario(status: Status, sources: ControlSource[], manual
     if (['accounts/add', 'accounts/reauth'].includes(route) && method === 'POST') {
       const kind = (body.kind ?? body.agent) as AccountLogin['kind'];
       if (!['claude', 'codex', 'detect', 'api-key'].includes(kind)) throw new Error('ACCOUNT_NATIVE_LOGIN_REQUIRED');
-      if (body.id) { const account = requireAccount(body.id); if (account.removedAt) throw new Error('ACCOUNT_REMOVED'); if (!account.agentProfiles.some(p => p.agent === body.agent)) throw new Error('ACCOUNT_AGENT_MISSING'); }
+      loginProfile = undefined;
+      if (body.id) { const account = requireAccount(body.id); if (account.removedAt) throw new Error('ACCOUNT_REMOVED'); const profiles = account.agentProfiles.filter(p => p.agent === body.agent && (!body.profileId || p.profileId === body.profileId)); if (profiles.length !== 1) throw new Error(profiles.length ? 'ACCOUNT_PROFILE_REQUIRED' : 'ACCOUNT_PROFILE_MISSING'); loginProfile = profiles[0].profileId; }
       polls = 0; loginAccount = body.id;
       login = { loginId: `example-login-${++sequence}`, kind, state: 'waiting', browserId: body.browserId, loginUrl: 'https://login.example.com/authorize' };
       if (kind === 'api-key') login = { loginId: login.loginId, kind, state: 'unfinished', errors: [], next: { message: "Configure the key using the Agent's native authentication, then call account_add with kind detect. ARC never stores an inference key in an account record." } };
@@ -102,8 +105,9 @@ export function accountScenario(status: Status, sources: ControlSource[], manual
         if (account.removedAt) throw new Error('ACCOUNT_REMOVED');
         if (body.alias !== undefined) { if (!body.alias.trim()) throw new Error('ACCOUNT_ALIAS_REQUIRED'); account.alias = body.alias.trim(); }
         if (body.defaultFor) {
-          if (!account.agentProfiles.some(p => p.agent === body.defaultFor)) throw new Error('ACCOUNT_AGENT_MISSING');
-          accounts.forEach(a => a.agentProfiles.forEach(p => { if (p.agent === body.defaultFor) p.default = !a.removedAt && a.id === account.id; }));
+          const profiles = account.agentProfiles.filter(p => p.agent === body.defaultFor && (!body.profileId || p.profileId === body.profileId));
+          if (profiles.length !== 1) throw new Error(profiles.length ? 'ACCOUNT_PROFILE_REQUIRED' : 'ACCOUNT_PROFILE_MISSING');
+          accounts.forEach(a => a.agentProfiles.forEach(p => { if (p.agent === body.defaultFor) p.default = !a.removedAt && a.id === account.id && p.profileId === profiles[0].profileId; }));
         }
       } else {
         if (!['finish', 'cancel'].includes(body.running)) throw new Error('INVALID_RUNNING_POLICY');

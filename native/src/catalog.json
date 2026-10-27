@@ -6593,7 +6593,7 @@
     },
     {
       "name": "account_update",
-      "description": "Rename an account or set/clear its default profile for one Agent. default requires defaultFor.",
+      "description": "Rename an account or set/clear its default profile for one Agent. default requires defaultFor. Supply profileId when several profiles belong to that Agent; ambiguous mutations are rejected.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -6612,7 +6612,12 @@
           },
           "default": {
             "type": "boolean",
-            "description": "With defaultFor, true (omitted) selects this account; false clears only this account for that Agent without choosing a replacement."
+            "description": "With defaultFor, true (omitted) selects the addressed profile; false clears only that profile without choosing a replacement."
+          },
+          "profileId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Select the exact Agent profile from account.agentProfiles. Required when this account has several profiles for that Agent."
           }
         },
         "required": [
@@ -6812,7 +6817,7 @@
     },
     {
       "name": "account_reauth",
-      "description": "Restart native login for the selected account Agent profile.",
+      "description": "Restart native login for the selected account Agent profile. Supply profileId when several profiles belong to that Agent; ambiguous mutations are rejected.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -6823,6 +6828,11 @@
           "agent": {
             "type": "string",
             "minLength": 1
+          },
+          "profileId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Select the exact Agent profile from account.agentProfiles. Required when this account has several profiles for that Agent."
           }
         },
         "required": [

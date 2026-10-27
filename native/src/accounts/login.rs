@@ -59,9 +59,10 @@ impl Manager {
                 return Err("ACCOUNT_REMOVED".into());
             }
             let agent = string(&args, "agent");
-            let p = profiles(&row)
-                .find(|p| p["agent"] == agent)
-                .ok_or("ACCOUNT_AGENT_MISSING")?;
+            let p = mutation_profile(&row, agent, args["profileId"].as_str())?;
+            if agent == "codex" && p["profileId"] != "codex-home" {
+                return Err("ACCOUNT_NATIVE_LOGIN_REQUIRED: Only the current codex-home profile supports native reauthentication".into());
+            }
             if agent == "claude" {
                 body["accountId"] = p["profileId"].clone();
             }

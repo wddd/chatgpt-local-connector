@@ -16,6 +16,8 @@ Feature CSS selectors are tracked when their names indicate rows, cards, forms, 
 
 TASK list and summary-header layout is owned by `ui/components/objects/task/task.css`. Collection layout, timeline bodies and update work grouping retain their feature owners.
 
+AGENT object migration moves catalog, profile and identity framing styles into their shared object owners. Account notification styles and task styles retain their existing ownership.
+
 ## Cleanup
 
 The baselines and this list MUST only shrink. Never add lint directives, baseline entries or higher counts for new code. ESLint debt is bound to the file, rule, token fingerprint and occurrence count; moving lines or formatting does not grant new allowances. Changed violating fragments and extra copies fail. Remove the corresponding entries/counts when migrating code to shared components; checks report stale entries. Update the table below in the same change. There is no baseline regeneration command.
@@ -27,8 +29,8 @@ Counts are outstanding violations per file and rule, sorted by count.
 <!-- ui-debt:start -->
 | File | Rule | Count |
 | --- | --- | ---: |
-| ui/product.css | shared-layout-css | 420 |
-| ui/style.css | shared-layout-css | 104 |
+| ui/product.css | shared-layout-css | 408 |
+| ui/style.css | shared-layout-css | 93 |
 | ui/components/TaskDetail.css | shared-layout-css | 72 |
 | ui/components/AppUpdate.css | shared-layout-css | 37 |
 | ui/subscriptions/bubble.css | shared-layout-css | 29 |

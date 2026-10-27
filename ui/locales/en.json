@@ -1268,6 +1268,7 @@
   "accounts.noSource": "No control source connected.",
   "accounts.noAgent": "No Agent profile.",
   "accounts.addAgent": "Add Agent sign-in",
+  "accounts.profileNumber": "Profile {count}",
   "accounts.default": "Default for new dispatches",
   "accounts.reauth": "Sign in again",
   "accounts.sharedQuota": "This control source and Agent share the same subscription quota.",

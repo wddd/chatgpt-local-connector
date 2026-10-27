@@ -49,11 +49,11 @@ export default function SrcTunnelFixture() {
     <SrcPlatformCard product="unknown-product" sources={[]} accounts={[]} ingresses={[]} error="Synthetic platform read failure" />
     <EntityCard title="Shared account inspector">
       <section aria-label="Mutation targets">{[source, second].map(entry => <SrcAccountRow key={entry.id} source={entry} selected={entry.id === selected} onOpen={() => setSelected(entry.id)} />)}</section>
-      {active ? <SrcAccountCard source={active} account={account} ingress={ingress} authorization={authorization} onConnection={openConnection}
+      {active ? <SrcAccountCard source={active} account={account} ingress={ingress} ingresses={[{ ...ingress, id: second.pendingSwitch!.ingressId, oauth: { pending: [authorization], grants: [] } }]} onConnection={openConnection}
         headerActions={<Button disabled={busy} onClick={() => setAction(`Change: ${active.id}`)}>Change connection</Button>}
         danger={<Button variant="danger-outline" disabled={busy} onClick={() => setAction(`Disconnect: ${active.id}`)}>Disconnect</Button>} /> : <Notice tone="warning">Select a source for mutations.</Notice>}
     </EntityCard>
-    <SrcAccountCard source={second} account={{ ...account, sourceIdentities: { [second.id]: { state: 'conflict' } } }} ingress={ingress} authorization={authorization} onConnection={openConnection} error={readError ? 'Synthetic refresh failure' : undefined} loading={busy} />
+    <SrcAccountCard source={second} account={{ ...account, sourceIdentities: { [second.id]: { state: 'conflict' } } }} ingress={ingress} ingresses={[{ ...ingress, id: second.pendingSwitch!.ingressId, oauth: { pending: [authorization], grants: [] } }]} onConnection={openConnection} error={readError ? 'Synthetic refresh failure' : undefined} loading={busy} />
     <SrcAccountCard source={{ ...source, label: 'Awaiting identity', connectedAt: null, lastSeenAt: null }} loading />
     <Switch label="Refresh error" checked={readError} onChange={setReadError} /><Switch label="Busy" checked={busy} onChange={setBusy} />
     <section aria-label="Connection rows">

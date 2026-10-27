@@ -9,3 +9,5 @@ export { SrcPlatformChip, SrcPlatformNode, SrcPlatformRow, SrcPlatformCard, SrcA
 
 export { TaskChip, TaskNode, TaskRow, TaskCard } from './design-mount/host';
 export { taskFixtures } from './design-mount/taskFixtures';
+export { AgentPlatformChip, AgentPlatformNode, AgentPlatformRow, AgentPlatformCard, AgentAccountChip, AgentAccountNode, AgentAccountRow, AgentAccountCard } from './design-mount/host';
+export { agentFixtures } from './design-mount/agentFixtures';

@@ -10,3 +10,5 @@
 .src-tunnel-wires { position: relative; height: 360px; overflow: hidden; }
 .src-tunnel-wires .topology-wires { width: 600px; height: 360px; }
 .src-tunnel-fixture .graph-node { position: relative; }
+
+.agent-objects-fixture .graph-node { position: relative; }

@@ -1268,6 +1268,7 @@
   "accounts.noSource": "尚未连接控制源。",
   "accounts.noAgent": "尚无 Agent 配置。",
   "accounts.addAgent": "添加 Agent 登录",
+  "accounts.profileNumber": "配置 {count}",
   "accounts.default": "用于新任务的默认账户",
   "accounts.reauth": "重新登录",
   "accounts.sharedQuota": "此控制源与 Agent 共用同一订阅额度。",

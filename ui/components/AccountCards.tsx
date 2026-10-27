@@ -20,7 +20,7 @@ export function AccountQuota({ account }: { account: Account }) {
     setRefreshing(true);
     try { await refreshAccounts(); } finally { setRefreshing(false); }
   }
-  return <AgentQuota provider={provider} refreshing={refreshing} onRefresh={() => void refresh()} />;
+  return <>{provider.error && <Notice><Sensitive>{provider.error.message || t('usageUnavailable')}</Sensitive></Notice>}<AgentQuota provider={provider} refreshing={refreshing} onRefresh={() => void refresh()} /></>;
 }
 export function AccountNotifications({ account }: { account: Account }) {
   const [manual, setManual] = useState(false), [target, setTarget] = useState(''), [error, setError] = useState(''), [fieldError, setFieldError] = useState('');

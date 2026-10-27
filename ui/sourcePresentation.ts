@@ -47,8 +47,3 @@ export function ingressState(entry: Ingress) {
     return "connectionError";
   return entry.state === "ready" ? "connected" : "disconnected";
 }
-
-export function sourceAuthorization(source: ControlSource | undefined, ingress: Ingress | undefined) {
-  const requestId = source?.pendingSwitch?.requestId ?? source?.credential.grantId;
-  return requestId ? ingress?.oauth?.pending.find(request => request.id === requestId) : undefined;
-}
