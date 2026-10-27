@@ -29,16 +29,16 @@ export function Sensitive({ children = '', wrap = false }: { children?: string |
     document.fonts?.addEventListener('loadingdone', measure);
     return () => { observer.disconnect(); document.fonts?.removeEventListener('loadingdone', measure); };
   }, [value, replacement, wrap]);
-  return <span ref={element} className={`sensitive-value${wrap ? ' sensitive-value-wrap' : ''}`} style={metrics && !wrap ? { inlineSize: metrics.width } : undefined}
+  return <span ref={element} className={`sensitive-value min-w-0 max-w-full box-content align-bottom ${wrap ? 'sensitive-value-wrap inline whitespace-normal wrap-anywhere' : 'inline-block overflow-hidden whitespace-nowrap px-0.75 -mx-0.75'}`} style={metrics && !wrap ? { inlineSize: metrics.width } : undefined}
     aria-label={hidden && value ? t('accounts.hidden') : undefined}
     onCopy={hidden ? event => { event.preventDefault(); event.clipboardData.setData('text/plain', value); } : undefined}>
-    <span className={hidden ? 'pii' : undefined} aria-hidden={hidden || undefined}
+    <span className={`${wrap ? 'inline whitespace-normal wrap-anywhere' : 'inline-block origin-left'} ${hidden ? 'pii blur-privacy opacity-50 select-text animate-in fade-in duration-150' : ''}`} aria-hidden={hidden || undefined}
       style={hidden && metrics && !wrap ? { transform: `scaleX(${metrics.scale})` } : undefined}>{hidden ? replacement : value}</span>
   </span>;
 }
 
 export function SensitiveIdentity({ email, orgName, wrap = false }: { email?: string | null; orgName?: string | null; wrap?: boolean }) {
-  return <span className="sensitive-identity">{email && <Sensitive wrap={wrap}>{email}</Sensitive>}{email && orgName && ' · '}{orgName && <Sensitive wrap={wrap}>{orgName}</Sensitive>}</span>;
+  return <span className="sensitive-identity min-w-0">{email && <Sensitive wrap={wrap}>{email}</Sensitive>}{email && orgName && ' · '}{orgName && <Sensitive wrap={wrap}>{orgName}</Sensitive>}</span>;
 }
 
 // Editable sensitive fields are read-only while hidden. Values remain in React state.

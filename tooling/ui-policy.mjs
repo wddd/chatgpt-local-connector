@@ -123,3 +123,21 @@ export function createUiPlugin(baseline) {
     })),
   } };
 }
+
+// Dedicated CSS is a closed brand boundary, never a feature/shared-layout escape.
+export const brandStylesheets = new Map([
+  ['ui/brand/topology.css', /\.(?:connection-(?:core|action|switch-track|knob|graph)|core-toggle|graph-(?:node|node-name|error|wires)|sources|source-(?:icon|brand)|agent-brand|status-hint|topology-(?!tuner|parameter|section|import|custom)[\w-]+|hub-[\w-]+|activity-slot|agent-auto-compact|agent-task-count|activity-flow)\b/],
+  ['ui/brand/task-bubbles.css', /\.(?:activity-(?:bubble[\w-]*|mark-read|source-badge|preview|edge-fade)|update-blocking-tag|phase-[\w-]+|step-trail)\b|^\[data-phase=/],
+  ['ui/brand/quota.css', /\.(?:agent-quota-icon|quota-[\w-]+|activity-arc|dual-quota)\b/],
+  ['ui/components/composites/AgentQuotaIcon.css', /\.(?:agent-quota-icon|dual-quota|topology-node)\b/],
+]);
+export function isFixtureCss(file) {
+  return /(?:^|\/)(?:scenario|fixture)[^/]*\.css$|\/(?:scenarios|fixtures)\/|\.(?:scenario|fixture)\.css$/.test(file);
+}
+export function isBrandSelector(file, selector) {
+  return !!brandStylesheets.get(file)?.test(selector) && !/\.(?:topology-(?:tuner|parameter|section|import|custom)|dialog|activity-panel|workspace|settings)[\w-]*(?![\w-])/.test(selector);
+}
+
+export function isFoundationSelector(selector) {
+  return /^(?::root(?:\[[^\]]+\]|:not\(\[[^\]]+\]\))*|(?:html|body|button|input|textarea|a|h[123]|p|pre|code)(?::disabled)?|\[tabindex\]|:focus-visible|\*(?:::(?:before|after))?|:root\[data-reduced-motion="true"\] \*(?:::(?:before|after))?)$/.test(selector);
+}

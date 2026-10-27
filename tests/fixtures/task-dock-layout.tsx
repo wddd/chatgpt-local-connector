@@ -1,4 +1,7 @@
-import "../../ui/style.css";
+import "../../ui/tokens.css";
+import "../../ui/brand/topology.css";
+import "../../ui/brand/quota.css";
+import "../../ui/brand/task-bubbles.css";
 import { createRoot } from "react-dom/client";
 import ActivityTimeline from "../../ui/components/ActivityTimeline";
 import { ViewStack, Dialog, TooltipProvider } from "../../ui/components/ui";
@@ -6,7 +9,6 @@ import { agentActivity } from "../../ui/state/activity";
 import { locale } from "../../ui/i18n";
 import type { AgentTimeline, AgentInteraction } from "../../ui/types";
 import type { TrackedActivity } from "../../ui/state/activityModel";
-import "../../ui/product.css";
 
 const root = createRoot(document.getElementById("fixture")!);
 locale.set("en");

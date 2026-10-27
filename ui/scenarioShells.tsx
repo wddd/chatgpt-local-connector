@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, Maximize2, X } from 'lucide-react';
-import { AddressField, Button, EntityCard, EntityRow, FactList, Freshness, IconButton, Notice, PlatformIcon, SectionHeader, StateBadge, Switch } from './components/ui';
+import { AddressField, HoverPreviewGroup, Button, EntityCard, EntityRow, FactList, Freshness, IconButton, Notice, PlatformIcon, SectionHeader, StateBadge, Switch } from './components/ui';
 import { Sensitive } from './components/Sensitive';
 import { PrivacyToggle } from './components/Privacy';
 import { statePresentation } from './components/objects/statePresentation';
@@ -52,6 +52,11 @@ export default function ShellFixture() {
       <Switch label="Copy error" checked={error} onChange={setError} />
       {error && <Notice>{t('copyFailedSelectAndCopyTheTextManually')}</Notice>}
     </EntityCard>
+    <SectionHeader level={2} title="Shared hover preview" />
+    <HoverPreviewGroup className="flex gap-2" preview={key => key === 'short' ? 'Short preview' : 'A longer preview keeps the same floating surface mounted while its contents resize.'}>
+      <Button data-hover-target="short">Short preview target</Button>
+      <Button data-hover-target="long">Long preview target</Button>
+    </HoverPreviewGroup>
     <output id="shell-actions" aria-live="polite">{action}</output>
   </main>;
 }

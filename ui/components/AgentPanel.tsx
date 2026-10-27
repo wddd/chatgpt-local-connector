@@ -52,17 +52,17 @@ function AgentView({ agent, account, accountId, accounts, onSettings, expanded, 
   const titleActions = agent.installed && status?.platform && status.platform !== "linux" && <IconButton icon={ArrowUpRight} label={t("activity.open")} onClick={() => {
     setError(""); void api("agents/open", "POST", { agent: agent.agent }).catch(error => setError(String(error)));
   }} />;
-  const secondary = <span className="activity-panel-meta" title={agent.version || undefined}>{[compactAgentVersion(agent.version), t("agentPanel.inProgress", { count: sessions.length })].filter(Boolean).join(" · ")}</span>;
+  const secondary = <span className="activity-panel-meta min-w-0 truncate text-xs text-muted-foreground" title={agent.version || undefined}>{[compactAgentVersion(agent.version), t("agentPanel.inProgress", { count: sessions.length })].filter(Boolean).join(" · ")}</span>;
   const headerActions = <><IconButton icon={Settings} label={t("agentDisplaySettings")} onClick={onSettings} />
     {resizable && <IconButton icon={expanded ? Minimize2 : Maximize2} label={t(expanded ? "restorePanelWidth" : "expandPanelWidth")} aria-pressed={expanded} onClick={onToggleWidth} />}</>;
   const body = <>
       {error && <p className="timeline-error" role="alert">{error}</p>}
       {providerError && <Notice action={<IconButton icon={RefreshCw} size={16} label={t("usageRefresh")}
         busy={refreshing || provider?.refreshing} onClick={() => void refresh()} />}>{providerError}</Notice>}
-      {provider ? <AgentQuota provider={provider} onRefresh={() => void refresh()} refreshing={refreshing} /> : <p className="timeline-meta agent-no-quota">{t("agentPanel.noQuota")}</p>}
+      {provider ? <AgentQuota provider={provider} onRefresh={() => void refresh()} refreshing={refreshing} /> : <p className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere agent-no-quota">{t("agentPanel.noQuota")}</p>}
       <AgentConversations key={`${agent.agent}:${accountId ?? ""}`} agent={agent.agent} account={account} accountId={accountId} active={active} />
   </>;
-  return <section className="agent-panel-layer agent-overview-layer">
+  return <section className="agent-panel-layer flex h-full min-h-0 w-full flex-col [&>.dialog-header]:shrink-0 [&>.task-timeline]:flex-1 [&>.task-timeline]:h-auto [&>.task-timeline]:px-4 [&>.task-timeline]:pb-4 [&>.dialog-footer]:max-h-1/2 agent-overview-layer">
     {account ? <AgentAccountCard account={account} agent={agent} frame="panel" titleActions={titleActions} secondary={secondary} headerActions={headerActions} busy={busy}
       onDefault={profile => void mutate(() => accountsApi.update({ id: account.id, defaultFor: profile.agent, profileId: profile.profileId }))}
       onReauth={profile => void mutate(async () => setLogin(await accountsApi.reauth({ id: account.id, agent: profile.agent, profileId: profile.profileId })))}>

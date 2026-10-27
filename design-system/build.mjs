@@ -21,7 +21,7 @@ const aliases = new Map([
   ...['accounts', 'connector', 'subscriptions', 'activity', 'updates', 'overviewPanels'].map(name => [`ui/state/${name}.ts`, 'data.ts']),
 ].map(([from, to]) => [resolve(from), adapter(to)]));
 const uiAlias = { '@': path.join(root, 'ui') };
-const cssFiles = new Set([resolve('ui/style.css'), resolve('ui/product.css')]);
+const cssFiles = new Set(['topology', 'quota', 'task-bubbles'].map(name => resolve(`ui/brand/${name}.css`)));
 const sourceFiles = new Set();
 const boundary = () => ({
     name: 'arc-design-boundary', enforce: 'pre',
@@ -117,8 +117,7 @@ styles.walkRules(rule => {
     return `:where(.arc-root) ${selector}`;
   });
 });
-const orderedCss = [resolve('ui/style.css'), resolve('ui/product.css'),
-  ...[...cssFiles].filter(file => file !== resolve('ui/style.css') && file !== resolve('ui/product.css') && file !== resolve('ui/tokens.css')).sort()];
+const orderedCss = [...cssFiles].filter(file => file !== resolve('ui/tokens.css')).sort();
 for (const file of orderedCss) {
   const sheet = postcss.parse(await readFile(file, 'utf8'));
   sheet.walkAtRules('import', rule => rule.remove());

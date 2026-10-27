@@ -13,7 +13,6 @@ import { useInterval } from "../state/hooks";
 import { updates, available, updateVisible, checkUpdate, showUpdate, dismissUpdate, installUpdate, scheduleUpdate, skipUpdate, cancelDownload, dismissOutcome, retryUpdate, submitLocal, openReleaseNotes, updateAutomatic, acceptLocal, resumeInterrupted, controlScheduling } from "../state/updates";
 import { updateActive, updateCountdown, updateStep, type UpdateSnapshot, type UpdateTiming, type UpdateWork } from "../state/updateModel";
 import { LiveInteractionRequestCard } from "./objects/interaction-request";
-import "./AppUpdate.css";
 import { TaskRow } from "./objects/task";
 import { useAppNow } from "../state/appEnvironment";
 import { selectAgentPanel } from "../state/overviewPanels";

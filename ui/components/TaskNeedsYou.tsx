@@ -36,7 +36,7 @@ export default function TaskNeedsYou({ agent, session, entries, source, narrow }
   useEffect(() => { if (!count || !narrow) setSheetOpen(false); }, [count, narrow]);
   if (!count) return null;
   const interaction = pending?.interaction;
-  const dock = <section ref={focus} tabIndex={-1} className="task-needs-you flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden rounded-xl border border-warning bg-card p-3 wrap-anywhere" onFocusCapture={pauseOnInteraction} onPointerDownCapture={pauseOnInteraction} onClickCapture={pauseOnInteraction} onKeyDownCapture={pauseOnInteraction} onChangeCapture={pauseOnInteraction} aria-label={t("detail.needsYou")}>
+  const dock = <section ref={focus} tabIndex={-1} className="task-needs-you [&>:not(.request-card)]:shrink-0 flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden rounded-xl border border-warning bg-card p-3 wrap-anywhere" onFocusCapture={pauseOnInteraction} onPointerDownCapture={pauseOnInteraction} onClickCapture={pauseOnInteraction} onKeyDownCapture={pauseOnInteraction} onChangeCapture={pauseOnInteraction} aria-label={t("detail.needsYou")}>
     {pending && interaction && <LiveInteractionRequestCard key={identity} inline agent={agent} session={pending} answers={drafts[identity!] ?? {}} onAnswersChange={answers => setDrafts(old => ({ ...old, [identity!]: answers }))} pager={{ index, count, onChange: setPage }} />}
     <RequestRouting routing={routing.error ? undefined : routing.routing} source={source || t("routing.source")} busy={routing.busy} change={routing.change} />
   </section>;

@@ -1,2 +1,0 @@
-.activity-bubble[data-update-blocking] { outline: 1px solid var(--update-blocker); outline-offset: 2px; }
-.update-blocking-tag { color: var(--update-blocker); font-size: var(--text-xs); white-space: nowrap; }

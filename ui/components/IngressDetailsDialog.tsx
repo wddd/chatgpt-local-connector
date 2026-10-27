@@ -17,7 +17,7 @@ export default function IngressDetailsDialog({ ingress, onClose, onEdit }: {
   const managed = ["relay", "local"].includes(entry.transport);
   return <Dialog title={entry.name}
     onClose={onClose} busy={busy} footer={<>
-      <Button disabled={busy} onClick={() => { if (managed) { onClose(); navigation.set(old => ({ ...old, page: "remote" })); } else onEdit(entry); }}>{t(managed ? "connect.manage" : "edit")}</Button><span className="spacer" />
+      <Button disabled={busy} onClick={() => { if (managed) { onClose(); navigation.set(old => ({ ...old, page: "remote" })); } else onEdit(entry); }}>{t(managed ? "connect.manage" : "edit")}</Button><span className="spacer flex-1" />
       <DialogClose asChild><Button variant="primary" disabled={busy}>{t("done")}</Button></DialogClose>
     </>}>
     <TunnelCard ingress={entry} sources={sources} busy={busy} address={managed ? undefined : null} />

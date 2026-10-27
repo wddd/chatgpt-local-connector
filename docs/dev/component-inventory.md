@@ -4,7 +4,7 @@ This inventory describes the current `ui/` implementation, organized by product 
 
 The target forms are **Chip** (inline name and state dot), **Node** (homepage topology), **Row** (panel list entry with name, secondary information and state), and **Card** (panel summary with facts and header actions). **Mixed** means a screen, editor, or fragment crosses these forms. An approximate form does not imply that the full target contract exists. Existing task bubble densities (`compact`, `standard`, `detailed`) are separate from these four forms.
 
-Paths are repository-relative. Visual differences describe markup and stylesheet rules in `ui/style.css`, `ui/product.css`, `ui/components/activity/activity.css`, `ui/components/TaskDetail.css`, and the Tailwind classes in the account and quota components; they do not imply visual acceptance. “Not displayed” means no dedicated presentation of that field in the relevant object views; IDs and other fields can still drive association, filtering, actions, or fallbacks.
+Paths are repository-relative. Visual differences describe markup and brand stylesheet rules in `ui/brand/` and Tailwind utilities in the owning components; they do not imply visual acceptance. “Not displayed” means no dedicated presentation of that field in the relevant object views; IDs and other fields can still drive association, filtering, actions, or fallbacks.
 
 ## Identity and fixture boundaries
 

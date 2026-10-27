@@ -272,7 +272,7 @@ export default function IngressDialog({
       error={errors[key]}
     >
       <SensitiveInput
-        className={key === "tunnelId" || secretFields.some(field => field.key === key) ? "mono" : undefined}
+        className={key === "tunnelId" || secretFields.some(field => field.key === key) ? "mono font-mono" : undefined}
         id={`ingress-${key}`}
         type={password ? "password" : "text"}
         autoComplete={password ? "new-password" : "off"}
@@ -509,9 +509,9 @@ function IngressEditLayer({ title, children, footer, onClose, initialFocus, busy
     });
     return () => cancelAnimationFrame(frame);
   }, [initialFocus]);
-  return <section className="ingress-edit-layer side-panel-layer" ref={root}>
-    <SectionHeader className="dialog-header" data-leading={leading === null ? 'false' : 'true'} level={2} leading={<>{leading === undefined ? <IconButton icon={ChevronLeft} label={t("back")} disabled={busy} onClick={onClose} /> : leading}</>} title={title} titleProps={{ className: 'activity-panel-title', tabIndex: -1 }} actions={actions} />
-    <div className="side-panel-scroll">{children}</div><footer className="dialog-footer">{footer}</footer>
+  return <section className="ingress-edit-layer side-panel-layer flex h-full min-h-0 w-full flex-col [&>.dialog-header]:shrink-0 [&>.dialog-footer]:shrink-0 [&>.dialog-header>.source-icon]:size-8" ref={root}>
+    <SectionHeader className="dialog-header flex shrink-0 items-center justify-between gap-4 border-b px-5 py-4 [&_h2]:min-w-0 [&_h2]:flex-1 [&_h2]:text-left [&_h2]:text-base [&_h2]:font-semibold [&_h2]:wrap-anywhere [&_.actions]:shrink-0" data-leading={leading === null ? 'false' : 'true'} level={2} leading={<>{leading === undefined ? <IconButton icon={ChevronLeft} label={t("back")} disabled={busy} onClick={onClose} /> : leading}</>} title={title} titleProps={{ className: 'activity-panel-title', tabIndex: -1 }} actions={actions} />
+    <div className="side-panel-scroll [.elastic-panel:not(.activity-panel)_&]:px-7 [.elastic-panel:not(.activity-panel)_&]:pb-7 [.elastic-panel:not(.activity-panel)_&]:pt-0 max-[600px]:[.elastic-panel:not(.activity-panel)_&]:px-5 max-[600px]:[.elastic-panel:not(.activity-panel)_&]:pb-5 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto p-4 [&_h3]:mb-2 [&_h3]:text-sm">{children}</div><footer className="dialog-footer flex shrink-0 flex-wrap items-center justify-end gap-2 border-t bg-card px-6 py-4">{footer}</footer>
   </section>;
 }
 

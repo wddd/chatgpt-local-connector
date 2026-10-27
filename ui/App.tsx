@@ -220,7 +220,7 @@ export default function App() {
   ];
   return (
     <div
-      className={`app-scene ${sheetWide ? "sheet-wide" : ""} ${isDesktop ? "desktop" : ""} ${isDesktop && navigator.platform.toLowerCase().includes("mac") ? "mac" : ""}`}
+      className={`app-scene relative h-dvh min-h-0 overflow-hidden bg-background [--sheet-inset:--spacing(5)] [--sheet-top:--spacing(5)] max-[600px]:[--sheet-inset:--spacing(3)] max-[600px]:[--sheet-top:--spacing(3)] [&.desktop]:[--sheet-top:--spacing(12)] ${sheetWide ? "sheet-wide" : ""} ${isDesktop ? "desktop" : ""} ${isDesktop && navigator.platform.toLowerCase().includes("mac") ? "mac" : ""}`}
       onClickCapture={(e) => capturePanelOrigin(e.target)}
       onKeyDown={(e) => {
         if (
@@ -254,17 +254,17 @@ export default function App() {
       }}
     >
       {isDesktop && (
-        <div className="window-drag-strip" data-tauri-drag-region />
+        <div className="window-drag-strip absolute inset-x-0 top-0 z-60 flex h-9.5 justify-end" data-tauri-drag-region />
       )}
       <main
-        className="home-workspace"
+        className="home-workspace h-full overflow-hidden"
         inert={page !== "overview" || modalOpen}
       >
         <ConnectionOverview visible={page === "overview"} />
       </main>
       {page !== "overview" && (
         <div
-          className="sheet-backdrop"
+          className="sheet-backdrop absolute inset-0 z-28 bg-transparent"
           onPointerDown={(e) =>
             (backdropDown.current =
               e.button === 0 && e.target === e.currentTarget)
@@ -283,27 +283,29 @@ export default function App() {
       )}
       <div
         hidden={welcome}
-        className={`navigation-surface ${page !== "overview" ? "expanded" : ""} ${updateVisible() ? "has-update" : ""}`}
+        style={{ width: updateVisible() ? 298 : 250, maxWidth: "calc(100vw - 32px)" }}
+        className={`navigation-surface absolute bottom-6 left-6 z-49 pointer-events-none h-12.5 rounded-full border border-brand-accent/15 bg-background shadow-overlay max-[600px]:bottom-4 max-[600px]:left-4 [&.expanded]:invisible [&.expanded]:pointer-events-none [&[hidden]]:hidden ${page !== "overview" ? "expanded" : ""} ${updateVisible() ? "has-update" : ""}`}
         aria-hidden="true"
       />
       {page !== "overview" && (
         <section
           ref={sheet}
-          className="page-sheet"
+          style={{ top: "var(--sheet-top)", bottom: "var(--sheet-inset)", left: "var(--sheet-inset)", width: sheetWide ? "calc(100vw - 2 * var(--sheet-inset))" : "min(960px, calc(100vw - 2 * var(--sheet-inset)))" }}
+          className="page-sheet absolute z-30 flex flex-col overflow-hidden rounded-workspace border border-transparent bg-background shadow-overlay origin-top-left data-recessed:invisible data-recessed:pointer-events-none"
           data-panel-depth="1"
           data-recessed={modalOpen || undefined}
           inert={modalOpen}
           aria-label={pages.find((item) => item.id === page)?.label}
         >
-          <div className="page-sheet-content">
-            <header className="sheet-header">
+          <div style={{ width: sheetWide ? "calc(100vw - 2 * var(--sheet-inset) - 2px)" : "min(958px, calc(100vw - 2 * var(--sheet-inset) - 2px))", height: "calc(100dvh - var(--sheet-top) - var(--sheet-inset) - 2px)" }} className="page-sheet-content relative flex min-h-0 flex-none flex-col self-center">
+            <header className="sheet-header flex shrink-0 items-center gap-3 border-b px-3 py-2 pl-6.625 min-h-13 max-[600px]:pl-4">
               {page === "settings" && (nav.settingsExtras || nav.settingsUpdates) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsExtras: undefined, settingsUpdates: undefined }))} />}
               {page === "remote" && nav.remoteConnectionId && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: undefined }))} />}
-              <h1 className="capsule-title" tabIndex={-1}>
+              <h1 className="capsule-title m-0 min-w-0 flex-1 text-lg font-semibold outline-none" tabIndex={-1}>
                 {page === "remote" ? status?.ingresses.find(i => i.id === nav.remoteConnectionId)?.name ?? t("source.title") : pages.find((item) => item.id === page)?.label}
-                {page === "settings" && (nav.settingsExtras || nav.settingsUpdates) && <><span className="settings-breadcrumb-divider" aria-hidden="true"> / </span><span>{t(nav.settingsUpdates ? "appUpdates" : "extras.title")}</span></>}
+                {page === "settings" && (nav.settingsExtras || nav.settingsUpdates) && <><span className="settings-breadcrumb-divider mx-2 font-normal text-muted-foreground" aria-hidden="true"> / </span><span>{t(nav.settingsUpdates ? "appUpdates" : "extras.title")}</span></>}
                 {page === "logs" && (
-                  <span className="muted small records-count">
+                  <span className="muted text-muted-foreground small text-xs records-count ml-3 whitespace-nowrap font-normal">
                     {t("recentRecords", { count: status?.logs.length ?? 0 })}
                   </span>
                 )}
@@ -316,21 +318,21 @@ export default function App() {
                 onClick={() => void refreshPermissions().catch(error => notify(String(error), true))}
               />}
               <IconButton
-                className="panel-width-toggle"
+                className="panel-width-toggle hidden min-[1000px]:inline-flex"
                 icon={sheetWide ? Minimize2 : Maximize2}
                 label={t(sheetWide ? "restorePanelWidth" : "expandPanelWidth")}
                 aria-pressed={sheetWide}
                 onClick={() => setSheetWide(!sheetWide)}
               />
               <IconButton
-                className="capsule-close"
+                className="capsule-close size-8 rounded-full"
                 icon={X}
                 label={t("backToHome")}
                 onClick={() => void closeSheet()}
               />
             </header>
             <main
-              className={`workspace ${page === "logs" ? "records-workspace" : page === "accounts" ? "accounts-workspace-container" : ""}`}
+              className={`workspace min-h-0 w-full max-w-none flex-1 m-0 overflow-auto overscroll-contain px-6.625 py-6 max-[600px]:px-4 max-[600px]:py-5 [&>.settings-page]:m-0 [&>.settings-page]:w-full [&>.settings-page]:max-w-none ${page === "logs" ? "records-workspace pb-6" : page === "accounts" ? "accounts-workspace-container flex flex-col overflow-hidden" : ""}`}
             >
               {page === "tasks" ? (
                 <TasksPage />
@@ -351,7 +353,8 @@ export default function App() {
         </section>
       )}
       <nav
-        className={`navigation-capsule ${page !== "overview" ? "expanded" : ""} ${updateVisible() ? "has-update" : ""}`}
+        style={{ width: updateVisible() ? 298 : 250, maxWidth: "calc(100vw - 32px)" }}
+        className={`navigation-capsule absolute bottom-6 left-6 z-50 block h-12.5 rounded-full border border-transparent bg-transparent max-[600px]:bottom-4 max-[600px]:left-4 [&.expanded]:invisible [&.expanded]:pointer-events-none [&[hidden]]:hidden ${page !== "overview" ? "expanded" : ""} ${updateVisible() ? "has-update" : ""}`}
         inert={welcome || page !== "overview" || modalOpen}
         aria-hidden={welcome || page !== "overview"}
         hidden={welcome}
@@ -359,7 +362,7 @@ export default function App() {
       >
         <HoverScope
           activeKey={page !== "overview" || modalOpen ? "" : undefined}
-          className="capsule-icons"
+          className="capsule-icons absolute inset-0 flex items-center gap-1 overflow-hidden rounded-full p-1.5 [&_button]:relative [&_button]:grid [&_button]:size-9 [&_button]:shrink-0 [&_button]:place-items-center [&_button]:rounded-full [&_button]:border-0 [&_button]:bg-transparent [&_button]:p-2 [&_button]:text-foreground [&_button]:shadow-none [&_button]:transition-opacity [&_button]:duration-150 [&_svg]:size-5"
           inert={page !== "overview"}
           aria-hidden={page !== "overview"}
         >
@@ -374,7 +377,7 @@ export default function App() {
             >
               <Icon icon={item.icon} size={20} />
               {item.id === "tasks" && pending > 0 && (
-                <span className="task-count">{pending}</span>
+                <span className="task-count absolute right-0 top-0 min-w-4 rounded-full bg-brand-accent text-background text-2xs">{pending}</span>
               )}
             </Button>
           ))}
@@ -382,7 +385,7 @@ export default function App() {
         </HoverScope>
       </nav>
       {feedback.text && (
-        <div className="app-feedback">
+        <div style={{ maxHeight: "40dvh" }} className="app-feedback absolute inset-x-6 top-12 z-140 mx-auto w-auto max-w-190 rounded-lg shadow-overlay overflow-auto">
           <Notice
             tone={feedback.error ? "danger" : "success"}
             action={

@@ -11,7 +11,6 @@ import TaskOwnership from '../../TaskOwnership';
 import { SrcAccountChip } from '../src-account';
 import { statePresentation } from '../statePresentation';
 import { projectName, receiptState, taskIdentity } from './projection';
-import '../../TaskDetail.css';
 import { Progress } from '../../ui/progress';
 
 type Detail =

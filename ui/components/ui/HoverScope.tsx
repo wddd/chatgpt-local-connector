@@ -1,3 +1,4 @@
+import { cn } from "../../lib/utils";
 import { environmentMedia } from "../../state/appEnvironment";
 import { useLayoutEffect, useRef, useState, type HTMLAttributes } from "react";
 import { motion, useSpring } from "motion/react";
@@ -18,7 +19,7 @@ export function HoverScope({ activeKey, tracking = "pointer", className = "", ch
       !node?.matches(":disabled, [aria-disabled='true'], [data-disabled]") ? node?.dataset.hoverTarget || "" : "";
   };
   return (
-    <div {...props} ref={setRoot} className={`hover-scope ${className}`}
+    <div {...props} ref={setRoot} className={cn("hover-scope relative isolate [&_[data-hover-target].button]:bg-transparent [&_[data-hover-target].button:hover]:bg-transparent [&_[data-hover-target][data-highlighted]]:bg-transparent [&_.choice-option:hover:not([data-state=checked])]:bg-transparent", className)}
       onPointerOver={(e) => { props.onPointerOver?.(e); if (activeKey === undefined && tracking === "pointer" && e.pointerType !== "touch") setPointed(targetKey(e.target)); }}
       onPointerLeave={(e) => { props.onPointerLeave?.(e); if (activeKey === undefined && tracking === "pointer") setPointed(""); }}
       onFocusCapture={(e) => { props.onFocusCapture?.(e); if (activeKey === undefined && tracking === "pointer") setPointed(targetKey(e.target)); }}
@@ -100,7 +101,7 @@ function Highlight({ root, activeKey, tracking }: {
       scope.removeEventListener("scroll", measure, true);
     };
   }, [activeKey, tracking, root, x, y, width, height, radius]);
-  return <motion.span aria-hidden="true" className="hover-highlight" style={{
+  return <motion.span aria-hidden="true" className="hover-highlight absolute left-0 top-0 -z-1 pointer-events-none bg-accent transition-opacity duration-100 motion-reduce:transition-none" style={{
     x, y, width, height,
     borderRadius: radius, opacity: visible ? 1 : 0,
   }} />;

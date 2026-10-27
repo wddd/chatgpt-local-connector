@@ -100,7 +100,7 @@ export default function RemoteLinkPage() {
         })}</HoverScope>
       </section>
     </>}
-    {selected && <Dialog dock="left" width={520} headerless title={selected.label} returnFocus={`[data-remote-row="${CSS.escape(selected.id)}"]`} onClose={() => navigation.set(old => old.remoteSourceId === selected.id ? { ...old, remoteSourceId: undefined } : old)}><div className="side-panel-layer"><SourcePanel key={selected.id} source={selected} /></div></Dialog>}
+    {selected && <Dialog dock="left" width={520} headerless title={selected.label} returnFocus={`[data-remote-row="${CSS.escape(selected.id)}"]`} onClose={() => navigation.set(old => old.remoteSourceId === selected.id ? { ...old, remoteSourceId: undefined } : old)}><div className="side-panel-layer flex h-full min-h-0 w-full flex-col [&>.dialog-header]:shrink-0 [&>.dialog-footer]:shrink-0 [&>.dialog-header>.source-icon]:size-8"><SourcePanel key={selected.id} source={selected} /></div></Dialog>}
     {(error || relays.error) && <Notice>{error || t("connect.readFailed")}</Notice>}
     {removing && connection && <Dialog centered title={t(joined ? "connect.confirm.leave" : "setup.removeConnection")} width={440} busy={removeBusy} onClose={() => setRemoving(false)} footer={<><Button disabled={removeBusy} onClick={() => setRemoving(false)}>{t("cancel")}</Button><Button variant="danger" busy={removeBusy} onClick={() => void removeConnection()}>{t(joined ? "connect.leave" : "remove")}</Button></>}>
       <p>{t("setup.removeConfirm", { name: connection.name, names: affected.map(s => s.label).join(", ") || t("source.unused") })}</p>{error && <Notice>{error}</Notice>}

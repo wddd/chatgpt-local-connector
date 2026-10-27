@@ -75,14 +75,14 @@ function UserMessage({ text, truncated, open, onChange }: { text: string; trunca
   </article>;
 }
 function ToolTitle({ entry, project }: { entry: AgentTimelineEntry; project?: string | null }) {
-  return <span className="timeline-entry-title min-w-0 flex-1 truncate [&_.file-path-name]:max-w-full [&_.file-path-name]:truncate mono" title={entry.command || entry.path || entry.title}>
+  return <span className="timeline-entry-title min-w-0 flex-1 truncate [&_.file-path-name]:max-w-full [&_.file-path-name]:truncate mono font-mono" title={entry.command || entry.path || entry.title}>
     {entry.path && !entry.command ? <FilePath path={entry.path} project={project || entry.cwd} /> : entry.command || entry.title || t(entry.type === "command" ? "activity.phase.command" : entry.type === "file" ? "activity.phase.file" : "activity.phase.tool")}
   </span>;
 }
 function ToolDetails({ entry, project }: { entry: AgentTimelineEntry; project?: string | null }) {
   return <div className="timeline-output grid min-w-0 gap-2 py-2 pl-6 pr-1.5 text-xs wrap-anywhere [&_section]:min-w-0 [&_pre]:mt-1 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_pre]:font-mono [&_pre]:text-xs [&_pre]:whitespace-pre-wrap [&_pre]:wrap-anywhere">
-    {entry.cwd && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.cwd")}</span><div className="mono">{entry.cwd}</div></section>}
-    {entry.path && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.path")}</span><div className="mono">{filePathParts(entry.path, project || entry.cwd).fullPath}</div></section>}
+    {entry.cwd && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.cwd")}</span><div className="mono font-mono">{entry.cwd}</div></section>}
+    {entry.path && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.path")}</span><div className="mono font-mono">{filePathParts(entry.path, project || entry.cwd).fullPath}</div></section>}
     {!!entry.changes?.length && <section><span className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.changes")}</span><ul className="timeline-files m-0 mt-1 grid min-w-0 list-none gap-1 overflow-x-auto p-0">{entry.changes.map((change, index) => <li key={`${change.path}:${index}`}>
       <FilePath path={change.path} project={project || entry.cwd} />
     </li>)}</ul></section>}

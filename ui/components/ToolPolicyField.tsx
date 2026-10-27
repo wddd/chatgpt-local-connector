@@ -106,8 +106,8 @@ export default function ToolPolicyField({
           options={options}
           disabled={disabled || !catalog}
         />
-        <div className="actions" style={{ visibility: catalog ? undefined : "hidden" }} aria-hidden={!catalog}>
-          <span className="muted small">
+        <div className="actions flex flex-wrap items-center gap-2" style={{ visibility: catalog ? undefined : "hidden" }} aria-hidden={!catalog}>
+          <span className="muted text-muted-foreground small text-xs">
             {t("toolSelectionCount", {
               groups: new Set(exposed.map((tool) => tool.group)).size,
               count: exposed.length,
@@ -163,7 +163,7 @@ export default function ToolPolicyField({
           </>
         }
       >
-        <div className="tool-groups">
+        <div className="tool-groups grid gap-6">
           {catalog?.groups.map((group) => {
             const tools = catalog.tools.filter(
               (tool) =>
@@ -196,7 +196,7 @@ export default function ToolPolicyField({
                 ) : (
                   <h3>{group.label[locale.get()]}</h3>
                 )}
-                <div className="tool-items">
+                <div className="tool-items grid grid-cols-2 gap-x-3 gap-y-1 mt-2 ml-3 max-[420px]:grid-cols-1">
                   {tools.map((tool) => (
                     <div key={tool.name}>
                       {mode === "custom" ? (
@@ -209,7 +209,7 @@ export default function ToolPolicyField({
                           }
                         >
                           <Tooltip text={tool.description}>
-                            <span tabIndex={0} className="tool-name">
+                            <span tabIndex={0} className="tool-name font-mono text-xs wrap-anywhere">
                               {tool.via} · {tool.name}
                               {tool.tier === "advanced" ? ` · ${t("toolsAdvanced")}` : ""}
                               {tool.available === false ? ` · ${t("toolsUnavailable")}` : ""}
@@ -218,7 +218,7 @@ export default function ToolPolicyField({
                         </Checkbox>
                       ) : (
                         <Tooltip text={tool.description}>
-                          <span tabIndex={0} className="tool-name">
+                          <span tabIndex={0} className="tool-name font-mono text-xs wrap-anywhere">
                             {tool.via} · {tool.name}
                               {tool.tier === "advanced" ? ` · ${t("toolsAdvanced")}` : ""}
                               {tool.available === false ? ` · ${t("toolsUnavailable")}` : ""}

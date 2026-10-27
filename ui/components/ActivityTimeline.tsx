@@ -9,7 +9,6 @@ import { useTaskQueue } from "../state/taskQueue";
 import TaskQueuedMessages from "./TaskQueuedMessages";
 import { useTaskReview } from "../state/taskReview";
 import { taskErrorText } from "../state/taskErrors";
-import "./TaskDetail.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
@@ -209,7 +208,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   };
   // Activity snapshots can derive their title from the dispatch prompt.
   const title = (agent === "codex" && taskTitle?.id === session.id && taskTitle.title) || t("timeline.title");
-  return <TaskCard rootRef={detail} className="agent-panel-layer task-detail-layer @container min-w-0" agent={agent} agentName={agentName}
+  return <TaskCard rootRef={detail} className="agent-panel-layer flex h-full min-h-0 w-full flex-col [&>.dialog-header]:shrink-0 [&>.task-timeline]:flex-1 [&>.task-timeline]:h-auto [&>.task-timeline]:px-4 [&>.task-timeline]:pb-4 [&>.dialog-footer]:max-h-1/2 task-detail-layer @container min-w-0" agent={agent} agentName={agentName}
     titleId={titleId} narrow={narrow} expanded={expanded} onBack={onBack} onToggleWidth={resizable ? onToggleWidth : undefined}
     onOpen={nativeSession.open ? () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } : undefined}
     task={{ kind: "timeline", session: nativeSession, fallbackSession: session, timeline, title, running, hasPending, turnId, source, duration: duration === undefined ? undefined : durationText(duration) }}>

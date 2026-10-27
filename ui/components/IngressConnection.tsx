@@ -145,8 +145,8 @@ export default function IngressConnection({
   }, [ingress.id, autoConnect]);
   useEffect(() => { onBusy(working || oauthBusy); return () => onBusy(false); }, [working, oauthBusy, onBusy]);
   return (
-      <div className="form">
-        <p className="form-subtitle">{t(entry.controlSource === "claude" ? "wakeClaude" : entry.controlSource === "chatgpt" ? "wakeChatgpt" : "wakeOther")}</p>
+      <div className="form grid gap-5">
+        <p className="form-subtitle text-xs text-brand-accent">{t(entry.controlSource === "claude" ? "wakeClaude" : entry.controlSource === "chatgpt" ? "wakeChatgpt" : "wakeOther")}</p>
         <Field
           label={https ? "MCP URL" : "Tunnel ID"}
           help={

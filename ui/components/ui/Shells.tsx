@@ -80,12 +80,12 @@ export function AddressField({ label, value, display, revealed, onReveal, onCopy
   label: string; value: string; display: ReactNode; revealed?: boolean; onReveal?: () => void;
   onCopy: (raw: string) => void; loading?: boolean; disabled?: boolean; copied?: boolean; error?: string; placeholder?: string;
 }) {
-  return <div><div className="copy-field flex min-w-0 items-center gap-1">
-    <div className="copy-value min-h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 py-1.5 font-mono text-xs text-foreground" role="textbox" aria-readonly="true" aria-label={label} aria-busy={loading} tabIndex={0}
+  return <div><div className="copy-field [&_.input]:font-mono [&_.input]:text-xs flex min-w-0 items-center gap-1">
+    <div className="copy-value flex-1 overflow-hidden whitespace-nowrap min-h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 py-1.5 font-mono text-xs text-foreground" role="textbox" aria-readonly="true" aria-label={label} aria-busy={loading} tabIndex={0}
       onCopyCapture={event => { event.preventDefault(); event.stopPropagation(); if (!disabled && !loading && value) event.clipboardData.setData('text/plain', value); }}>
       {value ? display : placeholder}
     </div>
-    {loading ? <Icon icon={LoaderCircle} className="spin" /> : <>
+    {loading ? <Icon icon={LoaderCircle} className="spin animate-spin" /> : <>
       {onReveal && <IconButton icon={revealed ? EyeOff : Eye} label={t(revealed ? 'hideSecret' : 'showSecret')} disabled={disabled || !value} onClick={onReveal} />}
       <IconButton icon={copied ? Check : Copy} label={t(copied ? 'copied' : 'copy')} disabled={disabled || !value} onClick={() => onCopy(value)} />
     </>}

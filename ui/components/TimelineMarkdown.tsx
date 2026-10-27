@@ -46,7 +46,7 @@ export default memo(function TimelineMarkdown({ text }: { text: string }) {
   const { agent, id } = useContext(ResourceContext);
   const root = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
-  return <div ref={root} className="markdown timeline-markdown min-w-0 [&>:first-child]:mt-0 [&>:last-child]:mb-0 [&_pre]:overflow-x-auto [&_pre]:whitespace-pre [&_img]:max-w-full [&_a]:text-brand-accent [&_a]:underline [&_.contains-task-list]:list-none [&_.contains-task-list]:pl-1"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={timelineUrl} components={{
+  return <div ref={root} className="markdown text-base leading-relaxed wrap-anywhere [&_h1]:my-4 [&_h1]:mb-2 [&_h1]:text-lg [&_h2]:my-4 [&_h2]:mb-2 [&_h2]:text-lg [&_h3]:my-4 [&_h3]:mb-2 [&_h3]:text-lg [&_p]:my-2 [&_p]:whitespace-pre-wrap [&_pre]:overflow-auto [&_pre]:rounded-md [&_pre]:bg-accent [&_pre]:p-3 [&_code]:bg-accent [&_code]:font-mono timeline-markdown min-w-0 [&>:first-child]:mt-0 [&>:last-child]:mb-0 [&_pre]:overflow-x-auto [&_pre]:whitespace-pre [&_img]:max-w-full [&_a]:text-brand-accent [&_a]:underline [&_.contains-task-list]:list-none [&_.contains-task-list]:pl-1"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={timelineUrl} components={{
     ...headings,
     a: ({ href = "", children }) => {
       const link = timelineLink(href);

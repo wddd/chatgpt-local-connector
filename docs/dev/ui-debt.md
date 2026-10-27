@@ -12,23 +12,17 @@ Feature code includes all UI source except `ui/components/ui/**`, `ui/components
 
 Raw button, input, select, textarea, label, details, summary and definition-list elements require shared components. Direct model/effort/service-tier reads from `dispatchSummary` or `task` inside JSX require DispatchSpec. Event handlers and data processing outside JSX remain allowed; this syntactic rule does not perform alias/data-flow analysis. Inline margin, padding, gap, display, flex/grid and alignment properties require shared shells. Existing dynamic geometry properties such as top, left, width, height and transform remain allowed. New feature controls use SingleChoice/ChoiceControl rather than importing Select, ToggleGroup or RadioGroup directly. Arbitrary Tailwind color, spacing, radius and typography values are forbidden, including conditional and cn/cva string literals.
 
-Feature CSS selectors are tracked when their names indicate rows, cards, forms, fields, headings, headers, actions, settings or tag clusters, or their direct declarations set spacing, display, flex/grid or alignment. This includes component-local styles and `ui/style.css` / `ui/product.css`. Animation keyframes and the same shared/fixture exclusions are omitted. CSS baselines count individual selectors, including grouped selectors and repeated rules. All dedicated CSS files, including shared legacy CSS, are also compared to the Git debt base: new files and new non-brand selectors fail. Existing selector declarations may evolve during migration; new layout uses Tailwind. `ui/tokens.css` and synthetic fixture CSS are infrastructure exceptions. Brand selector exceptions cover only the mark, topology/earcup connections, quota rings and task bubbles in their existing files.
+Dedicated CSS is restricted to `ui/tokens.css`, synthetic fixture styles, and these brand-owned files. `tooling/ui-policy.mjs` enumerates both file paths and selector families. Shared primitives, composites and objects do not receive a CSS exemption. The token entry accepts only global foundation selectors, so feature rules cannot move there. New non-brand files and non-brand selectors in brand files fail `check:ui`.
 
-TASK objects, conversation collections, timeline bodies and interaction requests compose shared shadcn primitives with semantic Tailwind utilities. Task bubbles and phase painting retain brand animation CSS. Update work grouping retains its feature owner.
-
-Accounts, AGENT catalog/profile/identity objects and quota surroundings compose shared shadcn primitives with Tailwind utilities. Notification binding behavior and task content retain their existing owners. Quota rings remain brand visuals. Account workspace and Agent panel shell selectors remain with the integration owner.
+| Brand owner | Stylesheet | Boundary |
+| --- | --- | --- |
+| Homepage topology and earcup connections | `ui/brand/topology.css` | Solver geometry, node painting and tactile power control; no feature settings or panel layouts |
+| Quota rings | `ui/brand/quota.css`, `ui/components/composites/AgentQuotaIcon.css` | Ring painting and intrinsic brand artwork sizing |
+| Task bubbles | `ui/brand/task-bubbles.css` | Bubble painting, phase animation and update-blocking visuals |
 
 ## Remaining migration ownership
 
-| Area | Feature owners | Remaining styles |
-| --- | --- | --- |
-| Workspace and global shell | `ElasticPanel.tsx`, workspace headers/dock, `ui/components/ui/HoverPreviewGroup.tsx`, `AnimatedSize.tsx` | Global defaults and dialog/workspace rules in `ui/style.css` and `ui/product.css`, sheet shell rules in `ui/components/TaskDetail.css`, shared `.timeline-meta` consumers, the remaining hover/size shared CSS; topology geometry is outside layout migration |
-
-Remote-link pages, setup content, Relay hosting, SRC/TUNNEL objects, authorization requests and deployment progress use shared primitives and Tailwind. Setup dialog geometry remains with the workspace and global shell owner.
-
-File names in the feature-owner column are relative to `ui/components/` unless another prefix is shown. Shared `ui/product.css` and `ui/style.css` need a single integration owner when areas are worked in parallel; feature lanes remove only their named selector families. Primitive and form/shell CSS has moved into Tailwind; these remaining areas do not authorize redesigning topology, quota or notification behavior.
-
-Settings, updates and management use Tailwind and shadcn Table, Popover and Card alongside the shared settings shells. `AppUpdate.css` retains only task-bubble update-blocking visuals for the TASK owner. Workspace sizing and the settings breadcrumb remain with the global shell owner. `settings-extras-light/dark` cover both Extras panes; `management-table-light/dark` cover pagination, row actions and empty tables. Run `node tooling/acceptance/settings-migration.mjs` for fixture-only Chrome geometry and keyboard checks at narrow and wide widths in both themes.
+No shared-layout debt remains. Workspace, Dialog/dock/input-sheet shells, Agent and source panels, breadcrumbs, timeline metadata, privacy text, shared hover previews, RequestCard and DispatchSpec use Tailwind utilities. ElasticPanel retains the existing geometry and lifecycle controller over the shadcn Dialog surface. Brand geometry is outside layout migration.
 
 ## Cleanup
 
@@ -41,9 +35,5 @@ Counts are outstanding violations per file and rule, sorted by count.
 <!-- ui-debt:start -->
 | File | Rule | Count |
 | --- | --- | ---: |
-| ui/product.css | shared-layout-css | 171 |
-| ui/style.css | shared-layout-css | 26 |
-| ui/components/TaskDetail.css | shared-layout-css | 4 |
-| ui/components/activity/activity.css | shared-layout-css | 2 |
-| ui/components/AppUpdate.css | shared-layout-css | 1 |
+
 <!-- ui-debt:end -->

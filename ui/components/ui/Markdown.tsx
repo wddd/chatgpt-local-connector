@@ -49,5 +49,5 @@ export function Markdown({ children }: { children: string }) {
     if (line.trim()) blocks.push(<p key={i}>{inline(line)}</p>);
     i++;
   }
-  return <div className="markdown">{blocks.map((block, i) => <Fragment key={i}>{block}</Fragment>)}</div>;
+  return <div className="markdown text-base leading-relaxed wrap-anywhere [&_h1]:my-4 [&_h1]:mb-2 [&_h1]:text-lg [&_h2]:my-4 [&_h2]:mb-2 [&_h2]:text-lg [&_h3]:my-4 [&_h3]:mb-2 [&_h3]:text-lg [&_p]:my-2 [&_p]:whitespace-pre-wrap [&_pre]:overflow-auto [&_pre]:rounded-md [&_pre]:bg-accent [&_pre]:p-3 [&_code]:bg-accent [&_code]:font-mono">{blocks.map((block, i) => <Fragment key={i}>{block}</Fragment>)}</div>;
 }

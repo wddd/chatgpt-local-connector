@@ -1,8 +1,7 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Popover } from "radix-ui";
 import { AnimatedSize } from "./AnimatedSize";
 import { HoverScope } from "./HoverScope";
-import "./HoverPreviewGroup.css";
 
 // One preview remains mounted while moving through a group. Radix owns
 // positioning and dismissal; HoverScope owns the shared moving highlight.
@@ -17,6 +16,13 @@ export function HoverPreviewGroup({ children, preview, className = "" }: {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const content = useRef<HTMLDivElement>(null);
   const id = useId();
+  useLayoutEffect(() => {
+    const wrapper = content.current?.parentElement;
+    if (!wrapper || !moving) return;
+    const classes = ["transition-transform", "duration-150", "ease-out", "motion-reduce:transition-none"];
+    wrapper.classList.add(...classes);
+    return () => wrapper.classList.remove(...classes);
+  }, [open, moving]);
   const anchor = useMemo(() => ({ current: target }), [target]);
   const cancel = () => { clearTimeout(timer.current); timer.current = undefined; };
   const close = () => { cancel(); setOpen(false); setMoving(false); };
@@ -54,7 +60,7 @@ export function HoverPreviewGroup({ children, preview, className = "" }: {
       {children}
     </HoverScope>
     <Popover.Anchor virtualRef={anchor} />
-    <Popover.Portal><Popover.Content ref={content} id={id} role="tooltip" data-moving={moving || undefined} className="tooltip hover-preview z-overlay w-75 rounded-lg border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-overlay" side="bottom" align="center" sideOffset={6} collisionPadding={10}
+    <Popover.Portal><Popover.Content ref={content} id={id} role="tooltip" data-moving={moving || undefined} className="tooltip hover-preview z-overlay w-75 max-w-[calc(100vw-24px)] rounded-lg border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-overlay" side="bottom" align="center" sideOffset={6} collisionPadding={10}
       onFocusOutside={event => {
         const node = event.detail.originalEvent.target;
         if (node instanceof Element && node.closest(".hover-scope") === target?.closest(".hover-scope")) event.preventDefault();

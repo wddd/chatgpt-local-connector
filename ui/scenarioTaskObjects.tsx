@@ -12,7 +12,6 @@ import { dispatchSpecFixtures, longDispatchModel, longDispatchEffort } from './s
 import { bubbleHeights } from './state/activityModel';
 import { scenarioName } from './scenarioMode';
 import './scenarioShells.css';
-import './components/TaskDetail.css';
 
 export default function TaskObjectsFixture() {
   const { session, receipt, timeline, now } = taskFixtures;

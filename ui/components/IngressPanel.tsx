@@ -46,7 +46,7 @@ export default function IngressPanel({ onPanelFrame, width, expanded, onToggleWi
     onCloseStart={() => ingressPanel.set(old => old?.ingress.id === entry.id && old.client?.id === selected.client?.id ? { ...old, closing: true } : old)}
     onClose={() => { const current = ingressPanel.get(); if (current?.ingress.id === entry.id && current.client?.id === selected.client?.id && current.closing) ingressPanel.set(undefined); }}
     returnFocus={`[data-source-node="${CSS.escape(client ? client.id : entry.id)}"] button`} onPanelFrame={onPanelFrame}>
-    <motion.div className="side-panel-layer" key={`${entry.id}:${selected.editing ? "edit" : "view"}`}
+    <motion.div className="side-panel-layer flex h-full min-h-0 w-full flex-col [&>.dialog-header]:shrink-0 [&>.dialog-footer]:shrink-0 [&>.dialog-header>.source-icon]:size-8" key={`${entry.id}:${selected.editing ? "edit" : "view"}`}
       initial={{ opacity: reduced ? 1 : 0, x: reduced ? 0 : selected.editing ? -12 : 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>
       {selected.editing ? <IngressDialog embedded ingress={entry} focusField={selected.field} onBusy={setBusy}
         onClose={() => selectIngressPanel(entry)} onRemoved={() => { if (ingressPanel.get()?.ingress.id === entry.id) ingressPanel.set(undefined); }}

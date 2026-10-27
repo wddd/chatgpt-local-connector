@@ -1,7 +1,7 @@
 import { environmentMedia } from "../state/appEnvironment";
 import { animate, mix, type AnimationPlaybackControlsWithThen } from "motion";
 
-export const surfaceDuration = 0.2;
+export const surfaceDuration = 0.18;
 
 export interface SurfaceRect { x: number; y: number; width: number; height: number }
 export type Surface = Record<string, string | number>;

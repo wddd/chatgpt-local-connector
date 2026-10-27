@@ -141,7 +141,7 @@ export default function TasksPage() {
                 />
               )}</>} />
             <Markdown>{r.task.prompt}</Markdown>
-            <p className="muted small">
+            <p className="muted text-muted-foreground small text-xs">
               {t(
                 {
                   pending: "awaitingConfirmation",

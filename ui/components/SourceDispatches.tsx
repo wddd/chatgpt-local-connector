@@ -52,8 +52,8 @@ export default function SourceDispatches({ sourceId, summary = false }: { source
     void read(); const timer = setInterval(() => void read(), 10000);
     return () => { stopped = true; clearInterval(timer); };
   }, [sourceId, ids.slice().sort().join(",")]);
-  return <div className="source-dispatch-list">
-    {summary && <div className="account-chips">{['pending', 'running', 'today'].map(state => <Tag key={state}>{t(`accounts.count.${state}`, { count: dispatches.filter(record => state === 'today' ? new Date(record.createdAt).toDateString() === new Date(now).toDateString() : stateOf(record) === state).length })}</Tag>)}</div>}
+  return <div className="source-dispatch-list grid gap-2">
+    {summary && <div className="account-chips flex flex-wrap items-center gap-1.5">{['pending', 'running', 'today'].map(state => <Tag key={state}>{t(`accounts.count.${state}`, { count: dispatches.filter(record => state === 'today' ? new Date(record.createdAt).toDateString() === new Date(now).toDateString() : stateOf(record) === state).length })}</Tag>)}</div>}
     {error && <Notice>{error}</Notice>}
     {rows.map(record => {
       const id = record.threadId || record.task.threadId;
@@ -65,7 +65,7 @@ export default function SourceDispatches({ sourceId, summary = false }: { source
         navigation.set(old => ({ ...old, page: "overview" }));
       }} />;
     })}
-    {!rows.length && <p className="timeline-meta">{t("sourcePanel.noRecords")}</p>}
-    {visible < dispatches.length && <div ref={more} className="source-dispatch-more" aria-hidden="true" />}
+    {!rows.length && <p className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("sourcePanel.noRecords")}</p>}
+    {visible < dispatches.length && <div ref={more} className="source-dispatch-more h-px" aria-hidden="true" />}
   </div>;
 }

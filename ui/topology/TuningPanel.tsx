@@ -10,12 +10,12 @@ import { topologyPanel, topologyParameters, topologyValues, topologyDebug, previ
 
 function TuningSection({ value, title, className, children }: { value: string; title: string; className: string; children: ReactNode }) {
   return <Accordion.Item value={value} className={className}>
-    <Accordion.Header className="topology-section-heading">
-      <Accordion.Trigger asChild><Button variant="ghost" className="topology-section-trigger">
+    <Accordion.Header className="topology-section-heading m-0 text-xs">
+      <Accordion.Trigger asChild><Button variant="ghost" className="topology-section-trigger flex w-full min-h-0 justify-between gap-2 border-0 px-0 py-1 text-left text-xs font-medium hover:bg-transparent [&>.icon]:transition-transform [&>.icon]:duration-150 data-[state=open]:[&>.icon]:rotate-180">
         <span>{title}</span><Icon icon={ChevronDown} size={16} />
       </Button></Accordion.Trigger>
     </Accordion.Header>
-    <Accordion.Content className="topology-section-content"><div className="topology-section-inner">{children}</div></Accordion.Content>
+    <Accordion.Content className="topology-section-content overflow-hidden data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up"><div className="topology-section-inner flow-root pb-1">{children}</div></Accordion.Content>
   </Accordion.Item>;
 }
 
@@ -29,8 +29,8 @@ function ParameterControl({ spec, value }: { spec: typeof PARAMETERS[number]; va
     saveTopologyParameters(); setText(String(topologyValues.get()[spec.key]));
     setNotice(adjusted ? t("topology.adjusted", { label, min: spec.min, max: spec.max, value: topologyValues.get()[spec.key] }) : "");
   }
-  return <Field id={`topology-${spec.key}`} label={<span>{label}{changed && <span className="topology-custom" aria-label={t("topology.custom")}> •</span>}</span>}>
-    <div className="topology-parameter" title={t("topology.defaultValue", { value: spec.default })}>
+  return <Field id={`topology-${spec.key}`} label={<span>{label}{changed && <span className="topology-custom text-brand-accent" aria-label={t("topology.custom")}> •</span>}</span>}>
+    <div className="topology-parameter grid grid-cols-[minmax(0,1fr)_3.875rem_2rem] items-center gap-2 [&_.input]:h-8 [&_.input]:min-h-0 [&_.input]:px-1.5 [&_.input]:py-1 [&_.input]:text-right [&_.input]:tabular-nums [&_.slider]:mx-2" title={t("topology.defaultValue", { value: spec.default })}>
       <Slider label={label} min={spec.min} max={spec.max} step={spec.step} value={value}
         onChange={number => { previewParameter(spec.key, number); setNotice(""); }}
         onCommit={number => { previewParameter(spec.key, number); saveTopologyParameters(); }} />
@@ -43,7 +43,7 @@ function ParameterControl({ spec, value }: { spec: typeof PARAMETERS[number]; va
       <IconButton icon={RotateCcw} label={t("topology.resetOne", { label })} size={16} disabled={!changed}
         onClick={() => { resetTopologyParameter(spec.key); setNotice(""); }} />
     </div>
-    {notice && <p role="status" className="topology-tuner-hint">{notice}</p>}
+    {notice && <p role="status" className="topology-tuner-hint mt-1 mb-3 text-muted-foreground leading-normal">{notice}</p>}
   </Field>;
 }
 
@@ -76,7 +76,7 @@ export default function TuningPanel() {
     savePosition();
     if (event.currentTarget.hasPointerCapture(d.id)) event.currentTarget.releasePointerCapture(d.id);
   }
-  return <aside ref={element} className="topology-tuner" data-collapsed={collapsed || undefined} aria-label={t("topology.tuning")}>
+  return <aside ref={element} className="topology-tuner fixed left-0 top-0 z-60 w-74 max-w-full rounded-md border bg-popover text-popover-foreground shadow-overlay text-xs data-collapsed:w-auto [&>header]:flex [&>header]:items-center [&>header]:gap-1 [&>header]:p-1 [&_strong]:flex-1 [&_strong]:pr-2 [&_strong]:text-xs [&>header>:first-child]:touch-none [&>header>:first-child]:cursor-grab [&>header>:first-child:active]:cursor-grabbing [&_.field]:gap-1 [&_.field]:mt-2 [&_label]:text-xs" data-collapsed={collapsed || undefined} aria-label={t("topology.tuning")}>
     <header>
       <IconButton icon={Grip} label={t("topology.move")} size={16} aria-description={t("topology.moveHint")}
         onPointerDown={event => {
@@ -98,17 +98,17 @@ export default function TuningPanel() {
       <IconButton icon={collapsed ? ChevronDown : ChevronUp} label={t(collapsed ? "topology.expand" : "topology.collapse")} size={16}
         aria-expanded={!collapsed} aria-controls="topology-tuner-body" onClick={() => topologyPanel.set({ ...position.current, collapsed: !collapsed })} />
     </header>
-    {!collapsed && <div className="topology-tuner-body" id="topology-tuner-body">
-      <div className="topology-tuner-option"><span>{t("topology.guides")}</span><Switch label={t("topology.guides")} checked={debug.guides} onChange={guides => topologyDebug.set(old => ({ ...old, guides }))} /></div>
-      <div className="topology-tuner-option"><span>{t("topology.slow")}</span><Switch label={t("topology.slow")} checked={debug.slow} onChange={slow => topologyDebug.set(old => ({ ...old, slow }))} /></div>
-      {debug.guides && <p className="topology-tuner-hint">{t("topology.guideHint")}</p>}
-      <div className="topology-tuner-actions">
+    {!collapsed && <div style={{ maxHeight: "calc(100dvh - 112px)" }} className="topology-tuner-body max-h-dvh overflow-y-auto overscroll-contain px-3 pb-3" id="topology-tuner-body">
+      <div className="topology-tuner-option my-2 flex items-center justify-between gap-2"><span>{t("topology.guides")}</span><Switch label={t("topology.guides")} checked={debug.guides} onChange={guides => topologyDebug.set(old => ({ ...old, guides }))} /></div>
+      <div className="topology-tuner-option my-2 flex items-center justify-between gap-2"><span>{t("topology.slow")}</span><Switch label={t("topology.slow")} checked={debug.slow} onChange={slow => topologyDebug.set(old => ({ ...old, slow }))} /></div>
+      {debug.guides && <p className="topology-tuner-hint mt-1 mb-3 text-muted-foreground leading-normal">{t("topology.guideHint")}</p>}
+      <div className="topology-tuner-actions mt-3 flex flex-wrap gap-1.5">
         <Button onClick={() => { resetTopologyParameter(); setMessage(t("topology.resetDone")); }}>{t("topology.resetAll")}</Button>
         <Button onClick={() => { void copyText(JSON.stringify(parameterDiff(topologyValues.get()), null, 2)).then(() => setMessage(t("topology.copied")), () => setMessage(t("topology.copyFailed"))); }}>{t("topology.export")}</Button>
       </div>
-      <div role="status" className="topology-tuner-status">{message}</div>
+      <div role="status" className="topology-tuner-status text-muted-foreground leading-normal wrap-anywhere not-empty:mt-2">{message}</div>
       <Accordion.Root type="multiple" defaultValue={Object.keys(PARAMETER_GROUPS)}>
-        <TuningSection value="import" title={t("topology.import")} className="topology-import">
+        <TuningSection value="import" title={t("topology.import")} className="topology-import mt-3 border-t pt-2 [&_form]:grid [&_form]:gap-2 [&_textarea]:font-mono [&_textarea]:text-xs">
           <form noValidate onSubmit={event => {
             event.preventDefault(); const result = importParameters(json);
             if (!result.ok) { setImportError(t(`topology.importError.${result.error}`)); element.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus(); return; }
@@ -125,7 +125,7 @@ export default function TuningPanel() {
             <Button type="submit">{t("topology.applyImport")}</Button>
           </form>
         </TuningSection>
-        {Object.entries(PARAMETER_GROUPS).map(([group, label]) => <TuningSection value={group} title={label[lang]} className="topology-parameter-group" key={group}>
+        {Object.entries(PARAMETER_GROUPS).map(([group, label]) => <TuningSection value={group} title={label[lang]} className="topology-parameter-group mt-3 border-t pt-2" key={group}>
           {PARAMETERS.filter(p => p.group === group).map(spec => <ParameterControl key={spec.key} spec={spec} value={values[spec.key]} />)}
         </TuningSection>)}
       </Accordion.Root>

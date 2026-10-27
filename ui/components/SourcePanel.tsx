@@ -35,9 +35,9 @@ export default function SourcePanel({ source, widthControl }: { source: ControlS
     navigation.set(old => ({ ...old, page: 'remote', remoteSourceId: undefined, remoteConnectionId: id }));
   }
   return <>
-    <SectionHeader className="dialog-header source-account-header" level={2} title={<><SrcPlatformChip product={source.product} sources={selected ? [selected] : undefined} /> · {account?.alias ?? source.label}</>}
+    <SectionHeader className="dialog-header flex shrink-0 items-center justify-between gap-4 border-b px-5 py-4 [&_h2]:min-w-0 [&_h2]:flex-1 [&_h2]:text-left [&_h2]:text-base [&_h2]:font-semibold [&_h2]:wrap-anywhere [&_.actions]:shrink-0 source-account-header flex-wrap gap-3 [&_h2]:m-0 [&_h2]:mb-1 [&_h2]:truncate [&_.section-header-copy>.sensitive-value]:text-xs [&_.section-header-copy>.sensitive-value]:text-muted-foreground [&>.actions]:ml-auto" level={2} title={<><SrcPlatformChip product={source.product} sources={selected ? [selected] : undefined} /> · {account?.alias ?? source.label}</>}
       actions={<><PrivacyToggle />{widthControl}<DialogClose asChild><IconButton icon={X} label={t('close')} /></DialogClose></>} />
-    <div className="side-panel-scroll source-panel-content">
+    <div className="side-panel-scroll flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto p-4 [&_h3]:mb-2 [&_h3]:text-sm source-panel-content gap-4">
       {account && <Status tone={account.notifications.state === 'not-bound' ? 'warning' : 'neutral'}>{t(`accounts.notifications.${account.notifications.state}`)}</Status>}
       {entries.length > 1 && <EntityCard title={account?.alias}>
         {entries.map(entry => <SrcAccountRow key={entry.id} source={entry} selected={selected?.id === entry.id}

@@ -1,3 +1,4 @@
+import { cn } from "../lib/utils";
 import {
   useCallback,
   useEffect,
@@ -181,7 +182,7 @@ export default function ElasticPanel({
     const surface = surfaceMotion(node, () => dockRectRef.current ? frameAt(dockRectRef.current, 1, "20px") : ({
       // A shell first opened in portrait must release its explicit size when
       // returning to the landscape dock's CSS-owned viewport height.
-      ...(dock ? { width: "", height: "" } : {}),
+      ...(dock ? { width: "var(--panel-layout-width)", height: "calc(100dvh - 32px)" } : {}),
       transform: sheet ? "translateX(-50%)" : `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
     }), frame => { dockFrame.current = frame; onMotion?.(); onPanelFrame?.(frame); }, !dock && !sheet);
     dockFrame.current = rect;
@@ -193,7 +194,7 @@ export default function ElasticPanel({
       const visual = visualOrigin.current;
       void surface.to({ ...frameAt(rect, 1, getComputedStyle(node).borderRadius), ...surfaceOf(node) }, {
         from: { ...frameAt(source, visual ? 1 : 0, "28px"), ...(visual?.surface ?? {}) },
-        duration: dock ? 0.25 : undefined,
+        duration: dock ? 0.18 : undefined,
       });
       if (visual) {
         if (dock) {
@@ -345,7 +346,10 @@ export default function ElasticPanel({
         />}
         <DialogSurface
           ref={attach}
-          className={`dialog max-w-none elastic-panel ${wide ? "dialog-wide" : ""} ${unframed ? "unframed" : ""} ${headerless ? "headerless" : ""} ${dock ? "activity-panel" : ""} ${centered ? "setup-dialog" : ""}`}
+          className={cn("dialog elastic-panel max-w-none overflow-hidden rounded-workspace bg-background shadow-overlay data-recessed:invisible data-recessed:pointer-events-none data-recessed:opacity-0!",
+            wide && "dialog-wide", unframed && "unframed rounded-sheet border-0 bg-transparent shadow-none", headerless && "headerless",
+            dock && "activity-panel rounded-xl", centered && "setup-dialog rounded-xl data-recessed:visible data-recessed:opacity-100! [--panel-layout-width:min(var(--setup-width),calc(100vw-40px))] has-[.setup-return]:[--panel-layout-width:min(calc(var(--setup-width)*.92),calc((100vw-40px)*.92))]",
+            sheet && "rounded-sheet border-1.5 border-task-attention-ring shadow-sheet")}
           data-panel-dock={dock}
           data-panel-geometry={dockRect ? "portrait" : undefined}
           data-sheet={sheet || undefined}
@@ -357,8 +361,15 @@ export default function ElasticPanel({
           style={
             {
               ...(sheet ? { top: "auto", left: sheetFrame.left, bottom: sheetFrame.bottom, width: sheetFrame.width, "--sheet-host-height": `${sheetFrame.height}px` } : {}),
+              "--panel-border": unframed ? "0px" : "1px",
+              ...(!centered ? { "--panel-layout-width": dock ? "min(var(--preferred-width), calc(100vw - 32px))" : "min(var(--preferred-width), calc(100vw - 40px))" } : {}),
+              width: "var(--panel-layout-width)",
+              maxHeight: centered ? "calc(100dvh - var(--setup-viewport-margin))" : dock ? "calc(100dvh - 32px)" : "calc(100dvh - 40px)",
+              ...(dock ? { height: "calc(100dvh - 32px)" } : {}),
+              ...(sheet ? { width: sheetFrame.width, height: sheetFrame.height * .6, maxHeight: sheetFrame.height * .6 } : {}),
               "--preferred-width": dock && expanded ? "calc(100vw - 32px)" : `${width ?? (wide ? 880 : 800)}px`,
               transform: sheet ? "translateX(-50%)" : `translate(calc(-50% + ${positionRef.current.x}px),calc(-50% + ${positionRef.current.y}px))`,
+              ...(recessed && centered ? { transform: "translate(-50%, calc(-50% - 18px)) scale(.95)" } : {}),
               ...(dockRect ? { ...frameAt(dockRect, 1, '20px'), '--panel-layout-width': `${dockRect.width}px`, '--panel-layout-height': `${dockRect.height}px`, maxHeight: dockRect.height } : {}),
               zIndex: (dock ? 102 : 101) + Math.max(0, layers.indexOf(node!)) * 2,
             } as CSSProperties
@@ -395,12 +406,19 @@ export default function ElasticPanel({
           }}
           onInteractOutside={(e) => e.preventDefault()}
         >
-          <div className="elastic-panel-content">
+          <div className="elastic-panel-content flex min-h-0 flex-none flex-col self-center" style={{
+            width: sheet ? "100%" : "calc(var(--panel-layout-width) - 2 * var(--panel-border))",
+            height: sheet ? "100%" : dockRect ? "calc(var(--panel-layout-height) - 2px)" : dock ? "calc(100dvh - 34px)" : undefined,
+            maxHeight: sheet ? "100%" : dockRect ? "calc(var(--panel-layout-height) - 2px)" : centered ? "calc(100dvh - var(--setup-viewport-margin) - 2 * var(--panel-border))" : dock ? "calc(100dvh - 34px)" : "calc(100dvh - 40px - 2 * var(--panel-border))",
+          }}>
             {unframed || headerless ? (
               <DialogTitle className="sr-only">{title}</DialogTitle>
             ) : (
               <header
-                className="dialog-header"
+                className={cn("dialog-header flex shrink-0 items-center justify-between gap-4 border-0 [&_h2]:min-w-0 [&_h2]:flex-1 [&_h2]:text-lg [&_h2]:wrap-anywhere",
+                  sheet ? "cursor-default p-3" : dock ? "grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-2.5 px-3.5 py-4 cursor-default data-[leading=false]:grid-cols-[minmax(0,1fr)_auto]"
+                    : centered ? "grid grid-cols-[minmax(0,1fr)_auto] gap-2 cursor-default touch-auto pl-setup pr-3.5 pt-setup pb-0"
+                      : "px-7 pt-7 pb-3 select-none touch-none cursor-grab active:cursor-grabbing max-[600px]:px-5 max-[600px]:pt-5")}
                 data-leading={leading ? "true" : "false"}
                 onPointerDown={(e) => {
                   if (
@@ -434,7 +452,7 @@ export default function ElasticPanel({
               >
                 {leading}
                 <DialogTitle>{title}</DialogTitle>
-                <div className="actions">
+                <div className="actions flex flex-wrap items-center gap-2">
                   {actions}
                   <IconButton icon={X} size={20}
                     label={t("close")}
@@ -446,8 +464,13 @@ export default function ElasticPanel({
               </header>
             )}
             {stepBar}
-            <div className="dialog-body">{children}</div>
-            {footer && <footer className="dialog-footer">{footer}</footer>}
+            <div className={cn("dialog-body min-h-0 overflow-auto overscroll-contain",
+              sheet ? "flex overflow-hidden px-2.5" : dock ? "flex flex-1 overflow-hidden p-0" : unframed ? "p-0"
+                : centered ? "flex-initial px-setup py-setup-gap"
+                  : "px-7 pb-7 max-[600px]:px-5 max-[600px]:pb-5",
+              headerless && !dock && !unframed && "pt-7",
+              "has-[>.task-timeline]:flex has-[>.task-timeline]:flex-col has-[>.task-timeline]:overflow-hidden has-[>.usage-overview]:p-3 has-[>.ingress-edit-layer]:flex has-[>.ingress-edit-layer]:overflow-hidden has-[>.ingress-edit-layer]:p-0")}>{children}</div>
+            {footer && <footer className={cn("dialog-footer flex shrink-0 flex-wrap items-center justify-end gap-2 border-t bg-card", sheet ? "px-3 py-2" : dock ? "max-h-1/2 overflow-auto px-3.5 py-3" : centered ? "justify-between gap-3 px-setup py-3.5" : "px-7 pt-3 pb-7 max-[600px]:px-5 max-[600px]:pb-5")}>{footer}</footer>}
           </div>
         </DialogSurface>
       </DialogPortal>

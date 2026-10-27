@@ -4,7 +4,6 @@ import type { AgentPhase, DispatchSummary } from "../../types";
 import { controlSource } from "../../controlSources";
 import { t } from "../../i18n";
 import { PlatformIcon, Icon } from "../ui";
-import "./activity.css";
 
 export function PhaseTile({ phase, running = false, completed = false, paused = false, animated = true, source }: {
   phase: AgentPhase; running?: boolean; completed?: boolean; paused?: boolean; animated?: boolean; source?: DispatchSummary["controlSource"];

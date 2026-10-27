@@ -5,7 +5,6 @@ import { useDispatchCatalog, type CatalogState, type DispatchCatalog } from '../
 import { t } from '../../i18n';
 import { Tooltip } from '../ui';
 import { shortenModelLabel } from './dispatchSpecLabel';
-import './DispatchSpec.css';
 
 export type DispatchSpecRecord =
   | { kind: 'session'; value: Pick<AgentActivitySession | AgentConversation, 'id' | 'source' | 'dispatchSummary'> }
@@ -66,11 +65,11 @@ export function DispatchSpec({ agent, record, resolver, variant = 'panel' }: { a
     return () => { observer.disconnect(); document.fonts?.removeEventListener('loadingdone', check); };
   }, [leading]);
   if (variant === 'inline' && status === 'missing') return null;
-  return <Tooltip text={label}><span className="dispatch-spec" data-variant={variant} data-state={status} tabIndex={0} aria-busy={status === 'loading' || undefined} aria-label={label}>
-    {leading && <span className="dispatch-spec-model" aria-hidden="true">
-      <span ref={measure} className="dispatch-spec-measure">{leading}</span>
-      <span className="dispatch-spec-name">{shortened ? shortModel : leading}</span>
+  return <Tooltip text={label}><span className="dispatch-spec inline-grid grid-cols-[repeat(2,minmax(0,auto))] min-w-0 max-w-full overflow-hidden rounded-full bg-secondary px-2 py-1 text-xs leading-snug whitespace-nowrap align-middle text-muted-foreground data-[variant=inline]:flex-initial data-[variant=inline]:items-center data-[variant=inline]:border data-[variant=inline]:bg-transparent data-[variant=inline]:px-1.25 data-[variant=inline]:py-0 data-[variant=inline]:text-2xs data-[variant=inline]:leading-4 data-[state=unresolved]:text-warning data-[state=error]:text-warning" data-variant={variant} data-state={status} tabIndex={0} aria-busy={status === 'loading' || undefined} aria-label={label}>
+    {leading && <span className="dispatch-spec-model grid min-w-0" aria-hidden="true">
+      <span ref={measure} className="dispatch-spec-measure col-start-1 row-start-1 min-w-0 overflow-hidden invisible">{leading}</span>
+      <span className="dispatch-spec-name col-start-1 row-start-1 min-w-0 overflow-hidden text-ellipsis">{shortened ? shortModel : leading}</span>
     </span>}
-    {!!details.length && <span className="dispatch-spec-details" aria-hidden="true">{leading ? ' · ' : ''}{details.join(' · ')}</span>}
+    {!!details.length && <span className="dispatch-spec-details min-w-0 overflow-hidden text-ellipsis whitespace-pre" aria-hidden="true">{leading ? ' · ' : ''}{details.join(' · ')}</span>}
   </span></Tooltip>;
 }
