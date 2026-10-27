@@ -39,7 +39,24 @@ Empty allowlists are unrestricted. Denylists win. Constraints apply to final val
 
 `query({op:"dispatch_policy",args:{}})` returns the decision view. By default, only installed and enabled Agents appear. all:true includes uninstalled and disabled Agents without changing view. agent filters by ID. A non-Codex agent plus taskId selects an existing session. Reads never start or resume sessions.
 
-Decision rows include availability, used-quota summaries, policy defaults, criteria, compact native model choices, and 30-day history. Missing defaults inherit native configuration. criteriaHash accompanies nonempty criteria. knownCriteriaHash accepts a prior digest string or a map of Agent IDs to hashes, with global for top-level criteria. Matching text is omitted with criteriaUnchanged:true. The same mechanism applies to view:full, where Agent criteria remain under policy. A string omits every criteria block matching that digest. Hashes cover the exact UTF-8 criteria text.
+Decision rows include availability, used-quota summaries, policy defaults, criteria, compact native model choices, and 30-day history. Missing defaults inherit native configuration. criteriaHash accompanies every scope, including empty criteria. knownCriteriaHash accepts a prior digest string or a map of Agent IDs to hashes, with global for top-level criteria. Matching text is omitted with criteriaUnchanged:true. The same mechanism applies to view:full, where Agent criteria remain under policy. A string omits every criteria block matching that digest. Hashes cover the exact UTF-8 criteria text.
+
+`dispatch_policy` returns the active absolute `policyPath` in both views. Use this path for manual editing instead of searching for policy files or backup copies.
+
+`act({op:"dispatch_policy_update",args:{scope,criteria,expectedCriteriaHash}})` replaces only the complete criteria text. scope is `global` or a registered Agent ID, including disabled or uninstalled Agents. criteria may be empty to clear that scope. expectedCriteriaHash is required and must match the exact current UTF-8 criteria hash returned by `dispatch_policy`. Global hashes are top-level; Agent hashes are on decision rows or under policy in full view. Empty criteria also have a hash. Defaults, constraints, and other scopes are preserved. Defaults updates are not supported by this op.
+
+ARC serializes the hash check and write with other policy operations in Core. A mismatch makes no policy or backup write and returns `DISPATCH_POLICY_CONFLICT`, scope, currentCriteriaHash, and a `next` query. Read the current criteria, review concurrent changes, then retry the full replacement with that scope's current hash. Missing required fields and unknown scopes return `INVALID_ARGUMENTS` with a guide correction. Malformed existing policy fails without overwriting it.
+
+A successful update returns scope, criteriaHash, policyPath, and backupPath. Both the atomic policy replacement and the previous-policy backup use two-space indentation and a final newline. The sibling `dispatch-policy.json.bak` retains the previous policy and is replaced by the next successful update's backup. Backup failure prevents policy replacement. External manual editors do not share Core's lock; coordinate manual writes separately. After an uncertain result, read the policy before attempting another replacement.
+
+The op uses the same ingress allowlist authorization as other management writes. Default write presets include it; read-only presets do not. Existing explicit allowlists must enable it. Local Code and authenticated local CLI callers can use:
+
+```sh
+arc cli control guide dispatch_policy_update
+printf '%s' '{"scope":"codex","criteria":"Use current task evidence.","expectedCriteriaHash":"<current criteriaHash>"}' | arc cli control dispatch_policy_update --stdin
+```
+
+Stdin is the args object. The frozen guide/query/act tool schemas and notification surface are unchanged.
 
 Model entries retain native IDs and supported effort ranges; identical choices share one row. Decision accounts retain selection IDs, aliases, defaults, health, saved used-quota windows and reset times. Decision responses omit unsolicited inbox attachments for every profile. A range abbreviates only contiguous known effort levels. Fast labels retain native tier IDs. Policy allow/deny constraints remain visible. Agents with neither criteria nor history collapse to an availability/no-policy row with their quota reference. Shared provider/pool quotas are shown once and referenced from subsequent Agents. Quota percentages are used percentages, never remaining percentages.
 

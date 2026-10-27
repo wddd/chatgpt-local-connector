@@ -164,6 +164,17 @@ impl AgentHost {
         }
         Ok(())
     }
+    pub(crate) fn update_dispatch_policy(&self, args: &Value) -> Result<Value> {
+        let scope = string(args, "scope");
+        if scope != "global" && !self.drivers.contains_key(scope) {
+            return Err(crate::egress::invalid_arguments(
+                "dispatch_policy_update",
+                "/scope",
+                "Use global or a registered Agent ID from dispatch_policy with all:true.",
+            ));
+        }
+        crate::dispatch_policy::update(args)
+    }
     pub async fn set_enabled(self: &Arc<Self>, body: &Value) -> Result<Value> {
         let agent = string(body, "agent");
         if !self.drivers.contains_key(agent) {

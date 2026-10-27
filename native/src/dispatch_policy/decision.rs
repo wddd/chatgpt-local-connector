@@ -3,9 +3,6 @@ use crate::*;
 use std::collections::BTreeMap;
 
 fn criteria(row: &mut Value, text: &str, key: &str, args: &Value) {
-    if text.is_empty() {
-        return;
-    }
     let digest = hash(text);
     row["criteriaHash"] = json!(digest);
     if args["knownCriteriaHash"].as_str() == Some(digest.as_str())

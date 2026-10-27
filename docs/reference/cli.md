@@ -73,6 +73,24 @@ printf '%s' '{"prompt":"Do not call tools. Reply ARC_ACCEPTANCE_OK.","mode":"rea
 printf '%s' '{"timeoutMs":1000}' | arc cli control inbox_wait --stdin
 ```
 
+Read `arc cli control dispatch_policy` for criteria hashes and the active `policyPath`.
+Use `all:true` when editing an uninstalled or disabled Agent. Agent hashes appear on
+decision rows or under `policy` in the full view; the global hash is top-level.
+Empty criteria also return a hash. Replace a scope's complete criteria with:
+
+```sh
+arc cli control guide dispatch_policy_update
+printf '%s' '{"scope":"codex","criteria":"Use current task evidence.","expectedCriteriaHash":"<current criteriaHash>"}' | arc cli control dispatch_policy_update --stdin
+```
+
+`scope` is `global` or a registered Agent ID. `criteria` may be empty to clear it.
+`expectedCriteriaHash` is required. `DISPATCH_POLICY_CONFLICT` carries
+`currentCriteriaHash` and a `next` read; review the current criteria before retrying
+with that hash. Success returns `scope`, `criteriaHash`, `policyPath`, and
+`backupPath`. ARC atomically saves formatted JSON and retains the previous policy
+in `dispatch-policy.json.bak`. Defaults, constraints and other scopes are preserved.
+After an uncertain result, read the policy before attempting another replacement.
+
 Dispatch defaults to `purpose:"self-test"` and `notify:null`. Explicit stdin
 values override these defaults. Archiving ended self-test threads is optional and
 is not an acceptance completion step. Keep traces for observation or archive them

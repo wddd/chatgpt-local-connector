@@ -3,6 +3,7 @@ use crate::kernel::file_cache::{self, load};
 use crate::*;
 use serde::{Deserialize, Serialize};
 mod decision;
+static POLICY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 static RECORDS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[derive(Default, Deserialize, Serialize)]
@@ -78,8 +79,10 @@ fn check_known(value: Option<&str>, allow: &[String], deny: &[String], field: &s
     }
 }
 fn read() -> Result<Policies> {
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _guard = LOCK.lock().map_err(|e| e.to_string())?;
+    let _guard = POLICY_LOCK.lock().map_err(|e| e.to_string())?;
+    read_locked().map(|(policies, _)| policies)
+}
+fn read_locked() -> Result<(Policies, Value)> {
     let path = root().join("dispatch-policy.json");
     if !path.exists() {
         let mut bytes =
@@ -87,7 +90,8 @@ fn read() -> Result<Policies> {
         bytes.push(b'\n');
         save_bytes(&path, &bytes)?;
     }
-    let policies: Policies = serde_json::from_value(load(&path)?)
+    let value = load(&path)?;
+    let policies: Policies = serde_json::from_value(value.clone())
         .map_err(|e| format!("INVALID_DISPATCH_POLICY: dispatch-policy.json: {e}"))?;
     if policies
         .codex
@@ -106,8 +110,54 @@ fn read() -> Result<Policies> {
     {
         return Err("INVALID_DISPATCH_POLICY: model and effort must be nonempty or null".into());
     }
-    Ok(policies)
+    Ok((policies, value))
 }
+/// Serialize criteria compare-and-replace with other policy operations in Core.
+pub(crate) fn update(args: &Value) -> Result<Value> {
+    let _guard = POLICY_LOCK.lock().map_err(|e| e.to_string())?;
+    let (policies, previous) = read_locked()?;
+    let scope = string(args, "scope");
+    let current = match scope {
+        "global" => policies.criteria.as_str(),
+        "codex" => policies.codex.criteria.as_str(),
+        agent => policies
+            .agents
+            .get(agent)
+            .map(|p| p.criteria.as_str())
+            .unwrap_or(""),
+    };
+    let current_hash = hash(current);
+    if args["expectedCriteriaHash"] != current_hash {
+        return Err(json!({
+            "code":"DISPATCH_POLICY_CONFLICT","op":"dispatch_policy_update",
+            "scope":scope,"currentCriteriaHash":current_hash,
+            "message":"Criteria changed. Read dispatch_policy, review the current criteria, then retry dispatch_policy_update with expectedCriteriaHash set to currentCriteriaHash.",
+            "next":{"via":"query","op":"dispatch_policy","args":if scope == "global" {json!({})} else {json!({"agent":scope,"all":true})},
+                "hint":"Review the current criteria before retrying the full replacement with its criteriaHash."}
+        }).to_string());
+    }
+    let path = root().join("dispatch-policy.json");
+    let mut updated = previous.clone();
+    let criteria = string(args, "criteria");
+    if scope == "global" {
+        updated["criteria"] = json!(criteria);
+    } else {
+        if updated.get(scope).is_none() {
+            updated[scope] = json!({});
+        }
+        updated[scope]["criteria"] = json!(criteria);
+    }
+    let formatted = |value: &Value| -> Result<Vec<u8>> {
+        let mut bytes = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
+        bytes.push(b'\n');
+        Ok(bytes)
+    };
+    let backup = root().join("dispatch-policy.json.bak");
+    save_bytes(&backup, &formatted(&previous)?)?;
+    save_bytes(&path, &formatted(&updated)?)?;
+    Ok(json!({"scope":scope,"criteriaHash":hash(criteria),"policyPath":path,"backupPath":backup}))
+}
+
 fn check(value: &str, allow: &[String], deny: &[String], field: &str) -> Result<()> {
     if deny.iter().any(|v| v == value) || (!allow.is_empty() && !allow.iter().any(|v| v == value)) {
         return Err(format!("DISPATCH_POLICY_DENIED: {field}={value}; read query dispatch_policy for allowed choices"));
@@ -382,7 +432,7 @@ pub(crate) async fn query(
         }
     }
     Ok(decision::present(
-        json!({"observedAt":now(),"criteria":policies.criteria,"agents":rows}),
+        json!({"observedAt":now(),"policyPath":root().join("dispatch-policy.json"),"criteria":policies.criteria,"agents":rows}),
         args,
     ))
 }
