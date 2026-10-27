@@ -1,0 +1,20 @@
+{
+  "theme": "dark",
+  "language": "zh-CN",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "remoteLink": {},
+  "connectionSetup": {
+    "method": "create",
+    "step": "address"
+  },
+  "relayProgress": {
+    "phase": "login",
+    "action": "create",
+    "jobId": "fixture-job",
+    "relayId": "relay-host",
+    "loginUrl": "https://login.example.test/private"
+  }
+}

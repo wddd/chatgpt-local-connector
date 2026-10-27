@@ -9,7 +9,7 @@ export function SrcPlatformChip({ product, sources, compact, onOpen, ...props }:
   const info = controlSource(product), live = sources?.filter(source => source.product === product);
   const state = live?.length && live.every(source => source.state === live[0].state && !!source.pendingSwitch === !!live[0].pendingSwitch)
     ? live[0].pendingSwitch ? 'pending-switch' : live[0].state : undefined;
-  return <Reference {...props} onOpen={info ? onOpen : undefined}><PlatformIcon role="source" platform={product} />
+  return <Reference {...props} onOpen={info ? onOpen : undefined}><PlatformIcon role="source" platform={product} size={16} />
     <span>{(compact ? info?.shortName : info?.displayName) ?? product}</span>{live?.length ? <StateBadge variant="dot" presentation={statePresentation('source', state)} /> : null}
   </Reference>;
 }

@@ -13,10 +13,10 @@ export function SrcPlatformCard({ product, sources, accounts, ingresses, onSourc
 }) {
   const info = controlSource(product), entries = sources.filter(source => source.product === product);
   const count = new Set(entries.map(source => accounts.find(account => account.sources.includes(source.id))?.id ?? source.id)).size;
-  return <EntityCard className="object-card" title={info?.displayName ?? product} icon={<PlatformIcon role="source" platform={product} />}
+  return <EntityCard className="[&>.section-header]:flex-wrap [&>.section-header>.section-header-copy]:basis-30 [&>.section-header>.actions]:max-w-full" title={info?.displayName ?? product} icon={<PlatformIcon role="source" platform={product} size={20} />}
     headerActions={<>{headerActions}{onAdd && <Button disabled={loading} onClick={onAdd}>{t('accounts.add')}</Button>}</>} aria-busy={loading}>
     {loading && <Loading />}{error && <Notice>{error}</Notice>}
-    <span className="muted">{t('accounts.count', { count })}</span>
+    <span className="text-muted-foreground">{t('accounts.count', { count })}</span>
     {entries.map(source => <SrcAccountRow key={source.id} source={source} account={accounts.find(account => account.sources.includes(source.id) && entries.filter(entry => account.sources.includes(entry.id)).length === 1)}
       ingress={ingresses.find(ingress => ingress.id === source.ingressId)} onOpen={onSource ? () => onSource(source) : undefined} onConnection={onConnection} />)}
     {!entries.length && !loading && <Empty>{t('source.empty')}</Empty>}

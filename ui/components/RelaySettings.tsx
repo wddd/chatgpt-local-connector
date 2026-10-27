@@ -33,7 +33,7 @@ export function RelaySettings({ relay, version, refresh }: { relay: Relay; versi
     } catch { setError(t("connect.actionFailed")); return false; }
     finally { setBusy(""); }
   }
-  return <section className="relay-settings">
+  return <section className="grid min-w-0 gap-3 border-b border-border py-4 empty:hidden">
     {ingress?.state !== "ready" && !operation && <Button disabled={!!busy} onClick={() => void action(relay.url ? "connect" : "redeploy")}>{t("retry")}</Button>}
     {relay.owner && relay.workerVersion !== version && !operation && <Notice action={<Button disabled={!!busy} onClick={() => void action("redeploy")}>{t("connect.updateRelay")}</Button>}>{t("connect.updateAvailable")}</Notice>}
     {operation && <>

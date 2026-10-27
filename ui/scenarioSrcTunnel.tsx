@@ -63,7 +63,7 @@ export default function SrcTunnelFixture() {
     </section>
     <TunnelCard ingress={ingress} sources={[source, second]} busy={busy} error={readError ? 'Synthetic refresh failure' : undefined} />
     <TunnelCard ingress={{ ...ingress, name: 'Missing address', url: '', state: 'error', error: 'Synthetic transport failure' }} sources={[]} />
-    <section aria-label="Product choices" className="object-choice">
+    <section aria-label="Product choices" className="min-w-0 [&_.entity-row]:p-0 [&_.entity-row]:flex-1">
       <SingleChoice cards label="Product" value={choice} onChange={setChoice} options={['claude', 'chatgpt'].map(product => ({ value: product, label: product, content: <SrcPlatformRow product={product} /> }))} />
     </section>
     <section aria-label="Source nodes" className="shell-fixture-states">

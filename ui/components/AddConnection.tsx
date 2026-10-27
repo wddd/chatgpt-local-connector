@@ -95,9 +95,9 @@ export default function AddConnection({ options, onClose, onAdded, returnFocus }
       {step === "method" && <Button variant="primary" disabled={!!reason(method)} onClick={() => { setError(""); setStep("address"); if (method === "create") void startRelay(); }}>{t(method === "create" ? "setup.deploy" : "source.next")}{method === "create" && <Icon icon={ExternalLink} />}</Button>}
       {step === "address" && !operation && <Button type="submit" form={formId} variant="primary" busy={busy || configBusy} disabled={!!reason(method) || !!target && (!local || !local[target === "code" ? "codeAvailable" : "desktopAvailable"] || revoked)}>{t(editing ? "setup.saveStart" : method === "create" ? "setup.deploy" : "source.next")}</Button>}
       {waiting && <Loading label={t("connect.inProgress")} />}
-      {step === "success" && <>{!(options.forSource || options.forSwitch) && <Button onClick={onClose}>{t("source.done")}</Button>}<span className="spacer" /><Button variant="primary" disabled={!created || busy} onClick={() => { if (!createdId) return; onAdded(createdId); if (!(options.forSource || options.forSwitch)) openOnboarding("product", { ingressId: createdId, fixedConnection: true }); }}>{t((options.forSource || options.forSwitch) ? "setup.continueConnection" : "setup.addSourceForConnection")}</Button></>}
+      {step === "success" && <>{!(options.forSource || options.forSwitch) && <Button onClick={onClose}>{t("source.done")}</Button>}<span className="flex-1" /><Button variant="primary" disabled={!created || busy} onClick={() => { if (!createdId) return; onAdded(createdId); if (!(options.forSource || options.forSwitch)) openOnboarding("product", { ingressId: createdId, fixedConnection: true }); }}>{t((options.forSource || options.forSwitch) ? "setup.continueConnection" : "setup.addSourceForConnection")}</Button></>}
     </>}>
-    <div className={`setup-content ${step === "method" ? "setup-methods" : ""}`}>
+    <div className="flex min-w-0 flex-col gap-4 [&_p]:m-0 [&_h3]:m-0">
       {error && <Notice>{protect(error)}</Notice>}
       {step === "method" && <SingleChoice cards label={t("connectionMethod")} value={method} onChange={value => { setMethod(value as ConnectionMethod); setError(""); }} options={methods.filter(option => !option.disabled)} />}
       {["https", "openai-tunnel"].includes(method) && <div hidden={!editing}><IngressDialog key={method} setupFormId={formId} connectionOnly initialProduct={method === "openai-tunnel" ? "chatgpt" : options.product ?? "custom"}
@@ -107,10 +107,10 @@ export default function AddConnection({ options, onClose, onAdded, returnFocus }
       {step === "address" && !editing && (operation ? <>
         {progressError && <Notice>{t("connect.readFailed")}</Notice>}
         <DeploymentProgressCard progress={progress} busy={busy} account={account} setAccount={setAccount} onRetry={() => void startRelay(true)} onCancel={() => void perform(async () => { await api("relay/cancel", "POST"); setOperation(undefined); })} />
-      </> : <form className="setup-form" id={formId} onSubmit={e => { e.preventDefault(); void configure(); }}>
+      </> : <form className="flex min-w-0 flex-col gap-4" id={formId} onSubmit={e => { e.preventDefault(); void configure(); }}>
         {method === "join" && <>
           <Field id={`${formId}-link`} label={t("connect.sharedLink")}><SensitiveInput id={`${formId}-link`} required type="url" value={link} onChange={e => setLink(e.target.value)} /></Field>
-          <Field id={`${formId}-device`} label={t("setup.deviceName")}><Input id={`${formId}-device`} required value={deviceName} onChange={e => setDeviceName(e.target.value)} /></Field><p className="muted">{t("setup.hostSees")}</p>
+          <Field id={`${formId}-device`} label={t("setup.deviceName")}><Input id={`${formId}-device`} required value={deviceName} onChange={e => setDeviceName(e.target.value)} /></Field><p className="text-muted-foreground">{t("setup.hostSees")}</p>
         </>}
         {method === "create" && <p>{t("connection.relayLogin")}</p>}
         {target && <>
@@ -121,7 +121,7 @@ export default function AddConnection({ options, onClose, onAdded, returnFocus }
           {revoked && <Notice tone="warning">{t("source.revokedConnection")}</Notice>}
         </>}
       </form>)}
-      {step === "success" && <div className="setup-success"><span className="setup-success-mark"><Icon icon={Check} size={20} /></span><h3>{t("connection.added")}</h3>
+      {step === "success" && <div className="flex min-h-60 min-w-0 flex-col items-center justify-center gap-3 text-center [&>h3]:mt-2 [&>h3]:text-lg [&>p]:text-sm [&>p]:text-muted-foreground [&>.field]:grid-cols-1 [&>.field]:mt-4 [&>.field]:w-full [&>.field]:text-start [&>.entity-card]:w-full [&>.entity-card]:text-start"><span className="grid size-12 shrink-0 place-items-center rounded-full bg-success-soft text-success"><Icon icon={Check} size={20} /></span><h3>{t("connection.added")}</h3>
         {created && <TunnelCard ingress={created} sources={sources.filter(s => s.state !== "revoked" && !isPendingSource(s, status?.ingresses ?? []))} />}
         {target && <p>{t("connect.restartClaude")}</p>}
         {!created && <Button busy={busy} onClick={() => void perform(refreshConnector)}>{t("retry")}</Button>}

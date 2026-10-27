@@ -10,6 +10,6 @@ export function TunnelChip({ ingress, missingName, onOpen, ...props }: Omit<Comp
   return <Reference {...props} referenceId={ingress?.id} onOpen={ingress ? onOpen : undefined}>
     {ingress && <Icon icon={connectionIcon(ingress)} />}
     <span>{ingress?.name ?? missingName ?? t('source.connectionRemoved')}</span>
-    {ingress && <><span className="object-chip-kind">{t(`source.kind.${connectionKind(ingress)}`)}</span><StateBadge variant="dot" presentation={statePresentation('connection', ingressState(ingress))} /></>}
+    {ingress && <><span className="text-xs text-muted-foreground">{t(`source.kind.${connectionKind(ingress)}`)}</span><StateBadge variant="dot" presentation={statePresentation('connection', ingressState(ingress))} /></>}
   </Reference>;
 }

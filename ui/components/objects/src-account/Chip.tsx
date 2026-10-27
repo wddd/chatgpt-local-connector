@@ -10,7 +10,7 @@ export function SrcAccountChip({ source, account, provenance, onOpen, ...props }
 }) {
   const label = account?.alias ?? source?.label ?? provenance?.label ?? provenance?.kind ?? '—';
   return <Reference {...props} onOpen={source ? onOpen : undefined}>
-    <PlatformIcon role="source" platform={source?.product ?? provenance?.kind ?? ''} />
+    <PlatformIcon role="source" platform={source?.product ?? provenance?.kind ?? ''} size={16} />
     <span>{label}</span>{source && <StateBadge variant="dot" presentation={statePresentation('source', source.pendingSwitch ? 'pending-switch' : source.state)} />}
   </Reference>;
 }

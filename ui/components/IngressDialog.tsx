@@ -288,7 +288,7 @@ export default function IngressDialog({
   const nameField = (<FormField
             id="ingress-name"
             label={t(connectionOnly ? "setup.connectionName" : "sourceName")}
-            help={!connectionOnly && preset?.docs[0] && <a className="form-subtitle" href={preset.docs[0]} onClick={(e) => { e.preventDefault(); void openUrl(preset.docs[0]!).catch(e => setError(String(e))); }}>{t("officialSetup")}</a>}
+            help={!connectionOnly && preset?.docs[0] && <a className="m-0 text-sm text-muted-foreground" href={preset.docs[0]} onClick={(e) => { e.preventDefault(); void openUrl(preset.docs[0]!).catch(e => setError(String(e))); }}>{t("officialSetup")}</a>}
             error={errors.name}
           >
             <Input
@@ -332,7 +332,7 @@ export default function IngressDialog({
       }
     >
       {!selected ? (
-        <div className="object-choice" ref={pickerRef}>
+        <div className="min-w-0 [&_.entity-row]:p-0 [&_.entity-row]:flex-1" ref={pickerRef}>
           <SingleChoice tiles label={t('source.product')} value="" onChange={choose} options={[
             ...curatedSources.map(p => ({ value: p.id, label: p.displayName, content: <SrcPlatformRow product={p.id} /> })),
             { value: 'custom', label: t('customControlSource'), content: <SrcPlatformRow product="custom" label={t('customControlSource')} /> },
@@ -342,7 +342,7 @@ export default function IngressDialog({
         <form
           onChangeCapture={e => { const id = (e.target as HTMLElement).id; if (id.startsWith("ingress-")) dirty.current.add(id.slice(8)); }}
           id={setupFormId}
-          className={`form ${setupFormId ? "connection-config-form" : ""}`}
+          className="grid min-w-0 gap-5"
           ref={formRef}
           onSubmit={(e) => {
             e.preventDefault();
@@ -350,7 +350,7 @@ export default function IngressDialog({
           }}
         >
           <FormSection>
-          {!connectionOnly && <p className="form-subtitle">{t(selected === "claude" ? "wakeClaude" : selected === "chatgpt" ? "wakeChatgpt" : "wakeOther")}</p>}
+          {!connectionOnly && <p className="m-0 text-sm text-muted-foreground">{t(selected === "claude" ? "wakeClaude" : selected === "chatgpt" ? "wakeChatgpt" : "wakeOther")}</p>}
           {https &&
             auth === "bearer" &&
             preset &&
@@ -365,7 +365,7 @@ export default function IngressDialog({
               error={errors.source}
             >
               <Input
-                className="mono"
+                className="font-mono"
                 id="ingress-source"
                 value={source}
                 onChange={(e) => setSource(e.target.value)}

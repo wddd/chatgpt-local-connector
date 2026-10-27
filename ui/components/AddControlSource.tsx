@@ -99,7 +99,7 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
   const footer = <>
     {flow.step === "approval" && waiting?.status === "pending" && <><Button type="submit" form={`approval-${waiting.id}`} value="deny" disabled={busy}>{t("oauthDeny")}</Button><Button variant="primary" type="submit" form={`approval-${waiting.id}`} value="allow" busy={busy}>{t("oauthAllow")}</Button></>}
     {flow.step !== "product" && flow.step !== "success" && flow.step !== "approval" && <Button variant="ghost" disabled={busy} onClick={() => step(flow.step === "address" && flow.fixedConnection ? "product" : steps[Math.max(0, steps.indexOf(flow.step) - 1)])}>{t("back")}</Button>}
-    {flow.step === "product" && <><span className="spacer" /><Button variant="primary" busy={busy} disabled={!flow.source || !!(flow.fixedConnection && current && connectionDisabledReason(current, product, sources, flow.localTarget))} onClick={() => flow.fixedConnection && flow.ingressId ? void selectConnection(flow.ingressId) : step("connection")}>{t("source.next")}</Button></>}
+    {flow.step === "product" && <><span className="flex-1" /><Button variant="primary" busy={busy} disabled={!flow.source || !!(flow.fixedConnection && current && connectionDisabledReason(current, product, sources, flow.localTarget))} onClick={() => flow.fixedConnection && flow.ingressId ? void selectConnection(flow.ingressId) : step("connection")}>{t("source.next")}</Button></>}
     {flow.step === "connection" && <Button variant="primary" busy={busy} disabled={!existing.some(i => i.id === route)} onClick={() => void selectConnection(route)}>{t("source.next")}</Button>}
     {flow.step === "address" && <Loading label={t(current?.auth === "oauth" ? "connect.waitClient" : "source.waitConnection", { name })} />}
     {flow.step === "success" && <><Button variant="ghost" disabled={busy} onClick={() => void finish(true)}>{t("setup.addAnother")}</Button><Button variant="primary" busy={busy} onClick={() => void finish()}>{t("source.done")}</Button></>}
@@ -109,11 +109,11 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
     initialFocus={flow.step === "product" && flow.focusGroup ? `platform-${flow.focusGroup}` : undefined}
     returnFocus={returnFocus}
     footer={footer}>
-    <div className="setup-content">
+    <div className="flex min-w-0 flex-col gap-4 [&_p]:m-0 [&_h3]:m-0">
     {error && <Notice>{error}</Notice>}
     {flow.step === "success" && offeredProfile && <Field label={t("source.profile")}><SingleChoice label={t("source.profile")} value={profile} disabled={busy} onChange={value => onboarding.set(old => old && { ...old, profile: value as RemoteProfile })} options={remoteProfiles.map(value => ({ value, label: t(`source.profile.${value}`) }))} /></Field>}
     {flow.step === "product" && <>
-      {(["remote", "local"] as const).map(group => <section className="platform-group object-choice" key={group}>
+      {(["remote", "local"] as const).map(group => <section className="grid min-w-0 gap-2 [&>h3]:text-xs [&>h3]:font-normal [&>h3]:text-muted-foreground min-w-0 [&_.entity-row]:p-0 [&_.entity-row]:flex-1" key={group}>
         <h3 id={`platform-${group}`} tabIndex={-1}>{t(`setup.group.${group}`)}</h3>
         <SingleChoice tiles label={t(`setup.group.${group}`)} value={selectedProduct} onChange={chooseProduct}
           options={products.filter(id => (id.startsWith("local-") || id === "custom") === (group === "local")).map(id => {
@@ -122,29 +122,29 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
             return { value: id, label: productName(id), disabled: !!reason, description: reason, content: <SrcPlatformRow product={id.startsWith("local-") ? "claude" : id} label={productName(id)} constraint={reason || undefined} /> };
           })} />
       </section>)}
-      {flow.fixedConnection && current && <p className="muted">{t("setup.via", { name: current.name })}</p>}
+      {flow.fixedConnection && current && <p className="text-muted-foreground">{t("setup.via", { name: current.name })}</p>}
     </>}
     {flow.step === "connection" && <>
-      <p className="muted">{t("setup.connectionPrompt", { name: productName(selectedProduct || "custom") })}</p>
-      {visible.length > 0 && <div className="object-choice"><SingleChoice cards label={t("source.connections")} value={route} onChange={setRoute} disabled={busy} options={visible.map(i => {
+      <p className="text-muted-foreground">{t("setup.connectionPrompt", { name: productName(selectedProduct || "custom") })}</p>
+      {visible.length > 0 && <div className="min-w-0 [&_.entity-row]:p-0 [&_.entity-row]:flex-1"><SingleChoice cards label={t("source.connections")} value={route} onChange={setRoute} disabled={busy} options={visible.map(i => {
         const carried = sources.filter(s => s.ingressId === i.id && !isPendingSource(s, entries) && s.state !== "revoked");
         const reason = connectionDisabledReason(i, product, sources, flow.localTarget);
         return { value: i.id, label: i.name, disabled: !!reason,
           description: reason || undefined, content: <TunnelRow ingress={i} sources={carried} constraint={reason || undefined} /> };
       })} /></div>}
 
-      {!existing.length && <div className="setup-empty">
+      {!existing.length && <div className="grid min-w-0 gap-3 [&>h3]:text-sm [&>.button]:h-auto [&>.button]:justify-start [&>.button]:whitespace-normal [&>.button]:px-4 [&>.button]:py-3">
         <h3>{t("setup.noConnection")}</h3>
         {flow.localTarget ? <Button onClick={() => newConnection(flow.localTarget === "code" ? "local-code" : "local-desktop")}>{t("connection.localSetup", { name: productName(selectedProduct) })}</Button> : <>
-          <Button className="setup-recommended" onClick={() => newConnection("create")}>{t("source.createRelay")}<span className="setup-badge">{t("setup.recommended")}</span></Button>
+          <Button className="border-primary" onClick={() => newConnection("create")}>{t("source.createRelay")}<span className="ms-auto rounded-full bg-secondary px-2 py-0.5 text-xs text-brand-accent">{t("setup.recommended")}</span></Button>
           <Button onClick={() => newConnection("join")}>{t("source.pasteRelay")}</Button>
           <Button onClick={() => newConnection("https")}>{t("setup.ownAddress")}</Button>
         </>}
       </div>}
-      {existing.length > 0 && <Button className="setup-new" data-add-connection disabled={busy} onClick={() => newConnection()}><Icon icon={Plus} /><span>{t("source.newConnection")}<small>{t("setup.newConnectionHint")}</small></span></Button>}
+      {existing.length > 0 && <Button className="h-auto w-full justify-start gap-3 whitespace-normal border-dashed px-4 py-3 text-start [&>span]:min-w-0 [&_small]:mt-0.5 [&_small]:block [&_small]:text-xs [&_small]:font-normal [&_small]:text-muted-foreground" data-add-connection disabled={busy} onClick={() => newConnection()}><Icon icon={Plus} /><span>{t("source.newConnection")}</span></Button>}
     </>}
     {flow.step === "address" && (current ? <>
-      {current.transport === "local" ? <p>{t("connect.restartClaude")}</p> : <ol className="setup-instructions">
+      {current.transport === "local" ? <p>{t("connect.restartClaude")}</p> : <ol className="m-0 grid grid-cols-1 list-decimal gap-4 ps-5 marker:text-muted-foreground [&>li]:min-w-0 [&>li]:ps-2 [&>li>div]:flex [&>li>div]:min-w-0 [&>li>div]:flex-col [&>li>div]:gap-2 [&_strong]:text-sm [&_p]:text-sm [&_p]:text-muted-foreground [&_.button]:self-start">
         <li><div><strong>{t("source.copyAddress")}</strong><Address value={current.url || current.config.tunnelId} label={t("source.copyAddress")} />
           {credentials?.ingressId === current.id && <Field label={t("source.bearerHeader")}><Address password value={`Bearer ${credentials.bearerToken}`} label={t("source.bearerHeader")} /></Field>}</div></li>
         <li><div><strong>{t("setup.configureProduct", { name })}</strong><p>{info?.setup?.path[locale.get()] ?? t("connect.customPath")}</p>
@@ -160,7 +160,7 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
       {waiting && current ? <ApprovalCard key={waiting.id} request={waiting} ingress={current} product={product} inline onBusy={setBusy} onDecided={allow => { if (!allow) retry(); }} /> : <Notice tone="warning">{t("connect.requestExpired")}</Notice>}
       {(!waiting || ["denied", "expired"].includes(waiting.status)) && <Button onClick={retry}>{t("retry")}</Button>}
     </>}
-    {flow.step === "success" && <div className="setup-success"><span className="setup-success-mark"><Icon icon={Check} size={20} /></span>
+    {flow.step === "success" && <div className="flex min-h-60 min-w-0 flex-col items-center justify-center gap-3 text-center [&>h3]:mt-2 [&>h3]:text-lg [&>p]:text-sm [&>p]:text-muted-foreground [&>.field]:grid-cols-1 [&>.field]:mt-4 [&>.field]:w-full [&>.field]:text-start [&>.entity-card]:w-full [&>.entity-card]:text-start"><span className="grid size-12 shrink-0 place-items-center rounded-full bg-success-soft text-success"><Icon icon={Check} size={20} /></span>
       <h3>{t("source.added", { name: added?.label ?? name })}</h3><p>{t("setup.via", { name: current?.name ?? t("source.connectionRemoved") })}</p>
       <Field label={t("setup.tryPrompt", { name })}><Address value={t("setup.firstPrompt")} label={t("copy")} /></Field>
     </div>}

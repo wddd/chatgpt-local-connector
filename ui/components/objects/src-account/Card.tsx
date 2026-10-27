@@ -18,12 +18,12 @@ export function SrcAccountCard({ source, account, product, ingress, ingresses = 
   const connections = ingresses.length ? ingresses : ingress ? [ingress] : [];
   const pending = source ? connections.flatMap(connection => (connection.oauth?.pending ?? []).filter(request => request.status === 'pending' && (request.id === source.pendingSwitch?.requestId || request.sourceId === source.id || request.switchSourceId === source.id)).map(request => ({ connection, request }))) : [];
   const currentPending = pending.find(({ connection, request }) => connection.id === (source?.pendingSwitch?.ingressId ?? source?.ingressId) && request.id === (source?.pendingSwitch?.requestId ?? source?.credential.grantId));
-  return <EntityCard className="object-card" aria-busy={loading} icon={<PlatformIcon role="source" platform={source?.product ?? product ?? ''} />}
+  return <EntityCard className="[&>.section-header]:flex-wrap [&>.section-header>.section-header-copy]:basis-30 [&>.section-header>.actions]:max-w-full" aria-busy={loading} icon={<PlatformIcon role="source" platform={source?.product ?? product ?? ''} size={20} />}
     title={account?.alias ?? source?.label ?? t('accounts.identityUnavailable')}
     headerActions={<>{source && <StateBadge presentation={statePresentation('source', source.pendingSwitch ? 'pending-switch' : source.state)} />}{headerActions}</>} footer={footer} danger={danger}>
     {error && <Notice>{error}</Notice>}
     {account ? <AccountIdentity account={account} />
-      : <p role="status" className="muted">{t(loading ? 'loading' : 'accounts.identityUnavailable')}</p>}
+      : <p role="status" className="text-muted-foreground">{t(loading ? 'loading' : 'accounts.identityUnavailable')}</p>}
     {identity && identity.state !== 'resolved' && <Notice tone="warning">{t(identity.state === 'conflict' ? 'accounts.identityConflict' : 'accounts.unidentified')}</Notice>}
     {source && <>
       <FactList missing={{ placeholder: '—' }} items={[

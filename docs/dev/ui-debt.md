@@ -22,9 +22,10 @@ Accounts, AGENT catalog/profile/identity objects and quota surroundings compose 
 
 | Area | Feature owners | Remaining styles |
 | --- | --- | --- |
-| Remote link, setup and Relay | `RemoteLinkPage.tsx`, `SourceConnection.tsx`, `IngressDialog.tsx`, `AddConnection.tsx`, `SetupDialog.tsx`, `RelayHosting.tsx`, `RelaySettings.tsx`; SRC/TUNNEL/relay/request objects | Setup, connection and relay selectors in `ui/product.css`; relevant rules in `ui/components/objects/objects.css` and request/deployment stylesheets |
 | Task and activity content | `TasksPage.tsx`, `objects/task/Card.tsx`, `ActivityTimeline.tsx`, `TimelineEntries.tsx`, `TaskOutcome.tsx`, `TaskChanges.tsx`, `TaskOwnership.tsx`; TASK and interaction objects | `ui/components/TaskDetail.css`, `ui/components/activity/activity.css`, task/timeline rules in `ui/product.css`, TASK object CSS; task-bubble styling remains brand-owned |
 | Workspace and global shell | `ElasticPanel.tsx`, workspace headers/dock, `ui/components/ui/HoverPreviewGroup.tsx`, `AnimatedSize.tsx` | Global defaults and dialog/workspace rules in `ui/style.css` and `ui/product.css`, the remaining hover/size shared CSS; topology geometry is outside layout migration |
+
+Remote-link pages, setup content, Relay hosting, SRC/TUNNEL objects, authorization requests and deployment progress use shared primitives and Tailwind. Setup dialog geometry and shared object rules still consumed by other areas remain with their listed owners.
 
 File names in the feature-owner column are relative to `ui/components/` unless another prefix is shown. Shared `ui/product.css` and `ui/style.css` need a single integration owner when areas are worked in parallel; feature lanes remove only their named selector families. Primitive and form/shell CSS has moved into Tailwind; these remaining areas do not authorize redesigning topology, quota or notification behavior.
 
@@ -41,7 +42,7 @@ Counts are outstanding violations per file and rule, sorted by count.
 <!-- ui-debt:start -->
 | File | Rule | Count |
 | --- | --- | ---: |
-| ui/product.css | shared-layout-css | 348 |
+| ui/product.css | shared-layout-css | 282 |
 | ui/components/TaskDetail.css | shared-layout-css | 72 |
 | ui/style.css | shared-layout-css | 32 |
 | ui/components/activity/activity.css | shared-layout-css | 5 |

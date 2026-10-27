@@ -1,0 +1,19 @@
+{
+  "theme": "dark",
+  "language": "zh-CN",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "remoteLink": {},
+  "connectionSetup": {
+    "method": "create",
+    "step": "address"
+  },
+  "relayProgress": {
+    "phase": "connecting",
+    "action": "create",
+    "jobId": "fixture-job",
+    "relayId": "relay-host"
+  }
+}

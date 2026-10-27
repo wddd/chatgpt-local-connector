@@ -1,6 +1,6 @@
 import { SrcAccountRow } from "./objects/src-account";
 import { TunnelCard, TunnelRow } from "./objects/tunnel";
-import { SectionHeader, Button, Dialog, Empty, HoverScope, Icon, Notice, SingleChoice, Switch } from "./ui";
+import { DangerZone, SectionHeader, Button, Dialog, Empty, HoverScope, Icon, Notice, SingleChoice, Switch } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { api } from "../api";
@@ -65,9 +65,9 @@ export default function RemoteLinkPage() {
     } catch (e) { setError(String(e)); } finally { setRemoveBusy(false); }
   }
   const groups = group === "platform" ? [...new Set(visible.map(s => s.platform))].sort() : [""];
-  return <div className="remote-link-page">
+  return <div className="grid min-w-0 gap-6">
     {readError && <Notice>{readError}</Notice>}
-    {connection ? <div className="connection-detail">
+    {connection ? <div className="grid min-w-0 gap-6 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150">
       <TunnelCard ingress={connection} relay={selectedRelay} sources={affected} busy={connectionBusy}
         headerActions={<Switch label={t('sourcePanel.enabled')} checked={connection.enabled} disabled={connectionBusy} onChange={enabled => {
           setConnectionBusy(true); setError('');
@@ -75,16 +75,16 @@ export default function RemoteLinkPage() {
         }} />}>
         <SectionHeader level={3} title={t("setup.sourcesUsing", { count: affected.length })} actions={<Button data-add-source onClick={() => openOnboarding("product", { ingressId: connection.id, fixedConnection: true })}>{t("setup.addSourceForConnection")}</Button>} />
         <HoverScope>{affected.map(source => <SrcAccountRow key={source.id} source={source} onOpen={() => navigation.set(old => ({ ...old, remoteSourceId: source.id, remoteConnectionId: undefined }))} />)}</HoverScope>
-        {!affected.length && <p className="muted">{t("source.unused")}</p>}
+        {!affected.length && <p className="text-muted-foreground">{t("source.unused")}</p>}
       </TunnelCard>
       {selectedRelay && <RelaySettings relay={selectedRelay} version={relays.version} refresh={relays.refresh} />}
       {!["local", "relay"].includes(connection.transport) && <Button onClick={() => setEditing(connection)}>{t("edit")}</Button>}
-      {selectedRelay?.owner && <Button className="connection-hosting-link" variant="ghost" onClick={() => navigation.set(old => ({ ...old, page: "settings", settingsExtras: true }))}>{t("setup.hostingLink")}<Icon icon={ChevronRight} /></Button>}
-      <div className="connection-remove"><div><strong>{t(joined ? "connect.leave" : "setup.removeConnection")}</strong><p>{t("setup.removeAffected", { names: affected.map(s => s.label).join(", ") || t("source.unused") })}</p></div><Button variant="danger-outline" onClick={() => { setError(""); setRemoving(true); }}>{t(joined ? "connect.leave" : "remove")}</Button></div>
+      {selectedRelay?.owner && <Button className="justify-self-start" variant="ghost" onClick={() => navigation.set(old => ({ ...old, page: "settings", settingsExtras: true }))}>{t("setup.hostingLink")}<Icon icon={ChevronRight} /></Button>}
+      <DangerZone consequence={t("setup.removeAffected", { names: affected.map(s => s.label).join(", ") || t("source.unused") })}><Button variant="danger-outline" onClick={() => { setError(""); setRemoving(true); }}>{t(joined ? "connect.leave" : "remove")}</Button></DangerZone>
     </div> : <>
       <SectionHeader level={3} titleAsChild title={<><SingleChoice compact label={t("source.grouping")} value={group} onChange={value => grouping.set(value as "all" | "platform")} options={[{ value: "all", label: t("all") }, { value: "platform", label: t("source.byPlatform") }]} /></>} actions={<><Button data-add-source variant="primary" onClick={() => add()}>{t("addControlSource")}</Button></>} />
       {requests.filter(({ ingress, request }) => request.switchSourceId || sourceCandidates(sources, entries, ingress.id, request.product ?? "custom", request.sourceId).length > 0).map(({ ingress, request }) => <Notice key={request.id} tone="warning" action={<Button onClick={() => setClaim(request.id)}>{t("source.review")}</Button>}>{t("source.pendingReauthorization", { name: request.clientName, connection: ingress.name })}</Notice>)}
-      <HoverScope>{groups.map(platform => <section key={platform} className="source-list">
+      <HoverScope>{groups.map(platform => <section key={platform} className="grid min-w-0 gap-2">
         {platform && <h3>{t(`source.platform.${platform}`) === `source.platform.${platform}` ? platform : t(`source.platform.${platform}`)}</h3>}
         {visible.filter(s => !platform || s.platform === platform).map(source => {
           const ingress = entries.find(i => i.id === source.ingressId);
@@ -94,7 +94,7 @@ export default function RemoteLinkPage() {
         })}
       </section>)}</HoverScope>
       {!visible.length && <Empty>{t("source.empty")}</Empty>}
-      <section className="connection-list"><SectionHeader level={3} title={<>{t("source.connections")}</>} actions={<><Button data-new-connection onClick={() => add(true)}>{t("source.newConnection")}</Button></>} />
+      <section className="grid min-w-0 gap-2"><SectionHeader level={3} title={<>{t("source.connections")}</>} actions={<><Button data-new-connection onClick={() => add(true)}>{t("source.newConnection")}</Button></>} />
         <HoverScope>{entries.map(ingress => {
           return <TunnelRow key={ingress.id} ingress={ingress} sources={visible} onOpen={() => navigation.set(old => ({ ...old, remoteConnectionId: ingress.id }))} />;
         })}</HoverScope>

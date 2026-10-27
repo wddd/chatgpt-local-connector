@@ -70,13 +70,13 @@ export default function ChangeConnection() {
         {flow.step === "connection" ? <Button variant="primary" busy={busy} disabled={!target || !!reason(target)} onClick={() => void begin()}>{t("source.next")}</Button> : !expired && <Loading label={t(request?.status === "approved" ? "connect.returning" : "connect.waitClient", { name: productName })} />}
       </>}
     </>}>
-    <div className="setup-content">
+    <div className="flex min-w-0 flex-col gap-4 [&_p]:m-0 [&_h3]:m-0">
       {error && <Notice>{error}</Notice>}
       {flow.step === "connection" ? <>
         <p>{t("switch.currentVia", { name: current?.name ?? source?.connectionName ?? t("source.connectionRemoved") })}</p>
-        <div className="object-choice"><SingleChoice cards label={t("source.connections")} value={flow.ingressId ?? ""} onChange={ingressId => connectionSwitch.set({ ...flow, ingressId })} disabled={busy} options={connections.map(i => ({ value: i.id, label: i.name, disabled: !!reason(i), description: reason(i) || undefined,
+        <div className="min-w-0 [&_.entity-row]:p-0 [&_.entity-row]:flex-1"><SingleChoice cards label={t("source.connections")} value={flow.ingressId ?? ""} onChange={ingressId => connectionSwitch.set({ ...flow, ingressId })} disabled={busy} options={connections.map(i => ({ value: i.id, label: i.name, disabled: !!reason(i), description: reason(i) || undefined,
           content: <TunnelRow ingress={i} sources={sources.filter(s => s.state !== "revoked" && !isPendingSource(s, entries))} constraint={reason(i) || undefined} /> }))} /></div>
-        <Button className="setup-new" data-add-connection disabled={busy} onClick={() => openConnectionSetup({ forSwitch: true, product: source?.product })}><Icon icon={Plus} /><span>{t("source.newConnection")}<small>{t("setup.newConnectionHint")}</small></span></Button>
+        <Button className="h-auto w-full justify-start gap-3 whitespace-normal border-dashed px-4 py-3 text-start [&>span]:min-w-0 [&_small]:mt-0.5 [&_small]:block [&_small]:text-xs [&_small]:font-normal [&_small]:text-muted-foreground" data-add-connection disabled={busy} onClick={() => openConnectionSetup({ forSwitch: true, product: source?.product })}><Icon icon={Plus} /><span>{t("source.newConnection")}</span></Button>
         <Notice tone="warning">{addressInstruction} {t("switch.warning")}</Notice>
       </> : <>
         {target ? <>

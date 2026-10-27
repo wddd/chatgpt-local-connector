@@ -1,0 +1,24 @@
+{
+  "theme": "light",
+  "language": "zh-CN",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "remoteLink": {},
+  "relayProgress": {
+    "phase": "failed",
+    "action": "create",
+    "jobId": "fixture-job",
+    "relayId": "relay-host",
+    "reason": "Account choice required",
+    "accounts": [
+      {
+        "id": "fixture-account",
+        "name": "Sample workspace"
+      }
+    ]
+  },
+  "page": "remote",
+  "remoteConnectionId": "relay-main"
+}

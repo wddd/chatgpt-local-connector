@@ -48,7 +48,7 @@ function HostedRelay({ relay, version, startJob, disabled }: {
   }
   const blocked = disabled || !!busy;
   const outdated = !!version && relay.workerVersion !== version;
-  return <article className="hosted-relay" aria-label={t("hosting.title")}>
+  return <article className="grid min-w-0 gap-6 [&+article]:border-t [&+article]:border-border [&+article]:pt-6" aria-label={t("hosting.title")}>
     <TunnelCard ingress={ingress} relay={relay} sources={sources} busy={blocked} headerActions={
       outdated || !relay.url ? <Button variant="ghost" disabled={blocked} onClick={() => void startJob({ action: "redeploy", id: relay.id })}>{t(outdated && relay.url ? "hosting.update" : "retry")}</Button> : undefined}>
       <SettingRow label={t("hosting.invite")} description={t("hosting.inviteDescription")}>
@@ -58,8 +58,8 @@ function HostedRelay({ relay, version, startJob, disabled }: {
         </ActionGroup>
       </SettingRow>
     </TunnelCard>
-    <section className="hosted-relay-devices">
-      <SectionHeader level={3} title={<>{t("hosting.devices")}</>} secondary={<><p className="muted small">{t("hosting.devicesDescription")}</p></>} actions={<><IconButton icon={RefreshCw} label={t("hosting.refreshDevices")} busy={loading} disabled={blocked || !relay.url} onClick={() => void readMembers()} /></>} />
+    <section className="grid min-w-0 gap-3">
+      <SectionHeader level={3} title={<>{t("hosting.devices")}</>} secondary={<><p className="text-muted-foreground text-xs">{t("hosting.devicesDescription")}</p></>} actions={<><IconButton icon={RefreshCw} label={t("hosting.refreshDevices")} busy={loading} disabled={blocked || !relay.url} onClick={() => void readMembers()} /></>} />
       {membersError && <Notice tone="danger">{membersError}</Notice>}
       <div aria-busy={loading}>
         {!members.length && (loading ? <Loading /> : <p>{t(membersError ? 'connect.membersFailed' : 'hosting.noDevices')}</p>)}
@@ -115,9 +115,9 @@ export default function RelayHosting() {
     finally { setBusy(false); }
   }
   const owners = relays.relays.filter(relay => relay.owner);
-  return <div className="relay-hosting">
+  return <div className="grid min-w-0 gap-6">
     <SectionHeader level={2} title={<>{t("hosting.title")}</>} actions={<><Button disabled={busy || !!job} onClick={() => { setError(""); setAccount(""); setDeploy(true); }}>{t("hosting.deploy")}</Button></>} />
-    {!relays.loaded ? <Loading /> : !owners.length && !relays.error && <p className="muted">{t("hosting.empty")}</p>}
+    {!relays.loaded ? <Loading /> : !owners.length && !relays.error && <p className="text-muted-foreground">{t("hosting.empty")}</p>}
     {relays.error && <Notice tone="danger" action={<Button onClick={() => void relays.refresh().catch(() => {})}>{t("retry")}</Button>}>{t("connect.readFailed")}</Notice>}
     {error && !deploy && !job && <Notice tone="danger">{error}</Notice>}
     {owners.map(relay => <HostedRelay key={`${relay.id}:${revision}`} relay={relay} version={relays.version} startJob={startJob} disabled={busy || !!job} />)}
@@ -125,7 +125,7 @@ export default function RelayHosting() {
       {error && <Notice tone="danger">{error}</Notice>}
       {progressError && job && <Notice tone="danger">{t("connect.readFailed")}</Notice>}
       {job ? <DeploymentProgressCard progress={progress} busy={busy} account={account} setAccount={setAccount} onCancel={() => void cancel()} onRetry={() => void startJob({ action: job.action === "create" && progress.relayId ? "redeploy" : job.action, id: progress.relayId ?? job.id })} /> : <form onSubmit={event => { event.preventDefault(); void startJob({ action: "create" }); }}>
-        <p className="muted">{t("connect.freeAccount")}</p>
+        <p className="text-muted-foreground">{t("connect.freeAccount")}</p>
         <ActionGroup><Button type="submit" variant="primary" busy={busy}>{t("hosting.deploy")}</Button></ActionGroup>
       </form>}
     </Dialog>}
