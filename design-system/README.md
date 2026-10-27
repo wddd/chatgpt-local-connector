@@ -99,11 +99,13 @@ All synthetic records use the single `Arc.fixtures` entry. `requests` contains p
 | [SrcAccountNode](api/components/SrcAccountNode.md) | Source identity topology adapter |
 | [SrcAccountRow](api/components/SrcAccountRow.md) | Source identity list and choice presentation |
 | [SrcAccountCard](api/components/SrcAccountCard.md) | Source identity summary and detail |
+| [SrcConversationRow](api/components/SrcConversationRow.md) | Conversation in an SRC account, linking its tasks |
 | [TunnelChip](api/components/TunnelChip.md) | Connection reference |
 | [TunnelNode](api/components/TunnelNode.md) | Connection topology adapter |
 | [TunnelRow](api/components/TunnelRow.md) | Read-only connection kind, address and state |
 | [LocalConnectionRow](api/components/LocalConnectionRow.md) | Local state only |
 | [TunnelCard](api/components/TunnelCard.md) | Public-link address and state |
+| [AccountActions](api/components/AccountActions.md) | Account rename and remove |
 | [ChoiceControl](api/components/ChoiceControl.md) | Static settings value for zero or one option; SingleChoice otherwise |
 | [SettingsSection](api/components/SettingsSection.md) | Settings heading and body |
 | [SettingRow](api/components/SettingRow.md) | Aligned control or content-sized navigation row |
