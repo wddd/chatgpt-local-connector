@@ -2,14 +2,15 @@ import { SrcPlatformRow } from "./objects/src-platform";
 import { TunnelRow } from "./objects/tunnel";
 import Address from "./Address";
 import { useEffect, useState } from "react";
-import { Check, ExternalLink, Plus } from "lucide-react";
+import { Check, ExternalLink } from "lucide-react";
 import { api } from "../api";
 import { remoteProfiles, remoteProfileSetting, recommendedRemoteProfile, type RemoteProfile, controlSource, nextSourceName } from "../controlSources";
 import { locale, t } from "../i18n";
 import { openUrl } from "../platform";
 import { connector, refreshConnector } from "../state/connector";
-import { onboarding, openConnectionSetup, finishSourceSetup, addedSource, type OnboardingStep, type ConnectionMethod } from "../state/onboarding";
+import { onboarding, openConnectionSetup, finishSourceSetup, addedSource, type OnboardingStep } from "../state/onboarding";
 import { connectionDisabledReason, isPendingSource } from "../sourcePresentation";
+import { useRelays, publicRelay } from "../state/relay";
 import SetupDialog from "./SetupDialog";
 import { Button, Field, Icon, Loading, Notice, SingleChoice } from "./ui";
 import { ApprovalCard } from "./OAuthApproval";
@@ -23,8 +24,12 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
   const [credentials, setCredentials] = useState<{ ingressId: string; bearerToken: string }>();
   const product = flow.source ?? "custom", info = controlSource(product), name = info?.shortName ?? t("connect.other");
   const entries = status?.ingresses ?? [], current = entries.find(i => i.id === flow.ingressId);
-  const visible = entries.filter(i => (!flow.localTarget || i.id === `local-claude-${flow.localTarget}`)
-    && (i.transport !== "openai-tunnel" || product === "chatgpt"));
+  const relays = useRelays();
+  useEffect(() => {
+    if (flow.step === "connection") void relays.refresh().catch(() => {});
+  }, [flow.step, relays.refresh]);
+  const publicId = publicRelay(relays.relays)?.ingressId;
+  const visible = entries.filter(i => flow.localTarget ? i.id === `local-claude-${flow.localTarget}` : i.id === publicId);
   const existing = visible.filter(i => !connectionDisabledReason(i, product, sources, flow.localTarget));
   const existingIds = existing.map(i => i.id).join(",");
   useEffect(() => {
@@ -39,7 +44,7 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
     }).catch(e => { if (alive) setError(String(e)); });
     return () => { alive = false; };
   }, [flow.step, current?.id, current?.auth]);
-  function step(next: OnboardingStep) { setError(""); onboarding.set(old => old && { ...old, step: next, ...(["product", "connection"].includes(next) ? { requestId: undefined, ingressId: old.fixedConnection ? old.ingressId : undefined, sourceId: undefined } : {}) }); }
+  function step(next: OnboardingStep) { setError(""); onboarding.set(old => old && { ...old, step: next, ...(["product", "connection"].includes(next) ? { requestId: undefined, ingressId: undefined, sourceId: undefined } : {}) }); }
   async function perform(action: () => Promise<void>) {
     setBusy(true); setError("");
     try { await action(); } catch (e) { setError(String(e)); }
@@ -91,15 +96,15 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
   function chooseProduct(value: string) {
     onboarding.set(old => old && { ...old, source: value.startsWith("local-") ? "claude" : value,
       localTarget: value.startsWith("local-") ? value.slice(6) as "code" | "desktop" : undefined,
-      ingressId: old.fixedConnection ? old.ingressId : undefined, requestId: undefined, sourceId: undefined });
+      ingressId: undefined, requestId: undefined, sourceId: undefined });
   }
-  function newConnection(method?: ConnectionMethod) { openConnectionSetup({ forSource: true, product, localTarget: flow.localTarget, method }); }
+  function newConnection() { openConnectionSetup({ forSource: true, localTarget: flow.localTarget }); }
   const productName = (id: string) => id === "custom" ? t("setup.otherClient") : id === "local-code" ? "Claude Code" : id === "local-desktop" ? t("setup.claudeDesktop") : id === "microsoft-copilot" ? "Copilot" : controlSource(id)!.displayName;
   const title = selectedProduct ? t("setup.addProduct", { name: productName(selectedProduct) }) : t("addControlSource");
   const footer = <>
     {flow.step === "approval" && waiting?.status === "pending" && <><Button type="submit" form={`approval-${waiting.id}`} value="deny" disabled={busy}>{t("oauthDeny")}</Button><Button variant="primary" type="submit" form={`approval-${waiting.id}`} value="allow" busy={busy}>{t("oauthAllow")}</Button></>}
-    {flow.step !== "product" && flow.step !== "success" && flow.step !== "approval" && <Button variant="ghost" disabled={busy} onClick={() => step(flow.step === "address" && flow.fixedConnection ? "product" : steps[Math.max(0, steps.indexOf(flow.step) - 1)])}>{t("back")}</Button>}
-    {flow.step === "product" && <><span className="flex-1" /><Button variant="primary" busy={busy} disabled={!flow.source || !!(flow.fixedConnection && current && connectionDisabledReason(current, product, sources, flow.localTarget))} onClick={() => flow.fixedConnection && flow.ingressId ? void selectConnection(flow.ingressId) : step("connection")}>{t("source.next")}</Button></>}
+    {flow.step !== "product" && flow.step !== "success" && flow.step !== "approval" && <Button variant="ghost" disabled={busy} onClick={() => step(steps[Math.max(0, steps.indexOf(flow.step) - 1)])}>{t("back")}</Button>}
+    {flow.step === "product" && <><span className="flex-1" /><Button variant="primary" busy={busy} disabled={!flow.source} onClick={() => step("connection")}>{t("source.next")}</Button></>}
     {flow.step === "connection" && <Button variant="primary" busy={busy} disabled={!existing.some(i => i.id === route)} onClick={() => void selectConnection(route)}>{t("source.next")}</Button>}
     {flow.step === "address" && <Loading label={t(current?.auth === "oauth" ? "connect.waitClient" : "source.waitConnection", { name })} />}
     {flow.step === "success" && <><Button variant="ghost" disabled={busy} onClick={() => void finish(true)}>{t("setup.addAnother")}</Button><Button variant="primary" busy={busy} onClick={() => void finish()}>{t("source.done")}</Button></>}
@@ -110,19 +115,17 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
     returnFocus={returnFocus}
     footer={footer}>
     <div className="flex min-w-0 flex-col gap-4 [&_p]:m-0 [&_h3]:m-0">
-    {error && <Notice>{error}</Notice>}
+    {!flow.localTarget && relays.relays.filter(relay => relay.owner).length > 1 && <Notice>{t("connections.multiplePublicLinks")}</Notice>}
+    {(error || relays.error) && <Notice>{error || relays.error}</Notice>}
     {flow.step === "success" && offeredProfile && <Field label={t("source.profile")}><SingleChoice label={t("source.profile")} value={profile} disabled={busy} onChange={value => onboarding.set(old => old && { ...old, profile: value as RemoteProfile })} options={remoteProfiles.map(value => ({ value, label: t(`source.profile.${value}`) }))} /></Field>}
     {flow.step === "product" && <>
       {(["remote", "local"] as const).map(group => <section className="grid min-w-0 gap-2 [&>h3]:text-xs [&>h3]:font-normal [&>h3]:text-muted-foreground min-w-0 [&_.entity-row]:p-0 [&_.entity-row]:flex-1" key={group}>
         <h3 id={`platform-${group}`} tabIndex={-1}>{t(`setup.group.${group}`)}</h3>
         <SingleChoice tiles label={t(`setup.group.${group}`)} value={selectedProduct} onChange={chooseProduct}
           options={products.filter(id => (id.startsWith("local-") || id === "custom") === (group === "local")).map(id => {
-            const localTarget = id.startsWith("local-") ? id.slice(6) as "code" | "desktop" : undefined;
-            const reason = flow.fixedConnection && current ? connectionDisabledReason(current, localTarget ? "claude" : id, sources, localTarget) : "";
-            return { value: id, label: productName(id), disabled: !!reason, description: reason, content: <SrcPlatformRow product={id.startsWith("local-") ? "claude" : id} label={productName(id)} constraint={reason || undefined} /> };
+            return { value: id, label: productName(id), content: <SrcPlatformRow product={id.startsWith("local-") ? "claude" : id} label={productName(id)} /> };
           })} />
       </section>)}
-      {flow.fixedConnection && current && <p className="text-muted-foreground">{t("setup.via", { name: current.name })}</p>}
     </>}
     {flow.step === "connection" && <>
       <p className="text-muted-foreground">{t("setup.connectionPrompt", { name: productName(selectedProduct || "custom") })}</p>
@@ -130,18 +133,15 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
         const carried = sources.filter(s => s.ingressId === i.id && !isPendingSource(s, entries) && s.state !== "revoked");
         const reason = connectionDisabledReason(i, product, sources, flow.localTarget);
         return { value: i.id, label: i.name, disabled: !!reason,
-          description: reason || undefined, content: <TunnelRow ingress={i} sources={carried} constraint={reason || undefined} /> };
+          description: reason || undefined, content: <TunnelRow ingress={i} sources={carried} /> };
       })} /></div>}
 
-      {!existing.length && <div className="grid min-w-0 gap-3 [&>h3]:text-sm [&>.button]:h-auto [&>.button]:justify-start [&>.button]:whitespace-normal [&>.button]:px-4 [&>.button]:py-3">
+      {relays.loaded && !relays.error && (flow.localTarget || !relays.relays.some(relay => relay.owner)) && !existing.length && <div className="grid min-w-0 gap-3 [&>h3]:text-sm [&>.button]:h-auto [&>.button]:justify-start [&>.button]:whitespace-normal [&>.button]:px-4 [&>.button]:py-3">
         <h3>{t("setup.noConnection")}</h3>
-        {flow.localTarget ? <Button onClick={() => newConnection(flow.localTarget === "code" ? "local-code" : "local-desktop")}>{t("connection.localSetup", { name: productName(selectedProduct) })}</Button> : <>
-          <Button className="border-primary" onClick={() => newConnection("create")}>{t("source.createRelay")}<span className="ms-auto rounded-full bg-secondary px-2 py-0.5 text-xs text-brand-accent">{t("setup.recommended")}</span></Button>
-          <Button onClick={() => newConnection("join")}>{t("source.pasteRelay")}</Button>
-          <Button onClick={() => newConnection("https")}>{t("setup.ownAddress")}</Button>
+        {flow.localTarget ? <Button onClick={() => newConnection()}>{t("connection.localSetup", { name: productName(selectedProduct) })}</Button> : <>
+          <Button className="border-primary" onClick={() => newConnection()}>{t("source.createRelay")}</Button>
         </>}
       </div>}
-      {existing.length > 0 && <Button className="h-auto w-full justify-start gap-3 whitespace-normal border-dashed px-4 py-3 text-start [&>span]:min-w-0 [&_small]:mt-0.5 [&_small]:block [&_small]:text-xs [&_small]:font-normal [&_small]:text-muted-foreground" data-add-connection disabled={busy} onClick={() => newConnection()}><Icon icon={Plus} /><span>{t("source.newConnection")}</span></Button>}
     </>}
     {flow.step === "address" && (current ? <>
       {current.transport === "local" ? <p>{t("connect.restartClaude")}</p> : <ol className="m-0 grid grid-cols-1 list-decimal gap-4 ps-5 marker:text-muted-foreground [&>li]:min-w-0 [&>li]:ps-2 [&>li>div]:flex [&>li>div]:min-w-0 [&>li>div]:flex-col [&>li>div]:gap-2 [&_strong]:text-sm [&_p]:text-sm [&_p]:text-muted-foreground [&_.button]:self-start">

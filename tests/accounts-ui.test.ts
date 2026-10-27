@@ -9,7 +9,7 @@ import { act, createElement as h } from 'react';
 import { within, fireEvent } from '@testing-library/dom';
 
 async function withAccountUI(run: (context: { window: Window; server: ViteDevServer; root: Root }) => Promise<void>) {
-  const window = new Window({ url: 'http://localhost/?scenario=accounts' });
+  const window = new Window({ url: 'http://localhost/?scenario=source-panel' });
   const media = Object.assign(new window.EventTarget(), { matches: true });
   window.matchMedia = () => media as unknown as MediaQueryList;
   class Observer { observe() {} unobserve() {} disconnect() {} }
@@ -25,7 +25,7 @@ async function withAccountUI(run: (context: { window: Window; server: ViteDevSer
   const mount = document.createElement('div'); document.body.append(mount); const root = createRoot(mount);
   try {
     const { installScenario } = await server.ssrLoadModule('/ui/scenarios.ts');
-    await installScenario('accounts');
+    await installScenario('source-panel');
     await run({ window, server, root });
   } finally {
     await act(async () => root.unmount());
@@ -102,137 +102,6 @@ test('account UI uses native routes, login evidence and notification targets', a
   });
 });
 
-test('account details save or cancel inline aliases and expose Agent sign-in for unresolved sources', async () => {
-  // Regression: account headers were permanent inputs without cancellation and unresolved accounts hid the only Add Agent action.
-  await withAccountUI(async ({ server, root }) => {
-    const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
-    const { refreshAccounts } = await server.ssrLoadModule('/ui/state/accounts.ts');
-    const { navigation } = await server.ssrLoadModule('/ui/state/navigation.ts');
-    const { default: AccountsPage } = await server.ssrLoadModule('/ui/components/AccountsPage.tsx');
-    const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
-    const { t } = await server.ssrLoadModule('/ui/i18n.ts');
-    await refreshAccounts();
-    const account = await accountsApi.get('account-claude');
-    navigation.set((old: any) => ({ ...old, accountId: account.id }));
-    const page = within(document.body);
-    await act(async () => root.render(h(TooltipProvider, null, h(AccountsPage))));
-    const edit = async (alias: string, draft: string) => {
-      await act(async () => { fireEvent.click(page.getByRole('button', { name: t('accounts.editAlias', { alias }), exact: true })); });
-      const input = page.getByRole('textbox', { name: t('accounts.alias'), exact: true });
-      assert.ok(input.matches(':focus'));
-      await act(async () => { fireEvent.change(input, { target: { value: draft } }); });
-      return input;
-    };
-    let input = await edit(account.alias, 'Cancelled alias');
-    await act(async () => { fireEvent.keyDown(input, { key: 'Escape' }); fireEvent.blur(input); });
-    assert.equal((await accountsApi.get(account.id)).alias, account.alias);
-    assert.ok(page.getByRole('button', { name: t('accounts.editAlias', { alias: account.alias }), exact: true }).matches(':focus'));
-    input = await edit(account.alias, '  Renamed account  ');
-    await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }); });
-    assert.equal((await accountsApi.get(account.id)).alias, 'Renamed account');
-    assert.ok(page.getByRole('button', { name: t('accounts.editAlias', { alias: 'Renamed account' }), exact: true }).matches(':focus'));
-    input = await edit('Renamed account', 'Blur saved');
-    await act(async () => { page.getByRole('button', { name: t('remove'), exact: true }).focus(); });
-    assert.equal((await accountsApi.get(account.id)).alias, 'Blur saved');
-    assert.ok(page.getByRole('button', { name: t('remove'), exact: true }).matches(':focus'));
-    input = await edit('Blur saved', '   ');
-    await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }); });
-    assert.equal(input.getAttribute('aria-invalid'), 'true');
-    assert.equal((await accountsApi.get(account.id)).alias, 'Blur saved');
-    await act(async () => { fireEvent.keyDown(input, { key: 'Escape' }); });
-
-    await act(async () => navigation.set((old: any) => ({ ...old, accountId: 'account-source' })));
-    await act(async () => { fireEvent.click(page.getByRole('button', { name: t('accounts.addAgent'), exact: true })); });
-    assert.ok(page.getByRole('dialog', { name: t('accounts.addAgentFor', { alias: (await accountsApi.get('account-source')).alias }), exact: true }));
-    await act(async () => { fireEvent.click(page.getByRole('button', { name: t('accounts.signin'), exact: true })); });
-    const login = (await accountsApi.list()).login;
-    assert.equal(login.kind, 'claude');
-    assert.equal(login.state, 'waiting');
-    await act(async () => root.render(null));
-    await accountsApi.login({ loginId: login.loginId, action: 'cancel' });
-  });
-});
-
-test('notification sessions retain individual reachability and send tests to the selected destination', async () => {
-  // Regression: account notifications lacked per-session reachability and card actions could not be checked against a selected destination.
-  await withAccountUI(async ({ server, root }) => {
-    const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
-    const { AccountNotifications } = await server.ssrLoadModule('/ui/components/AccountCards.tsx');
-    const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
-    const { setPrivacy } = await server.ssrLoadModule('/ui/state/privacy.ts');
-    const { t } = await server.ssrLoadModule('/ui/i18n.ts');
-    const accountId = 'account-claude', target = 'session_010000000000000000000003';
-    await accountsApi.route({ accountId, target });
-    const account = await accountsApi.get(accountId);
-    await act(async () => setPrivacy(false));
-    const render = async (value: any) => { await act(async () => root.render(h(TooltipProvider, null, h(AccountNotifications, { account: value })))); };
-    await render(account);
-    const page = within(document.body), list = page.getByRole('list', { name: t('accounts.sessions'), exact: true });
-    const rows = within(list).getAllByRole('listitem');
-    const selected = rows.find(row => within(row).queryByText(target, { exact: true }))!;
-    assert.ok(within(rows[0]).getByText(t('accounts.session.verified'), { exact: true }));
-    assert.ok(within(selected).getByText(t('accounts.session.not-bound'), { exact: true }));
-    await act(async () => { fireEvent.click(within(selected).getByRole('button', { name: t('accounts.sendTest'), exact: true })); });
-    const updated = await accountsApi.get(accountId);
-    assert.equal(updated.notifications.sessions.find((session: any) => session.target === target).lastDelivery.status, 'sent');
-    assert.notEqual(updated.notifications.sessions.find((session: any) => session.target === target).verified, true);
-    await render(updated);
-    assert.ok(within(page.getByRole('list', { name: t('accounts.sessions'), exact: true })).getByText(t('accounts.session.not-bound'), { exact: true }));
-    const mcp = { ...updated, notifications: { state: 'mcp-events', reachable: true, sessions: [
-      { target: 'example-events-active', channel: 'mcp-events', state: 'reachable' },
-      { target: 'example-events-unavailable', channel: 'mcp-events', state: 'unavailable' },
-    ] } };
-    await render(mcp);
-    assert.ok(page.getByText(t('accounts.session.reachable'), { exact: true }));
-    assert.ok(page.getByText(t('accounts.session.unavailable'), { exact: true }));
-    assert.equal(page.queryByRole('button', { name: t('accounts.sendTest'), exact: true }), null);
-  });
-});
-
-test('notification sessions omit empty targets from account state and bound session actions', async () => {
-  // Regression: Local CLI Unidentified accounts rendered an unregistered empty target as a bound notification session.
-  await withAccountUI(async ({ server, root }) => {
-    const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
-    const { accounts, refreshAccounts } = await server.ssrLoadModule('/ui/state/accounts.ts');
-    const { AccountNotifications } = await server.ssrLoadModule('/ui/components/AccountCards.tsx');
-    const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
-    const { setPrivacy } = await server.ssrLoadModule('/ui/state/privacy.ts');
-    const { t } = await server.ssrLoadModule('/ui/i18n.ts');
-    const get = accountsApi.get;
-    const source = await get('account-source'), agent = await get('account-claude');
-    const empty = { sourceId: source.sources[0], channel: 'claude-session', registered: false, verified: false, state: 'unverified', target: '' };
-    let sessions = [empty, { ...empty, target: ' \t ' }];
-    const notificationAccount = (account: any) => ({ ...account, notifications: { ...account.notifications, sessions } });
-    accountsApi.get = async (id: string) => notificationAccount(await get(id));
-    try {
-      await refreshAccounts();
-      assert.ok(accounts.get().items.every((account: any) => account.notifications.sessions.length === 0));
-      await act(async () => setPrivacy(false));
-      const page = within(document.body);
-      const render = async (account: any) => { await act(async () => root.render(h(TooltipProvider, null, h(AccountNotifications, { account })))); };
-      for (const account of [source, agent]) {
-        await render(notificationAccount(account));
-        assert.ok(page.getByRole('heading', { name: t('accounts.notifications'), exact: true }));
-        assert.ok(page.getByText(t(`accounts.notifications.${account.notifications.state}`), { exact: true }));
-        assert.equal(page.queryByRole('list', { name: t('accounts.sessions'), exact: true }), null);
-        assert.equal(page.queryByRole('button', { name: t('accounts.sendTest'), exact: true }), null);
-      }
-      const target = 'session_010000000000000000000004';
-      sessions = [...sessions, { ...empty, target }];
-      await act(async () => refreshAccounts());
-      const mapped = accounts.get().items.find((account: any) => account.id === agent.id);
-      assert.deepEqual(mapped.notifications.sessions.map((session: any) => session.target), [target]);
-      assert.equal(mapped.notifications.sessions[0].registered, false);
-      await render(notificationAccount(agent));
-      const rows = within(page.getByRole('list', { name: t('accounts.sessions'), exact: true })).getAllByRole('listitem');
-      assert.equal(rows.length, 1);
-      assert.ok(within(rows[0]).getByText(target, { exact: true }));
-      await act(async () => { fireEvent.click(within(rows[0]).getByRole('button', { name: t('accounts.sendTest'), exact: true })); });
-      assert.equal((await get(agent.id)).notifications.sessions.find((session: any) => session.target === target).lastDelivery.status, 'sent');
-    } finally { accountsApi.get = get; }
-  });
-});
-
 test('source dates treat zero and absent timestamps as never in every locale', async () => {
   // Regression: Last seen displayed a date in 1970 when the native timestamp was zero.
   await withAccountUI(async ({ server }) => {
@@ -266,8 +135,8 @@ test('account source panels use product display names in every locale', async ()
       await act(async () => { locale.set(language); root.render(h(TooltipProvider, null, h(Dialog, { title: 'Source', onClose() {} }, h(SourcePanel, { source })))); });
       await act(async () => { fireEvent.click(page.getByRole('radio', { name: t('accounts.tab.account'), exact: true })); });
       const label = `${name(account.agentProfiles[0])} · ${account.alias}`;
-      assert.ok(page.getByRole('button', { name: label, exact: true }));
-      assert.equal(page.queryByRole('button', { name: `${account.agentProfiles[0].agent} · ${account.alias}`, exact: true }), null);
+      assert.ok(page.getByRole('button', { name: name => name.startsWith(label) }));
+      assert.equal(page.queryByRole('button', { name: name => name.startsWith(`${account.agentProfiles[0].agent} · ${account.alias}`) }), null);
       const keys = Object.keys(en).filter(key => key.startsWith('accounts.'));
       assert.ok(keys.every(key => Object.hasOwn(zhCN, key)));
       await act(async () => root.render(null));
@@ -281,12 +150,8 @@ test('built-in local authority is absent from control sources, accounts and disc
     const { connector, orderedSources } = await server.ssrLoadModule('/ui/state/connector.ts');
     const { accounts, refreshAccounts } = await server.ssrLoadModule('/ui/state/accounts.ts');
     const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
-    const { navigation } = await server.ssrLoadModule('/ui/state/navigation.ts');
-    const { default: AccountsPage } = await server.ssrLoadModule('/ui/components/AccountsPage.tsx');
-    const { default: RemoteLinkPage } = await server.ssrLoadModule('/ui/components/RemoteLinkPage.tsx');
     const { default: SourcePanel } = await server.ssrLoadModule('/ui/components/SourcePanel.tsx');
     const { default: SourceConnection } = await server.ssrLoadModule('/ui/components/SourceConnection.tsx');
-    const { default: SourceProductChoice } = await server.ssrLoadModule('/ui/components/SourceProductChoice.tsx');
     const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
     const local = { ...connector.get().sources[0], id: 'example-local', ingressId: 'local-cli', credential: { type: 'local' }, product: 'local-cli', platform: 'local', label: 'Local authority fixture', state: 'connected' };
@@ -304,15 +169,6 @@ test('built-in local authority is absent from control sources, accounts and disc
       await refreshAccounts();
       assert.ok(!accounts.get().items.some((account: any) => account.id === legacy.id));
       assert.ok(accounts.get().items.some((account: any) => account.sources.includes(external.id)));
-      await render(h(AccountsPage));
-      assert.equal(page.queryByRole('button', { name: name => name.includes(legacy.alias) }), null);
-      await render(null);
-      navigation.set((old: any) => ({ ...old, remoteSourceId: local.id, remoteConnectionId: undefined }));
-      await render(h(RemoteLinkPage));
-      assert.equal(page.queryByRole('button', { name: name => name.includes(local.label) }), null);
-      const connectionName = connector.get().status.ingresses.find((entry: any) => entry.id === external.ingressId)?.name ?? external.connectionName ?? t('source.connectionRemoved');
-      assert.ok(page.getByRole('button', { name: `${external.label} ${connectionName} ${t('source.state.connected')}`, exact: true }));
-      assert.equal(page.queryByRole('button', { name: t('source.disconnect'), exact: true }), null);
       for (const component of [SourcePanel, SourceConnection]) {
         await render(h(component, { source: local, onConnection() {} }));
         assert.equal(page.queryByRole('button', { name: t('source.disconnect'), exact: true }), null);
@@ -320,12 +176,6 @@ test('built-in local authority is absent from control sources, accounts and disc
       }
       await render(h(SourceConnection, { source: external, onConnection() {} }));
       assert.ok(page.getByRole('button', { name: t('source.disconnect'), exact: true }));
-      await render(h(SourceProductChoice, { value: 'custom', onChange() {} }));
-      const { controlSource } = await server.ssrLoadModule('/ui/controlSources.ts');
-      await act(async () => { fireEvent.click(page.getByRole('combobox', { name: t('source.moreProducts'), exact: true })); });
-      assert.ok(page.getByRole('option', { name: controlSource('chatgpt').shortName, exact: true }));
-      assert.equal(page.queryByRole('option', { name: controlSource('local-cli').shortName, exact: true }), null);
-      assert.equal(page.queryByRole('radio', { name: controlSource('local-cli').shortName, exact: true }), null);
     } finally { accountsApi.list = list; accountsApi.get = get; }
   });
 });

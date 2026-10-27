@@ -131,8 +131,7 @@ test('task rows expose the recorded model and effort through the shared dispatch
   const mount = document.createElement('div'); document.body.append(mount);
   const root = createRoot(mount), originalFetch = globalThis.fetch;
   try {
-    const { default: TasksPage } = await server.ssrLoadModule('/ui/components/TasksPage.tsx');
-    const { tasks } = await server.ssrLoadModule('/ui/state/tasks.ts');
+    const { TaskRow } = await server.ssrLoadModule('/ui/components/objects/task/Row.tsx');
     const { TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
     const { dispatchCatalogFixtures } = await server.ssrLoadModule('/ui/scenarioDispatchSpec.ts');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
@@ -141,15 +140,14 @@ test('task rows expose the recorded model and effort through the shared dispatch
       createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', approval: { decision: 'automatic', source: 'remote', at: '' },
       task: { kind: 'create', title: 'Recorded task', prompt: 'Review configuration', input: [], model, effort: 'max', settings: { serviceTier: 'priority' } } };
     globalThis.fetch = async () => new Response(JSON.stringify(catalog));
-    tasks.set({ records: [record], error: '', loading: false });
-    await act(() => root.render(h(TooltipProvider, null, h(TasksPage))));
+    await act(() => root.render(h(TooltipProvider, null, h(TaskRow, { kind: "receipt", record, records: [record], id: record.taskId, onOpen() {} }))));
     const row = within(document.body).getByRole('button', { name: record.task.title });
     const chip = within(row).getByLabelText(label => label.includes(name));
     assert.ok(chip.textContent?.includes(name));
     assert.ok(chip.textContent?.includes(t('dispatchSpec.effort.max')));
     assert.ok(!chip.getAttribute('aria-label')!.includes(model));
     assert.ok(!chip.getAttribute('aria-label')!.includes(t('activity.fast')));
-    await act(() => tasks.set({ records: [{ ...record, task: { ...record.task, dispatch: { serviceTier: 'priority' } } }], error: '', loading: false }));
+    await act(() => root.render(h(TooltipProvider, null, h(TaskRow, { kind: 'receipt', records: [record], id: record.taskId, record: { ...record, task: { ...record.task, dispatch: { serviceTier: 'priority' } } }, onOpen() {} }))));
     assert.ok(within(row).getByLabelText(label => label.includes(name) && label.includes(t('activity.fast'))));
   } finally {
     await act(() => root.unmount());

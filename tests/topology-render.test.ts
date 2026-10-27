@@ -121,8 +121,8 @@ test("Agent panel keeps a nonmodal shell across task/back/peer navigation and re
   }
 });
 
-test("control source dock preserves editing, field navigation and cross-side dispatch paths", { timeout: 10000 }, async () => {
-  // Regression: editing or switching sources must preserve the panel and return focus.
+test("control source dock preserves source selection, cross-side dispatch and basic Add SRC paths", { timeout: 10000 }, async () => {
+  // Regression: selecting another source or opening a dispatch lost the source panel and return focus.
   const window = new Window({ url: "http://localhost" });
   window.localStorage.setItem("arc.privacy", "false");
   const frames = new Map<number, FrameRequestCallback>(); let sequence = 0;
@@ -163,7 +163,7 @@ test("control source dock preserves editing, field navigation and cross-side dis
     const { agents } = await server.ssrLoadModule("/ui/state/agents.ts");
     const { t } = await server.ssrLoadModule("/ui/i18n.ts");
     const config = { configured: true, httpsProvider: "cloudflare", cloudflareMode: "quick", httpsUrl: "", tunnelId: "tunnel_fixture", hasApiKey: true };
-    const source = (id: string) => ({ id, sources: [{ id, ingressId: id, credential: { type: "oauth-grant", grantId: `grant-${id}`, clientId: `client-${id}` }, product: "claude", platform: "anthropic", label: `Source ${id}`, createdAt: "2026-01-01", connectedAt: 1, lastSeenAt: 1, state: "connected" }], name: `Source ${id}`, controlSource: "claude", enabled: true, running: true, state: "ready", auth: "oauth", transport: "https", error: "", config, url: "https://example.com/mcp" });
+    const source = (id: string) => ({ id, sources: [{ id, ingressId: id, credential: { type: "oauth-grant", grantId: `grant-${id}`, clientId: `client-${id}` }, product: "claude", platform: "anthropic", label: `Source ${id}`, createdAt: "2026-01-01", connectedAt: 1, lastSeenAt: 1, state: "connected" }], name: `Source ${id}`, controlSource: "claude", enabled: true, running: true, state: "ready", auth: "oauth", transport: "relay", error: "", config, url: "https://example.com/mcp" });
     const status = { ingresses: [source("one"), source("two")], core: { backendSession: "fixture", appServer: { state: "ready" } }, platform: "darwin", logs: [], autoOpenCodex: false };
     connector.set({ status, sources: status.ingresses.flatMap(i => i.sources), sourcesLoaded: true, loading: false, busy: "", error: "", feedback: { text: "", error: false } });
     agents.set({ items: [{ agent: "codex", installed: true, enabled: true, available: true, status: "ready" }], loading: false, error: "" });
@@ -177,7 +177,7 @@ test("control source dock preserves editing, field navigation and cross-side dis
       else if (path === "status") value = status;
       else if (path === "accounts") value = { accounts: [], login: null };
       else if (path === "setup/next") value = { hasState: false, complete: false, goal: null, steps: [], step: null, progress: { done: 0, total: 0 }, cliPath: "arc", stateDir: "fixture" };
-      else if (path === "relay/list") value = { relays: [], version: "test" };
+      else if (path === "relay/list") value = { relays: [{ id: "public", ingressId: "one", owner: true, url: "https://example.com", name: "Public link", workerVersion: null }], version: "test" };
       else if (path === "relay/progress") value = { phase: "idle" };
       else if (path === "tool-catalog") value = { tools: [], groups: [], required: [] };
       else if (path === "codex/login") value = { state: "authenticated" };
@@ -208,17 +208,6 @@ test("control source dock preserves editing, field navigation and cross-side dis
     const shell = page.getByRole("dialog");
     assert.equal(shell.getAttribute("aria-modal"), null);
     assert.equal(within(shell).queryAllByRole("switch").length, 0, "Source inspection must not expose connection lifecycle controls");
-    await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
-    assertNodeIdentity(page.getByRole("dialog"), shell);
-    await click(button(t("back")));
-    assertNodeIdentity(page.getByRole("dialog"), shell);
-    await act(() => navigation.set({ ingressEdit: { id: "one", field: "name" } })); await flush();
-    assert.ok(page.getByRole("textbox", { name: t("sourceName") }).matches(":focus"));
-    assert.equal(navigation.get().ingressEdit, undefined);
-    await click(button(t("save")));
-    assertNodeIdentity(page.getByRole("dialog"), shell);
-    await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
-    await click(button(t("cancel")));
     await click(second());
     assertNodeIdentity(page.getByRole("dialog"), shell);
     assert.equal(ingressPanel.get().ingress.id, "two");
@@ -244,18 +233,13 @@ test("control source dock preserves editing, field navigation and cross-side dis
       await click(button(t("source.next")));
       await click(button(t("source.next")));
       assert.equal(onboarding.get().step, "address");
-      assert.equal(page.getByRole("textbox", { name: t("source.copyAddress"), exact: true }).textContent, status.ingresses[0].url);
+      assert.ok(page.getByText(status.ingresses[0].url, { exact: true }));
       await click(button(t("back"))); await click(button(t("back")));
       assert.equal(onboarding.get().step, "product");
       if (pill()) assert.equal(pill()?.getAttribute("aria-checked"), "true");
       else assert.ok(productChoice().textContent?.includes(productName));
       await escape();
     }
-    await click(first());
-    await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
-    await click(button(t("remove")));
-    assert.equal(ingressPanel.get(), undefined); assertNodeIdentity(page.queryByRole("dialog"), null);
-    assertNodeIdentity(page.queryByRole("button", { name: /Source one/ }), null);
     const { default: RecordsPage } = await server.ssrLoadModule("/ui/components/RecordsPage.tsx");
     await act(() => {
       connector.set({ ...connector.get(), status: { ...status, ingresses: [source("one"), source("two")], logs: [

@@ -13,7 +13,7 @@ import './scenarioShells.css';
 
 export default function AgentObjectsFixture() {
   const { agent, source, ingress, quotaStates } = agentFixtures;
-  const [account, setAccount] = useState(agentFixtures.account), [action, setAction] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(false);
+  const [account] = useState(agentFixtures.account), [action, setAction] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(false);
   return <main className="shell-fixture agent-objects-fixture" style={scenarioName === 'agent-objects-narrow' ? { maxWidth: 360 } : undefined}>
     <SectionHeader level={1} title="AGENT objects" actions={<PrivacyToggle />} />
     <output aria-label="Agent object action" aria-live="polite">{action}</output>
@@ -40,7 +40,6 @@ export default function AgentObjectsFixture() {
     <AgentPlatformCard agent={{ ...agent, adapter: { state: 'failed', error: 'CLAUDE_ADAPTER_PROBE_FAILED' } }} />
     <section aria-label="Profile inspector">
       <AgentAccountCard account={account} agent={agent} busy={busy} loading={busy} error={error ? 'Synthetic retained read failure' : undefined}
-        onDefault={profile => { setAction(`Default: ${profile.profileId}`); setAccount(old => ({ ...old, agentProfiles: old.agentProfiles.map(item => ({ ...item, default: item.profileId === profile.profileId })) })); }}
         onReauth={profile => setAction(`Reauth: ${profile.profileId}`)}>
         <AgentQuota provider={quotaStates.ready} refreshing={busy} onRefresh={() => setAction('Quota refresh')} />
       </AgentAccountCard>

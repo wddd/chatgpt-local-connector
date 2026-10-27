@@ -79,8 +79,6 @@ All synthetic records use the single `Arc.fixtures` entry. `requests` contains p
 | [AuthorizationRequestRow](api/components/AuthorizationRequestRow.md) | Authorization list and choice presentation |
 | [DeploymentProgressCard](api/components/DeploymentProgressCard.md) | Relay deployment steps and recovery |
 | [DeploymentProgressChip](api/components/DeploymentProgressChip.md) | Relay deployment reference and phase |
-| [RelayMemberRow](api/components/RelayMemberRow.md) | Relay member status and removal action |
-| [RelayMemberCard](api/components/RelayMemberCard.md) | Relay member facts and removal consequence |
 | [TaskChip](api/components/TaskChip.md) | Task reference and recorded state |
 | [TaskNode](api/components/TaskNode.md) | Task topology activity and attention |
 | [TaskRow](api/components/TaskRow.md) | Activity, receipt and dispatch rows |

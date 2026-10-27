@@ -10,8 +10,8 @@ pub fn install(app: &tauri::App) -> tauri::Result<()> {
     let status = MenuItem::with_id(app, "status", status_text("unknown"), false, None::<&str>)?;
     let actions = [
         ("overview", "trayOpen"),
-        ("tasks", "trayTasks"),
         ("logs", "trayLogs"),
+        ("connections", "source.connections"),
         ("settings", "traySettings"),
         ("quit", "trayQuit"),
     ];
@@ -84,10 +84,19 @@ pub fn install(app: &tauri::App) -> tauri::Result<()> {
         })
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => app.exit(0),
-            "overview" | "tasks" | "logs" | "settings" => {
+            "overview" | "tasks" | "accounts" | "remote" | "permissions" | "connections"
+            | "logs" | "settings" => {
                 if let Err(error) = crate::windows::show(
                     app,
-                    Some(("navigate".into(), serde_json::json!(event.id.as_ref()))),
+                    Some((
+                        "navigate".into(),
+                        serde_json::json!(match event.id.as_ref() {
+                            "tasks" | "accounts" => "overview",
+                            "remote" => "connections",
+                            "permissions" => "settings",
+                            page => page,
+                        }),
+                    )),
                 ) {
                     eprintln!("Tray navigation: {error}");
                 }

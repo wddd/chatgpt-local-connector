@@ -4,8 +4,7 @@ import type { ProviderAccount, AccountLogin } from '../types';
 import { t } from '../i18n';
 import { copyText } from '../platform';
 import { isUnidentified, refreshAccounts } from '../state/accounts';
-import { name as agentName } from '../state/agents';
-import { Disclosure, Button, Checkbox, Dialog, FormSection, FormField, Input, Notice, SingleChoice } from './ui';
+import { Disclosure, Button, Dialog, FormSection, FormField, Input, Notice, SingleChoice } from './ui';
 import { SensitiveIdentity } from './Sensitive';
 
 type Browser = Awaited<ReturnType<typeof accountsApi.browsers>>['browsers'][number];
@@ -15,7 +14,7 @@ export default function AddAccount({ onClose, initialLogin, forAccount }: { onCl
   const [login, setLogin] = useState(initialLogin), [identity, setIdentity] = useState<ProviderAccount>();
   const [detected, setDetected] = useState<ProviderAccount[]>([]), [detectedId, setDetectedId] = useState('');
   const [browsers, setBrowsers] = useState<Browser[]>([]), [browser, setBrowser] = useState(initialLogin?.browserId ?? 'default');
-  const [alias, setAlias] = useState(''), [defaults, setDefaults] = useState<string[]>([]), [code, setCode] = useState('');
+  const [alias, setAlias] = useState(''), [code, setCode] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [fieldError, setFieldError] = useState('');
   const [identityRetry, setIdentityRetry] = useState(0);
   const loading = useRef(false);
@@ -49,7 +48,7 @@ export default function AddAccount({ onClose, initialLogin, forAccount }: { onCl
       }
       const value = await accountsApi.get(id);
       if (stopped) return;
-      setIdentity(value); setAlias(value.alias); setDefaults(value.agentProfiles.filter(p => p.default).map(p => p.agent));
+      setIdentity(value); setAlias(value.alias);
       setFieldError(''); setError(''); setStep(2);
     }
     void read().catch(e => { if (!stopped) setError(String(e)); });
@@ -69,7 +68,6 @@ export default function AddAccount({ onClose, initialLogin, forAccount }: { onCl
     if (!alias.trim()) { setFieldError(t('fieldRequired')); document.getElementById('account-alias')?.focus(); return; }
     await action(async () => {
       await accountsApi.update({ id: identity.id, alias: alias.trim() });
-      for (const agent of defaults) await accountsApi.update({ id: identity.id, defaultFor: agent });
       await refreshAccounts(); onClose();
     });
   }
@@ -107,7 +105,6 @@ export default function AddAccount({ onClose, initialLogin, forAccount }: { onCl
         {!!identity.sources.length && !!identity.agentProfiles.length && <Notice tone="success">{t('accounts.matched')}</Notice>}
         {forAccount && !roleMatched && <Notice tone="warning">{t(isUnidentified(forAccount) ? 'accounts.agentIdentityUnresolved' : 'accounts.agentIdentityMismatch', { alias: forAccount.alias })}</Notice>}
         <FormField id="account-alias" label={t('accounts.alias')} error={fieldError}><Input id="account-alias" autoFocus value={alias} disabled={busy} aria-invalid={!!fieldError} aria-describedby={fieldError ? 'account-alias-error' : undefined} onChange={e => { setAlias(e.target.value); setFieldError(''); }} /></FormField>
-        {identity.agentProfiles.length > 0 && <FormSection title={t('accounts.useFor')}>{identity.agentProfiles.map(profile => <Checkbox key={profile.profileId} checked={defaults.includes(profile.agent)} disabled={profile.default || busy || profile.state !== 'signed-in'} onChange={value => setDefaults(old => value ? [...old, profile.agent] : old.filter(agent => agent !== profile.agent))}>{agentName(profile)} · {t(`accounts.profile.${profile.state}`)}</Checkbox>)}</FormSection>}
       </FormSection></form>}
       {error && <Notice action={login?.state === 'completed' ? <Button onClick={() => setIdentityRetry(value => value + 1)}>{t('retry')}</Button> : undefined}>{error}</Notice>}
     </FormSection>

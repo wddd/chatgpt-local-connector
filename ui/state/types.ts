@@ -1,4 +1,4 @@
-import type { ToolPolicy } from "../toolPolicy";
+type ToolPolicy = 'all' | { allowlist: string[] };
 import type { CoreSnapshot } from "../types";
 export interface Config {
   proxyMode: "system" | "direct" | "custom";

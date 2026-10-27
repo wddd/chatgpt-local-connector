@@ -1,14 +1,15 @@
 import { createStore } from "./store";
-export type Page = "overview" | "tasks" | "logs" | "accounts" | "remote" | "permissions" | "settings";
+export type Page = "overview" | "logs" | "connections" | "settings";
+export function resolvePage(value: string | null | undefined): Page {
+  if (value === "remote") return "connections";
+  if (value === "permissions") return "settings";
+  return value === "logs" || value === "connections" || value === "settings" ? value : "overview";
+}
 export const navigation = createStore<{
-  accountId?: string;
-  addAccount?: boolean;
   settingsExtras?: boolean;
   settingsUpdates?: boolean;
-  remoteSourceId?: string;
-  remoteConnectionId?: string;
+  settingsPermissions?: boolean;
   page?: Page;
   recordsSource?: string;
   providerId?: string;
-  ingressEdit?: { id: string; field: string };
 }>({});

@@ -1,14 +1,12 @@
-import { useState } from "react";
 import { t } from "../i18n";
 import { topologyTuningEnabled } from "../state/topology";
-import { SettingsSection, HoverScope, SettingRow, ChoiceControl, Switch } from "./ui";
+import { SettingsSection, SettingRow, Switch } from "./ui";
 import { api } from "../api";
 import { connector, run } from "../state/connector";
 import { acceptPreferences, maintainerMode } from "../state/store";
-import RelayHosting from "./RelayHosting";
 
 export default function SettingsExtras() {
-  const [pane, setPane] = useState("hosting"), tuning = topologyTuningEnabled.use();
+  const tuning = topologyTuningEnabled.use();
   const maintainer = maintainerMode.use(), { busy, status } = connector.use();
   async function saveMaintainer(enabled: boolean) {
     await run("maintainer-mode", async () => {
@@ -17,24 +15,12 @@ export default function SettingsExtras() {
       }));
     });
   }
-  return <div className="@container">
-    <div className="grid min-w-0 grid-cols-1 gap-6 @2xl:grid-cols-[auto_minmax(0,1fr)]">
-      <aside className="min-w-0 border-b pb-3 @2xl:w-50 @2xl:border-0 @2xl:pb-0">
-        <HoverScope><ChoiceControl navigation label={t("extras.title")} value={pane} onChange={setPane} options={[
-          { value: "hosting", label: t("extras.hosting"), description: t("extras.hostingDescription") },
-          { value: "experimental", label: t("topology.experimental"), description: t("extras.experimentalDescription") },
-        ]} /></HoverScope>
-      </aside>
-      <div className="min-w-0">
-        {pane === "hosting" ? <RelayHosting /> : <SettingsSection title={t("topology.experimental")}>
+  return <SettingsSection title={t("topology.experimental")}>
           <SettingRow label={t("extras.maintainerMode")}>
             <Switch label={t("extras.maintainerMode")} checked={maintainer} disabled={!!busy || !status} onChange={saveMaintainer} />
           </SettingRow>
           <SettingRow label={t("topology.tuning")} description={t("topology.settingDescription")}>
             <Switch label={t("topology.tuning")} checked={tuning} onChange={topologyTuningEnabled.set} />
           </SettingRow>
-        </SettingsSection>}
-      </div>
-    </div>
-  </div>;
+        </SettingsSection>;
 }

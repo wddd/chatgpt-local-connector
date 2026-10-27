@@ -1,0 +1,11 @@
+{
+  "theme": "dark",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "page": "connections",
+  "settingsPermissions": false,
+  "remoteLink": {}
+}

@@ -21,7 +21,7 @@ const server = await createServer({ mode: 'acceptance-fixture', cacheDir: 'node_
 await server.listen();
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const results = [];
-const scenarios = ['agent-objects-light', 'agent-objects-narrow', 'task-objects-light', 'debt-permissions-light', 'settings-light', 'settings-extras-light', 'p3-source-empty-light', 'right-panel', 'updates-countdown', 'updates-replacement-countdown', 'updates-replacement-immediate'];
+const scenarios = ['agent-objects-light', 'agent-objects-narrow', 'task-objects-light', 'settings-permissions-light', 'settings-light', 'settings-extras-light', 'p3-source-empty-light', 'right-panel', 'updates-countdown', 'updates-replacement-countdown', 'updates-replacement-immediate'];
 try {
   for (const name of scenarios) for (const theme of ['light', 'dark']) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });

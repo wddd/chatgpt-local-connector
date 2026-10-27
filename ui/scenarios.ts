@@ -7,7 +7,7 @@ import { accountScenario } from "./scenarioAccounts";
 import { beginScenario, finishScenario, missingScenarioRoute, scenarioReadiness } from "./state/scenarioReadiness";
 import { updates, acceptUpdateSnapshot } from './state/updates';
 import type { UpdateSnapshot } from './state/updateModel';
-import { onboarding, connectionSetup, connectionSwitch, type ConnectionSwitch, type SourceSetup, type ConnectionSetup } from './state/onboarding';
+import { onboarding, connectionSetup, type SourceSetup, type ConnectionSetup } from './state/onboarding';
 import { navigation, type Page } from './state/navigation';
 import type { RelayProgress } from './state/relay';
 import { connector } from './state/connector';
@@ -26,11 +26,10 @@ import config from '../native/src/ingress/config.json';
 import { taskScenario } from './scenarioTasks';
 import type { RequestRouting } from './state/requestRouting';
 import { taskPanelSnapshot } from './state/taskPanel';
-import { toolCatalogFixture } from './scenarioToolCatalog';
 
-export type PageFixture = 'agents-settings' | 'agent-display-settings' | 'add-account' | 'merge-accounts' | 'oauth-grants' | 'relay-hosting' | 'quota-segments' | 'management-table';
+export type PageFixture = 'agents-settings' | 'agent-display-settings' | 'add-account' | 'quota-segments' | 'management-table';
 export let pageFixture: PageFixture | undefined;
-type Fixture = { agentInventory?: Agent[]; multipleSources?: boolean; pageFixture?: PageFixture; shells?: boolean; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsExtras?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; agentAccountId?: string | null; phase: AgentActivitySession['phase']; title: string; headline: string; dispatchSummary?: DispatchSummary; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean; switching?: boolean; disconnected?: boolean; switched?: boolean }; switchFlow?: ConnectionSwitch; remoteSourceId?: string; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; remoteConnectionId?: string; relayProgress?: RelayProgress };
+type Fixture = { agentInventory?: Agent[]; multipleSources?: boolean; pageFixture?: PageFixture; shells?: boolean; update?: UpdateSnapshot; updatePanel?: boolean; settingsUpdates?: boolean; settingsExtras?: boolean; settingsPermissions?: boolean; panelHistory?: boolean; quota?: boolean; quotaDisplay?: 'remaining' | 'used'; resetDisplay?: 'countdown' | 'time' } & { timeline?: 'multi-turn'; detailTask?: number; bubbles?: { density?: 'compact' | 'standard' | 'detailed'; width?: 'narrow' | 'medium' | 'wide'; autoCompact?: boolean }; theme: 'light' | 'dark'; language: 'en' | 'zh-CN'; agents: string[]; tasks: { agent: string; agentAccountId?: string | null; phase: AgentActivitySession['phase']; title: string; headline: string; dispatchSummary?: DispatchSummary; approval?: boolean; question?: boolean; interaction?: AgentInteraction; completed?: boolean; outcome?: 'failed' | 'cancelled'; finalAnswer?: AgentTimelineEntry['text']; elapsedSeconds?: number; ownership?: AgentTimeline['ownership']; requestRouting?: RequestRouting['state'] }[]; panel?: PanelRequest; remoteLink?: { empty?: boolean; pending?: boolean; connected?: boolean; joined?: boolean; local?: boolean }; sourceSetup?: SourceSetup; connectionSetup?: ConnectionSetup; page?: Page; relayProgress?: RelayProgress };
 const fixtures = import.meta.glob('../tooling/acceptance/scenarios/*.json', { import: 'default' });
 let responses: Record<string, unknown> = {};
 let conversations: Record<string, AgentConversation[]> = {};
@@ -85,7 +84,6 @@ function respondToScenario(path: string, method: string, body?: unknown): unknow
     return { data: structuredClone(rows.slice(start, start + size)), nextCursor: start + size < rows.length ? `fixture-page-${start + size}` : null,
       scope: agent === 'codex' ? 'native-unarchived' : 'arc-tasks' };
   }
-  if (path === 'relay/instances' && method === 'POST' && pageFixture === 'relay-hosting') return structuredClone(responses[path]);
   if (method === 'POST') {
     const result = taskResponse?.(path, body);
     if (result !== undefined) return structuredClone(result);
@@ -134,32 +132,6 @@ export async function installScenario(name: string) {
     if (remote.local) status.ingresses = [{ ...base, id: 'local-claude-code', name: 'Claude Code', sources: [{ ...base.sources![0], id: 'local-source', ingressId: 'local-claude-code', connectedAt: null, lastSeenAt: null }] }];
   }
   const sources = status.ingresses.flatMap(i => i.sources ?? []);
-  if (fixture.remoteLink?.switching || fixture.remoteLink?.disconnected) {
-    const old = status.ingresses[0], source = sources.find(s => s.id === 'source-personal')!;
-    const target = { ...old, id: 'tunnel-next', name: 'Cloudflare Tunnel', transport: 'https', url: 'https://tunnel.example.com/mcp', sources: [], oauth: { pending: [], grants: [] } } as typeof old;
-    const peer = { ...source, id: 'source-bot', label: 'Grok Bot', product: 'grok-bot', platform: 'xai', credential: { type: 'oauth-grant' as const, grantId: 'grant-bot' } };
-    sources.push(peer); old.sources!.push(peer);
-    const occupied = status.ingresses.find(i => i.id === 'secure-tunnel')!;
-    occupied.sources = [{ ...source, id: 'source-secure', ingressId: occupied.id, label: 'ChatGPT', product: 'chatgpt', platform: 'openai', credential: { type: 'ingress' } }];
-    sources.push(...occupied.sources);
-    status.ingresses.push(target);
-    if (fixture.switchFlow && fixture.switchFlow.step !== 'connection') {
-      source.pendingSwitch = { ingressId: target.id, expiresAt: Math.floor(Date.now() / 1000) + 300, ...(fixture.switchFlow.step === 'approval' ? { requestId: 'request-switch' } : {}) };
-      if (fixture.switchFlow.step === 'approval') {
-        const pending = { ...source, id: 'source-switch', switchSourceId: source.id, ingressId: target.id, credential: { type: 'oauth-grant' as const, grantId: 'request-switch' }, pendingSwitch: undefined, connectedAt: null, lastSeenAt: null, state: 'disconnected' as const };
-        sources.push(pending); target.sources = [pending];
-        target.oauth!.pending = [{ id: 'request-switch', sourceId: pending.id, switchSourceId: source.id, product: source.product, clientName: 'Claude', redirectUri: 'https://claude.ai/api/mcp/auth_callback', resource: target.url, pairingCode: '4F7K', status: 'pending' }];
-      }
-    }
-    if (fixture.remoteLink?.switched) {
-      old.sources = old.sources!.filter(s => s.id !== source.id);
-      source.ingressId = target.id; target.sources = [source];
-    }
-    if (fixture.remoteLink?.disconnected) {
-      for (const s of sources.filter(s => s.ingressId === old.id)) { s.state = 'disconnected'; s.connectionRemoved = true; s.connectionName = old.name; }
-      status.ingresses = status.ingresses.filter(i => i.id !== old.id);
-    }
-  }
   const inventory: Agent[] = fixture.agentInventory ?? fixture.agents.map(agent => ({ agent, installed: true, available: true, enabled: true, status: 'ready', version: 'fixture' }));
   const activity: AgentActivitySnapshot = { observedAt: now, activeAgents: fixture.agents, agents: Object.fromEntries(fixture.agents.map(a => [a, { sessions: [] }])) };
   fixture.tasks.forEach((task, index) => {
@@ -264,7 +236,7 @@ export async function installScenario(name: string) {
     responses['agents/activity'] = visible;
     acceptActivity(structuredClone(visible));
   }, routingByTask);
-  const permissionData = { items: (fixture.page === 'permissions' ? [
+  const permissionData = { items: (fixture.settingsPermissions ? [
     { id: 'accessibility', state: 'granted' }, { id: 'screen-recording', state: 'missing' },
     { id: 'full-disk-access', state: 'granted' }, { id: 'command-full-disk-access', state: 'missing' },
     { id: 'notifications', state: 'unknown' }, { id: 'login-start', state: 'granted' },
@@ -289,19 +261,14 @@ export async function installScenario(name: string) {
     sessions: group.sessions.filter(session => !fixture.tasks[Number(session.id.replace('fixture-task-', ''))]?.outcome),
   }])) };
   responses = { ...timelines, status, source: { sources }, agents: { agents: inventory }, 'agents/activity': initialActivity, tasks: { records }, permissions: permissionData, subscriptions: subscriptionData, preferences, 'relay/list': { relays: fixture.remoteLink && !fixture.remoteLink.empty && !fixture.remoteLink.local ? [{ id: 'relay-host', ingressId: 'relay-main', name: 'My relay', url: 'https://relay.example.com', owner: !fixture.remoteLink.joined, workerVersion: 'fixture' }] : [], version: 'fixture' }, 'relay/progress': fixture.relayProgress ?? { phase: 'idle' }, 'codex/login': { state: 'authenticated' }, 'local-access/status': { codeAvailable: true, desktopAvailable: true } };
-  responses['tool-catalog'] = toolCatalogFixture;
   responses['accounts'] = { accounts: topologyAccounts, login: null } satisfies AccountsResult;
   srcConversationResponse = srcConversationsScenario();
-  accountResponse = fixture.page === 'accounts' || ['source-panel', 'source-panel-light', 'src-account-multiple'].includes(name) || ['add-account', 'merge-accounts'].includes(fixture.pageFixture ?? '') ? accountScenario(status, sources, !!fixture.pageFixture, fixture.multipleSources) : undefined;
+  accountResponse = ['source-panel', 'source-panel-light', 'src-account-multiple'].includes(name) || fixture.pageFixture === 'add-account' ? accountScenario(status, sources, !!fixture.pageFixture, fixture.multipleSources) : undefined;
   if (accountResponse && fixture.pageFixture) {
     const initial = accountResponse('accounts', 'GET') as AccountsResult;
     const login = fixture.pageFixture === 'add-account' ? accountResponse('accounts/add', 'POST', { kind: 'claude' }) as AccountsResult['login'] : null;
     accounts.set({ items: initial.accounts, login, loading: false, error: '' });
   }
-  if (fixture.pageFixture === 'relay-hosting') responses['relay/instances'] = [
-    { id: 'fixture-self', name: 'Acceptance', isSelf: true, joinedAt: now, lastOnline: now, online: true },
-    { id: 'fixture-peer', name: 'Example workstation', isSelf: false, joinedAt: now, lastOnline: null, online: false },
-  ];
   responses['updates/status'] = { state: 'idle', when: 'settled', work: { blocking: [], willResume: [], unaffected: [] } };
   responses['service'] = { supported: true, enabled: false };
   connector.set({ status, sources, sourcesLoaded: true, busy: '', loading: false, error: '', feedback: { text: '', error: false } });
@@ -330,10 +297,9 @@ export async function installScenario(name: string) {
       const session = activity.agents[task.agent].sessions.find(session => session.id === `fixture-task-${fixture.detailTask}`)!;
       selectAgentPanel({ type: 'task', agent: task.agent, session: { ...session, orderAt: Date.parse(session.startedAt!), ...(task.outcome ? { endedAt: Date.parse(now) } : {}) } });
     }
-    if (fixture.switchFlow) connectionSwitch.set(fixture.switchFlow);
     if (fixture.sourceSetup) onboarding.set(fixture.sourceSetup);
     if (fixture.connectionSetup) connectionSetup.set(fixture.connectionSetup);
-    if (fixture.page) navigation.set({ page: fixture.page, remoteConnectionId: fixture.remoteConnectionId, remoteSourceId: fixture.remoteSourceId });
+    if (fixture.page) navigation.set({ page: fixture.page });
     if (fixture.update) {
       const snapshot = structuredClone(fixture.update);
       if (snapshot.state === 'countdown') snapshot.restartAt = new Date(Date.now() + 10000).toISOString();
@@ -342,6 +308,7 @@ export async function installScenario(name: string) {
       updates.set(old => ({ ...old, panelOpen: fixture.updatePanel !== false }));
     }
     if (fixture.settingsExtras) navigation.set(old => ({ ...old, page: 'settings', settingsExtras: true }));
+    if (fixture.settingsPermissions) navigation.set(old => ({ ...old, page: 'settings', settingsPermissions: true }));
     if (fixture.settingsUpdates) navigation.set(old => ({ ...old, page: 'settings', settingsUpdates: true }));
     if (!fixture.shells) await settledViewModel();
     finishScenario();

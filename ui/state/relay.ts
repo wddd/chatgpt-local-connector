@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 export type Relay = { id: string; url: string; name: string; owner: boolean; ingressId: string; workerVersion: string | null };
+// Until Core supplies a public-link identity, only a unique owned relay is selectable.
+export function publicRelay(relays: readonly Relay[]): Relay | undefined {
+  const owned = relays.filter(relay => relay.owner);
+  return owned.length === 1 ? owned[0] : undefined;
+}
 export type RelayProgress = { phase: "idle" | "login" | "deploying" | "connecting" | "ready" | "failed"; jobId?: string; action?: string; relayId?: string; ingressId?: string; loginUrl?: string; reason?: string; cancelled?: boolean; failedPhase?: string; accounts?: { id: string; name: string }[]; result?: { relayId?: string; ingressId?: string; url?: string; deleted?: boolean } };
 export function useRelays() {
   const [data, setData] = useState<{ relays: Relay[]; version: string }>({ relays: [], version: "" });

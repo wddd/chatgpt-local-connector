@@ -3,7 +3,6 @@ import { Button, Dialog, SectionHeader, Switch, SingleChoice } from './component
 import { InteractionRequestCard, InteractionRequestChip, InteractionRequestRow } from './components/objects/interaction-request';
 import { AuthorizationRequestCard, AuthorizationRequestChip, AuthorizationRequestRow } from './components/objects/authorization-request';
 import { DeploymentProgressCard } from './components/objects/deployment-progress';
-import { RelayMemberCard, RelayMemberRow } from './components/objects/relay-member';
 import type { ApprovalSubmission } from './state/activityModel';
 import type { RelayProgress } from './state/relay';
 import type { RemoteProfile } from './controlSources';
@@ -40,9 +39,6 @@ export default function RequestsFixture() {
     <AuthorizationRequestCard busy={authorizationBusy} request={{ ...f.authorization, status: authorization === 'switch' ? 'pending' : authorization, switchSourceId: authorization === 'switch' ? 'removed-source' : undefined }} ingress={f.ingress} sourceId={source} onSourceChange={setSource} label={label} onLabelChange={setLabel} profile={profile} onProfileChange={setProfile} candidates={[]} remaining={[]} onDecide={allow => setReceipt(allow ? 'Authorization allowed' : 'Authorization denied')} error={state === 'failed' ? 'Sample authorization failure' : undefined} />
     <SingleChoice label="Deployment state" value={deployment} onChange={setDeployment} options={['account', 'login', 'deploying', 'connecting', 'ready', 'failed', 'cancelled'].map(value => ({ value, label: value }))} />
     <DeploymentProgressCard progress={progress} busy={false} account={account} setAccount={setAccount} onRetry={() => setReceipt('Retry deployment')} onCancel={() => setReceipt('Cancel deployment')} />
-    <RelayMemberRow member={f.member} now={f.now} onRemove={() => setReceipt('Review removal')} />
-    <RelayMemberRow member={{ ...f.member, isSelf: true }} deviceName="Self device" now={f.now} onRemove={() => setReceipt('Unexpected self removal')} />
-    <RelayMemberCard member={f.member} now={f.now} />
     <output aria-live="polite">{receipt}</output>
   </main>;
 }

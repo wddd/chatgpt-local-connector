@@ -1,7 +1,0 @@
-{
-  "theme": "dark",
-  "language": "en",
-  "agents": ["claude", "codex"],
-  "tasks": [],
-  "page": "accounts"
-}

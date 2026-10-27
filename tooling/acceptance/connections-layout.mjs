@@ -7,7 +7,7 @@ const argument = name => process.argv.find(value => value.startsWith(`--${name}=
 const url = new URL(argument('url') ?? 'http://127.0.0.1:5194');
 if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) throw new Error('Use a local acceptance-fixture server.');
 const filter = argument('scenario');
-const names = (await readdir('tooling/acceptance/scenarios')).filter(name => /^(p3-|p4-switch-|connections-|requests-|src-tunnel-|debt-relay-hosting-|source-panel)/.test(name) && name.endsWith('.json')).map(name => name.slice(0, -5)).filter(name => !filter || name.includes(filter)).sort();
+const names = (await readdir('tooling/acceptance/scenarios')).filter(name => /^(p3-|connections-|requests-|src-tunnel-|source-panel)/.test(name) && name.endsWith('.json')).map(name => name.slice(0, -5)).filter(name => !filter || name.includes(filter)).sort();
 if (!names.length) throw new Error('No matching connection fixtures.');
 const output = path.resolve('output/acceptance/connections-layout');
 await mkdir(output, { recursive: true });

@@ -64,7 +64,6 @@ export async function acceptRequests(page) {
   await page.getByText('Retry deployment', { exact: true }).waitFor();
   await request.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByText('Cancel deployment', { exact: true }).waitFor();
-  if (await request.getByRole('button', { name: 'Remove', exact: true }).count() !== 1) throw new Error('Self member exposed removal');
   await assertRequestLayout(page);
   if (await request.evaluate(element => element.scrollWidth > element.clientWidth)) throw new Error('Request fixture overflows horizontally');
 }

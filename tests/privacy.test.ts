@@ -34,7 +34,7 @@ test('substring masking preserves prose and treats identities literally', () => 
 
 test('account privacy replaces DOM values, restores them exactly and preserves real copy actions', async () => {
   // Regression: blurred account identities and read-only connection inputs retained real values in DOM, while unrelated task bubbles were hidden.
-  const window = new Window({ url: 'http://localhost/?scenario=accounts' });
+  const window = new Window({ url: 'http://localhost/?scenario=source-panel' });
   const media = Object.assign(new window.EventTarget(), { matches: true });
   window.matchMedia = () => media as unknown as MediaQueryList;
   class Observer { observe() {} unobserve() {} disconnect() {} }
@@ -52,18 +52,17 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
   const mount = document.createElement('main'); document.body.append(mount); const root = createRoot(mount);
   try {
     const { installScenario } = await server.ssrLoadModule('/ui/scenarios.ts');
-    await installScenario('accounts');
+    await installScenario('source-panel');
     const { refreshAccounts, accounts } = await server.ssrLoadModule('/ui/state/accounts.ts');
     await refreshAccounts();
     const { setPrivacy, protectSnapshot } = await server.ssrLoadModule('/ui/state/privacy.ts');
     const { connector } = await server.ssrLoadModule('/ui/state/connector.ts');
-    const { navigation } = await server.ssrLoadModule('/ui/state/navigation.ts');
     const { accountsApi } = await server.ssrLoadModule('/ui/api.ts');
     const { t } = await server.ssrLoadModule('/ui/i18n.ts');
-    const { default: AccountsPage } = await server.ssrLoadModule('/ui/components/AccountsPage.tsx');
+    const { AgentAccountCard } = await server.ssrLoadModule('/ui/components/objects/agent-account/Card.tsx');
     const { default: AddAccount } = await server.ssrLoadModule('/ui/components/AddAccount.tsx');
     const { default: SourcePanel } = await server.ssrLoadModule('/ui/components/SourcePanel.tsx');
-    const { default: RemoteLinkPage } = await server.ssrLoadModule('/ui/components/RemoteLinkPage.tsx');
+    const { default: ConnectionsPage } = await server.ssrLoadModule('/ui/components/ConnectionsPage.tsx');
     const { ActivityBubble } = await server.ssrLoadModule('/ui/components/ActivityBubbles.tsx');
     const { Dialog, TooltipProvider } = await server.ssrLoadModule('/ui/components/ui/index.tsx');
     const { default: Address } = await server.ssrLoadModule('/ui/components/Address.tsx');
@@ -72,7 +71,6 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
     const page = within(document.body), account = accounts.get().items.find((item: any) => item.id === 'account-claude');
     const sourceAccount = accounts.get().items.find((item: any) => item.id === 'account-openai');
     const source = connector.get().sources.find((item: any) => sourceAccount.sources.includes(item.id));
-    navigation.set((old: any) => ({ ...old, accountId: account.id }));
     const address = connector.get().status.ingresses.find((item: any) => item.id === source.ingressId).url;
     const raw = accounts.get().items.flatMap((item: any) => [item.email, item.orgName, item.identityKey, ...item.notifications.sessions.map((session: any) => session.target)]).filter(Boolean).concat(connector.get().status.ingresses.map((item: any) => item.url).filter(Boolean));
     // Inspect content and attributes together: a hidden raw mirror is still a leak.
@@ -98,11 +96,7 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
     for (const theme of ['light', 'dark']) {
       document.documentElement.dataset.theme = theme;
       await act(async () => setPrivacy(true));
-      await render(h(AccountsPage)); assertPrivate();
-      await act(async () => { fireEvent.click(page.getByRole('button', { name: t('accounts.editAlias', { alias: account.alias }), exact: true })); });
-      assert.ok(page.getByRole('textbox', { name: t('accounts.alias'), exact: true }));
-      assertPrivate();
-      await act(async () => { fireEvent.keyDown(page.getByRole('textbox', { name: t('accounts.alias'), exact: true }), { key: 'Escape' }); });
+      await render(h(AgentAccountCard, { account })); assertPrivate();
       await act(async () => setPrivacy(false));
       assert.ok(page.getAllByText(account.email, { exact: true }).length > 0);
       assert.ok(page.getByText(account.orgName, { exact: true }));
@@ -112,15 +106,14 @@ test('account privacy replaces DOM values, restores them exactly and preserves r
     await act(async () => { fireEvent.click(page.getByRole('radio', { name: t('accounts.tab.account'), exact: true })); });
     assertPrivate();
     await act(async () => setPrivacy(false));
-    assert.ok(page.getByText(sourceAccount.identityKey, { exact: true }));
+    assert.ok(page.getByText(sourceAccount.email, { exact: true }));
     await act(async () => setPrivacy(true));
     const completed = { loginId: 'privacy-confirm', kind: 'claude', state: 'completed', accountId: account.id };
     await render(h(AddAccount, { initialLogin: completed, onClose() {} })); assertPrivate();
     assert.ok(page.getByRole('button', { name: t('accounts.confirm'), exact: true }));
     await render(h(AddAccount, { key: 'add-role', forAccount: sourceAccount, onClose() {} })); assertPrivate();
     assert.ok(page.getByRole('dialog', { name: t('accounts.addAgentFor', { alias: sourceAccount.alias }), exact: true }));
-    await act(async () => navigation.set((old: any) => ({ ...old, remoteSourceId: undefined, remoteConnectionId: undefined })));
-    await render(h(RemoteLinkPage)); assertPrivate();
+    await render(h(ConnectionsPage)); assertPrivate();
     await render(h(Address, { value: address, label: 'Connection address' })); assertPrivate();
     await act(async () => { fireEvent.click(page.getByRole('button', { name: t('copy'), exact: true })); });
     assert.equal(copied, address);

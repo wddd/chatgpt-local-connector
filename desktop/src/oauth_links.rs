@@ -34,8 +34,17 @@ fn open(app: &tauri::AppHandle, url: &tauri::Url) {
             }
             return;
         }
-        Some("permissions") => {
-            let _ = crate::windows::show(app, Some(("permissions:open".into(), json!(null))));
+        Some(
+            page @ ("overview" | "tasks" | "accounts" | "remote" | "connections" | "permissions"
+            | "settings" | "logs"),
+        ) => {
+            let page = match page {
+                "tasks" | "accounts" => "overview",
+                "remote" => "connections",
+                "permissions" => "settings",
+                page => page,
+            };
+            let _ = crate::windows::show(app, Some(("navigate".into(), json!(page))));
             return;
         }
         Some("setup")

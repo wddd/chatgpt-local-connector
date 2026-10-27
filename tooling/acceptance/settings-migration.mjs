@@ -13,7 +13,7 @@ const address = server.httpServer.address();
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const report = [];
 const filter = process.argv.find(arg => arg.startsWith('--scenario='))?.slice('--scenario='.length);
-const scenarios = ['settings-light', 'settings-extras-light', 'debt-agents-settings-light', 'debt-agent-display-settings-light', 'debt-permissions-light', 'debt-records-light', 'management-table-light', 'updates-settings', 'updates-long-notes', 'updates-downloading', 'updates-countdown', 'updates-restore-failed', 'updates-settling'].filter(name => !filter || name.includes(filter));
+const scenarios = ['settings-light', 'settings-extras-light', 'debt-agents-settings-light', 'debt-agent-display-settings-light', 'settings-permissions-light', 'debt-records-light', 'management-table-light', 'updates-settings', 'updates-long-notes', 'updates-downloading', 'updates-countdown', 'updates-restore-failed', 'updates-settling'].filter(name => !filter || name.includes(filter));
 async function geometry(page) {
   return page.evaluate(() => {
     const visible = el => el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0;

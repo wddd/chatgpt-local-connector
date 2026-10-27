@@ -1,3 +1,4 @@
+import { useRelays, publicRelay } from "../state/relay";
 import { SrcAccountNode } from "./objects/src-account";
 import { SrcPlatformNode } from "./objects/src-platform";
 import { ingressState } from "../sourcePresentation";
@@ -50,8 +51,8 @@ import { topologyTuningEnabled } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
 import type { WireState } from "../topology/render";
 import Onboarding from "./Onboarding";
-import AddConnection from "./AddConnection";
-import { onboarding, openOnboarding, connectionSetup, connectionSwitch, addedSource } from "../state/onboarding";
+import SourceConnectionSetup from "./SourceConnectionSetup";
+import { onboarding, openOnboarding, connectionSetup, addedSource } from "../state/onboarding";
 import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
 import AgentDisplaySettings from "./AgentDisplaySettings";
@@ -126,50 +127,35 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   const agents = orderedAgents()
     .filter((a) => a.installed && a.enabled === true)
     .filter((a, index) => index < ([4, 6, 8, 10].includes(max) ? max : 4) || a.agent === selection?.agent);
-  const running = sources.some((i) => i.running),
+  const relays = useRelays();
+  const publicId = publicRelay(relays.relays)?.ingressId;
+  const basicConnections = sources.filter(entry => entry.transport === "local" || entry.id === publicId);
+  const running = basicConnections.some((i) => i.running),
     progressing =
-      !!busy || sources.some((i) => ["starting", "stopping"].includes(i.state));
-  function edit(ingress?: Ingress, field?: string) {
-    if (ingress) { selectIngressPanel(ingress, { editing: true, field }); return; }
-    openOnboarding("product");
-  }
-  useEffect(() => {
-    if (!nav.ingressEdit) return;
-    const ingress = status?.ingresses.find((i) => i.id === nav.ingressEdit?.id);
-    if (!ingress) return;
-    edit(ingress, nav.ingressEdit.field);
-    navigation.set((old) => ({ ...old, ingressEdit: undefined }));
-  }, [nav.ingressEdit, status?.ingresses]);
+      !!busy || basicConnections.some((i) => ["starting", "stopping"].includes(i.state));
+  function edit() { openOnboarding("product"); }
   async function toggle() {
     if (busy) return;
     if (
       !running &&
-      (!sources.length || sources.every((i) => !i.config.configured))
+      (!basicConnections.length || basicConnections.every((i) => !i.config.configured))
     ) {
-      edit(sources[0]);
+      edit();
       return;
     }
-    await run("ingress-all", async () => {
-      const result = await api<{
-        results: {
-          id: string;
-          ok: boolean;
-          error?: string;
-        }[];
-      }>(`ingress/${running ? "stop-all" : "start-all"}`, "POST");
+    await run("basic-connections", async () => {
+      const failures: string[] = [];
+      for (const entry of basicConnections) {
+        try {
+          if (!running && !entry.enabled) await api(`ingress/${entry.id}`, "PUT", { enabled: true });
+          await api(`ingress/${entry.id}/${running ? "stop" : "start"}`, "POST"); }
+        catch (error) { failures.push(`${entry.name}: ${String(error)}`); }
+      }
       await refreshConnector();
-      const errors = result.results.filter((r) => !r.ok);
-      if (errors.length)
-        throw new Error(
-          errors
-            .map(
-              (r) =>
-                `${sources.find((i) => i.id === r.id)?.name || r.id}: ${r.error}`,
-            )
-            .join("\n"),
-        );
+      if (failures.length) throw new Error(failures.join("\n"));
     });
   }
+
   useEffect(() => {
     if (nav.providerId === undefined) return;
     if (nav.providerId === "") {
@@ -350,8 +336,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       </section>
       {visible && tuning && <TuningPanel />}
       {flow && visible && <Onboarding />}
-      {newConnection && visible && <AddConnection options={newConnection} onClose={() => connectionSetup.set(undefined)} onAdded={id => {
-        if (newConnection.forSwitch) connectionSwitch.set(old => old && { ...old, ingressId: id });
+      {newConnection && visible && <SourceConnectionSetup options={newConnection} onClose={() => connectionSetup.set(undefined)} onAdded={id => {
+        void relays.refresh().catch(() => {});
         if (newConnection.forSource) onboarding.set(old => old?.step === "connection" ? { ...old, step: "address", ingressId: id, baseline: (connector.get().status?.ingresses.find(i => i.id === id)?.oauth?.pending ?? []).map(p => p.id) } : old);
         connectionSetup.set(undefined);
       }} />}

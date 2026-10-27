@@ -3,8 +3,7 @@ import { AgentAccountCard, AgentAccountRow } from './objects/agent-account';
 import { SrcAccountChip } from './objects/src-account';
 import { openSourceWorkspace } from './SourcePanel';
 import AddAccount from './AddAccount';
-import { navigation } from '../state/navigation';
-import { ViewStack, Dialog, IconButton, Notice, Button } from "./ui";
+import { ViewStack, Dialog, IconButton, Notice } from "./ui";
 import { useReducedMotion } from "../state/appEnvironment";
 import { agentPanel, selectAgentPanel } from "../state/overviewPanels";
 import { useId, useLayoutEffect, useRef, useState } from "react";
@@ -64,10 +63,8 @@ function AgentView({ agent, account, accountId, accounts, onSettings, expanded, 
   </>;
   return <section className="agent-panel-layer flex h-full min-h-0 w-full flex-col [&>.dialog-header]:shrink-0 [&>.task-timeline]:flex-1 [&>.task-timeline]:h-auto [&>.task-timeline]:px-4 [&>.task-timeline]:pb-4 [&>.dialog-footer]:max-h-1/2 agent-overview-layer">
     {account ? <AgentAccountCard account={account} agent={agent} frame="panel" titleActions={titleActions} secondary={secondary} headerActions={headerActions} busy={busy}
-      onDefault={profile => void mutate(() => accountsApi.update({ id: account.id, defaultFor: profile.agent, profileId: profile.profileId }))}
       onReauth={profile => void mutate(async () => setLogin(await accountsApi.reauth({ id: account.id, agent: profile.agent, profileId: profile.profileId })))}>
       {sources.filter(source => account.sources.includes(source.id)).map(source => <SrcAccountChip key={source.id} source={source} account={account} onOpen={() => { selectAgentPanel({ type: 'closed' }); openSourceWorkspace(source.id); }} />)}
-      <Button variant="link" onClick={() => { selectAgentPanel({ type: 'closed' }); navigation.set(old => ({ ...old, page: 'accounts', accountId: account.id })); }}>{t('accounts.openAccount')}</Button>
       {body}
     </AgentAccountCard> : <AgentPlatformCard agent={agent} frame="panel" quota={accountId ? null : undefined} titleActions={titleActions} secondary={secondary} headerActions={headerActions}>
       {accountId ? <Notice>{t('accounts.identityUnavailable')}</Notice> : accounts.filter(item => item.agentProfiles.some(profile => profile.agent === agent.agent)).map(item => <AgentAccountRow key={item.id} account={item} agent={agent.agent} onOpen={() => selectAgentPanel({ type: 'agent', agent: agent.agent, accountId: item.id })} />)}{body}

@@ -1,5 +1,5 @@
 import { acceptTopologyWires } from './topology-wires.mjs';
-import { acceptAgentObjects, acceptAgentObjectGeometry } from './agent-objects.mjs';
+import { acceptAgentObjects } from './agent-objects.mjs';
 import { acceptNodeBranding } from './node-branding.mjs';
 import { acceptLongRequest, acceptRequests } from './requests.mjs';
 import { acceptDispatchSpecBubbles } from './dispatch-spec.mjs';
@@ -37,7 +37,7 @@ try {
   browser = await ({ chromium, webkit }[engine]).launch();
   for (const file of scenarios) {
     const fixture = JSON.parse(await readFile(path.join(root, 'tooling/acceptance/scenarios', file), 'utf8'));
-    const setup = !!(fixture.sourceSetup && fixture.sourceSetup.step !== 'welcome' || fixture.connectionSetup || fixture.switchFlow);
+    const setup = !!(fixture.sourceSetup && fixture.sourceSetup.step !== 'welcome' || fixture.connectionSetup);
     if (setupOnly && !setup) continue;
     const name = file.slice(0, -5);
     const longRequest = name === 'task-long-question' || name === 'task-long-approval';
@@ -164,13 +164,6 @@ try {
           await remaining.focus();
           await page.waitForFunction(() => document.activeElement?.getAttribute('aria-expanded') === 'true');
         }
-        if (name.startsWith('debt-merge-accounts-')) {
-          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          const confirm = page.getByRole('button', { name: messages['accounts.mergeConfirm'], exact: true });
-          if (await confirm.isEnabled()) throw new Error('Merge requires a selected account');
-          await page.getByRole('checkbox').first().check();
-          if (!await confirm.isEnabled()) throw new Error('Selected merge member did not enable confirmation');
-        }
         if (name.startsWith('debt-records-')) {
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           const disclosure = page.getByRole('button', { name: messages.details, exact: true }).first();
@@ -228,11 +221,9 @@ try {
           // Trial click checks the real center target without dispatching a native turn.
           await action.click({ trial: true });
         }
-        if (name === 'task-dispatch-dsh' || name === 'tasks-dispatch-dsh') {
+        if (name === 'task-dispatch-dsh') {
           // Regression: dsh task rows omitted the recorded model and effort chip.
-          const scope = name === 'tasks-dispatch-dsh'
-            ? page.getByRole('button', { name: fixture.tasks[0].title, exact: true })
-            : taskDetail;
+          const scope = taskDetail;
           const chips = scope.getByLabel('V4.1 Flash · OpenCode Go · Max', { exact: true }).filter({ visible: true });
           await chips.first().waitFor({ state: 'visible' });
           for (const chip of await chips.all()) {
@@ -378,8 +369,6 @@ try {
           // Regression: the source connection advanced area lacked shared fields, disclosure and destructive-action framing.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           await page.getByRole('radio', { name: messages['accounts.tab.connection'], exact: true }).click();
-          const advanced = page.getByRole('button', { name: messages['accounts.advanced'], exact: true });
-          await advanced.click();
           await page.getByRole('textbox', { name: messages['source.label'], exact: true }).waitFor();
           await page.getByText(messages['source.disconnectConsequence'], { exact: true }).waitFor();
         }
@@ -437,25 +426,6 @@ try {
           await nav.scrollIntoViewIfNeeded();
           await nav.hover();
         }
-        if (name === 'accounts') {
-          // Regression: account management was only reachable through Settings and hid source identities.
-          const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
-          await page.getByRole('heading', { name: messages['accounts.title'], exact: true }).waitFor({ state: 'visible' });
-          await page.getByRole('button', { name: messages['accounts.editAlias'].replace('{alias}', 'Unidentified'), exact: true }).click();
-          await page.getByRole('textbox', { name: messages['accounts.alias'], exact: true }).waitFor({ state: 'visible' });
-          await page.keyboard.press('Escape');
-          await page.getByRole('button', { name: messages['accounts.add'], exact: true }).click();
-          const dialog = page.getByRole('dialog', { name: messages['accounts.add'], exact: true });
-          await dialog.waitFor({ state: 'visible' });
-          await dialog.getByRole('button', { name: messages['accounts.next'], exact: true }).click();
-          await dialog.getByRole('button', { name: messages['accounts.signin'], exact: true }).click();
-          await dialog.getByRole('textbox', { name: messages['accounts.alias'], exact: true }).waitFor({ state: 'visible' });
-          await dialog.getByRole('button', { name: messages['accounts.confirm'], exact: true }).click();
-          await dialog.waitFor({ state: 'hidden' });
-          await page.getByRole('button', { name: /^Studio / }).click();
-          await acceptAgentObjectGeometry(page);
-        }
-
         await writeFile(path.join(out, `${key}.json`), JSON.stringify(model, null, 2));
         if (screenshots) {
           const buffer = await page.screenshot({ path: path.join(out, `${key}.png`), animations: 'disabled' });

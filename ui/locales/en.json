@@ -12,7 +12,7 @@
   "trayDisconnected": "Disconnected",
   "trayOpen": "Open",
   "trayTasks": "Tasks",
-  "trayLogs": "Records",
+  "trayLogs": "Logs",
   "trayQuit": "Quit",
   "showSecret": "Show value",
   "hideSecret": "Hide value",
@@ -951,8 +951,6 @@
   "hosting.deleteDescription": "Every connected device disconnects, including this computer’s relay link.",
   "hosting.delete": "Delete…",
   "hosting.remove": "Remove",
-  "extras.entryTitle": "Relay hosting & experimental",
-  "extras.entryDescription": "Relays you host for others and homepage topology tuning",
   "setup.returns": "Returns to “{name}” when done",
   "setup.localOnly": "Local clients only",
   "setup.chatgptOnly": "ChatGPT only",
@@ -1442,5 +1440,10 @@
   "source.profile.remote-polling": "Remote polling",
   "source.selectForActions": "Select a source to change its connection or disconnect it.",
   "accounts.identityConflict": "Account identity conflicts with this source.",
-  "source.documentation": "Documentation"
+  "source.documentation": "Documentation",
+  "connections.otherMethods": "Other connection methods",
+  "logs": "Logs",
+  "connections.multiplePublicLinks": "Multiple owned relays are configured. Manage them through CLI/AX until a public link is selected.",
+  "start": "Start",
+  "stop": "Stop"
 }

@@ -8,17 +8,12 @@ import {
   useState,
 } from "react";
 import {
-  LayoutDashboard,
   Logs,
   Settings,
   X,
   Maximize2,
   Minimize2,
-  ShieldAlert,
-  ShieldCheck,
-  RefreshCw,
   Network,
-  Users,
 } from "lucide-react";
 import { animate } from "motion";
 import { reducedMotion } from "./motion/surface";
@@ -28,7 +23,7 @@ import { connector, notify, startConnector } from "./state/connector";
 import { startAgents } from "./state/agents";
 import { startSubscriptions } from "./state/subscriptions";
 import { startAgentActivity } from "./state/activity";
-import { startTasks, tasks } from "./state/tasks";
+import { startTasks } from "./state/tasks";
 import {
   startUpdateChecks,
   updates,
@@ -37,7 +32,7 @@ import {
   updateVisible,
 } from "./state/updates";
 import { onboarding } from "./state/onboarding";
-import { navigation, type Page } from "./state/navigation";
+import { navigation, resolvePage, type Page } from "./state/navigation";
 import { panelLayers, panelAnchorAt } from "./state/panels";
 import {
   capturePanelOrigin,
@@ -45,39 +40,26 @@ import {
 import { displayMessage } from "./messages";
 import OAuthApproval from "./components/OAuthApproval";
 import ConnectionOverview from "./components/ConnectionOverview";
-import TasksPage from "./components/TasksPage";
+import ConnectionsPage from "./components/ConnectionsPage";
 import RecordsPage from "./components/RecordsPage";
 import SettingsPage from "./components/SettingsPage";
-import RemoteLinkPage from "./components/RemoteLinkPage";
-import AccountsPage, { AccountsActions } from "./components/AccountsPage";
 import { usePrivacy } from "./state/privacy";
 import { UpdateDock, UpdateOutcome } from "./components/AppUpdate";
 import { Button, Icon, IconButton, Notice, HoverScope } from "./components/ui";
 import { api } from "./api";
-import PermissionsPage from "./components/PermissionsPage";
-import { permissions, permissionsReady, refreshPermissions, startPermissions } from "./state/permissions";
+import { startPermissions } from "./state/permissions";
 export default function App() {
   locale.use();
   const privateMode = usePrivacy();
   useLayoutEffect(() => { document.documentElement.dataset.privacy = String(privateMode); }, [privateMode]);
   const nav = navigation.use();
   const [oauthRequest, setOauthRequest] = useState<{ id: string }>();
-  const { feedback, status } = connector.use(),
-    taskState = tasks.use();
+  const { feedback, status } = connector.use();
   updates.use();
-  const permissionState = permissions.use();
-  const ready = !!status && permissionsReady(status.ingresses);
-  useEffect(() => {
-    void refreshPermissions().catch(() => {});
-  }, [JSON.stringify(status?.ingresses?.map(ingress => [ingress.enabled, ingress.toolPolicy]))]);
-
-  const [page, setPage] = useState<Page>(() => {
-    const saved = localStorage.getItem("arc-page");
-    return ["overview", "settings", "logs", "tasks", "remote", "accounts", "permissions"].includes(saved ?? "") ? saved as Page : "overview";
-  });
+  const [page, setPage] = useState<Page>(() => resolvePage(localStorage.getItem("arc-page")));
   const [sheetWide, setSheetWide] = useState(false);
   const sheet = useRef<HTMLElement>(null),
-    lastPage = useRef<Page>(page === "overview" ? "tasks" : page),
+    lastPage = useRef<Page>(page === "overview" ? "logs" : page),
     sheetClosing = useRef(false),
     backdropDown = useRef(false);
   const welcome = onboarding.use()?.step === "welcome" && page === "overview";
@@ -126,7 +108,8 @@ export default function App() {
     navigation.set(old => ({ ...old, page: undefined }));
   }, [nav.page]);
 
-  function navigate(next: Page) {
+  function navigate(target: string) {
+    const next = resolvePage(target);
     if (next !== "overview") {
       lastPage.current = next;
       setSheetWide(false);
@@ -154,19 +137,16 @@ export default function App() {
       const listeners = await Promise.all([
         listen<{ id: string; panel?: PanelRequest }>("acceptance:snapshot", e => { void captureRequest(e.payload, () => navigate("overview")); }),
         listen<string>("oauth:open", (e) => setOauthRequest({ id: e.payload })),
-        listen<{ id: string; field: string }>("ingress:edit", (e) => {
-          navigation.set((old) => ({ ...old, ingressEdit: e.payload }));
-          navigate("overview");
-        }),
-        listen("permissions:open", () => navigate("permissions")),
+        listen("ingress:edit", () => navigate("connections")),
+        listen("permissions:open", () => navigate("settings")),
         listen("codex:login", () => { void api("codex/login", "POST").catch((e: Error) => notify(e.message, true)); }),
         listen("updates:check", () => {
           showUpdate();
           void checkUpdate();
         }),
         listen<string>("navigate", (e) => {
-          if (["overview", "settings", "logs", "tasks", "remote", "accounts", "permissions"].includes(e.payload))
-            navigate(e.payload as Page);
+          if (["overview", "settings", "logs", "connections", "tasks", "remote", "accounts", "permissions"].includes(e.payload))
+            navigate(e.payload);
         }),
         listen<string>("subscriptions:open", (e) => {
           navigation.set((old) => ({ ...old, providerId: e.payload }));
@@ -189,14 +169,9 @@ export default function App() {
   useEffect(() => {
     const handle = (event: Event) => {
       const url = new URL((event as CustomEvent<string>).detail);
-      if (url.hostname === "ingress") {
-        navigation.set(old => ({ ...old, ingressEdit: { id: url.searchParams.get("id") ?? "", field: url.searchParams.get("field") ?? "" } }));
-        navigate("overview");
-      } else if (url.hostname === "oauth") setOauthRequest({ id: url.searchParams.get("request") ?? "" });
-      else if (url.hostname === "permissions") navigate("permissions");
-      else if (url.hostname === "remote") navigate("remote");
-      else if (url.hostname === "accounts") navigate("accounts");
-      else if (url.hostname === "settings") navigate("settings");
+      if (url.hostname === "ingress") navigate("connections");
+      else if (url.hostname === "oauth") setOauthRequest({ id: url.searchParams.get("request") ?? "" });
+      else if (["overview", "tasks", "accounts", "remote", "connections", "permissions", "settings", "logs"].includes(url.hostname)) navigate(url.hostname);
       else if (url.hostname === "setup" && ["claude-login", "cloudflare-login"].includes(url.searchParams.get("target") ?? "")) {
         void api("setup/apply", "POST", {stepId: url.searchParams.get("target") === "claude-login" ? "claude-code-ready" : "cloudflare-login", input:{}}).catch((e: Error) => notify(e.message, true));
       }
@@ -207,15 +182,9 @@ export default function App() {
     window.addEventListener("arc:open-url", handle);
     return () => window.removeEventListener("arc:open-url", handle);
   }, []);
-  const pending = taskState.records.filter(
-    (r) => r.state === "awaiting-approval",
-  ).length;
   const pages = [
-    { id: "tasks" as const, label: t("tasks"), icon: LayoutDashboard },
-    { id: "logs" as const, label: t("records"), icon: Logs },
-    { id: "remote" as const, label: t("connect.remoteLink"), icon: Network },
-    { id: "accounts" as const, label: t("accounts.title"), icon: Users },
-    { id: "permissions" as const, label: t("permissionsTitle"), icon: ready ? ShieldCheck : ShieldAlert },
+    { id: "logs" as const, label: t("logs"), icon: Logs },
+    { id: "connections" as const, label: t("source.connections"), icon: Network },
     { id: "settings" as const, label: t("settings"), icon: Settings },
   ];
   return (
@@ -230,10 +199,8 @@ export default function App() {
           !layers.length
         ) {
           e.preventDefault();
-          if (page === "remote" && nav.remoteConnectionId) {
-            navigation.set(old => ({ ...old, remoteConnectionId: undefined }));
-          } else if (page === "settings" && (nav.settingsExtras || nav.settingsUpdates)) {
-            navigation.set(old => ({ ...old, settingsExtras: undefined, settingsUpdates: undefined }));
+          if (page === "settings" && (nav.settingsExtras || nav.settingsUpdates || nav.settingsPermissions)) {
+            navigation.set(old => ({ ...old, settingsExtras: undefined, settingsUpdates: undefined, settingsPermissions: undefined }));
           } else void closeSheet();
         }
         if (e.key === "Tab" && page !== "overview" && !layers.length) {
@@ -283,7 +250,7 @@ export default function App() {
       )}
       <div
         hidden={welcome}
-        style={{ width: updateVisible() ? 298 : 250, maxWidth: "calc(100vw - 32px)" }}
+        style={{ width: updateVisible() ? 176 : 128, maxWidth: "calc(100vw - 32px)" }}
         className={`navigation-surface absolute bottom-6 left-6 z-49 pointer-events-none h-12.5 rounded-full border border-brand-accent/15 bg-background shadow-overlay max-[600px]:bottom-4 max-[600px]:left-4 [&.expanded]:invisible [&.expanded]:pointer-events-none [&[hidden]]:hidden ${page !== "overview" ? "expanded" : ""} ${updateVisible() ? "has-update" : ""}`}
         aria-hidden="true"
       />
@@ -299,24 +266,16 @@ export default function App() {
         >
           <div style={{ width: sheetWide ? "calc(100vw - 2 * var(--sheet-inset) - 2px)" : "min(958px, calc(100vw - 2 * var(--sheet-inset) - 2px))", height: "calc(100dvh - var(--sheet-top) - var(--sheet-inset) - 2px)" }} className="page-sheet-content relative flex min-h-0 flex-none flex-col self-center">
             <header className="sheet-header flex shrink-0 items-center gap-3 border-b px-3 py-2 pl-6.625 min-h-13 max-[600px]:pl-4">
-              {page === "settings" && (nav.settingsExtras || nav.settingsUpdates) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsExtras: undefined, settingsUpdates: undefined }))} />}
-              {page === "remote" && nav.remoteConnectionId && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: undefined }))} />}
+              {page === "settings" && (nav.settingsExtras || nav.settingsUpdates || nav.settingsPermissions) && <IconButton icon={ArrowLeft} label={t("back")} onClick={() => navigation.set(old => ({ ...old, settingsExtras: undefined, settingsUpdates: undefined, settingsPermissions: undefined }))} />}
               <h1 className="capsule-title m-0 min-w-0 flex-1 text-lg font-semibold outline-none" tabIndex={-1}>
-                {page === "remote" ? status?.ingresses.find(i => i.id === nav.remoteConnectionId)?.name ?? t("source.title") : pages.find((item) => item.id === page)?.label}
-                {page === "settings" && (nav.settingsExtras || nav.settingsUpdates) && <><span className="settings-breadcrumb-divider mx-2 font-normal text-muted-foreground" aria-hidden="true"> / </span><span>{t(nav.settingsUpdates ? "appUpdates" : "extras.title")}</span></>}
+                {pages.find((item) => item.id === page)?.label}
+                {page === "settings" && (nav.settingsExtras || nav.settingsUpdates || nav.settingsPermissions) && <><span className="settings-breadcrumb-divider mx-2 font-normal text-muted-foreground" aria-hidden="true"> / </span><span>{t(nav.settingsUpdates ? "appUpdates" : nav.settingsPermissions ? "permissionsSystem" : "extras.title")}</span></>}
                 {page === "logs" && (
                   <span className="muted text-muted-foreground small text-xs records-count ml-3 whitespace-nowrap font-normal">
                     {t("recentRecords", { count: status?.logs.length ?? 0 })}
                   </span>
                 )}
               </h1>
-              {page === "accounts" && <AccountsActions />}
-              {page === "permissions" && <IconButton
-                icon={RefreshCw}
-                label={t("permissionsRefresh")}
-                busy={permissionState.loading}
-                onClick={() => void refreshPermissions().catch(error => notify(String(error), true))}
-              />}
               <IconButton
                 className="panel-width-toggle hidden min-[1000px]:inline-flex"
                 icon={sheetWide ? Minimize2 : Maximize2}
@@ -332,28 +291,17 @@ export default function App() {
               />
             </header>
             <main
-              className={`workspace min-h-0 w-full max-w-none flex-1 m-0 overflow-auto overscroll-contain px-6.625 py-6 max-[600px]:px-4 max-[600px]:py-5 [&>.settings-page]:m-0 [&>.settings-page]:w-full [&>.settings-page]:max-w-none ${page === "logs" ? "records-workspace pb-6" : page === "accounts" ? "accounts-workspace-container flex flex-col overflow-hidden" : ""}`}
+              className={`workspace min-h-0 w-full max-w-none flex-1 m-0 overflow-auto overscroll-contain px-6.625 py-6 max-[600px]:px-4 max-[600px]:py-5 [&>.settings-page]:m-0 [&>.settings-page]:w-full [&>.settings-page]:max-w-none ${page === "logs" ? "records-workspace pb-6" : ""}`}
             >
-              {page === "tasks" ? (
-                <TasksPage />
-              ) : page === "logs" ? (
-                <RecordsPage />
-              ) : page === "permissions" ? (
-                <PermissionsPage />
-              ) : page === "accounts" ? (
-                <AccountsPage />
-              ) : page === "remote" ? (
-                <RemoteLinkPage />
-              ) : (
-                <SettingsPage />
-              )}
+              {page === "logs" ? <RecordsPage /> : page === "connections" ? <ConnectionsPage /> : <SettingsPage />}
+
             </main>
 
           </div>
         </section>
       )}
       <nav
-        style={{ width: updateVisible() ? 298 : 250, maxWidth: "calc(100vw - 32px)" }}
+        style={{ width: updateVisible() ? 176 : 128, maxWidth: "calc(100vw - 32px)" }}
         className={`navigation-capsule absolute bottom-6 left-6 z-50 block h-12.5 rounded-full border border-transparent bg-transparent max-[600px]:bottom-4 max-[600px]:left-4 [&.expanded]:invisible [&.expanded]:pointer-events-none [&[hidden]]:hidden ${page !== "overview" ? "expanded" : ""} ${updateVisible() ? "has-update" : ""}`}
         inert={welcome || page !== "overview" || modalOpen}
         aria-hidden={welcome || page !== "overview"}
@@ -376,9 +324,6 @@ export default function App() {
               onClick={() => navigate(item.id)}
             >
               <Icon icon={item.icon} size={20} />
-              {item.id === "tasks" && pending > 0 && (
-                <span className="task-count absolute right-0 top-0 min-w-4 rounded-full bg-brand-accent text-background text-2xs">{pending}</span>
-              )}
             </Button>
           ))}
           <UpdateDock />

@@ -16,8 +16,6 @@ import type { AuthorizationRequestChip as AuthorizationRequestChipComponent } fr
 import type { AuthorizationRequestRow as AuthorizationRequestRowComponent } from '../components/objects/authorization-request/Row';
 import type { DeploymentProgressCard as DeploymentProgressCardComponent } from '../components/objects/deployment-progress/Card';
 import type { DeploymentProgressChip as DeploymentProgressChipComponent } from '../components/objects/deployment-progress/Chip';
-import type { RelayMemberRow as RelayMemberRowComponent } from '../components/objects/relay-member/Row';
-import type { RelayMemberCard as RelayMemberCardComponent } from '../components/objects/relay-member/Card';
 import type { SrcPlatformChip as SrcPlatformChipComponent, SrcPlatformNode as SrcPlatformNodeComponent, SrcPlatformRow as SrcPlatformRowComponent, SrcPlatformCard as SrcPlatformCardComponent } from '../components/objects/src-platform';
 import type { SrcAccountChip as SrcAccountChipComponent, SrcAccountNode as SrcAccountNodeComponent, SrcAccountRow as SrcAccountRowComponent, SrcAccountCard as SrcAccountCardComponent } from '../components/objects/src-account';
 import type { TunnelChip as TunnelChipComponent, TunnelNode as TunnelNodeComponent, TunnelRow as TunnelRowComponent, TunnelCard as TunnelCardComponent } from '../components/objects/tunnel';
@@ -199,9 +197,7 @@ export const DeploymentProgressCard = island<ComponentProps<typeof DeploymentPro
 
 export const DeploymentProgressChip = island<ComponentProps<typeof DeploymentProgressChipComponent>>('DeploymentProgressChip');
 
-export const RelayMemberRow = island<ComponentProps<typeof RelayMemberRowComponent>>('RelayMemberRow');
 
-export const RelayMemberCard = island<ComponentProps<typeof RelayMemberCardComponent>>('RelayMemberCard');
 export const SrcPlatformChip = island<ComponentProps<typeof SrcPlatformChipComponent>>('SrcPlatformChip');
 
 export const SrcPlatformNode = island<ComponentProps<typeof SrcPlatformNodeComponent>>('SrcPlatformNode');

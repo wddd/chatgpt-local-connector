@@ -11,21 +11,22 @@ import { connector, run, notify, refreshConnector } from "../state/connector";
 import { useInterval } from "../state/hooks";
 import type { Service } from "../state/types";
 import { ActionGroup, FormSection, Button, SettingsSection, SettingRow, Switch, ChoiceControl, Input, FormField } from "./ui";
+import SystemPermissions from "./SystemPermissions";
 import SettingsExtras from "./SettingsExtras";
 import { AppUpdate, UpdatesSettings } from "./AppUpdate";
 export default function SettingsPage() {
   const { status, busy } = connector.use();
-  const { settingsExtras, settingsUpdates } = navigation.use();
+  const { settingsExtras, settingsUpdates, settingsPermissions } = navigation.use();
   const previousSettings = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
-    if (settingsExtras || settingsUpdates) {
+    if (settingsExtras || settingsUpdates || settingsPermissions) {
       document.querySelector<HTMLElement>(".capsule-title")?.focus({ preventScroll: true });
       document.querySelector(".workspace")?.scrollTo({ top: 0 });
     } else if (previousSettings.current) {
       document.getElementById(previousSettings.current)?.focus();
     }
-    previousSettings.current = settingsUpdates ? "settings-updates-entry" : settingsExtras ? "settings-extras-entry" : undefined;
-  }, [settingsExtras, settingsUpdates]);
+    previousSettings.current = settingsPermissions ? "settings-permissions-entry" : settingsUpdates ? "settings-updates-entry" : settingsExtras ? "settings-extras-entry" : undefined;
+  }, [settingsExtras, settingsUpdates, settingsPermissions]);
   const currentTheme = theme.use(),
     color = themeColor.use(),
     currentLanguage = language.use();
@@ -102,6 +103,7 @@ export default function SettingsPage() {
     });
   }
   if (settingsUpdates) return <UpdatesSettings />;
+  if (settingsPermissions) return <SystemPermissions />;
   if (settingsExtras) return <SettingsExtras />;
   return (
     <div className="settings-page mx-auto w-full min-w-0 max-w-3xl">
@@ -279,8 +281,9 @@ export default function SettingsPage() {
             </form>
         )}
       </SettingsSection>
+      <SettingRow id="settings-permissions-entry" label={t("permissionsSystem")} onNavigate={() => navigation.set(old => ({ ...old, settingsPermissions: true }))} />
       <SettingsSection title={t("extras.title")}>
-        <SettingRow id="settings-extras-entry" label={t("extras.entryTitle")} description={t("extras.entryDescription")}
+        <SettingRow id="settings-extras-entry" label={t("topology.experimental")}
           onNavigate={() => navigation.set(old => ({ ...old, settingsExtras: true }))} />
       </SettingsSection>
       <AppUpdate />

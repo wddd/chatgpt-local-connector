@@ -11,7 +11,7 @@ import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv
 import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createConnection } from 'node:net';
-import { identifyPolicy, normalizeSelection, presetPolicy, type ToolCatalog, type ToolPolicy } from '../ui/toolPolicy.ts';
+import { identifyPolicy, normalizeSelection, presetPolicy, type ToolCatalog, type ToolPolicy } from './helpers/tool-policy.ts';
 import { buildVersion } from '../tooling/version.mjs';
 import { toolFingerprint } from '../tooling/catalog.mjs';
 const catalog = JSON.parse(await readFile(new URL('../native/src/catalog.json', import.meta.url), 'utf8'));

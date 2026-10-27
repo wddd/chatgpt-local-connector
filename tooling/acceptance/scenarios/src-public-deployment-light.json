@@ -1,0 +1,24 @@
+{
+  "theme": "light",
+  "language": "en",
+  "agents": [
+    "codex"
+  ],
+  "tasks": [],
+  "remoteLink": {
+    "empty": true
+  },
+  "sourceSetup": {
+    "step": "connection",
+    "source": "claude"
+  },
+  "connectionSetup": {
+    "forSource": true
+  },
+  "relayProgress": {
+    "phase": "login",
+    "action": "create",
+    "jobId": "fixture-deployment",
+    "loginUrl": "https://login.example.com/fixture"
+  }
+}

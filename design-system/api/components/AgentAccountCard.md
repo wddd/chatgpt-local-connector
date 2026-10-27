@@ -7,7 +7,7 @@ Real AGENT adapter. Requires [Arc.Root](Root.md). Records use existing UI types;
 | Prop | Type | Meaning |
 | --- | --- | --- |
 | `account / agent / frame` | `ProviderAccount / Agent / detail \| panel` | Required account, optional Agent filter and frame. Identity follows Root privacy. |
-| `onDefault / onReauth / showProfiles` | `callbacks / boolean` | Host-owned profile changes and native login. Profiles are shown by default; busy or removed accounts disable actions. |
+| `onReauth / showProfiles` | `callback / boolean` | Host-owned native login. Profiles are shown by default; busy or removed accounts disable actions. |
 | `title / icon / headerActions / titleActions / secondary / children / footer / danger` | `string` | Plain-text slots. The host supplies quota and task composition inside the product runtime. |
 | `loading / busy / error` | `boolean / boolean / string` | Retain identity and profiles while loading, changing a profile or reporting a read failure. |
 

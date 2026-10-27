@@ -5,7 +5,7 @@ import { Monitor, Smartphone } from "lucide-react";
 import { api } from "../api";
 import { t } from "../i18n";
 import { connector } from "../state/connector";
-import { onboarding, openConnectionSetup } from "../state/onboarding";
+import { onboarding } from "../state/onboarding";
 import { permissions, permissionsReady } from "../state/permissions";
 import { navigation } from "../state/navigation";
 import { isPendingSource } from "../sourcePresentation";
@@ -41,8 +41,7 @@ export default function Onboarding({ returnFocus }: { returnFocus?: string }) {
       <small>{t(`setup.welcome.${group}Time`)}</small>
     </Button>)}</div>
     <footer className="mt-10 flex flex-wrap items-center justify-center gap-3"><Button variant="ghost" disabled={busy} onClick={() => login === "authenticated" ? (onboarding.set(undefined), navigation.set(old => ({ ...old, page: "settings" }))) : void signIn()}><StateBadge presentation={statePresentation("profile", login === "authenticated" ? "signed-in" : "signed-out")} label={t(login === "authenticated" ? "connect.codexReady" : "connect.codexFix")} /></Button>
-      <Button variant="ghost" onClick={() => { onboarding.set(undefined); navigation.set(old => ({ ...old, page: "permissions" })); }}><StateBadge presentation={statePresentation("permission", permissionsReady(status?.ingresses ?? []) ? "granted" : "missing")} label={t(permissionsReady(status?.ingresses ?? []) ? "connect.permissionsReady" : "connect.permissionsFix")} /></Button>
-      <Button variant="ghost" onClick={() => openConnectionSetup({ method: "join" })}>{t("setup.invite")}</Button>
+      <Button variant="ghost" onClick={() => { onboarding.set(undefined); navigation.set(old => ({ ...old, page: "settings", settingsPermissions: true })); }}><StateBadge presentation={statePresentation("permission", permissionsReady(status?.ingresses ?? []) ? "granted" : "missing")} label={t(permissionsReady(status?.ingresses ?? []) ? "connect.permissionsReady" : "connect.permissionsFix")} /></Button>
     </footer>
   </section>;
 }

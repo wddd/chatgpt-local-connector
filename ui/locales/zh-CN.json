@@ -12,7 +12,7 @@
   "trayDisconnected": "未连接",
   "trayOpen": "打开",
   "trayTasks": "任务",
-  "trayLogs": "记录",
+  "trayLogs": "日志",
   "trayQuit": "退出",
   "showSecret": "显示内容",
   "hideSecret": "隐藏内容",
@@ -951,8 +951,6 @@
   "hosting.deleteDescription": "所有已连接的设备都会断开，包括本机的中继连接。",
   "hosting.delete": "删除…",
   "hosting.remove": "移除",
-  "extras.entryTitle": "中继托管与实验性功能",
-  "extras.entryDescription": "你为他人托管的中继、首页拓扑调参",
   "setup.returns": "完成后回到「{name}」并自动选中",
   "setup.localOnly": "仅本机客户端可用",
   "setup.chatgptOnly": "仅 ChatGPT 可用",
@@ -1442,5 +1440,10 @@
   "source.profile.remote-polling": "远程轮询",
   "source.selectForActions": "选择一个控制端，以更换连接或断开授权。",
   "accounts.identityConflict": "账户身份与此控制端冲突。",
-  "source.documentation": "文档"
+  "source.documentation": "文档",
+  "connections.otherMethods": "其他连接方式",
+  "logs": "日志",
+  "connections.multiplePublicLinks": "已配置多个自建 Relay。确定公共链接前，请通过 CLI/AX 管理。",
+  "start": "启动",
+  "stop": "停止"
 }
