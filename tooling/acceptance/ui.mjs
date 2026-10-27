@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
+import { dispatchCatalogFixtures } from '../../ui/scenarioDispatchSpec.ts';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const base = path.join(root, 'output/acceptance/ui');
@@ -228,10 +229,15 @@ try {
         if (name === 'task-detail-dispatch-dsh') {
           // Regression: dsh task rows omitted the recorded model and effort chip.
           const scope = taskDetail;
-          const chips = scope.getByLabel('V4.1 Flash · OpenCode Go · Max', { exact: true }).filter({ visible: true });
+          const task = fixture.tasks[fixture.detailTask];
+          const catalog = dispatchCatalogFixtures[task.agent];
+          const model = catalog.models.find(model => model.model === task.dispatchSummary.model);
+          const effort = catalog.options.flatMap(option => option.values ?? []).find(value => value.value === task.dispatchSummary.effort);
+          if (!model?.displayName || !effort?.name) throw new Error('Dispatch fixture is missing native model or effort metadata');
+          const chips = scope.getByLabel(`${model.displayName} · ${effort.name}`, { exact: true }).filter({ visible: true });
           await chips.first().waitFor({ state: 'visible' });
           for (const chip of await chips.all()) {
-            if ((await chip.innerText()).includes(fixture.tasks[0].dispatchSummary.model)) throw new Error('Resolved dispatch chip exposes a raw model ID');
+            if ((await chip.innerText()).includes(task.dispatchSummary.model)) throw new Error('Resolved dispatch chip exposes a raw model ID');
           }
         }
         if (fixture.projection) {
