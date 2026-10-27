@@ -5,7 +5,6 @@ import { AuthorizationRequestCard, AuthorizationRequestChip, AuthorizationReques
 import { DeploymentProgressCard } from './components/objects/deployment-progress';
 import type { ApprovalSubmission } from './state/activityModel';
 import type { RelayProgress } from './state/relay';
-import type { RemoteProfile } from './controlSources';
 import { setPrivacy } from './state/privacy';
 import { scenarioName } from './scenarioMode';
 import { requestFixtures as f } from './design-mount/requestFixtures';
@@ -16,7 +15,7 @@ export default function RequestsFixture() {
   const [index, setIndex] = useState(0), [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [state, setState] = useState('pending'), [receipt, setReceipt] = useState('');
   const [open, setOpen] = useState(false), [privacy, updatePrivacy] = useState(true);
-  const [label, setLabel] = useState('Sample source'), [source, setSource] = useState('new'), [profile, setProfile] = useState<RemoteProfile>('legacy');
+  const [label, setLabel] = useState('Sample source'), [source, setSource] = useState('new');
   const [account, setAccount] = useState('');
   const [authorization, setAuthorization] = useState('pending'), [deployment, setDeployment] = useState('account');
   const [authorizationBusy, setAuthorizationBusy] = useState(false);
@@ -36,7 +35,7 @@ export default function RequestsFixture() {
     <Switch label="Authorization busy" checked={authorizationBusy} onChange={setAuthorizationBusy} />
     <AuthorizationRequestChip request={f.authorization} />
     <AuthorizationRequestRow request={f.authorization} onOpen={() => setReceipt('Review authorization')} />
-    <AuthorizationRequestCard busy={authorizationBusy} request={{ ...f.authorization, status: authorization === 'switch' ? 'pending' : authorization, switchSourceId: authorization === 'switch' ? 'removed-source' : undefined }} ingress={f.ingress} sourceId={source} onSourceChange={setSource} label={label} onLabelChange={setLabel} profile={profile} onProfileChange={setProfile} candidates={[]} remaining={[]} onDecide={allow => setReceipt(allow ? 'Authorization allowed' : 'Authorization denied')} error={state === 'failed' ? 'Sample authorization failure' : undefined} />
+    <AuthorizationRequestCard busy={authorizationBusy} request={{ ...f.authorization, status: authorization === 'switch' ? 'pending' : authorization, switchSourceId: authorization === 'switch' ? 'removed-source' : undefined }} ingress={f.ingress} sourceId={source} onSourceChange={setSource} label={label} onLabelChange={setLabel} candidates={[]} remaining={[]} onDecide={allow => setReceipt(allow ? 'Authorization allowed' : 'Authorization denied')} error={state === 'failed' ? 'Sample authorization failure' : undefined} />
     <SingleChoice label="Deployment state" value={deployment} onChange={setDeployment} options={['account', 'login', 'deploying', 'connecting', 'ready', 'failed', 'cancelled'].map(value => ({ value, label: value }))} />
     <DeploymentProgressCard progress={progress} busy={false} account={account} setAccount={setAccount} onRetry={() => setReceipt('Retry deployment')} onCancel={() => setReceipt('Cancel deployment')} />
     <output aria-live="polite">{receipt}</output>

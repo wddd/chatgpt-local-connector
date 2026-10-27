@@ -20,7 +20,7 @@ import type { DeploymentProgressCard as DeploymentProgressCardComponent } from '
 import type { DeploymentProgressChip as DeploymentProgressChipComponent } from '../components/objects/deployment-progress/Chip';
 import type { SrcPlatformChip as SrcPlatformChipComponent, SrcPlatformNode as SrcPlatformNodeComponent, SrcPlatformRow as SrcPlatformRowComponent, SrcPlatformCard as SrcPlatformCardComponent } from '../components/objects/src-platform';
 import type { SrcAccountChip as SrcAccountChipComponent, SrcAccountNode as SrcAccountNodeComponent, SrcAccountRow as SrcAccountRowComponent, SrcAccountCard as SrcAccountCardComponent } from '../components/objects/src-account';
-import type { TunnelChip as TunnelChipComponent, TunnelNode as TunnelNodeComponent, TunnelRow as TunnelRowComponent, TunnelCard as TunnelCardComponent } from '../components/objects/tunnel';
+import type { TunnelChip as TunnelChipComponent, TunnelNode as TunnelNodeComponent, TunnelRow as TunnelRowComponent, LocalConnectionRow as LocalConnectionRowComponent, TunnelCard as TunnelCardComponent } from '../components/objects/tunnel';
 import { createContext, createElement, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { createRuntime } from 'virtual:arc-runtime';
 import type { DispatchSpec as DispatchSpecComponent } from '../components/composites/DispatchSpec';
@@ -68,9 +68,8 @@ const textSlots: Record<string, readonly string[]> = {
   AgentPlatformNode: ["children"],
   RequestCard: ['title', 'context', 'leading', 'state', 'footer'],
   SrcAccountRow: ['actions'],
-  TunnelRow: ['actions'],
   SrcAccountCard: ['children', 'headerActions', 'footer', 'danger'],
-  TunnelCard: ['children', 'headerActions', 'address', 'footer', 'danger'],
+  TunnelCard: ['headerActions'],
   SrcPlatformCard: ['headerActions'],
   SrcAccountNode: ['labelContent'],
 
@@ -220,9 +219,9 @@ export const TunnelChip = island<ComponentProps<typeof TunnelChipComponent>>('Tu
 
 export const TunnelNode = island<Omit<ComponentProps<typeof TunnelNodeComponent>, 'svgRef'>>('TunnelNode');
 
-export const TunnelRow = island<TextSlots<ComponentProps<typeof TunnelRowComponent>, 'actions'>>('TunnelRow');
+export const TunnelRow = island<ComponentProps<typeof TunnelRowComponent>>('TunnelRow');
 
-export const TunnelCard = island<TextSlots<ComponentProps<typeof TunnelCardComponent>, 'children' | 'headerActions' | 'address' | 'footer' | 'danger'>>('TunnelCard');
+export const TunnelCard = island<TextSlots<ComponentProps<typeof TunnelCardComponent>, 'headerActions'>>('TunnelCard');
 
 export const TaskChip = island<ComponentProps<typeof TaskChipComponent>>('TaskChip');
 export const TaskNode = island<ComponentProps<typeof TaskNodeComponent>>('TaskNode');
@@ -247,3 +246,4 @@ export const AgentAccountCard = island<TextSlots<ComponentProps<typeof AgentAcco
 
 export const AccountActions = island<ComponentProps<typeof AccountActionsComponent>>('AccountActions');
 export const SrcConversationRow = island<ComponentProps<typeof SrcConversationRowComponent>>('SrcConversationRow');
+export const LocalConnectionRow = island<ComponentProps<typeof LocalConnectionRowComponent>>('LocalConnectionRow');

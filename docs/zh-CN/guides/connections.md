@@ -2,63 +2,101 @@
 
 [English](../../guides/connections.md) | **简体中文**
 
-打开**远程链接 → 连接 → 添加连接**。添加控制源和更换连接也会在当前步骤上方打开此对话框。连接提供地址和接入方式；一条 OAuth 连接可以承载多个具名控制源。
-
-## 添加连接
-
-选择方式，完成配置，再进入就绪页。
-
-| 方式 | 配置 |
-| --- | --- |
-| 创建我的中继 | 登录 Cloudflare，ARC 部署中继并连接本机。 |
-| 粘贴中继链接 | 粘贴邀请链接并为本机命名。只加入可信的中继。 |
-| 使用自有地址 | 选择 Cloudflare Tunnel、ngrok、Pinggy、LocalXpose 或其他反向代理，填写提供商凭据、域名和连接名称。 |
-| OpenAI Secure Tunnel | 填写 Tunnel ID 和运行时 API key，见 [ChatGPT](chatgpt.md#高级openai-secure-tunnel)。 |
-| Claude Code / Claude 桌面版 | 安装本地客户端配置，再重启客户端。无需配置网络。 |
-
-自有地址的认证和工具权限放在**高级**中。需要在 ARC 批准时使用 OAuth；客户端支持 Authorization 请求头时可使用 Bearer。提供商凭据用于建立隧道，客户端认证控制访问权限。固定域名须已在提供商账号中分配。点击**保存并启动**，ARC 管理所需的提供商进程。
-
-叠层流程选择**用这个连接继续**，返回时自动选中新连接。独立流程可选择**完成**或为此连接添加控制源。关闭叠层会返回，且不改变上层流程原来的选择。
+打开**连接**可复制公网链接地址、查看状态及启动/停止。没有公网链接时，点击**部署公网链接**并登录自己的 Cloudflare 账号。部署保留进度、取消、必要时的账号选择及重试。本地只显示状态；通过 CLI/AX 配置的其他连接以只读行显示类型、地址和状态。
 
 ## 添加控制源
 
-欢迎页提供**在这台电脑上**使用本地 Claude 客户端，或**在手机和网页上**使用远程平台。两者均打开添加控制源；之后可从**远程链接 → 添加控制源**进入。
+点击首页中心标志左半部分，或 SRC 平台面板中的**添加账号**；后者会预选平台。
 
-1. 选择平台。
-2. 选择兼容连接，或添加连接。
-3. 在配置步骤复制地址，按显示的平台设置操作，在客户端发起连接。
-4. 在批准步骤核对配对码、客户端和权限，填写账号名称。要保留该连接上的已有来源时，选择**重新授权**，然后批准并完成。
+1. 选择产品。
+2. 远程产品先在需要时部署公网链接，再复制其 MCP URL 到 ARC 显示的客户端设置中并连接。
+3. 在 ARC 核对配对码、填写账号名称并批准。重新授权可保留同一连接上的已有来源。批准使用核心默认的能力配置。
 
-从连接详情为此连接添加控制源时，会预选连接并跳过连接选择。本地客户端和非 OAuth 连接在客户端接入后完成，无需配对码批准。
+Claude Code 或 Claude Desktop 显示本地配置命令：在这台电脑的终端运行后重启客户端。完成命令页面不代表已观察到客户端接入。命令如下：
 
-## 连接详情
+```sh
+printf '%s' '{"body":{"target":"code"}}' | arc cli call local-access.install --stdin
+printf '%s' '{"body":{"target":"desktop"}}' | arc cli call local-access.install --stdin
+```
 
-打开**远程链接 → 连接**中的一行，查看地址、提供商、在线状态和使用它的来源。可复制地址、打开来源或为此连接添加来源。非本地、非中继连接提供**编辑**。
+Windows PowerShell 使用 `'{"body":{"target":"desktop"}}' | arc cli call local-access.install --stdin`（也可将 target 改为 `code`）。
 
-移除连接会断开其来源，保留名称和历史，之后可通过更换连接重新接入。加入的中继提供**退出中继**。本机托管的中继有设置管理入口；删除中继本身需在该页面操作。
+其他 MCP 客户端走公网链接，因为控制源注册表为 `custom` 推荐 HTTPS。UI 不提供连接选择或产品修正。客户端必须支持公网链接的 OAuth 流程；其他传输或认证方式由下面的 Agent 流程配置。
 
-## 更换来源的连接
+## 让自己的 Agent 配置其他方式
 
-1. 打开来源详情，选择**更换连接**。选择兼容目标或添加连接，然后继续。
-2. 在客户端删除旧 ARC 连接器，用显示的新地址重新添加。平台支持编辑 URL 时，也可以直接修改。
-3. 回到 ARC 核对配对码、**认领为「账号名称」**、旧连接和留在其上的来源，点击**批准并切换**。
+告诉本机 Agent 需要的方式和目标电脑。它可按 [CLI 参考](../../reference/cli.md#additional-connection-methods)的精确命令操作，并在外部登录或批准需要时使用 AX。这些方式没有 ARC 配置表单。先用 `arc cli status` 确认实例。凭据通过受保护的 stdin 输入，不放进聊天或日志。
 
-目标连接上的下一次授权会认领该来源，重新添加时注册新客户端也适用。来源名称、历史和通知设置保留；新授权完成后旧授权才会撤销。旧连接上的其他来源保持不变。五分钟切换窗口过期后，请重新开始更换连接。取消或拒绝会保留原连接。
+### 自定义地址
 
-日常使用选择固定地址。临时地址变化后，在客户端删除并重新添加连接器，或在支持时修改 URL，再重新授权。提供商报错查看连接详情和记录；客户端问题见[常见问题](../faq.md)。
+让 Agent 创建入口，将公网 HTTPS 域名反向代理到本地监听端口，转发 `/mcp` 及全部 [OAuth 公共路由](../../reference/oauth.md#public-routes)。每个自定义监听使用独立端口，不要公开管理 API。
 
-## 使用自定义反向代理
+```sh
+printf '%s' '{"name":"Custom proxy","controlSource":"claude","transport":"https","auth":"oauth","enabled":true,"config":{"httpsProvider":"custom","httpsUrl":"https://arc.example.com","httpsPort":8787}}' | arc cli ingress add --stdin
+arc cli ingress start <ingressId>
+arc cli ingress probe <ingressId>
+```
 
-把公开 HTTPS 域名转发到 ARC 的本机监听端口。每条固定 Cloudflare 或自定义连接使用不同端口。OAuth 连接同时转发 `/mcp` 和 [OAuth 参考](../../reference/oauth.md#public-routes)列出的全部路由。ARC 管理 API 保持私有。
+### 专用隧道
 
-## 为其他人托管中继
+已有 Cloudflare Tunnel token 和分配好的域名时：
 
-打开**设置 → 附加功能 → 中继托管**，点击**部署新中继**。登录 Cloudflare，等待部署和连接完成。**复制邀请链接**可邀请其他电脑；**重置**让旧邀请失效，已加入的设备仍可使用。
+```sh
+printf '%s' '{"name":"Dedicated tunnel","controlSource":"claude","transport":"https","auth":"oauth","enabled":true,"config":{"httpsProvider":"cloudflare","cloudflareMode":"named","cloudflareToken":"<tunnel-token>","httpsUrl":"https://arc.example.com"}}' | arc cli ingress add --stdin
+arc cli ingress start <ingressId>
+```
 
-**已连接的设备**显示名称、加入时间和最近在线时间。**本机**没有移除操作。移除其他设备会断开它；它可使用有效邀请重新加入。**删除…**会断开所有设备（包括本机）并删除托管的中继。移除和删除需要确认。
+ngrok、Pinggy 或 LocalXpose 由 Agent 读取 `arc cli ingress presets`、`arc cli schema ingress.add`、`arc cli schema ingress.update` 后填写对应配置。固定地址也可跟随 `arc cli setup next`、`arc cli setup apply <stepId> --stdin` 和 `arc cli setup wait` 的配置协议。提供商凭据建立隧道，客户端认证控制入口访问。
 
-加入的中继仍在**远程链接 → 连接**中管理。首页拓扑开关位于**设置 → 附加功能 → 实验性功能**。
+### OpenAI Secure Tunnel
+
+取得 Tunnel ID、运行时密钥及所需 OpenAI 组织和 ChatGPT 工作区权限后，让 Agent 配置：
+
+```sh
+printf '%s' '{"name":"ChatGPT tunnel","controlSource":"chatgpt","transport":"openai-tunnel","auth":"openai","enabled":true,"config":{"tunnelId":"<tunnel-id>","apiKey":"<runtime-key>"}}' | arc cli ingress add --stdin
+arc cli ingress start <ingressId>
+arc cli ingress doctor <ingressId>
+```
+
+ARC 管理官方 Tunnel Client。将隧道关联到目标工作区，并在 ChatGPT 选择该隧道，见 [ChatGPT](chatgpt.md#高级openai-secure-tunnel)。
+
+### 加入共享中继或托管中继
+
+让 Agent 只执行任务需要的操作：
+
+```sh
+arc cli call relay.list
+printf '%s' '{"body":{"name":"My computer"}}' | arc cli call relay.create --stdin
+arc cli call relay.progress
+printf '%s' '{"body":{"id":"<relayId>"}}' | arc cli call relay.share --stdin
+printf '%s' '{"body":{"link":"<invite-link>","name":"My computer"}}' | arc cli call relay.join --stdin
+printf '%s' '{"body":{"id":"<relayId>"}}' | arc cli call relay.instances --stdin
+```
+
+创建或加入后读取 `relay.progress`。CLI 参考说明取消、重试、轮换邀请、移除成员、退出和删除。私人邀请是凭据，只加入可信主机：部署者可在 Cloudflare 查看流量。删除托管中继会断开所有成员。
+
+UI 会记住公网 relay。如果此前配置了多个自有 relay，全部保持只读，直到 Agent 明确指定一个，然后重新打开 ARC：
+
+```sh
+printf '%s' '{"body":{"values":{"arc.public-relay-id":"<owned-relayId>"}}}' | arc cli call preferences.set --stdin
+```
+
+此操作不迁移已有来源。加入他人的 relay 始终作为额外的只读连接。
+
+### 切换来源连接或配置能力
+
+更换连接和能力配置保留在 CLI/AX。让 Agent 指定目标，再在客户端重新添加连接器，批准匹配的请求：
+
+```sh
+arc cli source list
+arc cli ingress list
+arc cli source switch <sourceId> <ingressId>
+arc cli ingress oauth list <ingressId>
+printf '%s' '{"id":"<requestId>","allow":true,"sourceId":"<sourceId>"}' | arc cli ingress oauth decision <ingressId> --stdin
+```
+
+来源名称和历史保留，新授权成功后才撤销旧授权。`arc cli source switch <sourceId> --cancel` 取消待完成切换。能力配置通过 `arc cli source update <sourceId> --stdin` 使用 [CLI 参考](../../reference/cli.md#local-code-profile)中的字段；配对 UI 不覆盖它们。
 
 ## 限制
 
-只加入可信中继：部署者技术上可在 Cloudflare 查看经过中继的流量。ARC 使用 Streamable HTTP，不提供独立的旧式 SSE 端点。LocalXpose 临时模式因首次请求跳转而不可用。提供商账号、域名、额度和出站连通性由你管理。认证选择 None 后，能访问端点的人均可使用其允许的工具。本地连接不能作为切换目标；非 OAuth 目标必须没有来源，并在已认证客户端请求到达时完成切换，不走 OAuth 批准。
+监听器运行或部署回执不等于远端验收，需从目标客户端验证已认证的工具响应。客户端套餐和工作区策略仍适用。ARC 使用 Streamable HTTP，不提供独立旧版 SSE 入口。LocalXpose 临时模式因首个请求重定向而不可用。提供商账号、域名、配额和出网由使用者负责。本地连接不能作为切换目标。非 OAuth 目标只承载一个来源，并在已认证请求到达时完成切换。

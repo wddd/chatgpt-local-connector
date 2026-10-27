@@ -8,7 +8,7 @@ Real authorization request object adapter. Requires [Arc.Root](Root.md). Records
 | --- | --- | --- |
 | `request / ingress` | `OAuthRequest / Ingress; required` | Authorization status, pairing code, expiration and connection tool policy. |
 | `sourceId / onSourceChange / candidates` | `string / callback / ControlSource[]; required` | Controlled source choice; new or an existing candidate. |
-| `label / onLabelChange / profile / onProfileChange` | `string / callback / RemoteProfile / callback; required` | Controlled new-source name and remote profile. |
+| `label / onLabelChange` | `string / callback; required` | Controlled new-source name. Capability selection is CLI-only. |
 | `fixed / oldConnection / remaining` | `ControlSource / Ingress / ControlSource[]` | Switch target, old connection and required remaining-source list. |
 | `onDecide / busy / error / labelError` | `callback / boolean / string / string` | Owner receives the allow decision; pending actions and validation remain explicit. |
 | `inline / pager` | `boolean / RequestCard pager` | Inline frame and owner-controlled request navigation. |

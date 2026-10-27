@@ -241,10 +241,9 @@ test("control source dock preserves source selection, cross-side dispatch and ba
         await act(() => fireEvent.keyDown(page.getByRole("option", { name: productName, exact: true }), { key: "Enter" })); await flush();
       }
       await click(button(t("source.next")));
-      await click(button(t("source.next")));
       assert.equal(onboarding.get().step, "address");
       assert.ok(page.getByText(status.ingresses[0].url, { exact: true }));
-      await click(button(t("back"))); await click(button(t("back")));
+      await click(button(t("back")));
       assert.equal(onboarding.get().step, "product");
       if (pill()) assert.equal(pill()?.getAttribute("aria-checked"), "true");
       else assert.ok(productChoice().textContent?.includes(productName));

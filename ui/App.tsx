@@ -48,6 +48,7 @@ import { UpdateDock, UpdateOutcome } from "./components/AppUpdate";
 import { Button, Icon, IconButton, Notice, HoverScope } from "./components/ui";
 import { api } from "./api";
 import { startPermissions } from "./state/permissions";
+const NavigationFixture = import.meta.env.DEV && scenarioName === "p3-navigation" ? (await import("./scenarioNavigation")).default : undefined;
 export default function App() {
   locale.use();
   const privateMode = usePrivacy();
@@ -220,6 +221,7 @@ export default function App() {
         }
       }}
     >
+      {NavigationFixture && <NavigationFixture page={page} navigate={navigate} />}
       {isDesktop && (
         <div className="window-drag-strip absolute inset-x-0 top-0 z-60 flex h-9.5 justify-end" data-tauri-drag-region />
       )}

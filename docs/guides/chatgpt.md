@@ -14,25 +14,21 @@ Codex offers the ordinary `gpt-6-astra` model; its model list does not expose a 
 
 ## Connect with a remote link
 
-On Welcome, choose **Phone and web**, then **ChatGPT**. Later, use **Remote link → Add control source**. Select an existing connection, or open **Add connection**, finish Method → Configure → Ready, and return with it selected.
+Choose **ChatGPT** from Welcome or the homepage hub's left half. If the public link is missing, choose **Deploy public link** and sign in to your Cloudflare account. Copy its MCP URL into the ChatGPT settings path shown in ARC. Connect, return to ARC, compare the pairing code, name the account and approve. Finish after the client connects and enable ARC in the conversation.
 
-In Configure, copy the address and follow ARC's settings path to add the ARC app in ChatGPT. In Approval, compare the pairing codes, check the client and permissions, and enter an account name. Choose **Reauthorize** if you want to retain an existing ChatGPT source on that connection. Approve, finish setup, and enable ARC in the conversation.
-
-To move a source, open its detail and choose **Change connection**. Select the target first, then delete the old ARC app in ChatGPT and add it again with the new address; editing the URL also works if supported. Return to ARC, compare the code, check **Claim as <account name>**, and approve. Name, history and notification settings stay, and the old grant is revoked after the new authorization completes.
-
-**Remote link → Connections** opens connection details, including the address, sources using it, and removal. Relay hosting is under **Settings → Extras → Relay hosting**. See [Connections](connections.md) for methods and [Getting started](../getting-started.md) for Welcome's local-client choice.
+**Connections** shows the public link's address, state and Start/Stop, plus Local state. Your own Agent configures custom addresses, dedicated tunnels, joining shared relays, relay hosting and source connection switching through CLI/AX; see [Connections](connections.md) for exact commands. These methods have no configuration UI.
 
 ## Advanced: OpenAI Secure Tunnel
 
 1. Install ARC and sign in to Codex Desktop.
-2. Follow the official [Secure MCP Tunnel setup](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) to obtain a Tunnel ID and runtime API key. Open **Remote link → Connections → Add connection → OpenAI Secure Tunnel** and enter them in the connection form. The connection-selection step in Add control source also offers an **Add connection** shortcut.
-3. Choose **Save and start**. On Ready, choose **Add a source for it** and select **ChatGPT** (or continue back to the source setup that opened this dialog). ARC prepares and manages the official Tunnel Client, reusing a qualifying cached version before downloading the supported official release with SHA256 verification. Startup does not depend on the anonymous GitHub API.
+2. Follow the official [Secure MCP Tunnel setup](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) to obtain a Tunnel ID and runtime API key. Ask your Agent to use `arc cli ingress add --stdin`, `arc cli ingress start <ingressId>` and `arc cli ingress doctor <ingressId>` with the exact payload in [Connections](connections.md#openai-secure-tunnel). Pass credentials through protected stdin.
+3. ARC manages the official Tunnel Client, reusing a qualifying cache or downloading the supported official release with SHA256 verification. The connection appears read-only on **Connections**.
 4. Enable **Developer Mode** in ChatGPT where available. Open [Plugins](https://chatgpt.com/plugins), create a developer-mode connection, choose **Tunnel**, and select the same tunnel. Follow the current [connection instructions](https://developers.openai.com/plugins/deploy/connect-chatgpt) if the UI labels differ.
 5. Enable ARC in the Chat conversation. Secure Tunnel uses its configured authentication and has no local pairing-code approval.
 
 The runtime API key comes from [Platform Runtime API keys](https://platform.openai.com/settings/organization/api-keys), with Tunnels Read + Use for the target tunnel. Tunnel creation requires Read + Manage. ARC requires observed control-plane authentication before reporting readiness; 401/403 returns Agent setup to the key step.
 
-Tunnel creation/use permissions belong to the OpenAI Platform organization. Developer Mode access belongs to the ChatGPT workspace. Ask the relevant administrator for the missing permission. Credentials belong in the local form or protected CLI stdin, not in a conversation.
+Tunnel creation/use permissions belong to the OpenAI Platform organization. Developer Mode access belongs to the ChatGPT workspace. Ask the relevant administrator for the missing permission. Credentials belong in protected CLI stdin, not in a conversation.
 
 ## Reason in Chat, execute in Codex
 

@@ -37,7 +37,7 @@ try {
   browser = await ({ chromium, webkit }[engine]).launch();
   for (const file of scenarios) {
     const fixture = JSON.parse(await readFile(path.join(root, 'tooling/acceptance/scenarios', file), 'utf8'));
-    const setup = !!(fixture.sourceSetup && fixture.sourceSetup.step !== 'welcome' || fixture.connectionSetup);
+    const setup = !!(fixture.sourceSetup && fixture.sourceSetup.step !== 'welcome');
     if (setupOnly && !setup) continue;
     const name = file.slice(0, -5);
     const longRequest = name === 'task-long-question' || name === 'task-long-approval';
@@ -65,6 +65,14 @@ try {
         if (!fixture.page && !fixture.shells && !fixture.panel && representedTasks !== fixture.tasks.length) throw new Error(`Task count mismatch: ${representedTasks}/${fixture.tasks.length}`);
         if (fixture.panel?.kind === 'agent' && model.panels.agent?.agent !== fixture.panel.id) throw new Error('Agent panel not opened');
         if (fixture.panel?.kind === 'source' && model.panels.source !== fixture.panel.id) throw new Error('Source panel not opened');
+        if (name === 'p3-navigation') {
+          // Regression: removed dock targets need to redirect through the live App navigator.
+          for (const [target, destination] of [['tasks', 'overview'], ['accounts', 'overview'], ['remote', 'connections'], ['permissions', 'settings']]) {
+            await page.getByRole('button', { name: `Navigate ${target}`, exact: true }).click();
+            await page.waitForFunction(destination => window.__ARC_VIEW_MODEL__().panels.page === destination, destination);
+            await page.getByRole('status', { name: target }).filter({ hasText: destination }).waitFor();
+          }
+        }
         if (name.startsWith('agent-objects-')) await acceptAgentObjects(page);
         if (name.startsWith('requests-')) await acceptRequests(page);
         if (name.startsWith('topology-accounts')) {

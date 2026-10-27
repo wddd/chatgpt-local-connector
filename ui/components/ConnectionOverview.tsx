@@ -51,8 +51,7 @@ import { topologyTuningEnabled } from "../state/topology";
 import type { SurfaceRect } from "../motion/surface";
 import type { WireState } from "../topology/render";
 import Onboarding from "./Onboarding";
-import SourceConnectionSetup from "./SourceConnectionSetup";
-import { onboarding, openOnboarding, connectionSetup, addedSource } from "../state/onboarding";
+import { onboarding, openOnboarding, addedSource } from "../state/onboarding";
 import IngressPanel from "./IngressPanel";
 import AgentsSettings from "./AgentsSettings";
 import AgentPanel from "./AgentPanel";
@@ -66,14 +65,14 @@ function wireState(state: string): WireState {
 export default function ConnectionOverview({ visible = true }: { visible?: boolean }) {
   const tuning = topologyTuningEnabled.use();
   const { tracked, markRead } = useActivityTracking(), manualOrder = taskOrder.use(), selection = agentPanel.use(), sourceSelection = ingressPanel.use();
-  const flow = onboarding.use(), newConnection = connectionSetup.use();
+  const flow = onboarding.use();
   const newSourceId = addedSource.use();
   useEffect(() => {
     if (!newSourceId || onboarding.get()) return;
     const timer = setTimeout(() => addedSource.set(undefined), 2000);
     return () => clearTimeout(timer);
   }, [newSourceId, flow]);
-  const detailOpen = !!selection || !!sourceSelection, panelOpen = detailOpen || !!flow || !!newConnection;
+  const detailOpen = !!selection || !!sourceSelection, panelOpen = detailOpen || !!flow;
   const [panelExpanded, setPanelExpanded] = useState(false);
   const panelKey = selection && !selection.closing ? `agent:${selection.agent}`
     : sourceSelection && !sourceSelection.closing ? `source:${sourceSelection.product}` : undefined;
@@ -119,8 +118,8 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
   useEffect(() => {
     if (scenarioName || !visible || initialSetupShown.current || !status || !sourcesLoaded || loading || error) return;
     initialSetupShown.current = true;
-    if (!flow && !newConnection && !detailOpen && !sourceRecords.some(s => s.state !== "revoked" && !isPendingSource(s, status.ingresses))) openOnboarding("welcome");
-  }, [visible, status, sourceRecords, sourcesLoaded, loading, error, flow, newConnection, detailOpen]);
+    if (!flow && !detailOpen && !sourceRecords.some(s => s.state !== "revoked" && !isPendingSource(s, status.ingresses))) openOnboarding("welcome");
+  }, [visible, status, sourceRecords, sourcesLoaded, loading, error, flow, detailOpen]);
   const sources = status?.ingresses ?? [];
   const controlSources = orderedSources().filter(s => s.state !== "revoked" && !isPendingSource(s, sources));
   const agents = orderedAgents()
@@ -335,11 +334,6 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
       </section>
       {visible && tuning && <TuningPanel />}
       {flow && visible && <Onboarding />}
-      {newConnection && visible && <SourceConnectionSetup options={newConnection} onClose={() => connectionSetup.set(undefined)} onAdded={id => {
-        void relays.refresh().catch(() => {});
-        if (newConnection.forSource) onboarding.set(old => old?.step === "connection" ? { ...old, step: "address", ingressId: id, baseline: (connector.get().status?.ingresses.find(i => i.id === id)?.oauth?.pending ?? []).map(p => p.id) } : old);
-        connectionSetup.set(undefined);
-      }} />}
       {agentsOpen && <AgentsSettings onClose={() => setAgentsOpen(false)} />}
     </>
   );

@@ -15,12 +15,9 @@ Remote verification uses `act({"op":"connector_verify","args":{"code":"<code>"}}
 
 ## Continue in the App
 
-Choose local mode, or create/join a shared relay and add a control source. See
-[Getting started](getting-started.md). ChatGPT and Claude use the same remote link
-and local pairing-code approval flow.
+Click the homepage hub's left half and choose the product. Remote products share the public link: deploy it to your own Cloudflare account when missing, copy the MCP URL, then compare the pairing code and approve locally. Local clients show a setup command; run it and restart the client. See [Getting started](getting-started.md).
 
-Open **Remote link → Connections → Add connection** to configure **Own address** or **OpenAI Secure Tunnel**. Then select that connection in **Add control source**. The connection-selection step also offers an **Add connection** shortcut.
-You assist with login, passwords, 2FA, payment, or policy-required approvals.
+Your own Agent applies the CLI commands in [Connections](guides/connections.md) for custom addresses, dedicated tunnels, OpenAI Secure Tunnel, joining shared relays and relay hosting, using AX for external login when needed. The App displays the resulting connections read-only. You assist with login, passwords, 2FA, payment and policy-required approval.
 
 ## Limits
 

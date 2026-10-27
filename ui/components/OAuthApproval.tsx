@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { connector } from '../state/connector';
-import { onboarding, connectionSetup } from '../state/onboarding';
+import { onboarding } from '../state/onboarding';
 import { navigation } from '../state/navigation';
 import { Dialog } from './ui';
 import { ApprovalCard } from './objects/authorization-request/adapter';
@@ -17,7 +17,6 @@ export default function OAuthApproval({ requested, onClose, inlineEnabled }: { r
     const target = requests.find(p => p.request.id === requested.id);
     if (!target) return;
     dismissed.current.delete(requested.id);
-    connectionSetup.set(undefined);
     if (target.request.switchSourceId) {
       onboarding.set(undefined);
       setSelectedId(target.request.id);

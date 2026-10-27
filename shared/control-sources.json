@@ -24,8 +24,8 @@
     "customHeaders": "No general static-header configuration documented for ChatGPT HTTPS apps.",
     "capability": "Remote MCP over Streamable HTTP",
     "caveat": {
-      "en": "Use a remote link with local approval. OpenAI Secure Tunnel remains available in Advanced. Client developer-mode permissions still apply.",
-      "zh-CN": "使用远程链接并在本机批准。OpenAI Secure Tunnel 保留在高级设置；仍需客户端开发者模式权限。"
+      "en": "Use a remote link with local approval. OpenAI Secure Tunnel remains available through CLI/AX. Client developer-mode permissions still apply.",
+      "zh-CN": "使用远程链接并在本机批准。OpenAI Secure Tunnel 可通过 CLI/AX 配置；仍需客户端开发者模式权限。"
     },
     "badge": {
       "en": "",
@@ -495,5 +495,65 @@
       "zh-CN": ""
     },
     "docs": []
+  },
+  {
+    "id": "local-code",
+    "displayName": "Claude Code",
+    "shortName": "Claude Code",
+    "platform": "anthropic",
+    "icon": "claude",
+    "curated": false,
+    "recommendedTransport": "local",
+    "recommendedAuth": "none",
+    "httpsAuth": "bearer",
+    "supportedAuth": [
+      "none"
+    ],
+    "status": "conditional",
+    "remoteMcp": "unknown",
+    "clientAuth": [],
+    "customHeaders": "",
+    "capability": "Local MCP over stdio",
+    "caveat": {
+      "en": "Run the local setup command, then restart the client.",
+      "zh-CN": "运行本地配置命令，然后重启客户端。"
+    },
+    "badge": {
+      "en": "",
+      "zh-CN": ""
+    },
+    "docs": [],
+    "localTarget": "code",
+    "sourceProduct": "claude"
+  },
+  {
+    "id": "local-desktop",
+    "displayName": "Claude Desktop",
+    "shortName": "Claude Desktop",
+    "platform": "anthropic",
+    "icon": "claude",
+    "curated": false,
+    "recommendedTransport": "local",
+    "recommendedAuth": "none",
+    "httpsAuth": "bearer",
+    "supportedAuth": [
+      "none"
+    ],
+    "status": "conditional",
+    "remoteMcp": "unknown",
+    "clientAuth": [],
+    "customHeaders": "",
+    "capability": "Local MCP over stdio",
+    "caveat": {
+      "en": "Run the local setup command, then restart the client.",
+      "zh-CN": "运行本地配置命令，然后重启客户端。"
+    },
+    "badge": {
+      "en": "",
+      "zh-CN": ""
+    },
+    "docs": [],
+    "localTarget": "desktop",
+    "sourceProduct": "claude"
   }
 ]

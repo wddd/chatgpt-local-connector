@@ -474,6 +474,58 @@ contracts through authenticated loopback IPC. A local ingress has `transport: "l
 `auth: "none"`; it exposes no public listener. Its enabled state and tool policy still apply.
 
 
+On Windows PowerShell, use `'{"body":{"target":"desktop"}}' | arc cli call local-access.install --stdin` (or target `code`).
+
+## Additional connection methods
+
+These local management commands retain the full connection surface. Replace IDs with returned IDs and pass credentials through protected stdin. Do not put secrets in chat or logs. UI Add SRC uses only Local or the public link.
+
+Custom reverse proxy (forward `/mcp` and the OAuth public routes to the chosen loopback port):
+
+```sh
+printf '%s' '{"name":"Custom proxy","controlSource":"claude","transport":"https","auth":"oauth","enabled":true,"config":{"httpsProvider":"custom","httpsUrl":"https://arc.example.com","httpsPort":8787}}' | arc cli ingress add --stdin
+arc cli ingress start <ingressId>
+arc cli ingress probe <ingressId>
+```
+
+Dedicated Cloudflare Tunnel with an existing token and assigned hostname:
+
+```sh
+printf '%s' '{"name":"Dedicated tunnel","controlSource":"claude","transport":"https","auth":"oauth","enabled":true,"config":{"httpsProvider":"cloudflare","cloudflareMode":"named","cloudflareToken":"<tunnel-token>","httpsUrl":"https://arc.example.com"}}' | arc cli ingress add --stdin
+arc cli ingress start <ingressId>
+```
+
+For other providers, read `arc cli ingress presets`, `arc cli schema ingress.add` and `arc cli schema ingress.update`; use the selected provider's config fields. `arc cli setup next`, `arc cli setup apply <stepId> --stdin` and `arc cli setup wait` also expose the guided fixed-address path described above.
+
+OpenAI Secure Tunnel:
+
+```sh
+printf '%s' '{"name":"ChatGPT tunnel","controlSource":"chatgpt","transport":"openai-tunnel","auth":"openai","enabled":true,"config":{"tunnelId":"<tunnel-id>","apiKey":"<runtime-key>"}}' | arc cli ingress add --stdin
+arc cli ingress start <ingressId>
+arc cli ingress doctor <ingressId>
+```
+
+Relay hosting and joining (run only the operation needed for the task):
+
+```sh
+arc cli call relay.list
+printf '%s' '{"body":{"name":"My computer"}}' | arc cli call relay.create --stdin
+arc cli call relay.progress
+printf '%s' '{"body":{"id":"<relayId>"}}' | arc cli call relay.share --stdin
+printf '%s' '{"body":{"link":"<invite-link>","name":"My computer"}}' | arc cli call relay.join --stdin
+printf '%s' '{"body":{"id":"<relayId>"}}' | arc cli call relay.instances --stdin
+```
+
+`relay.create`, `relay.redeploy`, `relay.join`, `relay.connect` and `relay.delete` return asynchronous job progress. Read `relay.progress` until ready or failed; use `relay.cancel` with `{"body":{}}` to cancel. Retry creation with `relay.redeploy` and `{"body":{"id":"<relayId>","accountId":"<accountId>"}}` when progress returns a relay ID and requires account selection. Without a relay ID, retry `relay.create` with the selected accountId. `relay.share` returns a private invite; `relay.reset-token` rotates it. Both take `{"body":{"id":"<relayId>"}}`. `relay.remove` takes `{"body":{"id":"<relayId>","instanceId":"<instanceId>"}}`; `relay.leave` and `relay.delete` take the relay ID wrapper. Removing a member disconnects that computer; deleting a relay disconnects every member.
+
+The UI records its public link in the instance preference `arc.public-relay-id`. It adopts a unique owned relay when the preference is empty. Multiple unmarked owned relays remain read-only; explicitly select one through CLI and reopen the App to refresh its preferences:
+
+```sh
+printf '%s' '{"body":{"values":{"arc.public-relay-id":"<owned-relayId>"}}}' | arc cli call preferences.set --stdin
+```
+
+This selects the basic UI link; it does not move existing source bindings. Joined relays cannot be selected as the public link.
+
 ## Control-call statistics
 
 Run `arc cli stats control --since 1h` (default: `1d`; supported units: `m`, `h`, `d`; maximum: `30d`). This local report works offline. It groups calls by source, op, and UTC day. `textBytes` counts UTF-8 text content; `structuredContentBytes` counts serialized structuredContent; `responseBytes` counts the complete serialized tool result, including escaping and other content blocks. `requestBytes` counts serialized tools/call parameters, excluding transport framing. These are byte measurements, not billed tokens.
@@ -730,7 +782,7 @@ This setting affects all built-in CLI callers and does not change execution perm
 Set `capabilityProfile:null` to restore Legacy.
 MCP sources instead accept `{hostAccess:"none"|"unknown",waitMode:"push"|"poll"}`.
 A `claude` MCP connector can serve Code, Chat and Cowork, so it cannot select Local Code.
-New sources offer a selection through `capabilityProfileOffer` and source setup; existing sources remain Legacy until explicitly changed.
+New sources expose `capabilityProfileOffer` through CLI/AX. The pairing UI omits profile configuration and preserves the core default; existing sources remain unchanged until explicitly updated.
 Source preferences follow the stable source ID across connection switches.
 
 Read `cli control dispatch_policy` and `cli control guide codex_create` before dispatch.

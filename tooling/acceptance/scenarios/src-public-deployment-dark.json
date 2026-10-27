@@ -9,11 +9,9 @@
     "empty": true
   },
   "sourceSetup": {
-    "step": "connection",
-    "source": "claude"
-  },
-  "connectionSetup": {
-    "forSource": true
+    "step": "address",
+    "source": "claude",
+    "deploying": true
   },
   "relayProgress": {
     "phase": "login",

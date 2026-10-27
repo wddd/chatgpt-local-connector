@@ -10,8 +10,7 @@
   },
   "sourceSetup": {
     "step": "address",
-    "source": "claude",
-    "localTarget": "code",
+    "source": "local-code",
     "ingressId": "local-claude-code"
   }
 }

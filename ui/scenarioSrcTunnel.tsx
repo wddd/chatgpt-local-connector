@@ -57,12 +57,12 @@ export default function SrcTunnelFixture() {
     <SrcAccountCard source={{ ...source, label: 'Awaiting identity', connectedAt: null, lastSeenAt: null }} loading />
     <Switch label="Refresh error" checked={readError} onChange={setReadError} /><Switch label="Busy" checked={busy} onChange={setBusy} />
     <section aria-label="Connection rows">
-      <TunnelRow ingress={ingress} sources={[source, second]} onOpen={() => openConnection(ingress.id)} />
-      <TunnelRow ingress={{ ...ingress, name: 'Failed connection', state: 'error', error: 'Synthetic transport failure' }} sources={[source]} selected disabled />
-      <TunnelRow ingress={{ ...ingress, name: 'Starting connection', state: 'starting', url: '' }} sources={[]} />
+      <TunnelRow ingress={ingress} />
+      <TunnelRow ingress={{ ...ingress, name: 'Failed connection', state: 'error', error: 'Synthetic transport failure' }} />
+      <TunnelRow ingress={{ ...ingress, name: 'Starting connection', state: 'starting', url: '' }} />
     </section>
-    <TunnelCard ingress={ingress} sources={[source, second]} busy={busy} error={readError ? 'Synthetic refresh failure' : undefined} />
-    <TunnelCard ingress={{ ...ingress, name: 'Missing address', url: '', state: 'error', error: 'Synthetic transport failure' }} sources={[]} />
+    <TunnelCard ingress={ingress} busy={busy} error={readError ? 'Synthetic refresh failure' : undefined} />
+    <TunnelCard ingress={{ ...ingress, name: 'Missing address', url: '', state: 'error', error: 'Synthetic transport failure' }} />
     <section aria-label="Product choices" className="min-w-0 [&_.entity-row]:p-0 [&_.entity-row]:flex-1">
       <SingleChoice cards label="Product" value={choice} onChange={setChoice} options={['claude', 'chatgpt'].map(product => ({ value: product, label: product, content: <SrcPlatformRow product={product} /> }))} />
     </section>

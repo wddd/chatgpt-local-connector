@@ -140,14 +140,15 @@ Each variant's **Render** cell is an allowlist. Other fields of its input types 
 
 ### TUNNEL
 
-**Type:** Ingress with Config; optional Relay (`ui/state/relay.ts`) and carried ControlSource collection. Name/kind/provider are derived using existing ingress helpers. A topology line remains projected NodeView/PaintNode/PaintTask geometry, not a claim that every edge maps one-to-one to Ingress.
+**Type:** Ingress with Config. Name/kind/provider are derived using existing ingress helpers. A topology line remains projected NodeView/PaintNode/PaintTask geometry, not a claim that every edge maps one-to-one to Ingress.
 
 | Variant | Purpose / today → target | Render | States; click / header actions; replaces |
 | --- | --- | --- | --- |
 | Chip | Connection reference mounts → connection reference | Ingress `name`, derived `transport` kind, projected `state` | Missing/removed/disconnected, selected/disabled; opens Connections; missing target is text. Replaces connection reference fragments. |
 | Node | TopologyPainter/PortraitPainter → topology line | Projected wire state, selected/attention path and geometry; no address, label fact or new vertex | Normal/connecting/error/inactive, task attention/completion, collapse, selected emphasis. **No click or header actions.** Reuses both painters; converges semantic state treatment without replacing layout. |
-| Row | Connections read-only list + transitional Add SRC choice → connection list | `name`, derived kind, `state`, carried source count; one secondary line: masked `url` or provider label | Selected/ready/offline/unused/error, disabled compatibility choice, busy/privacy. Read-only on Connections; the transitional Add SRC basic choice invokes selection. |
-| Card | Connections basic paths and SourceConnectionSetup success → canonical connection detail | `name`, `transport`, projected `state`, `error`, masked `url`; Config.`httpsProvider`/`connectionMode` when relevant; Relay.`owner`/`workerVersion`; carried SRC Rows and source count | Local/HTTPS/secure tunnel/relay, owner/joined, starting/stopping/error/missing URL, busy/privacy. Header: start/stop for basic connections only. Body: address copy. Replaces duplicated connection facts; success flow mounts a summary of the same Card, with follow-up actions in its host footer. |
+| Row | Connections extra connections → read-only list | `name`, derived kind, state and masked address or Tunnel ID | Ready/offline/error/privacy. No selection, navigation or mutation actions. |
+| LocalConnectionRow | Connections → Local state | Local ingress state, with unknown before loading and disabled when none are configured | Error takes precedence over connecting, connected, disconnected and disabled. No address or actions. |
+| Card | Connections public link → basic state and address | Public-link title, projected state, error and masked MCP URL | Starting/stopping/error/missing URL, busy/privacy. Header: start/stop. Body: address copy. No provider metadata, source list or detail navigation. |
 
 **Omit:** raw IDs, `discoveredUrls`, verification timestamps, tool policy, credential flags/secrets and provider-specific config internals. `enabled`/`running` determine controls, not duplicate text badges. Config editing and hosted relay membership stay in CLI/AX; the UI retains only public-link deployment. Transport-unavailable does not mean every carried source was revoked.
 
@@ -207,14 +208,14 @@ The object name and four slots are reserved; implementation and design-tool moun
 
 ### Deployment progress
 
-**Type:** RelayProgress from `ui/state/relay.ts`, with public-link create/redeploy progress owned by SourceConnectionSetup. This is a relay deployment object, not AppUpdate's separate lifecycle schema. No percentage or start/finish timestamps exist.
+**Type:** RelayProgress from `ui/state/relay.ts`, with public-link create/redeploy progress owned by PublicLinkDeployment. This is a relay deployment object, not AppUpdate's separate lifecycle schema. No percentage or start/finish timestamps exist.
 
 | Variant | Purpose / today → target | Render | States; click / header actions; replaces |
 | --- | --- | --- | --- |
 | Chip | Repeated busy/job summaries → compact connection/hosting progress | `action` when present and `phase`; `cancelled` overrides failure wording | Idle/login/deploying/connecting/ready/failed/cancelled, attention for login/account choice; opens active job Card only when its owner provides a target. Replaces busy job summary fragments; no new persistent job list. |
 | Node | N/A | No fields | Deployment belongs to connection/hosting, not topology. |
 | Row | N/A; no deployment history/list currently exists | No fields | No actions or replacements. |
-| Card | RelayProgress in SourceConnectionSetup → shared progress Card | `phase`, `action`, classified `reason`/`failedPhase`, `cancelled`, masked `loginUrl`, `accounts[].name` with masked `id` fallback; terminal masked `result.url` and `result.deleted` when present | Login required, progressing, ready, failed/timeout/account unavailable, choose-account, cancellation, busy/read/action error/privacy. Header: close when safe, owner-supplied cancel action; body: steps, login URL copy, account SingleChoice; footer: Retry/Cancel as available. Replaces remote-progress framing while preserving one progress owner and its request identity checks. |
+| Card | RelayProgress in PublicLinkDeployment → shared progress Card | `phase`, `action`, classified `reason`/`failedPhase`, `cancelled`, masked `loginUrl`, `accounts[].name` with masked `id` fallback; terminal masked `result.url` and `result.deleted` when present | Login required, progressing, ready, failed/timeout/account unavailable, choose-account, cancellation, busy/read/action error/privacy. Header: close when safe, owner-supplied cancel action; body: steps, login URL copy, account SingleChoice; footer: Retry/Cancel as available. Replaces remote-progress framing while preserving one progress owner and its request identity checks. |
 
 **Omit:** raw `jobId`, `relayId`, `ingressId`, result IDs and account IDs except existing display fallback. `reason` is classified for readable failure text, not dumped with tokens. No elapsed time/progress percentage is inferred. Close does not silently cancel; cancel invokes the owner's actual cancellation callback.
 
@@ -239,11 +240,11 @@ Reuse existing AgentQuota, AgentQuotaIcon and QuotaBubble behavior and visual de
 
 `objects/interaction-request/Card.tsx` receives AgentInteraction, ApprovalSubmission, answer drafts and an execution-response callback. Its live adapter retains interactionKey and submitActivityResponse. TaskNeedsYou and AppUpdate use that adapter, including the full permission preview in update contexts. QuestionField retains single/multiple/custom choices, numeric keyboard selection and password inputs. Row receives timeline evidence and masks secret response history; its live adapter looks up local receipts. AdmissionRequestRow remains a separate TaskRecord adapter.
 
-`objects/authorization-request/Card.tsx` receives OAuthRequest, Ingress, candidate/claimed sources and controlled form/action props. ApprovalCard in its adapter retains source claim, naming, capability-profile selection, decision API and refresh behavior. OAuthApproval re-exports that adapter for Add SRC and global pending pairing requests; there is one renderer, not a compatibility implementation. Inline setup buttons continue to submit the identified form from their owning dialog footer. Execution allow/deny/answer and OAuth Allow/Deny never share a generic approval action.
+`objects/authorization-request/Card.tsx` receives OAuthRequest, Ingress, candidate/claimed sources and controlled form/action props. ApprovalCard in its adapter retains source claim, naming, core-default capability handling, decision API and refresh behavior. OAuthApproval re-exports that adapter for Add SRC and global pending pairing requests; there is one renderer, not a compatibility implementation. Inline setup buttons continue to submit the identified form from their owning dialog footer. Execution allow/deny/answer and OAuth Allow/Deny never share a generic approval action.
 
 `SourceAuthorizationChip` projects only the active switch request or source-bound OAuth credential. It never enumerates grant history. SrcAccountCard mounts this adapter and related pending AuthorizationRequestRows in object fixtures. Homepage panels do not mount authorization controls. Hosts open the existing authorization flow with the selected request and connection IDs. Authorization Row opens review and never authorizes by selection.
 
-DeploymentProgressCard serves the public relay deployment in SourceConnectionSetup. The state hook and host retain job identity checks, polling, cancellation and retries. The Card composes DeploymentProgressChip, phase steps, classified failure, required Cloudflare account choice, protected login address and terminal URL. Relay member management has no UI objects or design exports.
+DeploymentProgressCard serves the public relay deployment in PublicLinkDeployment. The state hook and host retain job identity checks, polling, cancellation and retries. The Card composes DeploymentProgressChip, phase steps, classified failure, required Cloudflare account choice, protected login address and terminal URL. Relay member management has no UI objects or design exports.
 
 `requests-light`, `requests-dark` and `requests-narrow` mount these real objects with synthetic records and local callbacks. They include secret and multiple answers, paging with retained drafts, unconfirmed/failed/submitting states, privacy, authorization errors, account selection and sheet keyboard/focus behavior. `ui/design-mount` exports the composite and every applicable Chip/Row/Card with `Arc.fixtures.requests`. Peer messages remain deferred; notification binding is CLI/AX only.
 

@@ -25,7 +25,7 @@ A control source is one account, bot, or local client that dispatches work. Two 
 | createdAt, connectedAt, lastSeenAt | Lifecycle times. |
 | state | connected, disconnected, or revoked. |
 
-The credential is the identity anchor. OAuth client names are self-reported and MUST NOT identify a source. Product and label are user-correctable at any time.
+The credential is the identity anchor. OAuth client names are self-reported and MUST NOT identify a source. Labels are user-editable. Product correction is available through CLI/AX.
 
 The registry gains a `platform` field per product. Display layers MAY aggregate sources by platform. Storage, provenance, and isolation MUST use the source ID.
 
@@ -74,9 +74,9 @@ The [object model](object-model.md) owns placement and the basic-path boundary. 
 
 ### Connections
 
-Connections exposes the public relay link and Local connections with state, address copy and start/stop. Connections configured through CLI/AX remain visible as read-only rows with kind, address and state. They have no edit, switch, remove or provider controls. A short link points to the connections guide.
+Connections exposes the public relay link with state, address copy and start/stop. Local has state only, including a disabled state when no local client is configured. If several local clients exist, an error takes precedence over connecting, connected, disconnected and disabled state. Connections configured through CLI/AX remain visible as read-only rows with kind, address and state. They have no edit, switch, remove or provider controls. A short link points to the connections guide.
 
-The public link uses a unique owned Cloudflare relay. Multiple owned relays remain read-only until phase 3 supplies an explicit identity; the UI neither picks the first nor deploys another. Core does not yet mark one relay as the canonical public link; phase 3 must define that identity for installations with multiple owned relays. The UI does not migrate existing source bindings.
+The public link identity is stored in the instance preference `arc.public-relay-id`. Deployment records its relay ID before advancing. An empty preference adopts a unique owned relay. Multiple unmarked owned relays, or a stored ID that no longer matches an owned relay, remain read-only; CLI `preferences.set` can select an owned relay explicitly. The UI never picks the first candidate or moves source bindings. A newly deployed link replaces a stale preference only when no owned relay remains. Preference persistence failures are visible and retryable.
 
 Add connection, Change connection, provider forms, Secure Tunnel setup, joined-relay management, invite links and member devices have no UI entries. Relay hosting remains a Core, CLI and AX capability. Settings Extras contains experimental features only.
 
@@ -86,13 +86,11 @@ Creating a source and approving a new pairing request happen in centered dialogs
 
 ### Add a control source
 
-The hub left half and Welcome open Add SRC. The transitional flow retains Product, Connection, Configure, Approve and success steps. Its connection step offers only the public link or the selected local client's connection. It never offers custom providers, Secure Tunnel or joining a relay.
+The hub left half and Welcome open Add SRC. SRC L1 can call `openOnboarding("product", {source})` to preselect a product. The registry's `recommendedTransport` determines the path: local products show their `local-access.install` CLI command; all others copy the public link's MCP URL and approve pairing. `custom` recommends HTTPS and appears in the remote group. Local command dismissal does not claim an observed connection.
 
-When no compatible basic connection exists, `SourceConnectionSetup` supplies the minimum existing setup capability: owned relay deployment with progress, Cloudflare account selection when required, cancellation and retry; or the existing local client installer. It is not a standalone Add connection surface. Completion returns the created ingress ID to Add SRC, which continues to address copy, pairing approval and observed source connection.
+There is no connection choice, nested connection dialog, client installer button or product correction. Remote setup binds to the public relay automatically. If missing, one action starts `PublicLinkDeployment` inline; Connections uses the same component. It retains job identity checks, progress, required Cloudflare account selection, cancellation and retry. A completed deployment retries status/preference readback without deploying again. The core local installer remains a CLI capability.
 
-Phase 3 removes this nested connection step and the remaining connection selection state, automatically binds remote products to the public link and local clients to Local, and updates user guides. Until then, the existing local installer is retained instead of replacing it with a new setup command flow. This temporary component must not grow alternate methods.
-
-Pairing still displays the code, source name, pending request state and approval actions. Existing reauthorization claims remain supported by the approval adapter, including requests initiated through CLI/AX. OAuth grant-history lists and tool-policy editors are absent. New basic connections grant full tool access; existing Core-configured policy is not rewritten by the UI.
+Pairing still displays the code, source name, pending request state and approval actions. Existing reauthorization claims remain supported by the approval adapter, including requests initiated through CLI/AX. Approval omits capabilityProfile writes and uses the core default. Capability profiles, OAuth grant-history lists and tool-policy editors have no UI entries. New basic connections grant full tool access; existing Core-configured policy is not rewritten by the UI.
 
 ### First run
 

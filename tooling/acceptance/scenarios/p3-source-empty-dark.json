@@ -9,7 +9,7 @@
     "empty": true
   },
   "sourceSetup": {
-    "step": "connection",
+    "step": "address",
     "source": "claude"
   }
 }

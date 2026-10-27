@@ -2,63 +2,101 @@
 
 **English** | [简体中文](../zh-CN/guides/connections.md)
 
-Open **Remote link → Connections → Add connection**. Add control source and Change connection also open this dialog above the current step. A connection supplies the address and access method; an OAuth connection can carry multiple named control sources.
-
-## Add a connection
-
-Choose a method, complete Configure, then finish on Ready.
-
-| Method | Configuration |
-| --- | --- |
-| Create my relay | Sign in to Cloudflare; ARC deploys the relay and connects this computer. |
-| Paste relay link | Paste an invite link and name this computer. Only join a host you trust. |
-| Use your own address | Choose Cloudflare Tunnel, ngrok, Pinggy, LocalXpose, or another reverse proxy; enter the provider credentials, domain and connection name. |
-| OpenAI Secure Tunnel | Enter a Tunnel ID and runtime API key. See [ChatGPT](chatgpt.md#advanced-openai-secure-tunnel). |
-| Claude Code / Claude Desktop | Install the local client configuration, then restart the client. No network setup is needed. |
-
-Own-address setup keeps authentication and tool permissions under **Advanced**. Use OAuth for approval in ARC, or Bearer for clients that send an Authorization header. Provider credentials establish the tunnel; client authentication controls access through it. A fixed domain must already be assigned in the provider account. Choose **Save and start**; ARC manages the required provider process.
-
-When stacked, choose **Continue with this connection** to return with it selected. Standalone setup offers **Done** or **Add a source for it**. Closing the stacked dialog returns without changing the parent selection.
+Open **Connections** for the public link's address, state and Start/Stop. If no public link exists, choose **Deploy public link** and sign in to your Cloudflare account. Deployment shows progress, cancellation, account selection when needed and retry. Local shows its state. Connections configured through CLI/AX appear as read-only rows with kind, address and state.
 
 ## Add a control source
 
-Welcome offers **This computer** for local Claude clients and **Phone and web** for remote platforms. Both open Add control source; later, use **Remote link → Add control source**.
+Open the homepage hub's left half, or **Add account** in a SRC platform panel. The latter preselects the platform.
 
-1. Choose the platform.
-2. Select a compatible connection, or add one.
-3. Copy the address and follow the platform settings in Configure. Connect in the client.
-4. In Approval, compare the pairing code, check the client and permissions, and enter an account name. Choose **Reauthorize** if you want to keep an existing source on that connection. Approve and finish.
+1. Choose the product.
+2. For remote products, deploy the public link if needed, then copy its MCP URL into the client settings shown in ARC and connect.
+3. Compare the pairing code in ARC, name the account and approve. Reauthorization can retain an existing source on the same connection. Approval uses the core's default capability profile.
 
-Opening **Add a source for it** from Connection detail preselects that connection and skips connection selection. Local clients and connections without OAuth complete after the client connects, without pairing-code approval.
+For Claude Code or Claude Desktop, run the displayed local setup command in a terminal on this computer, then restart the client. Completing the command screen is not proof that the client connected. The commands are:
 
-## Connection detail
+```sh
+printf '%s' '{"body":{"target":"code"}}' | arc cli call local-access.install --stdin
+printf '%s' '{"body":{"target":"desktop"}}' | arc cli call local-access.install --stdin
+```
 
-Open a row under **Remote link → Connections** to see its address, provider, online state and sources using it. Copy the address, open a source, or add a source for this connection. Non-local, non-relay connections offer **Edit**.
+On Windows PowerShell, use `'{"body":{"target":"desktop"}}' | arc cli call local-access.install --stdin` (or target `code`).
 
-**Remove connection** disconnects its sources and retains their names and history. Reconnect them with Change connection. Joined relays offer **Leave relay**. A hosted relay has a link to its management page in Settings; deleting the relay itself happens there.
+Other MCP clients use the public link because the control-source registry recommends HTTPS for `custom`. The UI has no connection selection or product correction. A client must support the public link's OAuth flow; an alternate transport or authentication method belongs to the Agent workflow below.
 
-## Change a source's connection
+## Ask your own Agent to configure other methods
 
-1. Open the source detail and choose **Change connection**. Select a compatible target or add one, then continue.
-2. In the client, remove the old ARC connector and add it again with the displayed address. Editing the URL also works if the platform supports it.
-3. Return to ARC, compare the pairing code and check **Claim as <account name>**, the old connection and remaining sources. Choose **Approve and switch**.
+Tell your local Agent which method and target computer you want. It can apply the exact commands from the [CLI reference](../reference/cli.md#additional-connection-methods), using AX for the external login or approval when needed. These methods have no ARC configuration forms. Read `arc cli status` first to identify the instance. Pass credentials through protected stdin; keep them out of chat and logs.
 
-The next authorization on the target connection claims the source even when re-adding registers a new client. The source keeps its name, history and notification settings; the old grant is revoked after the new authorization completes. Other sources on the old connection stay there. If the five-minute switch window expires, start Change connection again. Canceling or denying leaves the original connection unchanged.
+### Custom address
 
-For daily use, choose a fixed address. If a temporary address changes, remove and re-add the client's connector with the new address, or edit its URL where supported, and authorize again. Use Connection detail and Records for provider errors; see [FAQ](../faq.md) for client issues.
+Have the Agent create the ingress, route the public HTTPS hostname to its loopback listener, and forward `/mcp` plus every [OAuth public route](../reference/oauth.md#public-routes). Give each custom listener a distinct port. Keep management private.
 
-## Use a custom reverse proxy
+```sh
+printf '%s' '{"name":"Custom proxy","controlSource":"claude","transport":"https","auth":"oauth","enabled":true,"config":{"httpsProvider":"custom","httpsUrl":"https://arc.example.com","httpsPort":8787}}' | arc cli ingress add --stdin
+arc cli ingress start <ingressId>
+arc cli ingress probe <ingressId>
+```
 
-Route the public HTTPS hostname to ARC's loopback listener. Give each fixed Cloudflare or custom connection a distinct local port. Forward `/mcp` and every route in the [OAuth reference](../reference/oauth.md#public-routes) for OAuth. Keep ARC's management API private.
+### Dedicated tunnels
 
-## Host a relay for others
+For an existing Cloudflare Tunnel token and assigned hostname:
 
-Open **Settings → Extras → Relay hosting** and choose **Deploy new relay**. Sign in to Cloudflare and wait for deployment and connection. **Copy invite link** invites another computer. **Reset** invalidates the old invite without disconnecting joined devices.
+```sh
+printf '%s' '{"name":"Dedicated tunnel","controlSource":"claude","transport":"https","auth":"oauth","enabled":true,"config":{"httpsProvider":"cloudflare","cloudflareMode":"named","cloudflareToken":"<tunnel-token>","httpsUrl":"https://arc.example.com"}}' | arc cli ingress add --stdin
+arc cli ingress start <ingressId>
+```
 
-**Connected devices** lists names, joined time and last seen. **This computer** has no Remove action. Removing another device disconnects it; it can rejoin with a valid invite. **Delete…** disconnects every device, including this computer, and deletes the hosted relay. Removal and deletion require confirmation.
+For ngrok, Pinggy or LocalXpose, ask the Agent to read `arc cli ingress presets`, `arc cli schema ingress.add` and `arc cli schema ingress.update` and supply the provider config. It can also follow `arc cli setup next`, `arc cli setup apply <stepId> --stdin` and `arc cli setup wait` for the fixed-address setup protocol. Provider credentials establish the tunnel; client authentication controls access through it.
 
-Joined relays stay under **Remote link → Connections**. The homepage topology switch is under **Settings → Extras → Experimental**.
+### OpenAI Secure Tunnel
+
+Obtain the Tunnel ID and runtime key with the required OpenAI organization and ChatGPT workspace access. Ask the Agent to configure:
+
+```sh
+printf '%s' '{"name":"ChatGPT tunnel","controlSource":"chatgpt","transport":"openai-tunnel","auth":"openai","enabled":true,"config":{"tunnelId":"<tunnel-id>","apiKey":"<runtime-key>"}}' | arc cli ingress add --stdin
+arc cli ingress start <ingressId>
+arc cli ingress doctor <ingressId>
+```
+
+ARC manages the official Tunnel Client. Associate the tunnel with the intended workspace and select it in ChatGPT. See [ChatGPT](chatgpt.md#advanced-openai-secure-tunnel).
+
+### Join a shared relay or host one
+
+Ask the Agent to run only the needed operations:
+
+```sh
+arc cli call relay.list
+printf '%s' '{"body":{"name":"My computer"}}' | arc cli call relay.create --stdin
+arc cli call relay.progress
+printf '%s' '{"body":{"id":"<relayId>"}}' | arc cli call relay.share --stdin
+printf '%s' '{"body":{"link":"<invite-link>","name":"My computer"}}' | arc cli call relay.join --stdin
+printf '%s' '{"body":{"id":"<relayId>"}}' | arc cli call relay.instances --stdin
+```
+
+Read `relay.progress` after creating or joining. The CLI reference documents cancellation, retry, invite rotation, member removal, leaving and deletion. A private invite is a credential. Only join a trusted host: the deployer can inspect traffic in Cloudflare. Deleting a hosted relay disconnects all its members.
+
+The UI remembers its public relay. If multiple owned relays predate that choice, all remain read-only until your Agent selects one explicitly, then you reopen ARC:
+
+```sh
+printf '%s' '{"body":{"values":{"arc.public-relay-id":"<owned-relayId>"}}}' | arc cli call preferences.set --stdin
+```
+
+This does not move existing sources. A joined relay remains an additional read-only connection.
+
+### Move a source or configure capabilities
+
+Connection switching and capability profiles remain CLI/AX operations. To switch, have your Agent select the target, then re-add the connector in the client and approve the matching request:
+
+```sh
+arc cli source list
+arc cli ingress list
+arc cli source switch <sourceId> <ingressId>
+arc cli ingress oauth list <ingressId>
+printf '%s' '{"id":"<requestId>","allow":true,"sourceId":"<sourceId>"}' | arc cli ingress oauth decision <ingressId> --stdin
+```
+
+The source keeps its name and history; the old grant is revoked after the new authorization succeeds. `arc cli source switch <sourceId> --cancel` cancels the pending switch. Capability profiles use `arc cli source update <sourceId> --stdin` with the fields in the [CLI reference](../reference/cli.md#local-code-profile); the pairing UI does not override them.
 
 ## Limits
 
-Only join trusted relays: their deployer can technically inspect relayed traffic in Cloudflare. ARC uses Streamable HTTP, not a standalone legacy SSE endpoint. LocalXpose temporary mode is unavailable because the first request is redirected. Provider accounts, domains, quotas and outbound connectivity remain your responsibility. None authentication allows anyone who can reach the endpoint to use its allowed tools. Local connections cannot be switch targets; a non-OAuth target must have no source and completes the switch on an authenticated client request rather than OAuth approval.
+A running listener or deployment receipt is not remote acceptance; verify an authenticated tool response from the intended client. Client plans and workspace policies still apply. ARC uses Streamable HTTP, not a standalone legacy SSE endpoint. LocalXpose temporary mode is unavailable because its first request redirects. Provider accounts, domains, quotas and outbound connectivity remain your responsibility. Local connections cannot be switch targets. Non-OAuth targets carry one source and complete switching on an authenticated request.

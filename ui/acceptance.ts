@@ -14,7 +14,7 @@ import { acceptActivity } from './state/activity';
 import { api } from './api';
 import type { AgentActivitySnapshot } from './types';
 import { locale } from './i18n';
-import { onboarding, connectionSetup } from './state/onboarding';
+import { onboarding } from './state/onboarding';
 
 let topology: (() => unknown) | undefined;
 export function observeTopology(read: () => unknown) {
@@ -39,14 +39,13 @@ export function viewModel(layoutSettled = false) {
     taskDetail: detail,
     taskBubbles: activityBubbleSnapshot(),
     panels: { agent: agentPanel.get() ?? null, source: ingressPanel.get()?.client?.id ?? ingressPanel.get()?.product ?? null,
-      onboarding: onboarding.get()?.step ?? null, connectionSetup: connectionSetup.get() ?? null, page: localStorage.getItem('arc-page') ?? 'overview' },
+      onboarding: onboarding.get()?.step ?? null, page: localStorage.getItem('arc-page') ?? 'overview' },
   };
 }
 export type PanelRequest = { kind: 'agent' | 'source' | 'none'; id?: string; accountId?: string; platform?: string; platformOnly?: boolean };
 export function openSnapshotPanel(panel?: PanelRequest | null) {
   if (!panel) return;
   onboarding.set(undefined);
-  connectionSetup.set(undefined);
   if (panel.kind === 'none') { agentPanel.set(undefined); ingressPanel.set(undefined); return; }
   if (panel.kind === 'agent') {
     if (!agents.get().items.some(a => a.agent === panel.id)) throw new Error('SNAPSHOT_NODE_NOT_FOUND: agent');

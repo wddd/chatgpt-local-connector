@@ -1,4 +1,4 @@
-import { onboarding, connectionSetup } from "./onboarding";
+import { onboarding } from "./onboarding";
 import { createStore } from "./store";
 import { agentPanelSelection, type AgentPanelSelection, type AgentPanelAction } from "./activityModel";
 import { accounts } from "./accounts";
@@ -9,7 +9,6 @@ export const agentPanel = createStore<AgentPanelSelection>(undefined);
 export type IngressPanelSelection = { product: string; accountId?: string; client?: { id: string; name: string; source: string }; closing?: boolean };
 export const ingressPanel = createStore<IngressPanelSelection | undefined>(undefined);
 export function selectAgentPanel(action: AgentPanelAction) {
-  connectionSetup.set(undefined);
   onboarding.set(undefined);
   if (["agent", "toggle", "task"].includes(action.type)) ingressPanel.set(undefined);
   if ((action.type === "agent" || action.type === "toggle") && !action.accountId) {
@@ -20,7 +19,6 @@ export function selectAgentPanel(action: AgentPanelAction) {
   agentPanel.set(old => agentPanelSelection(old, action));
 }
 export function selectSourcePanel(product: string, options: { accountId?: string; sourceId?: string; toggle?: boolean; platformOnly?: boolean } = {}) {
-  connectionSetup.set(undefined);
   onboarding.set(undefined);
   agentPanel.set(undefined);
   const sources = connector.get().sources.filter(s => s.product === product && !isLocalSource(s));

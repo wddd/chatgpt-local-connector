@@ -29,15 +29,11 @@ A normal Claude Chat can receive CLI notifications when it has a workspace sessi
 
 ## Connect with a remote link
 
-On Welcome, choose **Phone and web**, then **Claude**. Later, use **Remote link → Add control source**. Select a connection, or open **Add connection** and finish its Method → Configure → Ready flow. ARC returns with that connection selected.
+Choose **Claude** from Welcome or the homepage hub's left half. If the public link is missing, choose **Deploy public link** and sign in to your Cloudflare account. Copy its MCP URL into Claude's **Settings → Connectors → Add custom connector**. Connect, return to ARC, compare the pairing code, name the account and approve. Reauthorize an existing source when offered to preserve its history. Finish after the client actually connects.
 
-In Configure, copy the address into Claude's **Settings → Connectors → Add custom connector** and connect. In Approval, compare the four-character codes, check the client and permissions, and enter an account name. If offered, choose **Reauthorize** to retain an existing source's history. Approve, return to Claude, then finish the ARC success screen.
+For local use, choose **Claude Code** or **Claude Desktop**, run the displayed setup command and restart the client. No pairing is needed. **Add account** in a SRC panel preselects its platform.
 
-For local use, choose **This computer** on Welcome, then **Claude Code** or **Claude Desktop**. Select its local connection or install it through Add connection. Restart the client; no pairing-code approval is needed.
-
-To move an existing source, open its detail and choose **Change connection**. Select the target in ARC, then delete the old ARC connector in Claude and add it again with the new address. If the client supports editing the URL, editing also works. Return to ARC, compare the code, check **Claim as <account name>**, and approve. ARC retains the source's name, history and notification settings and revokes the old grant after the new authorization completes.
-
-Open **Remote link → Connections** for addresses, sources using each connection, and removal. Relay owners manage invites and devices in **Settings → Extras → Relay hosting**. See [Connections](connections.md) for methods and relay trust boundaries.
+**Connections** shows the public link's address, state and Start/Stop, plus Local state. Your own Agent configures custom addresses, dedicated tunnels, shared-relay joining, relay hosting and source connection switching through CLI/AX; see [Connections](connections.md) for exact commands. Other connections appear read-only in the UI.
 
 ## Start with current facts
 

@@ -54,10 +54,10 @@ AddAccount retains native login and confirmation. AgentPanel L1 lists accounts w
 | --- | --- | --- |
 | Chip | TunnelChip | Source rows/cards; navigates to Connections when a live target exists. |
 | Node | TunnelNode | Existing TopologyPainter and PortraitPainter boundary. No vertex or click target is added. |
-| Row | TunnelRow | Read-only Connections rows and the transitional basic connection choice in Add SRC. Kind, address and state remain visible. |
-| Card | TunnelCard | Basic Connections cards and setup success; state, masked address, kind and source count. |
+| Row | TunnelRow | Read-only additional Connections rows with kind, address and state. LocalConnectionRow shows Local state only. |
+| Card | TunnelCard | Public-link state, masked MCP address and start/stop. |
 
-AddControlSource retains Product, Connection, Configure, Approve and success steps. `SourceConnectionSetup` is temporary phase 3 support for public relay deployment and local client installation only. It returns the created ingress ID to the parent flow. There is no general Add connection surface, provider editor, Secure Tunnel setup, joined-relay management, hosted-relay administration, invitation or member-device component/export.
+AddControlSource offers Product, Configure, Approval and observed success for remote products; local products show a setup command. PublicLinkDeployment owns inline deployment in Add SRC and Connections, preserving progress, cancellation and retry. No connection selector, nested setup dialog, provider editor, Secure Tunnel setup, joined-relay management, hosted-relay administration, invitation or member-device component/export remains.
 
 DeploymentProgressCard and DeploymentProgressChip remain for public-link deployment. Relay member objects and their design mounts are removed. OAuth pairing approval remains in AuthorizationRequestCard and its live ApprovalCard adapter; this is distinct from the removed grant-history and tool-policy editors.
 
@@ -87,7 +87,7 @@ SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, Setting
 - `src-tunnel-*`, `agent-objects-*` and `task-objects-*` mount the retained object variants with synthetic data, privacy, missing/disabled/busy/error states and observable callbacks.
 - `source-panel*`, `panels-*`, `topology-accounts*`, `agent-panel*` and task-detail scenarios cover current homepage hosts.
 - `settings-*`, `settings-permissions-*`, `connections-basic-*` and Records fixtures cover surviving workspace surfaces.
-- Add SRC product, connection, address, approval and success fixtures remain. Phase 3 replaces the transitional connection setup flow; phase 4 completes the target state matrix.
+- Add SRC fixtures cover product, address, approval, success, local commands and missing public links. Connections fixtures cover public, Local and CLI-configured entries together, plus no public link. The navigation fixture exercises all four removed page targets. Phase 4 completes the remaining target state matrix.
 - Removed pages, connection editors, switch flows, merge dialogs, grant lists and relay-member surfaces have no dedicated scenario or design export.
 
 `ui/design-mount` exports the same retained object components and fixtures. `design-system/claude/previews.mjs` covers those exports. Browser acceptance is main-checkout-only; lane checks do not establish rendered layout or real-client success.

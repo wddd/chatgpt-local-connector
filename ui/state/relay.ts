@@ -1,17 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { preference, acceptPreferences } from "./store";
 export type Relay = { id: string; url: string; name: string; owner: boolean; ingressId: string; workerVersion: string | null };
-// Until Core supplies a public-link identity, only a unique owned relay is selectable.
-export function publicRelay(relays: readonly Relay[]): Relay | undefined {
+// A saved identity survives additional CLI-configured relays. Never guess among multiple owners.
+export const publicRelayId = preference("arc.public-relay-id", "", value => value, value => value);
+export function publicRelay(relays: readonly Relay[], selected = publicRelayId.get()): Relay | undefined {
+  if (selected) return relays.find(relay => relay.id === selected && relay.owner);
   const owned = relays.filter(relay => relay.owner);
   return owned.length === 1 ? owned[0] : undefined;
 }
+export async function rememberPublicRelay(id: string) {
+  if (!id || id === publicRelayId.get()) return;
+  const values = await api<Record<string, string>>("preferences", "PUT", { values: { "arc.public-relay-id": id } });
+  acceptPreferences(values);
+}
 export type RelayProgress = { phase: "idle" | "login" | "deploying" | "connecting" | "ready" | "failed"; jobId?: string; action?: string; relayId?: string; ingressId?: string; loginUrl?: string; reason?: string; cancelled?: boolean; failedPhase?: string; accounts?: { id: string; name: string }[]; result?: { relayId?: string; ingressId?: string; url?: string; deleted?: boolean } };
 export function useRelays() {
+  publicRelayId.use();
   const [data, setData] = useState<{ relays: Relay[]; version: string }>({ relays: [], version: "" });
   const [error, setError] = useState(""), [loaded, setLoaded] = useState(false);
   const refresh = useCallback(async () => {
-    try { const value = await api<typeof data>("relay/list"); setData(value); setError(""); return value; }
+    try { const value = await api<typeof data>("relay/list"); setData(value);
+      const selected = publicRelay(value.relays);
+      if (selected && !publicRelayId.get()) await rememberPublicRelay(selected.id);
+      setError(""); return value; }
     catch (e) { setError(String(e)); throw e; }
     finally { setLoaded(true); }
   }, []);

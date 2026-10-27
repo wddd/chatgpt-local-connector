@@ -6,31 +6,21 @@ Call `guide` first for this connection’s workflow, enabled ops, and examples. 
 
 ## Install and connect
 
-[Install ARC](installation.md), open it, and sign in to Codex. Welcome offers **This computer** for Claude Code or Claude Desktop, and **Phone and web** for remote platforms. Both open Add control source. Use the footer shortcuts to check login and permissions, or **Have a relay invite link?** to join a relay. Later, open setup from the homepage left dot or **Remote link → Add control source**.
+[Install ARC](installation.md), open it and sign in to Codex. Welcome's local and remote choices both open Add SRC. Later, click the homepage hub's left half or **Add account** in a SRC platform panel.
 
 ### Add a control source
 
-1. **Platform:** choose the client you use.
-2. **Connection:** select an existing connection. **Add connection** opens Add connection above this dialog; finishing returns with the new connection selected. With no compatible connection, choose a relay or your own address.
-3. **Configure:** copy the address, open the platform settings shown in ARC, and add the ARC connector. Click Connect in the client.
-4. **Approval:** return to ARC, compare the four-character pairing codes, and check the client and permissions. Enter an account name, or choose **Reauthorize** for an existing source when offered. Approve and return to the client.
-5. Choose **Done** on the success screen, or add another source.
+1. Choose the product.
+2. Remote products use the public link. If missing, choose **Deploy public link** and sign in to your Cloudflare account. Copy its MCP URL into the client's settings and connect.
+3. Return to ARC, compare the pairing code, name the account and approve. Choose reauthorization when an existing source is offered. Finish after the client actually connects.
 
-### Add a connection
-
-Open **Remote link → Connections → Add connection**. Choose **Create my relay**, **Paste relay link**, **Use your own address**, **OpenAI Secure Tunnel**, **Claude Code**, or **Claude Desktop**. Configure the chosen method, then finish on **Ready**. From a stacked dialog, choose **Continue with this connection**; standalone setup offers **Done** or **Add a source for it**. Creating a connection does not itself authorize a control source. See [Connections](guides/connections.md) for each method.
-
-### Local clients
-
-Choose **Claude Code** or **Claude Desktop** when adding a source, then select its local connection. If none exists, use **Add connection** to install it. ARC preserves other configuration entries. Restart Claude after installation. Local connections do not need network configuration or pairing-code approval; source setup waits for the client to connect.
+Claude Code and Claude Desktop show the local setup command directly. Run it in a terminal on this computer and restart the client. They need no connection selection or pairing. Command success does not prove that the client has connected.
 
 ### Manage sources and connections
 
-**Remote link** lists sources and connections separately. Open a source to edit its account name or product, view dispatches, disconnect it, or choose **Change connection**. Open a connection to copy its address, see the sources using it, add a source, or remove it. Removing a connection retains source names and history for later reconnection.
+Manage sources in the homepage SRC panels. **Connections** shows the public link's address, state and Start/Stop. Local shows state only. Other connections configured through CLI/AX show read-only kind, address and state.
 
-To change a source's connection, select the target in ARC first. In the client, delete the old ARC connector and add it again with the new address; editing the URL also works where supported. Return to ARC, compare the code, check **Claim as <account name>**, and approve the switch. Name, history and notification settings stay; the old grant is revoked after the new authorization completes.
-
-Relay owners manage invite links, devices and deletion under **Settings → Extras → Relay hosting**. Joined relays have **Leave relay** in Connection detail. Only join a host you trust: the deployer can technically inspect relayed traffic in Cloudflare.
+Your own Agent configures custom addresses, dedicated tunnels, OpenAI Secure Tunnel, shared-relay joining, relay hosting, invites and source connection switching through CLI/AX. See [Connections](guides/connections.md) for exact commands. These features have no configuration UI.
 
 ### Dispatch and receive a notification
 
@@ -51,7 +41,7 @@ When Codex completes, ARC sends a status notification that wakes the same Claude
 
 ## Check permissions and readiness
 
-Before remote use, open ARC **Permissions & readiness** locally and choose **Check again**. Use **Grant access** where needed. Returning from System Settings refreshes the page.
+Before remote use, open ARC **Settings → System permissions** locally and choose **Check again**. Use **Grant access** where needed. Returning from System Settings refreshes the page.
 
 Accessibility enables screen tree / press / show / key / raise. Screen recording enables capture and windows titles; macOS may require reopening ARC. Use Full Disk Access for file tools: projects in Documents, Desktop, Downloads, external disks or network volumes can otherwise prompt or fail. Core uses a read-only heuristic with granted / missing / unknown results; unknown is not permission. command checks FDA through its executor only when cwd is in a protected location.
 
