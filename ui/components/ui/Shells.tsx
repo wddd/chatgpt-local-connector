@@ -41,7 +41,7 @@ export function EntityRow({ leading, title, secondary, state, actions, chevron, 
   const target = href ? <a {...props} className={classes} data-attention={attention || undefined} href={props.disabled ? undefined : href} onClick={event => { if (props.disabled) event.preventDefault(); else onClick?.(event); }} aria-disabled={props.disabled || undefined} aria-current={selected ? 'true' : undefined}>{content}</a>
     : onClick ? <Button {...props} variant="ghost" className={classes} data-attention={attention || undefined} aria-current={selected ? 'true' : undefined} onClick={onClick}>{content}</Button>
     : <div {...props} className={classes} data-attention={attention || undefined} aria-current={selected ? 'true' : undefined}>{content}</div>;
-  return actions ? <div className={cn("entity-row-actions flex min-w-0 items-center", className)}>{target}<div className="actions ms-auto flex shrink-0 flex-wrap items-center gap-2">{actions}</div></div> : target;
+  return actions ? <div className={cn("entity-row-actions flex min-w-0 items-center", className)}>{target}<div className="actions ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div></div> : target;
 }
 
 export function EntityCard({ icon, title, level = 3, headerActions, footer, danger, children, className = '', variant = 'surface', asChild = false, ...props }: Omit<HTMLAttributes<HTMLElement>, 'title'> & {

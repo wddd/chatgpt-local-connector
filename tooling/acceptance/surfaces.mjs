@@ -33,6 +33,10 @@ export async function acceptLayout(page) {
         const navigation = row.querySelector('[data-hover-target="navigation"]');
         if (navigation && (!near(navigation.getBoundingClientRect().left, bounds.left) || !near(navigation.getBoundingClientRect().right, bounds.right))) misaligned.push('Navigation hit area');
       }
+      for (const actions of workspace.querySelectorAll('.entity-row-actions > .actions')) {
+        const row = actions.parentElement, bounds = row.getBoundingClientRect(), padding = getComputedStyle(row);
+        if (!near(actions.getBoundingClientRect().right, bounds.right - parseFloat(padding.paddingRight) - parseFloat(padding.borderRightWidth))) misaligned.push('Entity row actions');
+      }
       pageGutters = { left: parseFloat(padding.paddingLeft), right: parseFloat(padding.paddingRight), headerLeft: parseFloat(headerPadding.paddingLeft), headerRight: parseFloat(headerPadding.paddingRight), misaligned };
     }
     // Regression: the fixed dock covered homepage cards and the expanded queue at 640px.
