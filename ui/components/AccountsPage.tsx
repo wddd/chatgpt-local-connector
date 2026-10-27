@@ -1,4 +1,5 @@
-import { Freshness, EntityRow, StateBadge, EntityCard, SectionHeader, Button, Dialog, Empty, Field, HoverScope, Icon, Input, Notice, Switch, Tag } from "./ui";
+import { SrcAccountRow } from "./objects/src-account";
+import { EntityRow, StateBadge, EntityCard, SectionHeader, Button, Dialog, Empty, Field, HoverScope, Icon, Input, Notice, Switch, Tag } from "./ui";
 import { statePresentation } from "./objects/statePresentation";
 import { useEffect, useRef, useState } from 'react';
 import { Pencil } from 'lucide-react';
@@ -10,7 +11,6 @@ import { connector } from '../state/connector';
 import { subscriptions } from '../state/subscriptions';
 import { accountPlatform, accountOwns } from '../accountPresentation';
 import { name as agentName } from '../state/agents';
-import { sourceDate } from '../sourcePresentation';
 import { navigation } from '../state/navigation';
 import { openOnboarding } from '../state/onboarding';
 import { PrivacyToggle } from './Privacy';
@@ -64,7 +64,7 @@ function AccountDetail({ account, onLogin, onAdd }: { account: Account; onLogin:
     <h3>{t('accounts.where')}</h3><div className="account-role-cards">
       <EntityCard title={t('accounts.controlSource')}>{account.sources.length ? account.sources.map(id => {
         const source = sources.find(s => s.id === id), ingress = status?.ingresses.find(i => i.id === source?.ingressId);
-        return <EntityRow key={id} className="account-connection"><strong>{source?.label ?? id}</strong><StateBadge presentation={statePresentation("source", source?.pendingSwitch ? "pending-switch" : source?.state)} /><span className="muted small">{ingress?.name ?? source?.connectionName}</span><span className="muted small">{t('source.lastSeen')}: <Freshness observedAt={source?.lastSeenAt ? new Date(source.lastSeenAt * 1000).toISOString() : undefined} age={sourceDate(source?.lastSeenAt)} /></span><Button variant="link" disabled={!source} onClick={() => openSourceWorkspace(id)}>{t('accounts.openSource')}</Button></EntityRow>;
+        return source ? <SrcAccountRow key={id} source={source} ingress={ingress} onOpen={() => openSourceWorkspace(id)} onConnection={connectionId => navigation.set(old => ({ ...old, page: 'remote', remoteConnectionId: connectionId, remoteSourceId: undefined }))} /> : <p key={id} className="muted">{t('accounts.identityUnavailable')}</p>;
       }) : <><p className="muted">{t('accounts.noSource')}</p><Button variant="link" onClick={() => { navigation.set(old => ({ ...old, page: 'overview' })); openOnboarding(); }}>{t('addControlSource')}</Button></>}</EntityCard>
       <EntityCard title="Agent">{account.agentProfiles.length ? account.agentProfiles.map(profile => <EntityRow key={profile.profileId} className="account-profile"><SectionHeader level={3} title={<><strong>{agentName(profile)}</strong></>} actions={<><StateBadge presentation={statePresentation("profile", profile.state)} /></>} /><span className="muted small">{profile.kind}</span><SectionHeader level={3} title={<><span>{t('accounts.default')}</span></>} actions={<><Switch label={`${agentName(profile)} · ${t('accounts.default')}`} checked={profile.default} disabled={busy || profile.default || profile.state !== 'signed-in'} onChange={() => void action(() => accountsApi.update({ id: account.id, defaultFor: profile.agent }))} /></>} />{['claude', 'codex'].includes(profile.agent) ? <Button variant="link" disabled={busy} onClick={() => void action(async () => onLogin(await accountsApi.reauth({ id: account.id, agent: profile.agent })))}>{t('accounts.reauth')}</Button> : <p className="muted">{t('accounts.nativeAuth')}</p>}</EntityRow>) : <><p className="muted">{t('accounts.noAgent')}</p><Button variant="link" onClick={onAdd}>{t('accounts.addAgent')}</Button></>}</EntityCard>
     </div>

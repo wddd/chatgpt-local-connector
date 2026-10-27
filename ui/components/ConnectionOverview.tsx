@@ -1,3 +1,6 @@
+import { SrcAccountNode } from "./objects/src-account";
+import { SrcPlatformNode } from "./objects/src-platform";
+import { ingressState } from "../sourcePresentation";
 import { useAppNow } from "../state/appEnvironment";
 import { appEnvironment, envOverrides } from "../state/appEnvironment";
 import { controlSource } from '../controlSources';
@@ -25,7 +28,7 @@ import {
 import { Power, LoaderCircle } from "lucide-react";
 import { t } from "../i18n";
 import { api } from "../api";
-import { ingressState, connector, run, refreshConnector, orderedSources, reorderSources } from "../state/connector";
+import { connector, run, refreshConnector, orderedSources, reorderSources } from "../state/connector";
 import {
   agents as agentStore,
   orderedAgents,
@@ -239,11 +242,12 @@ export default function ConnectionOverview({ visible = true }: { visible?: boole
     return [{
       id: source.id, platform: source.product, platformLabel, label: nodeLabel,
       icon: <PlatformIcon role="source" platform={source.product} panelVisual />, sourceIds: [source.id], state: wireState(state), attention: false, selected, tasks: [], reorderable: !panelOpen,
-      content: <GraphNode label={`${nodeLabel}: ${t(state)}`} state={wireState(state)} highlighted={selected} newlyAdded={source.id === newSourceId && !flow}
+      content: accounts.some(account => account.sources.includes(source.id)) ? <SrcPlatformNode product={source.product} state={wireState(state)} selected={selected} newlyAdded={source.id === newSourceId && !flow}
         onMove={panelOpen ? undefined : by => moveSource(source.id, by)}
-        onOpen={() => selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } })}>
-        <PlatformIcon role="source" platform={source.product} panelVisual /><span className="graph-node-name">{nodeLabel}</span>
-      </GraphNode>,
+        onOpen={() => selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } })} />
+        : <SrcAccountNode product={source.product} sourceLabel={source.label} state={wireState(state)} selected={selected} newlyAdded={source.id === newSourceId && !flow}
+          onMove={panelOpen ? undefined : by => moveSource(source.id, by)}
+          onOpen={() => selectIngressPanel(ingress, { toggle: true, client: { id: source.id, name: source.label, source: source.product } })} />,
     }];
   });
   const agentViews: NodeView[] = agents.map(agent => {

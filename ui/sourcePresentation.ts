@@ -39,3 +39,16 @@ export function connectionDisabledReason(ingress: Ingress, product: string, sour
 export function isLocalSource(source: ControlSource) {
   return source.ingressId === "local-cli" && source.credential.type === "local";
 }
+
+export function ingressState(entry: Ingress) {
+  if (!entry.enabled) return "disabled";
+  if (["starting", "stopping"].includes(entry.state)) return "connectingLabel";
+  if (entry.error || ["error", "degraded"].includes(entry.state))
+    return "connectionError";
+  return entry.state === "ready" ? "connected" : "disconnected";
+}
+
+export function sourceAuthorization(source: ControlSource | undefined, ingress: Ingress | undefined) {
+  const requestId = source?.pendingSwitch?.requestId ?? source?.credential.grantId;
+  return requestId ? ingress?.oauth?.pending.find(request => request.id === requestId) : undefined;
+}

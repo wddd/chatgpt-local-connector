@@ -1,3 +1,4 @@
+import { TunnelNode } from "../components/objects/tunnel/Node";
 import { appEnvironment, envOverrides } from "../state/appEnvironment";
 import { topologyLayout } from "../subscriptions/displayPreferences";
 import { resolveOrientation, type Orientation } from "./orientation";
@@ -430,8 +431,8 @@ export default function Topology({ left: inputLeft, right: inputRight, accountsE
       if (orientationPending.current && orientationTimer.current === null) evaluateOrientation.current();
       target(); event.preventDefault(); event.stopPropagation();
     } }}>
-    <svg ref={svg} className="topology-wires" aria-hidden="true" />
-    <svg ref={portraitSvg} className="topology-wires portrait-wires" aria-hidden="true" />
+    <TunnelNode svgRef={svg} />
+    <TunnelNode svgRef={portraitSvg} orientation="portrait" />
     <div ref={hub} className="topology-hub">{brand}</div>
     {allNodes.map(n => <div key={nodeKey(n.side, n.id)} ref={el => { const key = nodeKey(n.side, n.id); if (el) elements.current.set(key, el); else elements.current.delete(key); }}
       data-agent-node={n.side === 1 ? n.platform ?? n.id : undefined} data-source-node={n.side === -1 ? n.sourceIds?.[0] ?? n.id : undefined}

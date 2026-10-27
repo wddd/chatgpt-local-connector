@@ -1,9 +1,7 @@
-import { SettingRow, DangerZone, ActionGroup, EntityCard, StateBadge, SectionHeader, Button, Dialog, Icon, IconButton, Loading, Notice } from "./ui";
-import { ingressState } from "../state/connector";
-import { statePresentation } from "./objects/statePresentation";
-import { Sensitive } from "./Sensitive";
+import { TunnelCard } from "./objects/tunnel";
+import { SettingRow, DangerZone, ActionGroup, SectionHeader, Button, Dialog, IconButton, Loading, Notice } from "./ui";
 import { useCallback, useEffect, useState } from "react";
-import { Cloud, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { api } from "../api";
 import { locale, t } from "../i18n";
 import { copyText } from "../platform";
@@ -16,14 +14,10 @@ import { RelayMemberCard, RelayMemberRow, type Member } from "./objects/relay-me
 type Job = { action: "create" | "redeploy" | "delete"; id?: string };
 type Confirmation = "reset-token" | "delete" | Member;
 
-function hostname(relay: Relay) {
-  try { return new URL(relay.url).hostname; }
-  catch { return t("hosting.notDeployed"); }
-}
 function HostedRelay({ relay, version, startJob, disabled }: {
   relay: Relay; version: string; startJob: (job: Job) => Promise<boolean>; disabled: boolean;
 }) {
-  const { status } = connector.use();
+  const { status, sources } = connector.use();
   const [members, setMembers] = useState<Member[]>([]), [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(""), [error, setError] = useState(""), [membersError, setMembersError] = useState("");
   const [confirm, setConfirm] = useState<Confirmation>();
@@ -55,20 +49,15 @@ function HostedRelay({ relay, version, startJob, disabled }: {
   const blocked = disabled || !!busy;
   const outdated = !!version && relay.workerVersion !== version;
   return <article className="hosted-relay" aria-label={t("hosting.title")}>
-    <EntityCard>
-      <SectionHeader level={3} leading={<div className="hosted-relay-icon"><Icon icon={Cloud} /></div>}
-        title={<Sensitive>{hostname(relay)}</Sensitive>}
-        secondary={<ActionGroup align="leading"><span>Cloudflare Workers</span>
-            {outdated || !relay.url ? <Button variant="ghost" disabled={blocked} onClick={() => void startJob({ action: "redeploy", id: relay.id })}>{t(outdated && relay.url ? "hosting.update" : "retry")}</Button> : <span>{t("hosting.upToDate")}</span>}
-        </ActionGroup>}
-        actions={<StateBadge presentation={statePresentation("connection", ingress ? ingressState(ingress) : "unknown")} />} />
+    <TunnelCard ingress={ingress} relay={relay} sources={sources} busy={blocked} headerActions={
+      outdated || !relay.url ? <Button variant="ghost" disabled={blocked} onClick={() => void startJob({ action: "redeploy", id: relay.id })}>{t(outdated && relay.url ? "hosting.update" : "retry")}</Button> : undefined}>
       <SettingRow label={t("hosting.invite")} description={t("hosting.inviteDescription")}>
         <ActionGroup>
           <Button variant="primary" busy={busy === "share"} disabled={blocked || !relay.url} onClick={() => void action("share")}>{t("hosting.copyInvite")}</Button>
           <Button disabled={blocked || !relay.url} onClick={() => { setError(""); setConfirm("reset-token"); }}>{t("hosting.reset")}</Button>
         </ActionGroup>
       </SettingRow>
-    </EntityCard>
+    </TunnelCard>
     <section className="hosted-relay-devices">
       <SectionHeader level={3} title={<>{t("hosting.devices")}</>} secondary={<><p className="muted small">{t("hosting.devicesDescription")}</p></>} actions={<><IconButton icon={RefreshCw} label={t("hosting.refreshDevices")} busy={loading} disabled={blocked || !relay.url} onClick={() => void readMembers()} /></>} />
       {membersError && <Notice tone="danger">{membersError}</Notice>}

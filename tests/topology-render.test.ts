@@ -207,9 +207,7 @@ test("control source dock preserves editing, field navigation and cross-side dis
     await click(first());
     const shell = page.getByRole("dialog");
     assert.equal(shell.getAttribute("aria-modal"), null);
-    await click(page.getByRole("switch"));
-    assert.equal(status.ingresses[0].enabled, false);
-    await click(page.getByRole("switch"));
+    assert.equal(within(shell).queryAllByRole("switch").length, 0, "Source inspection must not expose connection lifecycle controls");
     await act(() => navigation.set({ ingressEdit: { id: "one" } })); await flush();
     assertNodeIdentity(page.getByRole("dialog"), shell);
     await click(button(t("back")));
@@ -407,8 +405,8 @@ test("task detail limits input to pending execution requests and consolidates he
     for (const language of ["en", "zh-CN"]) {
       await act(() => locale.set(language));
       await update();
-      assert.ok(page.getByText(t("detail.via", { source: source.label })));
-      assert.equal(page.queryAllByText(source.label, { exact: true }).length, 0);
+      assert.ok(page.getByText(source.label, { exact: true }));
+      assert.equal(page.queryAllByRole("button", { name: source.label, exact: true }).length, 0, "Historical provenance must not invent a live navigation target");
       const question = { kind: "question", summary: "Question", method: "item/tool/requestUserInput", questions: [{ id: "choice", question: "Choose", options: [{ label: "A" }] }], respond: { op: "codex_respond", args: { respondToken: language } } };
       await update(question);
       assert.ok(page.getByRole("region", { name: t("detail.needsYou") }));

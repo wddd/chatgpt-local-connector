@@ -1,4 +1,5 @@
-import { ActionGroup, DangerZone, FormSection, Disclosure, SectionHeader, Button, Dialog, DialogClose, FormField, Input, IconButton, Notice, ChoiceControl, PlatformIcon } from "./ui";
+import { SrcPlatformRow } from "./objects/src-platform";
+import { ActionGroup, DangerZone, FormSection, Disclosure, SectionHeader, Button, Dialog, DialogClose, FormField, Input, IconButton, Notice, ChoiceControl, SingleChoice } from "./ui";
 import { useState, useRef, useEffect, type ReactNode, type ComponentProps } from "react";
 import { ChevronLeft, X } from "lucide-react";
 import { api } from "../api";
@@ -114,7 +115,7 @@ export default function IngressDialog({
   const lastSelection = useRef("");
   useEffect(() => {
     if (selected) lastSelection.current = selected;
-    else if (lastSelection.current) pickerRef.current?.querySelector<HTMLButtonElement>(`[data-source="${CSS.escape(lastSelection.current)}"]`)?.focus();
+    else if (lastSelection.current) Array.from(pickerRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? []).find(button => button.getAttribute('aria-label') === (lastSelection.current === 'custom' ? t('customControlSource') : controlSource(lastSelection.current)?.displayName))?.focus();
   }, [selected]);
   const formRef = useRef<HTMLFormElement>(null);
   const preset = controlSource(selected),
@@ -331,27 +332,11 @@ export default function IngressDialog({
       }
     >
       {!selected ? (
-        <div className="source-choices" ref={pickerRef}>
-          {[
-            ...curatedSources.map((p) => ({
-              value: p.id,
-              label: p.displayName,
-            })),
-            { value: "custom", label: t("customControlSource") },
-          ].map((option) => (
-            <Button
-              key={option.value}
-              data-source={option.value}
-              variant="ghost"
-              onClick={() => choose(option.value)}
-            >
-              <PlatformIcon role="source"
-                platform={option.value}
-                add={option.value === "custom"}
-              />
-              <span>{option.label}</span>
-            </Button>
-          ))}
+        <div className="object-choice" ref={pickerRef}>
+          <SingleChoice tiles label={t('source.product')} value="" onChange={choose} options={[
+            ...curatedSources.map(p => ({ value: p.id, label: p.displayName, content: <SrcPlatformRow product={p.id} /> })),
+            { value: 'custom', label: t('customControlSource'), content: <SrcPlatformRow product="custom" label={t('customControlSource')} /> },
+          ]} />
         </div>
       ) : (
         <form

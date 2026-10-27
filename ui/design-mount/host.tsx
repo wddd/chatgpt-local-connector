@@ -9,6 +9,9 @@ import type { DeploymentProgressCard as DeploymentProgressCardComponent } from '
 import type { DeploymentProgressChip as DeploymentProgressChipComponent } from '../components/objects/deployment-progress/Chip';
 import type { RelayMemberRow as RelayMemberRowComponent } from '../components/objects/relay-member/Row';
 import type { RelayMemberCard as RelayMemberCardComponent } from '../components/objects/relay-member/Card';
+import type { SrcPlatformChip as SrcPlatformChipComponent, SrcPlatformNode as SrcPlatformNodeComponent, SrcPlatformRow as SrcPlatformRowComponent, SrcPlatformCard as SrcPlatformCardComponent } from '../components/objects/src-platform';
+import type { SrcAccountChip as SrcAccountChipComponent, SrcAccountNode as SrcAccountNodeComponent, SrcAccountRow as SrcAccountRowComponent, SrcAccountCard as SrcAccountCardComponent } from '../components/objects/src-account';
+import type { TunnelChip as TunnelChipComponent, TunnelNode as TunnelNodeComponent, TunnelRow as TunnelRowComponent, TunnelCard as TunnelCardComponent } from '../components/objects/tunnel';
 import { createContext, createElement, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { createRuntime } from 'virtual:arc-runtime';
 import type { DispatchSpec as DispatchSpecComponent } from '../components/composites/DispatchSpec';
@@ -49,6 +52,13 @@ type TextProps<P> = Omit<P, 'children' | 'ref' | 'action' | 'icon' | 'dangerousl
 type TextSlots<P, K extends keyof P> = Omit<{ [Key in keyof P]: Key extends K ? string : P[Key] }, 'ref' | 'dangerouslySetInnerHTML'>;
 const textSlots: Record<string, readonly string[]> = {
   RequestCard: ['title', 'context', 'leading', 'state', 'footer'],
+  SrcAccountRow: ['actions'],
+  TunnelRow: ['actions'],
+  SrcAccountCard: ['children', 'headerActions', 'footer', 'danger'],
+  TunnelCard: ['children', 'headerActions', 'address', 'footer', 'danger'],
+  SrcPlatformCard: ['headerActions'],
+  SrcAccountNode: ['labelContent'],
+
   SettingsSection: ['title', 'description'], SettingRow: ['label', 'description'],
   FormField: ['label', 'help'], FormSection: ['title', 'description'],
   Disclosure: ['title'], DangerZone: ['consequence'],
@@ -98,13 +108,14 @@ function island<P extends object>(name: string) {
       }
       if (Array.isArray(raw.options)) for (const option of raw.options) {
         checkIcon(option.icon);
+        if (option.content != null && typeof option.content !== 'string') throw new Error(`Arc.${name} option.content accepts plain text only.`);
         if (option.graphic != null && typeof option.graphic !== 'string') throw new Error(`Arc.${name} option.graphic accepts plain text only.`);
       }
       mounted.current!.update({ ...raw, ...(name === 'ActivityBubble' ? { now: raw.now ?? environment.now } : {}) });
     });
     const density = (props as { density?: BubbleDensity }).density ?? 'standard';
     return createElement('div', { className: 'arc-island', ref: node, 'data-arc-component': name,
-      style: name === 'ActivityBubble' ? { height: bubbleHeights[density] } : undefined });
+      style: name === 'ActivityBubble' ? { height: bubbleHeights[density] } : name === 'TunnelNode' ? { position: 'relative', height: (props as ComponentProps<typeof TunnelNodeComponent>).frame?.layout.sceneH ?? 260, overflow: 'hidden' } : undefined });
   }
   Island.displayName = `Arc.${name}`;
   return Island;
@@ -112,7 +123,7 @@ function island<P extends object>(name: string) {
 export const Button = island<TextProps<ComponentProps<typeof UI.Button>>>('Button');
 export const IconButton = island<Omit<ComponentProps<typeof UI.IconButton>, 'icon' | 'ref'> & { icon: IconName }>('IconButton');
 export const Switch = island<ComponentProps<typeof UI.Switch>>('Switch');
-type Choice = Omit<UI.Choice, 'icon' | 'graphic'> & { icon?: IconName; graphic?: string };
+type Choice = Omit<UI.Choice, 'icon' | 'graphic' | 'content'> & { icon?: IconName; graphic?: string; content?: string };
 export const SingleChoice = island<Omit<ComponentProps<typeof UI.SingleChoice>, 'options'> & { options: readonly Choice[] }>('SingleChoice');
 export const Notice = island<TextProps<ComponentProps<typeof UI.Notice>> & { action?: string }>('Notice');
 export const Empty = island<TextProps<ComponentProps<typeof UI.Empty>> & { action?: string; icon?: IconName }>('Empty');
@@ -176,3 +187,26 @@ export const DeploymentProgressChip = island<ComponentProps<typeof DeploymentPro
 export const RelayMemberRow = island<ComponentProps<typeof RelayMemberRowComponent>>('RelayMemberRow');
 
 export const RelayMemberCard = island<ComponentProps<typeof RelayMemberCardComponent>>('RelayMemberCard');
+export const SrcPlatformChip = island<ComponentProps<typeof SrcPlatformChipComponent>>('SrcPlatformChip');
+
+export const SrcPlatformNode = island<ComponentProps<typeof SrcPlatformNodeComponent>>('SrcPlatformNode');
+
+export const SrcPlatformRow = island<ComponentProps<typeof SrcPlatformRowComponent>>('SrcPlatformRow');
+
+export const SrcPlatformCard = island<TextSlots<ComponentProps<typeof SrcPlatformCardComponent>, 'headerActions'>>('SrcPlatformCard');
+
+export const SrcAccountChip = island<ComponentProps<typeof SrcAccountChipComponent>>('SrcAccountChip');
+
+export const SrcAccountNode = island<TextSlots<ComponentProps<typeof SrcAccountNodeComponent>, 'labelContent'>>('SrcAccountNode');
+
+export const SrcAccountRow = island<TextSlots<ComponentProps<typeof SrcAccountRowComponent>, 'actions'>>('SrcAccountRow');
+
+export const SrcAccountCard = island<TextSlots<ComponentProps<typeof SrcAccountCardComponent>, 'children' | 'headerActions' | 'footer' | 'danger'>>('SrcAccountCard');
+
+export const TunnelChip = island<ComponentProps<typeof TunnelChipComponent>>('TunnelChip');
+
+export const TunnelNode = island<Omit<ComponentProps<typeof TunnelNodeComponent>, 'svgRef'>>('TunnelNode');
+
+export const TunnelRow = island<TextSlots<ComponentProps<typeof TunnelRowComponent>, 'actions'>>('TunnelRow');
+
+export const TunnelCard = island<TextSlots<ComponentProps<typeof TunnelCardComponent>, 'children' | 'headerActions' | 'address' | 'footer' | 'danger'>>('TunnelCard');

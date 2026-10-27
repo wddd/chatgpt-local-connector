@@ -1,7 +1,6 @@
-import { FactList, EntityCard, EntityRow, StateBadge, SectionHeader, PlatformIcon, Button, Dialog, Empty, HoverScope, Icon, Notice, SingleChoice, Tag } from "./ui";
-import { ingressState } from "../state/connector";
-import { statePresentation } from "./objects/statePresentation";
-import Address from "./Address";
+import { SrcAccountRow } from "./objects/src-account";
+import { TunnelCard, TunnelRow } from "./objects/tunnel";
+import { SectionHeader, Button, Dialog, Empty, HoverScope, Icon, Notice, SingleChoice, Switch } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { api } from "../api";
@@ -11,14 +10,13 @@ import { preference } from "../state/store";
 import { navigation } from "../state/navigation";
 import { onboarding, openOnboarding, openConnectionSetup, connectionSwitch, connectionSetup } from "../state/onboarding";
 import { useRelays } from "../state/relay";
-import { connectionIcon, connectionKind, connectionProvider, isLocalSource, isPendingSource, sourceCandidates } from "../sourcePresentation";
+import { isLocalSource, isPendingSource, sourceCandidates } from "../sourcePresentation";
 import type { Ingress } from "../state/types";
 import IngressDialog from "./IngressDialog";
 import ChangeConnection from "./ChangeConnection";
 import AddConnection from "./AddConnection";
 import Onboarding from "./Onboarding";
 import SourcePanel from "./SourcePanel";
-import { Sensitive } from "./Sensitive";
 import { ApprovalCard } from "./OAuthApproval";
 import { RelaySettings } from "./RelaySettings";
 
@@ -27,6 +25,7 @@ export default function RemoteLinkPage() {
   const { status, sources, error: readError } = connector.use(), nav = navigation.use(), relays = useRelays();
   const group = grouping.use(), switching = connectionSwitch.use(), newConnection = connectionSetup.use(), flow = onboarding.use();
   const [editing, setEditing] = useState<Ingress>(), [error, setError] = useState("");
+  const [connectionBusy, setConnectionBusy] = useState(false);
   const [removing, setRemoving] = useState(false), [removeBusy, setRemoveBusy] = useState(false);
   const [claim, setClaim] = useState<string>();
   const previous = useRef<string | undefined>(undefined);
@@ -44,7 +43,7 @@ export default function RemoteLinkPage() {
     const prior = previous.current;
     const frame = requestAnimationFrame(() => {
       const target = !current && prior ? document.querySelector<HTMLElement>(`[data-remote-row="${CSS.escape(prior)}"]`)
-        : prior && nav.remoteSourceId && !nav.remoteConnectionId ? document.querySelector<HTMLElement>("[data-source-connection]")
+        : prior && nav.remoteSourceId && !nav.remoteConnectionId ? document.querySelector<HTMLElement>(`[data-object-reference="${CSS.escape(prior)}"]`)
         : current && !nav.remoteSourceId ? document.querySelector<HTMLElement>(".sheet-header h1") : null;
       target?.focus({ preventScroll: true });
     });
@@ -69,18 +68,15 @@ export default function RemoteLinkPage() {
   return <div className="remote-link-page">
     {readError && <Notice>{readError}</Notice>}
     {connection ? <div className="connection-detail">
-      <SectionHeader className="connection-detail-heading" level={2} leading={<><span className="connection-detail-icon"><Icon icon={connectionIcon(connection)} size={20} /></span></>} title={<>{connection.name}</>} secondary={<><p>{connectionProvider(connection)}{selectedRelay?.owner ? ` · ${t("setup.hostedHere")}` : ""}</p></>} actions={<><StateBadge presentation={statePresentation("connection", ingressState(connection))} /></>} />
-      {connection.url && <Address value={connection.url} label={t("source.copyAddress")} />}
-      <section className="connection-sources"><SectionHeader level={3} title={<>{t("setup.sourcesUsing", { count: affected.length })}</>} actions={<><Button data-add-source onClick={() => openOnboarding("product", { ingressId: connection.id, fixedConnection: true })}>{t("setup.addSourceForConnection")}</Button></>} />
-        <HoverScope>{affected.map(source => <EntityRow key={source.id} className="remote-entity-row" onClick={() => navigation.set(old => ({ ...old, remoteSourceId: source.id, remoteConnectionId: undefined }))} leading={<><PlatformIcon role="source" platform={source.product} /></>} title={<>{source.label}</>} state={<><StateBadge presentation={statePresentation("source", source?.pendingSwitch ? "pending-switch" : source?.state)} /></>} chevron />)}</HoverScope>
+      <TunnelCard ingress={connection} relay={selectedRelay} sources={affected} busy={connectionBusy}
+        headerActions={<Switch label={t('sourcePanel.enabled')} checked={connection.enabled} disabled={connectionBusy} onChange={enabled => {
+          setConnectionBusy(true); setError('');
+          void api(`ingress/${connection.id}`, 'PUT', { enabled }).then(refreshConnector).catch(e => setError(String(e))).finally(() => setConnectionBusy(false));
+        }} />}>
+        <SectionHeader level={3} title={t("setup.sourcesUsing", { count: affected.length })} actions={<Button data-add-source onClick={() => openOnboarding("product", { ingressId: connection.id, fixedConnection: true })}>{t("setup.addSourceForConnection")}</Button>} />
+        <HoverScope>{affected.map(source => <SrcAccountRow key={source.id} source={source} onOpen={() => navigation.set(old => ({ ...old, remoteSourceId: source.id, remoteConnectionId: undefined }))} />)}</HoverScope>
         {!affected.length && <p className="muted">{t("source.unused")}</p>}
-      </section>
-      <EntityCard variant="outline"><FactList missing={{ placeholder: '—' }} items={[
-        { label: t("source.provider"), value: connection.transport === "relay" ? "Cloudflare Workers" : connectionProvider(connection) },
-        { label: t("connectionMethod"), value: t(`source.kind.${connectionKind(connection)}`) },
-        ...(selectedRelay ? [{ label: t("setup.workerVersion"), value: selectedRelay.workerVersion }] : []),
-      ]} /></EntityCard>
-      {connection.error && <Notice>{connection.error}</Notice>}
+      </TunnelCard>
       {selectedRelay && <RelaySettings relay={selectedRelay} version={relays.version} refresh={relays.refresh} />}
       {!["local", "relay"].includes(connection.transport) && <Button onClick={() => setEditing(connection)}>{t("edit")}</Button>}
       {selectedRelay?.owner && <Button className="connection-hosting-link" variant="ghost" onClick={() => navigation.set(old => ({ ...old, page: "settings", settingsExtras: true }))}>{t("setup.hostingLink")}<Icon icon={ChevronRight} /></Button>}
@@ -92,14 +88,15 @@ export default function RemoteLinkPage() {
         {platform && <h3>{t(`source.platform.${platform}`) === `source.platform.${platform}` ? platform : t(`source.platform.${platform}`)}</h3>}
         {visible.filter(s => !platform || s.platform === platform).map(source => {
           const ingress = entries.find(i => i.id === source.ingressId);
-          return <EntityRow key={source.id} className="remote-entity-row" data-hover-target={source.id} data-remote-row={source.id} onClick={() => navigation.set(old => ({ ...old, remoteSourceId: source.id }))} leading={<><PlatformIcon role="source" platform={source.product} /></>} title={<>{source.label}</>} secondary={<><Tag>{ingress?.name ?? source.connectionName ?? t("source.connectionRemoved")}</Tag></>} state={<><StateBadge presentation={statePresentation("source", source.pendingSwitch ? "pending-switch" : source.state)} /></>} chevron />;
+          return <SrcAccountRow key={source.id} source={source} ingress={ingress}
+            onOpen={() => navigation.set(old => ({ ...old, remoteSourceId: source.id }))}
+            onConnection={id => navigation.set(old => ({ ...old, remoteConnectionId: id, remoteSourceId: undefined }))} />;
         })}
       </section>)}</HoverScope>
       {!visible.length && <Empty>{t("source.empty")}</Empty>}
       <section className="connection-list"><SectionHeader level={3} title={<>{t("source.connections")}</>} actions={<><Button data-new-connection onClick={() => add(true)}>{t("source.newConnection")}</Button></>} />
         <HoverScope>{entries.map(ingress => {
-          const count = visible.filter(s => s.ingressId === ingress.id).length;
-          return <EntityRow key={ingress.id} className="remote-entity-row remote-connection-row" data-hover-target={ingress.id} data-remote-row={ingress.id} onClick={() => navigation.set(old => ({ ...old, remoteConnectionId: ingress.id }))} leading={<><Icon icon={connectionIcon(ingress)} size={20} /></>} title={<>{ingress.name}</>} secondary={<>{ingress.url ? <Sensitive>{ingress.url}</Sensitive> : connectionProvider(ingress)}</>} state={<><span className="muted">{t(count ? "source.count" : "source.unused", { count })}</span><StateBadge presentation={statePresentation("connection", ingressState(ingress))} /></>} chevron />;
+          return <TunnelRow key={ingress.id} ingress={ingress} sources={visible} onOpen={() => navigation.set(old => ({ ...old, remoteConnectionId: ingress.id }))} />;
         })}</HoverScope>
       </section>
     </>}

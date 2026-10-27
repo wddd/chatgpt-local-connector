@@ -1,3 +1,4 @@
+import { tunnelWirePresentation } from "../components/objects/tunnel/presentation";
 import { deg, type Side, type Layout, type Point } from "./solve";
 import { arcPath, grownWire, tentacle, finitePoints } from "./geometry";
 import { TopologyAnimator, nodeKey, taskKey } from "./animate";
@@ -69,7 +70,7 @@ export class TopologyPainter {
       const shape = ancestor ? tentacle(start, port, radial, n.side, scale, { t2End: p.t2End, t2Root: p.t2Root, flare: p.flare }, n.state === "connecting")
         : { ...grownWire(start, c1, c2, port, scale, p.flare, false, n.state === "connecting"), c1, c2 };
       if (n.state !== "inactive") controls(start, shape.c1, shape.c2, port);
-      attr(b.group, { class: `topology-branch primary ${n.side === 1 ? "right" : "left"}`, "data-state": n.state,
+      attr(b.group, { class: `topology-branch primary ${n.side === 1 ? "right" : "left"}`, "data-state": n.state, "data-tone": tunnelWirePresentation(n.state).tone,
         "data-selected": String(n.selected),
         opacity: v.presence });
       attr(b.gradient, { x1: port.x, y1: port.y, x2: start.x, y2: start.y });

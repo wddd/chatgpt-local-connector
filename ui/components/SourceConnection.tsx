@@ -1,18 +1,18 @@
-import { Freshness, EntityCard, StateBadge, SectionHeader, FactList, ActionGroup, Disclosure, FormSection, DangerZone, Button, Dialog, FormField, Input, Notice, SingleChoice } from "./ui";
-import { statePresentation } from "./objects/statePresentation";
-import Address from "./Address";
+import { SrcAccountCard } from "./objects/src-account";
+import type { ProviderAccount } from "../types";
+import { ActionGroup, Disclosure, FormSection, DangerZone, Button, Dialog, FormField, Input, Notice, SingleChoice } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
 import { connectionSwitch } from "../state/onboarding";
 import type { ControlSource } from "../state/types";
-import { connectionKind, isLocalSource, isPendingSource, sourceDate } from "../sourcePresentation";
+import { isLocalSource, sourceAuthorization } from "../sourcePresentation";
 import { remoteProfiles, remoteProfileName, remoteProfileSetting, type CapabilityProfile, type RemoteProfile } from "../controlSources";
 import SourceProductChoice from "./SourceProductChoice";
 
-export default function SourceConnection({ source, onConnection }: { source: ControlSource; onConnection: (id: string) => void }) {
-  const { status, sources } = connector.use();
+export default function SourceConnection({ source, account, onConnection }: { source: ControlSource; account?: ProviderAccount; onConnection: (id: string) => void }) {
+  const { status } = connector.use();
   const ingress = status?.ingresses.find(i => i.id === source.ingressId);
   const [label, setLabel] = useState(source.label), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [labelError, setLabelError] = useState(""), [confirm, setConfirm] = useState(false);
@@ -38,25 +38,11 @@ export default function SourceConnection({ source, onConnection }: { source: Con
     finally { setBusy(false); }
   }
   if (isLocalSource(source)) return null;
-  const others = sources.filter(s => s.id !== source.id && s.ingressId === source.ingressId && s.state !== "revoked" && !isPendingSource(s, status?.ingresses ?? []));
-  const client = ingress?.oauth?.grants.find(g => g.id === source.credential.grantId)?.clientName;
+  const authorization = sourceAuthorization(source, ingress);
   return <div className="source-detail">
     {error && !confirm && <Notice>{error}</Notice>}
-    <EntityCard className="source-connection-card">
-      <SectionHeader level={3} title={<><span className="muted">{t("source.connections")}</span></>} actions={<><Button data-change-connection disabled={source.state === "revoked" || busy} onClick={() => connectionSwitch.set({ sourceId: source.id, step: source.pendingSwitch ? source.pendingSwitch.requestId ? "approval" : "address" : "connection", ingressId: source.pendingSwitch?.ingressId, requestId: source.pendingSwitch?.requestId })}>{t("switch.title")}</Button></>} />
-      {source.pendingSwitch && <StateBadge presentation={statePresentation("source", "pending-switch")} />}
-      {ingress ? <>
-      <SectionHeader level={3} title={<><Button variant="ghost" data-source-connection onClick={() => onConnection(ingress.id)}>{ingress.name}</Button></>} actions={<><span className="muted">{t(`source.kind.${connectionKind(ingress)}`)}</span></>} />
-      {others.length > 0 && <p className="muted">{t("source.alsoCarries", { names: others.map(s => s.label).join(", ") })}</p>}
-      {ingress.url && <Address value={ingress.url} label={t("source.copyAddress")} />}
-      </> : <Notice tone="warning">{source.connectionName ? `${source.connectionName} · ` : ""}{t("source.connectionRemoved")}</Notice>}
-    </EntityCard>
-    <FactList missing={{ placeholder: '—' }} items={[
-      { label: t("source.authorizedAt"), value: sourceDate(source.connectedAt) },
-      { label: t("source.lastSeen"), value: <Freshness observedAt={source.lastSeenAt ? new Date(source.lastSeenAt * 1000).toISOString() : undefined} age={sourceDate(source.lastSeenAt)} /> },
-      { label: t("source.clientName"), value: client },
-      { label: t("accounts.tools"), value: 'guide · query · act' },
-    ]} />
+    <SrcAccountCard source={source} account={account} ingress={ingress} authorization={authorization} onConnection={onConnection}
+      headerActions={<Button data-change-connection disabled={source.state === "revoked" || busy} onClick={() => connectionSwitch.set({ sourceId: source.id, step: source.pendingSwitch ? source.pendingSwitch.requestId ? "approval" : "address" : "connection", ingressId: source.pendingSwitch?.ingressId, requestId: source.pendingSwitch?.requestId })}>{t("switch.title")}</Button>} />
     <Disclosure title={t("accounts.advanced")}><FormSection>
       <form onSubmit={e => { e.preventDefault(); void update({ label: label.trim() }); }}>
       <FormField id="source-label" label={t("source.label")} error={labelError}>

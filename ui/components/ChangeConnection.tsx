@@ -1,3 +1,4 @@
+import { TunnelRow } from "./objects/tunnel";
 import Address from "./Address";
 import { useEffect, useState } from "react";
 import { ExternalLink, Plus } from "lucide-react";
@@ -7,7 +8,7 @@ import { locale, t } from "../i18n";
 import { openUrl } from "../platform";
 import { connector, refreshConnector } from "../state/connector";
 import { connectionSwitch, openConnectionSetup } from "../state/onboarding";
-import { connectionDisabledReason, connectionKind, isPendingSource } from "../sourcePresentation";
+import { connectionDisabledReason, isPendingSource } from "../sourcePresentation";
 import type { Ingress } from "../state/types";
 import SetupDialog from "./SetupDialog";
 import { ApprovalCard } from "./OAuthApproval";
@@ -73,7 +74,8 @@ export default function ChangeConnection() {
       {error && <Notice>{error}</Notice>}
       {flow.step === "connection" ? <>
         <p>{t("switch.currentVia", { name: current?.name ?? source?.connectionName ?? t("source.connectionRemoved") })}</p>
-        <SingleChoice cards label={t("source.connections")} value={flow.ingressId ?? ""} onChange={ingressId => connectionSwitch.set({ ...flow, ingressId })} disabled={busy} options={connections.map(i => ({ value: i.id, label: i.name, disabled: !!reason(i), description: reason(i) || [t(`source.kind.${connectionKind(i)}`), t(i.state === "ready" ? "connect.online" : "connect.offline"), sources.filter(s => s.ingressId === i.id && s.state !== "revoked" && !isPendingSource(s, entries)).map(s => s.label).join(", ")].filter(Boolean).join(" · ") }))} />
+        <div className="object-choice"><SingleChoice cards label={t("source.connections")} value={flow.ingressId ?? ""} onChange={ingressId => connectionSwitch.set({ ...flow, ingressId })} disabled={busy} options={connections.map(i => ({ value: i.id, label: i.name, disabled: !!reason(i), description: reason(i) || undefined,
+          content: <TunnelRow ingress={i} sources={sources.filter(s => s.state !== "revoked" && !isPendingSource(s, entries))} constraint={reason(i) || undefined} /> }))} /></div>
         <Button className="setup-new" data-add-connection disabled={busy} onClick={() => openConnectionSetup({ forSwitch: true, product: source?.product })}><Icon icon={Plus} /><span>{t("source.newConnection")}<small>{t("setup.newConnectionHint")}</small></span></Button>
         <Notice tone="warning">{addressInstruction} {t("switch.warning")}</Notice>
       </> : <>

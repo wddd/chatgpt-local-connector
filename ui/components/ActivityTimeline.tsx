@@ -1,3 +1,5 @@
+import { dispatchSourceLabel } from "./activity";
+import { SrcAccountChip } from "./objects/src-account";
 import { DispatchSpec } from "./composites/DispatchSpec";
 import { SectionHeader, StateBadge, Button, Icon, IconButton, LoadingIndicator, Menu } from "./ui";
 import { statePresentation } from "./objects/statePresentation";
@@ -18,7 +20,6 @@ import type { AgentTimeline } from "../types";
 import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
 import { followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
 import TimelineEntries, { durationText } from "./TimelineEntries";
-import { dispatchSourceLabel, SourceBadge } from "./activity";
 import { taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import TaskNeedsYou from "./TaskNeedsYou";
@@ -144,7 +145,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     || session.project?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
   const latestSummary = live ? live.dispatchSummary : timeline?.dispatchSummary ?? nativeSession.dispatchSummary;
   const source = latestSummary?.controlSource;
-  const sourceLabel = source && dispatchSourceLabel(source);
   const hasPending = !external && !timeline?.readOnly && running && pendingSessions(agent, nativeSession, timeline?.entries ?? [], submissions).length > 0;
   const state = taskState(timeline?.status, running, hasPending);
   const turnId = nativeSession.turnId || groups.at(-1)?.turnId;
@@ -225,7 +225,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
         ]} /></div>}
       </div></>} title={title} titleProps={{ id: titleId, className: 'activity-panel-title' }}><div className="task-detail-chips"><StateBadge presentation={statePresentation("task", state)} />
         <DispatchSpec agent={agent} record={timeline ? { kind: "timeline", value: timeline, taskId: session.id, turnId, source: nativeSession.source } : { kind: "session", value: nativeSession }} />
-        {source && <span className="task-source-chip"><SourceBadge source={source} /><span>{t("detail.via", { source: sourceLabel })}</span></span>}
+        {source && <SrcAccountChip provenance={source} />}
         <TaskOwnership ownership={timeline?.ownership} />
         {duration !== undefined && <time className="timeline-meta task-duration">{durationText(duration)}</time>}
       </div>{!!groups.length && <div className="task-turn-progress">{groups.map((group, index) => {
@@ -275,6 +275,6 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
       </div>
       {!atLatest && <Button variant="secondary" className="timeline-latest" onClick={latest}>{t("timeline.latest")}</Button>}
     </div>
-    {hasPending && <TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={sourceLabel} narrow={narrow} />}
+    {hasPending && <TaskNeedsYou agent={agent} session={nativeSession} entries={timeline?.entries ?? []} source={dispatchSourceLabel(source)} narrow={narrow} />}
   </section>;
 }

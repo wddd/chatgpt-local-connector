@@ -9,6 +9,9 @@ import { DeploymentProgressCard } from '../components/objects/deployment-progres
 import { DeploymentProgressChip } from '../components/objects/deployment-progress/Chip';
 import { RelayMemberRow } from '../components/objects/relay-member/Row';
 import { RelayMemberCard } from '../components/objects/relay-member/Card';
+import { SrcPlatformChip, SrcPlatformNode, SrcPlatformRow, SrcPlatformCard } from '../components/objects/src-platform';
+import { SrcAccountChip, SrcAccountNode, SrcAccountRow, SrcAccountCard } from '../components/objects/src-account';
+import { TunnelChip, TunnelNode, TunnelRow, TunnelCard } from '../components/objects/tunnel';
 import { DispatchSpec } from '../components/composites/DispatchSpec';
 import { createElement, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -24,7 +27,7 @@ import { environment, type Environment } from './environment';
 import { setActionTarget } from './data';
 import { PortalHost } from './radix';
 
-const components = { RequestCard, InteractionRequestCard, InteractionRequestChip, InteractionRequestRow, AuthorizationRequestCard, AuthorizationRequestChip, AuthorizationRequestRow, DeploymentProgressCard, DeploymentProgressChip, RelayMemberRow, RelayMemberCard,  Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
+const components = { SrcPlatformChip, SrcPlatformNode, SrcPlatformRow, SrcPlatformCard, SrcAccountChip, SrcAccountNode, SrcAccountRow, SrcAccountCard, TunnelChip, TunnelNode, TunnelRow, TunnelCard, RequestCard, InteractionRequestCard, InteractionRequestChip, InteractionRequestRow, AuthorizationRequestCard, AuthorizationRequestChip, AuthorizationRequestRow, DeploymentProgressCard, DeploymentProgressChip, RelayMemberRow, RelayMemberCard,  Button, IconButton, Switch, SingleChoice, Notice, Empty, Loading, Status, Tag,
   AgentQuotaIcon, AgentQuota, QuotaBubble, GraphNode, ActivityBubble,
   ViewStack, MeterSegment, PlatformIcon, StateBadge, SectionHeader, EntityRow, EntityCard, FactList, Freshness, AddressField, ChoiceControl, SettingsSection, SettingRow, FormField, FormSection, ActionGroup, Disclosure, DangerZone, DispatchSpec };
 const icons = { RefreshCw, Plus, Check, X, Info, Plug, Bot };

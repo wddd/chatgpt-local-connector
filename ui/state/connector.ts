@@ -3,7 +3,7 @@ import { api } from "../api";
 import { isLocalSource } from "../sourcePresentation";
 import { t } from "../i18n";
 import { isDesktop, notifyNative } from "../platform";
-import type { ControlSource, Ingress, Status } from "./types";
+import type { ControlSource, Status } from "./types";
 export const connector = createStore<{
   status?: Status;
   sources: ControlSource[];
@@ -118,12 +118,4 @@ export function startConnector() {
     stream?.close();
     clearTimeout(feedbackTimer);
   };
-}
-
-export function ingressState(entry: Ingress) {
-  if (!entry.enabled) return "disabled";
-  if (["starting", "stopping"].includes(entry.state)) return "connectingLabel";
-  if (entry.error || ["error", "degraded"].includes(entry.state))
-    return "connectionError";
-  return entry.state === "ready" ? "connected" : "disconnected";
 }

@@ -1,0 +1,27 @@
+.object-chip, .object-chip.button { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; height: auto; white-space: normal; text-align: start; vertical-align: middle; overflow-wrap: anywhere; }
+.object-chip[aria-current="true"] { background: var(--hover); }
+.object-chip[data-attention] { box-shadow: inset 0 0 0 1px var(--warning); }
+.object-chip .platform-icon { flex: none; }
+.object-chip-kind { color: var(--text-secondary); font-size: var(--text-xs); }
+.object-row .entity-row-title { overflow-wrap: anywhere; }
+.object-row .sensitive-value { max-width: 100%; overflow: hidden; }
+.entity-row-actions.object-row { flex-wrap: wrap; gap: var(--space-2); }
+.entity-row-actions.object-row > .actions { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.object-row .platform-icon { width: 24px; height: 24px; }
+.object-card-sources { display: grid; gap: var(--space-3); min-width: 0; }
+.object-choice .choice-option > .entity-row { flex: 1; min-width: 0; padding: 0; }
+.object-choice .choice-option { min-width: 0; }
+.object-choice .entity-row { flex-wrap: wrap; }
+.object-choice .entity-row-copy { flex-basis: 100px; }
+.object-choice .choice-tiles .entity-row { flex-direction: column; text-align: center; }
+.object-choice .choice-tiles .entity-row-copy { flex-basis: auto; }
+.object-choice .choice-tiles .entity-row-secondary { font-size: var(--text-xs); }
+.entity-row.object-row { flex-wrap: wrap; }
+.object-row .entity-row-copy { flex: 1 1 120px; }
+.entity-row-actions.object-row > .entity-row { flex-basis: 300px; }
+.object-row .status { max-width: 100%; white-space: normal; }
+.object-card > .section-header { flex-wrap: wrap; }
+.object-card > .section-header > .section-header-copy { flex-basis: 120px; }
+.object-card > .section-header > .actions { max-width: 100%; flex-wrap: wrap; }
+.entity-row.object-row:has(> .icon:last-child) { position: relative; padding-inline-end: 36px; }
+.entity-row.object-row > .icon:last-child { position: absolute; inset-inline-end: 12px; top: 50%; transform: translateY(-50%); }

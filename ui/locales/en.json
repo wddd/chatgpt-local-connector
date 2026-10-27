@@ -1438,5 +1438,8 @@
   "source.profile": "Capability profile",
   "source.profile.legacy": "Legacy",
   "source.profile.remote-push": "Remote push",
-  "source.profile.remote-polling": "Remote polling"
+  "source.profile.remote-polling": "Remote polling",
+  "source.selectForActions": "Select a source to change its connection or disconnect it.",
+  "accounts.identityConflict": "Account identity conflicts with this source.",
+  "source.documentation": "Documentation"
 }

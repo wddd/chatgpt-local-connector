@@ -1,3 +1,4 @@
+import { tunnelWirePresentation } from '../components/objects/tunnel/presentation';
 import type { Point, Side } from './solve';
 import { TopologyAnimator, nodeKey, taskKey } from './animate';
 import type { PaintNode, PaintTask } from './render';
@@ -113,7 +114,7 @@ export class PortraitPainter {
           return { ...child, d: railPath([start, point(bx, n.y), point(bx, v.y), point(v.x + node.side * (v.size * v.scale / 2 + 4), v.y)]) };
         });
         // Paint shared stems once; each route rounds both ends of the fork.
-        this.path(`${key}:account-branches`, branches.filter(c => c.value!.presence > 0.01).map(c => c.d).join(' '), `portrait-rail ${sideClass}`, opacity * Math.max(...descendants.map(c => c.value!.presence)));
+        this.path(`${key}:account-branches`, branches.filter(c => c.value!.presence > 0.01).map(c => c.d).join(' '), `portrait-rail ${sideClass}`, opacity * Math.max(...descendants.map(c => c.value!.presence)), { 'data-tone': tunnelWirePresentation(node.state).tone });
         for (const { node: child, value: v, d } of branches) {
           this.path(`${key}:${child.id}:hit`, v!.presence >= 0.02 && a.live.get(nodeKey(node.side, child.id))?.alive ? d : '', 'topology-path-hit', v!.presence, {}, { side: node.side, id: child.id });
         }

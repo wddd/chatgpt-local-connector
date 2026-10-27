@@ -1,7 +1,7 @@
 import type { ProviderAccount, AccountLogin, AccountsResult } from './types';
 import type { Status, ControlSource } from './state/types';
 // In-memory implementation of the native management routes in docs/reference/tools.md.
-export function accountScenario(status: Status, sources: ControlSource[], manualLogin = false) {
+export function accountScenario(status: Status, sources: ControlSource[], manualLogin = false, multipleSources = false) {
   const now = new Date().toISOString();
   const primary = status.ingresses[0];
   primary.url = 'https://arc.example.com/mcp';
@@ -16,6 +16,11 @@ export function accountScenario(status: Status, sources: ControlSource[], manual
     { id: 'account-review', provider: 'anthropic', identityKey: 'anthropic:id:example-review-identity', alias: 'Review', email: 'review@example.com', orgName: 'Example Review', createdAt: now, observedAt: now, sources: [], health: { state: 'attention' }, agentProfiles: [{ agent: 'claude', profileId: 'profile-review', kind: 'cli-profile', state: 'signed-out', default: false }], notifications: { state: 'n/a', sessions: [] }, quota: { state: 'unavailable', windows: [] } },
     { id: 'account-key', provider: 'deepseek', identityKey: 'deepseek:unidentified:api-key:dsh', alias: 'Unidentified', createdAt: now, observedAt: now, sources: [], health: { state: 'attention' }, agentProfiles: [{ agent: 'dsh', profileId: 'api-key:dsh', kind: 'api-key', state: 'unfinished', default: true }], notifications: { state: 'n/a', sessions: [] }, quota: { state: 'unavailable', windows: [] } },
   ];
+  if (multipleSources) {
+    const extra: ControlSource = { ...sources[0], id: 'fixture-second-source', label: 'Second source', credential: { type: 'oauth-grant', grantId: 'old-authorization' }, pendingSwitch: { ingressId: 'example-spare-connection', expiresAt: 1767225900, requestId: 'latest-authorization' } };
+    sources.push(extra); accounts[0].sources.push(extra.id);
+    primary.oauth = { grants: [{ id: 'old-authorization', clientName: 'Old authorization', clientId: 'old-client', connectedAt: 1, registeredAt: 1 }], pending: [{ id: 'old-authorization', sourceId: extra.id, clientName: 'Old authorization', status: 'approved', redirectUri: '', resource: '' }, { id: 'latest-authorization', sourceId: extra.id, clientName: 'Second source', status: 'denied', redirectUri: '', resource: '' }] };
+  }
   let polls = 0, sequence = 0, login: AccountLogin | null = null;
   let loginAccount: string | undefined;
   const requireAccount = (id: string): ProviderAccount => {

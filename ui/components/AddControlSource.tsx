@@ -1,3 +1,5 @@
+import { SrcPlatformRow } from "./objects/src-platform";
+import { TunnelRow } from "./objects/tunnel";
 import Address from "./Address";
 import { useEffect, useState } from "react";
 import { Check, ExternalLink, Plus } from "lucide-react";
@@ -7,9 +9,9 @@ import { locale, t } from "../i18n";
 import { openUrl } from "../platform";
 import { connector, refreshConnector } from "../state/connector";
 import { onboarding, openConnectionSetup, finishSourceSetup, addedSource, type OnboardingStep, type ConnectionMethod } from "../state/onboarding";
-import { connectionDisabledReason, connectionKind, isPendingSource } from "../sourcePresentation";
+import { connectionDisabledReason, isPendingSource } from "../sourcePresentation";
 import SetupDialog from "./SetupDialog";
-import { PlatformIcon, Button, Field, Icon, Loading, Notice, SingleChoice } from "./ui";
+import { Button, Field, Icon, Loading, Notice, SingleChoice } from "./ui";
 import { ApprovalCard } from "./OAuthApproval";
 
 const steps: OnboardingStep[] = ["product", "connection", "address", "approval", "success"];
@@ -111,25 +113,26 @@ export default function AddControlSource({ returnFocus }: { returnFocus?: string
     {error && <Notice>{error}</Notice>}
     {flow.step === "success" && offeredProfile && <Field label={t("source.profile")}><SingleChoice label={t("source.profile")} value={profile} disabled={busy} onChange={value => onboarding.set(old => old && { ...old, profile: value as RemoteProfile })} options={remoteProfiles.map(value => ({ value, label: t(`source.profile.${value}`) }))} /></Field>}
     {flow.step === "product" && <>
-      {(["remote", "local"] as const).map(group => <section className="platform-group" key={group}>
+      {(["remote", "local"] as const).map(group => <section className="platform-group object-choice" key={group}>
         <h3 id={`platform-${group}`} tabIndex={-1}>{t(`setup.group.${group}`)}</h3>
         <SingleChoice tiles label={t(`setup.group.${group}`)} value={selectedProduct} onChange={chooseProduct}
           options={products.filter(id => (id.startsWith("local-") || id === "custom") === (group === "local")).map(id => {
             const localTarget = id.startsWith("local-") ? id.slice(6) as "code" | "desktop" : undefined;
             const reason = flow.fixedConnection && current ? connectionDisabledReason(current, localTarget ? "claude" : id, sources, localTarget) : "";
-            return { value: id, label: productName(id), disabled: !!reason, description: reason, graphic: <PlatformIcon role="source" platform={id.startsWith("local-") ? "claude" : id} /> };
+            return { value: id, label: productName(id), disabled: !!reason, description: reason, content: <SrcPlatformRow product={id.startsWith("local-") ? "claude" : id} label={productName(id)} constraint={reason || undefined} /> };
           })} />
       </section>)}
       {flow.fixedConnection && current && <p className="muted">{t("setup.via", { name: current.name })}</p>}
     </>}
     {flow.step === "connection" && <>
       <p className="muted">{t("setup.connectionPrompt", { name: productName(selectedProduct || "custom") })}</p>
-      {visible.length > 0 && <SingleChoice cards label={t("source.connections")} value={route} onChange={setRoute} disabled={busy} options={visible.map(i => {
+      {visible.length > 0 && <div className="object-choice"><SingleChoice cards label={t("source.connections")} value={route} onChange={setRoute} disabled={busy} options={visible.map(i => {
         const carried = sources.filter(s => s.ingressId === i.id && !isPendingSource(s, entries) && s.state !== "revoked");
         const reason = connectionDisabledReason(i, product, sources, flow.localTarget);
         return { value: i.id, label: i.name, disabled: !!reason,
-          description: reason || [t(`source.kind.${connectionKind(i)}`), carried.length && t("setup.carriesSources", { names: carried.map(s => s.label).join(", ") }), t(i.state === "ready" ? "connect.online" : "connect.offline")].filter(Boolean).join(" · ") };
-      })} />}
+          description: reason || undefined, content: <TunnelRow ingress={i} sources={carried} constraint={reason || undefined} /> };
+      })} /></div>}
+
       {!existing.length && <div className="setup-empty">
         <h3>{t("setup.noConnection")}</h3>
         {flow.localTarget ? <Button onClick={() => newConnection(flow.localTarget === "code" ? "local-code" : "local-desktop")}>{t("connection.localSetup", { name: productName(selectedProduct) })}</Button> : <>

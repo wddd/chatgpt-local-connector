@@ -1,6 +1,18 @@
 // Preview recipes are required for every value export in ui/design-mount.ts.
 // Only Root accepts React elements; all island slots and children stay text-only.
 export const previews = {
+  SrcPlatformChip: ['SRC', 120, "Row(h(A.SrcPlatformChip,{product:'claude',sources:F.sources,onOpen:noop}),h(A.SrcPlatformChip,{product:'unknown-product'}))"],
+  SrcPlatformNode: ['SRC', 120, "Row(h(A.SrcPlatformNode,{product:'claude',state:'normal',selected:true,onOpen:noop,onMove:noop}))"],
+  SrcPlatformRow: ['SRC', 160, "Col(h(A.SrcPlatformRow,{product:'claude',onOpen:noop}),h(A.SrcPlatformRow,{product:'chatgpt',constraint:'Unavailable for this connection',disabled:true}))"],
+  SrcPlatformCard: ['SRC', 640, "h(A.SrcPlatformCard,{product:'claude',sources:F.sources,accounts:F.accounts,ingresses:F.ingresses,onSource:noop,onConnection:noop,onAdd:noop,onLink:noop})"],
+  SrcAccountChip: ['SRC', 120, "Row(h(A.SrcAccountChip,{source:F.sources[0],account:F.accounts[0],onOpen:noop}),h(A.SrcAccountChip,{provenance:{kind:'retired',label:'Historical source'}}))"],
+  SrcAccountNode: ['SRC', 120, "h(A.SrcAccountNode,{product:'claude',account:F.accounts[0],state:'error',flat:true,onOpen:noop})"],
+  SrcAccountRow: ['SRC', 240, "Col(h(A.SrcAccountRow,{source:F.sources[0],account:F.accounts[0],ingress:F.ingresses[0],onOpen:noop,onConnection:noop}),h(A.SrcAccountRow,{source:{...F.sources[0],state:'revoked'},disabled:true}))"],
+  SrcAccountCard: ['SRC', 400, "h(A.SrcAccountCard,{source:F.sources[0],account:F.accounts[0],ingress:F.ingresses[0],onConnection:noop})"],
+  TunnelChip: ['TUNNEL', 120, "Row(h(A.TunnelChip,{ingress:F.ingresses[0],onOpen:noop}),h(A.TunnelChip,{missingName:'Removed connection'}))"],
+  TunnelNode: ['TUNNEL', 560, "Col(Box(h(A.TunnelNode,{frame:F.tunnelFrames.landscape})),Box(h(A.TunnelNode,{frame:F.tunnelFrames.portrait,orientation:'portrait'})))"],
+  TunnelRow: ['TUNNEL', 220, "Col(h(A.TunnelRow,{ingress:F.ingresses[0],sources:F.sources,onOpen:noop}),h(A.TunnelRow,{ingress:{...F.ingresses[0],state:'error',error:'Synthetic failure'},sources:[],disabled:true}))"],
+  TunnelCard: ['TUNNEL', 380, "h(A.TunnelCard,{ingress:F.ingresses[0],sources:F.sources})"],
   Root: ['Foundation', 120, "Row(h(A.Status,{tone:'success'},F.labels.status),h(A.Button,{variant:'primary'},F.labels.button))"],
   ViewStack: ['Shells', 100, "h(A.ViewStack,{},'Retained panel content')"],
   MeterSegment: ['Primitives', 100, "Row(h(A.MeterSegment,{weight:3},'Used'),h(A.MeterSegment,{weight:1},'Remaining'))"],

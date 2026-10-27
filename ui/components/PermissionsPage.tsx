@@ -1,4 +1,5 @@
-import { EntityRow, StateBadge, Button, SettingsSection, Icon, Tooltip, PlatformIcon } from "./ui";
+import { TunnelRow } from "./objects/tunnel";
+import { EntityRow, StateBadge, Button, SettingsSection, Icon, Tooltip } from "./ui";
 import { statePresentation } from "./objects/statePresentation";
 import { useEffect, useState } from "react";
 import { Accessibility, Bell, HardDrive, LogIn, Monitor, Terminal, type LucideIcon } from "lucide-react";
@@ -23,7 +24,7 @@ export default function PermissionsPage() {
   const busy = loading || acting;
   const [details, setDetails] = useState<Ingress>();
   const [editing, setEditing] = useState<Ingress>();
-  const { status } = connector.use();
+  const { status, sources } = connector.use();
   const currentLocale = locale.use();
   useEffect(() => {
     void refreshPermissions().catch(error => notify(String(error), true));
@@ -70,7 +71,7 @@ export default function PermissionsPage() {
       <SettingsSection title={t("permissionsEnvironment")}>{visible.filter(item => !systemIds.includes(item.id)).map(row)}</SettingsSection>
       <SettingsSection title={t("permissionsConnections")}>
         {connections.length === 0 && <p className="permission-hint">{t("permissionsNoConnections")}</p>}
-        {connections.map(({entry, state}) => <EntityRow className="permission-entity-row" key={entry.id} leading={<><span className="permission-symbol"><PlatformIcon role="source" platform={entry.controlSource} /></span></>} title={<><h3>{entry.name}</h3></>} actions={<>{badge(state, false, true)}{state !== "granted" && <Button onClick={() => setDetails(entry)}>{t("permissionsViewConnection")}</Button>}</>} />)}
+        {connections.map(({entry, state}) => <TunnelRow key={entry.id} ingress={entry} sources={sources} onOpen={() => setDetails(entry)} actions={badge(state, false, true)} />)}
       </SettingsSection>
     </>}
     {details && <IngressDetailsDialog ingress={details} onClose={() => setDetails(undefined)} onEdit={entry => { setDetails(undefined); setEditing(entry); }} />}

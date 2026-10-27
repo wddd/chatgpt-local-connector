@@ -25,7 +25,7 @@ if (!scenarios.length) throw new Error('No matching acceptance scenario');
 const report = { engine, screenshots, previous: screenshots ? previous ?? null : null, viewports: [{ width: 640, height: 800 }, { width: 1280, height: 800 }, { width: 1920, height: 1080 }], scenarios: [], failures: [] };
 // This server has no production owner dependency: fixture API calls are intercepted
 // in the dev-only module, and the browser rejects every real management request.
-const server = await createServer({ configFile: path.join(root, 'vite.config.ts'), server: { port, strictPort: true } });
+const server = await createServer({ configFile: path.join(root, 'vite.config.ts'), mode: 'acceptance-fixture', server: { port, strictPort: true } });
 let browser;
 try {
   await server.listen();
@@ -288,6 +288,54 @@ try {
             if (fixture.update.state === 'countdown') await panel.getByRole('list', { name: messages['updates.progress'] }).waitFor({ state: 'visible' });
           }
         }
+        if (name.startsWith('src-tunnel-')) {
+          // Regression: source rows rendered inert connection labels and nested connection targets during object convergence.
+          const rows = page.getByRole('region', { name: 'Source rows', exact: true });
+          const source = rows.getByRole('button', { name: /^Shared account/ });
+          await source.focus();
+          await page.keyboard.press('Enter');
+          const receipt = page.getByLabel('Object action', { exact: true });
+          await page.getByText('Source: object-source', { exact: true }).waitFor();
+          await page.keyboard.press('Tab');
+          const chip = rows.getByRole('button', { name: /^Design connection/ });
+          if (!await chip.evaluate(node => node === document.activeElement)) throw new Error('Connection Chip is not the independent next keyboard target');
+          await page.keyboard.press('Enter');
+          if (await receipt.innerText() !== 'Connection: object-tunnel') throw new Error('Connection Chip did not open its own connection');
+          if (await rows.getByRole('button', { name: /^Revoked source/ }).isEnabled()) throw new Error('Disabled revoked row remains actionable');
+          const references = page.getByRole('region', { name: 'References', exact: true });
+          if (await references.getByRole('button', { name: /Removed connection|Historical source/ }).count()) throw new Error('Missing or historical references invent navigation');
+          const targets = page.getByRole('region', { name: 'Mutation targets', exact: true });
+          if (await page.getByRole('button', { name: 'Disconnect', exact: true }).count()) throw new Error('Grouped account silently picked a mutation target');
+          await targets.getByRole('button', { name: /^Second source/ }).click();
+          await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+          if (await receipt.innerText() !== 'Disconnect: second-source') throw new Error('Mutation lost the explicitly selected source');
+          await page.getByRole('switch', { name: 'Refresh error', exact: true }).click();
+          await page.getByText('Synthetic refresh failure', { exact: true }).first().waitFor();
+          await page.getByRole('switch', { name: 'Busy', exact: true }).click();
+          if (await page.getByRole('button', { name: 'Disconnect', exact: true }).isEnabled()) throw new Error('Busy mutation remains actionable');
+          const main = page.getByRole('main');
+          if ((await main.innerText()).includes('private@example.test') || (await main.innerText()).includes('https://private.example.test/mcp')) throw new Error('Privacy exposes raw identity or address');
+          if (await main.locator('[title], [aria-label]').evaluateAll(nodes => nodes.some(node => ['title', 'aria-label'].some(attr => /private@example\.test|private\.example\.test/.test(node.getAttribute(attr) ?? ''))))) throw new Error('Privacy exposes identity through an accessible name or title');
+          const privacy = page.getByRole('button', { name: 'Privacy mode', exact: true });
+          await privacy.click();
+          await page.getByText('private@example.test', { exact: true }).first().waitFor();
+          await privacy.click();
+          if (await main.evaluate(node => node.scrollWidth > node.clientWidth)) throw new Error('Object fixture overflows horizontally: ' + JSON.stringify(await main.evaluate(node => [...node.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > node.getBoundingClientRect().right + 1).slice(0, 12).map(el => ({ tag: el.tagName, text: el.textContent?.slice(0, 80), width: el.getBoundingClientRect().width })))));
+          if (screenshots) await page.screenshot({ path: path.join(out, `${key}-objects.png`), animations: 'disabled' });
+        }
+        if (name === 'src-account-multiple') {
+          // Regression: grouped source accounts silently used their first source for Change connection and disconnect.
+          const panel = page.getByRole('dialog').filter({ has: page.getByRole('radio', { name: 'Connection', exact: true }) });
+          const second = panel.getByRole('button', { name: /^Second source/ });
+          await second.waitFor();
+          await panel.getByRole('radio', { name: 'Connection', exact: true }).click();
+          if (await panel.getByRole('button', { name: 'Disconnect…', exact: true }).count()) throw new Error('Mutation target was inferred from source order');
+          await second.click();
+          await panel.getByText('Denied', { exact: true }).waitFor();
+          if (await panel.getByText('Old authorization', { exact: true }).count()) throw new Error('SRC inspector exposes grant history');
+          await panel.getByRole('button', { name: 'Disconnect…', exact: true }).click();
+          await page.getByRole('dialog', { name: /Second source/ }).waitFor();
+        }
         if (name === 'source-panel') {
           // Regression: the source connection advanced area lacked shared fields, disclosure and destructive-action framing.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
@@ -361,7 +409,9 @@ try {
           // Regression: account management was only reachable through Settings and hid source identities.
           const messages = JSON.parse(await readFile(path.join(root, 'ui/locales', `${fixture.language}.json`), 'utf8'));
           await page.getByRole('heading', { name: messages['accounts.title'], exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: messages['accounts.editAlias'].replace('{alias}', 'Unidentified'), exact: true }).click();
           await page.getByRole('textbox', { name: messages['accounts.alias'], exact: true }).waitFor({ state: 'visible' });
+          await page.keyboard.press('Escape');
           await page.getByRole('button', { name: messages['accounts.add'], exact: true }).click();
           const dialog = page.getByRole('dialog', { name: messages['accounts.add'], exact: true });
           await dialog.waitFor({ state: 'visible' });

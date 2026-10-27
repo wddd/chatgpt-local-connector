@@ -277,6 +277,7 @@ export type Choice = {
   label: string;
   icon?: LucideIcon;
   graphic?: ReactNode;
+  content?: ReactNode;
   color?: string;
   description?: string;
   warning?: string;
@@ -366,7 +367,7 @@ export function SingleChoice({
               {swatches ? (
                 <Icon icon={Check} />
               ) : (
-                <>
+                option.content ?? <>
                   {option.graphic}
                   {option.icon && <Icon icon={option.icon} />}
                   <span>{option.label}{(cards || navigation) && <>{option.description && <small>{option.description}</small>}{option.warning && <small className="choice-warning">{option.warning}</small>}</>}</span>

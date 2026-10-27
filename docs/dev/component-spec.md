@@ -2,7 +2,7 @@
 
 MUST means a requirement. SHOULD means the default unless a concrete task-specific reason justifies an exception. MAY means an option.
 
-The shell layer and domain state presentation map are implemented in the current hosts. Interaction request, authorization request, relay member and deployment progress objects, together with RequestCard, are implemented. Other object contracts below describe their respective convergence state. [Component inventory](component-inventory.md) records current renderers; [Object model](object-model.md) supplies the draft management placement. Component reuse does not itself authorize that draft's page removals or backend changes.
+The shell layer and domain state presentation map are implemented in the current hosts. SRC platform, SRC account, TUNNEL, interaction request, authorization request, relay member and deployment progress objects, together with RequestCard, are implemented. Other object contracts below describe their respective convergence state. [Component inventory](component-inventory.md) records current renderers; [Object model](object-model.md) supplies the draft management placement. Component reuse does not itself authorize that draft's page removals or backend changes.
 
 ## Boundaries and composition
 
@@ -42,7 +42,7 @@ Import shells from `ui/components/ui`. `PlatformIcon.tsx` owns role-aware asset 
 
 Use `dev:ui ?scenario=shells-light`, `shells-dark`, or `shells-narrow` to mount the actual shells with fixed timestamps and local action receipts. Set a narrow viewport for `shells-narrow`. Tab navigation reaches row selection and its independent action separately. The copy-error switch, missing address, unknown brand/state, disabled row, privacy toggle and retained stale timestamp expose the shell boundaries. Quota rings and full quota visuals remain in `agent-panel`, `agent-panel-used`, and `topology-accounts`.
 
-SectionHeader keeps trailing actions at their intrinsic width and aligned to the end. PlatformIcon renders monochrome provider assets as current-color masks in both themes. The shared row baseline uses the account list's 12px padding and gap. Cards use the account card's 16px padding, 12px gap and radius; host-specific catalog, setup and relay dimensions remain explicit CSS overrides. Source rows keep an inline connection label on wide layouts, while connection rows retain their second address line. Task state uses the shared Status dot and mapped tones instead of an independent animated pill. Source headers use brand artwork without alias initials. Provider quota masks and Agent artwork preserve their separate existing assets under one resolver.
+SectionHeader keeps trailing actions at their intrinsic width and aligned to the end. PlatformIcon renders monochrome provider assets as current-color masks in both themes. The shared row baseline uses the account list's 12px padding and gap. Cards use the account card's 16px padding, 12px gap and radius; host-specific catalog, setup and relay dimensions remain explicit CSS overrides. Source rows expose their connection as an independent TUNNEL Chip, wrapping below the navigation target when needed. Connection rows retain their second address line. Task state uses the shared Status dot and mapped tones instead of an independent animated pill. Source headers use brand artwork without alias initials. Provider quota masks and Agent artwork preserve their separate existing assets under one resolver.
 
 `ViewStack` retains inactive panel state with semantic hidden visibility; its `asChild` slot preserves motion roots. `MeterSegment` owns proportional flex weights while quota callers retain their visuals and interaction data. Button's `surface` variant supplies shared native behavior for geometry-owned topology and dock targets without imposing rectangular control styling. All three are exported through design mounts and exercised in the forms fixtures.
 
@@ -284,7 +284,7 @@ Effort labels prefer matching model-specific or same-model session option names,
 
 ## Naming, mounting and convergence
 
-| Proposed location | Responsibility |
+| Location | Responsibility |
 | --- | --- |
 | `ui/components/ui/` | Object-agnostic shells, exported with existing primitives; no domain imports |
 | `ui/components/objects/<object>/` | `Chip.tsx`, `Node.tsx`, `Row.tsx`, `Card.tsx` only where applicable, plus a local index; e.g. src-platform, src-account, agent-platform, agent-account, tunnel, task, interaction-request, authorization-request, relay-member, deployment-progress |
@@ -297,13 +297,21 @@ The mount boundary SHOULD be explicit props plus existing types. Containers own 
 Recommended order:
 
 1. Shells and state map: inventory current consumers, converge logo lookup, headers, row/card frames, facts/freshness/address and feedback usage. Preserve existing primitives and quota visuals. Add representative light/dark, narrow, keyboard, error and privacy browser mounts as components become real.
-2. SRC/TUNNEL: largest row/detail duplication (four source row contexts and at least five connection summary contexts). Coordinate with the `account-store-sync` fix; presentation reuse alone cannot reconcile its two stores. Keep the account and topology work owned by their implementation task.
+2. SRC/TUNNEL: implemented under `objects/src-platform`, `objects/src-account` and `objects/tunnel`, with local indices and design exports. Remote lists, carried-source lists, account source-role rows, source identity/connection tabs, product and connection choices, permission connections, setup success and hosted Relay summaries use these adapters. Platform Card is mountable; no new panel placement is introduced. Mixed account maintenance, the phase tile provenance overlay, advanced credentials/grants, notification binding and account-store synchronization retain their separate owners.
 3. TASK: converge the three task list contexts and shared detail header; retain the shared DispatchSpec with recorded-turn fixtures, including dsh and absent tier. Preserve ActivityBubble and timeline behavior.
 4. AGENT platform/account: share platform/account branding and profile/identity framing across catalog, AccountsPage and AgentView; converge SRC/AGENT shared identity projections without combining their roles. Reuse Quota throughout.
 5. Interaction and authorization requests: extract RequestCard, retaining separate data/action adapters; cover both task/update and setup/switch contexts. Then relay deployment's three hosts and member list/confirmation.
 6. Peer message only after its data contract and placement are decided. Notification binding remains deferred.
 
 `debt-*` light/dark fixtures mount Tasks, Records, Permissions, AgentsSettings, AgentDisplaySettings, AddAccount, MergeAccounts, RelayHosting and OAuthGrants. `settings-light/dark` and `updates-settings` cover the main Settings hosts. Future browser coverage must include remaining SettingsExtras states, both empty homepage wings, account-store disagreement recovery, unknown icons/states, dsh recorded spec, quota failure families. Layout/state acceptance uses browser fixtures; this document does not require a native app run or claim any visual acceptance.
+
+### SRC/TUNNEL implementation and mounts
+
+`src-tunnel-light`, `src-tunnel-dark` and `src-tunnel-narrow` mount all twelve variants using existing types and fixed timestamps. The shared account inspector requires explicit per-source selection before mutation. `src-account-multiple` exercises the real SourcePanel with multiple sources and verifies that older grants are not an SRC history surface. Browser acceptance covers row/Chip keyboard separation, missing destinations, disabled actions, retained-data errors, identity conflicts and privacy.
+
+Object adapters own labels, associations and state presentation. Hosts own stores, fetches, navigation, eligibility and mutations. SingleChoice accepts static object Row content while retaining its own selection and accessible name. SRC Card shows only the request identified by the pending switch (preferred) or current credential; absent request evidence never becomes an inferred approval. Account maintenance and cross-role links remain in current hosts.
+
+TunnelNode is the SVG boundary used by Topology; a standalone projected frame mounts the same two painters for design tools. It adds no graph vertex, click target, geometry or new transport inference. The painters retain their existing orientation-specific visuals and consume the common semantic wire-state mapping. Existing quota and notification components are unchanged.
 
 ## Decisions (user, 2026-10-26)
 

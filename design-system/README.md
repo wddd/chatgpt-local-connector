@@ -60,6 +60,18 @@ DispatchSpec accepts recorded task/turn data and native-shaped label snapshots. 
 
 | Export | Purpose |
 | --- | --- |
+| [SrcPlatformChip](api/components/SrcPlatformChip.md) | Source platform reference |
+| [SrcPlatformNode](api/components/SrcPlatformNode.md) | Source platform topology adapter |
+| [SrcPlatformRow](api/components/SrcPlatformRow.md) | Source platform list and choice presentation |
+| [SrcPlatformCard](api/components/SrcPlatformCard.md) | Source platform summary and detail |
+| [SrcAccountChip](api/components/SrcAccountChip.md) | Source identity reference |
+| [SrcAccountNode](api/components/SrcAccountNode.md) | Source identity topology adapter |
+| [SrcAccountRow](api/components/SrcAccountRow.md) | Source identity list and choice presentation |
+| [SrcAccountCard](api/components/SrcAccountCard.md) | Source identity summary and detail |
+| [TunnelChip](api/components/TunnelChip.md) | Connection reference |
+| [TunnelNode](api/components/TunnelNode.md) | Connection topology adapter |
+| [TunnelRow](api/components/TunnelRow.md) | Connection list and choice presentation |
+| [TunnelCard](api/components/TunnelCard.md) | Connection summary and detail |
 | [ChoiceControl](api/components/ChoiceControl.md) | Static settings value for zero or one option; SingleChoice otherwise |
 | [SettingsSection](api/components/SettingsSection.md) | Settings heading and body |
 | [SettingRow](api/components/SettingRow.md) | Aligned control or content-sized navigation row |

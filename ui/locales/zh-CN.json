@@ -1438,5 +1438,8 @@
   "source.profile": "能力配置",
   "source.profile.legacy": "保持原有行为",
   "source.profile.remote-push": "远程推送",
-  "source.profile.remote-polling": "远程轮询"
+  "source.profile.remote-polling": "远程轮询",
+  "source.selectForActions": "选择一个控制端，以更换连接或断开授权。",
+  "accounts.identityConflict": "账户身份与此控制端冲突。",
+  "source.documentation": "文档"
 }

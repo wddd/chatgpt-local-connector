@@ -1,3 +1,6 @@
+import { solve } from '../topology/solve';
+import { solvePortrait } from '../topology/portrait';
+import type { PaintNode } from '../topology/render';
 import { dispatchSpecFixtures } from '../scenarioDispatchSpec';
 import scenario from '../../tooling/acceptance/scenarios/topology-accounts.json';
 import configSchema from '../../native/src/ingress/config.json';
@@ -61,7 +64,11 @@ const quotaStates = {
   expiredCredit: { ...ready, resetCredits: [{ count: 2, expiresAt: new Date(now - 86400000).toISOString() }] },
   empty: { ...ready, windows: [] },
 } satisfies Record<string, ProviderSnapshot>;
+const wireScene = { vw: 360, vh: 260, left: [{ id: 'design-wire', tasks: [] }], right: [{ id: 'design-agent', tasks: [] }] };
+const wireNodes: PaintNode[] = [{ id: 'design-wire', side: -1, state: 'error', selected: true, attention: false }, { id: 'design-agent', side: 1, state: 'connecting', selected: false, attention: false }];
+const tunnelFrames = { landscape: { layout: solve(wireScene), nodes: wireNodes, tasks: [] }, portrait: { layout: solvePortrait(wireScene), nodes: wireNodes, tasks: [] } };
 export const fixtures = {
+  tunnelFrames,
   dispatchSpecs: dispatchSpecFixtures,
   now, accounts, agents, sources: ingresses.flatMap(ingress => ingress.sources ?? []), ingresses,
   quotaSnapshots, quotaStates, activitySessions, activity,

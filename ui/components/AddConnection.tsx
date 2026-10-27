@@ -1,7 +1,5 @@
-import { EntityCard, StateBadge, Button, Field, Icon, Input, Loading, Notice, SingleChoice } from "./ui";
-import { ingressState } from "../state/connector";
-import { statePresentation } from "./objects/statePresentation";
-import Address from "./Address";
+import { TunnelCard } from "./objects/tunnel";
+import { Button, Field, Icon, Input, Loading, Notice, SingleChoice } from "./ui";
 import { useEffect, useId, useState } from "react";
 import { Check, ExternalLink } from "lucide-react";
 import { api } from "../api";
@@ -9,7 +7,7 @@ import { controlSource } from "../controlSources";
 import { t } from "../i18n";
 import { connector, refreshConnector } from "../state/connector";
 import { onboarding, openOnboarding, connectionSwitch, type ConnectionSetup, type ConnectionMethod } from "../state/onboarding";
-import { connectionKind, isPendingSource } from "../sourcePresentation";
+import { isPendingSource } from "../sourcePresentation";
 import { useRelayProgress, type RelayProgress as Progress } from "../state/relay";
 import { SensitiveInput, useSensitiveText } from "./Sensitive";
 import IngressDialog from "./IngressDialog";
@@ -124,11 +122,8 @@ export default function AddConnection({ options, onClose, onAdded, returnFocus }
         </>}
       </form>)}
       {step === "success" && <div className="setup-success"><span className="setup-success-mark"><Icon icon={Check} size={20} /></span><h3>{t("connection.added")}</h3>
-        {created && <EntityCard className="setup-connection-card"><strong>{created.name}</strong><span>{t(`source.kind.${connectionKind(created)}`)}</span>
-          {created.url && <Address value={created.url} label={t("source.copyAddress")} />}<StateBadge presentation={statePresentation("connection", ingressState(created))} />
-          <span className="muted">{t("source.count", { count: sources.filter(s => s.ingressId === created.id && s.state !== "revoked" && !isPendingSource(s, status?.ingresses ?? [])).length })}</span></EntityCard>}
+        {created && <TunnelCard ingress={created} sources={sources.filter(s => s.state !== "revoked" && !isPendingSource(s, status?.ingresses ?? []))} />}
         {target && <p>{t("connect.restartClaude")}</p>}
-        {created?.error && <Notice>{created.error}</Notice>}
         {!created && <Button busy={busy} onClick={() => void perform(refreshConnector)}>{t("retry")}</Button>}
         {created && created.state !== "ready" && <Button busy={busy} onClick={() => void perform(async () => { await api(`ingress/${created.id}/start`, "POST"); await refreshConnector(); })}>{t("retry")}</Button>}
       </div>}

@@ -17,6 +17,15 @@ export default defineConfig({
   plugins: [react(), {
     name: 'connector-native-preview',
     configureServer(server) {
+      if (server.config.mode === 'acceptance-fixture') {
+        // Fixture acceptance has no native owner, including when run in a coding lane.
+        server.middlewares.use((request, response, next) => {
+          if (!request.url?.startsWith('/api/')) return next();
+          response.statusCode = 403;
+          response.end('Live management requests are unavailable in fixture acceptance.');
+        });
+        return;
+      }
       requireMainCheckout();
       let checking: { owner: string; promise: Promise<Endpoint> } | undefined;
       function ownerIdentity() {

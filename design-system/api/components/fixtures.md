@@ -6,6 +6,7 @@ Typed synthetic records, not a component. Pass records through template holes. T
 
 | Field | Type | Contents |
 | --- | --- | --- |
+| `tunnelFrames` | `{ landscape, portrait }` projected Layout/PaintNode/PaintTask frames | Fixed inputs for the existing TunnelNode painters |
 | `now` | `number` | Fixed epoch milliseconds; Root's default clock |
 | `accounts` | `ProviderAccount[]` | Six account identities, source associations, profiles and account quotas |
 | `agents` | `Agent[]` | Claude, Codex and dsh inventory records |

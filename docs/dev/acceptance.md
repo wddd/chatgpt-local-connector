@@ -6,6 +6,8 @@
 
 UI/UX acceptance (layout, visual states, copy, light/dark, widths, panel and task interactions) MUST run on browser fixtures only: `npm run accept:ui -- --scenario=<name>` or `dev:ui` with `?scenario=`. It MUST NOT start `dev:isolated`, build packages or touch the installed app. A state without a fixture gets a new or extended fixture; it is not a reason to fall back to a running app. Remaining experience and visual polish is found by the user through real use after delivery, so acceptance favors early delivery over exhaustive runtime checks.
 
+`accept:ui` uses Vite mode `acceptance-fixture`, which rejects live management requests before native-owner discovery. It can run in an explicitly assigned coding lane. Native app runs, installs and isolated runtime acceptance still require the main checkout.
+
 Isolated-instance runtime acceptance is reserved for behavior fixtures cannot simulate: native windows and focus, the replacement/update lifecycle, real Agent dispatch and resume, and notification delivery. Keep it to the scenarios the change affects.
 
 ## Focus policy
