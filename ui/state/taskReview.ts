@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { isTaskId } from "./taskProjection";
 
 export interface TaskReview { verdict: "pass" | "rework"; requestId: string; reviewedAt: string; reviewer?: { controlSource?: string }; }
 
@@ -8,7 +9,7 @@ export function useTaskReview(id: string, turnId: string | undefined, enabled: b
   useEffect(() => {
     let stopped = false, timer: ReturnType<typeof setTimeout>;
     setReview(undefined); setReviewError("");
-    if (!turnId || !enabled) return;
+    if (!turnId || !enabled || !isTaskId(id)) return;
     const read = async () => {
       try {
         const response = await api<{ reviews: { turnId: string; review: TaskReview }[] }>("tasks/reviews", "POST", { id });

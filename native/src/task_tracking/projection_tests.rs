@@ -84,7 +84,7 @@ fn live_acp_and_claude_backfill_have_equivalent_entry_order() {
     assert_eq!(types(&live), types(&history));
     for field in ["phase", "headline", "recentSteps", "turnStartedAt"] {
         assert_eq!(
-            live.session(&json!({"id":"fixture"}), "arc-task", None)[field],
+            live.session("fixture", &json!({"id":"fixture"}), "arc-task", None)[field],
             history.transcript_session("fixture", "claude")[field]
         );
     }
@@ -193,7 +193,8 @@ fn codex_rollout_and_items_use_the_same_normalization() {
     assert_eq!(history.entries[1]["paths"], json!(["a", "b"]));
     assert_eq!(history.entries[1]["changes"][0]["added"], 1);
     assert_eq!(history.entries[1]["changes"][0]["removed"], 1);
-    let phase = history.session(&json!({"id":"fixture"}), "arc-task", None)["phase"].clone();
+    let phase =
+        history.session("fixture", &json!({"id":"fixture"}), "arc-task", None)["phase"].clone();
     for (method, params) in [
         (
             "error",
@@ -216,7 +217,7 @@ fn codex_rollout_and_items_use_the_same_normalization() {
     }
     assert_eq!(history.status, "inProgress");
     assert_eq!(
-        history.session(&json!({"id":"fixture"}), "arc-task", None)["phase"],
+        history.session("fixture", &json!({"id":"fixture"}), "arc-task", None)["phase"],
         phase
     );
     assert_eq!(
@@ -299,7 +300,7 @@ fn acp_notices_patch_compaction_without_changing_turn_state() {
     assert_eq!(t.entries[3]["summary"]["text"], "Keep facts");
     assert_eq!(t.entries[3]["notice"]["nativeStatus"], "failed");
     assert_eq!(
-        t.session(&json!({"id":"fixture"}), "arc-task", None)["phase"],
+        t.session("fixture", &json!({"id":"fixture"}), "arc-task", None)["phase"],
         "thinking"
     );
     acp(

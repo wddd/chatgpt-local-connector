@@ -1179,6 +1179,7 @@
   "detail.sourceRevoked": "The control source is disconnected. Reconnect it before trying this action again.",
   "detail.queueDeliveryFailed": "This queued message could not be delivered. Check its status before trying again.",
   "detail.queueReadFailed": "Queued messages could not be refreshed.",
+  "detail.taskUnavailable": "Task details are unavailable. Close this panel and reopen the task.",
   "detail.noFinalReply": "No final reply",
   "detail.noHandoffs": "No handoffs observed.",
   "detail.timeUnknown": "Time unavailable",

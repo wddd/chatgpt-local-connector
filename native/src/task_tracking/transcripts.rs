@@ -170,7 +170,6 @@ impl Timeline {
         if !info.is_object() {
             info = json!({});
         }
-        info["id"] = json!(id);
         info["title"] = json!(self
             .entries
             .iter()
@@ -178,7 +177,7 @@ impl Timeline {
             .find(|r| r["type"] == "user")
             .map(entry_headline)
             .unwrap_or_default());
-        let mut row = self.session(&info, "transcript", None);
+        let mut row = self.session(id, &info, "transcript", None);
         // A transcript's user prompt represents thinking while native work starts.
         if row["phase"] == "idle" {
             row["phase"] = json!("thinking");

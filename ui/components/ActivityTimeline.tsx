@@ -16,7 +16,7 @@ import type { AgentTimeline } from "../types";
 import { activityApprovals, agentActivity, openActivitySession } from "../state/activity";
 import { followsTimeline, refreshTimeline, timelineScrollTarget } from "../state/timelineModel";
 import TimelineEntries, { durationText } from "./TimelineEntries";
-import { taskState } from "../state/taskProjection";
+import { isTaskId, taskState } from "../state/taskProjection";
 import { timelineDuration, timelineGroups } from "../state/timelineGroups";
 import TaskNeedsYou from "./TaskNeedsYou";
 import { activityHeadline, type TrackedActivity } from "../state/activityModel";
@@ -46,7 +46,8 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const continuationBusy = useRef(false);
   const continuationRequest = useRef<{ turnId: string; action: "resume" | "retry"; op: string; args: Record<string, unknown> } | undefined>(undefined);
   const [error, setError] = useState(""), [openError, setOpenError] = useState("");
-  const loading = session.timeline && !timeline && !error;
+  const validId = isTaskId(session.id);
+  const loading = validId && session.timeline && !timeline && !error;
   const viewport = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null);
   const following = useRef(true), initial = useRef(true), previousRunning = useRef(true), previousTop = useRef(0);
   const manualDisclosure = useRef(false);
@@ -54,7 +55,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const external = session.source === "transcript";
   useTaskPresence(agent, session.id, !external);
   // Completed history entries do not override a session in the live snapshot.
-  const running = !!live || session.endedAt === undefined && !external && !timeline?.readOnly && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? "");
+  const running = validId && (!!live || session.endedAt === undefined && !external && !timeline?.readOnly && ["running", "inProgress", "starting", "waiting-permission", "cancelling"].includes(timeline?.status ?? ""));
 
   const now = useAppNow(running ? 1000 : null);
   const followAllowed = useRef(true);
@@ -82,15 +83,15 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     return () => node.removeEventListener("wheel", wheel);
   }, []);
   useEffect(() => {
-    if (agent !== "codex") return;
+    if (agent !== "codex" || !validId) return;
     let stopped = false;
     void api<TaskRuntime>(`tasks/runtime/${encodeURIComponent(session.id)}`).then(task => {
       if (!stopped) setTaskTitle({ id: session.id, title: task.title?.trim() ?? "" });
     }).catch(() => { /* Use a neutral label when native thread metadata is unavailable. */ });
     return () => { stopped = true; };
-  }, [agent, session.id]);
+  }, [agent, session.id, validId]);
   useEffect(() => {
-    if (!session.timeline) return;
+    if (!validId || !session.timeline) return;
     let stopped = false, timer: ReturnType<typeof setTimeout>, current: AgentTimeline | undefined;
     async function read() {
       try {
@@ -115,7 +116,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
     }
     void read();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [agent, session.id, session.timeline, session.conversation, external]);
+  }, [agent, session.id, session.timeline, session.conversation, external, validId]);
   useLayoutEffect(() => {
     const node = viewport.current;
     if (!node || !timeline || manualDisclosure.current) return;
@@ -210,7 +211,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
   const title = (agent === "codex" && taskTitle?.id === session.id && taskTitle.title) || t("timeline.title");
   return <TaskCard rootRef={detail} className="agent-panel-layer flex h-full min-h-0 w-full flex-col [&>.dialog-header]:shrink-0 [&>.task-timeline]:flex-1 [&>.task-timeline]:h-auto [&>.task-timeline]:px-4 [&>.task-timeline]:pb-4 [&>.dialog-footer]:max-h-1/2 task-detail-layer @container min-w-0" agent={agent} agentName={agentName}
     titleId={titleId} narrow={narrow} expanded={expanded} onBack={onBack} onToggleWidth={resizable ? onToggleWidth : undefined}
-    onOpen={nativeSession.open ? () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } : undefined}
+    onOpen={validId && nativeSession.open ? () => { setOpenError(""); void openActivitySession(agent, nativeSession).catch(error => setOpenError(String(error))); } : undefined}
     task={{ kind: "timeline", session: nativeSession, fallbackSession: session, timeline, title, running, hasPending, turnId, source, duration: duration === undefined ? undefined : durationText(duration) }}>
     <div className="task-timeline relative flex min-h-0 min-w-0 flex-1 flex-col gap-2" aria-busy={loading}>
       <div className="timeline-scroll min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [overflow-anchor:none]" ref={viewport} tabIndex={0} aria-label={t("timeline.title")}
@@ -231,7 +232,7 @@ export default function ActivityTimeline({ agent, session, expanded, onToggleWid
           if ((event.target as Element).closest("button, .timeline-turn[data-state=closed]")) manualDisclosure.current = true;
         }}>
           {loading ? <LoadingIndicator label={t("timeline.loading")} /> : <>
-          {(error || openError || reviewError) && <p className="timeline-error rounded-md bg-destructive/10 p-1 text-destructive" role="alert">{taskErrorText(openError || error || reviewError)}</p>}
+          {(!validId || error || openError || reviewError) && <p className="timeline-error min-w-0 wrap-anywhere rounded-md bg-destructive/10 p-1 text-destructive" role="alert">{!validId ? t("detail.taskUnavailable") : taskErrorText(openError || error || reviewError)}</p>}
           {!!timeline?.coverage.omittedSidechainRecords && <p className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.omittedSidechains", { count: timeline.coverage.omittedSidechainRecords })}</p>}
           {timeline?.coverage.state === "partial" && !timeline.coverage.truncated && <p className="timeline-meta flex items-center gap-1.5 text-xs text-muted-foreground wrap-anywhere">{t("timeline.partial")}</p>}
           {!session.timeline && <section className="activity-session-summary wrap-anywhere">
