@@ -10,6 +10,7 @@ import { setPrivacy } from './state/privacy';
 import { scenarioName } from './scenarioMode';
 import { requestFixtures as f } from './design-mount/requestFixtures';
 import './scenarioShells.css';
+import './scenarioRequests.css';
 
 export default function RequestsFixture() {
   const [index, setIndex] = useState(0), [answers, setAnswers] = useState<Record<string, string[]>>({});
@@ -19,7 +20,7 @@ export default function RequestsFixture() {
   const [account, setAccount] = useState('');
   const submission: ApprovalSubmission | undefined = state === 'pending' ? undefined : { status: state as ApprovalSubmission['status'], decision: 'answer', payload: { op: 'codex_respond', args: {} }, error: 'Sample response failed' };
   const card = <InteractionRequestCard interaction={index ? f.permission : f.question} submission={submission} answers={answers} onAnswersChange={setAnswers} onRespond={decision => setReceipt(`Responded: ${decision}`)} pager={{ index, count: 2, onChange: setIndex }} />;
-  return <main className="shell-fixture" style={scenarioName === 'requests-narrow' ? { maxWidth: 360 } : undefined}>
+  return <main className="shell-fixture requests-fixture" style={scenarioName === 'requests-narrow' ? { maxWidth: 360 } : undefined}>
     <SectionHeader level={1} title="Requests and relay" />
     <Switch label="Privacy" checked={privacy} onChange={value => { updatePrivacy(value); setPrivacy(value); }} />
     <SingleChoice label="Submission state" value={state} onChange={setState} options={['pending', 'submitting', 'submitted', 'failed', 'unconfirmed'].map(value => ({ value, label: value }))} />

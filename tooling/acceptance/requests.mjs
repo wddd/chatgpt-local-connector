@@ -1,3 +1,20 @@
+export async function assertRequestLayout(page) {
+  // Regression: cae518e request cards overflowed 34px grid tracks and deployment intercepted Send answer.
+  const layout = await page.getByRole('main').evaluate(main => {
+    const items = [...main.children].map((element, index) => {
+      const { top, right, bottom, left, height } = element.getBoundingClientRect();
+      return { index, name: element.querySelector('h3')?.textContent ?? element.tagName, top, right, bottom, left, height };
+    }).filter(item => item.height > 0 && item.right > item.left);
+    const overlaps = items.flatMap((item, index) => items.slice(index + 1)
+      .filter(next => Math.min(item.right, next.right) > Math.max(item.left, next.left)
+        && Math.min(item.bottom, next.bottom) > Math.max(item.top, next.top))
+      .map(next => ({ first: item, second: next })));
+    return { items, overlaps, width: main.clientWidth, scrollWidth: main.scrollWidth };
+  });
+  if (layout.overlaps.length) throw new Error(`Request fixture items overlap: ${JSON.stringify(layout.overlaps)}`);
+  return layout;
+}
+
 export async function acceptRequests(page) {
   // Regression: request controls were duplicated across task/update and setup/switch hosts.
   const setSubmission = async name => {
@@ -11,6 +28,7 @@ export async function acceptRequests(page) {
   };
   const request = page.getByRole('main');
   await request.getByRole('heading', { name: 'Requests and relay', exact: true }).waitFor();
+  await assertRequestLayout(page);
   if (await page.getByText('secret-must-not-render', { exact: true }).count()) throw new Error('Secret receipt leaked');
   if ((await request.innerText()).includes('/sample/private/project')) throw new Error('Private path leaked');
   const secret = request.locator('input[type=password]');
@@ -22,6 +40,7 @@ export async function acceptRequests(page) {
   await page.getByText('Responded: answer', { exact: true }).waitFor();
   await request.getByRole('button', { name: 'Next request', exact: true }).press('Enter');
   await request.getByRole('heading', { name: 'Run verification', exact: true }).waitFor();
+  await assertRequestLayout(page);
   if ((await request.innerText()).includes('/sample/private/project')) throw new Error('Private permission context leaked');
   await request.getByRole('switch', { name: 'Privacy', exact: true }).click();
   await request.getByText('/sample/private/project', { exact: true }).waitFor();
@@ -32,6 +51,7 @@ export async function acceptRequests(page) {
   if (!await request.getByRole('button', { name: 'Send answer', exact: true }).isDisabled()) throw new Error('Unconfirmed response can be resubmitted');
   await setSubmission('failed');
   await page.getByText('Sample authorization failure', { exact: true }).waitFor();
+  await assertRequestLayout(page);
   await setSubmission('pending');
   const trigger = request.getByRole('button', { name: 'Open request sheet', exact: true });
   await trigger.press('Enter');
@@ -51,6 +71,7 @@ export async function acceptRequests(page) {
   await request.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByText('Cancel deployment', { exact: true }).waitFor();
   if (await request.getByRole('button', { name: 'Remove', exact: true }).count() !== 1) throw new Error('Self member exposed removal');
+  await assertRequestLayout(page);
   if (await request.evaluate(element => element.scrollWidth > element.clientWidth)) throw new Error('Request fixture overflows horizontally');
 }
 

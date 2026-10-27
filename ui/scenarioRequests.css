@@ -1,0 +1,2 @@
+/* This scrolling gallery gives every independent example its full content height. */
+.requests-fixture { grid-auto-rows: max-content; align-content: start; }
