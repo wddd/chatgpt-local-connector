@@ -1,8 +1,11 @@
 import type { CatalogState, DispatchCatalog } from './state/dispatchCatalog';
 import type { DispatchSpecRecord } from './components/composites/DispatchSpec';
 
+export const longDispatchModel = { model: 'fixture-independent-model', name: 'Independent Research Model With An Intentionally Long Native Display Name' };
+export const longDispatchEffort = 'experimental-reasoning-effort-with-an-unbroken-recorded-value';
+
 export const dispatchCatalogFixtures: Record<string, DispatchCatalog> = {
-  codex: { source: 'codex-model-list', models: [{ model: 'gpt-6.1-sol', name: 'GPT-6.1 Sol' }, { model: 'gpt-6-astra', name: 'GPT-6-Astra' }] },
+  codex: { source: 'codex-model-list', models: [{ model: 'gpt-6.1-sol', name: 'GPT-6.1 Sol' }, { model: 'gpt-6-astra', name: 'GPT-6-Astra' }, longDispatchModel] },
   claude: { source: 'persisted-session-snapshot', models: [{ model: 'claude-opus-5-5', name: 'Claude Opus 5.5' }] },
   dsh: { source: 'persisted-session-snapshot', currentModel: '["magpie","opencode-go/deepseek-v4.1-flash"]', models: [
     { model: '["magpie","opencode-go/deepseek-v4.1-flash"]', name: 'DeepSeek V4.1 Flash · OpenCode Go' },
@@ -10,6 +13,8 @@ export const dispatchCatalogFixtures: Record<string, DispatchCatalog> = {
 };
 const session = (id: string, dispatchSummary: { model?: string; effort?: string; serviceTier?: string }): DispatchSpecRecord => ({ kind: 'session', value: { id, source: 'arc-task', dispatchSummary } });
 export const dispatchSpecFixtures: { label: string; agent: string; record: DispatchSpecRecord; resolver: CatalogState; variant?: 'panel' | 'inline' }[] = [
+  { label: 'Long native label', agent: 'codex', record: session('long-native-label', { model: longDispatchModel.model, effort: 'high', serviceTier: 'priority' }), resolver: { status: 'ready', catalog: dispatchCatalogFixtures.codex } },
+  { label: 'Long recorded effort', agent: 'codex', record: session('long-effort', { effort: longDispatchEffort }), resolver: { status: 'ready' }, variant: 'inline' },
   { label: 'Native catalog', agent: 'codex', record: session('codex-task', { model: 'gpt-6.1-sol', effort: 'high', serviceTier: 'priority' }), resolver: { status: 'ready', catalog: dispatchCatalogFixtures.codex } },
   { label: 'ACP model labels', agent: 'dsh', record: session('dsh-task', { model: '["magpie","opencode-go/deepseek-v4.1-flash"]', effort: 'max' }), resolver: { status: 'ready', catalog: dispatchCatalogFixtures.dsh } },
   { label: 'Claude recorded model', agent: 'claude', record: session('claude-recorded', { model: 'claude-opus-5-5', effort: 'medium' }), resolver: { status: 'ready', catalog: dispatchCatalogFixtures.claude }, variant: 'inline' },

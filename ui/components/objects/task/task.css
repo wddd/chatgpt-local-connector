@@ -87,4 +87,4 @@
 .task-card-project { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .task-document { container-type: inline-size; }
 @container (max-width: 420px) { .task-document-meta { flex-wrap: wrap; } .task-document .task-document-heading { flex-wrap: wrap; } }
-.entity-row-actions.agent-conversation-row { height: auto; padding: 0; background: transparent; box-shadow: none; animation: none; }
+.entity-row-actions.agent-conversation-row { flex-wrap: wrap; height: auto; padding: 0; background: transparent; box-shadow: none; animation: none; }

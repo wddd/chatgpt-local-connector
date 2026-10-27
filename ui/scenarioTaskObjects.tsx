@@ -6,7 +6,7 @@ import { Button, Loading, Notice, SectionHeader, Switch } from './components/ui'
 import { PrivacyToggle } from './components/Privacy';
 import { taskFixtures } from './design-mount/taskFixtures';
 import { requestFixtures } from './design-mount/requestFixtures';
-import { dispatchSpecFixtures } from './scenarioDispatchSpec';
+import { dispatchSpecFixtures, longDispatchModel, longDispatchEffort } from './scenarioDispatchSpec';
 import { bubbleHeights } from './state/activityModel';
 import { scenarioName } from './scenarioMode';
 import './scenarioShells.css';
@@ -15,6 +15,7 @@ import './components/TaskDetail.css';
 export default function TaskObjectsFixture() {
   const { session, receipt, timeline, now } = taskFixtures;
   const [action, setAction] = useState(''), [read, setRead] = useState(false), [error, setError] = useState(false), [busy, setBusy] = useState(false), [expanded, setExpanded] = useState(false);
+  const longReceipt = { ...receipt, task: { ...receipt.task, title: 'Long recorded task specification', model: longDispatchModel.model, effort: longDispatchEffort } };
   const narrow = scenarioName === 'task-objects-narrow';
   const completed = { ...session, phase: 'idle' as const, endedAt: now - 1000, readAt: read ? now : undefined };
   return <main className="shell-fixture" style={narrow ? { maxWidth: 360 } : undefined}>
@@ -46,6 +47,10 @@ export default function TaskObjectsFixture() {
       <InteractionRequestRow entry={requestFixtures.secretReceipt} />
     </TaskCard>
     <TaskCard task={{ kind: 'receipt', record: receipt, records: [receipt], runtime: { runtimeStatus: 'unknown', archived: true, observedAt: receipt.createdAt } }} agent="codex" onClose={() => setAction('Close receipt')} busy={busy} />
-    <section aria-label="Recorded dispatch specifications">{dispatchSpecFixtures.map(fixture => <div key={fixture.label}><h3>{fixture.label}</h3><DispatchSpec {...fixture} /></div>)}</section>
+    <section aria-label="Long task specifications">
+      <TaskRow kind="receipt" record={longReceipt} records={[longReceipt]} id="long-receipt" onOpen={() => setAction('Open long receipt')} />
+      <TaskCard task={{ kind: 'receipt', record: longReceipt, records: [longReceipt] }} agent="codex" />
+    </section>
+    <section aria-label="Recorded dispatch specifications">{dispatchSpecFixtures.map(fixture => <section key={fixture.label} aria-label={fixture.label}><h3>{fixture.label}</h3><DispatchSpec {...fixture} /></section>)}</section>
   </main>;
 }

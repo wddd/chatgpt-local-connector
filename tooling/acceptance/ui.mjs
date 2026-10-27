@@ -319,6 +319,19 @@ try {
             if (await main.locator('[title], [aria-label]').evaluateAll(nodes => nodes.some(node => ['title', 'aria-label'].some(attr => /secret-must-not-render|current-must-not-leak/.test(node.getAttribute(attr) ?? ''))))) throw new Error('Task metadata leaked through an accessible label');
             await page.getByRole('button', { name: 'Privacy mode', exact: true }).click();
           }
+          for (const name of ['Long native label', 'Long recorded effort']) {
+            const spec = page.getByRole('region', { name, exact: true }).locator('.dispatch-spec');
+            const fullLabel = await spec.getAttribute('aria-label');
+            await spec.scrollIntoViewIfNeeded();
+            await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+            await spec.focus();
+            const tooltip = page.getByRole('tooltip');
+            await tooltip.waitFor();
+            if (await tooltip.innerText() !== fullLabel) throw new Error('Truncated dispatch specification lost its complete tooltip');
+            await page.keyboard.press('Escape');
+          }
+          const overflowingSpecs = await main.locator('.dispatch-spec').evaluateAll(nodes => nodes.filter(node => node.scrollWidth > node.clientWidth).map(node => node.getAttribute('aria-label')));
+          if (overflowingSpecs.length) throw new Error('Dispatch specification content overflows its chip: ' + JSON.stringify(overflowingSpecs));
           if (await main.evaluate(node => node.scrollWidth > node.clientWidth)) throw new Error('Task objects overflow horizontally');
           if (screenshots) await page.screenshot({ path: path.join(out, `${key}-tasks.png`), animations: 'disabled' });
         }
