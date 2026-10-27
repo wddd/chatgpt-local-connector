@@ -14,12 +14,33 @@ pub(in crate::agents) fn remember_catalog(agent: &str, facts: &Value) -> Result<
     let catalog = snapshot(facts);
     let _guard = SNAPSHOTS.lock().map_err(|e| e.to_string())?;
     let file = path(agent);
-    if let Ok(old) = load(&file) {
-        if timestamp(&old) > timestamp(facts) || old == catalog {
-            return Ok(());
-        }
+    if !catalog_update_needed(load(&file).ok().as_ref(), &catalog) {
+        return Ok(());
     }
     save(&file, &catalog)
+}
+
+/// Decide whether a snapshot contains newer, usable information before writing it.
+pub(super) fn catalog_update_needed(old: Option<&Value>, candidate: &Value) -> bool {
+    let Some(old) = old else {
+        return true;
+    };
+    if (candidate["models"].as_array().is_some_and(Vec::is_empty)
+        && old["models"]
+            .as_array()
+            .is_some_and(|models| !models.is_empty()))
+        || timestamp(old) > timestamp(candidate)
+    {
+        return false;
+    }
+    let mut previous = old.clone();
+    let mut next = candidate.clone();
+    for catalog in [&mut previous, &mut next] {
+        if let Some(object) = catalog.as_object_mut() {
+            object.remove("observedAt");
+        }
+    }
+    previous != next
 }
 
 pub(super) fn snapshot(facts: &Value) -> Value {
@@ -53,7 +74,7 @@ pub(super) fn sessionless_catalog(agent: &str) -> Result<Value> {
     if let Ok(mut facts) = load(&path(agent)) {
         if native
             .as_ref()
-            .is_some_and(|n| timestamp(n) == timestamp(&facts))
+            .is_some_and(|n| timestamp(n) >= timestamp(&facts))
         {
             return Ok(native.unwrap());
         }
@@ -451,5 +472,36 @@ mod tests {
             Value::Null,
         );
         assert_eq!(partial["authoritative"], false);
+    }
+
+    #[test]
+    fn catalog_metadata_review_preserves_nonempty_snapshot_on_empty_observation() {
+        // Regression: review of 136285a8 found a newer empty session catalog could erase a saved nonempty catalog.
+        let previous = snapshot(
+            &json!({"models":[{"model":"opaque","displayName":"Native"}],"observedAt":"2026-01-01T00:00:00Z"}),
+        );
+        let empty = snapshot(&json!({"models":[],"observedAt":"2026-01-02T00:00:00Z"}));
+        assert!(!catalog_update_needed(Some(&previous), &empty));
+        assert!(catalog_update_needed(None, &empty));
+        let mut populated = previous.clone();
+        populated["observedAt"] = json!("2026-01-03T00:00:00Z");
+        assert!(catalog_update_needed(Some(&empty), &populated));
+    }
+
+    #[test]
+    fn catalog_metadata_review_ignores_observation_time_for_unchanged_snapshots() {
+        // Regression: review of 136285a8 found observedAt defeated snapshot deduplication on every observation.
+        let previous = snapshot(
+            &json!({"models":[{"model":"opaque","displayName":"Native"}],"observedAt":"2026-01-01T00:00:00Z"}),
+        );
+        let mut next = previous.clone();
+        next["observedAt"] = json!("2026-01-02T00:00:00Z");
+        assert!(!catalog_update_needed(Some(&previous), &next));
+        next["models"][0]["contextWindow"] = json!(131072);
+        assert!(catalog_update_needed(Some(&previous), &next));
+        next["observedAt"] = previous["observedAt"].clone();
+        assert!(catalog_update_needed(Some(&previous), &next));
+        next["observedAt"] = json!("2025-12-31T00:00:00Z");
+        assert!(!catalog_update_needed(Some(&previous), &next));
     }
 }

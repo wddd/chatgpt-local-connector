@@ -40,7 +40,7 @@ for await(const line of createInterface({input:process.stdin})) {
 
 
 test('Decision policy folds sparse dispatches without losing full history or selection constraints',async()=>{
-  // Regression: mandatory dispatch policy reads exceeded the model context budget with verbose history and repeated model settings.
+  // Regression: review of 136285a8 found structured per-model decision rows regressed mandatory dispatch-read token budgets.
   const directory=await mkdtemp(path.join(tmpdir(),'arc-policy-decision-'));
   const state=path.join(directory,'state');
   const criteria='Selection guidance. '.repeat(145);
@@ -56,7 +56,7 @@ test('Decision policy folds sparse dispatches without losing full history or sel
   const fixture=await nativeControl(`import {createInterface} from 'node:readline';
 for await(const line of createInterface({input:process.stdin})) {
   const {id,method}=JSON.parse(line);
-  const result=method==='model/list'?{data:['model-main','model-small','model-tiny','model-four','model-five','model-six','model-seven'].map(model=>({model,supportedReasoningEfforts:['low','medium','high','xhigh','max','ultra'].map(reasoningEffort=>({reasoningEffort})),serviceTiers:[{id:'priority',name:'Fast'}]}))}:{data:[]};
+  const result=method==='model/list'?{data:['model-main','model-small','model-tiny','model-four','model-five','model-six','model-seven'].map(model=>({model,displayName:model,contextWindow:131072,supportedReasoningEfforts:['low','medium','high','xhigh','max','ultra'].map(reasoningEffort=>({reasoningEffort})),serviceTiers:[{id:'priority',name:'Fast'}]}))}:{data:[]};
   if(id!==undefined) console.log(JSON.stringify({id,result}));
 }`,{ARC_STATE_DIR:state});
   try {
@@ -73,15 +73,22 @@ for await(const line of createInterface({input:process.stdin})) {
     assert.ok(history.some(row=>/model-main.*n10.*med10\.0m.*pass10/.test(row)));
     assert.ok(history.some(row=>/other.*n23.*med1\.0m.*pass23.*ext12.*rework12/.test(row)));
     assert.ok(!history.some(row=>row.startsWith('model-small')));
-    for(const model of ['model-main','model-small','model-tiny','model-four','model-five','model-six','model-seven']) assert.ok(agent.models.some((row:{model:string})=>row.model===model));
+    for(const model of ['model-main','model-small','model-tiny','model-four','model-five','model-six','model-seven']) assert.ok(agent.models.some((row:string)=>row.includes(model)));
     const cached=await fixture.call('dispatch_policy',{...args,knownCriteriaHash:agent.criteriaHash});
     assert.equal(cached.agents[0].criteriaUnchanged,true);
     assert.equal(cached.arcInbox,undefined);assert.equal(decision.arcInbox,undefined);
     assert.equal(agent.authoritative,true);
     assert.deepEqual(cached.agents[0].models,agent.models);
+    assert.equal(agent.models.length,1);
+    assert.ok(agent.models[0].endsWith(': low-ultra, fast=priority'));
+    assert.ok(JSON.stringify(cached).length<=2000,JSON.stringify(cached));
+    assert.ok(JSON.stringify(decision).length<=4500,JSON.stringify(decision));
     const full=await fixture.call('dispatch_policy',{...args,view:'full'});
     const detail=full.agents[0];
     assert.equal(detail.policy.criteria,criteria);
+    assert.equal(detail.authoritative,true);
+    assert.equal(detail.models[0].displayName,detail.models[0].model);
+    assert.equal(detail.models[0].contextWindow,131072);
     assert.equal(detail.history.groups.length,15);
     const small=detail.history.groups.find((g:any)=>g.model==='model-small');
     assert.equal(small.dispatches,9);assert.equal(small.external.reviews,12);

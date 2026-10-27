@@ -26,6 +26,13 @@ fn clean(value: &mut Value) {
                     v == "persistent-snapshot" || v == "persisted-session-snapshot"
                 });
             map.retain(|key, value| {
+                if key == "models" {
+                    if let Some(models) = value.as_array_mut() {
+                        // Compact strings may themselves be opaque IDs such as "unknown".
+                        models.iter_mut().for_each(clean);
+                        return true;
+                    }
+                }
                 clean(value);
                 // Native identities and labels are data, even when their literal
                 // text equals a presentation sentinel. Empty model lists are facts.
@@ -34,7 +41,6 @@ fn clean(value: &mut Value) {
                         key.as_str(),
                         "model" | "displayName" | "name" | "id" | "value"
                     ))
-                    || (key == "models" && value.is_array())
                     || !(key == "observedAt" && !stale || empty(value))
             });
         }
@@ -52,6 +58,86 @@ fn empty(value: &Value) -> bool {
             .is_some_and(|s| s.is_empty() || s == "unknown")
         || value.as_array().is_some_and(Vec::is_empty)
         || value.as_object().is_some_and(serde_json::Map::is_empty)
+}
+fn model_list(models: &Value) -> Vec<String> {
+    let mut grouped = BTreeMap::<(String, String, String), Vec<String>>::new();
+    for m in models.as_array().into_iter().flatten() {
+        let mut parts = vec![];
+        let efforts: Vec<_> = m["efforts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        let order = [
+            "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+        ];
+        if !efforts.is_empty() {
+            let contiguous = order.windows(efforts.len()).any(|v| v == efforts);
+            parts.push(if contiguous && efforts.len() > 2 {
+                format!("{}-{}", efforts[0], efforts[efforts.len() - 1])
+            } else {
+                efforts.join("/")
+            });
+        }
+        for tier in m["serviceTiers"].as_array().into_iter().flatten() {
+            parts.push(format!(
+                "{}={}",
+                string(tier, "name").to_lowercase(),
+                string(tier, "id")
+            ));
+        }
+        for option in m["options"].as_array().into_iter().flatten() {
+            let values = option["values"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str().or(v["value"].as_str()))
+                .collect::<Vec<_>>()
+                .join("/");
+            if !values.is_empty() {
+                parts.push(format!("{}={values}", string(option, "id")));
+            }
+        }
+        let id = string(m, "model");
+        let name = string(m, "displayName");
+        let label = if name.is_empty() || name == id {
+            id.to_owned()
+        } else {
+            format!("{name} ({id})")
+        };
+        // Use only explicit native metadata; model IDs remain opaque.
+        let provider = string(&m["provider"], "name");
+        let provider = if provider == id || provider == name {
+            ""
+        } else {
+            provider
+        };
+        let provider_id = if provider.is_empty() {
+            ""
+        } else {
+            string(&m["provider"], "id")
+        };
+        grouped
+            .entry((provider_id.into(), provider.into(), parts.join(", ")))
+            .or_default()
+            .push(label);
+    }
+    grouped
+        .into_iter()
+        .map(|((_, provider, settings), ids)| {
+            let labels = if provider.is_empty() {
+                ids.join(",")
+            } else {
+                format!("[{provider}] {}", ids.join(","))
+            };
+            if settings.is_empty() {
+                labels
+            } else {
+                format!("{labels}: {settings}")
+            }
+        })
+        .collect()
 }
 fn history(row: &Value) -> Value {
     if row["history"]["unavailable"].is_string() {
@@ -266,13 +352,17 @@ pub(super) fn present(mut facts: Value, args: &Value) -> Value {
         } else {
             &row["capabilities"]
         };
-        out["models"] = catalog["models"].clone();
-        out["authoritative"] = json!(catalog["authoritative"] == true);
+        out["authoritative"] = json!(!no_policy && catalog["authoritative"] == true);
         for key in ["source", "observedAt", "omittedModels", "unavailable"] {
             out[key] = catalog[key].clone();
         }
         if !no_policy {
             out["history"] = history;
+            out["models"] = if catalog["models"].is_array() {
+                json!(model_list(&catalog["models"]))
+            } else {
+                catalog["models"].clone()
+            };
             let options: Vec<_> = row["capabilities"]["options"]
                 .as_array()
                 .into_iter()
@@ -378,19 +468,48 @@ mod catalog_metadata_tests {
     use super::*;
 
     #[test]
-    fn catalog_metadata_decision_preserves_native_rows_even_without_policy() {
-        // Regression: decision view encoded model IDs into strings and discarded native display metadata.
-        let models = json!([{"model":"[\"opaque\", \"id\"]","name":"Native","displayName":"Native","provider":{"id":"p","name":"Provider"},"contextWindow":64000},{"model":"unknown","displayName":"unknown","provider":{"id":"unknown","name":"unknown"}}]);
+    fn catalog_metadata_review_restores_compact_decision_and_full_metadata() {
+        // Regression: review of 136285a8 found per-model settings and context metadata bloated every decision read.
+        let mut models = json!(["alpha", "beta"])
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| {
+                json!({
+                    "model":id,"displayName":id,"contextWindow":131072,
+                    "efforts":["low","medium","high","xhigh","max","ultra"],
+                    "serviceTiers":[{"id":"priority","name":"Fast"}],
+                    "options":[{"id":"mode","values":[{"value":"a"},{"value":"b"}]}]
+                })
+            })
+            .collect::<Vec<_>>();
+        let opaque = "[\"profile\", \"opaque/id\"]";
+        models.push(json!({"model":opaque,"displayName":"Native model","provider":{"id":"p","name":"Provider"},"contextWindow":64000,"efforts":["low","high"]}));
+        models.push(json!({"model":"unknown","displayName":"unknown","provider":{"id":"unknown","name":"unknown"}}));
         let facts = json!({"agents":[
-            {"agent":"codex","models":models,"authoritative":true},
-            {"agent":"dsh","capabilities":{"models":models,"authoritative":false,"omittedModels":2}}
+            {"agent":"codex","models":models,"authoritative":true,"policy":{"criteria":"Choose native models."}},
+            {"agent":"dsh","capabilities":{"models":models,"authoritative":false,"omittedModels":2},"policy":{"criteria":"Choose native models."}},
+            {"agent":"pi","capabilities":{"models":models,"authoritative":true}}
         ]});
-        let result = present(facts, &json!({}));
-        for row in result["agents"].as_array().unwrap() {
-            assert_eq!(row["models"], models);
+        let result = present(facts.clone(), &json!({}));
+        for row in &result["agents"].as_array().unwrap()[..2] {
+            let compact = row["models"].as_array().unwrap();
+            assert_eq!(compact.len(), 3);
+            assert!(compact.contains(&json!("alpha,beta: low-ultra, fast=priority, mode=a/b")));
+            assert!(compact.contains(&json!(format!(
+                "[Provider] Native model ({opaque}): low/high"
+            ))));
+            assert!(compact.contains(&json!("unknown")));
         }
         assert_eq!(result["agents"][0]["authoritative"], true);
         assert_eq!(result["agents"][1]["authoritative"], false);
         assert_eq!(result["agents"][1]["omittedModels"], 2);
+        assert_eq!(result["agents"][2]["authoritative"], false);
+        assert!(result["agents"][2].get("models").is_none());
+        let full = present(facts, &json!({"view":"full"}));
+        assert_eq!(full["agents"][0]["models"], json!(models));
+        assert_eq!(full["agents"][1]["capabilities"]["models"], json!(models));
+        assert_eq!(full["agents"][0]["authoritative"], true);
+        assert_eq!(full["agents"][1]["capabilities"]["authoritative"], false);
     }
 }
