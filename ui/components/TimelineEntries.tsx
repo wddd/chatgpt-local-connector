@@ -100,7 +100,7 @@ function ToolDetails({ entry, project }: { entry: AgentTimelineEntry; project?: 
 function ProcessEntry({ entry, agent, session }: { entry: AgentTimelineEntry; agent: string; session: AgentActivitySession }) {
   if (entry.type === "notice" && entry.notice) {
     const notice = entry.notice;
-    const label = notice.title || t(`timeline.notice.${notice.kind}.${notice.stage}`);
+    const label = notice.title || (notice.kind === "warning" ? t("timeline.notice.warning.message") : t(`timeline.notice.${notice.kind}.${notice.stage}`));
     const outcome = notice.aborted ? t("timeline.notice.cancelled") : notice.success === false || notice.nativeStatus === "failed" ? t("timeline.notice.failed") : notice.nativeStatus === "cancelled" ? t("timeline.notice.cancelled") : undefined;
     return <Card asChild className="gap-1 border-0 bg-muted/50 px-2 py-1.5 shadow-none"><section aria-label={label} className="text-xs text-muted-foreground">
       <div className="flex flex-wrap items-center gap-1.5"><Icon icon={Info} /><span>{label}</span>{notice.attempt !== undefined && <span>{notice.attempt}{notice.maxAttempts !== undefined && `/${notice.maxAttempts}`}</span>}{outcome && <span>{outcome}</span>}{notice.trigger && <span>{notice.trigger}</span>}{notice.tokensBefore !== undefined && <span>{t("timeline.notice.tokens", { count: notice.tokensBefore })}{notice.tokensAfter !== undefined && ` → ${notice.tokensAfter}`}</span>}</div>

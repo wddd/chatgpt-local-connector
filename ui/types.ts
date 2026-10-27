@@ -149,7 +149,7 @@ export interface AgentTimelineEntry {
   cwd?: string;
   paths?: string[];
   edits?: { oldText?: AgentTrackingExcerpt; newText?: AgentTrackingExcerpt }[];
-  notice?: { kind: "retry" | "compaction" | "warning"; stage: "start" | "end" | "message"; title?: string; message?: string; severity?: string; nativeStatus?: string; attempt?: number; maxAttempts?: number; trigger?: string; tokensBefore?: number; tokensAfter?: number; success?: boolean; aborted?: boolean };
+  notice?: ({ kind: "retry" | "compaction"; stage: "start" | "end" } | { kind: "warning"; stage: "message" }) & { title?: string; message?: string; severity?: string; nativeStatus?: string; attempt?: number; maxAttempts?: number; trigger?: string; tokensBefore?: number; tokensAfter?: number; success?: boolean; aborted?: boolean };
   summary?: AgentTrackingExcerpt;
   error?: AgentTrackingExcerpt;
   path?: string | null;
